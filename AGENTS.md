@@ -59,7 +59,11 @@ If there is a conflict:
 
 ## 🗄️ Database Rules
 
-- Use PostgreSQL
+- Use **Cloudflare D1 (SQLite)** — see ADR-001 in `docs/architecture/decisions.md`
+
+- All IDs are `TEXT` (UUID generated via `crypto.randomUUID()` in the app layer)
+
+- All timestamps are `TEXT` in ISO 8601 UTC format
 
 - Always define:
   - primary keys
@@ -68,9 +72,7 @@ If there is a conflict:
 
 - Never duplicate data unless explicitly required
 
-- Use UTC for all timestamps
-
-- Be explicit about constraints (e.g., unique, not null)
+- Be explicit about constraints (e.g., unique, not null, check)
 
 ---
 
