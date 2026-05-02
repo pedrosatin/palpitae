@@ -19,7 +19,7 @@ Plataforma que permite:
 
 **Por quê:**
 
-1. **Prova de conceito em produção:** `bolao.pedrosatin.com` (Brasileirão) já valida interesse de usuários
+1. **Prova de conceito em produção:** `bolao.pedrosatin.com` (Brasileirão) já valida interesse de usuários - código fonte em `~/Work/bolao-brasileirao`
 2. **Simples o suficiente para MVP:** Grupos privados, sem algoritmos complexos
 3. **Engagement semanal natural:** Amigos competem durante rodada, FOMO funciona sem notificações
 4. **Timing perfeito:** Copa 2026 = pico de interesse
