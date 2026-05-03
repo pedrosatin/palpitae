@@ -94,3 +94,47 @@ Predictions must be locked after `match.start_time`. Options: store `locked_at` 
 - Lock check: `IF now() >= match.start_time THEN reject edit`
 - If a match is rescheduled, predictions automatically unlock/relock based on the new time — no stale data
 - Simpler schema, no risk of `locked_at` going out of sync with match data
+
+---
+
+## ADR-005: Authentication — Direct Google OAuth 2.0
+
+**Status:** Accepted
+**Date:** 2026-05-02
+
+### Context
+
+The product requires Google sign-in. Options evaluated:
+
+| Option                  | Free tier limit | Cost risk                 |
+| ----------------------- | --------------- | ------------------------- |
+| Firebase Auth           | 50k MAU         | Billing surprise at scale |
+| Supabase Auth           | 50k MAU         | Billing surprise at scale |
+| Clerk                   | 5k MAU          | Hits limit early          |
+| **Direct Google OAuth** | None            | Always free               |
+
+The core constraint is **zero cost unless genuinely needed**. All third-party auth SaaS products impose MAU limits that create unpredictable billing as the product grows.
+
+### Decision
+
+Implement **direct Google OAuth 2.0 (Authorization Code flow)** in the Hono API. No third-party auth SaaS.
+
+- Frontend redirects user to Google consent screen
+- API handles the OAuth callback, exchanges code for ID token
+- Verify ID token signature using Google's public keys (JWKS endpoint)
+- Create or update user row in D1 based on `email` + `provider_id`
+- Issue a signed JWT (session token) stored as an `httpOnly`, `Secure`, `SameSite=Lax` cookie
+
+### Security Requirements
+
+- Use `state` parameter (CSRF protection) and PKCE on the OAuth flow
+- Validate `nonce` in the ID token
+- JWT signed with a strong secret stored in Workers secrets (not code)
+- Token expiry enforced server-side
+
+### Consequences
+
+- No MAU limits, no third-party billing
+- ~200 lines of auth implementation to own and maintain
+- Full control over session lifecycle and user model
+- Google's public JWKS endpoint must be fetched and cached (rotates periodically)

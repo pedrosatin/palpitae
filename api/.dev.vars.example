@@ -1,0 +1,6 @@
+# Copy to .dev.vars (never commit the real file)
+JWT_SECRET=dev-only-secret-change-before-production
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+BASE_URL=http://localhost:8787
+FRONTEND_URL=http://localhost:5173

@@ -1,203 +1,82 @@
 # Runtime Context
 
--- =========================
--- EXTENSIONS
--- =========================
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+> This file tracks the current working state of the project. Update it as decisions are made and work progresses.
 
--- =========================
--- USERS & AUTH
--- =========================
-CREATE TABLE users (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-email TEXT NOT NULL UNIQUE,
-provider TEXT NOT NULL, -- 'google'
-provider_id TEXT NOT NULL,
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+---
 
-```
-UNIQUE (provider, provider_id)
-```
+## Current Status
 
-);
+**Phase:** Active development — API scaffolded, auth module (Google OAuth) implemented and tested.
 
-CREATE TABLE profiles (
-user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-nickname TEXT,
-avatar_url TEXT
-);
+---
 
--- =========================
--- COMPETITIONS & TEAMS
--- =========================
-CREATE TABLE competitions (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-name TEXT NOT NULL,
-slug TEXT NOT NULL UNIQUE, -- usado no subdomínio
-external_id TEXT,
-provider TEXT,
-season TEXT,
-status TEXT NOT NULL, -- 'upcoming', 'ongoing', 'finished'
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
+## Stack Decisions (as of 2026-05-02)
 
-CREATE TABLE teams (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-name TEXT NOT NULL,
-short_name TEXT,
-slug TEXT NOT NULL,
-logo_url TEXT,
-external_id TEXT,
-provider TEXT,
+| Concern         | Decision                                                                 |
+| --------------- | ------------------------------------------------------------------------ |
+| Database        | Cloudflare D1 (SQLite)                                                   |
+| API runtime     | Cloudflare Workers                                                       |
+| API framework   | Hono                                                                     |
+| Migrations      | Wrangler D1 migrations                                                   |
+| UUID generation | `crypto.randomUUID()` in app layer                                       |
+| Auth            | Direct Google OAuth 2.0 — implemented in Workers (ADR-005)               |
+| Frontend        | Multiple apps, one per competition (e.g., `brasileirao.palpitae.com.br`) |
 
-```
-UNIQUE (external_id, provider)
-```
+Full rationale in [`docs/architecture/decisions.md`](../architecture/decisions.md).
 
-);
+---
 
--- =========================
--- MATCHES
--- =========================
-CREATE TABLE matches (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-competition_id UUID NOT NULL REFERENCES competitions(id) ON DELETE CASCADE,
+## Schema
 
-```
-external_id TEXT NOT NULL,
-provider TEXT NOT NULL,
+Full DER and migration SQL in [`docs/architecture/schema.md`](../architecture/schema.md).
 
-home_team_id UUID NOT NULL REFERENCES teams(id),
-away_team_id UUID NOT NULL REFERENCES teams(id),
+### Key rules encoded in schema
 
-start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-status TEXT NOT NULL, -- 'scheduled', 'live', 'finished'
+- Prediction uniqueness: `UNIQUE (user_id, group_id, match_id)`
+- Prediction lock: derived from `match.start_time` at runtime — no `locked_at` column
+- Group membership uniqueness: `UNIQUE (group_id, user_id)`
+- Match deduplication: `UNIQUE (external_id, provider)`
+- Team deduplication: `UNIQUE (external_id, provider)`
+- Leaderboard is materialized: updated when match status → `finished` or score changes
 
-home_score INT,
-away_score INT,
+---
 
-phase TEXT, -- 'group', 'round_of_16', etc.
+## Open Decisions
 
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+- [x] Auth provider: Direct Google OAuth 2.0 (see ADR-005) — no third-party SaaS, no MAU limits
+- [ ] Payment provider — deferred; decide when building the payments module. Schema is provider-agnostic.
+- [ ] Admin panel approach — deferred; not needed for core API.
 
-UNIQUE (external_id, provider)
-```
+---
 
-);
+## Build Order
 
-CREATE INDEX idx_matches_competition ON matches(competition_id);
-CREATE INDEX idx_matches_start_time ON matches(start_time);
-CREATE INDEX idx_matches_status ON matches(status);
+1. Auth (Google OAuth)
+2. Competitions + Matches (sync/seed)
+3. Groups + Members
+4. Predictions
+5. Leaderboard
+6. Payments ← decide provider here
+7. Admin panel ← last
 
--- =========================
--- GROUPS
--- =========================
-CREATE TABLE groups (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-name TEXT NOT NULL,
-competition_id UUID NOT NULL REFERENCES competitions(id),
+## Next Steps
 
-```
-owner_user_id UUID NOT NULL REFERENCES users(id),
+1. ~~Initialize Cloudflare Workers project (`npm create hono@latest`)~~ ✅
+2. ~~Configure D1 binding in `wrangler.toml`~~ ✅
+3. ~~Run first migration (`wrangler d1 migrations create initial_schema`)~~ ✅ (file ready at `api/migrations/0001_initial_schema.sql`)
+4. ~~Start API — auth module first~~ ✅
 
-invite_code TEXT NOT NULL UNIQUE,
+**To activate the API:**
 
-payment_status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'paid', 'expired'
+1. Create D1 database: `wrangler d1 create palpitae` → paste the `database_id` into `api/wrangler.toml`
+2. Apply migration: `wrangler d1 migrations apply palpitae --local`
+3. Copy `.dev.vars.example` → `.dev.vars` and fill in Google OAuth credentials
+4. Run locally: `wrangler dev`
 
-max_members INT NOT NULL DEFAULT 50 CHECK (max_members <= 50),
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-```
+**Next build step:** Competitions + Matches (sync/seed)
 
-);
+---
 
-CREATE INDEX idx_groups_competition ON groups(competition_id);
+## ~~Legacy SQL Draft~~
 
--- =========================
--- GROUP MEMBERS
--- =========================
-CREATE TABLE group_members (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-
-```
-role TEXT NOT NULL DEFAULT 'member', -- 'owner', 'member'
-joined_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-
-UNIQUE (group_id, user_id)
-```
-
-);
-
-CREATE INDEX idx_group_members_group ON group_members(group_id);
-
--- =========================
--- PREDICTIONS
--- =========================
-CREATE TABLE predictions (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-```
-user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-
-predicted_home_score INT NOT NULL,
-predicted_away_score INT NOT NULL,
-
-points_awarded INT DEFAULT 0,
-
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-
-locked_at TIMESTAMP WITH TIME ZONE,
-
-UNIQUE (user_id, group_id, match_id)
-```
-
-);
-
-CREATE INDEX idx_predictions_group ON predictions(group_id);
-CREATE INDEX idx_predictions_match ON predictions(match_id);
-
--- =========================
--- LEADERBOARD (MATERIALIZED)
--- =========================
-CREATE TABLE leaderboard (
-group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-
-```
-total_points INT NOT NULL DEFAULT 0,
-exact_hits INT NOT NULL DEFAULT 0,
-
-last_updated TIMESTAMP WITH TIME ZONE DEFAULT now(),
-
-PRIMARY KEY (group_id, user_id)
-```
-
-);
-
-CREATE INDEX idx_leaderboard_group ON leaderboard(group_id);
-
--- =========================
--- PAYMENTS
--- =========================
-CREATE TABLE payments (
-id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-```
-group_id UUID NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-user_id UUID NOT NULL REFERENCES users(id),
-
-amount INT NOT NULL, -- em centavos
-
-status TEXT NOT NULL, -- 'pending', 'paid', 'failed'
-provider TEXT,
-
-created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-```
-
-);
-
-CREATE INDEX idx_payments_group ON payments(group_id);
+> The PostgreSQL schema draft that was previously here has been superseded by the D1-adapted schema in `docs/architecture/schema.md`. PostgreSQL is no longer the target platform (see ADR-001).
