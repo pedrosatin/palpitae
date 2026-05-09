@@ -2,13 +2,15 @@
 
 ## 🎯 Purpose
 
-This file defines how AI agents should operate within this repository.
+This file defines how AI agents should operate within this repository, and captures **architectural intent**.
 
 The goal is to ensure:
 
 - Consistency
 - Correctness
 - Alignment with the product domain
+
+**Note:** This file describes *intent* and *governance*. For the **current state** of the codebase (modules, dependencies, god nodes), see [`graphify-out/GRAPH_REPORT.md`](graphify-out/GRAPH_REPORT.md) — it's auto-generated from source and always in sync.
 
 ---
 

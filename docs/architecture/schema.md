@@ -1,5 +1,7 @@
 # Database Schema — Palpitae
 
+> ⚠️ **Reference only.** For the authoritative current schema structure and entity relationships, see [`graphify-out/GRAPH_REPORT.md`](../../graphify-out/GRAPH_REPORT.md) — it's automatically generated from the source code and stays in sync.
+
 **Platform:** Cloudflare D1 (SQLite)
 **Migration tool:** Wrangler D1 migrations
 **UUID generation:** Application layer (`crypto.randomUUID()`)

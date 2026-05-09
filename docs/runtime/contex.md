@@ -6,21 +6,22 @@
 
 ## Current Status
 
-**Phase:** Active development — API scaffolded, auth module (Google OAuth) implemented and tested.
+**Phase:** Active development — API scaffolded, auth module (Google OAuth) implemented and tested. Frontend scaffolded (Vite + React, login page live).
 
 ---
 
 ## Stack Decisions (as of 2026-05-02)
 
-| Concern         | Decision                                                                 |
-| --------------- | ------------------------------------------------------------------------ |
-| Database        | Cloudflare D1 (SQLite)                                                   |
-| API runtime     | Cloudflare Workers                                                       |
-| API framework   | Hono                                                                     |
-| Migrations      | Wrangler D1 migrations                                                   |
-| UUID generation | `crypto.randomUUID()` in app layer                                       |
-| Auth            | Direct Google OAuth 2.0 — implemented in Workers (ADR-005)               |
-| Frontend        | Multiple apps, one per competition (e.g., `brasileirao.palpitae.com.br`) |
+| Concern         | Decision                                                                              |
+| --------------- | ------------------------------------------------------------------------------------- |
+| Database        | Cloudflare D1 (SQLite)                                                                |
+| API runtime     | Cloudflare Workers                                                                    |
+| API framework   | Hono                                                                                  |
+| Migrations      | Wrangler D1 migrations                                                                |
+| UUID generation | `crypto.randomUUID()` in app layer                                                    |
+| Auth            | Direct Google OAuth 2.0 — implemented in Workers (ADR-005)                            |
+| Frontend        | Vite + React (TypeScript) — static site, CSS Modules, CSS custom properties (ADR-006) |
+| Frontend host   | Cloudflare Pages (planned)                                                            |
 
 Full rationale in [`docs/architecture/decisions.md`](../architecture/decisions.md).
 
@@ -73,7 +74,10 @@ Full DER and migration SQL in [`docs/architecture/schema.md`](../architecture/sc
 3. Copy `.dev.vars.example` → `.dev.vars` and fill in Google OAuth credentials
 4. Run locally: `wrangler dev`
 
-**Next build step:** Competitions + Matches (sync/seed)
+**Next build steps:**
+
+- API: Competitions + Matches (sync/seed)
+- Frontend: dashboard / predictions UI (requires competitions + matches API)
 
 ---
 

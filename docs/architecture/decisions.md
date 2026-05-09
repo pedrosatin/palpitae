@@ -138,3 +138,49 @@ Implement **direct Google OAuth 2.0 (Authorization Code flow)** in the Hono API.
 - ~200 lines of auth implementation to own and maintain
 - Full control over session lifecycle and user model
 - Google's public JWKS endpoint must be fetched and cached (rotates periodically)
+
+---
+
+## ADR-006: Frontend Stack — Vite + React (Static Site)
+
+**Status:** Accepted
+**Date:** 2026-05-03
+
+### Context
+
+The vision describes multiple frontend apps — one per competition — sharing a common design system. The API is stateless REST over HTTP with cookie-based auth. No SSR, no complex routing, and no data fetching framework is needed at this stage.
+
+### Decision
+
+Use **Vite + React (TypeScript)** as a static site under `web/`.
+
+- Source lives in `web/src/`; built output is a static bundle in `web/dist/`
+- No SSR, no meta-framework (Next.js, Remix, etc.)
+- Styles via CSS Modules + CSS custom properties (design tokens)
+- No UI component library — components are hand-built against the design token system
+- API base URL injected at build time via `VITE_API_URL` (`.env.development` / `.env.production`)
+
+### Design Token System
+
+All visual values (colors, spacing, typography, shadows, radii) are declared as CSS custom properties in `web/src/styles/variables.css`. Components reference tokens via `var(--token-name)` — no raw values in component stylesheets.
+
+**Brand palette (from `/assets/*.svg`):**
+| Token | Value | Usage |
+|---|---|---|
+| `--color-primary` | `#49f21b` | CTAs, highlights, brand accent |
+| `--color-bg` | `#0d0d0d` | Page background |
+| `--color-surface` | `#1a1a1a` | Card / panel surfaces |
+| `--color-text-primary` | `#ffffff` | Main text |
+
+### Why not Next.js / Remix?
+
+- No server-side rendering needed — data is user-specific and loaded after auth
+- Cloudflare Workers serves the API; static assets can be served via Cloudflare Pages
+- Keeps frontend dependencies minimal and deployment simple
+
+### Consequences
+
+- Each competition app will be its own Vite project with shared token conventions
+- No framework router lock-in; client routing added only when needed (e.g., React Router)
+- CSS Modules keep styles scoped to components with zero runtime overhead
+- `vite preview` or Cloudflare Pages serves the static dist for production
