@@ -1,0 +1,87 @@
+/**
+ * DashboardPage styles
+ *
+ * Main page after login with groups overview and quick actions.
+ * Clean design following the Palpitae design system.
+ */
+
+.root {
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  padding: var(--space-8) var(--space-6);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ─── Content ──────────────────────────────────────────────────────────── */
+
+.content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.errorMessage {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid #ff4d4f;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  color: #ff4d4f;
+  margin-bottom: var(--space-6);
+}
+
+/* ─── Empty State ──────────────────────────────────────────────────────── */
+
+.emptyState {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-12);
+  text-align: center;
+}
+
+.emptyState h2 {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.emptyState p {
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-8) 0;
+  font-size: var(--font-size-sm);
+}
+
+.ctaButtons {
+  display: flex;
+  gap: var(--space-4);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ─── Groups Section ────────────────────────────────────────────────────── */
+
+.sectionTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--space-6) 0;
+  color: var(--color-text-primary);
+}
+
+.groupsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+  gap: var(--space-6);
+}
+
+/* ─── Loading ──────────────────────────────────────────────────────────── */
+
+.loadingContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+  font-size: var(--font-size-md);
+  color: var(--color-text-secondary);
+}

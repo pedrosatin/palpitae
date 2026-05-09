@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { authRouter } from './auth/router'
+import { groupsRouter } from './groups/router'
 import type { AppContext } from './types'
 
 const app = new Hono<AppContext>()
@@ -23,6 +24,7 @@ app.use(
 )
 
 app.route('/auth', authRouter)
+app.route('/groups', groupsRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 

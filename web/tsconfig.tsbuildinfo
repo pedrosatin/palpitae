@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/config.ts","./src/main.tsx","./src/vite-env.d.ts","./src/components/Button.tsx","./src/components/GoogleLoginButton.tsx","./src/components/Header.tsx","./src/pages/DashboardPage.tsx","./src/pages/LoginPage.tsx"],"version":"5.9.3"}
