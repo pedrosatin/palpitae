@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { config } from '../config'
-import Button from '../components/Button'
 import Header from '../components/Header'
 import styles from './GroupDetailPage.module.css'
 
