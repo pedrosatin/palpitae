@@ -20,7 +20,7 @@ function renderHeader(props?: Partial<Parameters<typeof Header>[0]>) {
 }
 
 describe('Header', () => {
-  it('renders action buttons when no onBack prop', () => {
+  it('renders action buttons', () => {
     renderHeader()
     expect(
       screen.getByRole('button', { name: 'Criar grupo' }),
@@ -28,21 +28,6 @@ describe('Header', () => {
     expect(
       screen.getByRole('button', { name: 'Entrar em grupo' }),
     ).toBeInTheDocument()
-  })
-
-  it('renders back button when onBack is provided', () => {
-    renderHeader({ onBack: vi.fn() })
-    expect(screen.getByRole('button', { name: 'Voltar' })).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Criar grupo' }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('calls onBack when back button is clicked', async () => {
-    const onBack = vi.fn()
-    renderHeader({ onBack })
-    await userEvent.click(screen.getByRole('button', { name: 'Voltar' }))
-    expect(onBack).toHaveBeenCalledOnce()
   })
 
   it('calls onCreateGroup when Criar grupo is clicked', async () => {
@@ -80,11 +65,10 @@ describe('Header', () => {
     expect(onLogout).toHaveBeenCalledOnce()
   })
 
-  it('renders logo as clickable when onHome is provided', () => {
-    const onHome = vi.fn()
-    renderHeader({ onHome })
-    expect(
-      screen.getByRole('button', { name: 'Ir para a home' }),
-    ).toBeInTheDocument()
+  it('renders logo as a link to home', () => {
+    renderHeader()
+    const link = screen.getByRole('link', { name: 'Ir para a home' })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/')
   })
 })

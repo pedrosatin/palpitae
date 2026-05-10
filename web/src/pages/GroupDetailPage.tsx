@@ -85,8 +85,6 @@ export default function GroupDetailPage({
       <>
         <Header
           user={user}
-          onBack={onBack}
-          onHome={onBack}
           onCreateGroup={onCreateGroup}
           onJoinGroup={onJoinGroup}
           onLogout={onLogout}
@@ -103,8 +101,6 @@ export default function GroupDetailPage({
       <>
         <Header
           user={user}
-          onBack={onBack}
-          onHome={onBack}
           onCreateGroup={onCreateGroup}
           onJoinGroup={onJoinGroup}
           onLogout={onLogout}
@@ -122,8 +118,6 @@ export default function GroupDetailPage({
     <>
       <Header
         user={user}
-        onBack={onBack}
-        onHome={onBack}
         onCreateGroup={onCreateGroup}
         onJoinGroup={onJoinGroup}
         onLogout={onLogout}

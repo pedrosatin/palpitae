@@ -95,20 +95,17 @@
   background-color: var(--color-surface-raised, rgba(0, 0, 0, 0.05));
 }
 
-/* ─── Logo button ────────────────────────────────────────────────────────── */
+/* ─── Logo link ──────────────────────────────────────────────────────────── */
 
-.logoBtn {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
+.logoLink {
   display: flex;
   align-items: center;
   border-radius: var(--radius-sm);
   transition: opacity 0.15s;
+  text-decoration: none;
 }
 
-.logoBtn:hover {
+.logoLink:hover {
   opacity: 0.75;
 }
 
