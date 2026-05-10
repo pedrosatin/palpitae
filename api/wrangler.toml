@@ -14,3 +14,7 @@ FRONTEND_URL = "http://localhost:5173"
 #   wrangler secret put JWT_SECRET
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
+
+[env.production.vars]
+BASE_URL = "https://api.palpitae.com.br"
+FRONTEND_URL = "https://palpitae.com.br"
