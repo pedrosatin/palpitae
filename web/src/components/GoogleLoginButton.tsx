@@ -13,7 +13,13 @@ import styles from './GoogleLoginButton.module.css'
  */
 export default function GoogleLoginButton() {
   function handleClick() {
-    window.location.href = `${config.apiUrl}/auth/google`
+    const redirect =
+      window.location.search || window.location.pathname !== '/'
+        ? window.location.search
+        : ''
+    const url = new URL(`${config.apiUrl}/auth/google`)
+    if (redirect) url.searchParams.set('redirect', redirect)
+    window.location.href = url.toString()
   }
 
   return (

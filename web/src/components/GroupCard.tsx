@@ -1,4 +1,3 @@
-import Button from './Button'
 import Card from './Card'
 import styles from './GroupCard.module.css'
 
@@ -15,45 +14,47 @@ export interface GroupWithStats {
 
 interface GroupCardProps {
   group: GroupWithStats
-  onViewPredictions: (groupId: string) => void
-  onViewLeaderboard: (groupId: string) => void
+  currentUserId: string
+  onClick: () => void
 }
 
 export default function GroupCard({
   group,
-  onViewPredictions,
-  onViewLeaderboard,
+  currentUserId,
+  onClick,
 }: GroupCardProps) {
+  const isOwner = group.admin_id === currentUserId
+
   return (
-    <Card hoverable>
-      <div className={styles.header}>
-        <h3 className={styles.name}>{group.name}</h3>
-        <span className={styles.badge}>Copa 2026</span>
-      </div>
+    <Card hoverable className={styles.card}>
+      <button
+        className={styles.cardBtn}
+        onClick={onClick}
+        aria-label={`Abrir grupo ${group.name}`}
+      >
+        <div className={styles.header}>
+          <h3 className={styles.name}>{group.name}</h3>
+          <div className={styles.badges}>
+            {isOwner && <span className={styles.ownerBadge}>Admin</span>}
+            <span className={styles.badge}>Copa 2026</span>
+          </div>
+        </div>
 
-      <div className={styles.stats}>
-        <div className={styles.statItem}>
-          <span className={styles.statLabel}>Membros</span>
-          <span className={styles.statValue}>{group.member_count}</span>
+        <div className={styles.stats}>
+          <div className={styles.statItem}>
+            <span className={styles.statLabel}>Membros</span>
+            <span className={styles.statValue}>{group.member_count}</span>
+          </div>
+          <div className={styles.statItem}>
+            <span className={styles.statLabel}>Sua posição</span>
+            <span className={styles.statValue}>#{group.user_position}</span>
+          </div>
+          <div className={styles.statItem}>
+            <span className={styles.statLabel}>Seus pontos</span>
+            <span className={styles.statValue}>{group.user_points}</span>
+          </div>
         </div>
-        <div className={styles.statItem}>
-          <span className={styles.statLabel}>Sua posição</span>
-          <span className={styles.statValue}>#{group.user_position}</span>
-        </div>
-        <div className={styles.statItem}>
-          <span className={styles.statLabel}>Seus pontos</span>
-          <span className={styles.statValue}>{group.user_points}</span>
-        </div>
-      </div>
-
-      <div className={styles.actions}>
-        <Button variant="secondary" onClick={() => onViewPredictions(group.id)}>
-          Ver previsões
-        </Button>
-        <Button variant="secondary" onClick={() => onViewLeaderboard(group.id)}>
-          Ver classificação
-        </Button>
-      </div>
+      </button>
     </Card>
   )
 }
