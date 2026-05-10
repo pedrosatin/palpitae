@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { config } from '../config'
 import Button from '../components/Button'
+import CreateGroupModal from '../components/CreateGroupModal'
 import GroupCard, { type GroupWithStats } from '../components/GroupCard'
 import Header from '../components/Header'
+import JoinGroupModal from '../components/JoinGroupModal'
 import styles from './DashboardPage.module.css'
 
 interface User {
@@ -12,21 +14,29 @@ interface User {
   avatar_url?: string
 }
 
-/**
- * Dashboard page — main application after login.
- *
- * Displays:
- * - User greeting with profile
- * - List of groups the user is a member of
- * - Call-to-action to create or join groups
- * - Quick actions for predictions
- */
-export default function DashboardPage({ user }: { user: User }) {
+interface DashboardPageProps {
+  user: User
+  /** Invite code pre-filled from a share link (?convite=...) */
+  pendingInvite?: string
+  onNavigateToGroup: (groupId: string) => void
+  onLogout: () => void
+}
+
+export default function DashboardPage({
+  user,
+  pendingInvite,
+  onNavigateToGroup,
+  onLogout,
+}: DashboardPageProps) {
   const [groups, setGroups] = useState<GroupWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const [createOpen, setCreateOpen] = useState(false)
+  const [joinOpen, setJoinOpen] = useState(!!pendingInvite)
+
+  function fetchGroups() {
+    setLoading(true)
     fetch(`${config.apiUrl}/groups`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Falha ao carregar grupos')
@@ -40,14 +50,21 @@ export default function DashboardPage({ user }: { user: User }) {
         setError(err.message)
         setLoading(false)
       })
-  }, [])
-
-  function handleCreateGroup() {
-    // TODO: open create group modal
   }
 
-  function handleJoinGroup() {
-    // TODO: open join group modal
+  useEffect(() => {
+    fetchGroups()
+  }, [])
+
+  function handleGroupCreated() {
+    // Refresh the groups list after creation
+    fetchGroups()
+  }
+
+  function handleGroupJoined(group: { id: string; name: string }) {
+    // Refresh then navigate to the joined group
+    fetchGroups()
+    onNavigateToGroup(group.id)
   }
 
   if (loading) {
@@ -55,8 +72,9 @@ export default function DashboardPage({ user }: { user: User }) {
       <>
         <Header
           user={user}
-          onCreateGroup={handleCreateGroup}
-          onJoinGroup={handleJoinGroup}
+          onCreateGroup={() => setCreateOpen(true)}
+          onJoinGroup={() => setJoinOpen(true)}
+          onLogout={onLogout}
         />
         <main className={styles.root}>
           <div className={styles.loadingContainer}>
@@ -71,11 +89,12 @@ export default function DashboardPage({ user }: { user: User }) {
     <>
       <Header
         user={user}
-        onCreateGroup={handleCreateGroup}
-        onJoinGroup={handleJoinGroup}
+        onCreateGroup={() => setCreateOpen(true)}
+        onJoinGroup={() => setJoinOpen(true)}
+        onLogout={onLogout}
       />
+
       <main className={styles.root}>
-        {/* Main Content */}
         <div className={styles.content}>
           {error && <div className={styles.errorMessage}>{error}</div>}
 
@@ -84,8 +103,12 @@ export default function DashboardPage({ user }: { user: User }) {
               <h2>Nenhum grupo ainda</h2>
               <p>Comece a competir criando ou se juntando a um grupo</p>
               <div className={styles.ctaButtons}>
-                <Button variant="primary">Criar grupo</Button>
-                <Button variant="secondary">Entrar com link</Button>
+                <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                  Criar grupo
+                </Button>
+                <Button variant="secondary" onClick={() => setJoinOpen(true)}>
+                  Entrar com convite
+                </Button>
               </div>
             </div>
           ) : (
@@ -96,8 +119,8 @@ export default function DashboardPage({ user }: { user: User }) {
                   <GroupCard
                     key={group.id}
                     group={group}
-                    onViewPredictions={() => {}}
-                    onViewLeaderboard={() => {}}
+                    currentUserId={user.id}
+                    onClick={() => onNavigateToGroup(group.id)}
                   />
                 ))}
               </div>
@@ -105,6 +128,19 @@ export default function DashboardPage({ user }: { user: User }) {
           )}
         </div>
       </main>
+
+      <CreateGroupModal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleGroupCreated}
+      />
+
+      <JoinGroupModal
+        isOpen={joinOpen}
+        onClose={() => setJoinOpen(false)}
+        onJoined={handleGroupJoined}
+        initialCode={pendingInvite}
+      />
     </>
   )
 }
