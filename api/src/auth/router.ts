@@ -17,6 +17,7 @@ const SESSION_COOKIE = 'session'
 const STATE_COOKIE = 'oauth_state'
 const NONCE_COOKIE = 'oauth_nonce'
 const VERIFIER_COOKIE = 'oauth_verifier'
+const REDIRECT_COOKIE = 'oauth_redirect'
 const SESSION_TTL = 24 * 60 * 60 // 24 hours
 
 function cookieOptions(baseUrl: string, maxAge?: number) {
@@ -51,6 +52,12 @@ authRouter.get('/google', async (c) => {
   setCookie(c, NONCE_COOKIE, nonce, tempOpts)
   setCookie(c, VERIFIER_COOKIE, verifier, tempOpts)
 
+  // Store the post-login redirect (only allow relative query strings to prevent open redirect)
+  const postRedirect = c.req.query('redirect') ?? ''
+  if (postRedirect.startsWith('?')) {
+    setCookie(c, REDIRECT_COOKIE, postRedirect, tempOpts)
+  }
+
   return c.redirect(url)
 })
 
@@ -71,6 +78,9 @@ authRouter.get('/callback', async (c) => {
   deleteCookie(c, STATE_COOKIE, clearOpts)
   deleteCookie(c, NONCE_COOKIE, clearOpts)
   deleteCookie(c, VERIFIER_COOKIE, clearOpts)
+
+  const storedRedirect = getCookie(c, REDIRECT_COOKIE) ?? ''
+  deleteCookie(c, REDIRECT_COOKIE, clearOpts)
 
   if (!storedState || !storedNonce || !codeVerifier) {
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=session_expired`)
@@ -111,7 +121,10 @@ authRouter.get('/callback', async (c) => {
 
     setCookie(c, SESSION_COOKIE, sessionToken, cookieOptions(c.env.BASE_URL, SESSION_TTL))
 
-    return c.redirect(c.env.FRONTEND_URL)
+    const destination = storedRedirect.startsWith('?')
+      ? `${c.env.FRONTEND_URL}${storedRedirect}`
+      : c.env.FRONTEND_URL
+    return c.redirect(destination)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'auth_failed'
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(message)}`)
