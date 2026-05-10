@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { authRouter } from './auth/router'
+import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
 import type { AppContext } from './types'
 
@@ -24,6 +25,7 @@ app.use(
 )
 
 app.route('/auth', authRouter)
+app.route('/competitions', competitionsRouter)
 app.route('/groups', groupsRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))

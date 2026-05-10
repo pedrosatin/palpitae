@@ -1,0 +1,57 @@
+import { describe, expect, it } from 'vitest'
+import { base64UrlDecode, base64UrlEncode } from './encoding'
+
+describe('base64UrlEncode', () => {
+  it('produces only URL-safe characters (no +, /, or =)', () => {
+    // Use a large buffer to increase the chance of hitting all character types
+    const buf = new Uint8Array(64).fill(0).map((_, i) => i * 4).buffer
+    const result = base64UrlEncode(buf)
+    expect(result).toMatch(/^[A-Za-z0-9_-]+$/)
+  })
+
+  it('encodes an empty buffer to an empty string', () => {
+    expect(base64UrlEncode(new Uint8Array(0).buffer)).toBe('')
+  })
+
+  it('encodes a known value correctly', () => {
+    // "hello" in ASCII -> aGVsbG8 (standard base64url)
+    const buf = new TextEncoder().encode('hello').buffer as ArrayBuffer
+    expect(base64UrlEncode(buf)).toBe('aGVsbG8')
+  })
+})
+
+describe('base64UrlDecode', () => {
+  it('decodes an empty string to an empty buffer', () => {
+    const result = base64UrlDecode('')
+    expect(new Uint8Array(result)).toHaveLength(0)
+  })
+
+  it('decodes a known value correctly', () => {
+    const result = new TextDecoder().decode(base64UrlDecode('aGVsbG8'))
+    expect(result).toBe('hello')
+  })
+
+  it('handles strings without padding', () => {
+    const original = 'test-data'
+    const encoded = base64UrlEncode(new TextEncoder().encode(original).buffer as ArrayBuffer)
+    expect(encoded).not.toContain('=')
+    const decoded = new TextDecoder().decode(base64UrlDecode(encoded))
+    expect(decoded).toBe(original)
+  })
+})
+
+describe('base64UrlEncode / base64UrlDecode roundtrip', () => {
+  it('encodes and decodes arbitrary binary data', () => {
+    const original = new Uint8Array([0, 1, 127, 128, 255, 42, 99])
+    const encoded = base64UrlEncode(original.buffer)
+    const decoded = new Uint8Array(base64UrlDecode(encoded))
+    expect(decoded).toEqual(original)
+  })
+
+  it('roundtrips a text string', () => {
+    const original = 'Hello, Palpitae! 🎯'
+    const buf = new TextEncoder().encode(original).buffer as ArrayBuffer
+    const decoded = new TextDecoder().decode(base64UrlDecode(base64UrlEncode(buf)))
+    expect(decoded).toBe(original)
+  })
+})
