@@ -13,10 +13,6 @@ interface HeaderProps {
   onCreateGroup: () => void
   onJoinGroup: () => void
   onLogout: () => void
-  /** When provided, renders a back arrow instead of the action buttons */
-  onBack?: () => void
-  /** When provided, makes the logo a clickable link to home */
-  onHome?: () => void
 }
 
 export default function Header({
@@ -24,8 +20,6 @@ export default function Header({
   onCreateGroup,
   onJoinGroup,
   onLogout,
-  onBack,
-  onHome,
 }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -44,37 +38,19 @@ export default function Header({
   return (
     <header className={styles.header}>
       <div className={styles.inner}>
-        {onBack ? (
-          <button
-            className={styles.backBtn}
-            onClick={onBack}
-            aria-label="Voltar"
-          >
-            ← Voltar
-          </button>
-        ) : onHome ? (
-          <button
-            className={styles.logoBtn}
-            onClick={onHome}
-            aria-label="Ir para a home"
-          >
-            <img src="/logo-text.svg" alt="Palpitae" className={styles.logo} />
-          </button>
-        ) : (
+        <a href="/" className={styles.logoLink} aria-label="Ir para a home">
           <img src="/logo-text.svg" alt="Palpitae" className={styles.logo} />
-        )}
+        </a>
 
         <div className={styles.actions}>
-          {!onBack && (
-            <>
-              <Button variant="secondary" onClick={onJoinGroup}>
-                Entrar em grupo
-              </Button>
-              <Button variant="primary" onClick={onCreateGroup}>
-                Criar grupo
-              </Button>
-            </>
-          )}
+          <>
+            <Button variant="secondary" onClick={onJoinGroup}>
+              Entrar em grupo
+            </Button>
+            <Button variant="primary" onClick={onCreateGroup}>
+              Criar grupo
+            </Button>
+          </>
 
           <div className={styles.userMenu} ref={menuRef}>
             <button
