@@ -71,7 +71,6 @@ export default function App() {
       <GroupDetailPage
         user={user!}
         groupId={view.groupId}
-        onBack={() => setView({ page: 'dashboard' })}
         onCreateGroup={() => setView({ page: 'dashboard' })}
         onJoinGroup={() => setView({ page: 'dashboard' })}
         onLogout={handleLogout}

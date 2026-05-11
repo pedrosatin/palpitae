@@ -29,7 +29,6 @@ type Tab = 'predictions' | 'leaderboard'
 interface GroupDetailPageProps {
   user: User
   groupId: string
-  onBack: () => void
   onCreateGroup: () => void
   onJoinGroup: () => void
   onLogout: () => void
@@ -38,7 +37,6 @@ interface GroupDetailPageProps {
 export default function GroupDetailPage({
   user,
   groupId,
-  onBack,
   onCreateGroup,
   onJoinGroup,
   onLogout,
