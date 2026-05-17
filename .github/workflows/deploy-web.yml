@@ -54,8 +54,6 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy dist --project-name=palpitae-web --branch=main
