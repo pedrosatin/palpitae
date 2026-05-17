@@ -1,0 +1,2405 @@
+{
+  "nodes": [
+    {
+      "id": "api_vitest_config_ts",
+      "label": "vitest.config.ts",
+      "file_type": "code",
+      "source_file": "api/vitest.config.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "api_src_types_ts",
+      "label": "types.ts",
+      "file_type": "code",
+      "source_file": "api/src/types.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_types_env",
+      "label": "Env",
+      "file_type": "code",
+      "source_file": "api/src/types.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_types_variables",
+      "label": "Variables",
+      "file_type": "code",
+      "source_file": "api/src/types.ts",
+      "source_location": "L10"
+    },
+    {
+      "id": "src_types_appcontext",
+      "label": "AppContext",
+      "file_type": "code",
+      "source_file": "api/src/types.ts",
+      "source_location": "L14"
+    },
+    {
+      "id": "api_src_index_ts",
+      "label": "index.ts",
+      "file_type": "code",
+      "source_file": "api/src/index.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_index_app",
+      "label": "app",
+      "file_type": "code",
+      "source_file": "api/src/index.ts",
+      "source_location": "L6"
+    },
+    {
+      "id": "api_src_auth_encoding_ts",
+      "label": "encoding.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_encoding_base64urlencode",
+      "label": "base64UrlEncode()",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.ts",
+      "source_location": "L6"
+    },
+    {
+      "id": "auth_encoding_base64urldecode",
+      "label": "base64UrlDecode()",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.ts",
+      "source_location": "L15"
+    },
+    {
+      "id": "api_src_auth_jwt_ts",
+      "label": "jwt.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_jwt_algorithm",
+      "label": "ALGORITHM",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L8"
+    },
+    {
+      "id": "auth_jwt_importkey",
+      "label": "importKey()",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L10"
+    },
+    {
+      "id": "auth_jwt_jwtpayload",
+      "label": "JwtPayload",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L20"
+    },
+    {
+      "id": "auth_jwt_signjwt",
+      "label": "signJwt()",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L27"
+    },
+    {
+      "id": "auth_jwt_verifyjwt",
+      "label": "verifyJwt()",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L45"
+    },
+    {
+      "id": "api_src_auth_google_ts",
+      "label": "google.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_google_generatestate",
+      "label": "generateState()",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L16"
+    },
+    {
+      "id": "auth_google_generatenonce",
+      "label": "generateNonce()",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L20"
+    },
+    {
+      "id": "auth_google_generatepkce",
+      "label": "generatePkce()",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L24"
+    },
+    {
+      "id": "auth_google_buildauthurl",
+      "label": "buildAuthUrl()",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L35"
+    },
+    {
+      "id": "auth_google_exchangecode",
+      "label": "exchangeCode()",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L60"
+    },
+    {
+      "id": "auth_google_jwkskey",
+      "label": "JwksKey",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L92"
+    },
+    {
+      "id": "auth_google_googleuserinfo",
+      "label": "GoogleUserInfo",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L98"
+    },
+    {
+      "id": "auth_google_googleidtokenclaims",
+      "label": "GoogleIdTokenClaims",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L106"
+    },
+    {
+      "id": "auth_google_verifygoogleidtoken",
+      "label": "verifyGoogleIdToken()",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L113"
+    },
+    {
+      "id": "auth_google_upsertuser",
+      "label": "upsertUser()",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L178"
+    },
+    {
+      "id": "api_src_auth_middleware_ts",
+      "label": "middleware.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_middleware_requireauth",
+      "label": "requireAuth",
+      "file_type": "code",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L6"
+    },
+    {
+      "id": "api_src_auth_router_ts",
+      "label": "router.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_router_cookieoptions",
+      "label": "cookieOptions()",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L22"
+    },
+    {
+      "id": "auth_router_authrouter",
+      "label": "authRouter",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L32"
+    },
+    {
+      "id": "auth_router_state",
+      "label": "state",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L36"
+    },
+    {
+      "id": "auth_router_nonce",
+      "label": "nonce",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L37"
+    },
+    {
+      "id": "auth_router_url",
+      "label": "url",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L41"
+    },
+    {
+      "id": "auth_router_tempopts",
+      "label": "tempOpts",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L49"
+    },
+    {
+      "id": "auth_router_code_state_error",
+      "label": "{ code, state, error }",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L59"
+    },
+    {
+      "id": "auth_router_storedstate",
+      "label": "storedState",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L65"
+    },
+    {
+      "id": "auth_router_storednonce",
+      "label": "storedNonce",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L66"
+    },
+    {
+      "id": "auth_router_codeverifier",
+      "label": "codeVerifier",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L67"
+    },
+    {
+      "id": "auth_router_clearopts",
+      "label": "clearOpts",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L70"
+    },
+    {
+      "id": "auth_router_userid",
+      "label": "userId",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L129"
+    },
+    {
+      "id": "auth_router_user",
+      "label": "user",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L131"
+    },
+    {
+      "id": "api_src_auth_jwt_test_ts",
+      "label": "jwt.test.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_jwt_test_body",
+      "label": "[, body]",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L14"
+    },
+    {
+      "id": "auth_jwt_test_payload",
+      "label": "payload",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L15"
+    },
+    {
+      "id": "auth_jwt_test_h_s",
+      "label": "[h, , s]",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L36"
+    },
+    {
+      "id": "auth_jwt_test_tamperedbody",
+      "label": "tamperedBody",
+      "file_type": "code",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L37"
+    },
+    {
+      "id": "api_src_auth_google_test_ts",
+      "label": "google.test.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_google_test_expected",
+      "label": "expected",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L35"
+    },
+    {
+      "id": "auth_google_test_base",
+      "label": "base",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L50"
+    },
+    {
+      "id": "auth_google_test_url",
+      "label": "url",
+      "file_type": "code",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L59"
+    },
+    {
+      "id": "web_vite_config_ts",
+      "label": "vite.config.ts",
+      "file_type": "code",
+      "source_file": "web/vite.config.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "web_src_config_ts",
+      "label": "config.ts",
+      "file_type": "code",
+      "source_file": "web/src/config.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_config_config",
+      "label": "config",
+      "file_type": "code",
+      "source_file": "web/src/config.ts",
+      "source_location": "L11"
+    },
+    {
+      "id": "web_src_main_tsx",
+      "label": "main.tsx",
+      "file_type": "code",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_main_rootel",
+      "label": "rootEl",
+      "file_type": "code",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "web_src_app_tsx",
+      "label": "App.tsx",
+      "file_type": "code",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "src_app_user",
+      "label": "User",
+      "file_type": "code",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L9"
+    },
+    {
+      "id": "src_app_authstatus",
+      "label": "AuthStatus",
+      "file_type": "code",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L16"
+    },
+    {
+      "id": "src_app_app",
+      "label": "App()",
+      "file_type": "code",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L28"
+    },
+    {
+      "id": "web_src_vite_env_d_ts",
+      "label": "vite-env.d.ts",
+      "file_type": "code",
+      "source_file": "web/src/vite-env.d.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "web_src_pages_loginpage_tsx",
+      "label": "LoginPage.tsx",
+      "file_type": "code",
+      "source_file": "web/src/pages/LoginPage.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "pages_loginpage_loginpage",
+      "label": "LoginPage()",
+      "file_type": "code",
+      "source_file": "web/src/pages/LoginPage.tsx",
+      "source_location": "L13"
+    },
+    {
+      "id": "web_src_components_googleloginbutton_tsx",
+      "label": "GoogleLoginButton.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_googleloginbutton_googleloginbutton",
+      "label": "GoogleLoginButton()",
+      "file_type": "code",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L14"
+    },
+    {
+      "id": "components_googleloginbutton_googlelogo",
+      "label": "GoogleLogo()",
+      "file_type": "code",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L36"
+    },
+    {
+      "id": "agents_md",
+      "label": "AGENTS.md",
+      "file_type": "document"
+    },
+    {
+      "id": "readme_md",
+      "label": "README.md",
+      "file_type": "document"
+    },
+    {
+      "id": "claude_md",
+      "label": "CLAUDE.md",
+      "file_type": "document"
+    },
+    {
+      "id": "decisions_md",
+      "label": "Architecture Decision Records",
+      "file_type": "document"
+    },
+    {
+      "id": "system_md",
+      "label": "System Architecture Doc",
+      "file_type": "document"
+    },
+    {
+      "id": "schema_md",
+      "label": "Database Schema Doc",
+      "file_type": "document"
+    },
+    {
+      "id": "ideas_md",
+      "label": "Palpitae Refined Ideas",
+      "file_type": "document"
+    },
+    {
+      "id": "vision_md",
+      "label": "Product Vision",
+      "file_type": "document"
+    },
+    {
+      "id": "context_md",
+      "label": "Runtime Context",
+      "file_type": "document"
+    },
+    {
+      "id": "migration_sql",
+      "label": "Initial Schema Migration",
+      "file_type": "code"
+    },
+    {
+      "id": "types_ts",
+      "label": "API Types",
+      "file_type": "code"
+    },
+    {
+      "id": "index_ts",
+      "label": "API Entry Point",
+      "file_type": "code"
+    },
+    {
+      "id": "encoding_ts",
+      "label": "Base64URL Encoding Utils",
+      "file_type": "code"
+    },
+    {
+      "id": "jwt_ts",
+      "label": "JWT Implementation",
+      "file_type": "code"
+    },
+    {
+      "id": "google_ts",
+      "label": "Google OAuth Implementation",
+      "file_type": "code"
+    },
+    {
+      "id": "middleware_ts",
+      "label": "Auth Middleware",
+      "file_type": "code"
+    },
+    {
+      "id": "router_ts",
+      "label": "Auth Router",
+      "file_type": "code"
+    },
+    {
+      "id": "jwt_test_ts",
+      "label": "JWT Tests",
+      "file_type": "code"
+    },
+    {
+      "id": "google_test_ts",
+      "label": "Google OAuth Tests",
+      "file_type": "code"
+    },
+    {
+      "id": "vite_config_ts",
+      "label": "Vite Config",
+      "file_type": "code"
+    },
+    {
+      "id": "config_ts",
+      "label": "Frontend Config",
+      "file_type": "code"
+    },
+    {
+      "id": "main_tsx",
+      "label": "Frontend Entry Point",
+      "file_type": "code"
+    },
+    {
+      "id": "app_tsx",
+      "label": "App Root Component",
+      "file_type": "code"
+    },
+    {
+      "id": "login_page_tsx",
+      "label": "Login Page",
+      "file_type": "code"
+    },
+    {
+      "id": "google_login_button_tsx",
+      "label": "Google Login Button",
+      "file_type": "code"
+    },
+    {
+      "id": "index_html",
+      "label": "HTML Entry Point",
+      "file_type": "code"
+    },
+    {
+      "id": "icon_svg",
+      "label": "App Icon",
+      "file_type": "image"
+    },
+    {
+      "id": "icon1_svg",
+      "label": "App Icon Variant",
+      "file_type": "image"
+    },
+    {
+      "id": "logo2_svg",
+      "label": "Logo Variant 2",
+      "file_type": "image"
+    },
+    {
+      "id": "logo_svg_assets",
+      "label": "Logo (assets)",
+      "file_type": "image"
+    },
+    {
+      "id": "logo_text_svg",
+      "label": "Logo Text SVG",
+      "file_type": "image"
+    },
+    {
+      "id": "public_logo_svg",
+      "label": "Logo (public)",
+      "file_type": "image"
+    },
+    {
+      "id": "entity_users",
+      "label": "Users Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_profiles",
+      "label": "Profiles Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_competitions",
+      "label": "Competitions Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_teams",
+      "label": "Teams Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_matches",
+      "label": "Matches Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_groups",
+      "label": "Groups Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_group_members",
+      "label": "Group Members Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_predictions",
+      "label": "Predictions Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_leaderboard",
+      "label": "Leaderboard Table",
+      "file_type": "code"
+    },
+    {
+      "id": "entity_payments",
+      "label": "Payments Table",
+      "file_type": "code"
+    },
+    {
+      "id": "cloudflare_workers",
+      "label": "Cloudflare Workers",
+      "file_type": "document"
+    },
+    {
+      "id": "cloudflare_d1",
+      "label": "Cloudflare D1",
+      "file_type": "document"
+    },
+    {
+      "id": "google_oauth",
+      "label": "Google OAuth 2.0",
+      "file_type": "document"
+    },
+    {
+      "id": "hono_framework",
+      "label": "Hono Framework",
+      "file_type": "document"
+    },
+    {
+      "id": "vite_react",
+      "label": "Vite + React",
+      "file_type": "document"
+    }
+  ],
+  "edges": [
+    {
+      "source": "api_vitest_config_ts",
+      "target": "config",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/vitest.config.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_types_ts",
+      "target": "src_types_env",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/types.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_types_ts",
+      "target": "src_types_variables",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/types.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_types_ts",
+      "target": "src_types_appcontext",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/types.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "cors",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "api_src_auth_router_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "auth_router_authrouter",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "src_index_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_ts",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_ts",
+      "target": "auth_encoding_base64urldecode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.ts",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "api_src_auth_encoding_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "auth_encoding_base64urldecode",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "auth_jwt_algorithm",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "auth_jwt_importkey",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "auth_jwt_jwtpayload",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "auth_jwt_signjwt",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_ts",
+      "target": "auth_jwt_verifyjwt",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_jwt_signjwt",
+      "target": "auth_jwt_importkey",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L39",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_jwt_verifyjwt",
+      "target": "auth_jwt_importkey",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "api_src_auth_encoding_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_encoding_base64urldecode",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_generatestate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_generatenonce",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_generatepkce",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_buildauthurl",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_exchangecode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L60",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_jwkskey",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L92",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_googleuserinfo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L98",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_googleidtokenclaims",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L106",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_verifygoogleidtoken",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L113",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_ts",
+      "target": "auth_google_upsertuser",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L178",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_ts",
+      "target": "factory",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_ts",
+      "target": "cookie",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_ts",
+      "target": "api_src_auth_jwt_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_ts",
+      "target": "auth_jwt_verifyjwt",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_ts",
+      "target": "auth_middleware_requireauth",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "cookie",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "api_src_auth_google_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_google_buildauthurl",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_google_exchangecode",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_google_generatenonce",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_google_generatepkce",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_google_generatestate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_google_upsertuser",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_google_verifygoogleidtoken",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "api_src_auth_jwt_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_jwt_signjwt",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "api_src_auth_middleware_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_middleware_requireauth",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_cookieoptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L22",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_authrouter",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L32",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_state",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_nonce",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_url",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L41",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_tempopts",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L49",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_code_state_error",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L59",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_storedstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L65",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_storednonce",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L66",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_codeverifier",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_clearopts",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L70",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_userid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L129",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_user",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L131",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "api_src_auth_jwt_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "auth_jwt_signjwt",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "auth_jwt_verifyjwt",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "auth_jwt_test_body",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "auth_jwt_test_payload",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "auth_jwt_test_h_s",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_jwt_test_ts",
+      "target": "auth_jwt_test_tamperedbody",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/jwt.test.ts",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "api_src_auth_google_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_buildauthurl",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_generatenonce",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_generatepkce",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_generatestate",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_test_expected",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_test_base",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L50",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_test_url",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L59",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_test_url",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L72",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_google_test_ts",
+      "target": "auth_google_test_url",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/google.test.ts",
+      "source_location": "L80",
+      "weight": 1.0
+    },
+    {
+      "source": "web_vite_config_ts",
+      "target": "vite",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/vite.config.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_vite_config_ts",
+      "target": "plugin_react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/vite.config.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_config_ts",
+      "target": "src_config_config",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/config.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_main_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_main_tsx",
+      "target": "client",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_main_tsx",
+      "target": "home_satin_work_palpitae_web_src_styles_global_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_main_tsx",
+      "target": "web_src_app_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_main_tsx",
+      "target": "src_main_rootel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "web_src_pages_loginpage_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "src_app_user",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "src_app_authstatus",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "src_app_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L28",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_loginpage_tsx",
+      "target": "home_satin_work_palpitae_web_src_pages_loginpage_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/LoginPage.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_loginpage_tsx",
+      "target": "web_src_components_googleloginbutton_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/LoginPage.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_loginpage_tsx",
+      "target": "pages_loginpage_loginpage",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/LoginPage.tsx",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_googleloginbutton_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_tsx",
+      "target": "components_googleloginbutton_googleloginbutton",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_tsx",
+      "target": "components_googleloginbutton_googlelogo",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_jwt_signjwt",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_jwt_verifyjwt",
+      "target": "auth_encoding_base64urldecode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/auth/jwt.ts",
+      "source_location": "L56",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_google_generatestate",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_google_generatenonce",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_google_generatepkce",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_google_verifygoogleidtoken",
+      "target": "auth_encoding_base64urldecode",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/auth/google.ts",
+      "source_location": "L122",
+      "weight": 1.0
+    },
+    {
+      "source": "agents_md",
+      "target": "vision_md",
+      "relation": "defines_source_of_truth",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "agents_md",
+      "target": "decisions_md",
+      "relation": "defines_source_of_truth",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "agents_md",
+      "target": "context_md",
+      "relation": "defines_source_of_truth",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "agents_md",
+      "target": "cloudflare_d1",
+      "relation": "mandates_use_of",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "context_md",
+      "target": "decisions_md",
+      "relation": "references",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "context_md",
+      "target": "schema_md",
+      "relation": "references",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "vision_md",
+      "target": "ideas_md",
+      "relation": "refined_by",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "decisions_md",
+      "target": "cloudflare_d1",
+      "relation": "adopts_ADR001",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "decisions_md",
+      "target": "cloudflare_workers",
+      "relation": "adopts_ADR003",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "decisions_md",
+      "target": "hono_framework",
+      "relation": "adopts_ADR003",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "decisions_md",
+      "target": "google_oauth",
+      "relation": "adopts_ADR005",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "decisions_md",
+      "target": "vite_react",
+      "relation": "adopts_ADR006",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "migration_sql",
+      "relation": "documented_by",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_users",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_profiles",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_competitions",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_teams",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_matches",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_groups",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_group_members",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_predictions",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_leaderboard",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "schema_md",
+      "target": "entity_payments",
+      "relation": "defines_entity",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_users",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_profiles",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_competitions",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_teams",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_matches",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_groups",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_group_members",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_predictions",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_leaderboard",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "migration_sql",
+      "target": "entity_payments",
+      "relation": "creates_table",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_profiles",
+      "target": "entity_users",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_matches",
+      "target": "entity_competitions",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_matches",
+      "target": "entity_teams",
+      "relation": "home_team_foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_matches",
+      "target": "entity_teams",
+      "relation": "away_team_foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_groups",
+      "target": "entity_competitions",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_groups",
+      "target": "entity_users",
+      "relation": "owner_foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_group_members",
+      "target": "entity_groups",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_group_members",
+      "target": "entity_users",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_predictions",
+      "target": "entity_users",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_predictions",
+      "target": "entity_groups",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_predictions",
+      "target": "entity_matches",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_leaderboard",
+      "target": "entity_groups",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_leaderboard",
+      "target": "entity_users",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_payments",
+      "target": "entity_groups",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_payments",
+      "target": "entity_users",
+      "relation": "foreign_key_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "index_ts",
+      "target": "types_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "index_ts",
+      "target": "router_ts",
+      "relation": "mounts_router",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "index_ts",
+      "target": "hono_framework",
+      "relation": "uses",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "index_ts",
+      "target": "cloudflare_workers",
+      "relation": "deployed_on",
+      "confidence": "INFERRED"
+    },
+    {
+      "source": "jwt_ts",
+      "target": "encoding_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "google_ts",
+      "target": "encoding_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "middleware_ts",
+      "target": "jwt_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "middleware_ts",
+      "target": "types_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "router_ts",
+      "target": "google_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "router_ts",
+      "target": "jwt_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "router_ts",
+      "target": "middleware_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "router_ts",
+      "target": "types_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "router_ts",
+      "target": "google_oauth",
+      "relation": "implements_flow_for",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "google_ts",
+      "target": "google_oauth",
+      "relation": "implements",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "jwt_test_ts",
+      "target": "jwt_ts",
+      "relation": "tests",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "google_test_ts",
+      "target": "google_ts",
+      "relation": "tests",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "app_tsx",
+      "target": "config_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "app_tsx",
+      "target": "login_page_tsx",
+      "relation": "renders",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "login_page_tsx",
+      "target": "google_login_button_tsx",
+      "relation": "renders",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "google_login_button_tsx",
+      "target": "config_ts",
+      "relation": "imports",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "google_login_button_tsx",
+      "target": "google_oauth",
+      "relation": "initiates_redirect_to",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "main_tsx",
+      "target": "app_tsx",
+      "relation": "renders",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "main_tsx",
+      "target": "index_html",
+      "relation": "loaded_by",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "login_page_tsx",
+      "target": "logo_text_svg",
+      "relation": "displays",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "index_html",
+      "target": "public_logo_svg",
+      "relation": "uses_as_favicon",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "index_html",
+      "target": "main_tsx",
+      "relation": "loads_script",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "vite_config_ts",
+      "target": "vite_react",
+      "relation": "configures",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "config_ts",
+      "target": "router_ts",
+      "relation": "provides_api_url_for",
+      "confidence": "INFERRED"
+    },
+    {
+      "source": "readme_md",
+      "target": "cloudflare_workers",
+      "relation": "documents_setup_for",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "readme_md",
+      "target": "cloudflare_d1",
+      "relation": "documents_setup_for",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "readme_md",
+      "target": "hono_framework",
+      "relation": "documents_setup_for",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "claude_md",
+      "target": "decisions_md",
+      "relation": "instructs_reading_graph_before",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "types_ts",
+      "target": "cloudflare_d1",
+      "relation": "binds_env_for",
+      "confidence": "EXTRACTED"
+    },
+    {
+      "source": "entity_predictions",
+      "target": "entity_matches",
+      "relation": "locked_by_start_time_of",
+      "confidence": "EXTRACTED"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "auth_module",
+      "label": "Auth Module",
+      "members": [
+        "encoding_ts",
+        "jwt_ts",
+        "google_ts",
+        "middleware_ts",
+        "router_ts",
+        "jwt_test_ts",
+        "google_test_ts"
+      ],
+      "relation": "constitutes_auth_module"
+    },
+    {
+      "id": "web_frontend",
+      "label": "Web Frontend",
+      "members": [
+        "index_html",
+        "main_tsx",
+        "app_tsx",
+        "login_page_tsx",
+        "google_login_button_tsx",
+        "config_ts",
+        "vite_config_ts"
+      ],
+      "relation": "constitutes_frontend_application"
+    },
+    {
+      "id": "db_schema",
+      "label": "Database Schema",
+      "members": [
+        "entity_users",
+        "entity_profiles",
+        "entity_competitions",
+        "entity_teams",
+        "entity_matches",
+        "entity_groups",
+        "entity_group_members",
+        "entity_predictions",
+        "entity_leaderboard",
+        "entity_payments"
+      ],
+      "relation": "constitutes_database_schema"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

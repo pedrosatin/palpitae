@@ -1,0 +1,258 @@
+{
+  "communities": {
+    "0": [
+      "api_src_auth_middleware_ts",
+      "api_src_auth_router_ts",
+      "api_src_index_ts",
+      "api_src_types_ts",
+      "auth_middleware_requireauth",
+      "auth_router_authrouter",
+      "auth_router_clearopts",
+      "auth_router_code_state_error",
+      "auth_router_codeverifier",
+      "auth_router_cookieoptions",
+      "auth_router_nonce",
+      "auth_router_state",
+      "auth_router_storednonce",
+      "auth_router_storedstate",
+      "auth_router_tempopts",
+      "auth_router_url",
+      "auth_router_user",
+      "auth_router_userid",
+      "src_index_app",
+      "src_types_appcontext",
+      "src_types_env",
+      "src_types_variables"
+    ],
+    "1": [
+      "agents_md",
+      "claude_md",
+      "cloudflare_d1",
+      "cloudflare_workers",
+      "context_md",
+      "decisions_md",
+      "encoding_ts",
+      "google_oauth",
+      "google_test_ts",
+      "google_ts",
+      "hono_framework",
+      "ideas_md",
+      "index_ts",
+      "jwt_test_ts",
+      "jwt_ts",
+      "middleware_ts",
+      "readme_md",
+      "router_ts",
+      "types_ts",
+      "vision_md",
+      "vite_config_ts",
+      "vite_react"
+    ],
+    "2": [
+      "api_src_auth_encoding_ts",
+      "api_src_auth_google_test_ts",
+      "api_src_auth_google_ts",
+      "auth_encoding_base64urldecode",
+      "auth_encoding_base64urlencode",
+      "auth_google_buildauthurl",
+      "auth_google_exchangecode",
+      "auth_google_generatenonce",
+      "auth_google_generatepkce",
+      "auth_google_generatestate",
+      "auth_google_googleidtokenclaims",
+      "auth_google_googleuserinfo",
+      "auth_google_jwkskey",
+      "auth_google_test_base",
+      "auth_google_test_expected",
+      "auth_google_test_url",
+      "auth_google_upsertuser",
+      "auth_google_verifygoogleidtoken"
+    ],
+    "3": [
+      "components_googleloginbutton_googleloginbutton",
+      "components_googleloginbutton_googlelogo",
+      "pages_loginpage_loginpage",
+      "src_app_app",
+      "src_app_authstatus",
+      "src_app_user",
+      "src_config_config",
+      "src_main_rootel",
+      "web_src_app_tsx",
+      "web_src_components_googleloginbutton_tsx",
+      "web_src_config_ts",
+      "web_src_main_tsx",
+      "web_src_pages_loginpage_tsx"
+    ],
+    "4": [
+      "entity_competitions",
+      "entity_group_members",
+      "entity_groups",
+      "entity_leaderboard",
+      "entity_matches",
+      "entity_payments",
+      "entity_predictions",
+      "entity_profiles",
+      "entity_teams",
+      "entity_users",
+      "migration_sql",
+      "schema_md"
+    ],
+    "5": [
+      "api_src_auth_jwt_test_ts",
+      "api_src_auth_jwt_ts",
+      "auth_jwt_algorithm",
+      "auth_jwt_importkey",
+      "auth_jwt_jwtpayload",
+      "auth_jwt_signjwt",
+      "auth_jwt_test_body",
+      "auth_jwt_test_h_s",
+      "auth_jwt_test_payload",
+      "auth_jwt_test_tamperedbody",
+      "auth_jwt_verifyjwt"
+    ],
+    "6": [
+      "app_tsx",
+      "config_ts",
+      "google_login_button_tsx",
+      "index_html",
+      "login_page_tsx",
+      "logo_text_svg",
+      "main_tsx",
+      "public_logo_svg"
+    ],
+    "7": [
+      "api_vitest_config_ts"
+    ],
+    "8": [
+      "web_vite_config_ts"
+    ],
+    "9": [
+      "web_src_vite_env_d_ts"
+    ],
+    "10": [
+      "system_md"
+    ],
+    "11": [
+      "icon_svg"
+    ],
+    "12": [
+      "icon1_svg"
+    ],
+    "13": [
+      "logo2_svg"
+    ],
+    "14": [
+      "logo_svg_assets"
+    ]
+  },
+  "cohesion": {},
+  "god_nodes": [
+    {
+      "id": "auth_encoding_base64urlencode",
+      "label": "base64UrlEncode()",
+      "degree": 7
+    },
+    {
+      "id": "auth_encoding_base64urldecode",
+      "label": "base64UrlDecode()",
+      "degree": 5
+    },
+    {
+      "id": "auth_jwt_signjwt",
+      "label": "signJwt()",
+      "degree": 5
+    },
+    {
+      "id": "auth_jwt_verifyjwt",
+      "label": "verifyJwt()",
+      "degree": 5
+    },
+    {
+      "id": "src_types_appcontext",
+      "label": "AppContext",
+      "degree": 4
+    },
+    {
+      "id": "auth_google_generatestate",
+      "label": "generateState()",
+      "degree": 4
+    },
+    {
+      "id": "auth_google_generatenonce",
+      "label": "generateNonce()",
+      "degree": 4
+    },
+    {
+      "id": "auth_google_generatepkce",
+      "label": "generatePkce()",
+      "degree": 4
+    },
+    {
+      "id": "auth_jwt_importkey",
+      "label": "importKey()",
+      "degree": 3
+    },
+    {
+      "id": "auth_google_buildauthurl",
+      "label": "buildAuthUrl()",
+      "degree": 3
+    }
+  ],
+  "surprises": [
+    {
+      "source": "signJwt()",
+      "target": "base64UrlEncode()",
+      "source_files": [
+        "api/src/auth/jwt.ts",
+        "api/src/auth/encoding.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "verifyJwt()",
+      "target": "base64UrlDecode()",
+      "source_files": [
+        "api/src/auth/jwt.ts",
+        "api/src/auth/encoding.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "generateState()",
+      "target": "base64UrlEncode()",
+      "source_files": [
+        "api/src/auth/google.ts",
+        "api/src/auth/encoding.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "cross-file semantic connection"
+    },
+    {
+      "source": "generateNonce()",
+      "target": "base64UrlEncode()",
+      "source_files": [
+        "api/src/auth/google.ts",
+        "api/src/auth/encoding.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "cross-file semantic connection"
+    },
+    {
+      "source": "generatePkce()",
+      "target": "base64UrlEncode()",
+      "source_files": [
+        "api/src/auth/google.ts",
+        "api/src/auth/encoding.ts"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "cross-file semantic connection"
+    }
+  ]
+}
