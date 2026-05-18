@@ -8,12 +8,12 @@
     "hash": "d98280dc79d4fa3c7ea19c3eeb2a73f0"
   },
   "/home/satin/Work/palpitae/api/src/types.ts": {
-    "mtime": 1777847034.102097,
-    "hash": "0e2673d3dea16ead4837f988854ec985"
+    "mtime": 1779064426.5458212,
+    "hash": "c065ebdb0f89dd98f52b5ddfe050a4d3"
   },
   "/home/satin/Work/palpitae/api/src/index.ts": {
-    "mtime": 1778375641.2434976,
-    "hash": "2cd3d2084474e1c92cde753c88d536d4"
+    "mtime": 1779064424.6337526,
+    "hash": "e3ee70fb2fdded6374d86491f98a3378"
   },
   "/home/satin/Work/palpitae/api/src/auth/encoding.ts": {
     "mtime": 1777847034.184419,
@@ -59,13 +59,25 @@
     "mtime": 1778375641.2570822,
     "hash": "98b9622e488ee24e6f6a88c3e62496ee"
   },
+  "/home/satin/Work/palpitae/api/src/matches/sync.ts": {
+    "mtime": 1779064422.7977185,
+    "hash": "dac4030c2e6681d6e57d6ee230b72cdd"
+  },
+  "/home/satin/Work/palpitae/api/src/matches/router.ts": {
+    "mtime": 1779064423.4931273,
+    "hash": "da5fe4903af5809a4f33fdbb592ce6e1"
+  },
+  "/home/satin/Work/palpitae/api/src/predictions/router.ts": {
+    "mtime": 1779064424.1634173,
+    "hash": "7b25d5087fca37b70323e7e4ca2e9018"
+  },
   "/home/satin/Work/palpitae/web/vite.config.ts": {
     "mtime": 1778379002.7106583,
     "hash": "ca513d804c206ffd90d5a62d1bdeddc4"
   },
   "/home/satin/Work/palpitae/web/src/config.ts": {
-    "mtime": 1777891912.9021337,
-    "hash": "2d25fabbed490b473cc487b2a81848fd"
+    "mtime": 1779062681.2160113,
+    "hash": "799c38f00abfec6b2f6c09c52331ec0b"
   },
   "/home/satin/Work/palpitae/web/src/main.tsx": {
     "mtime": 1777891912.3316789,
@@ -92,12 +104,12 @@
     "hash": "30f7c578b35760ec21a46493ee5b9197"
   },
   "/home/satin/Work/palpitae/web/src/pages/GroupDetailPage.tsx": {
-    "mtime": 1779060412.0550232,
-    "hash": "637e25aa6347429fc9a87d43a45a9d58"
+    "mtime": 1779064426.6080265,
+    "hash": "d1563fa5c6b4dede84d4a36f9e197f47"
   },
   "/home/satin/Work/palpitae/web/src/components/GoogleLoginButton.tsx": {
-    "mtime": 1778376359.3107393,
-    "hash": "e81bf49a99f9991e9ab63e419479f117"
+    "mtime": 1779062682.597864,
+    "hash": "c9d4c7ac44f425781cfe0d9943b44d86"
   },
   "/home/satin/Work/palpitae/web/src/components/Button.tsx": {
     "mtime": 1778343307.7370312,
@@ -158,6 +170,14 @@
   "/home/satin/Work/palpitae/web/src/components/CreateGroupModal.test.tsx": {
     "mtime": 1778376804.8043954,
     "hash": "be8852e49aeee7590d3c994cac965d87"
+  },
+  "/home/satin/Work/palpitae/web/src/components/MatchCard.tsx": {
+    "mtime": 1779064425.2820818,
+    "hash": "0251dda9a64cd574ba455dc082046fbd"
+  },
+  "/home/satin/Work/palpitae/web/src/components/PredictionsTab.tsx": {
+    "mtime": 1779064426.4869924,
+    "hash": "0505cb23dcfa13cc72a5740117743d2e"
   },
   "/home/satin/Work/palpitae/AGENTS.md": {
     "mtime": 1778420911.413144,
