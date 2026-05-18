@@ -1,0 +1,41 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.round {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.roundTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.matchList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.loading,
+.empty {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
+  padding: var(--space-8) 0;
+  text-align: center;
+}
+
+.error {
+  color: #f25b1b;
+  font-size: var(--font-size-sm);
+  margin: 0;
+}

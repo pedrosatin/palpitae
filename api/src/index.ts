@@ -3,6 +3,8 @@ import { cors } from 'hono/cors'
 import { authRouter } from './auth/router'
 import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
+import { matchesRouter } from './matches/router'
+import { predictionsRouter } from './predictions/router'
 import type { AppContext } from './types'
 
 const app = new Hono<AppContext>()
@@ -27,6 +29,8 @@ app.use(
 app.route('/auth', authRouter)
 app.route('/competitions', competitionsRouter)
 app.route('/groups', groupsRouter)
+app.route('/matches', matchesRouter)
+app.route('/predictions', predictionsRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
