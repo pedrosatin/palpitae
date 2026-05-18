@@ -5,6 +5,7 @@ export type Env = {
   GOOGLE_CLIENT_SECRET: string
   BASE_URL: string
   FRONTEND_URL: string
+  FOOTBALL_API_KEY: string
 }
 
 export type Variables = {

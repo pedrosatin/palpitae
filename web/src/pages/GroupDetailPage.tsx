@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../config'
 import Header from '../components/Header'
+import PredictionsTab from '../components/PredictionsTab'
 import styles from './GroupDetailPage.module.css'
 
 interface User {
@@ -190,9 +191,10 @@ export default function GroupDetailPage({
 
         <div className={styles.tabContent}>
           {activeTab === 'predictions' && (
-            <div className={styles.placeholder}>
-              <p>As previsões dos jogos aparecerão aqui em breve.</p>
-            </div>
+            <PredictionsTab
+              groupId={groupId}
+              competitionId={group.competition_id}
+            />
           )}
           {activeTab === 'leaderboard' && (
             <div className={styles.placeholder}>

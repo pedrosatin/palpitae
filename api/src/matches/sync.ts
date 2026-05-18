@@ -1,0 +1,223 @@
+import type { D1Database } from '@cloudflare/workers-types'
+
+const PROVIDER = 'football-data'
+const API_BASE = 'https://api.football-data.org/v4'
+
+type ApiTeam = {
+  id: number
+  name: string
+  shortName: string
+  tla: string
+  crest: string
+}
+
+type ApiMatch = {
+  id: number
+  utcDate: string
+  status: string
+  matchday: number | null
+  stage: string
+  group: string | null
+  homeTeam: ApiTeam
+  awayTeam: ApiTeam
+  score: {
+    fullTime: { home: number | null; away: number | null }
+  }
+}
+
+type ApiCompetition = {
+  id: number
+  name: string
+  code: string
+}
+
+type ApiMatchesResponse = {
+  competition: ApiCompetition
+  matches: ApiMatch[]
+}
+
+export type SyncOptions = {
+  /** Competition code, e.g. "WC" for FIFA World Cup */
+  competitionCode: string
+  season: number
+  /** Optional matchday filter, e.g. 1 for round 1 */
+  matchday?: number
+  apiKey: string
+  db: D1Database
+}
+
+export type SyncResult = {
+  competition: string
+  competitionId: string
+  matches: number
+  teams: number
+}
+
+/**
+ * Maps football-data.org status to internal status.
+ * Ref: https://www.football-data.org/documentation/quickstart
+ */
+function mapStatus(status: string): 'scheduled' | 'live' | 'finished' {
+  if (status === 'FINISHED' || status === 'AWARDED') return 'finished'
+  if (status === 'IN_PLAY' || status === 'LIVE' || status === 'PAUSED') return 'live'
+  return 'scheduled'
+}
+
+function slugify(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+/**
+ * Syncs fixtures from football-data.org into D1.
+ * Upserts: competition, teams, and matches.
+ *
+ * Copa do Mundo 2026: competitionCode="WC", season=2026
+ * First matchday only: matchday=1
+ */
+export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
+  const { competitionCode, season, matchday, apiKey, db } = opts
+
+  const url = new URL(`${API_BASE}/competitions/${competitionCode}/matches`)
+  url.searchParams.set('season', String(season))
+  if (matchday !== undefined) url.searchParams.set('matchday', String(matchday))
+
+  const res = await fetch(url.toString(), {
+    headers: { 'X-Auth-Token': apiKey },
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`football-data.org respondeu ${res.status}: ${text}`)
+  }
+
+  const data = (await res.json()) as ApiMatchesResponse
+
+  const { competition: apiComp, matches } = data
+
+  if (matches.length === 0) {
+    return { competition: apiComp?.name ?? competitionCode, competitionId: '', matches: 0, teams: 0 }
+  }
+
+  const competitionExternalId = String(apiComp.id)
+  const competitionName = apiComp.name
+  const competitionSlug = slugify(`${competitionName}-${season}`)
+
+  // Upsert competition
+  await db
+    .prepare(
+      `INSERT INTO competitions (id, name, slug, external_id, provider, season, status)
+       VALUES (?, ?, ?, ?, ?, ?, 'upcoming')
+       ON CONFLICT (slug) DO UPDATE SET
+         external_id = excluded.external_id,
+         provider    = excluded.provider,
+         season      = excluded.season`,
+    )
+    .bind(
+      crypto.randomUUID(),
+      competitionName,
+      competitionSlug,
+      competitionExternalId,
+      PROVIDER,
+      String(season),
+    )
+    .run()
+
+  const competition = await db
+    .prepare(`SELECT id FROM competitions WHERE slug = ?`)
+    .bind(competitionSlug)
+    .first<{ id: string }>()
+
+  if (!competition) throw new Error('Competição não encontrada após upsert')
+
+  // Collect unique teams
+  const teamMap = new Map<number, ApiTeam>()
+  for (const m of matches) {
+    if (m.homeTeam?.id) teamMap.set(m.homeTeam.id, m.homeTeam)
+    if (m.awayTeam?.id) teamMap.set(m.awayTeam.id, m.awayTeam)
+  }
+
+  // Upsert teams
+  for (const team of teamMap.values()) {
+    await db
+      .prepare(
+        `INSERT INTO teams (id, name, short_name, slug, logo_url, external_id, provider)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (external_id, provider) DO UPDATE SET
+           name       = excluded.name,
+           short_name = excluded.short_name,
+           logo_url   = excluded.logo_url`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        team.name,
+        team.tla ?? team.shortName ?? team.name.substring(0, 3).toUpperCase(),
+        slugify(team.name),
+        team.crest ?? null,
+        String(team.id),
+        PROVIDER,
+      )
+      .run()
+  }
+
+  // Resolve internal team IDs
+  const teamIds = new Map<number, string>()
+  for (const extId of teamMap.keys()) {
+    const row = await db
+      .prepare(`SELECT id FROM teams WHERE external_id = ? AND provider = ?`)
+      .bind(String(extId), PROVIDER)
+      .first<{ id: string }>()
+    if (row) teamIds.set(extId, row.id)
+  }
+
+  // Upsert matches
+  let matchCount = 0
+  for (const m of matches) {
+    const homeTeamId = teamIds.get(m.homeTeam?.id)
+    const awayTeamId = teamIds.get(m.awayTeam?.id)
+    if (!homeTeamId || !awayTeamId) continue
+
+    const status = mapStatus(m.status)
+    const phase = m.stage ?? null
+    const round = m.matchday !== null ? String(m.matchday) : (m.group ?? '1')
+
+    await db
+      .prepare(
+        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (external_id, provider) DO UPDATE SET
+           status     = excluded.status,
+           home_score = excluded.home_score,
+           away_score = excluded.away_score,
+           start_time = excluded.start_time`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        competition.id,
+        String(m.id),
+        PROVIDER,
+        homeTeamId,
+        awayTeamId,
+        m.utcDate,
+        status,
+        m.score.fullTime.home ?? null,
+        m.score.fullTime.away ?? null,
+        phase,
+        round,
+      )
+      .run()
+
+    matchCount++
+  }
+
+  return {
+    competition: competitionName,
+    competitionId: competition.id,
+    matches: matchCount,
+    teams: teamMap.size,
+  }
+}

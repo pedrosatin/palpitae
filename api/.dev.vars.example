@@ -4,3 +4,4 @@ GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 BASE_URL=http://localhost:8787
 FRONTEND_URL=http://localhost:5173
+FOOTBALL_API_KEY=your-api-football-key
