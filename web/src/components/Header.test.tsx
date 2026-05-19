@@ -7,6 +7,9 @@ const baseUser = {
   email: 'user@example.com',
   nickname: 'TestUser',
   avatar_url: undefined,
+  feature_flags: {
+    create_group: true,
+  },
 }
 
 function renderHeader(props?: Partial<Parameters<typeof Header>[0]>) {
@@ -44,6 +47,18 @@ describe('Header', () => {
       screen.getByRole('button', { name: 'Entrar em grupo' }),
     )
     expect(onJoinGroup).toHaveBeenCalledOnce()
+  })
+
+  it('hides Criar grupo when the user cannot create groups', () => {
+    renderHeader({
+      user: {
+        ...baseUser,
+        feature_flags: { create_group: false },
+      },
+    })
+    expect(
+      screen.queryByRole('button', { name: 'Criar grupo' }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows user nickname in menu trigger', () => {
