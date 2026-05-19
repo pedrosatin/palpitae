@@ -21,6 +21,7 @@ function fakeEnv(): AppContext['Bindings'] {
     GOOGLE_CLIENT_SECRET: 'csec',
     BASE_URL: 'http://localhost:8787',
     FRONTEND_URL: 'http://localhost:5173',
+    FOOTBALL_API_KEY: 'test-api-key',
     DB: {} as D1Database,
   }
 }
