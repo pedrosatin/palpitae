@@ -14,4 +14,5 @@ FRONTEND_URL = "https://palpitae.com.br"
 #   wrangler secret put JWT_SECRET
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
+#   wrangler secret put FOOTBALL_API_KEY
 # Local overrides go in .dev.vars (already has localhost values)
