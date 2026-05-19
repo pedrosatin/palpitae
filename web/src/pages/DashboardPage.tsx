@@ -59,6 +59,7 @@ export default function DashboardPage({
   function handleGroupCreated() {
     // Refresh the groups list after creation
     fetchGroups()
+    setCreateOpen(false)
   }
 
   function handleGroupJoined(group: { id: string; name: string }) {
