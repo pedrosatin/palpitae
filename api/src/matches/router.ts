@@ -75,6 +75,20 @@ router.get('/', async (c) => {
 
   query += ` ORDER BY m.start_time ASC`
 
+  // Cache strategy based on status:
+  //   live     → 30s (scores change frequently)
+  //   finished → 24h (scores never change)
+  //   default  → 1h, serve stale for 24h while revalidating
+  // Cloudflare CDN absorbs identical requests at the edge — the Worker isn't
+  // even invoked when a cached response exists, so D1 is never queried.
+  if (status === 'live') {
+    c.header('Cache-Control', 'public, max-age=30')
+  } else if (status === 'finished') {
+    c.header('Cache-Control', 'public, max-age=86400')
+  } else {
+    c.header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
+  }
+
   try {
     const result = await db.prepare(query).bind(...params).all()
 
