@@ -1,16 +1,16 @@
-# Graph Report - palpitae  (2026-05-17)
+# Graph Report - palpitae  (2026-05-19)
 
 ## Corpus Check
-- 54 files · ~20,334 words
+- 55 files · ~20,466 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 388 nodes · 494 edges · 27 communities (22 shown, 5 thin omitted)
+- 391 nodes · 497 edges · 27 communities (22 shown, 5 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 2 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7b0b6de7`
+- Built from commit: `a20d77d3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -32,7 +32,6 @@
 - [[_COMMUNITY_Community 14|Community 14]]
 - [[_COMMUNITY_Community 15|Community 15]]
 - [[_COMMUNITY_Community 16|Community 16]]
-- [[_COMMUNITY_Community 17|Community 17]]
 - [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 23|Community 23]]
 - [[_COMMUNITY_Community 24|Community 24]]
@@ -67,11 +66,11 @@
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (29): ButtonProps, onClick, Competition, CreatedGroup, CreateGroupModalProps, HeaderProps, User, JoinedGroup (+21 more)
+Nodes (29): Competition, CreatedGroup, CreateGroupModalProps, JoinedGroup, JoinGroupModalProps, body, defaultProps, fetchSpy (+21 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.07
-Nodes (41): base64UrlDecode(), base64UrlEncode(), buf, decoded, encoded, original, result, buildAuthUrl() (+33 more)
+Cohesion: 0.06
+Nodes (43): base64UrlDecode(), base64UrlEncode(), buf, decoded, encoded, original, result, buildAuthUrl() (+35 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.06
@@ -99,41 +98,37 @@ Nodes (17): ✅ Alta Confiança, Anti-Abuse Strategy (MVP), ⚠️ Corrigido, �
 
 ### Community 8 - "Community 8"
 Cohesion: 0.12
-Nodes (16): 🤖 AGENTS.md — Palpitae, ⚠️ Anti-Patterns (Avoid), 🏗️ Architecture Guidelines, 🧩 Code Guidelines, 🗄️ Database Rules, ⚽ Domain Rules (Critical), 🧠 General Principles, 🎯 Goal (+8 more)
+Nodes (10): ButtonProps, onClick, HeaderProps, baseUser, link, onCreateGroup, onJoinGroup, onLogout (+2 more)
 
 ### Community 9 - "Community 9"
+Cohesion: 0.12
+Nodes (16): 🤖 AGENTS.md — Palpitae, ⚠️ Anti-Patterns (Avoid), 🏗️ Architecture Guidelines, 🧩 Code Guidelines, 🗄️ Database Rules, ⚽ Domain Rules (Critical), 🧠 General Principles, 🎯 Goal (+8 more)
+
+### Community 10 - "Community 10"
 Cohesion: 0.15
 Nodes (7): CardProps, { container }, div, GroupCardProps, GroupWithStats, baseGroup, onClick
 
-### Community 10 - "Community 10"
+### Community 11 - "Community 11"
 Cohesion: 0.53
 Nodes (12): Competitions Table, Group Members Table, Groups Table, Leaderboard Table, Matches Table, Payments Table, Predictions Table, Profiles Table (+4 more)
 
-### Community 11 - "Community 11"
+### Community 12 - "Community 12"
 Cohesion: 0.24
 Nodes (9): ApiCompetition, ApiMatch, ApiMatchesResponse, ApiTeam, mapStatus(), slugify(), syncFixtures(), SyncOptions (+1 more)
 
-### Community 12 - "Community 12"
+### Community 13 - "Community 13"
 Cohesion: 0.2
 Nodes (9): Build Order, Current Status, Key rules encoded in schema, ~~Legacy SQL Draft~~, Next Steps, Open Decisions, Runtime Context, Schema (+1 more)
 
-### Community 13 - "Community 13"
+### Community 14 - "Community 14"
 Cohesion: 0.22
 Nodes (9): API — Setup local, code:bash (cd api), code:bash (# Start local dev server (http://localhost:8787)), code:bash (# Set production secrets (one-time, stored encrypted in Clou), Deploying, First-time setup, Palpitae, Prerequisites (+1 more)
 
-### Community 14 - "Community 14"
-Cohesion: 0.25
-Nodes (6): baseUser, link, onCreateGroup, onJoinGroup, onLogout, sairBtn
-
 ### Community 15 - "Community 15"
-Cohesion: 0.4
-Nodes (4): body, defaultProps, fetchSpy, joinedGroup
-
-### Community 16 - "Community 16"
 Cohesion: 0.4
 Nodes (3): competitions, createdGroup, defaultProps
 
-### Community 17 - "Community 17"
+### Community 16 - "Community 16"
 Cohesion: 0.5
 Nodes (3): Overview, System Architecture — Palpitae, Working with Architecture
 
@@ -145,14 +140,14 @@ Nodes (3): Overview, System Architecture — Palpitae, Working with Architecture
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `🤖 AGENTS.md — Palpitae` connect `Community 8` to `Community 4`?**
+- **Why does `🤖 AGENTS.md — Palpitae` connect `Community 9` to `Community 4`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._
 - **What connects `Env`, `Variables`, `app` to the rest of the system?**
   _216 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.05 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Community 3` be split into smaller, more focused modules?**
