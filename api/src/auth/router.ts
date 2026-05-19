@@ -9,6 +9,7 @@ import {
   upsertUser,
   verifyGoogleIdToken,
 } from './google'
+import { getFeatureFlags } from './permissions'
 import { signJwt } from './jwt'
 import { requireAuth } from './middleware'
 import type { AppContext } from '../types'
@@ -158,5 +159,10 @@ authRouter.get('/me', requireAuth, async (c) => {
 
   if (!user) return c.json({ error: 'User not found' }, 404)
 
-  return c.json({ user })
+  return c.json({
+    user: {
+      ...user,
+      feature_flags: getFeatureFlags(user.email),
+    },
+  })
 })

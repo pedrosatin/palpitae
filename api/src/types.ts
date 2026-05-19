@@ -10,6 +10,7 @@ export type Env = {
 
 export type Variables = {
   userId: string
+  userEmail: string
 }
 
 export type AppContext = {

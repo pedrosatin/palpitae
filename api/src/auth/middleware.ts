@@ -10,6 +10,7 @@ export const requireAuth = createMiddleware<AppContext>(async (c, next) => {
   try {
     const payload = await verifyJwt(token, c.env.JWT_SECRET)
     c.set('userId', payload.sub)
+    c.set('userEmail', payload.email)
     await next()
   } catch {
     return c.json({ error: 'Unauthorized' }, 401)

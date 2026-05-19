@@ -6,6 +6,9 @@ import DashboardPage from './DashboardPage'
 const user = {
   id: 'u1',
   email: 'user@example.com',
+  feature_flags: {
+    create_group: true,
+  },
 }
 
 function mockResponse(body: unknown, ok = true) {

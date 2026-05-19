@@ -12,6 +12,9 @@ interface User {
   email: string
   nickname?: string
   avatar_url?: string
+  feature_flags?: {
+    create_group?: boolean
+  }
 }
 
 interface DashboardPageProps {
@@ -28,6 +31,7 @@ export default function DashboardPage({
   onNavigateToGroup,
   onLogout,
 }: DashboardPageProps) {
+  const canCreateGroup = user.feature_flags?.create_group ?? false
   const [groups, setGroups] = useState<GroupWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -102,11 +106,17 @@ export default function DashboardPage({
           {groups.length === 0 ? (
             <div className={styles.emptyState}>
               <h2>Nenhum grupo ainda</h2>
-              <p>Comece a competir criando ou se juntando a um grupo</p>
+              <p>
+                {canCreateGroup
+                  ? 'Comece a competir criando ou se juntando a um grupo'
+                  : 'Comece a competir entrando em um grupo com convite'}
+              </p>
               <div className={styles.ctaButtons}>
-                <Button variant="primary" onClick={() => setCreateOpen(true)}>
-                  Criar grupo
-                </Button>
+                {canCreateGroup && (
+                  <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                    Criar grupo
+                  </Button>
+                )}
                 <Button variant="secondary" onClick={() => setJoinOpen(true)}>
                   Entrar com convite
                 </Button>
