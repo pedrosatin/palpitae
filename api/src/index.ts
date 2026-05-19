@@ -15,6 +15,7 @@ app.use(
     origin: (origin) => {
       if (!origin) return null
       if (
+        origin === 'https://palpitae.com.br' ||
         origin.endsWith('.palpitae.com.br') ||
         origin === 'http://localhost:5173'
       ) {

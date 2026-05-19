@@ -8,13 +8,10 @@ database_name = "palpitae"
 database_id = "ffd7a7ed-3434-4db8-a505-b74c1cf79d6a" 
 
 [vars]
-BASE_URL = "http://localhost:8787"
-FRONTEND_URL = "http://localhost:5173"
+BASE_URL = "https://api.palpitae.com.br"
+FRONTEND_URL = "https://palpitae.com.br"
 # Secrets — set via:
 #   wrangler secret put JWT_SECRET
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
-
-[env.production.vars]
-BASE_URL = "https://api.palpitae.com.br"
-FRONTEND_URL = "https://palpitae.com.br"
+# Local overrides go in .dev.vars (already has localhost values)
