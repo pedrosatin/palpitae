@@ -1,16 +1,16 @@
 # Graph Report - palpitae  (2026-05-19)
 
 ## Corpus Check
-- 55 files · ~20,466 words
+- 59 files · ~21,517 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 391 nodes · 497 edges · 27 communities (22 shown, 5 thin omitted)
+- 411 nodes · 534 edges · 35 communities (29 shown, 6 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 2 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a20d77d3`
+- Built from commit: `1f2f6836`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -32,23 +32,30 @@
 - [[_COMMUNITY_Community 14|Community 14]]
 - [[_COMMUNITY_Community 15|Community 15]]
 - [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
 - [[_COMMUNITY_Community 22|Community 22]]
 - [[_COMMUNITY_Community 23|Community 23]]
 - [[_COMMUNITY_Community 24|Community 24]]
-- [[_COMMUNITY_Community 25|Community 25]]
-- [[_COMMUNITY_Community 26|Community 26]]
+- [[_COMMUNITY_Community 30|Community 30]]
+- [[_COMMUNITY_Community 31|Community 31]]
+- [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 33|Community 33]]
+- [[_COMMUNITY_Community 34|Community 34]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `🧠 Palpitae — Product Vision` - 23 edges
 2. `🤖 AGENTS.md — Palpitae` - 16 edges
-3. `Entities` - 11 edges
-4. `Palpitae — Grupos Privados de Previsão de Futebol` - 10 edges
-5. `AppContext` - 9 edges
-6. `config` - 9 edges
-7. `base64UrlEncode()` - 8 edges
-8. `Runtime Context` - 8 edges
-9. `Architecture Decision Records` - 7 edges
-10. `⚽ Domain Model` - 7 edges
+3. `AppContext` - 11 edges
+4. `Entities` - 11 edges
+5. `signJwt()` - 10 edges
+6. `Palpitae — Grupos Privados de Previsão de Futebol` - 10 edges
+7. `config` - 9 edges
+8. `base64UrlEncode()` - 8 edges
+9. `Runtime Context` - 8 edges
+10. `Architecture Decision Records` - 7 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `base64UrlEncode()` --calls--> `signJwt()`  [EXTRACTED]
@@ -62,31 +69,31 @@
 - `base64UrlDecode()` --calls--> `verifyJwt()`  [EXTRACTED]
   api/src/auth/encoding.ts → api/src/auth/jwt.ts
 
-## Communities (27 total, 5 thin omitted)
+## Communities (35 total, 6 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.05
-Nodes (29): Competition, CreatedGroup, CreateGroupModalProps, JoinedGroup, JoinGroupModalProps, body, defaultProps, fetchSpy (+21 more)
+Cohesion: 0.06
+Nodes (42): base64UrlDecode(), base64UrlEncode(), buf, decoded, encoded, original, result, buildAuthUrl() (+34 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.06
-Nodes (43): base64UrlDecode(), base64UrlEncode(), buf, decoded, encoded, original, result, buildAuthUrl() (+35 more)
+Cohesion: 0.09
+Nodes (29): signJwt(), requireAuth, app, fakeEnv(), requestWithCookie(), fakeEnv(), requestWithCookie(), router (+21 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.06
-Nodes (35): requireAuth, app, fakeEnv(), requestWithCookie(), router, body, candidate, competition_id (+27 more)
-
-### Community 3 - "Community 3"
 Cohesion: 0.05
 Nodes (36): 🔐 Authentication, Backend (API), Competition, 📏 Constraints, 🧱 Core Product Concept, 🧠 Design Principles, ⚽ Domain Model, Excluded (future): (+28 more)
 
-### Community 4 - "Community 4"
+### Community 3 - "Community 3"
 Cohesion: 0.09
 Nodes (28): App Root Component, Cloudflare D1, Cloudflare Workers, Frontend Config, Runtime Context, Architecture Decision Records, Base64URL Encoding Utils, Google Login Button (+20 more)
 
-### Community 5 - "Community 5"
+### Community 4 - "Community 4"
 Cohesion: 0.07
 Nodes (29): ADR-001: Database Platform — Cloudflare D1, ADR-002: Migration Strategy — Wrangler D1 Migrations, ADR-003: API Runtime — Cloudflare Workers + Hono, ADR-004: Prediction Locking — Derived at Runtime, ADR-005: Authentication — Direct Google OAuth 2.0, ADR-006: Frontend Stack — Vite + React (Static Site), Architecture Decision Records, Consequences (+21 more)
+
+### Community 5 - "Community 5"
+Cohesion: 0.1
+Nodes (19): FEATURE_ALLOWLISTS, FeatureFlags, FeatureKey, getFeatureFlags(), hasFeatureAccess(), body, candidate, competition_id (+11 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.11
@@ -98,59 +105,83 @@ Nodes (17): ✅ Alta Confiança, Anti-Abuse Strategy (MVP), ⚠️ Corrigido, �
 
 ### Community 8 - "Community 8"
 Cohesion: 0.12
-Nodes (10): ButtonProps, onClick, HeaderProps, baseUser, link, onCreateGroup, onJoinGroup, onLogout (+2 more)
-
-### Community 9 - "Community 9"
-Cohesion: 0.12
 Nodes (16): 🤖 AGENTS.md — Palpitae, ⚠️ Anti-Patterns (Avoid), 🏗️ Architecture Guidelines, 🧩 Code Guidelines, 🗄️ Database Rules, ⚽ Domain Rules (Critical), 🧠 General Principles, 🎯 Goal (+8 more)
 
-### Community 10 - "Community 10"
+### Community 9 - "Community 9"
 Cohesion: 0.15
 Nodes (7): CardProps, { container }, div, GroupCardProps, GroupWithStats, baseGroup, onClick
 
+### Community 10 - "Community 10"
+Cohesion: 0.17
+Nodes (6): ButtonProps, onClick, HeaderProps, User, DashboardPageProps, User
+
 ### Community 11 - "Community 11"
+Cohesion: 0.26
+Nodes (8): formatDate(), Match, MatchCard(), MatchCardProps, Prediction, PredictionMap, PredictionsTabProps, config
+
+### Community 12 - "Community 12"
 Cohesion: 0.53
 Nodes (12): Competitions Table, Group Members Table, Groups Table, Leaderboard Table, Matches Table, Payments Table, Predictions Table, Profiles Table (+4 more)
 
-### Community 12 - "Community 12"
+### Community 13 - "Community 13"
 Cohesion: 0.24
 Nodes (9): ApiCompetition, ApiMatch, ApiMatchesResponse, ApiTeam, mapStatus(), slugify(), syncFixtures(), SyncOptions (+1 more)
 
-### Community 13 - "Community 13"
+### Community 14 - "Community 14"
+Cohesion: 0.2
+Nodes (6): Competition, CreatedGroup, CreateGroupModalProps, competitions, createdGroup, defaultProps
+
+### Community 15 - "Community 15"
 Cohesion: 0.2
 Nodes (9): Build Order, Current Status, Key rules encoded in schema, ~~Legacy SQL Draft~~, Next Steps, Open Decisions, Runtime Context, Schema (+1 more)
 
-### Community 14 - "Community 14"
+### Community 16 - "Community 16"
+Cohesion: 0.22
+Nodes (6): JoinedGroup, JoinGroupModalProps, body, defaultProps, fetchSpy, joinedGroup
+
+### Community 17 - "Community 17"
 Cohesion: 0.22
 Nodes (9): API — Setup local, code:bash (cd api), code:bash (# Start local dev server (http://localhost:8787)), code:bash (# Set production secrets (one-time, stored encrypted in Clou), Deploying, First-time setup, Palpitae, Prerequisites (+1 more)
 
-### Community 15 - "Community 15"
-Cohesion: 0.4
-Nodes (3): competitions, createdGroup, defaultProps
+### Community 18 - "Community 18"
+Cohesion: 0.25
+Nodes (6): baseUser, link, onCreateGroup, onJoinGroup, onLogout, sairBtn
 
-### Community 16 - "Community 16"
+### Community 19 - "Community 19"
+Cohesion: 0.29
+Nodes (4): AuthStatus, User, View, rootEl
+
+### Community 20 - "Community 20"
+Cohesion: 0.33
+Nodes (4): GroupDetail, GroupDetailPageProps, Tab, User
+
+### Community 23 - "Community 23"
+Cohesion: 0.4
+Nodes (3): dialog, fetchSpy, user
+
+### Community 24 - "Community 24"
 Cohesion: 0.5
 Nodes (3): Overview, System Architecture — Palpitae, Working with Architecture
 
 ## Knowledge Gaps
-- **216 isolated node(s):** `Env`, `Variables`, `app`, `ALGORITHM`, `JwtPayload` (+211 more)
+- **224 isolated node(s):** `Env`, `Variables`, `app`, `ALGORITHM`, `JwtPayload` (+219 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **5 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `🤖 AGENTS.md — Palpitae` connect `Community 9` to `Community 4`?**
-  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **Why does `🤖 AGENTS.md — Palpitae` connect `Community 8` to `Community 3`?**
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
+- **Why does `AppContext` connect `Community 1` to `Community 0`, `Community 5`?**
+  _High betweenness centrality (0.008) - this node is a cross-community bridge._
+- **Why does `config` connect `Community 11` to `Community 10`, `Community 14`, `Community 16`, `Community 19`, `Community 20`, `Community 21`?**
+  _High betweenness centrality (0.008) - this node is a cross-community bridge._
 - **What connects `Env`, `Variables`, `app` to the rest of the system?**
-  _216 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _224 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.05 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
-- **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.06 - nodes in this community are weakly interconnected._
-- **Should `Community 3` be split into smaller, more focused modules?**
-  _Cohesion score 0.05 - nodes in this community are weakly interconnected._
-- **Should `Community 4` be split into smaller, more focused modules?**
   _Cohesion score 0.09 - nodes in this community are weakly interconnected._
+- **Should `Community 2` be split into smaller, more focused modules?**
+  _Cohesion score 0.05 - nodes in this community are weakly interconnected._

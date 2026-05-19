@@ -8,8 +8,8 @@
     "hash": "d98280dc79d4fa3c7ea19c3eeb2a73f0"
   },
   "/home/satin/Work/palpitae/api/src/types.ts": {
-    "mtime": 1779064426.5458212,
-    "hash": "c065ebdb0f89dd98f52b5ddfe050a4d3"
+    "mtime": 1779201343.0925715,
+    "hash": "b54cbeb857db60e9bab77808881e28ad"
   },
   "/home/satin/Work/palpitae/api/src/index.ts": {
     "mtime": 1779198937.9504428,
@@ -28,12 +28,12 @@
     "hash": "49a412a070ebbd92a22fb94d7c5d9c8b"
   },
   "/home/satin/Work/palpitae/api/src/auth/middleware.ts": {
-    "mtime": 1777847034.831333,
-    "hash": "77ef29f9387f626e6546f71beaff248c"
+    "mtime": 1779201343.0925715,
+    "hash": "bc2934eb7dc9084c2444df1653f25133"
   },
   "/home/satin/Work/palpitae/api/src/auth/router.ts": {
-    "mtime": 1779199908.2986758,
-    "hash": "8c27f4a21fbf89f4027ca3e48e9d4f11"
+    "mtime": 1779201409.1627176,
+    "hash": "1b56b0f04cf67680b4f336220f899210"
   },
   "/home/satin/Work/palpitae/api/src/auth/jwt.test.ts": {
     "mtime": 1777847035.4158943,
@@ -51,9 +51,21 @@
     "mtime": 1779199146.9097114,
     "hash": "46d00813d40cab61ec87c9568d6b2dd8"
   },
+  "/home/satin/Work/palpitae/api/src/auth/permissions.ts": {
+    "mtime": 1779201409.1610253,
+    "hash": "0027280743f3fd45c904262aa807b262"
+  },
+  "/home/satin/Work/palpitae/api/src/auth/router.test.ts": {
+    "mtime": 1779201409.171376,
+    "hash": "89d3a34b7309744de7790bb4aaafb2e3"
+  },
   "/home/satin/Work/palpitae/api/src/groups/router.ts": {
-    "mtime": 1778375641.2608845,
-    "hash": "bac47275defb86295ebb30840352aed9"
+    "mtime": 1779201409.1670034,
+    "hash": "d08d7ee899a0b6e85c237ba5788ca8c5"
+  },
+  "/home/satin/Work/palpitae/api/src/groups/router.test.ts": {
+    "mtime": 1779201361.5437105,
+    "hash": "58e0f595b1f4dab64ee85f0582b0cf44"
   },
   "/home/satin/Work/palpitae/api/src/competitions/router.ts": {
     "mtime": 1778375641.2570822,
@@ -64,8 +76,8 @@
     "hash": "dac4030c2e6681d6e57d6ee230b72cdd"
   },
   "/home/satin/Work/palpitae/api/src/matches/router.ts": {
-    "mtime": 1779064423.4931273,
-    "hash": "da5fe4903af5809a4f33fdbb592ce6e1"
+    "mtime": 1779201666.479258,
+    "hash": "b918a735f4a66f09aca6da977a0da046"
   },
   "/home/satin/Work/palpitae/api/src/predictions/router.ts": {
     "mtime": 1779064424.1634173,
@@ -92,20 +104,24 @@
     "hash": "994c5bf3f0f8742b450d0ab09b0d6bb9"
   },
   "/home/satin/Work/palpitae/web/src/App.tsx": {
-    "mtime": 1779060412.0550232,
-    "hash": "59c57ae963847781e4549b5929e69d64"
+    "mtime": 1779201594.1943464,
+    "hash": "cc5fd48763c2ba9d22045e0745dea8e3"
   },
   "/home/satin/Work/palpitae/web/src/pages/LoginPage.tsx": {
     "mtime": 1778347082.564747,
     "hash": "1efbb4a42009bdf908840ffd3473a31a"
   },
   "/home/satin/Work/palpitae/web/src/pages/DashboardPage.tsx": {
-    "mtime": 1778376359.7964678,
-    "hash": "30f7c578b35760ec21a46493ee5b9197"
+    "mtime": 1779201594.2040565,
+    "hash": "8b84e4b35d6c52a65f1e56a8119c2c7c"
   },
   "/home/satin/Work/palpitae/web/src/pages/GroupDetailPage.tsx": {
-    "mtime": 1779064426.6080265,
-    "hash": "d1563fa5c6b4dede84d4a36f9e197f47"
+    "mtime": 1779201594.2041066,
+    "hash": "cbdc0db15765b8f8be3d7f8ab6842471"
+  },
+  "/home/satin/Work/palpitae/web/src/pages/DashboardPage.test.tsx": {
+    "mtime": 1779201538.585905,
+    "hash": "fc16d652eabe8655d1ecd98e16ca3578"
   },
   "/home/satin/Work/palpitae/web/src/components/GoogleLoginButton.tsx": {
     "mtime": 1779062682.597864,
@@ -116,8 +132,8 @@
     "hash": "befeed34b4402c54136a9be4049799a7"
   },
   "/home/satin/Work/palpitae/web/src/components/Header.tsx": {
-    "mtime": 1778378888.6164877,
-    "hash": "0cdacd549818f55e3ac1cade2155018c"
+    "mtime": 1779201594.2035031,
+    "hash": "8b09e6384551a5c5ef945aedd32ab383"
   },
   "/home/satin/Work/palpitae/web/src/components/GroupCard.tsx": {
     "mtime": 1778375641.4426117,
@@ -152,8 +168,8 @@
     "hash": "cb63987dc9c458b1d2598daf9c4a889e"
   },
   "/home/satin/Work/palpitae/web/src/components/Header.test.tsx": {
-    "mtime": 1778378890.8890529,
-    "hash": "fac4b01dd9761174609e3c7fea88f0ab"
+    "mtime": 1779201409.171376,
+    "hash": "6ad2a830b4b21ab02c692852142a0cba"
   },
   "/home/satin/Work/palpitae/web/src/components/GroupCard.test.tsx": {
     "mtime": 1778376804.1226492,
