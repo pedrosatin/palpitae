@@ -6,6 +6,9 @@ interface User {
   nickname?: string
   avatar_url?: string
   email: string
+  feature_flags?: {
+    create_group?: boolean
+  }
 }
 
 interface HeaderProps {
@@ -21,6 +24,7 @@ export default function Header({
   onJoinGroup,
   onLogout,
 }: HeaderProps) {
+  const canCreateGroup = user.feature_flags?.create_group ?? false
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -47,9 +51,11 @@ export default function Header({
             <Button variant="secondary" onClick={onJoinGroup}>
               Entrar em grupo
             </Button>
-            <Button variant="primary" onClick={onCreateGroup}>
-              Criar grupo
-            </Button>
+            {canCreateGroup && (
+              <Button variant="primary" onClick={onCreateGroup}>
+                Criar grupo
+              </Button>
+            )}
           </>
 
           <div className={styles.userMenu} ref={menuRef}>

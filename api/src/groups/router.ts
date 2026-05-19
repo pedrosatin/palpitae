@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import type { AppContext } from '../types'
 
@@ -118,6 +119,12 @@ router.get('/', requireAuth, async (c) => {
  */
 router.post('/', requireAuth, async (c) => {
   const userId = c.get('userId')
+  const userEmail = c.get('userEmail')
+
+  if (!hasFeatureAccess(userEmail, 'create_group')) {
+    return c.json({ error: 'Você não tem permissão para criar grupos' }, 403)
+  }
+
   const body = await c.req.json<{ name?: string; competition_id?: string }>()
 
   const name = body.name?.trim()

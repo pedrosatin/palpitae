@@ -9,6 +9,9 @@ interface User {
   email: string
   nickname?: string
   avatar_url?: string
+  feature_flags?: {
+    create_group?: boolean
+  }
 }
 
 interface GroupDetail {
