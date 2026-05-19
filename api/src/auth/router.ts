@@ -20,12 +20,22 @@ const VERIFIER_COOKIE = 'oauth_verifier'
 const REDIRECT_COOKIE = 'oauth_redirect'
 const SESSION_TTL = 24 * 60 * 60 // 24 hours
 
+function cookieDomain(baseUrl: string): string | undefined {
+  if (!baseUrl.startsWith('https')) return undefined
+  const hostname = new URL(baseUrl).hostname
+  const parts = hostname.split('.')
+  // api.palpitae.com.br → .palpitae.com.br (shares with palpitae.com.br)
+  return parts.length > 2 ? '.' + parts.slice(1).join('.') : undefined
+}
+
 function cookieOptions(baseUrl: string, maxAge?: number) {
+  const domain = cookieDomain(baseUrl)
   return {
     httpOnly: true,
     secure: baseUrl.startsWith('https'),
     sameSite: 'Lax' as const,
     path: '/',
+    ...(domain && { domain }),
     ...(maxAge !== undefined && { maxAge }),
   }
 }
