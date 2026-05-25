@@ -5135,9 +5135,9 @@
       "source_file": "api/src/auth/permissions.ts",
       "source_location": "L1",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_src_auth_permissions_ts",
-      "target": "auth_permissions_feature_keys",
-      "confidence_score": 1.0
+      "target": "auth_permissions_feature_keys"
     },
     {
       "relation": "contains",
@@ -5430,9 +5430,9 @@
       "source_file": "api/src/groups/router.test.ts",
       "source_location": "L45",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_src_groups_router_test_ts",
-      "target": "groups_router_test_creategroupslistdbmock",
-      "confidence_score": 1.0
+      "target": "groups_router_test_creategroupslistdbmock"
     },
     {
       "relation": "contains",
@@ -5460,9 +5460,9 @@
       "source_file": "api/src/groups/router.test.ts",
       "source_location": "L125",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_src_groups_router_test_ts",
-      "target": "groups_router_test_requestgroupslist",
-      "confidence_score": 1.0
+      "target": "groups_router_test_requestgroupslist"
     },
     {
       "relation": "contains",
@@ -5470,9 +5470,9 @@
       "source_file": "api/src/groups/router.test.ts",
       "source_location": "L151",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "api_src_groups_router_test_ts",
-      "target": "groups_router_test_body",
-      "confidence_score": 1.0
+      "target": "groups_router_test_body"
     },
     {
       "relation": "calls",
@@ -5492,9 +5492,9 @@
       "source_file": "api/src/groups/router.test.ts",
       "source_location": "L141",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "groups_router_test_requestgroupslist",
-      "target": "groups_router_test_creategroupslistdbmock",
-      "confidence_score": 1.0
+      "target": "groups_router_test_creategroupslistdbmock"
     },
     {
       "relation": "calls",
@@ -5514,9 +5514,9 @@
       "source_file": "api/src/groups/router.test.ts",
       "source_location": "L140",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "groups_router_test_requestgroupslist",
-      "target": "groups_router_test_fakeenv",
-      "confidence_score": 1.0
+      "target": "groups_router_test_fakeenv"
     },
     {
       "relation": "contains",
@@ -8976,5 +8976,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "19feb77aee3002e9eac8f056e1194557f6c8a6c8"
+  "built_at_commit": "ba25295175832de698bce07e1ab8239d05264003"
 }
