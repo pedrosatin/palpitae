@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, Navigate } from 'react-router-dom'
 import { config } from '../config'
+import CreateGroupModal from '../components/CreateGroupModal'
 import Header from '../components/Header'
+import JoinGroupModal from '../components/JoinGroupModal'
 import PredictionsTab from '../components/PredictionsTab'
 import styles from './GroupDetailPage.module.css'
 
@@ -47,6 +49,8 @@ export default function GroupDetailPage({
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('predictions')
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [joinOpen, setJoinOpen] = useState(false)
 
   const isAdmin = group?.admin_id === user.id
 
@@ -82,18 +86,34 @@ export default function GroupDetailPage({
     setTimeout(() => setCopied(null), 2000)
   }
 
+  const modals = (
+    <>
+      <CreateGroupModal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(group) => navigate(`/grupos/${group.id}`)}
+      />
+      <JoinGroupModal
+        isOpen={joinOpen}
+        onClose={() => setJoinOpen(false)}
+        onJoined={(group) => navigate(`/grupos/${group.id}`)}
+      />
+    </>
+  )
+
   if (loading) {
     return (
       <>
         <Header
           user={user}
-          onCreateGroup={() => navigate('/')}
-          onJoinGroup={() => navigate('/')}
+          onCreateGroup={() => setCreateOpen(true)}
+          onJoinGroup={() => setJoinOpen(true)}
           onLogout={onLogout}
         />
         <main className={styles.root}>
           <p className={styles.loadingText}>Carregando grupo...</p>
         </main>
+        {modals}
       </>
     )
   }
@@ -103,8 +123,8 @@ export default function GroupDetailPage({
       <>
         <Header
           user={user}
-          onCreateGroup={() => navigate('/')}
-          onJoinGroup={() => navigate('/')}
+          onCreateGroup={() => setCreateOpen(true)}
+          onJoinGroup={() => setJoinOpen(true)}
           onLogout={onLogout}
         />
         <main className={styles.root}>
@@ -112,6 +132,7 @@ export default function GroupDetailPage({
             {error ?? 'Grupo não encontrado'}
           </div>
         </main>
+        {modals}
       </>
     )
   }
@@ -120,8 +141,8 @@ export default function GroupDetailPage({
     <>
       <Header
         user={user}
-        onCreateGroup={() => navigate('/')}
-        onJoinGroup={() => navigate('/')}
+        onCreateGroup={() => setCreateOpen(true)}
+        onJoinGroup={() => setJoinOpen(true)}
         onLogout={onLogout}
       />
       <main className={styles.root}>
@@ -206,6 +227,7 @@ export default function GroupDetailPage({
           )}
         </div>
       </main>
+      {modals}
     </>
   )
 }
