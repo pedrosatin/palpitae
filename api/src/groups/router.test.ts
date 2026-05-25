@@ -42,6 +42,54 @@ function createDbMock(email: string) {
   return db as unknown as D1Database
 }
 
+function createGroupsListDbMock() {
+  const db = {
+    prepare(sql: string) {
+      return {
+        bind() {
+          return {
+            async all() {
+              if (sql.includes('FROM groups g')) {
+                return {
+                  results: [
+                    {
+                      id: 'group-1',
+                      name: 'Meu Grupo',
+                      competition_id: 'comp-1',
+                      admin_id: 'user-9',
+                      created_at: '2026-01-01T00:00:00Z',
+                      member_count: 3,
+                      user_points: 12,
+                    },
+                  ],
+                }
+              }
+
+              return { results: [] }
+            },
+            async first() {
+              if (sql.includes('FROM leaderboard') && sql.includes('total_points >')) {
+                return { position: 0 }
+              }
+
+              if (sql.includes('FROM users WHERE id = ?')) {
+                return { email: 'user@example.com' }
+              }
+
+              return null
+            },
+            async run() {
+              return { success: true }
+            },
+          }
+        },
+      }
+    },
+  }
+
+  return db as unknown as D1Database
+}
+
 function fakeEnv(email: string): AppContext['Bindings'] {
   return {
     JWT_SECRET,
@@ -74,7 +122,40 @@ async function request(email: string, body: Record<string, unknown>) {
   )
 }
 
+async function requestGroupsList(email: string) {
+  const token = await signJwt({ sub: 'user-1', email }, JWT_SECRET, 3600)
+  const headers = new Headers({
+    Cookie: `session=${token}`,
+  })
+
+  const app = new Hono<AppContext>()
+  app.route('/groups', groupsRouter)
+
+  return app.fetch(
+    new Request('http://localhost/groups', {
+      method: 'GET',
+      headers,
+    }),
+    {
+      ...fakeEnv(email),
+      DB: createGroupsListDbMock(),
+    },
+  )
+}
+
 describe('groups router', () => {
+  it('returns the total member count for the groups list', async () => {
+    const res = await requestGroupsList('user@example.com')
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      groups: Array<{ id: string; member_count: number }>
+    }
+
+    expect(body.groups).toHaveLength(1)
+    expect(body.groups[0]?.member_count).toBe(3)
+  })
+
   it('blocks group creation for users outside the allowlist', async () => {
     const res = await request('user@example.com', {
       name: 'Os Craques',

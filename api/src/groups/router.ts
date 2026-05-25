@@ -55,12 +55,15 @@ router.get('/', requireAuth, async (c) => {
           g.competition_id,
           g.owner_user_id AS admin_id,
           g.created_at,
-          COUNT(DISTINCT gm.user_id) AS member_count,
+          (
+            SELECT COUNT(*)
+            FROM group_members gm2
+            WHERE gm2.group_id = g.id
+          ) AS member_count,
           COALESCE(l.total_points, 0) AS user_points
         FROM groups g
-        INNER JOIN group_members gm ON g.id = gm.group_id
+        INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
         LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
-        WHERE gm.user_id = ?
         GROUP BY g.id
         ORDER BY g.created_at DESC
         `
