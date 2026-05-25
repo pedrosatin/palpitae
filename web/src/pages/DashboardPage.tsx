@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { config } from '../config'
 import Button from '../components/Button'
 import CreateGroupModal from '../components/CreateGroupModal'
@@ -19,18 +20,13 @@ interface User {
 
 interface DashboardPageProps {
   user: User
-  /** Invite code pre-filled from a share link (?convite=...) */
-  pendingInvite?: string
-  onNavigateToGroup: (groupId: string) => void
   onLogout: () => void
 }
 
-export default function DashboardPage({
-  user,
-  pendingInvite,
-  onNavigateToGroup,
-  onLogout,
-}: DashboardPageProps) {
+export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const pendingInvite = searchParams.get('convite') ?? undefined
   const canCreateGroup = user.feature_flags?.create_group ?? false
   const [groups, setGroups] = useState<GroupWithStats[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,9 +63,7 @@ export default function DashboardPage({
   }
 
   function handleGroupJoined(group: { id: string; name: string }) {
-    // Refresh then navigate to the joined group
-    fetchGroups()
-    onNavigateToGroup(group.id)
+    navigate(`/grupos/${group.id}`)
   }
 
   if (loading) {
@@ -131,7 +125,7 @@ export default function DashboardPage({
                     key={group.id}
                     group={group}
                     currentUserId={user.id}
-                    onClick={() => onNavigateToGroup(group.id)}
+                    onClick={() => navigate(`/grupos/${group.id}`)}
                   />
                 ))}
               </div>
