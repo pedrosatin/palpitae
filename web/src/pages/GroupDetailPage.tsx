@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useParams, Navigate } from 'react-router-dom'
 import { config } from '../config'
 import Header from '../components/Header'
 import PredictionsTab from '../components/PredictionsTab'
@@ -32,19 +33,15 @@ type Tab = 'predictions' | 'leaderboard'
 
 interface GroupDetailPageProps {
   user: User
-  groupId: string
-  onCreateGroup: () => void
-  onJoinGroup: () => void
   onLogout: () => void
 }
 
 export default function GroupDetailPage({
   user,
-  groupId,
-  onCreateGroup,
-  onJoinGroup,
   onLogout,
 }: GroupDetailPageProps) {
+  const navigate = useNavigate()
+  const { groupId } = useParams<{ groupId: string }>()
   const [group, setGroup] = useState<GroupDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +51,7 @@ export default function GroupDetailPage({
   const isAdmin = group?.admin_id === user.id
 
   useEffect(() => {
+    if (!groupId) return
     setLoading(true)
     setError(null)
     fetch(`${config.apiUrl}/groups/${groupId}`, { credentials: 'include' })
@@ -65,6 +63,8 @@ export default function GroupDetailPage({
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [groupId])
+
+  if (!groupId) return <Navigate to="/" replace />
 
   function getShareLink() {
     return `${window.location.origin}?convite=${group!.invite_code}`
@@ -87,8 +87,8 @@ export default function GroupDetailPage({
       <>
         <Header
           user={user}
-          onCreateGroup={onCreateGroup}
-          onJoinGroup={onJoinGroup}
+          onCreateGroup={() => navigate('/')}
+          onJoinGroup={() => navigate('/')}
           onLogout={onLogout}
         />
         <main className={styles.root}>
@@ -103,8 +103,8 @@ export default function GroupDetailPage({
       <>
         <Header
           user={user}
-          onCreateGroup={onCreateGroup}
-          onJoinGroup={onJoinGroup}
+          onCreateGroup={() => navigate('/')}
+          onJoinGroup={() => navigate('/')}
           onLogout={onLogout}
         />
         <main className={styles.root}>
@@ -120,8 +120,8 @@ export default function GroupDetailPage({
     <>
       <Header
         user={user}
-        onCreateGroup={onCreateGroup}
-        onJoinGroup={onJoinGroup}
+        onCreateGroup={() => navigate('/')}
+        onJoinGroup={() => navigate('/')}
         onLogout={onLogout}
       />
       <main className={styles.root}>
