@@ -69,7 +69,11 @@ export default function MatchCard({
   const isFinished = match.status === 'finished'
   const isLive = match.status === 'live'
   const hasPrediction = prediction !== undefined
-  const canSave = !locked && home !== '' && away !== '' && !saving
+  const hasChanged =
+    !hasPrediction ||
+    Number(home) !== prediction.predicted_home_score ||
+    Number(away) !== prediction.predicted_away_score
+  const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged
 
   async function handleSave() {
     if (!canSave) return
@@ -187,27 +191,87 @@ export default function MatchCard({
           )
         ) : (
           <div className={styles.inputRow}>
-            <input
-              className={styles.scoreInput}
-              type="number"
-              min={0}
-              max={99}
-              placeholder="0"
-              value={home}
-              onChange={(e) => handleScoreInput(e.target.value, setHome)}
-              aria-label={`Placar ${match.home_team_name}`}
-            />
+            <div className={styles.stepper}>
+              <button
+                className={`${styles.stepBtn} ${styles.stepBtnDec}`}
+                onClick={() =>
+                  setHome(
+                    String(Math.max(0, (home === '' ? 0 : Number(home)) - 1)),
+                  )
+                }
+                disabled={locked}
+                type="button"
+                tabIndex={-1}
+                aria-label={`Diminuir placar ${match.home_team_name}`}
+              >
+                −
+              </button>
+              <input
+                className={styles.scoreInput}
+                type="number"
+                min={0}
+                max={99}
+                placeholder="0"
+                value={home}
+                onChange={(e) => handleScoreInput(e.target.value, setHome)}
+                aria-label={`Placar ${match.home_team_name}`}
+              />
+              <button
+                className={`${styles.stepBtn} ${styles.stepBtnInc}`}
+                onClick={() =>
+                  setHome(
+                    String(Math.min(99, (home === '' ? 0 : Number(home)) + 1)),
+                  )
+                }
+                disabled={locked}
+                type="button"
+                tabIndex={-1}
+                aria-label={`Aumentar placar ${match.home_team_name}`}
+              >
+                +
+              </button>
+            </div>
             <span className={styles.inputSep}>×</span>
-            <input
-              className={styles.scoreInput}
-              type="number"
-              min={0}
-              max={99}
-              placeholder="0"
-              value={away}
-              onChange={(e) => handleScoreInput(e.target.value, setAway)}
-              aria-label={`Placar ${match.away_team_name}`}
-            />
+            <div className={styles.stepper}>
+              <button
+                className={`${styles.stepBtn} ${styles.stepBtnDec}`}
+                onClick={() =>
+                  setAway(
+                    String(Math.max(0, (away === '' ? 0 : Number(away)) - 1)),
+                  )
+                }
+                disabled={locked}
+                type="button"
+                tabIndex={-1}
+                aria-label={`Diminuir placar ${match.away_team_name}`}
+              >
+                −
+              </button>
+              <input
+                className={styles.scoreInput}
+                type="number"
+                min={0}
+                max={99}
+                placeholder="0"
+                value={away}
+                onChange={(e) => handleScoreInput(e.target.value, setAway)}
+                aria-label={`Placar ${match.away_team_name}`}
+              />
+              <button
+                className={`${styles.stepBtn} ${styles.stepBtnInc}`}
+                onClick={() =>
+                  setAway(
+                    String(Math.min(99, (away === '' ? 0 : Number(away)) + 1)),
+                  )
+                }
+                disabled={locked}
+                type="button"
+                tabIndex={-1}
+                aria-label={`Aumentar placar ${match.away_team_name}`}
+              >
+                +
+              </button>
+            </div>
             <button
               className={`${styles.saveBtn} ${saved ? styles.saveBtnSaved : ''}`}
               onClick={handleSave}
