@@ -26,14 +26,14 @@
       "label": "Variables",
       "file_type": "code",
       "source_file": "api/src/types.ts",
-      "source_location": "L10"
+      "source_location": "L11"
     },
     {
       "id": "src_types_appcontext",
       "label": "AppContext",
       "file_type": "code",
       "source_file": "api/src/types.ts",
-      "source_location": "L14"
+      "source_location": "L16"
     },
     {
       "id": "api_src_index_ts",
@@ -47,7 +47,7 @@
       "label": "app",
       "file_type": "code",
       "source_file": "api/src/index.ts",
-      "source_location": "L6"
+      "source_location": "L10"
     },
     {
       "id": "api_src_auth_encoding_ts",
@@ -211,95 +211,102 @@
       "source_location": "L1"
     },
     {
+      "id": "auth_router_cookiedomain",
+      "label": "cookieDomain()",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L24"
+    },
+    {
       "id": "auth_router_cookieoptions",
       "label": "cookieOptions()",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L22"
+      "source_location": "L32"
     },
     {
       "id": "auth_router_authrouter",
       "label": "authRouter",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L32"
+      "source_location": "L44"
     },
     {
       "id": "auth_router_state",
       "label": "state",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L36"
+      "source_location": "L48"
     },
     {
       "id": "auth_router_nonce",
       "label": "nonce",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L37"
+      "source_location": "L49"
     },
     {
       "id": "auth_router_url",
       "label": "url",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L41"
+      "source_location": "L53"
     },
     {
       "id": "auth_router_tempopts",
       "label": "tempOpts",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L49"
+      "source_location": "L61"
     },
     {
       "id": "auth_router_code_state_error",
       "label": "{ code, state, error }",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L59"
+      "source_location": "L77"
     },
     {
       "id": "auth_router_storedstate",
       "label": "storedState",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L65"
+      "source_location": "L83"
     },
     {
       "id": "auth_router_storednonce",
       "label": "storedNonce",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L66"
+      "source_location": "L84"
     },
     {
       "id": "auth_router_codeverifier",
       "label": "codeVerifier",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L67"
+      "source_location": "L85"
     },
     {
       "id": "auth_router_clearopts",
       "label": "clearOpts",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L70"
+      "source_location": "L88"
     },
     {
       "id": "auth_router_userid",
       "label": "userId",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L129"
+      "source_location": "L153"
     },
     {
       "id": "auth_router_user",
       "label": "user",
       "file_type": "code",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L131"
+      "source_location": "L155"
     },
     {
       "id": "api_src_auth_jwt_test_ts",
@@ -365,6 +372,510 @@
       "source_location": "L59"
     },
     {
+      "id": "api_src_auth_encoding_test_ts",
+      "label": "encoding.test.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_encoding_test_result",
+      "label": "result",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L8"
+    },
+    {
+      "id": "auth_encoding_test_buf",
+      "label": "buf",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L18"
+    },
+    {
+      "id": "auth_encoding_test_encoded",
+      "label": "encoded",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L36"
+    },
+    {
+      "id": "auth_encoding_test_decoded",
+      "label": "decoded",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L38"
+    },
+    {
+      "id": "auth_encoding_test_original",
+      "label": "original",
+      "file_type": "code",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L45"
+    },
+    {
+      "id": "api_src_auth_middleware_test_ts",
+      "label": "middleware.test.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_middleware_test_buildapp",
+      "label": "buildApp()",
+      "file_type": "code",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L10"
+    },
+    {
+      "id": "auth_middleware_test_fakeenv",
+      "label": "fakeEnv()",
+      "file_type": "code",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L17"
+    },
+    {
+      "id": "auth_middleware_test_requestwithcookie",
+      "label": "requestWithCookie()",
+      "file_type": "code",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L29"
+    },
+    {
+      "id": "auth_middleware_test_app",
+      "label": "app",
+      "file_type": "code",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L37"
+    },
+    {
+      "id": "api_src_auth_permissions_ts",
+      "label": "permissions.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_permissions_feature_keys",
+      "label": "FEATURE_KEYS",
+      "file_type": "code",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_permissions_featurekey",
+      "label": "FeatureKey",
+      "file_type": "code",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L3"
+    },
+    {
+      "id": "auth_permissions_feature_allowlists",
+      "label": "FEATURE_ALLOWLISTS",
+      "file_type": "code",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "auth_permissions_featureflags",
+      "label": "FeatureFlags",
+      "file_type": "code",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L9"
+    },
+    {
+      "id": "auth_permissions_hasfeatureaccess",
+      "label": "hasFeatureAccess()",
+      "file_type": "code",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L11"
+    },
+    {
+      "id": "auth_permissions_getfeatureflags",
+      "label": "getFeatureFlags()",
+      "file_type": "code",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L16"
+    },
+    {
+      "id": "api_src_auth_router_test_ts",
+      "label": "router.test.ts",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "auth_router_test_fakeenv",
+      "label": "fakeEnv()",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L9"
+    },
+    {
+      "id": "auth_router_test_requestwithcookie",
+      "label": "requestWithCookie()",
+      "file_type": "code",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L41"
+    },
+    {
+      "id": "api_src_groups_router_ts",
+      "label": "router.ts",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "groups_router_router",
+      "label": "router",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L6"
+    },
+    {
+      "id": "groups_router_generateinvitecode",
+      "label": "generateInviteCode()",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L11"
+    },
+    {
+      "id": "groups_router_userid",
+      "label": "userId",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L44"
+    },
+    {
+      "id": "groups_router_positionresult",
+      "label": "positionResult",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L78"
+    },
+    {
+      "id": "groups_router_useremail",
+      "label": "userEmail",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L125"
+    },
+    {
+      "id": "groups_router_body",
+      "label": "body",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L131"
+    },
+    {
+      "id": "groups_router_name",
+      "label": "name",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L133"
+    },
+    {
+      "id": "groups_router_competition_id",
+      "label": "competition_id",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L134"
+    },
+    {
+      "id": "groups_router_candidate",
+      "label": "candidate",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L159"
+    },
+    {
+      "id": "groups_router_groupid",
+      "label": "groupId",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L174"
+    },
+    {
+      "id": "groups_router_memberid",
+      "label": "memberId",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L175"
+    },
+    {
+      "id": "groups_router_invite_code",
+      "label": "invite_code",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L214"
+    },
+    {
+      "id": "groups_router_group",
+      "label": "group",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L222"
+    },
+    {
+      "id": "groups_router_countresult",
+      "label": "countResult",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L242"
+    },
+    {
+      "id": "groups_router_membership",
+      "label": "membership",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L275"
+    },
+    {
+      "id": "api_src_groups_router_test_ts",
+      "label": "router.test.ts",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "groups_router_test_createdbmock",
+      "label": "createDbMock()",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L9"
+    },
+    {
+      "id": "groups_router_test_creategroupslistdbmock",
+      "label": "createGroupsListDbMock()",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L45"
+    },
+    {
+      "id": "groups_router_test_fakeenv",
+      "label": "fakeEnv()",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L93"
+    },
+    {
+      "id": "groups_router_test_request",
+      "label": "request()",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L105"
+    },
+    {
+      "id": "groups_router_test_requestgroupslist",
+      "label": "requestGroupsList()",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L125"
+    },
+    {
+      "id": "groups_router_test_body",
+      "label": "body",
+      "file_type": "code",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L151"
+    },
+    {
+      "id": "api_src_competitions_router_ts",
+      "label": "router.ts",
+      "file_type": "code",
+      "source_file": "api/src/competitions/router.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "competitions_router_router",
+      "label": "router",
+      "file_type": "code",
+      "source_file": "api/src/competitions/router.ts",
+      "source_location": "L4"
+    },
+    {
+      "id": "api_src_matches_sync_ts",
+      "label": "sync.ts",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "matches_sync_apiteam",
+      "label": "ApiTeam",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L6"
+    },
+    {
+      "id": "matches_sync_apimatch",
+      "label": "ApiMatch",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L14"
+    },
+    {
+      "id": "matches_sync_apicompetition",
+      "label": "ApiCompetition",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L28"
+    },
+    {
+      "id": "matches_sync_apimatchesresponse",
+      "label": "ApiMatchesResponse",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L34"
+    },
+    {
+      "id": "matches_sync_syncoptions",
+      "label": "SyncOptions",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L39"
+    },
+    {
+      "id": "matches_sync_syncresult",
+      "label": "SyncResult",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L49"
+    },
+    {
+      "id": "matches_sync_mapstatus",
+      "label": "mapStatus()",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L60"
+    },
+    {
+      "id": "matches_sync_slugify",
+      "label": "slugify()",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L66"
+    },
+    {
+      "id": "matches_sync_syncfixtures",
+      "label": "syncFixtures()",
+      "file_type": "code",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L82"
+    },
+    {
+      "id": "api_src_matches_router_ts",
+      "label": "router.ts",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "matches_router_router",
+      "label": "router",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L6"
+    },
+    {
+      "id": "matches_router_competitionid",
+      "label": "competitionId",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L26"
+    },
+    {
+      "id": "matches_router_round",
+      "label": "round",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L27"
+    },
+    {
+      "id": "matches_router_status",
+      "label": "status",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L28"
+    },
+    {
+      "id": "matches_router_validstatuses",
+      "label": "validStatuses",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L34"
+    },
+    {
+      "id": "matches_router_params",
+      "label": "params",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L65"
+    },
+    {
+      "id": "matches_router_competition",
+      "label": "competition",
+      "file_type": "code",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L100"
+    },
+    {
+      "id": "api_src_predictions_router_ts",
+      "label": "router.ts",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "predictions_router_router",
+      "label": "router",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L5"
+    },
+    {
+      "id": "predictions_router_userid",
+      "label": "userId",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L27"
+    },
+    {
+      "id": "predictions_router_groupid",
+      "label": "groupId",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L28"
+    },
+    {
+      "id": "predictions_router_matchid",
+      "label": "matchId",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L29"
+    },
+    {
+      "id": "predictions_router_now",
+      "label": "now",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L46"
+    },
+    {
+      "id": "predictions_router_params",
+      "label": "params",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L63"
+    },
+    {
+      "id": "predictions_router_match",
+      "label": "match",
+      "file_type": "code",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L140"
+    },
+    {
       "id": "web_vite_config_ts",
       "label": "vite.config.ts",
       "file_type": "code",
@@ -397,7 +908,21 @@
       "label": "rootEl",
       "file_type": "code",
       "source_file": "web/src/main.tsx",
-      "source_location": "L6"
+      "source_location": "L7"
+    },
+    {
+      "id": "web_src_vite_env_d_ts",
+      "label": "vite-env.d.ts",
+      "file_type": "code",
+      "source_file": "web/src/vite-env.d.ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "web_src_test_setup_ts",
+      "label": "test-setup.ts",
+      "file_type": "code",
+      "source_file": "web/src/test-setup.ts",
+      "source_location": "L1"
     },
     {
       "id": "web_src_app_tsx",
@@ -411,28 +936,21 @@
       "label": "User",
       "file_type": "code",
       "source_file": "web/src/App.tsx",
-      "source_location": "L9"
+      "source_location": "L12"
     },
     {
       "id": "src_app_authstatus",
       "label": "AuthStatus",
       "file_type": "code",
       "source_file": "web/src/App.tsx",
-      "source_location": "L16"
+      "source_location": "L22"
     },
     {
       "id": "src_app_app",
       "label": "App()",
       "file_type": "code",
       "source_file": "web/src/App.tsx",
-      "source_location": "L28"
-    },
-    {
-      "id": "web_src_vite_env_d_ts",
-      "label": "vite-env.d.ts",
-      "file_type": "code",
-      "source_file": "web/src/vite-env.d.ts",
-      "source_location": "L1"
+      "source_location": "L30"
     },
     {
       "id": "web_src_pages_loginpage_tsx",
@@ -446,7 +964,161 @@
       "label": "LoginPage()",
       "file_type": "code",
       "source_file": "web/src/pages/LoginPage.tsx",
-      "source_location": "L13"
+      "source_location": "L14"
+    },
+    {
+      "id": "web_src_pages_dashboardpage_tsx",
+      "label": "DashboardPage.tsx",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "pages_dashboardpage_user",
+      "label": "User",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L11"
+    },
+    {
+      "id": "pages_dashboardpage_dashboardpageprops",
+      "label": "DashboardPageProps",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L21"
+    },
+    {
+      "id": "pages_dashboardpage_dashboardpage",
+      "label": "DashboardPage()",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L26"
+    },
+    {
+      "id": "web_src_pages_groupdetailpage_tsx",
+      "label": "GroupDetailPage.tsx",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "pages_groupdetailpage_user",
+      "label": "User",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L10"
+    },
+    {
+      "id": "pages_groupdetailpage_groupdetail",
+      "label": "GroupDetail",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L20"
+    },
+    {
+      "id": "pages_groupdetailpage_tab",
+      "label": "Tab",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L34"
+    },
+    {
+      "id": "pages_groupdetailpage_groupdetailpageprops",
+      "label": "GroupDetailPageProps",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L36"
+    },
+    {
+      "id": "pages_groupdetailpage_groupdetailpage",
+      "label": "GroupDetailPage()",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L41"
+    },
+    {
+      "id": "web_src_pages_dashboardpage_test_tsx",
+      "label": "DashboardPage.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "pages_dashboardpage_test_user",
+      "label": "user",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "pages_dashboardpage_test_mockresponse",
+      "label": "mockResponse()",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L15"
+    },
+    {
+      "id": "pages_dashboardpage_test_fetchspy",
+      "label": "fetchSpy",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L28"
+    },
+    {
+      "id": "pages_dashboardpage_test_dialog",
+      "label": "dialog",
+      "file_type": "code",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L74"
+    },
+    {
+      "id": "web_src_pages_groupdetailpage_test_tsx",
+      "label": "GroupDetailPage.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "pages_groupdetailpage_test_baseuser",
+      "label": "baseUser",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L50"
+    },
+    {
+      "id": "pages_groupdetailpage_test_basegroup",
+      "label": "baseGroup",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L56"
+    },
+    {
+      "id": "pages_groupdetailpage_test_mockgroupfetch",
+      "label": "mockGroupFetch()",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L70"
+    },
+    {
+      "id": "pages_groupdetailpage_test_renderpage",
+      "label": "renderPage()",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L79"
+    },
+    {
+      "id": "pages_groupdetailpage_test_fetchspy",
+      "label": "fetchSpy",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L101"
+    },
+    {
+      "id": "pages_groupdetailpage_test_spy",
+      "label": "spy",
+      "file_type": "code",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L103"
     },
     {
       "id": "web_src_components_googleloginbutton_tsx",
@@ -467,7 +1139,581 @@
       "label": "GoogleLogo()",
       "file_type": "code",
       "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L42"
+    },
+    {
+      "id": "web_src_components_button_tsx",
+      "label": "Button.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Button.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_button_buttonprops",
+      "label": "ButtonProps",
+      "file_type": "code",
+      "source_file": "web/src/components/Button.tsx",
+      "source_location": "L3"
+    },
+    {
+      "id": "components_button_button",
+      "label": "Button()",
+      "file_type": "code",
+      "source_file": "web/src/components/Button.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "web_src_components_header_tsx",
+      "label": "Header.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_header_user",
+      "label": "User",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L5"
+    },
+    {
+      "id": "components_header_headerprops",
+      "label": "HeaderProps",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L14"
+    },
+    {
+      "id": "components_header_header",
+      "label": "Header()",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L21"
+    },
+    {
+      "id": "web_src_components_groupcard_tsx",
+      "label": "GroupCard.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_groupcard_groupwithstats",
+      "label": "GroupWithStats",
+      "file_type": "code",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L4"
+    },
+    {
+      "id": "components_groupcard_groupcardprops",
+      "label": "GroupCardProps",
+      "file_type": "code",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L15"
+    },
+    {
+      "id": "components_groupcard_groupcard",
+      "label": "GroupCard()",
+      "file_type": "code",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L21"
+    },
+    {
+      "id": "web_src_components_card_tsx",
+      "label": "Card.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Card.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_card_cardprops",
+      "label": "CardProps",
+      "file_type": "code",
+      "source_file": "web/src/components/Card.tsx",
+      "source_location": "L4"
+    },
+    {
+      "id": "components_card_card",
+      "label": "Card()",
+      "file_type": "code",
+      "source_file": "web/src/components/Card.tsx",
+      "source_location": "L10"
+    },
+    {
+      "id": "web_src_components_modal_tsx",
+      "label": "Modal.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_modal_modalprops",
+      "label": "ModalProps",
+      "file_type": "code",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L5"
+    },
+    {
+      "id": "components_modal_modal",
+      "label": "Modal()",
+      "file_type": "code",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L12"
+    },
+    {
+      "id": "web_src_components_creategroupmodal_tsx",
+      "label": "CreateGroupModal.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_creategroupmodal_competition",
+      "label": "Competition",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "components_creategroupmodal_createdgroup",
+      "label": "CreatedGroup",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L15"
+    },
+    {
+      "id": "components_creategroupmodal_creategroupmodalprops",
+      "label": "CreateGroupModalProps",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L21"
+    },
+    {
+      "id": "components_creategroupmodal_creategroupmodal",
+      "label": "CreateGroupModal()",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L27"
+    },
+    {
+      "id": "web_src_components_joingroupmodal_tsx",
+      "label": "JoinGroupModal.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_joingroupmodal_joinedgroup",
+      "label": "JoinedGroup",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L7"
+    },
+    {
+      "id": "components_joingroupmodal_joingroupmodalprops",
+      "label": "JoinGroupModalProps",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L12"
+    },
+    {
+      "id": "components_joingroupmodal_joingroupmodal",
+      "label": "JoinGroupModal()",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L20"
+    },
+    {
+      "id": "web_src_components_button_test_tsx",
+      "label": "Button.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Button.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_button_test_onclick",
+      "label": "onClick",
+      "file_type": "code",
+      "source_file": "web/src/components/Button.test.tsx",
+      "source_location": "L13"
+    },
+    {
+      "id": "web_src_components_card_test_tsx",
+      "label": "Card.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_card_test_container",
+      "label": "{ container }",
+      "file_type": "code",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L12"
+    },
+    {
+      "id": "components_card_test_div",
+      "label": "div",
+      "file_type": "code",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L13"
+    },
+    {
+      "id": "web_src_components_modal_test_tsx",
+      "label": "Modal.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_modal_test_rendermodal",
+      "label": "renderModal()",
+      "file_type": "code",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "components_modal_test_onclose",
+      "label": "onClose",
+      "file_type": "code",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L30"
+    },
+    {
+      "id": "web_src_components_header_test_tsx",
+      "label": "Header.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_header_test_baseuser",
+      "label": "baseUser",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "components_header_test_renderheader",
+      "label": "renderHeader()",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L15"
+    },
+    {
+      "id": "components_header_test_oncreategroup",
+      "label": "onCreateGroup",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L37"
+    },
+    {
+      "id": "components_header_test_onjoingroup",
+      "label": "onJoinGroup",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L44"
+    },
+    {
+      "id": "components_header_test_onlogout",
+      "label": "onLogout",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L75"
+    },
+    {
+      "id": "components_header_test_sairbtn",
+      "label": "sairBtn",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L78"
+    },
+    {
+      "id": "components_header_test_link",
+      "label": "link",
+      "file_type": "code",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L85"
+    },
+    {
+      "id": "web_src_components_groupcard_test_tsx",
+      "label": "GroupCard.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_groupcard_test_basegroup",
+      "label": "baseGroup",
+      "file_type": "code",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "components_groupcard_test_onclick",
+      "label": "onClick",
+      "file_type": "code",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L18"
+    },
+    {
+      "id": "web_src_components_googleloginbutton_test_tsx",
+      "label": "GoogleLoginButton.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/GoogleLoginButton.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "web_src_components_joingroupmodal_test_tsx",
+      "label": "JoinGroupModal.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_joingroupmodal_test_defaultprops",
+      "label": "defaultProps",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "components_joingroupmodal_test_joinedgroup",
+      "label": "joinedGroup",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
       "source_location": "L36"
+    },
+    {
+      "id": "components_joingroupmodal_test_fetchspy",
+      "label": "fetchSpy",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L68"
+    },
+    {
+      "id": "components_joingroupmodal_test_body",
+      "label": "body",
+      "file_type": "code",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L81"
+    },
+    {
+      "id": "web_src_components_creategroupmodal_test_tsx",
+      "label": "CreateGroupModal.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_creategroupmodal_test_competitions",
+      "label": "competitions",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "components_creategroupmodal_test_defaultprops",
+      "label": "defaultProps",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L16"
+    },
+    {
+      "id": "components_creategroupmodal_test_mockfetchcompetitions",
+      "label": "mockFetchCompetitions()",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L22"
+    },
+    {
+      "id": "components_creategroupmodal_test_createdgroup",
+      "label": "createdGroup",
+      "file_type": "code",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L60"
+    },
+    {
+      "id": "web_src_components_matchcard_tsx",
+      "label": "MatchCard.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_matchcard_match",
+      "label": "Match",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L5"
+    },
+    {
+      "id": "components_matchcard_prediction",
+      "label": "Prediction",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L24"
+    },
+    {
+      "id": "components_matchcard_matchcardprops",
+      "label": "MatchCardProps",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L34"
+    },
+    {
+      "id": "components_matchcard_formatdate",
+      "label": "formatDate()",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L41"
+    },
+    {
+      "id": "components_matchcard_matchcard",
+      "label": "MatchCard()",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L51"
+    },
+    {
+      "id": "web_src_components_predictionstab_tsx",
+      "label": "PredictionsTab.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_predictionstab_predictionstabprops",
+      "label": "PredictionsTabProps",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L6"
+    },
+    {
+      "id": "components_predictionstab_predictionmap",
+      "label": "PredictionMap",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L11"
+    },
+    {
+      "id": "components_predictionstab_defaultroundindex",
+      "label": "defaultRoundIndex()",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L13"
+    },
+    {
+      "id": "components_predictionstab_predictionstab",
+      "label": "PredictionsTab()",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L21"
+    },
+    {
+      "id": "web_src_components_matchcard_test_tsx",
+      "label": "MatchCard.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_matchcard_test_makematch",
+      "label": "makeMatch()",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L8"
+    },
+    {
+      "id": "components_matchcard_test_makeprediction",
+      "label": "makePrediction()",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L30"
+    },
+    {
+      "id": "components_matchcard_test_rendercard",
+      "label": "renderCard()",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L45"
+    },
+    {
+      "id": "components_matchcard_test_savebtn",
+      "label": "saveBtn",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L67"
+    },
+    {
+      "id": "components_matchcard_test_input",
+      "label": "input",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L109"
+    },
+    {
+      "id": "components_matchcard_test_pastmatch",
+      "label": "pastMatch",
+      "file_type": "code",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L217"
+    },
+    {
+      "id": "web_src_components_predictionstab_test_tsx",
+      "label": "PredictionsTab.test.tsx",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L1"
+    },
+    {
+      "id": "components_predictionstab_test_makematch",
+      "label": "makeMatch()",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L9"
+    },
+    {
+      "id": "components_predictionstab_test_mockfetch",
+      "label": "mockFetch()",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L31"
+    },
+    {
+      "id": "components_predictionstab_test_matches",
+      "label": "matches",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L58"
+    },
+    {
+      "id": "components_predictionstab_test_select",
+      "label": "select",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L68"
+    },
+    {
+      "id": "components_predictionstab_test_tworoundmatches",
+      "label": "twoRoundMatches()",
+      "file_type": "code",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L184"
+    },
+    {
+      "id": "web_functions_api_path_ts",
+      "label": "[[path]].ts",
+      "file_type": "code",
+      "source_file": "web/functions/api/[[path]].ts",
+      "source_location": "L1"
+    },
+    {
+      "id": "api_path_onrequest",
+      "label": "onRequest()",
+      "file_type": "code",
+      "source_file": "web/functions/api/[[path]].ts",
+      "source_location": "L3"
     }
   ],
   "edges": [
@@ -496,7 +1742,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/types.ts",
-      "source_location": "L10",
+      "source_location": "L11",
       "weight": 1.0
     },
     {
@@ -505,7 +1751,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/types.ts",
-      "source_location": "L14",
+      "source_location": "L16",
       "weight": 1.0
     },
     {
@@ -550,7 +1796,7 @@
     },
     {
       "source": "api_src_index_ts",
-      "target": "api_src_types_ts",
+      "target": "api_src_competitions_router_ts",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -560,7 +1806,7 @@
     },
     {
       "source": "api_src_index_ts",
-      "target": "src_types_appcontext",
+      "target": "competitions_router_competitionsrouter",
       "relation": "imports",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -570,11 +1816,91 @@
     },
     {
       "source": "api_src_index_ts",
+      "target": "api_src_groups_router_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "groups_router_groupsrouter",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "api_src_matches_router_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "matches_router_matchesrouter",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "api_src_predictions_router_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "predictions_router_predictionsrouter",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/index.ts",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_index_ts",
       "target": "src_index_app",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/index.ts",
-      "source_location": "L6",
+      "source_location": "L10",
       "weight": 1.0
     },
     {
@@ -981,12 +2307,32 @@
     },
     {
       "source": "api_src_auth_router_ts",
-      "target": "api_src_auth_jwt_ts",
+      "target": "api_src_auth_permissions_ts",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
       "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_permissions_getfeatureflags",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "api_src_auth_jwt_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L13",
       "weight": 1.0
     },
     {
@@ -996,7 +2342,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L12",
+      "source_location": "L13",
       "weight": 1.0
     },
     {
@@ -1006,7 +2352,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0
     },
     {
@@ -1016,7 +2362,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0
     },
     {
@@ -1026,7 +2372,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L14",
+      "source_location": "L15",
       "weight": 1.0
     },
     {
@@ -1036,7 +2382,16 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L14",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_ts",
+      "target": "auth_router_cookiedomain",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L24",
       "weight": 1.0
     },
     {
@@ -1045,7 +2400,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L22",
+      "source_location": "L32",
       "weight": 1.0
     },
     {
@@ -1054,7 +2409,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L32",
+      "source_location": "L44",
       "weight": 1.0
     },
     {
@@ -1063,7 +2418,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L36",
+      "source_location": "L48",
       "weight": 1.0
     },
     {
@@ -1072,7 +2427,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L37",
+      "source_location": "L49",
       "weight": 1.0
     },
     {
@@ -1081,7 +2436,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L41",
+      "source_location": "L53",
       "weight": 1.0
     },
     {
@@ -1090,7 +2445,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L49",
+      "source_location": "L61",
       "weight": 1.0
     },
     {
@@ -1099,7 +2454,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L59",
+      "source_location": "L77",
       "weight": 1.0
     },
     {
@@ -1108,7 +2463,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L65",
+      "source_location": "L83",
       "weight": 1.0
     },
     {
@@ -1117,7 +2472,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L66",
+      "source_location": "L84",
       "weight": 1.0
     },
     {
@@ -1126,7 +2481,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L67",
+      "source_location": "L85",
       "weight": 1.0
     },
     {
@@ -1135,7 +2490,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L70",
+      "source_location": "L88",
       "weight": 1.0
     },
     {
@@ -1144,7 +2499,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L129",
+      "source_location": "L153",
       "weight": 1.0
     },
     {
@@ -1153,7 +2508,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "api/src/auth/router.ts",
-      "source_location": "L131",
+      "source_location": "L155",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_router_cookieoptions",
+      "target": "auth_router_cookiedomain",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.ts",
+      "source_location": "L33",
       "weight": 1.0
     },
     {
@@ -1338,13 +2703,1351 @@
       "weight": 1.0
     },
     {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "api_src_auth_encoding_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_base64urldecode",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_base64urlencode",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_result",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_buf",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_result",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_result",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_encoded",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_decoded",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L38",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_original",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_encoded",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L46",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_decoded",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L47",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_buf",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L53",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_encoding_test_ts",
+      "target": "auth_encoding_test_decoded",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/encoding.test.ts",
+      "source_location": "L54",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "cookie",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "api_src_auth_jwt_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_jwt_signjwt",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "api_src_auth_middleware_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_requireauth",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_buildapp",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_fakeenv",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L17",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_requestwithcookie",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L52",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L59",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_middleware_test_ts",
+      "target": "auth_middleware_test_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L66",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_middleware_test_requestwithcookie",
+      "target": "auth_middleware_test_fakeenv",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/middleware.test.ts",
+      "source_location": "L32",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_permissions_ts",
+      "target": "auth_permissions_feature_keys",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_permissions_ts",
+      "target": "auth_permissions_featurekey",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_permissions_ts",
+      "target": "auth_permissions_feature_allowlists",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_permissions_ts",
+      "target": "auth_permissions_featureflags",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_permissions_ts",
+      "target": "auth_permissions_hasfeatureaccess",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_permissions_ts",
+      "target": "auth_permissions_getfeatureflags",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_permissions_getfeatureflags",
+      "target": "auth_permissions_hasfeatureaccess",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/permissions.ts",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "api_src_index_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "api_src_auth_jwt_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "auth_jwt_signjwt",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "auth_router_test_fakeenv",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_auth_router_test_ts",
+      "target": "auth_router_test_requestwithcookie",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L41",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_router_test_requestwithcookie",
+      "target": "auth_router_test_fakeenv",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "api_src_auth_permissions_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "auth_permissions_hasfeatureaccess",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "api_src_auth_middleware_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "auth_middleware_requireauth",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_router",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_generateinvitecode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_userid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_positionresult",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L78",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_userid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L124",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_useremail",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L125",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_body",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L131",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_name",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L133",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_competition_id",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L134",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_candidate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L159",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_groupid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L174",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_memberid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L175",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_userid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L211",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_body",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L212",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_invite_code",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L214",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_group",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L222",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_countresult",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L242",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_memberid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L251",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_userid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L270",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_groupid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L271",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_membership",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L275",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_group",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L284",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_ts",
+      "target": "groups_router_positionresult",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.ts",
+      "source_location": "L323",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "api_src_auth_jwt_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "auth_jwt_signjwt",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "api_src_groups_router_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "groups_router_groupsrouter",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "groups_router_test_createdbmock",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "groups_router_test_creategroupslistdbmock",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "groups_router_test_fakeenv",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L93",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "groups_router_test_request",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L105",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "groups_router_test_requestgroupslist",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L125",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_groups_router_test_ts",
+      "target": "groups_router_test_body",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L151",
+      "weight": 1.0
+    },
+    {
+      "source": "groups_router_test_fakeenv",
+      "target": "groups_router_test_createdbmock",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
+      "source": "groups_router_test_request",
+      "target": "groups_router_test_fakeenv",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L121",
+      "weight": 1.0
+    },
+    {
+      "source": "groups_router_test_requestgroupslist",
+      "target": "groups_router_test_fakeenv",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L140",
+      "weight": 1.0
+    },
+    {
+      "source": "groups_router_test_requestgroupslist",
+      "target": "groups_router_test_creategroupslistdbmock",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L141",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_competitions_router_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/competitions/router.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_competitions_router_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/competitions/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_competitions_router_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/competitions/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_competitions_router_ts",
+      "target": "competitions_router_router",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/competitions/router.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "workers_types",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_apiteam",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_apimatch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_apicompetition",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L28",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_apimatchesresponse",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_syncoptions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L39",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_syncresult",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L49",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_mapstatus",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L60",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_slugify",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L66",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_sync_ts",
+      "target": "matches_sync_syncfixtures",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L82",
+      "weight": 1.0
+    },
+    {
+      "source": "matches_sync_syncfixtures",
+      "target": "matches_sync_slugify",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L108",
+      "weight": 1.0
+    },
+    {
+      "source": "matches_sync_syncfixtures",
+      "target": "matches_sync_mapstatus",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/sync.ts",
+      "source_location": "L184",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "api_src_auth_middleware_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "auth_middleware_requireauth",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "api_src_matches_sync_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_sync_syncfixtures",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_router_router",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_router_competitionid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_router_round",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_router_status",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L28",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_router_validstatuses",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_router_params",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L65",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_matches_router_ts",
+      "target": "matches_router_competition",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/matches/router.ts",
+      "source_location": "L100",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "hono",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "api_src_auth_middleware_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "auth_middleware_requireauth",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "api_src_types_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "src_types_appcontext",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_router",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_userid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_groupid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L28",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_matchid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_now",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L46",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_params",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L63",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_userid",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L95",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_match",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L140",
+      "weight": 1.0
+    },
+    {
+      "source": "api_src_predictions_router_ts",
+      "target": "predictions_router_now",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "api/src/predictions/router.ts",
+      "source_location": "L155",
+      "weight": 1.0
+    },
+    {
       "source": "web_vite_config_ts",
       "target": "vite",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "web/vite.config.ts",
-      "source_location": "L1",
+      "source_location": "L2",
       "weight": 1.0
     },
     {
@@ -1354,7 +4057,7 @@
       "context": "import",
       "confidence": "EXTRACTED",
       "source_file": "web/vite.config.ts",
-      "source_location": "L2",
+      "source_location": "L3",
       "weight": 1.0
     },
     {
@@ -1388,7 +4091,7 @@
     },
     {
       "source": "web_src_main_tsx",
-      "target": "home_satin_work_palpitae_web_src_styles_global_css",
+      "target": "react_router_dom",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -1398,7 +4101,7 @@
     },
     {
       "source": "web_src_main_tsx",
-      "target": "web_src_app_tsx",
+      "target": "home_satin_work_palpitae_web_src_styles_global_css",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -1408,11 +4111,31 @@
     },
     {
       "source": "web_src_main_tsx",
+      "target": "web_src_app_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/main.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_main_tsx",
       "target": "src_main_rootel",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "web/src/main.tsx",
-      "source_location": "L6",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_test_setup_ts",
+      "target": "jest_dom",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/test-setup.ts",
+      "source_location": "L1",
       "weight": 1.0
     },
     {
@@ -1427,7 +4150,7 @@
     },
     {
       "source": "web_src_app_tsx",
-      "target": "web_src_config_ts",
+      "target": "react_router_dom",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -1437,17 +4160,7 @@
     },
     {
       "source": "web_src_app_tsx",
-      "target": "src_config_config",
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "web/src/App.tsx",
-      "source_location": "L2",
-      "weight": 1.0
-    },
-    {
-      "source": "web_src_app_tsx",
-      "target": "web_src_pages_loginpage_tsx",
+      "target": "web_src_config_ts",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -1457,11 +4170,51 @@
     },
     {
       "source": "web_src_app_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "web_src_pages_loginpage_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "web_src_pages_dashboardpage_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
+      "target": "web_src_pages_groupdetailpage_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/App.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_app_tsx",
       "target": "src_app_user",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "web/src/App.tsx",
-      "source_location": "L9",
+      "source_location": "L12",
       "weight": 1.0
     },
     {
@@ -1470,7 +4223,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "web/src/App.tsx",
-      "source_location": "L16",
+      "source_location": "L22",
       "weight": 1.0
     },
     {
@@ -1479,12 +4232,12 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "web/src/App.tsx",
-      "source_location": "L28",
+      "source_location": "L30",
       "weight": 1.0
     },
     {
       "source": "web_src_pages_loginpage_tsx",
-      "target": "home_satin_work_palpitae_web_src_pages_loginpage_module_css",
+      "target": "web_src_components_card_tsx",
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
@@ -1504,11 +4257,483 @@
     },
     {
       "source": "web_src_pages_loginpage_tsx",
+      "target": "home_satin_work_palpitae_web_src_pages_loginpage_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/LoginPage.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_loginpage_tsx",
       "target": "pages_loginpage_loginpage",
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "web/src/pages/LoginPage.tsx",
-      "source_location": "L13",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "react_router_dom",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "web_src_components_button_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "web_src_components_creategroupmodal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "web_src_components_groupcard_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "components_groupcard_groupwithstats",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "web_src_components_header_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "web_src_components_joingroupmodal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "home_satin_work_palpitae_web_src_pages_dashboardpage_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "pages_dashboardpage_user",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "pages_dashboardpage_dashboardpageprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_tsx",
+      "target": "pages_dashboardpage_dashboardpage",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.tsx",
+      "source_location": "L26",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "react_router_dom",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "web_src_components_creategroupmodal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "web_src_components_header_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "web_src_components_joingroupmodal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "web_src_components_predictionstab_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "home_satin_work_palpitae_web_src_pages_groupdetailpage_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "pages_groupdetailpage_user",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "pages_groupdetailpage_groupdetail",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "pages_groupdetailpage_tab",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "pages_groupdetailpage_groupdetailpageprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_tsx",
+      "target": "pages_groupdetailpage_groupdetailpage",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.tsx",
+      "source_location": "L41",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "react_router_dom",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "web_src_pages_dashboardpage_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "pages_dashboardpage_test_user",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "pages_dashboardpage_test_mockresponse",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "pages_dashboardpage_test_fetchspy",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L28",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_dashboardpage_test_tsx",
+      "target": "pages_dashboardpage_test_dialog",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/DashboardPage.test.tsx",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "react_router_dom",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "web_src_pages_groupdetailpage_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "pages_groupdetailpage_test_baseuser",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L50",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "pages_groupdetailpage_test_basegroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L56",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "pages_groupdetailpage_test_mockgroupfetch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L70",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "pages_groupdetailpage_test_renderpage",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L79",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "pages_groupdetailpage_test_fetchspy",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L101",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_pages_groupdetailpage_test_tsx",
+      "target": "pages_groupdetailpage_test_spy",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/pages/GroupDetailPage.test.tsx",
+      "source_location": "L103",
       "weight": 1.0
     },
     {
@@ -1556,7 +4781,1625 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "web/src/components/GoogleLoginButton.tsx",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_button_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_tsx",
+      "target": "components_button_buttonprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_tsx",
+      "target": "components_button_button",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_tsx",
+      "target": "web_src_components_button_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_header_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_tsx",
+      "target": "components_header_user",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_tsx",
+      "target": "components_header_headerprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L14",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_tsx",
+      "target": "components_header_header",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.tsx",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_tsx",
+      "target": "web_src_components_card_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_groupcard_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_tsx",
+      "target": "components_groupcard_groupwithstats",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_tsx",
+      "target": "components_groupcard_groupcardprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_tsx",
+      "target": "components_groupcard_groupcard",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.tsx",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_card_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_tsx",
+      "target": "components_card_cardprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_tsx",
+      "target": "components_card_card",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.tsx",
+      "source_location": "L10",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_modal_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_tsx",
+      "target": "components_modal_modalprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_tsx",
+      "target": "components_modal_modal",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.tsx",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "web_src_components_button_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "web_src_components_modal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_creategroupmodal_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "components_creategroupmodal_competition",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "components_creategroupmodal_createdgroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "components_creategroupmodal_creategroupmodalprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_tsx",
+      "target": "components_creategroupmodal_creategroupmodal",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.tsx",
+      "source_location": "L27",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "web_src_components_button_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "web_src_components_modal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_joingroupmodal_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "components_joingroupmodal_joinedgroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L7",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "components_joingroupmodal_joingroupmodalprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_tsx",
+      "target": "components_joingroupmodal_joingroupmodal",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.tsx",
+      "source_location": "L20",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_test_tsx",
+      "target": "web_src_components_button_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_button_test_tsx",
+      "target": "components_button_test_onclick",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Button.test.tsx",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "web_src_components_card_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "components_card_test_container",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L12",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "components_card_test_div",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "components_card_test_container",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "components_card_test_div",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L19",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "components_card_test_container",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_card_test_tsx",
+      "target": "components_card_test_div",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Card.test.tsx",
+      "source_location": "L25",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "web_src_components_modal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "components_modal_test_rendermodal",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "components_modal_test_onclose",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "components_modal_test_onclose",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "components_modal_test_onclose",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_modal_test_tsx",
+      "target": "components_modal_test_onclose",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Modal.test.tsx",
+      "source_location": "L51",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "web_src_components_header_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "components_header_test_baseuser",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "components_header_test_renderheader",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L15",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "components_header_test_oncreategroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L37",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "components_header_test_onjoingroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L44",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "components_header_test_onlogout",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L75",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "components_header_test_sairbtn",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L78",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_header_test_tsx",
+      "target": "components_header_test_link",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/Header.test.tsx",
+      "source_location": "L85",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_test_tsx",
+      "target": "web_src_components_groupcard_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_test_tsx",
+      "target": "components_groupcard_test_basegroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_groupcard_test_tsx",
+      "target": "components_groupcard_test_onclick",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GroupCard.test.tsx",
+      "source_location": "L18",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_googleloginbutton_test_tsx",
+      "target": "web_src_components_googleloginbutton_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/GoogleLoginButton.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "web_src_components_joingroupmodal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "components_joingroupmodal_test_defaultprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "components_joingroupmodal_test_joinedgroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
       "source_location": "L36",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "components_joingroupmodal_test_joinedgroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "components_joingroupmodal_test_fetchspy",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_joingroupmodal_test_tsx",
+      "target": "components_joingroupmodal_test_body",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/JoinGroupModal.test.tsx",
+      "source_location": "L81",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "web_src_components_creategroupmodal_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "components_creategroupmodal_test_competitions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "components_creategroupmodal_test_defaultprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L16",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "components_creategroupmodal_test_mockfetchcompetitions",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L22",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_creategroupmodal_test_tsx",
+      "target": "components_creategroupmodal_test_createdgroup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/CreateGroupModal.test.tsx",
+      "source_location": "L60",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_matchcard_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "components_matchcard_match",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "components_matchcard_prediction",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L24",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "components_matchcard_matchcardprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L34",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "components_matchcard_formatdate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L41",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_tsx",
+      "target": "components_matchcard_matchcard",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L51",
+      "weight": 1.0
+    },
+    {
+      "source": "components_matchcard_matchcard",
+      "target": "components_matchcard_formatdate",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.tsx",
+      "source_location": "L120",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "web_src_config_ts",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "src_config_config",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "web_src_components_matchcard_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "components_matchcard_match",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "components_matchcard_prediction",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "home_satin_work_palpitae_web_src_components_predictionstab_module_css",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "components_predictionstab_predictionstabprops",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L6",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "components_predictionstab_predictionmap",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L11",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "components_predictionstab_defaultroundindex",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L13",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_tsx",
+      "target": "components_predictionstab_predictionstab",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.tsx",
+      "source_location": "L21",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "web_src_components_matchcard_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_match",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_prediction",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_makematch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L8",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_makeprediction",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_rendercard",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L45",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_savebtn",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L67",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_input",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L109",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_input",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L126",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_input",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L136",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_input",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L160",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_input",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L176",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_input",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L185",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_matchcard_test_tsx",
+      "target": "components_matchcard_test_pastmatch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/MatchCard.test.tsx",
+      "source_location": "L217",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "react",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L1",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "user_event",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L2",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "vitest",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L3",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "web_src_components_predictionstab_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L4",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "web_src_components_matchcard_tsx",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_matchcard_match",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L5",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_makematch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L9",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_mockfetch",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L58",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_select",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L68",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L74",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_select",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L84",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L90",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_select",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L100",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L114",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L128",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L146",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L162",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_tworoundmatches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L184",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L202",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L218",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L232",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_select",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L258",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_select",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L267",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L273",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_select",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L285",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_matches",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L298",
+      "weight": 1.0
+    },
+    {
+      "source": "web_src_components_predictionstab_test_tsx",
+      "target": "components_predictionstab_test_select",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L308",
+      "weight": 1.0
+    },
+    {
+      "source": "components_predictionstab_test_tworoundmatches",
+      "target": "components_predictionstab_test_makematch",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "web/src/components/PredictionsTab.test.tsx",
+      "source_location": "L186",
+      "weight": 1.0
+    },
+    {
+      "source": "web_functions_api_path_ts",
+      "target": "api_path_onrequest",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "web/functions/api/[[path]].ts",
+      "source_location": "L3",
       "weight": 1.0
     },
     {
@@ -1623,6 +6466,39 @@
       "confidence_score": 1.0,
       "source_file": "api/src/auth/google.ts",
       "source_location": "L122",
+      "weight": 1.0
+    },
+    {
+      "source": "auth_router_test_requestwithcookie",
+      "target": "auth_jwt_signjwt",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/auth/router.test.ts",
+      "source_location": "L42",
+      "weight": 1.0
+    },
+    {
+      "source": "groups_router_test_request",
+      "target": "auth_jwt_signjwt",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L106",
+      "weight": 1.0
+    },
+    {
+      "source": "groups_router_test_requestgroupslist",
+      "target": "auth_jwt_signjwt",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "api/src/groups/router.test.ts",
+      "source_location": "L126",
       "weight": 1.0
     }
   ],
