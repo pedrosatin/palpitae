@@ -124,7 +124,6 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
                   <GroupCard
                     key={group.id}
                     group={group}
-                    currentUserId={user.id}
                     onClick={() => navigate(`/grupos/${group.id}`)}
                   />
                 ))}
