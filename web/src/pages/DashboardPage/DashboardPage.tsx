@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { config } from '../config'
-import Button from '../components/Button'
-import CreateGroupModal from '../components/CreateGroupModal'
-import GroupCard, { type GroupWithStats } from '../components/GroupCard'
-import Header from '../components/Header'
-import JoinGroupModal from '../components/JoinGroupModal'
+import { config } from '../../config'
+import Button from '../../components/Button'
+import CreateGroupModal from '../../components/CreateGroupModal'
+import GroupCard, { type GroupWithStats } from '../../components/GroupCard'
+import Header from '../../components/Header'
+import JoinGroupModal from '../../components/JoinGroupModal'
 import styles from './DashboardPage.module.css'
 
 interface User {

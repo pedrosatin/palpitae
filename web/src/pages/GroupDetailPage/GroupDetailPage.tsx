@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, Navigate } from 'react-router-dom'
-import { config } from '../config'
-import CreateGroupModal from '../components/CreateGroupModal'
-import Header from '../components/Header'
-import JoinGroupModal from '../components/JoinGroupModal'
-import PredictionsTab from '../components/PredictionsTab'
+import { config } from '../../config'
+import CreateGroupModal from '../../components/CreateGroupModal'
+import Header from '../../components/Header'
+import JoinGroupModal from '../../components/JoinGroupModal'
+import PredictionsTab from '../../components/PredictionsTab'
 import styles from './GroupDetailPage.module.css'
 
 interface User {
