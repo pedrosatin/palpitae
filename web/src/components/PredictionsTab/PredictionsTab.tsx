@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { config } from '../config'
-import MatchCard, { type Match, type Prediction } from './MatchCard'
+import { config } from '../../config'
+import MatchCard, { type Match, type Prediction } from '../MatchCard'
 import styles from './PredictionsTab.module.css'
 
 interface PredictionsTabProps {

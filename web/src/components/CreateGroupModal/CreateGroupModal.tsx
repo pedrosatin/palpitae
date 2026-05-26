@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { config } from '../config'
-import Button from './Button'
-import Modal from './Modal'
+import { config } from '../../config'
+import Button from '../Button'
+import Modal from '../Modal'
 import styles from './CreateGroupModal.module.css'
 
 interface Competition {

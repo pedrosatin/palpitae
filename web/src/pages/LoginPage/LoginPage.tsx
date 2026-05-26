@@ -1,5 +1,5 @@
-import Card from '../components/Card'
-import GoogleLoginButton from '../components/GoogleLoginButton'
+import Card from '../../components/Card'
+import GoogleLoginButton from '../../components/GoogleLoginButton'
 import styles from './LoginPage.module.css'
 
 /**

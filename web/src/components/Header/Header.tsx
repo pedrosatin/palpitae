@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import Button from './Button'
+import Button from '../Button'
 import styles from './Header.module.css'
 
 interface User {
