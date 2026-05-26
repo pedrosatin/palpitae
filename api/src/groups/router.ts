@@ -31,7 +31,7 @@ function generateInviteCode(): string {
  *       id: string
  *       name: string
  *       competition_id: string
- *       admin_id: string
+ *       is_admin: boolean
  *       created_at: string
  *       member_count: number
  *       user_position: number
@@ -94,7 +94,7 @@ router.get('/', requireAuth, async (c) => {
           id: group.id,
           name: group.name,
           competition_id: group.competition_id,
-          admin_id: group.admin_id,
+          is_admin: group.admin_id === userId,
           created_at: group.created_at,
           member_count: group.member_count,
           user_position: position,
@@ -264,7 +264,7 @@ router.post('/join', requireAuth, async (c) => {
  * The invite_code is included — visible only to the owner in the UI.
  *
  * Response:
- * { group: { id, name, competition_id, competition_name, admin_id, invite_code, created_at, member_count, user_position, user_points } }
+ * { group: { id, name, competition_id, competition_name, is_admin, invite_code, created_at, member_count, user_position, user_points } }
  */
 router.get('/:id', requireAuth, async (c) => {
   const userId = c.get('userId')
@@ -335,7 +335,16 @@ router.get('/:id', requireAuth, async (c) => {
 
   return c.json({
     group: {
-      ...group,
+      id: group.id,
+      name: group.name,
+      competition_id: group.competition_id,
+      competition_name: group.competition_name,
+      is_admin: group.admin_id === userId,
+      invite_code: group.invite_code,
+      created_at: group.created_at,
+      member_count: group.member_count,
+      user_points: group.user_points,
+      exact_hits: group.exact_hits,
       user_position,
     },
   })

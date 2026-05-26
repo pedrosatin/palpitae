@@ -22,7 +22,7 @@ interface GroupDetail {
   name: string
   competition_id: string
   competition_name: string | null
-  admin_id: string
+  is_admin: boolean
   invite_code: string
   created_at: string
   member_count: number
@@ -52,7 +52,7 @@ export default function GroupDetailPage({
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
 
-  const isAdmin = group?.admin_id === user.id
+  const isAdmin = group?.is_admin ?? false
 
   useEffect(() => {
     if (!groupId) return
