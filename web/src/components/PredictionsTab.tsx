@@ -10,6 +10,14 @@ interface PredictionsTabProps {
 
 type PredictionMap = Map<string, Prediction>
 
+function defaultRoundIndex(rounds: Map<string, Match[]>): number {
+  const keys = Array.from(rounds.keys())
+  const idx = keys.findIndex((k) =>
+    rounds.get(k)!.some((m) => m.status === 'scheduled' || m.status === 'live'),
+  )
+  return idx >= 0 ? idx : keys.length - 1
+}
+
 export default function PredictionsTab({
   groupId,
   competitionId,
@@ -18,6 +26,7 @@ export default function PredictionsTab({
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [roundIndex, setRoundIndex] = useState(0)
 
   useEffect(() => {
     setLoading(true)
@@ -48,6 +57,14 @@ export default function PredictionsTab({
         const map = new Map<string, Prediction>()
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
         setPredictions(map)
+
+        // compute rounds here so we can pick the default
+        const r = new Map<string, Match[]>()
+        for (const m of matchesData.matches) {
+          if (!r.has(m.round)) r.set(m.round, [])
+          r.get(m.round)!.push(m)
+        }
+        setRoundIndex(defaultRoundIndex(r))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -94,24 +111,62 @@ export default function PredictionsTab({
     rounds.get(key)!.push(m)
   }
 
+  const roundKeys = Array.from(rounds.keys())
+  const safeIndex = Math.min(roundIndex, roundKeys.length - 1)
+  const selectedRound = roundKeys[safeIndex]
+  const roundMatches = rounds.get(selectedRound) ?? []
+
+  function prev() {
+    setRoundIndex((i) => Math.max(0, i - 1))
+  }
+
+  function next() {
+    setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
+  }
+
   return (
     <div className={styles.root}>
-      {Array.from(rounds.entries()).map(([round, roundMatches]) => (
-        <section key={round} className={styles.round}>
-          <h3 className={styles.roundTitle}>Rodada {round}</h3>
-          <div className={styles.matchList}>
-            {roundMatches.map((match) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                prediction={predictions.get(match.id)}
-                groupId={groupId}
-                onSaved={handleSaved}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      <div className={styles.roundNav}>
+        <button
+          className={styles.navBtn}
+          onClick={prev}
+          disabled={safeIndex === 0}
+          aria-label="Rodada anterior"
+        >
+          ‹ Anterior
+        </button>
+        <select
+          className={styles.roundSelect}
+          value={selectedRound}
+          onChange={(e) => setRoundIndex(roundKeys.indexOf(e.target.value))}
+        >
+          {roundKeys.map((r) => (
+            <option key={r} value={r}>
+              Rodada {r}
+            </option>
+          ))}
+        </select>
+        <button
+          className={styles.navBtn}
+          onClick={next}
+          disabled={safeIndex === roundKeys.length - 1}
+          aria-label="Próxima rodada"
+        >
+          Próxima ›
+        </button>
+      </div>
+
+      <div className={styles.matchList}>
+        {roundMatches.map((match) => (
+          <MatchCard
+            key={match.id}
+            match={match}
+            prediction={predictions.get(match.id)}
+            groupId={groupId}
+            onSaved={handleSaved}
+          />
+        ))}
+      </div>
     </div>
   )
 }
