@@ -5,7 +5,8 @@ compatibility_date = "2025-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "palpitae"
-database_id = "ffd7a7ed-3434-4db8-a505-b74c1cf79d6a" 
+database_id = "ffd7a7ed-3434-4db8-a505-b74c1cf79d6a"
+migrations_dir = "migrations"
 
 [vars]
 BASE_URL = "https://api.palpitae.com.br"

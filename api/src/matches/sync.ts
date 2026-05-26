@@ -184,16 +184,18 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     const status = mapStatus(m.status)
     const phase = m.stage ?? null
     const round = m.matchday !== null ? String(m.matchday) : (m.group ?? '1')
+    const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
 
     await db
       .prepare(
-        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (external_id, provider) DO UPDATE SET
            status     = excluded.status,
            home_score = excluded.home_score,
            away_score = excluded.away_score,
-           start_time = excluded.start_time`,
+           start_time = excluded.start_time,
+           group_name = excluded.group_name`,
       )
       .bind(
         crypto.randomUUID(),
@@ -208,6 +210,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         m.score.fullTime.away ?? null,
         phase,
         round,
+        groupName,
       )
       .run()
 
