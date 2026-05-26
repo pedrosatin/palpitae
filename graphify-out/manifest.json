@@ -127,6 +127,10 @@
     "mtime": 1779748598.1478555,
     "hash": "a56b3e8720d367c9c33dec5175361208"
   },
+  "/home/satin/Work/palpitae/web/src/pages/GroupDetailPage.test.tsx": {
+    "mtime": 1779830498.8015754,
+    "hash": "54913725dae4266c81307ff3d311ecd7"
+  },
   "/home/satin/Work/palpitae/web/src/components/GoogleLoginButton.tsx": {
     "mtime": 1779062682.597864,
     "hash": "c9d4c7ac44f425781cfe0d9943b44d86"
@@ -198,6 +202,14 @@
   "/home/satin/Work/palpitae/web/src/components/PredictionsTab.tsx": {
     "mtime": 1779830005.175998,
     "hash": "4efec481bff14bde2367e9792e70d1fc"
+  },
+  "/home/satin/Work/palpitae/web/src/components/MatchCard.test.tsx": {
+    "mtime": 1779830346.2265248,
+    "hash": "762dfaeaebd08decd6340e9799ae1e9d"
+  },
+  "/home/satin/Work/palpitae/web/src/components/PredictionsTab.test.tsx": {
+    "mtime": 1779830411.123969,
+    "hash": "5010e3085b9aea36c569aee140d51ddd"
   },
   "/home/satin/Work/palpitae/web/functions/api/[[path]].ts": {
     "mtime": 1779199909.4087186,
