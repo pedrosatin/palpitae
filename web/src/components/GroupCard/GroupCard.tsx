@@ -4,7 +4,7 @@ import styles from './GroupCard.module.css'
 export interface GroupWithStats {
   id: string
   name: string
-  admin_id: string
+  is_admin: boolean
   competition_id: string
   created_at: string
   member_count: number
@@ -14,16 +14,11 @@ export interface GroupWithStats {
 
 interface GroupCardProps {
   group: GroupWithStats
-  currentUserId: string
   onClick: () => void
 }
 
-export default function GroupCard({
-  group,
-  currentUserId,
-  onClick,
-}: GroupCardProps) {
-  const isOwner = group.admin_id === currentUserId
+export default function GroupCard({ group, onClick }: GroupCardProps) {
+  const isOwner = group.is_admin
 
   return (
     <Card hoverable className={styles.card}>
