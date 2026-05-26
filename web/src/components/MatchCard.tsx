@@ -10,6 +10,7 @@ export interface Match {
   away_score: number | null
   phase: string
   round: string
+  group_name: string | null
   home_team_id: string
   home_team_name: string
   home_team_short_name: string

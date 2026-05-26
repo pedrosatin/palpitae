@@ -124,6 +124,20 @@ export default function PredictionsTab({
     setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
   }
 
+  function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
+    const result: [string | null, Match[]][] = []
+    for (const m of ms) {
+      const key = m.group_name ?? null
+      const last = result[result.length - 1]
+      if (last && last[0] === key) {
+        last[1].push(m)
+      } else {
+        result.push([key, [m]])
+      }
+    }
+    return result
+  }
+
   return (
     <div className={styles.root}>
       <div className={styles.roundNav}>
@@ -156,17 +170,24 @@ export default function PredictionsTab({
         </button>
       </div>
 
-      <div className={styles.matchList}>
-        {roundMatches.map((match) => (
-          <MatchCard
-            key={match.id}
-            match={match}
-            prediction={predictions.get(match.id)}
-            groupId={groupId}
-            onSaved={handleSaved}
-          />
-        ))}
-      </div>
+      {groupedRoundMatches(roundMatches).map(([groupName, groupMatches]) => (
+        <div key={groupName ?? '__no_group'} className={styles.matchGroup}>
+          {groupName && (
+            <h3 className={styles.groupHeader}>Grupo {groupName}</h3>
+          )}
+          <div className={styles.matchList}>
+            {groupMatches.map((match) => (
+              <MatchCard
+                key={match.id}
+                match={match}
+                prediction={predictions.get(match.id)}
+                groupId={groupId}
+                onSaved={handleSaved}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

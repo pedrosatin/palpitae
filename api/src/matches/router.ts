@@ -47,6 +47,7 @@ router.get('/', async (c) => {
       m.away_score,
       m.phase,
       m.round,
+      m.group_name,
       ht.id         AS home_team_id,
       ht.name       AS home_team_name,
       ht.short_name AS home_team_short_name,
@@ -73,7 +74,7 @@ router.get('/', async (c) => {
     params.push(status)
   }
 
-  query += ` ORDER BY m.start_time ASC`
+  query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC`
 
   // Cache strategy based on status:
   //   live     → 30s (scores change frequently)
@@ -90,7 +91,7 @@ router.get('/', async (c) => {
   }
 
   try {
-    const result = await db.prepare(query).bind(...params).all()
+    const result = await db.prepare(query).bind(...(params as string[])).all()
 
     // Auto-sync: if no matches found, try fetching from football-data.org
     if (result.results.length === 0) {
@@ -111,7 +112,7 @@ router.get('/', async (c) => {
             })
 
             // Re-query after sync
-            const synced = await db.prepare(query).bind(...params).all()
+            const synced = await db.prepare(query).bind(...(params as string[])).all()
             return c.json({ matches: synced.results })
           } catch (syncError) {
             console.error('Auto-sync falhou, retornando vazio:', syncError)
