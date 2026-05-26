@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { config } from '../config'
+import { config } from '../../config'
 import styles from './MatchCard.module.css'
 
 export interface Match {

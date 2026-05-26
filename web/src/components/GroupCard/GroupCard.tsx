@@ -1,4 +1,4 @@
-import Card from './Card'
+import Card from '../Card'
 import styles from './GroupCard.module.css'
 
 export interface GroupWithStats {

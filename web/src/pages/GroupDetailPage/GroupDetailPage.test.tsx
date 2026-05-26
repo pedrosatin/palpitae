@@ -6,13 +6,13 @@ import GroupDetailPage from './GroupDetailPage'
 
 // ─── Mock heavy child components ───────────────────────────────────────────
 
-vi.mock('../components/PredictionsTab', () => ({
+vi.mock('../../components/PredictionsTab', () => ({
   default: ({ groupId }: { groupId: string }) => (
     <div data-testid="predictions-tab">PredictionsTab:{groupId}</div>
   ),
 }))
 
-vi.mock('../components/Header', () => ({
+vi.mock('../../components/Header', () => ({
   default: ({
     onCreateGroup,
     onJoinGroup,
@@ -27,7 +27,7 @@ vi.mock('../components/Header', () => ({
   ),
 }))
 
-vi.mock('../components/CreateGroupModal', () => ({
+vi.mock('../../components/CreateGroupModal', () => ({
   default: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? (
       <div role="dialog" aria-label="criar grupo">
@@ -36,7 +36,7 @@ vi.mock('../components/CreateGroupModal', () => ({
     ) : null,
 }))
 
-vi.mock('../components/JoinGroupModal', () => ({
+vi.mock('../../components/JoinGroupModal', () => ({
   default: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? (
       <div role="dialog" aria-label="entrar em grupo">

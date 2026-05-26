@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import PredictionsTab from './PredictionsTab'
-import { type Match } from './MatchCard'
+import { type Match } from '../MatchCard'
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
