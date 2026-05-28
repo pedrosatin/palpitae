@@ -4,6 +4,7 @@ import { config } from '../../config'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
+import BracketTab from '../../components/BracketTab/BracketTab'
 import PredictionsTab from '../../components/PredictionsTab'
 import styles from './GroupDetailPage.module.css'
 
@@ -31,7 +32,7 @@ interface GroupDetail {
   exact_hits: number
 }
 
-type Tab = 'predictions' | 'leaderboard'
+type Tab = 'predictions' | 'leaderboard' | 'bracket'
 
 interface GroupDetailPageProps {
   user: User
@@ -211,6 +212,12 @@ export default function GroupDetailPage({
           >
             Classificação
           </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'bracket' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('bracket')}
+          >
+            Chaveamento
+          </button>
         </div>
 
         <div className={styles.tabContent}>
@@ -224,6 +231,12 @@ export default function GroupDetailPage({
             <div className={styles.placeholder}>
               <p>A classificação do grupo aparecerá aqui em breve.</p>
             </div>
+          )}
+          {activeTab === 'bracket' && (
+            <BracketTab
+              groupId={groupId}
+              competitionId={group.competition_id}
+            />
           )}
         </div>
       </main>
