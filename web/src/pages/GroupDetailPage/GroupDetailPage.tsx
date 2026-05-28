@@ -10,6 +10,7 @@ import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
 import BracketTab from '../../components/BracketTab/BracketTab'
+import GroupPicksTab from '../../components/GroupPicksTab'
 import PredictionsTab from '../../components/PredictionsTab'
 import styles from './GroupDetailPage.module.css'
 
@@ -37,7 +38,7 @@ interface GroupDetail {
   exact_hits: number
 }
 
-const TABS = ['predictions', 'leaderboard', 'bracket'] as const
+const TABS = ['predictions', 'group-picks', 'leaderboard', 'bracket'] as const
 type Tab = (typeof TABS)[number]
 const DEFAULT_TAB: Tab = 'predictions'
 
@@ -234,6 +235,12 @@ export default function GroupDetailPage({
             Previsões
           </button>
           <button
+            className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('group-picks')}
+          >
+            Palpites do grupo
+          </button>
+          <button
             className={`${styles.tab} ${activeTab === 'leaderboard' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('leaderboard')}
           >
@@ -250,6 +257,12 @@ export default function GroupDetailPage({
         <div className={styles.tabContent}>
           {activeTab === 'predictions' && (
             <PredictionsTab
+              groupId={groupId}
+              competitionId={group.competition_id}
+            />
+          )}
+          {activeTab === 'group-picks' && (
+            <GroupPicksTab
               groupId={groupId}
               competitionId={group.competition_id}
             />
