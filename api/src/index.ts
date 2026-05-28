@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { authRouter } from './auth/router'
+import { bracketRouter } from './bracket/router'
 import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
 import { matchesRouter } from './matches/router'
@@ -28,6 +29,7 @@ app.use(
 )
 
 app.route('/auth', authRouter)
+app.route('/bracket', bracketRouter)
 app.route('/competitions', competitionsRouter)
 app.route('/groups', groupsRouter)
 app.route('/matches', matchesRouter)
