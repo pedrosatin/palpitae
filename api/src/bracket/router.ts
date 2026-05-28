@@ -157,57 +157,67 @@ router.get('/', requireAuth, async (c) => {
     .bind(groupId, competitionId)
     .all<{ round: string; position: number; user_id: string; team_id: string; team_name: string; team_short: string; team_logo: string | null; user_display: string }>()
 
-  // Build lookup maps
-  const myPicks = new Map<string, (typeof myPicksResult.results)[number]>()
-  for (const p of myPicksResult.results) {
-    myPicks.set(`${p.round}:${p.position}`, p)
-  }
-
-  const allPicksBySlot = new Map<string, (typeof allPicksResult.results)[number][]>()
-  for (const p of allPicksResult.results) {
-    const key = `${p.round}:${p.position}`
-    if (!allPicksBySlot.has(key)) allPicksBySlot.set(key, [])
-    allPicksBySlot.get(key)!.push(p)
-  }
-
   const now = new Date().toISOString()
 
-  // Group matches by phase into structured round data
-  const roundMap = new Map<string, { position: number; match: Record<string, unknown>; locked: boolean; my_pick: unknown; members_picks: unknown[] }[]>()
+  // Build slots keyed by phase → position. A slot may originate from a real
+  // match, from the user's pick, and/or from other members' picks — and in the
+  // pre-tournament prediction phase there are NO knockout matches at all, so
+  // picks must be able to stand on their own (otherwise they'd vanish on reload).
+  type Slot = {
+    position: number
+    match: Record<string, unknown> | null
+    locked: boolean
+    my_pick: unknown
+    members_picks: unknown[]
+  }
+  const roundMap = new Map<string, Map<number, Slot>>()
 
+  function ensureSlot(phase: string, position: number): Slot {
+    if (!roundMap.has(phase)) roundMap.set(phase, new Map())
+    const byPos = roundMap.get(phase)!
+    let slot = byPos.get(position)
+    if (!slot) {
+      slot = { position, match: null, locked: false, my_pick: null, members_picks: [] }
+      byPos.set(position, slot)
+    }
+    return slot
+  }
+
+  // Slots backed by a real knockout match
   for (const m of matchesResult.results) {
-    const phase = m.phase as string
-    const position = m.position as number
-    if (!roundMap.has(phase)) roundMap.set(phase, [])
+    const slot = ensureSlot(m.phase as string, m.position as number)
+    slot.match = {
+      id: m.id,
+      start_time: m.start_time,
+      status: m.status,
+      home_score: m.home_score,
+      away_score: m.away_score,
+      home_team_id: m.home_team_id,
+      home_team_name: m.home_team_name,
+      home_team_short: m.home_team_short,
+      home_team_logo: m.home_team_logo,
+      away_team_id: m.away_team_id,
+      away_team_name: m.away_team_name,
+      away_team_short: m.away_team_short,
+      away_team_logo: m.away_team_logo,
+    }
+    slot.locked = (m.start_time as string) <= now
+  }
 
-    const key = `${phase}:${position}`
-    roundMap.get(phase)!.push({
-      position,
-      match: {
-        id: m.id,
-        start_time: m.start_time,
-        status: m.status,
-        home_score: m.home_score,
-        away_score: m.away_score,
-        home_team_id: m.home_team_id,
-        home_team_name: m.home_team_name,
-        home_team_short: m.home_team_short,
-        home_team_logo: m.home_team_logo,
-        away_team_id: m.away_team_id,
-        away_team_name: m.away_team_name,
-        away_team_short: m.away_team_short,
-        away_team_logo: m.away_team_logo,
-      },
-      locked: (m.start_time as string) <= now,
-      my_pick: myPicks.get(key) ?? null,
-      members_picks: allPicksBySlot.get(key) ?? [],
-    })
+  // Attach the current user's picks (creating TBD slots as needed)
+  for (const p of myPicksResult.results) {
+    ensureSlot(p.round, p.position).my_pick = p
+  }
+
+  // Attach all members' picks (creating TBD slots as needed)
+  for (const p of allPicksResult.results) {
+    ensureSlot(p.round, p.position).members_picks.push(p)
   }
 
   const rounds: Partial<Record<KnockoutPhase, unknown[]>> = {}
   for (const phase of KNOCKOUT_PHASES) {
-    const data = roundMap.get(phase)
-    if (data) rounds[phase] = data
+    const byPos = roundMap.get(phase)
+    if (byPos) rounds[phase] = [...byPos.values()].sort((a, b) => a.position - b.position)
   }
 
   return c.json({ teams: teamsResult.results, team_groups: teamGroups, rounds, round_points: ROUND_POINTS })

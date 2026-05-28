@@ -174,6 +174,41 @@ describe('getAvailableTeams – cascade from previous round', () => {
   })
 })
 
+describe('getAvailableTeams – THIRD_PLACE (semi losers)', () => {
+  const teams = [team('BRA'), team('ARG'), team('FRA'), team('GER')]
+
+  it('offers the semi losers, distinct from the final (semi winners)', () => {
+    // Left semi: BRA beat ARG. Right semi: FRA beat GER.
+    const picks = new Map<string, Pick>([
+      ['QUARTER_FINALS:1', pick('BRA')],
+      ['QUARTER_FINALS:2', pick('ARG')],
+      ['QUARTER_FINALS:3', pick('FRA')],
+      ['QUARTER_FINALS:4', pick('GER')],
+      ['SEMI_FINALS:1', pick('BRA')],
+      ['SEMI_FINALS:2', pick('FRA')],
+    ])
+    const third = getAvailableTeams('THIRD_PLACE', 1, null, picks, teams, {})
+    const final = getAvailableTeams('FINAL', 1, null, picks, teams, {})
+    expect(third.kind).toBe('cascade')
+    expect(final.kind).toBe('cascade')
+    if (third.kind === 'cascade') {
+      expect(third.teams.map((t) => t.id).sort()).toEqual(['ARG', 'GER'])
+    }
+    if (final.kind === 'cascade') {
+      expect(final.teams.map((t) => t.id).sort()).toEqual(['BRA', 'FRA'])
+    }
+  })
+
+  it('waits until at least one semi winner is decided', () => {
+    const picks = new Map<string, Pick>([
+      ['QUARTER_FINALS:1', pick('BRA')],
+      ['QUARTER_FINALS:2', pick('ARG')],
+    ])
+    const result = getAvailableTeams('THIRD_PLACE', 1, null, picks, teams, {})
+    expect(result.kind).toBe('waiting')
+  })
+})
+
 // ─── clearInvalidatedPicks ─────────────────────────────────────────────────
 
 describe('clearInvalidatedPicks', () => {
@@ -221,6 +256,29 @@ describe('clearInvalidatedPicks', () => {
     expect(updated.LAST_16?.[0].my_pick).toBeNull()
     expect(updated.LAST_16?.[1].my_pick?.team_id).toBe('GER')
     expect(updated.QUARTER_FINALS?.[0].my_pick).toBeNull()
+  })
+
+  it('keeps a THIRD_PLACE pick that is a semi loser, clears it when it is not', () => {
+    const base: BracketData['rounds'] = {
+      QUARTER_FINALS: [
+        slot(1, { my_pick: pick('BRA') }),
+        slot(2, { my_pick: pick('ARG') }),
+        slot(3, { my_pick: pick('FRA') }),
+        slot(4, { my_pick: pick('GER') }),
+      ],
+      SEMI_FINALS: [
+        slot(1, { my_pick: pick('BRA') }), // ARG is the loser
+        slot(2, { my_pick: pick('FRA') }), // GER is the loser
+      ],
+      THIRD_PLACE: [slot(1, { my_pick: pick('ARG') })],
+    }
+    // ARG is a valid semi loser → kept
+    const kept = clearInvalidatedPicks(base, 'SEMI_FINALS', 1, 'BRA')
+    expect(kept.THIRD_PLACE?.[0].my_pick?.team_id).toBe('ARG')
+
+    // Now the left semi winner flips to ARG → ARG advanced, so it can't play for 3rd → cleared
+    const flipped = clearInvalidatedPicks(base, 'SEMI_FINALS', 1, 'ARG')
+    expect(flipped.THIRD_PLACE?.[0].my_pick).toBeNull()
   })
 
   it('does not clear when prev round has no picks at all (initial editing)', () => {
