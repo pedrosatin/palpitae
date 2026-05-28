@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams, Navigate } from 'react-router-dom'
+import {
+  useNavigate,
+  useParams,
+  useSearchParams,
+  Navigate,
+} from 'react-router-dom'
 import { config } from '../../config'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
@@ -32,7 +37,13 @@ interface GroupDetail {
   exact_hits: number
 }
 
-type Tab = 'predictions' | 'leaderboard' | 'bracket'
+const TABS = ['predictions', 'leaderboard', 'bracket'] as const
+type Tab = (typeof TABS)[number]
+const DEFAULT_TAB: Tab = 'predictions'
+
+function parseTab(value: string | null): Tab {
+  return TABS.includes(value as Tab) ? (value as Tab) : DEFAULT_TAB
+}
 
 interface GroupDetailPageProps {
   user: User
@@ -45,10 +56,26 @@ export default function GroupDetailPage({
 }: GroupDetailPageProps) {
   const navigate = useNavigate()
   const { groupId } = useParams<{ groupId: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [group, setGroup] = useState<GroupDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<Tab>('predictions')
+  const activeTab = parseTab(searchParams.get('tab'))
+
+  function setActiveTab(tab: Tab) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        if (tab === DEFAULT_TAB) {
+          next.delete('tab')
+        } else {
+          next.set('tab', tab)
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
