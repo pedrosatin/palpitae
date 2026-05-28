@@ -12,6 +12,6 @@ CREATE TABLE IF NOT EXISTS bracket_picks (
   UNIQUE (group_id, user_id, round, position)
 );
 
-CREATE INDEX IF NOT EXISTS idx_bracket_picks_group_user ON bracket_picks(group_id, user_id);jhkjhkjhsdserew
+CREATE INDEX IF NOT EXISTS idx_bracket_picks_group_user ON bracket_picks(group_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_bracket_picks_group ON bracket_picks(group_id);
 CREATE INDEX IF NOT EXISTS idx_bracket_picks_competition ON bracket_picks(competition_id);
