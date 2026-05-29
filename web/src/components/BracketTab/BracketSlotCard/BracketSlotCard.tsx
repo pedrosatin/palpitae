@@ -11,6 +11,8 @@ interface BracketSlotCardProps {
   points: number
   onPick: (position: number, round: Round, teamId: string) => void
   saving: boolean
+  /** Force read-only rendering (e.g. when viewing another member's bracket) */
+  readOnly?: boolean
 }
 
 export default function BracketSlotCard({
@@ -21,9 +23,10 @@ export default function BracketSlotCard({
   points,
   onPick,
   saving,
+  readOnly = false,
 }: BracketSlotCardProps) {
   const match = slot?.match ?? null
-  const locked = slot?.locked ?? false
+  const locked = readOnly || (slot?.locked ?? false)
   const myPick = slot?.my_pick ?? null
   const membersCount = slot?.members_picks.length ?? 0
 
@@ -59,7 +62,7 @@ export default function BracketSlotCard({
         locked={locked}
       />
 
-      {membersCount > 0 && (
+      {!readOnly && membersCount > 0 && (
         <div className={styles.slotPicksCount}>
           {membersCount} palpite{membersCount > 1 ? 's' : ''}
         </div>
