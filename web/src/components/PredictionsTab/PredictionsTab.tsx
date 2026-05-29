@@ -27,6 +27,13 @@ export default function PredictionsTab({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
+  // Current input drafts reported by each MatchCard, so we can "Salvar todos".
+  const [drafts, setDrafts] = useState<Map<string, { home: string; away: string }>>(
+    new Map(),
+  )
+  const [savingAll, setSavingAll] = useState(false)
+  const [savedAll, setSavedAll] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -87,6 +94,19 @@ export default function PredictionsTab({
     })
   }
 
+  function handleDraftChange(matchId: string, home: string, away: string) {
+    setDrafts((prev) => {
+      const next = new Map(prev)
+      next.set(matchId, { home, away })
+      return next
+    })
+  }
+
+  function isLocked(match: Match): boolean {
+    const p = predictions.get(match.id)
+    return Boolean(p?.locked) || new Date() >= new Date(match.start_time)
+  }
+
   if (loading) {
     return <p className={styles.loading}>Carregando jogos...</p>
   }
@@ -123,6 +143,75 @@ export default function PredictionsTab({
   function next() {
     setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
   }
+
+  // Editable, non-empty drafts of the visible round that differ from what's saved.
+  function collectRoundDrafts() {
+    const out: Array<{
+      match_id: string
+      predicted_home_score: number
+      predicted_away_score: number
+    }> = []
+    for (const m of roundMatches) {
+      if (isLocked(m)) continue
+      const d = drafts.get(m.id)
+      if (!d || d.home === '' || d.away === '') continue
+      const home = Number(d.home)
+      const away = Number(d.away)
+      const p = predictions.get(m.id)
+      const changed =
+        !p ||
+        home !== p.predicted_home_score ||
+        away !== p.predicted_away_score
+      if (changed) {
+        out.push({
+          match_id: m.id,
+          predicted_home_score: home,
+          predicted_away_score: away,
+        })
+      }
+    }
+    return out
+  }
+
+  async function handleSaveAll() {
+    const toSave = collectRoundDrafts()
+    if (toSave.length === 0) return
+
+    setSavingAll(true)
+    setSavedAll(false)
+    setBulkError(null)
+
+    try {
+      const res = await fetch(`${config.apiUrl}/predictions/bulk`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_id: groupId, predictions: toSave }),
+      })
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? 'Erro ao salvar palpites')
+      }
+
+      const data = (await res.json()) as { saved: string[] }
+      const savedSet = new Set(data.saved)
+      for (const p of toSave) {
+        if (savedSet.has(p.match_id)) {
+          handleSaved(p.match_id, p.predicted_home_score, p.predicted_away_score)
+        }
+      }
+
+      setSavedAll(true)
+      setTimeout(() => setSavedAll(false), 2500)
+    } catch (e) {
+      setBulkError((e as Error).message)
+    } finally {
+      setSavingAll(false)
+    }
+  }
+
+  const pendingCount = collectRoundDrafts().length
 
   function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
     const result: [string | null, Match[]][] = []
@@ -170,6 +259,23 @@ export default function PredictionsTab({
         </button>
       </div>
 
+      <div className={styles.saveAllBar}>
+        {bulkError && <span className={styles.error}>{bulkError}</span>}
+        <button
+          className={`${styles.saveAllBtn} ${savedAll ? styles.saveAllBtnSaved : ''}`}
+          onClick={handleSaveAll}
+          disabled={pendingCount === 0 || savingAll}
+        >
+          {savingAll
+            ? 'Salvando...'
+            : savedAll
+              ? 'Tudo salvo!'
+              : pendingCount > 0
+                ? `Salvar todos (${pendingCount})`
+                : 'Salvar todos'}
+        </button>
+      </div>
+
       {groupedRoundMatches(roundMatches).map(([groupName, groupMatches]) => (
         <div key={groupName ?? '__no_group'} className={styles.matchGroup}>
           {groupName && (
@@ -183,6 +289,7 @@ export default function PredictionsTab({
                 prediction={predictions.get(match.id)}
                 groupId={groupId}
                 onSaved={handleSaved}
+                onDraftChange={handleDraftChange}
               />
             ))}
           </div>

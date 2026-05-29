@@ -61,6 +61,7 @@ export type AvailableTeamsResult =
   | { kind: 'all'; grouped: Map<string, Team[]> } // R32 TBD: all teams grouped by group letter
 
 export interface BracketData {
+  self_user_id: string
   teams: Team[]
   team_groups: Record<string, string> // teamId → group letter (e.g. 'A')
   rounds: Partial<Record<Round, SlotData[]>>

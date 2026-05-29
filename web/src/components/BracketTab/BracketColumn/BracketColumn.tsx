@@ -15,6 +15,7 @@ interface BracketColumnProps {
   onPick: (position: number, round: Round, teamId: string) => void
   savingKey: string | null
   reversed?: boolean
+  readOnly?: boolean
 }
 
 // roundIndex: 0=R32, 1=R16, 2=QF, 3=SF
@@ -38,6 +39,7 @@ export default function BracketColumn({
   onPick,
   savingKey,
   reversed = false,
+  readOnly = false,
 }: BracketColumnProps) {
   const slotHeight = SLOT_BASE_HEIGHT * Math.pow(2, ROUND_INDEX[round])
   const totalHeight = positions.length * slotHeight
@@ -74,6 +76,7 @@ export default function BracketColumn({
                 points={points}
                 onPick={onPick}
                 saving={isSaving}
+                readOnly={readOnly}
               />
             </div>
           </div>

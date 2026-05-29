@@ -36,6 +36,8 @@ interface MatchCardProps {
   prediction: Prediction | undefined
   groupId: string
   onSaved: (matchId: string, home: number, away: number) => void
+  /** Reports the current input draft up so a parent can offer "Salvar todos". */
+  onDraftChange?: (matchId: string, home: string, away: string) => void
 }
 
 function formatDate(iso: string): string {
@@ -53,6 +55,7 @@ export default function MatchCard({
   prediction,
   groupId,
   onSaved,
+  onDraftChange,
 }: MatchCardProps) {
   const locked =
     Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)
@@ -107,8 +110,18 @@ export default function MatchCard({
     setTimeout(() => setSaved(false), 2500)
   }
 
-  function handleScoreInput(value: string, setter: (v: string) => void) {
-    if (value === '' || /^\d{1,2}$/.test(value)) setter(value)
+  function updateHome(v: string) {
+    setHome(v)
+    onDraftChange?.(match.id, v, away)
+  }
+
+  function updateAway(v: string) {
+    setAway(v)
+    onDraftChange?.(match.id, home, v)
+  }
+
+  function handleScoreInput(value: string, update: (v: string) => void) {
+    if (value === '' || /^\d{1,2}$/.test(value)) update(value)
   }
 
   return (
@@ -196,7 +209,7 @@ export default function MatchCard({
               <button
                 className={`${styles.stepBtn} ${styles.stepBtnDec}`}
                 onClick={() =>
-                  setHome(
+                  updateHome(
                     String(Math.max(0, (home === '' ? 0 : Number(home)) - 1)),
                   )
                 }
@@ -214,13 +227,13 @@ export default function MatchCard({
                 max={99}
                 placeholder="0"
                 value={home}
-                onChange={(e) => handleScoreInput(e.target.value, setHome)}
+                onChange={(e) => handleScoreInput(e.target.value, updateHome)}
                 aria-label={`Placar ${match.home_team_name}`}
               />
               <button
                 className={`${styles.stepBtn} ${styles.stepBtnInc}`}
                 onClick={() =>
-                  setHome(
+                  updateHome(
                     String(Math.min(99, (home === '' ? 0 : Number(home)) + 1)),
                   )
                 }
@@ -237,7 +250,7 @@ export default function MatchCard({
               <button
                 className={`${styles.stepBtn} ${styles.stepBtnDec}`}
                 onClick={() =>
-                  setAway(
+                  updateAway(
                     String(Math.max(0, (away === '' ? 0 : Number(away)) - 1)),
                   )
                 }
@@ -255,13 +268,13 @@ export default function MatchCard({
                 max={99}
                 placeholder="0"
                 value={away}
-                onChange={(e) => handleScoreInput(e.target.value, setAway)}
+                onChange={(e) => handleScoreInput(e.target.value, updateAway)}
                 aria-label={`Placar ${match.away_team_name}`}
               />
               <button
                 className={`${styles.stepBtn} ${styles.stepBtnInc}`}
                 onClick={() =>
-                  setAway(
+                  updateAway(
                     String(Math.min(99, (away === '' ? 0 : Number(away)) + 1)),
                   )
                 }

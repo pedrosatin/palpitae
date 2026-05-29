@@ -30,6 +30,8 @@ export default function BracketTab({
   const [error, setError] = useState<string | null>(null)
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // user_id of the member whose bracket is being viewed; null = my own (editable)
+  const [viewedMember, setViewedMember] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -48,7 +50,7 @@ export default function BracketTab({
   }, [groupId, competitionId])
 
   async function handlePick(position: number, round: Round, teamId: string) {
-    if (!data) return
+    if (!data || viewedMember !== null) return
     const key = `${round}:${position}`
     setSavingKey(key)
     setSaveError(null)
@@ -108,7 +110,53 @@ export default function BracketTab({
   if (error) return <div className={styles.errorMessage}>{error}</div>
   if (!data) return null
 
-  const { teams, team_groups, rounds, round_points } = data
+  const { teams, team_groups, rounds: rawRounds, round_points } = data
+  const viewingOther = viewedMember !== null
+
+  // Distinct members who have at least one pick (excluding myself) — the people
+  // whose brackets can be viewed.
+  const memberOptions = (() => {
+    const byId = new Map<string, string>()
+    for (const slots of Object.values(rawRounds)) {
+      for (const slot of slots ?? []) {
+        for (const mp of slot.members_picks) {
+          if (mp.user_id !== data.self_user_id) byId.set(mp.user_id, mp.user_display)
+        }
+      }
+    }
+    return [...byId.entries()]
+      .map(([user_id, display]) => ({ user_id, display }))
+      .sort((a, b) => a.display.localeCompare(b.display))
+  })()
+
+  const viewedDisplay = memberOptions.find((m) => m.user_id === viewedMember)?.display
+
+  // When viewing another member, project their picks onto each slot's `my_pick`
+  // and force the slot locked (read-only). The whole cascade/render pipeline then
+  // works unchanged, since it reads `my_pick`/`locked`.
+  const rounds: BracketData['rounds'] = viewingOther
+    ? Object.fromEntries(
+        (Object.entries(rawRounds) as [Round, SlotData[]][]).map(([round, slots]) => [
+          round,
+          slots.map((slot) => {
+            const mp = slot.members_picks.find((m) => m.user_id === viewedMember)
+            return {
+              ...slot,
+              locked: true,
+              my_pick: mp
+                ? {
+                    team_id: mp.team_id,
+                    team_name: mp.team_name,
+                    team_short: mp.team_short,
+                    team_logo: mp.team_logo,
+                  }
+                : null,
+            }
+          }),
+        ]),
+      )
+    : rawRounds
+
   const myPicksMap = buildMyPicksMap(rounds)
 
   function buildSlotMap(round: Round): Map<number, SlotData> {
@@ -150,6 +198,34 @@ export default function BracketTab({
     <div className={styles.root}>
       {saveError && <div className={styles.saveError}>{saveError}</div>}
 
+      {memberOptions.length > 0 && (
+        <div className={styles.viewBar}>
+          <label className={styles.viewLabel} htmlFor="bracket-view-member">
+            Ver chaveamento de:
+          </label>
+          <select
+            id="bracket-view-member"
+            className={styles.viewSelect}
+            value={viewedMember ?? ''}
+            onChange={(e) => setViewedMember(e.target.value || null)}
+          >
+            <option value="">Meu chaveamento (editável)</option>
+            {memberOptions.map((m) => (
+              <option key={m.user_id} value={m.user_id}>
+                {m.display}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {viewingOther && (
+        <div className={styles.viewNotice}>
+          Visualizando o chaveamento de <strong>{viewedDisplay}</strong> — somente
+          leitura.
+        </div>
+      )}
+
       <div className={styles.info}>
         <span>
           Pontuação: 16 avos 1pt · Oitavas 2pt · Quartas 4pt · Semi 8pt · Final
@@ -171,6 +247,7 @@ export default function BracketTab({
               points={round_points[round]}
               onPick={handlePick}
               savingKey={savingKey}
+              readOnly={viewingOther}
             />
           ))}
         </div>
@@ -186,6 +263,7 @@ export default function BracketTab({
               points={round_points['FINAL']}
               onPick={handlePick}
               saving={savingKey === 'FINAL:1'}
+              readOnly={viewingOther}
             />
           </div>
           <div className={styles.thirdPlaceSection}>
@@ -200,6 +278,7 @@ export default function BracketTab({
               points={round_points['THIRD_PLACE']}
               onPick={handlePick}
               saving={savingKey === 'THIRD_PLACE:1'}
+              readOnly={viewingOther}
             />
           </div>
         </div>
@@ -218,6 +297,7 @@ export default function BracketTab({
               onPick={handlePick}
               savingKey={savingKey}
               reversed
+              readOnly={viewingOther}
             />
           ))}
         </div>
