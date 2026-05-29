@@ -220,7 +220,13 @@ router.get('/', requireAuth, async (c) => {
     if (byPos) rounds[phase] = [...byPos.values()].sort((a, b) => a.position - b.position)
   }
 
-  return c.json({ teams: teamsResult.results, team_groups: teamGroups, rounds, round_points: ROUND_POINTS })
+  return c.json({
+    self_user_id: userId,
+    teams: teamsResult.results,
+    team_groups: teamGroups,
+    rounds,
+    round_points: ROUND_POINTS,
+  })
 })
 
 /**

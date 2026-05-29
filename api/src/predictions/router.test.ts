@@ -73,6 +73,130 @@ async function requestGroupPicks(db: D1Database, query: string) {
   )
 }
 
+interface BulkMockOptions {
+  isMember?: boolean
+  // match_id -> start_time (ISO). Absent matches are treated as "not found".
+  matches?: Record<string, string>
+}
+
+function createBulkDbMock(opts: BulkMockOptions = {}) {
+  const { isMember = true, matches = {} } = opts
+  const batched: unknown[] = []
+
+  const db = {
+    batched,
+    prepare(sql: string) {
+      return {
+        bind(...params: unknown[]) {
+          return {
+            async first() {
+              if (sql.includes('FROM group_members WHERE')) {
+                return isMember ? { id: 'gm-1' } : null
+              }
+              return null
+            },
+            async all() {
+              if (sql.includes('FROM matches m')) {
+                // params: [group_id, ...matchIds]
+                const matchIds = params.slice(1) as string[]
+                const results = matchIds
+                  .filter((id) => matches[id] !== undefined)
+                  .map((id) => ({ id, start_time: matches[id] }))
+                return { results }
+              }
+              return { results: [] }
+            },
+          }
+        },
+      }
+    },
+    async batch(statements: unknown[]) {
+      batched.push(...statements)
+      return statements.map(() => ({ success: true }))
+    },
+  }
+
+  return db as unknown as D1Database & { batched: unknown[] }
+}
+
+async function requestBulk(db: D1Database, body: unknown) {
+  const token = await signJwt({ sub: 'user-1', email: 'user@example.com' }, JWT_SECRET, 3600)
+  const headers = new Headers({
+    Cookie: `session=${token}`,
+    'Content-Type': 'application/json',
+  })
+
+  const app = new Hono<AppContext>()
+  app.route('/predictions', predictionsRouter)
+
+  return app.fetch(
+    new Request('http://localhost/predictions/bulk', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body),
+    }),
+    fakeEnv(db),
+  )
+}
+
+describe('predictions router – PUT /bulk', () => {
+  const future = '2999-01-01T00:00:00.000Z'
+  const past = '2000-01-01T00:00:00.000Z'
+
+  it('requires group_id', async () => {
+    const res = await requestBulk(createBulkDbMock(), {
+      predictions: [{ match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0 }],
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects an empty predictions list', async () => {
+    const res = await requestBulk(createBulkDbMock(), { group_id: 'g1', predictions: [] })
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects invalid scores', async () => {
+    const res = await requestBulk(createBulkDbMock(), {
+      group_id: 'g1',
+      predictions: [{ match_id: 'm1', predicted_home_score: -1, predicted_away_score: 0 }],
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('denies access to non-members', async () => {
+    const res = await requestBulk(createBulkDbMock({ isMember: false }), {
+      group_id: 'g1',
+      predictions: [{ match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0 }],
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('saves valid matches and reports locked / not-found ones', async () => {
+    const db = createBulkDbMock({ matches: { m1: future, m2: past } })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [
+        { match_id: 'm1', predicted_home_score: 2, predicted_away_score: 1 }, // saveable
+        { match_id: 'm2', predicted_home_score: 0, predicted_away_score: 0 }, // locked
+        { match_id: 'm3', predicted_home_score: 3, predicted_away_score: 3 }, // not found
+      ],
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      ok: boolean
+      saved: string[]
+      locked: string[]
+      not_found: string[]
+    }
+    expect(body.saved).toEqual(['m1'])
+    expect(body.locked).toEqual(['m2'])
+    expect(body.not_found).toEqual(['m3'])
+    // Only the one saveable match is batched.
+    expect(db.batched).toHaveLength(1)
+  })
+})
+
 describe('predictions router – GET /group', () => {
   it('requires group_id', async () => {
     const res = await requestGroupPicks(createGroupPicksDbMock(), '')
