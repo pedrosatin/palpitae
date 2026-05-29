@@ -295,13 +295,13 @@
     "mtime": 1780015245.3874996,
     "hash": "8b8fdcb5d04acf973028740277416918"
   },
-  "/home/satin/Work/palpitae/web/src/components/BracketTab/BracketTab.tsx": {
-    "mtime": 1780015383.35613,
-    "hash": "d1a8154aae41b3c7d4b8e84fd2906af9"
-  },
   "/home/satin/Work/palpitae/web/src/components/BracketTab/BracketTab.test.tsx": {
     "mtime": 1780015424.1318884,
     "hash": "f009229bf8fbb1f7c3fc33fc284d047b"
+  },
+  "/home/satin/Work/palpitae/web/src/components/BracketTab/BracketTab.tsx": {
+    "mtime": 1780087259.3156617,
+    "hash": "c1bea665a819fceb39730888551c1352"
   },
   "/home/satin/Work/palpitae/web/src/components/BracketTab/TeamBadge/TeamBadge.tsx": {
     "mtime": 1779928878.21555,

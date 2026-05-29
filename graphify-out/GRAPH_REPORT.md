@@ -1,16 +1,16 @@
 # Graph Report - palpitae  (2026-05-29)
 
 ## Corpus Check
-- 101 files · ~35,624 words
+- 101 files · ~35,808 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 706 nodes · 933 edges · 61 communities (54 shown, 7 thin omitted)
+- 706 nodes · 933 edges · 60 communities (53 shown, 7 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 8 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `6bc50894`
+- Built from commit: `34208403`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -64,9 +64,8 @@
 - [[_COMMUNITY_Community 46|Community 46]]
 - [[_COMMUNITY_Community 47|Community 47]]
 - [[_COMMUNITY_Community 48|Community 48]]
-- [[_COMMUNITY_Community 49|Community 49]]
+- [[_COMMUNITY_Community 50|Community 50]]
 - [[_COMMUNITY_Community 51|Community 51]]
-- [[_COMMUNITY_Community 52|Community 52]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `🧠 Palpitae — Product Vision` - 23 edges
@@ -92,7 +91,7 @@
 - `requestBulk()` --calls--> `signJwt()`  [EXTRACTED]
   api/src/predictions/router.test.ts → api/src/auth/jwt.ts
 
-## Communities (61 total, 7 thin omitted)
+## Communities (60 total, 7 thin omitted)
 
 ### Community 0 - "Bracket UI Components"
 Cohesion: 0.06
@@ -127,8 +126,8 @@ Cohesion: 0.11
 Nodes (14): formatDate(), Match, MatchCard(), MatchCardProps, Prediction, input, pastMatch, saveBtn (+6 more)
 
 ### Community 8 - "App Entry & Login"
-Cohesion: 0.18
-Nodes (15): BracketColumnProps, ROUND_INDEX, buildMyPicksMap(), clearInvalidatedPicks(), getAvailableTeams(), getChildPositions(), BracketTab(), BracketTabProps (+7 more)
+Cohesion: 0.17
+Nodes (16): BracketColumnProps, ROUND_INDEX, buildMyPicksMap(), clearInvalidatedPicks(), getAvailableTeams(), getChildPositions(), BracketTab(), BracketTabProps (+8 more)
 
 ### Community 9 - "Match Card Component"
 Cohesion: 0.11
@@ -147,20 +146,20 @@ Cohesion: 0.11
 Nodes (17): ✅ Alta Confiança, Anti-Abuse Strategy (MVP), ⚠️ Corrigido, ✅ In Scope, Key Assumptions to Validate, MVP Scope, Next Steps, Not Doing (and Why) (+9 more)
 
 ### Community 13 - "Fixture Sync (API Football)"
+Cohesion: 0.16
+Nodes (12): ALGORITHM, importKey(), JwtPayload, [, body], [h, , s], payload, tamperedBody, verifyJwt() (+4 more)
+
+### Community 14 - "Create Group Modal"
+Cohesion: 0.15
+Nodes (10): AvailableTeamsResult, MemberPick, Team, TeamPickerProps, argBtn, available, buttons, onPick (+2 more)
+
+### Community 15 - "Button & Header (legacy)"
 Cohesion: 0.12
 Nodes (14): body, candidate, competition_id, countResult, group, groupId, invite_code, memberId (+6 more)
 
-### Community 14 - "Create Group Modal"
+### Community 16 - "Join Group Modal"
 Cohesion: 0.12
 Nodes (16): 🤖 AGENTS.md — Palpitae, ⚠️ Anti-Patterns (Avoid), 🏗️ Architecture Guidelines, 🧩 Code Guidelines, 🗄️ Database Rules, ⚽ Domain Rules (Critical), 🧠 General Principles, 🎯 Goal (+8 more)
-
-### Community 15 - "Button & Header (legacy)"
-Cohesion: 0.14
-Nodes (8): BracketSlotCardProps, cascadeAvailable, { container }, memberPick, mp, onPick, AvailableTeamsResult, BracketMatch
-
-### Community 16 - "Join Group Modal"
-Cohesion: 0.15
-Nodes (8): Team, TeamPickerProps, argBtn, available, buttons, onPick, teamsA, teamsB
 
 ### Community 17 - "Header Tests (legacy)"
 Cohesion: 0.15
@@ -191,12 +190,12 @@ Cohesion: 0.18
 Nodes (4): GroupCardProps, GroupWithStats, baseGroup, onClick
 
 ### Community 24 - "Team Badge Component"
-Cohesion: 0.24
-Nodes (9): ApiCompetition, ApiMatch, ApiMatchesResponse, ApiTeam, mapStatus(), slugify(), syncFixtures(), SyncOptions (+1 more)
+Cohesion: 0.18
+Nodes (5): column, { container }, slots, BracketSlotCardProps, SlotData
 
 ### Community 25 - "Dashboard Page Tests (legacy)"
 Cohesion: 0.24
-Nodes (8): ALGORITHM, importKey(), JwtPayload, [, body], [h, , s], payload, tamperedBody, verifyJwt()
+Nodes (9): ApiCompetition, ApiMatch, ApiMatchesResponse, ApiTeam, mapStatus(), slugify(), syncFixtures(), SyncOptions (+1 more)
 
 ### Community 26 - "Button Component"
 Cohesion: 0.2
@@ -220,11 +219,11 @@ Nodes (6): JoinedGroup, JoinGroupModalProps, body, defaultProps, fetchSpy, joine
 
 ### Community 32 - "API Vitest Config"
 Cohesion: 0.22
-Nodes (9): API — Setup local, code:bash (cd api), code:bash (# Start local dev server (http://localhost:8787)), code:bash (# Set production secrets (one-time, stored encrypted in Clou), Deploying, First-time setup, Palpitae, Prerequisites (+1 more)
+Nodes (5): cascadeAvailable, { container }, memberPick, mp, onPick
 
 ### Community 33 - "Web Vite Config"
-Cohesion: 0.25
-Nodes (7): competition, competitionId, params, round, router, status, validStatuses
+Cohesion: 0.22
+Nodes (9): API — Setup local, code:bash (cd api), code:bash (# Start local dev server (http://localhost:8787)), code:bash (# Set production secrets (one-time, stored encrypted in Clou), Deploying, First-time setup, Palpitae, Prerequisites (+1 more)
 
 ### Community 34 - "Vite Env Types"
 Cohesion: 0.46
@@ -232,25 +231,21 @@ Nodes (7): signJwt(), body, createDbMock(), createGroupsListDbMock(), fakeEnv(),
 
 ### Community 35 - "Web Test Setup"
 Cohesion: 0.25
-Nodes (3): AuthStatus, User, rootEl
+Nodes (7): competition, competitionId, params, round, router, status, validStatuses
 
 ### Community 36 - "Dashboard Page Barrel"
 Cohesion: 0.25
-Nodes (6): baseUser, link, onCreateGroup, onJoinGroup, onLogout, sairBtn
+Nodes (3): AuthStatus, User, rootEl
 
 ### Community 37 - "Group Detail Page Barrel"
-Cohesion: 0.38
-Nodes (4): requireAuth, app, fakeEnv(), requestWithCookie()
+Cohesion: 0.25
+Nodes (6): baseUser, link, onCreateGroup, onJoinGroup, onLogout, sairBtn
 
 ### Community 38 - "Login Page Barrel"
 Cohesion: 0.29
-Nodes (4): column, { container }, slots, SlotData
-
-### Community 39 - "Bracket Tab Barrel"
-Cohesion: 0.29
 Nodes (4): baseGroup, baseUser, fetchSpy, spy
 
-### Community 40 - "Community 40"
+### Community 39 - "Bracket Tab Barrel"
 Cohesion: 0.33
 Nodes (3): CardProps, { container }, div
 
@@ -258,19 +253,19 @@ Nodes (3): CardProps, { container }, div
 Cohesion: 0.33
 Nodes (4): GroupDetail, GroupDetailPageProps, Tab, User
 
-### Community 45 - "Community 45"
+### Community 43 - "Community 43"
 Cohesion: 0.33
 Nodes (3): TeamBadgeProps, { container }, img
 
-### Community 47 - "Community 47"
+### Community 45 - "Community 45"
 Cohesion: 0.4
 Nodes (3): dialog, fetchSpy, user
 
-### Community 48 - "Community 48"
+### Community 47 - "Community 47"
 Cohesion: 0.5
 Nodes (3): Overview, System Architecture — Palpitae, Working with Architecture
 
-### Community 49 - "Community 49"
+### Community 48 - "Community 48"
 Cohesion: 0.67
 Nodes (3): Logo 2 SVG, Logo SVG (Logo.svg), Logo Text SVG
 
@@ -282,11 +277,11 @@ Nodes (3): Logo 2 SVG, Logo SVG (Logo.svg), Logo Text SVG
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `config` connect `Brand SVG Assets` to `Architecture Decision Records`, `Web Test Setup`, `Predictions Tab (legacy)`, `Bracket API Router`, `App Entry & Login`, `Community 41`, `Group Detail Page Tests (legacy)`, `Group Detail Page (legacy)`, `Button Component`, `Google Login Button`, `Pages Function Proxy`, `Icon SVG Assets`?**
+- **Why does `config` connect `Brand SVG Assets` to `Architecture Decision Records`, `Dashboard Page Barrel`, `Predictions Tab (legacy)`, `Bracket API Router`, `App Entry & Login`, `Community 41`, `Group Detail Page Tests (legacy)`, `Group Detail Page (legacy)`, `Button Component`, `Google Login Button`, `Pages Function Proxy`, `Icon SVG Assets`?**
   _High betweenness centrality (0.069) - this node is a cross-community bridge._
-- **Why does `SlotData` connect `Login Page Barrel` to `App Entry & Login`, `Predictions Tab Component`, `Community 44`, `Button & Header (legacy)`?**
+- **Why does `SlotData` connect `Team Badge Component` to `App Entry & Login`, `Predictions Tab Component`, `API Vitest Config`, `Create Group Modal`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
-- **Why does `AppContext` connect `Card Component` to `Bracket UI Components`, `Web Vite Config`, `Vite Env Types`, `Group Detail Page Barrel`, `Dashboard & Group Detail Pages`, `Match Card Component`, `Fixture Sync (API Football)`, `Card (legacy)`?**
+- **Why does `AppContext` connect `Card Component` to `Bracket UI Components`, `Vite Env Types`, `Web Test Setup`, `Dashboard & Group Detail Pages`, `Match Card Component`, `Fixture Sync (API Football)`, `Button & Header (legacy)`, `Card (legacy)`?**
   _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **What connects `Env`, `Variables`, `app` to the rest of the system?**
   _372 weakly-connected nodes found - possible documentation gaps or missing edges._
