@@ -32,6 +32,24 @@ export default function BracketTab({
   const [saveError, setSaveError] = useState<string | null>(null)
   // user_id of the member whose bracket is being viewed; null = my own (editable)
   const [viewedMember, setViewedMember] = useState<string | null>(null)
+  // When true, the bracket renders as a full-viewport overlay so the wide
+  // knockout grid has room to breathe without the page container's padding.
+  const [expanded, setExpanded] = useState(false)
+
+  // Close the overlay with Esc and lock background scroll while it's open.
+  useEffect(() => {
+    if (!expanded) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpanded(false)
+    }
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [expanded])
 
   useEffect(() => {
     setLoading(true)
@@ -195,7 +213,7 @@ export default function BracketTab({
   )
 
   return (
-    <div className={styles.root}>
+    <div className={`${styles.root} ${expanded ? styles.rootExpanded : ''}`}>
       {saveError && <div className={styles.saveError}>{saveError}</div>}
 
       {memberOptions.length > 0 && (
@@ -231,6 +249,39 @@ export default function BracketTab({
           Pontuação: 16 avos 1pt · Oitavas 2pt · Quartas 4pt · Semi 8pt · Final
           16pt
         </span>
+        <button
+          type="button"
+          className={styles.expandBtn}
+          onClick={() => setExpanded((v) => !v)}
+          title={expanded ? 'Sair da tela cheia (Esc)' : 'Expandir chaveamento'}
+          aria-label={expanded ? 'Sair da tela cheia' : 'Expandir chaveamento'}
+          aria-pressed={expanded}
+        >
+          {expanded ? (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M9 9H4m5 0V4m0 5L4 4m11 5h5m-5 0V4m0 5l5-5M9 15H4m5 0v5m0-5l-5 5m11-5h5m-5 0v5m0-5l5 5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+          <span className={styles.expandBtnLabel}>
+            {expanded ? 'Reduzir' : 'Tela cheia'}
+          </span>
+        </button>
       </div>
 
       <div className={styles.bracketWrapper}>

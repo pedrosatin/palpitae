@@ -4,9 +4,40 @@
   width: 100%;
 }
 
+/* Full-viewport overlay so the wide bracket escapes the page container padding. */
+.rootExpanded {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  background: var(--color-bg);
+  padding: var(--space-4) var(--space-5);
+  /* Column layout: info bar stays fixed, bracket fills the rest. No outer
+     scroll — only the bracket area scrolls, and only when it actually needs to. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Bracket fills the remaining height and owns its own scroll. */
+.rootExpanded .bracketWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Center the bracket when it fits the wide overlay; `safe` keeps the start
+     reachable (top/left-aligned) when it's larger than the viewport. */
+  justify-content: safe center;
+  align-items: safe center;
+}
+
 /* ─── Info bar ───────────────────────────────────────────────────────────── */
 
 .info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
   margin-bottom: var(--space-5);
@@ -14,6 +45,40 @@
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+}
+
+.expandBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-3);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.expandBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.expandBtn svg {
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .expandBtnLabel {
+    display: none;
+  }
 }
 
 .viewBar {
