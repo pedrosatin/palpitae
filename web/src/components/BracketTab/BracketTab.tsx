@@ -138,7 +138,8 @@ export default function BracketTab({
     for (const slots of Object.values(rawRounds)) {
       for (const slot of slots ?? []) {
         for (const mp of slot.members_picks) {
-          if (mp.user_id !== data.self_user_id) byId.set(mp.user_id, mp.user_display)
+          if (mp.user_id !== data.self_user_id)
+            byId.set(mp.user_id, mp.user_display)
         }
       }
     }
@@ -147,31 +148,37 @@ export default function BracketTab({
       .sort((a, b) => a.display.localeCompare(b.display))
   })()
 
-  const viewedDisplay = memberOptions.find((m) => m.user_id === viewedMember)?.display
+  const viewedDisplay = memberOptions.find(
+    (m) => m.user_id === viewedMember,
+  )?.display
 
   // When viewing another member, project their picks onto each slot's `my_pick`
   // and force the slot locked (read-only). The whole cascade/render pipeline then
   // works unchanged, since it reads `my_pick`/`locked`.
   const rounds: BracketData['rounds'] = viewingOther
     ? Object.fromEntries(
-        (Object.entries(rawRounds) as [Round, SlotData[]][]).map(([round, slots]) => [
-          round,
-          slots.map((slot) => {
-            const mp = slot.members_picks.find((m) => m.user_id === viewedMember)
-            return {
-              ...slot,
-              locked: true,
-              my_pick: mp
-                ? {
-                    team_id: mp.team_id,
-                    team_name: mp.team_name,
-                    team_short: mp.team_short,
-                    team_logo: mp.team_logo,
-                  }
-                : null,
-            }
-          }),
-        ]),
+        (Object.entries(rawRounds) as [Round, SlotData[]][]).map(
+          ([round, slots]) => [
+            round,
+            slots.map((slot) => {
+              const mp = slot.members_picks.find(
+                (m) => m.user_id === viewedMember,
+              )
+              return {
+                ...slot,
+                locked: true,
+                my_pick: mp
+                  ? {
+                      team_id: mp.team_id,
+                      team_name: mp.team_name,
+                      team_short: mp.team_short,
+                      team_logo: mp.team_logo,
+                    }
+                  : null,
+              }
+            }),
+          ],
+        ),
       )
     : rawRounds
 
@@ -239,8 +246,8 @@ export default function BracketTab({
 
       {viewingOther && (
         <div className={styles.viewNotice}>
-          Visualizando o chaveamento de <strong>{viewedDisplay}</strong> — somente
-          leitura.
+          Visualizando o chaveamento de <strong>{viewedDisplay}</strong> —
+          somente leitura.
         </div>
       )}
 
@@ -258,7 +265,13 @@ export default function BracketTab({
           aria-pressed={expanded}
         >
           {expanded ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
               <path
                 d="M9 9H4m5 0V4m0 5L4 4m11 5h5m-5 0V4m0 5l5-5M9 15H4m5 0v5m0-5l-5 5m11-5h5m-5 0v5m0-5l5 5"
                 stroke="currentColor"
@@ -268,7 +281,13 @@ export default function BracketTab({
               />
             </svg>
           ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
               <path
                 d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
                 stroke="currentColor"

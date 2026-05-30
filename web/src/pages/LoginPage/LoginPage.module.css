@@ -45,3 +45,14 @@
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
 }
+
+.previewLink {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.previewLink:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}

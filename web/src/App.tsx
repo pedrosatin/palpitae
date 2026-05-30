@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { config } from './config'
 import LoginPage from './pages/LoginPage'
+import LandingPage from './pages/LandingPage'
 import DashboardPage from './pages/DashboardPage'
 import GroupDetailPage from './pages/GroupDetailPage'
 
@@ -56,7 +57,13 @@ export default function App() {
 
   if (status === 'loading') return null
 
-  if (status === 'unauthenticated') return <LoginPage />
+  if (status === 'unauthenticated')
+    return (
+      <Routes>
+        <Route path="/conheca" element={<LandingPage />} />
+        <Route path="*" element={<LoginPage />} />
+      </Routes>
+    )
 
   return (
     <Routes>

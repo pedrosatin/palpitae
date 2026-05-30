@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import Card from '../../components/Card'
 import GoogleLoginButton from '../../components/GoogleLoginButton'
 import styles from './LoginPage.module.css'
@@ -23,6 +24,10 @@ export default function LoginPage() {
         </div>
 
         <GoogleLoginButton />
+
+        <Link to="/conheca" className={styles.previewLink}>
+          Conheça o Palpitae antes de entrar →
+        </Link>
       </Card>
     </main>
   )
