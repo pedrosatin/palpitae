@@ -120,8 +120,8 @@
     "hash": "994c5bf3f0f8742b450d0ab09b0d6bb9"
   },
   "/home/satin/Work/palpitae/web/src/App.tsx": {
-    "mtime": 1779748597.8418198,
-    "hash": "d0bb6a16f7927c70369034065a6efcdb"
+    "mtime": 1780152313.3750725,
+    "hash": "20dc745e1f21ffdd369f274f1244aff0"
   },
   "/home/satin/Work/palpitae/web/src/pages/DashboardPage/DashboardPage.tsx": {
     "mtime": 1779831620.5537634,
@@ -147,13 +147,21 @@
     "mtime": 1780001041.0732698,
     "hash": "47f480e2533b47ff82a3ba37db4e71a0"
   },
-  "/home/satin/Work/palpitae/web/src/pages/LoginPage/LoginPage.tsx": {
-    "mtime": 1779831153.0401058,
-    "hash": "25b448bf8b364db2d8f58030fb6574df"
-  },
   "/home/satin/Work/palpitae/web/src/pages/LoginPage/index.ts": {
     "mtime": 1779830849.135049,
     "hash": "22ed06febeebb6d1dccc8ca1edce84ba"
+  },
+  "/home/satin/Work/palpitae/web/src/pages/LoginPage/LoginPage.tsx": {
+    "mtime": 1780152321.953215,
+    "hash": "2f132f71aa82f8b0db3c5dd9e657354f"
+  },
+  "/home/satin/Work/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
+    "mtime": 1780152269.2911787,
+    "hash": "d77b9cd28e1f45fca8c1b84b24d46734"
+  },
+  "/home/satin/Work/palpitae/web/src/pages/LandingPage/index.ts": {
+    "mtime": 1780152303.4152436,
+    "hash": "6217117c48620fe4a505faec7ee5b93a"
   },
   "/home/satin/Work/palpitae/web/src/components/Button/Button.tsx": {
     "mtime": 1778343307.7370312,
@@ -406,6 +414,10 @@
   "/home/satin/Work/palpitae/web/index.html": {
     "mtime": 1777891912.8076015,
     "hash": "c641e0c78d60d697f3c410485b5c43cc"
+  },
+  "/home/satin/Work/palpitae/web/public/screenshots/README.md": {
+    "mtime": 1780152340.898586,
+    "hash": "0655f310c1990815afac98f25ecda36a"
   },
   "/home/satin/Work/palpitae/web/public/logo-text.svg": {
     "mtime": 1777847756.8238344,
