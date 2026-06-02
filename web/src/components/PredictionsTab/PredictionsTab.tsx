@@ -28,9 +28,9 @@ export default function PredictionsTab({
   const [error, setError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
   // Current input drafts reported by each MatchCard, so we can "Salvar todos".
-  const [drafts, setDrafts] = useState<Map<string, { home: string; away: string }>>(
-    new Map(),
-  )
+  const [drafts, setDrafts] = useState<
+    Map<string, { home: string; away: string }>
+  >(new Map())
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
@@ -159,9 +159,7 @@ export default function PredictionsTab({
       const away = Number(d.away)
       const p = predictions.get(m.id)
       const changed =
-        !p ||
-        home !== p.predicted_home_score ||
-        away !== p.predicted_away_score
+        !p || home !== p.predicted_home_score || away !== p.predicted_away_score
       if (changed) {
         out.push({
           match_id: m.id,
@@ -198,7 +196,11 @@ export default function PredictionsTab({
       const savedSet = new Set(data.saved)
       for (const p of toSave) {
         if (savedSet.has(p.match_id)) {
-          handleSaved(p.match_id, p.predicted_home_score, p.predicted_away_score)
+          handleSaved(
+            p.match_id,
+            p.predicted_home_score,
+            p.predicted_away_score,
+          )
         }
       }
 
@@ -239,6 +241,8 @@ export default function PredictionsTab({
           ‹ Anterior
         </button>
         <select
+          id="predictions-round-select"
+          name="predictions-round-select"
           className={styles.roundSelect}
           value={selectedRound}
           onChange={(e) => setRoundIndex(roundKeys.indexOf(e.target.value))}

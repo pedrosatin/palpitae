@@ -137,6 +137,8 @@ export default function GroupPicksTab({
           ‹ Anterior
         </button>
         <select
+          id="picks-round-select"
+          name="picks-round-select"
           className={styles.roundSelect}
           value={selectedRound}
           onChange={(e) => setRoundIndex(roundKeys.indexOf(e.target.value))}

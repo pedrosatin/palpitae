@@ -10,10 +10,18 @@ interface TeamPickerProps {
   locked: boolean
 }
 
-export default function TeamPicker({ available, currentPick, onPick, locked }: TeamPickerProps) {
+export default function TeamPicker({
+  available,
+  currentPick,
+  onPick,
+  locked,
+}: TeamPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [menuPlacement, setMenuPlacement] = useState<{ up: boolean; alignRight: boolean }>({
+  const [menuPlacement, setMenuPlacement] = useState<{
+    up: boolean
+    alignRight: boolean
+  }>({
     up: false,
     alignRight: false,
   })
@@ -75,7 +83,11 @@ export default function TeamPicker({ available, currentPick, onPick, locked }: T
 
   // Waiting: previous round not filled yet
   if (available.kind === 'waiting') {
-    return <div className={styles.pickerWaiting}>Escolha os times da rodada anterior primeiro</div>
+    return (
+      <div className={styles.pickerWaiting}>
+        Escolha os times da rodada anterior primeiro
+      </div>
+    )
   }
 
   // Duel buttons: match teams OR cascade picks (1 or 2 teams)
@@ -96,7 +108,8 @@ export default function TeamPicker({ available, currentPick, onPick, locked }: T
   }
 
   // All teams: searchable grouped dropdown
-  const allFlat = available.kind === 'all' ? [...available.grouped.values()].flat() : []
+  const allFlat =
+    available.kind === 'all' ? [...available.grouped.values()].flat() : []
   const filtered =
     query.trim() === ''
       ? null // show grouped
@@ -128,6 +141,8 @@ export default function TeamPicker({ available, currentPick, onPick, locked }: T
         >
           <input
             autoFocus
+            id="team-picker-search"
+            name="team-picker-search"
             className={styles.pickerSearch}
             placeholder="Buscar time..."
             value={query}
@@ -165,7 +180,9 @@ export default function TeamPicker({ available, currentPick, onPick, locked }: T
                             }}
                           >
                             <TeamBadge short={t.short_name} logo={t.logo_url} />
-                            <span className={styles.pickerOptionName}>{t.name}</span>
+                            <span className={styles.pickerOptionName}>
+                              {t.name}
+                            </span>
                           </button>
                         </li>
                       ))}
