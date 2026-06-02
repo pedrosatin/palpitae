@@ -302,3 +302,20 @@
   color: #f25b1b;
   margin: 0;
 }
+
+/* ── Mobile adjustments ─────────────────── */
+@media (max-width: 420px) {
+  .stepBtn {
+    width: 22px;
+  }
+
+  .scoreInput {
+    width: 36px;
+    font-size: var(--font-size-md);
+  }
+
+  .saveBtn {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--font-size-xs);
+  }
+}
