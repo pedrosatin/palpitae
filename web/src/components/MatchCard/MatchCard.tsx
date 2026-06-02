@@ -223,6 +223,8 @@ export default function MatchCard({
               <input
                 className={styles.scoreInput}
                 type="number"
+                id={`home-score-${match.id}`}
+                name={`home-score-${match.id}`}
                 min={0}
                 max={99}
                 placeholder="0"
@@ -264,6 +266,8 @@ export default function MatchCard({
               <input
                 className={styles.scoreInput}
                 type="number"
+                id={`away-score-${match.id}`}
+                name={`away-score-${match.id}`}
                 min={0}
                 max={99}
                 placeholder="0"
