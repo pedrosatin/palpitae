@@ -186,6 +186,12 @@
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-6);
   gap: var(--space-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
@@ -199,6 +205,8 @@
   padding: var(--space-3) var(--space-4);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition:
     color 0.15s,
     border-color 0.15s;
