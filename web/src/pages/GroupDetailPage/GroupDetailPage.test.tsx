@@ -45,6 +45,12 @@ vi.mock('../../components/JoinGroupModal', () => ({
     ) : null,
 }))
 
+vi.mock('../../components/LeaderboardTab', () => ({
+  default: ({ groupId }: { groupId: string }) => (
+    <div data-testid="leaderboard-tab">LeaderboardTab:{groupId}</div>
+  ),
+}))
+
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
 const baseUser = {
@@ -162,9 +168,7 @@ describe('GroupDetailPage – tabs', () => {
     )
 
     expect(screen.queryByTestId('predictions-tab')).not.toBeInTheDocument()
-    expect(
-      screen.getByText(/A classificação do grupo aparecerá aqui/i),
-    ).toBeInTheDocument()
+    expect(screen.getByTestId('leaderboard-tab')).toBeInTheDocument()
   })
 
   it('switches back to Previsões tab when that button is clicked', async () => {

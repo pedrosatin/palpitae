@@ -11,6 +11,7 @@ import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
 import BracketTab from '../../components/BracketTab/BracketTab'
 import GroupPicksTab from '../../components/GroupPicksTab'
+import LeaderboardTab from '../../components/LeaderboardTab'
 import PredictionsTab from '../../components/PredictionsTab'
 import styles from './GroupDetailPage.module.css'
 
@@ -268,9 +269,11 @@ export default function GroupDetailPage({
             />
           )}
           {activeTab === 'leaderboard' && (
-            <div className={styles.placeholder}>
-              <p>A classificação do grupo aparecerá aqui em breve.</p>
-            </div>
+            <LeaderboardTab
+              groupId={groupId}
+              isAdmin={isAdmin}
+              currentUserId={user.id}
+            />
           )}
           {activeTab === 'bracket' && (
             <BracketTab
