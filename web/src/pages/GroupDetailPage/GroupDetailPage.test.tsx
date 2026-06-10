@@ -51,6 +51,12 @@ vi.mock('../../components/LeaderboardTab', () => ({
   ),
 }))
 
+vi.mock('../../components/MembersTab', () => ({
+  default: ({ groupId }: { groupId: string }) => (
+    <div data-testid="members-tab">MembersTab:{groupId}</div>
+  ),
+}))
+
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
 const baseUser = {

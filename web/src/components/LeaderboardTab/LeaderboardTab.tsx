@@ -4,7 +4,6 @@ import styles from './LeaderboardTab.module.css'
 
 interface LeaderboardTabProps {
   groupId: string
-  isAdmin: boolean
   currentUserId: string
 }
 
@@ -20,13 +19,11 @@ interface Member {
 
 export default function LeaderboardTab({
   groupId,
-  isAdmin,
   currentUserId,
 }: LeaderboardTabProps) {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [removing, setRemoving] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -42,26 +39,6 @@ export default function LeaderboardTab({
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [groupId])
-
-  async function removeMember(targetUserId: string) {
-    if (!confirm('Remover este membro do grupo?')) return
-    setRemoving(targetUserId)
-    try {
-      const res = await fetch(
-        `${config.apiUrl}/groups/${groupId}/members/${targetUserId}`,
-        { method: 'DELETE', credentials: 'include' },
-      )
-      if (!res.ok) {
-        const body = (await res.json()) as { error?: string }
-        throw new Error(body.error ?? 'Erro ao remover membro')
-      }
-      setMembers((prev) => prev.filter((m) => m.user_id !== targetUserId))
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Erro ao remover membro')
-    } finally {
-      setRemoving(null)
-    }
-  }
 
   if (loading) {
     return <p className={styles.loading}>Carregando classificação...</p>
@@ -88,7 +65,6 @@ export default function LeaderboardTab({
             <th className={styles.thName}>Jogador</th>
             <th className={styles.thPts}>Pontos</th>
             <th className={styles.thExact}>Exatos</th>
-            {isAdmin && <th className={styles.thAction} />}
           </tr>
         </thead>
         <tbody>
@@ -124,19 +100,6 @@ export default function LeaderboardTab({
               </td>
               <td className={styles.tdPts}>{member.total_points}</td>
               <td className={styles.tdExact}>{member.exact_hits}</td>
-              {isAdmin && (
-                <td className={styles.tdAction}>
-                  {member.user_id !== currentUserId && (
-                    <button
-                      className={styles.removeBtn}
-                      onClick={() => removeMember(member.user_id)}
-                      disabled={removing === member.user_id}
-                    >
-                      {removing === member.user_id ? '...' : 'Remover'}
-                    </button>
-                  )}
-                </td>
-              )}
             </tr>
           ))}
         </tbody>
