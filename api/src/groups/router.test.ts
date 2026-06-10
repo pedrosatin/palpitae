@@ -143,6 +143,72 @@ async function requestGroupsList(email: string) {
   )
 }
 
+function createRemoveMemberDbMock({
+  isAdmin,
+  targetIsMember,
+}: {
+  isAdmin: boolean
+  targetIsMember: boolean
+}) {
+  const deleteRun = vi.fn().mockResolvedValue({ success: true })
+
+  const db = {
+    prepare(sql: string) {
+      return {
+        bind() {
+          return {
+            async first() {
+              if (sql.includes('FROM groups WHERE id = ?')) {
+                return { owner_user_id: isAdmin ? 'user-1' : 'user-other' }
+              }
+              if (sql.includes('FROM group_members WHERE group_id = ? AND user_id = ?')) {
+                return targetIsMember ? { id: 'member-id' } : null
+              }
+              if (sql.includes('FROM users WHERE id = ?')) {
+                return { email: 'user@example.com' }
+              }
+              return null
+            },
+            run: deleteRun,
+          }
+        },
+      }
+    },
+  }
+
+  return { db: db as unknown as D1Database, deleteRun }
+}
+
+async function requestRemoveMember(
+  callerId: string,
+  callerEmail: string,
+  groupId: string,
+  targetUserId: string,
+  db: D1Database,
+) {
+  const token = await signJwt({ sub: callerId, email: callerEmail }, JWT_SECRET, 3600)
+  const headers = new Headers({ Cookie: `session=${token}` })
+
+  const app = new Hono<AppContext>()
+  app.route('/groups', groupsRouter)
+
+  return app.fetch(
+    new Request(`http://localhost/groups/${groupId}/members/${targetUserId}`, {
+      method: 'DELETE',
+      headers,
+    }),
+    {
+      JWT_SECRET,
+      GOOGLE_CLIENT_ID: 'cid',
+      GOOGLE_CLIENT_SECRET: 'csec',
+      BASE_URL: 'http://localhost:8787',
+      FRONTEND_URL: 'http://localhost:5173',
+      FOOTBALL_API_KEY: 'test-api-key',
+      DB: db,
+    },
+  )
+}
+
 describe('groups router', () => {
   it('returns the total member count for the groups list', async () => {
     const res = await requestGroupsList('user@example.com')
@@ -177,5 +243,44 @@ describe('groups router', () => {
     const body = await res.json() as { group: { name: string; competition_id: string } }
     expect(body.group.name).toBe('Os Craques')
     expect(body.group.competition_id).toBe('comp-1')
+  })
+
+  describe('DELETE /groups/:id/members/:memberId', () => {
+    it('removes a member when called by the group admin', async () => {
+      const { db, deleteRun } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: true })
+      const res = await requestRemoveMember('user-1', 'admin@example.com', 'group-1', 'user-2', db)
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { success: boolean }
+      expect(body.success).toBe(true)
+      expect(deleteRun).toHaveBeenCalled()
+    })
+
+    it('returns 403 when caller is not the group admin', async () => {
+      const { db } = createRemoveMemberDbMock({ isAdmin: false, targetIsMember: true })
+      const res = await requestRemoveMember('user-1', 'user@example.com', 'group-1', 'user-2', db)
+
+      expect(res.status).toBe(403)
+      const body = await res.json() as { error: string }
+      expect(body.error).toBe('Apenas o administrador pode remover membros')
+    })
+
+    it('returns 400 when admin tries to remove themselves', async () => {
+      const { db } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: true })
+      const res = await requestRemoveMember('user-1', 'admin@example.com', 'group-1', 'user-1', db)
+
+      expect(res.status).toBe(400)
+      const body = await res.json() as { error: string }
+      expect(body.error).toBe('Você não pode remover a si mesmo do grupo')
+    })
+
+    it('returns 404 when target is not a member of the group', async () => {
+      const { db } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: false })
+      const res = await requestRemoveMember('user-1', 'admin@example.com', 'group-1', 'user-99', db)
+
+      expect(res.status).toBe(404)
+      const body = await res.json() as { error: string }
+      expect(body.error).toBe('Membro não encontrado no grupo')
+    })
   })
 })

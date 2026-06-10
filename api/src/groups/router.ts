@@ -350,4 +350,105 @@ router.get('/:id', requireAuth, async (c) => {
   })
 })
 
+/**
+ * GET /groups/:id/members
+ *
+ * Returns the ranked member list for a group.
+ * Any member of the group can view this.
+ *
+ * Response:
+ * { members: [{ user_id, display_name, avatar_url, role, joined_at, total_points, exact_hits }] }
+ */
+router.get('/:id/members', requireAuth, async (c) => {
+  const userId = c.get('userId')
+  const groupId = c.req.param('id')
+  const db = c.env.DB
+
+  const membership = await db
+    .prepare('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?')
+    .bind(groupId, userId)
+    .first<{ role: string }>()
+
+  if (!membership) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
+  const members = await db
+    .prepare(
+      `SELECT
+         gm.user_id,
+         gm.role,
+         gm.joined_at,
+         COALESCE(p.nickname, u.email) AS display_name,
+         p.avatar_url,
+         COALESCE(l.total_points, 0) AS total_points,
+         COALESCE(l.exact_hits, 0) AS exact_hits
+       FROM group_members gm
+       INNER JOIN users u ON gm.user_id = u.id
+       LEFT JOIN profiles p ON gm.user_id = p.user_id
+       LEFT JOIN leaderboard l ON gm.group_id = l.group_id AND gm.user_id = l.user_id
+       WHERE gm.group_id = ?
+       ORDER BY total_points DESC, exact_hits DESC, gm.joined_at ASC`,
+    )
+    .bind(groupId)
+    .all<{
+      user_id: string
+      role: string
+      joined_at: string
+      display_name: string
+      avatar_url: string | null
+      total_points: number
+      exact_hits: number
+    }>()
+
+  return c.json({ members: members.results })
+})
+
+/**
+ * DELETE /groups/:id/members/:memberId
+ *
+ * Removes a member from the group.
+ * Only the group admin (owner) can remove members.
+ * The admin cannot remove themselves.
+ */
+router.delete('/:id/members/:memberId', requireAuth, async (c) => {
+  const userId = c.get('userId')
+  const groupId = c.req.param('id')
+  const targetUserId = c.req.param('memberId')
+  const db = c.env.DB
+
+  const group = await db
+    .prepare('SELECT owner_user_id FROM groups WHERE id = ?')
+    .bind(groupId)
+    .first<{ owner_user_id: string }>()
+
+  if (!group) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
+  if (group.owner_user_id !== userId) {
+    return c.json({ error: 'Apenas o administrador pode remover membros' }, 403)
+  }
+
+  if (targetUserId === userId) {
+    return c.json({ error: 'Você não pode remover a si mesmo do grupo' }, 400)
+  }
+
+  const membership = await db
+    .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
+    .bind(groupId, targetUserId)
+    .first<{ id: string }>()
+
+  if (!membership) {
+    return c.json({ error: 'Membro não encontrado no grupo' }, 404)
+  }
+
+  await db
+    .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
+    .bind(groupId, targetUserId)
+    .run()
+
+  return c.json({ success: true })
+})
+
 export { router as groupsRouter }
