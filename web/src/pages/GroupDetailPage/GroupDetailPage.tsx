@@ -12,6 +12,7 @@ import JoinGroupModal from '../../components/JoinGroupModal'
 import BracketTab from '../../components/BracketTab/BracketTab'
 import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
+import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
 import styles from './GroupDetailPage.module.css'
 
@@ -39,7 +40,13 @@ interface GroupDetail {
   exact_hits: number
 }
 
-const TABS = ['predictions', 'group-picks', 'leaderboard', 'bracket'] as const
+const TABS = [
+  'predictions',
+  'group-picks',
+  'leaderboard',
+  'bracket',
+  'members',
+] as const
 type Tab = (typeof TABS)[number]
 const DEFAULT_TAB: Tab = 'predictions'
 
@@ -253,6 +260,14 @@ export default function GroupDetailPage({
           >
             Chaveamento
           </button>
+          {isAdmin && (
+            <button
+              className={`${styles.tab} ${activeTab === 'members' ? styles.tabActive : ''}`}
+              onClick={() => setActiveTab('members')}
+            >
+              Membros
+            </button>
+          )}
         </div>
 
         <div className={styles.tabContent}>
@@ -269,11 +284,10 @@ export default function GroupDetailPage({
             />
           )}
           {activeTab === 'leaderboard' && (
-            <LeaderboardTab
-              groupId={groupId}
-              isAdmin={isAdmin}
-              currentUserId={user.id}
-            />
+            <LeaderboardTab groupId={groupId} currentUserId={user.id} />
+          )}
+          {activeTab === 'members' && isAdmin && (
+            <MembersTab groupId={groupId} currentUserId={user.id} />
           )}
           {activeTab === 'bracket' && (
             <BracketTab
