@@ -413,4 +413,157 @@ router.put('/bulk', requireAuth, async (c) => {
   return c.json({ ok: true, saved, locked, not_found: notFound })
 })
 
+/**
+ * POST /predictions/import
+ *
+ * Copies the authenticated user's predictions from one group to another group
+ * of the same competition. Useful when a user belongs to multiple groups and
+ * wants to reuse the same predictions.
+ *
+ * Only unlocked predictions (match.start_time > now) are copied. Already-locked
+ * matches are silently skipped and reported in `locked_skipped`. Existing
+ * predictions in the target group are overwritten.
+ *
+ * Body: { source_group_id, target_group_id }
+ *
+ * Response: { ok: true, imported: number, locked_skipped: number }
+ *
+ * Errors:
+ *   400 — missing/invalid fields
+ *   403 — user not in one of the groups
+ *   404 — group not found
+ *   422 — groups belong to different competitions
+ */
+router.post('/import', requireAuth, async (c) => {
+  const userId = c.get('userId')
+
+  let body: { source_group_id?: string; target_group_id?: string }
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Body JSON inválido' }, 400)
+  }
+
+  const { source_group_id, target_group_id } = body
+
+  if (!source_group_id || !target_group_id) {
+    return c.json(
+      { error: 'source_group_id e target_group_id são obrigatórios' },
+      400,
+    )
+  }
+
+  if (source_group_id === target_group_id) {
+    return c.json(
+      { error: 'source_group_id e target_group_id devem ser diferentes' },
+      400,
+    )
+  }
+
+  const db = c.env.DB
+
+  // Verify user is a member of both groups
+  const [sourceMembership, targetMembership] = await Promise.all([
+    db
+      .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
+      .bind(source_group_id, userId)
+      .first(),
+    db
+      .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
+      .bind(target_group_id, userId)
+      .first(),
+  ])
+
+  if (!sourceMembership) {
+    return c.json({ error: 'Acesso negado ao grupo de origem' }, 403)
+  }
+
+  if (!targetMembership) {
+    return c.json({ error: 'Acesso negado ao grupo de destino' }, 403)
+  }
+
+  // Verify both groups belong to the same competition
+  const [sourceGroup, targetGroup] = await Promise.all([
+    db
+      .prepare(`SELECT competition_id FROM groups WHERE id = ?`)
+      .bind(source_group_id)
+      .first<{ competition_id: string }>(),
+    db
+      .prepare(`SELECT competition_id FROM groups WHERE id = ?`)
+      .bind(target_group_id)
+      .first<{ competition_id: string }>(),
+  ])
+
+  if (!sourceGroup || !targetGroup) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
+  if (sourceGroup.competition_id !== targetGroup.competition_id) {
+    return c.json(
+      { error: 'Os grupos pertencem a campeonatos diferentes' },
+      422,
+    )
+  }
+
+  const now = new Date().toISOString()
+
+  // Fetch user's predictions from source group for unlocked matches only
+  const sourcePredictions = await db
+    .prepare(
+      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score
+       FROM predictions p
+       JOIN matches m ON m.id = p.match_id
+       WHERE p.user_id = ? AND p.group_id = ? AND m.start_time > ?`,
+    )
+    .bind(userId, source_group_id, now)
+    .all<{
+      match_id: string
+      predicted_home_score: number
+      predicted_away_score: number
+    }>()
+
+  const toImport = sourcePredictions.results
+
+  // Count total source predictions to report how many were locked-skipped
+  const totalCount = await db
+    .prepare(
+      `SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`,
+    )
+    .bind(userId, source_group_id)
+    .first<{ total: number }>()
+
+  const lockedSkipped = (totalCount?.total ?? 0) - toImport.length
+
+  if (toImport.length === 0) {
+    return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })
+  }
+
+  // Upsert all importable predictions in a single batch
+  const importStatements = toImport.map((p) =>
+    db
+      .prepare(
+        `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+           predicted_home_score = excluded.predicted_home_score,
+           predicted_away_score = excluded.predicted_away_score,
+           updated_at           = excluded.updated_at`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        userId,
+        target_group_id,
+        p.match_id,
+        p.predicted_home_score,
+        p.predicted_away_score,
+        now,
+        now,
+      ),
+  )
+
+  await db.batch(importStatements)
+
+  return c.json({ ok: true, imported: toImport.length, locked_skipped: lockedSkipped })
+})
+
 export { router as predictionsRouter }

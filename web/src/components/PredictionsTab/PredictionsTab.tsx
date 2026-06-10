@@ -34,6 +34,34 @@ export default function PredictionsTab({
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  const [otherGroups, setOtherGroups] = useState<
+    { id: string; name: string }[]
+  >([])
+  const [importSourceId, setImportSourceId] = useState<string>('')
+  const [importing, setImporting] = useState(false)
+  const [importFeedback, setImportFeedback] = useState<{
+    ok: boolean
+    message: string
+  } | null>(null)
+
+  useEffect(() => {
+    fetch(`${config.apiUrl}/groups`, { credentials: 'include' })
+      .then((r) => {
+        if (!r.ok) return
+        return r.json() as Promise<{
+          groups: Array<{ id: string; name: string; competition_id: string }>
+        }>
+      })
+      .then((data) => {
+        if (!data) return
+        const siblings = data.groups.filter(
+          (g) => g.competition_id === competitionId && g.id !== groupId,
+        )
+        setOtherGroups(siblings)
+        if (siblings.length > 0) setImportSourceId(siblings[0].id)
+      })
+      .catch(() => {})
+  }, [groupId, competitionId])
 
   useEffect(() => {
     setLoading(true)
@@ -215,6 +243,53 @@ export default function PredictionsTab({
 
   const pendingCount = collectRoundDrafts().length
 
+  async function handleImport() {
+    if (!importSourceId) return
+    setImporting(true)
+    setImportFeedback(null)
+    try {
+      const res = await fetch(`${config.apiUrl}/predictions/import`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_group_id: importSourceId,
+          target_group_id: groupId,
+        }),
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        error?: string
+        imported?: number
+        locked_skipped?: number
+      }
+      if (!res.ok) throw new Error(data.error ?? 'Erro ao importar palpites')
+
+      // Refresh predictions after import
+      const predsRes = await fetch(
+        `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
+        { credentials: 'include' },
+      )
+      const predsData = (await predsRes.json()) as { predictions: Prediction[] }
+      const map = new Map<string, Prediction>()
+      for (const p of predsData.predictions) map.set(p.match_id, p)
+      setPredictions(map)
+
+      const imported = data.imported ?? 0
+      const skipped = data.locked_skipped ?? 0
+      const msg =
+        skipped > 0
+          ? `${imported} palpite(s) importado(s). ${skipped} já bloqueado(s) foram ignorados.`
+          : `${imported} palpite(s) importado(s) com sucesso!`
+      setImportFeedback({ ok: true, message: msg })
+      setTimeout(() => setImportFeedback(null), 4000)
+    } catch (e) {
+      setImportFeedback({ ok: false, message: (e as Error).message })
+    } finally {
+      setImporting(false)
+    }
+  }
+
   function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
     const result: [string | null, Match[]][] = []
     for (const m of ms) {
@@ -231,6 +306,38 @@ export default function PredictionsTab({
 
   return (
     <div className={styles.root}>
+      {otherGroups.length > 0 && (
+        <div className={styles.importBar}>
+          <span className={styles.importLabel}>Importar palpites de:</span>
+          <select
+            className={styles.importSelect}
+            value={importSourceId}
+            onChange={(e) => setImportSourceId(e.target.value)}
+          >
+            {otherGroups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className={styles.importBtn}
+            onClick={handleImport}
+            disabled={importing || !importSourceId}
+          >
+            {importing ? 'Importando...' : 'Importar'}
+          </button>
+          {importFeedback && (
+            <span
+              className={
+                importFeedback.ok ? styles.importSuccess : styles.importError
+              }
+            >
+              {importFeedback.message}
+            </span>
+          )}
+        </div>
+      )}
       <div className={styles.roundNav}>
         <button
           className={styles.navBtn}
