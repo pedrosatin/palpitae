@@ -294,6 +294,29 @@ describe('PredictionsTab – Initialisation', () => {
     vi.restoreAllMocks()
   })
 
+  it('counts a new draft after changing only one score from the 0 default', async () => {
+    const matches: Match[] = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+    ]
+    mockFetch(matches)
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /^Salvar todos$/i }),
+      ).toBeDisabled()
+    })
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Aumentar placar Argentina/i }),
+    )
+
+    expect(
+      screen.getByRole('button', { name: /Salvar todos \(1\)/i }),
+    ).toBeEnabled()
+  })
+
   it('selects the first round with a scheduled/live match on load', async () => {
     const matches: Match[] = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),

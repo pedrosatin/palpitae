@@ -61,11 +61,13 @@ export default function MatchCard({
     Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)
 
   const [home, setHome] = useState<string>(
-    prediction !== undefined ? String(prediction.predicted_home_score) : '',
+    prediction !== undefined ? String(prediction.predicted_home_score) : '0',
   )
   const [away, setAway] = useState<string>(
-    prediction !== undefined ? String(prediction.predicted_away_score) : '',
+    prediction !== undefined ? String(prediction.predicted_away_score) : '0',
   )
+  const [homeTouched, setHomeTouched] = useState(false)
+  const [awayTouched, setAwayTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -73,10 +75,10 @@ export default function MatchCard({
   const isFinished = match.status === 'finished'
   const isLive = match.status === 'live'
   const hasPrediction = prediction !== undefined
-  const hasChanged =
-    !hasPrediction ||
-    Number(home) !== prediction.predicted_home_score ||
-    Number(away) !== prediction.predicted_away_score
+  const hasChanged = hasPrediction
+    ? Number(home) !== prediction.predicted_home_score ||
+      Number(away) !== prediction.predicted_away_score
+    : homeTouched || awayTouched
   const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged
 
   async function handleSave() {
@@ -111,11 +113,13 @@ export default function MatchCard({
   }
 
   function updateHome(v: string) {
+    setHomeTouched(true)
     setHome(v)
     onDraftChange?.(match.id, v, away)
   }
 
   function updateAway(v: string) {
+    setAwayTouched(true)
     setAway(v)
     onDraftChange?.(match.id, home, v)
   }

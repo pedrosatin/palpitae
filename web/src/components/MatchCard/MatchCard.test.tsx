@@ -60,6 +60,28 @@ function renderCard(
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('MatchCard – hasChanged / canSave', () => {
+  it('uses 0 as the default draft and enables save after changing only one field', async () => {
+    renderCard(makeMatch(), undefined)
+
+    const homeInput = screen.getByRole('spinbutton', {
+      name: /Placar Brasil/i,
+    }) as HTMLInputElement
+    const awayInput = screen.getByRole('spinbutton', {
+      name: /Placar Argentina/i,
+    }) as HTMLInputElement
+    const saveBtn = screen.getByRole('button', { name: /Salvar/i })
+
+    expect(homeInput.value).toBe('0')
+    expect(awayInput.value).toBe('0')
+    expect(saveBtn).toBeDisabled()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Aumentar placar Argentina/i }),
+    )
+
+    expect(saveBtn).toBeEnabled()
+  })
+
   it('enables save when there is no prediction and both fields are filled', async () => {
     renderCard(makeMatch(), undefined)
 
@@ -130,13 +152,13 @@ describe('MatchCard – Stepper "+"', () => {
   })
 
   it('treats an empty field as 0 when "+" is clicked', async () => {
-    // No prediction → fields start empty
+    // No prediction → fields start at 0
     renderCard(makeMatch(), undefined)
 
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
     }) as HTMLInputElement
-    expect(input.value).toBe('')
+    expect(input.value).toBe('0')
 
     await userEvent.click(
       screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
@@ -185,7 +207,7 @@ describe('MatchCard – Stepper "−"', () => {
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
     }) as HTMLInputElement
-    expect(input.value).toBe('')
+    expect(input.value).toBe('0')
 
     await userEvent.click(
       screen.getByRole('button', { name: /Diminuir placar Brasil/i }),
