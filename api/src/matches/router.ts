@@ -1,6 +1,8 @@
+import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import type { AppContext } from '../types'
+import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
 const router = new Hono<AppContext>()
@@ -121,12 +123,71 @@ router.get('/', async (c) => {
       }
     }
 
+    // Background result sync: fire-and-forget after response is sent.
+    // Checks for matches that started >3h ago but aren't finished in our DB.
+    // At most 1 API call per competition per trigger — naturally self-cooling
+    // because once a match is 'finished' + scored_at is set, it never triggers again.
+    const apiKey = c.env.FOOTBALL_API_KEY
+    if (apiKey) {
+      c.executionCtx.waitUntil(maybeSyncResults(competitionId, db, apiKey))
+    }
+
     return c.json({ matches: result.results })
   } catch (error) {
     console.error('Erro ao buscar jogos:', error)
     return c.json({ error: 'Erro ao carregar jogos' }, 500)
   }
 })
+
+async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: string): Promise<void> {
+  try {
+    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+
+    const pending = await db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM matches
+         WHERE competition_id = ? AND start_time <= ? AND status != 'finished'`,
+      )
+      .bind(competitionId, threeHoursAgo)
+      .first<{ count: number }>()
+
+    const needsSync = (pending?.count ?? 0) > 0
+
+    // Also check for finished matches not yet scored (e.g. from a previous sync)
+    const unscoredCheck = await db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM matches
+         WHERE competition_id = ? AND status = 'finished' AND scored_at IS NULL
+           AND home_score IS NOT NULL AND away_score IS NOT NULL`,
+      )
+      .bind(competitionId)
+      .first<{ count: number }>()
+
+    const needsScoring = (unscoredCheck?.count ?? 0) > 0
+
+    if (!needsSync && !needsScoring) return
+
+    if (needsSync) {
+      const competition = await db
+        .prepare(`SELECT external_id, provider, season FROM competitions WHERE id = ?`)
+        .bind(competitionId)
+        .first<{ external_id: string; provider: string; season: string }>()
+
+      if (!competition || competition.provider !== 'football-data') return
+
+      await syncFixtures({
+        competitionCode: competition.external_id,
+        season: Number(competition.season),
+        apiKey,
+        db,
+      })
+    }
+
+    await scoreUnprocessedMatches(competitionId, db)
+  } catch (err) {
+    console.error('Background result sync falhou:', err)
+  }
+}
 
 /**
  * POST /matches/sync

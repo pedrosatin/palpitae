@@ -12,6 +12,8 @@ The goal is to ensure:
 
 **Note:** This file describes _intent_ and _governance_. For the **current state** of the codebase (modules, dependencies, god nodes), see [`graphify-out/GRAPH_REPORT.md`](graphify-out/GRAPH_REPORT.md) — it's auto-generated from source and always in sync.
 
+**Tarefa atual:** SEMPRE leia [`context.md`](context.md) para entender o que está sendo implementado no momento antes de ler código ou tomar decisões de implementação.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
