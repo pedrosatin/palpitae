@@ -116,10 +116,25 @@ function buildFakeDb(matches: FakeMatch[], predictions: FakePrediction[]) {
     }
   }
 
-  const db = {
+  type FakeStatement = {
+    bind(...args: unknown[]): FakeStatement
+    first<T>(): Promise<T | null>
+    all<T>(): Promise<{ results: T[] }>
+    run(): Promise<void>
+    _sql: string
+    _params: unknown[]
+  }
+
+  const db: {
+    prepare(sql: string): FakeStatement
+    batch(statements: FakeStatement[]): Promise<void>
+    _updatedMatches: Record<string, Partial<FakeMatch>>
+    _updatedPredictions: Record<string, Partial<FakePrediction>>
+    _leaderboardUpserts: Array<{ group_id: string; user_id: string; total_points: number; exact_hits: number }>
+  } = {
     prepare(sql: string) {
       const boundParams: unknown[] = []
-      const stmt = {
+      const stmt: FakeStatement = {
         bind(...args: unknown[]) {
           boundParams.push(...args)
           return stmt
@@ -131,13 +146,12 @@ function buildFakeDb(matches: FakeMatch[], predictions: FakePrediction[]) {
           return makeStatement(sql, boundParams).all<T>()
         },
         async run() {},
-        // Capture UPDATE calls so we can assert on them
         _sql: sql,
         _params: boundParams,
       }
       return stmt
     },
-    async batch(statements: ReturnType<typeof db.prepare>[]) {
+    async batch(statements: FakeStatement[]) {
       for (const s of statements) {
         const sql = (s as unknown as { _sql: string })._sql
         const params = (s as unknown as { _params: unknown[] })._params
