@@ -87,13 +87,17 @@
     "mtime": 1779830005.012278,
     "hash": "0a7221eba70e361a223f09901df6e895"
   },
-  "/home/satin/Work/palpitae/api/src/matches/scoring.ts": {
-    "mtime": 1781225712.5702066,
-    "hash": "d09528ab794d767751954e532c0fd7dc"
-  },
   "/home/satin/Work/palpitae/api/src/matches/router.ts": {
     "mtime": 1781225748.4294326,
     "hash": "a313d1704e68513fcaea97b36acc6126"
+  },
+  "/home/satin/Work/palpitae/api/src/matches/scoring.ts": {
+    "mtime": 1781226030.5545628,
+    "hash": "858142daa6f774cffc2ca51ec3f5082a"
+  },
+  "/home/satin/Work/palpitae/api/src/matches/scoring.test.ts": {
+    "mtime": 1781226539.9628928,
+    "hash": "185b2f2e0be1a62fcce6ffcafd48e02e"
   },
   "/home/satin/Work/palpitae/api/src/predictions/router.ts": {
     "mtime": 1781117637.9581323,
@@ -260,16 +264,16 @@
     "hash": "12542a0e0552e53e0750f060140a5724"
   },
   "/home/satin/Work/palpitae/web/src/components/MatchCard/MatchCard.test.tsx": {
-    "mtime": 1779830561.5918999,
-    "hash": "762dfaeaebd08decd6340e9799ae1e9d"
+    "mtime": 1781291747.6900134,
+    "hash": "0c323d33bd14076f1dbcba25fd0586e2"
   },
   "/home/satin/Work/palpitae/web/src/components/MatchCard/index.ts": {
     "mtime": 1779830832.4059296,
     "hash": "cc49998087d650125a912600582d07a1"
   },
   "/home/satin/Work/palpitae/web/src/components/MatchCard/MatchCard.tsx": {
-    "mtime": 1780439123.92202,
-    "hash": "1b90eb7888242be70d5cfdb1d4775573"
+    "mtime": 1781291743.385821,
+    "hash": "918c1ee16bd7a67ef41d7c497a1c2073"
   },
   "/home/satin/Work/palpitae/web/src/components/Modal/Modal.tsx": {
     "mtime": 1778375641.8980925,
@@ -284,8 +288,8 @@
     "hash": "f233cd80bb282da02e190cce1e8b63cb"
   },
   "/home/satin/Work/palpitae/web/src/components/PredictionsTab/PredictionsTab.test.tsx": {
-    "mtime": 1779831152.7846918,
-    "hash": "4fadadb2c7d2c8bfaad888a2e5bf14c3"
+    "mtime": 1781291764.4753685,
+    "hash": "856ccaaf6f0393ee8705d7b7c735285d"
   },
   "/home/satin/Work/palpitae/web/src/components/PredictionsTab/index.ts": {
     "mtime": 1779830832.3839293,
@@ -414,10 +418,6 @@
   "/home/satin/Work/palpitae/AGENTS.md": {
     "mtime": 1781225588.1064222,
     "hash": "793cf4044831a6ec145681904d5b90b7"
-  },
-  "/home/satin/Work/palpitae/context.md": {
-    "mtime": 1781225783.9511776,
-    "hash": "2419acd02e0fdaadd54ba6126686745f"
   },
   "/home/satin/Work/palpitae/docs/architecture/decisions.md": {
     "mtime": 1777849582.3451028,
