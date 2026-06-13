@@ -6,6 +6,7 @@ import CreateGroupModal from '../../components/CreateGroupModal'
 import GroupCard, { type GroupWithStats } from '../../components/GroupCard'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
+import { fetchCachedJson, invalidateApiCache } from '../../lib/api-cache'
 import styles from './DashboardPage.module.css'
 
 interface User {
@@ -35,13 +36,23 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(!!pendingInvite)
 
-  function fetchGroups() {
+  function fetchGroups(forceRefresh = false) {
     setLoading(true)
-    fetch(`${config.apiUrl}/groups`, { credentials: 'include' })
-      .then((res) => {
-        if (!res.ok) throw new Error('Falha ao carregar grupos')
-        return res.json() as Promise<{ groups: GroupWithStats[] }>
-      })
+    if (forceRefresh) {
+      invalidateApiCache('groups:')
+    }
+
+    fetchCachedJson(
+      'groups:list',
+      () =>
+        fetch(`${config.apiUrl}/groups`, { credentials: 'include' }).then(
+          (res) => {
+            if (!res.ok) throw new Error('Falha ao carregar grupos')
+            return res.json() as Promise<{ groups: GroupWithStats[] }>
+          },
+        ),
+      30_000,
+    )
       .then((data) => {
         setGroups(data.groups)
         setLoading(false)
@@ -57,8 +68,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   }, [])
 
   function handleGroupCreated() {
-    // Refresh the groups list after creation
-    fetchGroups()
+    fetchGroups(true)
     setCreateOpen(false)
   }
 
