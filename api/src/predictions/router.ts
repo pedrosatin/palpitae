@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 
 const router = new Hono<AppContext>()
@@ -24,6 +25,7 @@ const router = new Hono<AppContext>()
  * }
  */
 router.get('/', requireAuth, async (c) => {
+  const startedAt = Date.now()
   const userId = c.get('userId')
   const groupId = c.req.query('group_id')
   const matchId = c.req.query('match_id')
@@ -34,10 +36,12 @@ router.get('/', requireAuth, async (c) => {
 
   const db = c.env.DB
 
+  const membershipStartedAt = Date.now()
   const membership = await db
     .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
     .bind(groupId, userId)
     .first()
+  const membershipMs = Date.now() - membershipStartedAt
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -69,7 +73,21 @@ router.get('/', requireAuth, async (c) => {
 
   query += ` ORDER BY m.start_time ASC`
 
+  const queryStartedAt = Date.now()
   const result = await db.prepare(query).bind(...params).all()
+  const queryMs = Date.now() - queryStartedAt
+
+  logRequestPerf('GET /predictions', {
+    status: 200,
+    totalMs: Date.now() - startedAt,
+    dbMs: membershipMs + queryMs,
+    rows: result.results.length,
+    extra: {
+      group_id: groupId,
+      scoped_to_match: Boolean(matchId),
+    },
+  })
+
   return c.json({ predictions: result.results })
 })
 
@@ -99,6 +117,7 @@ router.get('/', requireAuth, async (c) => {
  * }
  */
 router.get('/group', requireAuth, async (c) => {
+  const startedAt = Date.now()
   const userId = c.get('userId')
   const groupId = c.req.query('group_id')
 
@@ -108,10 +127,12 @@ router.get('/group', requireAuth, async (c) => {
 
   const db = c.env.DB
 
+  const membershipStartedAt = Date.now()
   const membership = await db
     .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
     .bind(groupId, userId)
     .first()
+  const membershipMs = Date.now() - membershipStartedAt
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -120,6 +141,7 @@ router.get('/group', requireAuth, async (c) => {
   const now = new Date().toISOString()
 
   // Group roster (for stable column/row ordering on the frontend)
+  const membersStartedAt = Date.now()
   const membersResult = await db
     .prepare(
       `SELECT u.id AS user_id, COALESCE(p.nickname, u.email) AS display
@@ -131,9 +153,11 @@ router.get('/group', requireAuth, async (c) => {
     )
     .bind(groupId)
     .all<{ user_id: string; display: string }>()
+  const membersMs = Date.now() - membersStartedAt
 
   // All members' predictions — but only for matches the requester has already
   // predicted (the anti-copy reveal rule).
+  const predictionsStartedAt = Date.now()
   const predictionsResult = await db
     .prepare(
       `SELECT
@@ -156,6 +180,18 @@ router.get('/group', requireAuth, async (c) => {
     )
     .bind(now, groupId, groupId, userId)
     .all()
+  const predictionsMs = Date.now() - predictionsStartedAt
+
+  logRequestPerf('GET /predictions/group', {
+    status: 200,
+    totalMs: Date.now() - startedAt,
+    dbMs: membershipMs + membersMs + predictionsMs,
+    rows: predictionsResult.results.length,
+    extra: {
+      group_id: groupId,
+      members: membersResult.results.length,
+    },
+  })
 
   return c.json({
     self_user_id: userId,

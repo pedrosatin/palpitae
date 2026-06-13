@@ -3,5 +3,5 @@ import { beforeEach } from 'vitest'
 import { invalidateApiCache } from './lib/api-cache'
 
 beforeEach(() => {
-	invalidateApiCache()
+  invalidateApiCache()
 })
