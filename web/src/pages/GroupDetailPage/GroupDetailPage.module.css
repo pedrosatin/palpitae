@@ -183,6 +183,10 @@
 
 .tabs {
   display: flex;
+  position: sticky;
+  top: var(--tabs-offset, 0px);
+  z-index: 9;
+  background-color: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-6);
   gap: var(--space-1);
