@@ -45,7 +45,8 @@ router.get('/', requireAuth, async (c) => {
 
   const db = c.env.DB
   try {
-    // Fetch groups where user is a member
+    c.header('Cache-Control', 'private, max-age=30, stale-while-revalidate=300')
+
     const groups = await db
       .prepare(
         `
@@ -60,7 +61,16 @@ router.get('/', requireAuth, async (c) => {
             FROM group_members gm2
             WHERE gm2.group_id = g.id
           ) AS member_count,
-          COALESCE(l.total_points, 0) AS user_points
+          COALESCE(l.total_points, 0) AS user_points,
+          COALESCE(
+            (
+              SELECT COUNT(*) + 1
+              FROM leaderboard l2
+              WHERE l2.group_id = g.id
+                AND l2.total_points > COALESCE(l.total_points, 0)
+            ),
+            1
+          ) AS user_position
         FROM groups g
         INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
         LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
@@ -69,41 +79,29 @@ router.get('/', requireAuth, async (c) => {
         `
       )
       .bind(userId, userId)
-      .all()
+      .all<{
+        id: string
+        name: string
+        competition_id: string
+        admin_id: string
+        created_at: string
+        member_count: number
+        user_position: number
+        user_points: number
+      }>()
 
-    // For each group, get the user's position in the leaderboard
-    const groupsWithPositions = await Promise.all(
-      groups.results.map(async (group: any) => {
-        // Get user's position
-        const positionResult = await db
-          .prepare(
-            `
-            SELECT COUNT(*) as position
-            FROM leaderboard
-            WHERE group_id = ? AND total_points > (
-              SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?
-            )
-            `
-          )
-          .bind(group.id, group.id, userId)
-          .first<{ position: number }>()
-
-        const position = ((positionResult?.position as number) || 0) + 1
-
-        return {
-          id: group.id,
-          name: group.name,
-          competition_id: group.competition_id,
-          is_admin: group.admin_id === userId,
-          created_at: group.created_at,
-          member_count: group.member_count,
-          user_position: position,
-          user_points: group.user_points,
-        }
-      })
-    )
-
-    return c.json({ groups: groupsWithPositions })
+    return c.json({
+      groups: groups.results.map((group) => ({
+        id: group.id,
+        name: group.name,
+        competition_id: group.competition_id,
+        is_admin: group.admin_id === userId,
+        created_at: group.created_at,
+        member_count: group.member_count,
+        user_position: group.user_position,
+        user_points: group.user_points,
+      })),
+    })
   } catch (error) {
     console.error('Error fetching groups:', error)
     return c.json({ error: 'Erro ao carregar grupos' }, 500)

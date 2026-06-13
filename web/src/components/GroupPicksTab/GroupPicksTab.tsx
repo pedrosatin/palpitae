@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { fetchCachedJson } from '../../lib/api-cache'
 import type { Match } from '../MatchCard'
 import styles from './GroupPicksTab.module.css'
 
@@ -52,13 +53,18 @@ export default function GroupPicksTab({
     setError(null)
 
     Promise.all([
-      fetch(
-        `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-        { credentials: 'include' },
-      ).then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar jogos')
-        return r.json() as Promise<{ matches: Match[] }>
-      }),
+      fetchCachedJson(
+        `matches:${competitionId}`,
+        () =>
+          fetch(
+            `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
+            { credentials: 'include' },
+          ).then((r) => {
+            if (!r.ok) throw new Error('Erro ao carregar jogos')
+            return r.json() as Promise<{ matches: Match[] }>
+          }),
+        300_000,
+      ),
       fetch(
         `${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`,
         { credentials: 'include' },

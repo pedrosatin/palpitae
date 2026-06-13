@@ -95,34 +95,6 @@ router.get('/', async (c) => {
   try {
     const result = await db.prepare(query).bind(...(params as string[])).all()
 
-    // Auto-sync: if no matches found, try fetching from football-data.org
-    if (result.results.length === 0) {
-      const apiKey = c.env.FOOTBALL_API_KEY
-      if (apiKey) {
-        const competition = await db
-          .prepare(`SELECT external_id, provider, season FROM competitions WHERE id = ?`)
-          .bind(competitionId)
-          .first<{ external_id: string | null; provider: string | null; season: string | null }>()
-
-        if (competition?.external_id && competition.provider === 'football-data' && competition.season) {
-          try {
-            await syncFixtures({
-              competitionCode: competition.external_id,
-              season: Number(competition.season),
-              apiKey,
-              db,
-            })
-
-            // Re-query after sync
-            const synced = await db.prepare(query).bind(...(params as string[])).all()
-            return c.json({ matches: synced.results })
-          } catch (syncError) {
-            console.error('Auto-sync falhou, retornando vazio:', syncError)
-          }
-        }
-      }
-    }
-
     // Background result sync: fire-and-forget after response is sent.
     // Checks for matches that started >3h ago but aren't finished in our DB.
     // At most 1 API call per competition per trigger — naturally self-cooling
@@ -142,6 +114,13 @@ router.get('/', async (c) => {
 async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: string): Promise<void> {
   try {
     const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+
+    const localMatches = await db
+      .prepare(`SELECT COUNT(*) AS count FROM matches WHERE competition_id = ?`)
+      .bind(competitionId)
+      .first<{ count: number }>()
+
+    const needsInitialSync = (localMatches?.count ?? 0) === 0
 
     const pending = await db
       .prepare(
@@ -165,9 +144,9 @@ async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: s
 
     const needsScoring = (unscoredCheck?.count ?? 0) > 0
 
-    if (!needsSync && !needsScoring) return
+    if (!needsInitialSync && !needsSync && !needsScoring) return
 
-    if (needsSync) {
+    if (needsInitialSync || needsSync) {
       const competition = await db
         .prepare(`SELECT external_id, provider, season FROM competitions WHERE id = ?`)
         .bind(competitionId)

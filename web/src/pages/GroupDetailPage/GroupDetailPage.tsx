@@ -14,6 +14,7 @@ import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
+import { invalidateApiCache } from '../../lib/api-cache'
 import styles from './GroupDetailPage.module.css'
 
 interface User {
@@ -123,17 +124,27 @@ export default function GroupDetailPage({
     setTimeout(() => setCopied(null), 2000)
   }
 
+  function handleGroupCreated(nextGroup: { id: string }) {
+    invalidateApiCache('groups:')
+    navigate(`/grupos/${nextGroup.id}`)
+  }
+
+  function handleGroupJoined(nextGroup: { id: string }) {
+    invalidateApiCache('groups:')
+    navigate(`/grupos/${nextGroup.id}`)
+  }
+
   const modals = (
     <>
       <CreateGroupModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(group) => navigate(`/grupos/${group.id}`)}
+        onCreated={handleGroupCreated}
       />
       <JoinGroupModal
         isOpen={joinOpen}
         onClose={() => setJoinOpen(false)}
-        onJoined={(group) => navigate(`/grupos/${group.id}`)}
+        onJoined={handleGroupJoined}
       />
     </>
   )

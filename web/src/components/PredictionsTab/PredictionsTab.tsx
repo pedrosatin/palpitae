@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { fetchCachedJson } from '../../lib/api-cache'
 import MatchCard, { type Match, type Prediction } from '../MatchCard'
 import styles from './PredictionsTab.module.css'
 
@@ -45,15 +46,24 @@ export default function PredictionsTab({
   } | null>(null)
 
   useEffect(() => {
-    fetch(`${config.apiUrl}/groups`, { credentials: 'include' })
-      .then((r) => {
-        if (!r.ok) return
-        return r.json() as Promise<{
-          groups: Array<{ id: string; name: string; competition_id: string }>
-        }>
-      })
+    fetchCachedJson(
+      'groups:list',
+      () =>
+        fetch(`${config.apiUrl}/groups`, { credentials: 'include' }).then(
+          (r) => {
+            if (!r.ok) throw new Error('Erro ao carregar grupos')
+            return r.json() as Promise<{
+              groups: Array<{
+                id: string
+                name: string
+                competition_id: string
+              }>
+            }>
+          },
+        ),
+      30_000,
+    )
       .then((data) => {
-        if (!data) return
         const siblings = data.groups.filter(
           (g) => g.competition_id === competitionId && g.id !== groupId,
         )
@@ -68,15 +78,20 @@ export default function PredictionsTab({
     setError(null)
 
     Promise.all([
-      fetch(
-        `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-        {
-          credentials: 'include',
-        },
-      ).then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar jogos')
-        return r.json() as Promise<{ matches: Match[] }>
-      }),
+      fetchCachedJson(
+        `matches:${competitionId}`,
+        () =>
+          fetch(
+            `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
+            {
+              credentials: 'include',
+            },
+          ).then((r) => {
+            if (!r.ok) throw new Error('Erro ao carregar jogos')
+            return r.json() as Promise<{ matches: Match[] }>
+          }),
+        300_000,
+      ),
       fetch(
         `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
         {
