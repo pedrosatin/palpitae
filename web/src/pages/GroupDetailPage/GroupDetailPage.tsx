@@ -111,7 +111,7 @@ export default function GroupDetailPage({
     const header = document.querySelector('header')
     if (!header) return
 
-    const updateOffset = () => setTabsOffset(Math.max(0, header.clientHeight))
+    const updateOffset = () => setTabsOffset(header.clientHeight)
 
     updateOffset()
 
