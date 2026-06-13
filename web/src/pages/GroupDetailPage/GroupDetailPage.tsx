@@ -111,21 +111,26 @@ export default function GroupDetailPage({
     const header = document.querySelector('header')
     if (!header) return
 
-    const updateOffset = () =>
-      setTabsOffset(Math.max(0, Math.round(header.getBoundingClientRect().height)))
+    const updateOffset = () => setTabsOffset(Math.max(0, header.clientHeight))
 
     updateOffset()
 
     const observer =
-      typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(updateOffset)
-        : null
-    observer?.observe(header)
-    window.addEventListener('resize', updateOffset)
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(updateOffset)
+
+    if (observer) {
+      observer.observe(header)
+    } else {
+      window.addEventListener('resize', updateOffset)
+    }
 
     return () => {
       observer?.disconnect()
-      window.removeEventListener('resize', updateOffset)
+      if (!observer) {
+        window.removeEventListener('resize', updateOffset)
+      }
     }
   }, [])
 
