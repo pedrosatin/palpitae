@@ -99,8 +99,10 @@ router.get('/', requireAuth, async (c) => {
  *
  * Visibility rule (anti-copy): a member's prediction for a given match is only
  * revealed once the requesting user has submitted their OWN prediction for that
- * same match. Matches the requester hasn't predicted yet are simply omitted —
- * the frontend shows them as "hidden" until the user palpita.
+ * same match OR the match has already started (start_time <= now). Locked/past
+ * matches are always revealed — the user can no longer predict, so hiding picks
+ * would serve no purpose. Future matches where the requester hasn't predicted
+ * yet are simply omitted — the frontend shows them as "hidden".
  *
  * The `locked` field is derived from match.start_time at runtime (ADR-004).
  *
@@ -155,8 +157,12 @@ router.get('/group', requireAuth, async (c) => {
     .all<{ user_id: string; display: string }>()
   const membersMs = Date.now() - membersStartedAt
 
-  // All members' predictions — but only for matches the requester has already
-  // predicted (the anti-copy reveal rule).
+  // All members' predictions — revealed according to the anti-copy rule:
+  //   • For future/unlocked matches: only shown if the requester has already
+  //     submitted their own prediction for that match.
+  //   • For past/locked matches (start_time <= now): always revealed, even if
+  //     the requester never predicted — they can no longer predict, so hiding
+  //     others' picks would be pointless.
   const predictionsStartedAt = Date.now()
   const predictionsResult = await db
     .prepare(
@@ -173,12 +179,15 @@ router.get('/group', requireAuth, async (c) => {
        LEFT JOIN profiles p ON p.user_id = pr.user_id
        JOIN matches m ON m.id = pr.match_id
        WHERE pr.group_id = ?
-         AND pr.match_id IN (
-           SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
+         AND (
+           m.start_time <= ?
+           OR pr.match_id IN (
+             SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
+           )
          )
        ORDER BY m.start_time ASC, user_display ASC`,
     )
-    .bind(now, groupId, groupId, userId)
+    .bind(now, groupId, now, groupId, userId)
     .all()
   const predictionsMs = Date.now() - predictionsStartedAt
 

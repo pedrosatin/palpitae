@@ -170,6 +170,7 @@ export default function GroupPicksTab({
           const memberPicks = picksByMatch.get(match.id) ?? []
           const revealed = memberPicks.length > 0
           const isFinished = match.status === 'finished'
+          const isLocked = match.status !== 'scheduled'
 
           return (
             <div key={match.id} className={styles.matchCard}>
@@ -232,8 +233,9 @@ export default function GroupPicksTab({
                 </ul>
               ) : (
                 <p className={styles.hidden}>
-                  🔒 Faça seu palpite na aba Previsões para ver os palpites dos
-                  outros membros.
+                  {isLocked
+                    ? '📭 Nenhum palpite foi feito para este jogo.'
+                    : '🔒 Faça seu palpite na aba Previsões para ver os palpites dos outros membros.'}
                 </p>
               )}
             </div>
