@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
@@ -25,6 +26,7 @@ const router = new Hono<AppContext>()
  * }
  */
 router.get('/', async (c) => {
+  const startedAt = Date.now()
   const competitionId = c.req.query('competition_id')
   const round = c.req.query('round')
   const status = c.req.query('status')
@@ -93,7 +95,9 @@ router.get('/', async (c) => {
   }
 
   try {
+    const dbStartedAt = Date.now()
     const result = await db.prepare(query).bind(...(params as string[])).all()
+    const dbMs = Date.now() - dbStartedAt
 
     // Background result sync: fire-and-forget after response is sent.
     // Checks for matches that started >3h ago but aren't finished in our DB.
@@ -104,6 +108,19 @@ router.get('/', async (c) => {
       c.executionCtx.waitUntil(maybeSyncResults(competitionId, db, apiKey))
     }
 
+    logRequestPerf('GET /matches', {
+      status: 200,
+      totalMs: Date.now() - startedAt,
+      dbMs,
+      rows: result.results.length,
+      extra: {
+        competition_id: competitionId,
+        has_round_filter: Boolean(round),
+        status_filter: status ?? 'all',
+        scheduled_result_sync: Boolean(apiKey),
+      },
+    })
+
     return c.json({ matches: result.results })
   } catch (error) {
     console.error('Erro ao buscar jogos:', error)
@@ -112,6 +129,7 @@ router.get('/', async (c) => {
 })
 
 async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: string): Promise<void> {
+  const startedAt = Date.now()
   try {
     const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
 
@@ -163,6 +181,18 @@ async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: s
     }
 
     await scoreUnprocessedMatches(competitionId, db)
+
+    console.info(
+      '[perf]',
+      JSON.stringify({
+        route: 'waitUntil maybeSyncResults',
+        competition_id: competitionId,
+        total_ms: Date.now() - startedAt,
+        initial_sync: needsInitialSync,
+        result_sync: needsSync,
+        scoring: needsScoring,
+      }),
+    )
   } catch (err) {
     console.error('Background result sync falhou:', err)
   }

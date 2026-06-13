@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
+import { logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 
 const router = new Hono<AppContext>()
@@ -42,11 +43,13 @@ function generateInviteCode(): string {
  */
 router.get('/', requireAuth, async (c) => {
   const userId = c.get('userId')
+  const startedAt = Date.now()
 
   const db = c.env.DB
   try {
     c.header('Cache-Control', 'private, max-age=30, stale-while-revalidate=300')
 
+    const dbStartedAt = Date.now()
     const groups = await db
       .prepare(
         `
@@ -90,7 +93,8 @@ router.get('/', requireAuth, async (c) => {
         user_points: number
       }>()
 
-    return c.json({
+    const dbMs = Date.now() - dbStartedAt
+    const payload = {
       groups: groups.results.map((group) => ({
         id: group.id,
         name: group.name,
@@ -101,7 +105,16 @@ router.get('/', requireAuth, async (c) => {
         user_position: group.user_position,
         user_points: group.user_points,
       })),
+    }
+
+    logRequestPerf('GET /groups', {
+      status: 200,
+      totalMs: Date.now() - startedAt,
+      dbMs,
+      rows: payload.groups.length,
     })
+
+    return c.json(payload)
   } catch (error) {
     console.error('Error fetching groups:', error)
     return c.json({ error: 'Erro ao carregar grupos' }, 500)
