@@ -10,13 +10,15 @@ interface GroupMockOptions {
   isMember?: boolean
   members?: Array<{ user_id: string; display: string }>
   predictions?: Array<Record<string, unknown>>
+  capturedSql?: string[]
 }
 
 function createGroupPicksDbMock(opts: GroupMockOptions = {}) {
-  const { isMember = true, members = [], predictions = [] } = opts
+  const { isMember = true, members = [], predictions = [], capturedSql } = opts
 
   const db = {
     prepare(sql: string) {
+      capturedSql?.push(sql)
       return {
         bind() {
           return {
@@ -254,4 +256,39 @@ describe('predictions router – GET /group', () => {
     expect(body.predictions).toHaveLength(2)
     expect(body.predictions[0]?.match_id).toBe('m1')
   })
+
+  it('reveals predictions for locked matches even when the requester has not predicted', async () => {
+    // Simulate: user-1 (requester) did NOT predict match m2, but user-2 did.
+    // m2 is a past/locked match, so the API should still include user-2's pick.
+    const capturedSql: string[] = []
+    const predictions = [
+      {
+        match_id: 'm2',
+        user_id: 'user-2',
+        user_display: 'Ana',
+        predicted_home_score: 1,
+        predicted_away_score: 0,
+        points_awarded: 3,
+        locked: 1,
+      },
+    ]
+
+    const res = await requestGroupPicks(
+      createGroupPicksDbMock({ predictions, capturedSql }),
+      '?group_id=g1',
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { predictions: typeof predictions }
+    expect(body.predictions).toHaveLength(1)
+    expect(body.predictions[0]?.match_id).toBe('m2')
+
+    // Verify the SQL uses the locked-match reveal condition (m.start_time <= ?)
+    // in addition to the requester's own predictions subquery.
+    const predSql = capturedSql.find((s) => s.includes('FROM predictions pr'))
+    expect(predSql).toBeDefined()
+    expect(predSql).toContain('m.start_time <= ?')
+    expect(predSql).toContain('SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?')
+  })
 })
+
