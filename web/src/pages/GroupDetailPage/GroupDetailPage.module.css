@@ -185,6 +185,7 @@
   display: flex;
   position: sticky;
   top: var(--tabs-offset, 0px);
+  /* Keep tabs under the primary header (z-index: 10) and above page content. */
   z-index: 9;
   background-color: var(--color-bg);
   border-bottom: 1px solid var(--color-border);
