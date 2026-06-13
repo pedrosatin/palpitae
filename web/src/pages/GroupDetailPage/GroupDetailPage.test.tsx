@@ -161,6 +161,7 @@ describe('GroupDetailPage – tabs', () => {
   })
 
   it('keeps the tabs bar configured as a sticky secondary header', async () => {
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(72)
     mockGroupFetch()
 
     renderPage()
@@ -170,7 +171,7 @@ describe('GroupDetailPage – tabs', () => {
     })
 
     const tabs = screen.getByTestId('group-tabs')
-    expect(tabs).toHaveStyle('--tabs-offset: 0px')
+    expect(tabs).toHaveStyle('--tabs-offset: 72px')
   })
 
   it('switches to Classificação tab when that button is clicked', async () => {
