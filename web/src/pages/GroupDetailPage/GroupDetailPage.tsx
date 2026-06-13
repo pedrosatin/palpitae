@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import {
   useNavigate,
   useParams,
@@ -70,6 +70,7 @@ export default function GroupDetailPage({
   const [group, setGroup] = useState<GroupDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [tabsOffset, setTabsOffset] = useState(0)
   const activeTab = parseTab(searchParams.get('tab'))
 
   function setActiveTab(tab: Tab) {
@@ -105,6 +106,28 @@ export default function GroupDetailPage({
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [groupId])
+
+  useEffect(() => {
+    const header = document.querySelector('header')
+    if (!header) return
+
+    const updateOffset = () =>
+      setTabsOffset(Math.max(0, Math.round(header.getBoundingClientRect().height)))
+
+    updateOffset()
+
+    const observer =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(updateOffset)
+        : null
+    observer?.observe(header)
+    window.addEventListener('resize', updateOffset)
+
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', updateOffset)
+    }
+  }, [])
 
   if (!groupId) return <Navigate to="/" replace />
 
@@ -246,7 +269,11 @@ export default function GroupDetailPage({
         )}
 
         {/* Tabs */}
-        <div className={styles.tabs}>
+        <div
+          className={styles.tabs}
+          style={{ '--tabs-offset': `${tabsOffset}px` } as CSSProperties}
+          data-testid="group-tabs"
+        >
           <button
             className={`${styles.tab} ${activeTab === 'predictions' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('predictions')}
