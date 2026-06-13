@@ -14,7 +14,7 @@ The API runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+
+- [Node.js](https://nodejs.org/) 22+
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/): `npm install -g wrangler`
 - A Cloudflare account (`wrangler login`)
 
