@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { config } from '../../config'
 import Button from '../../components/Button'
@@ -28,7 +28,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const pendingInvite = searchParams.get('convite') ?? undefined
-  const normalisedPendingInvite = pendingInvite?.trim().toUpperCase()
+  const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
   const canCreateGroup = user.feature_flags?.create_group ?? false
   const [groups, setGroups] = useState<GroupWithStats[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,18 +37,18 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
 
-  function fetchGroups(forceRefresh = false) {
+  const fetchGroups = useCallback((forceRefresh = false) => {
     setLoading(true)
     if (forceRefresh) {
       invalidateApiCache('groups:')
     }
 
     fetchCachedJson(
-      `groups:list:${normalisedPendingInvite ?? 'default'}`,
+      `groups:list:${normalizedPendingInvite ?? 'default'}`,
       () => {
         const url = new URL(`${config.apiUrl}/groups`)
-        if (normalisedPendingInvite) {
-          url.searchParams.set('invite_code', normalisedPendingInvite)
+        if (normalizedPendingInvite) {
+          url.searchParams.set('invite_code', normalizedPendingInvite)
         }
 
         return fetch(url, { credentials: 'include' }).then(
@@ -65,8 +65,8 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     )
       .then((data) => {
         setGroups(data.groups)
-        if (normalisedPendingInvite) {
-          setJoinOpen((current) => current || !data.matched_invite_group_id)
+        if (normalizedPendingInvite) {
+          setJoinOpen(!data.matched_invite_group_id)
         }
         setLoading(false)
       })
@@ -74,11 +74,11 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
         setError(err.message)
         setLoading(false)
       })
-  }
+  }, [normalizedPendingInvite])
 
   useEffect(() => {
     fetchGroups()
-  }, [normalisedPendingInvite])
+  }, [fetchGroups])
 
   function handleGroupCreated() {
     fetchGroups(true)
