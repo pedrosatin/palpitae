@@ -97,10 +97,9 @@ router.get('/', requireAuth, async (c) => {
         user_points: number
       }>()
 
-    const matchedInviteGroup =
-      inviteCode == null
-        ? null
-        : groups.results.find((group) => group.invite_code === inviteCode) ?? null
+    const matchedInviteGroup = inviteCode
+      ? groups.results.find((group) => group.invite_code === inviteCode) ?? null
+      : null
 
     const dbMs = Date.now() - dbStartedAt
     const payload = {
