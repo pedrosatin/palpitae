@@ -38,12 +38,14 @@ function generateInviteCode(): string {
  *       user_position: number
  *       user_points: number
  *     }
- *   ]
+ *   ],
+ *   matched_invite_group_id: string | null
  * }
  */
 router.get('/', requireAuth, async (c) => {
   const userId = c.get('userId')
   const startedAt = Date.now()
+  const inviteCode = c.req.query('invite_code')?.trim().toUpperCase()
 
   const db = c.env.DB
   try {
@@ -58,6 +60,7 @@ router.get('/', requireAuth, async (c) => {
           g.name,
           g.competition_id,
           g.owner_user_id AS admin_id,
+          g.invite_code,
           g.created_at,
           (
             SELECT COUNT(*)
@@ -87,11 +90,16 @@ router.get('/', requireAuth, async (c) => {
         name: string
         competition_id: string
         admin_id: string
+        invite_code: string
         created_at: string
         member_count: number
         user_position: number
         user_points: number
       }>()
+
+    const matchedInviteGroup = inviteCode
+      ? groups.results.find((group) => group.invite_code === inviteCode) ?? null
+      : null
 
     const dbMs = Date.now() - dbStartedAt
     const payload = {
@@ -105,6 +113,7 @@ router.get('/', requireAuth, async (c) => {
         user_position: group.user_position,
         user_points: group.user_points,
       })),
+      matched_invite_group_id: matchedInviteGroup?.id ?? null,
     }
 
     logRequestPerf('GET /groups', {
