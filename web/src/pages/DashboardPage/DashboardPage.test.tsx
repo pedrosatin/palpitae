@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
+import { config } from '../../config'
 import DashboardPage from './DashboardPage'
 
 const user = {
@@ -22,6 +23,39 @@ function mockResponse(body: unknown, ok = true) {
 describe('DashboardPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+
+    Object.assign(config as { apiUrl: string; authUrl: string }, {
+      apiUrl: 'http://localhost:8787',
+      authUrl: 'http://localhost:8787',
+    })
+  })
+
+  it('loads groups when the API base is a relative proxy path', async () => {
+    Object.assign(config as { apiUrl: string; authUrl: string }, {
+      apiUrl: '/api',
+      authUrl: '/api',
+    })
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({
+        groups: [],
+        matched_invite_group_id: null,
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={['/?convite=inv123']}>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+      '/api/groups?invite_code=INV123',
+    )
   })
 
   it('does not open the join modal from convite query when the user already belongs to that group', async () => {
