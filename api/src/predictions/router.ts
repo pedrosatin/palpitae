@@ -92,6 +92,98 @@ router.get('/', requireAuth, async (c) => {
 })
 
 /**
+ * GET /predictions/user?group_id=xxx&user_id=xxx
+ *
+ * Returns the predictions of a specific group member for all matches that have
+ * already started (locked). These picks are always public once a match is locked,
+ * so any group member can view them. This is used by the leaderboard modal so a
+ * viewer can see exactly which scores a user predicted to arrive at their ranking.
+ *
+ * Response:
+ * {
+ *   predictions: [
+ *     {
+ *       match_id,
+ *       predicted_home_score, predicted_away_score,
+ *       points_awarded,
+ *       match_status, match_start_time,
+ *       home_score, away_score,
+ *       round,
+ *       home_team_name, home_team_short_name, home_team_logo,
+ *       away_team_name, away_team_short_name, away_team_logo
+ *     }
+ *   ]
+ * }
+ */
+router.get('/user', requireAuth, async (c) => {
+  const startedAt = Date.now()
+  const requesterId = c.get('userId')
+  const groupId = c.req.query('group_id')
+  const targetUserId = c.req.query('user_id')
+
+  if (!groupId || !targetUserId) {
+    return c.json({ error: 'group_id e user_id são obrigatórios' }, 400)
+  }
+
+  const db = c.env.DB
+
+  // Requester must be a member of the group
+  const membershipStartedAt = Date.now()
+  const membership = await db
+    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
+    .bind(groupId, requesterId)
+    .first()
+  const membershipMs = Date.now() - membershipStartedAt
+
+  if (!membership) {
+    return c.json({ error: 'Acesso negado' }, 403)
+  }
+
+  const now = new Date().toISOString()
+
+  // Only return predictions for matches that have already started (locked picks are public)
+  const queryStartedAt = Date.now()
+  const result = await db
+    .prepare(
+      `SELECT
+         p.match_id,
+         p.predicted_home_score,
+         p.predicted_away_score,
+         p.points_awarded,
+         m.status AS match_status,
+         m.start_time AS match_start_time,
+         m.home_score,
+         m.away_score,
+         m.round,
+         ht.name AS home_team_name,
+         ht.short_name AS home_team_short_name,
+         ht.logo_url AS home_team_logo,
+         at.name AS away_team_name,
+         at.short_name AS away_team_short_name,
+         at.logo_url AS away_team_logo
+       FROM predictions p
+       JOIN matches m ON m.id = p.match_id
+       JOIN teams ht ON ht.id = m.home_team_id
+       JOIN teams at ON at.id = m.away_team_id
+       WHERE p.group_id = ? AND p.user_id = ? AND m.start_time <= ?
+       ORDER BY m.start_time ASC`,
+    )
+    .bind(groupId, targetUserId, now)
+    .all()
+  const queryMs = Date.now() - queryStartedAt
+
+  logRequestPerf('GET /predictions/user', {
+    status: 200,
+    totalMs: Date.now() - startedAt,
+    dbMs: membershipMs + queryMs,
+    rows: result.results.length,
+    extra: { group_id: groupId, target_user_id: targetUserId },
+  })
+
+  return c.json({ predictions: result.results })
+})
+
+/**
  * GET /predictions/group?group_id=xxx
  *
  * Returns the predictions of ALL members of a group — for the social/tracking
