@@ -28,13 +28,14 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const pendingInvite = searchParams.get('convite') ?? undefined
+  const normalisedPendingInvite = pendingInvite?.trim().toUpperCase()
   const canCreateGroup = user.feature_flags?.create_group ?? false
   const [groups, setGroups] = useState<GroupWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [joinOpen, setJoinOpen] = useState(!!pendingInvite)
+  const [joinOpen, setJoinOpen] = useState(false)
 
   function fetchGroups(forceRefresh = false) {
     setLoading(true)
@@ -43,18 +44,30 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     }
 
     fetchCachedJson(
-      'groups:list',
-      () =>
-        fetch(`${config.apiUrl}/groups`, { credentials: 'include' }).then(
+      `groups:list:${normalisedPendingInvite ?? 'default'}`,
+      () => {
+        const url = new URL(`${config.apiUrl}/groups`)
+        if (normalisedPendingInvite) {
+          url.searchParams.set('invite_code', normalisedPendingInvite)
+        }
+
+        return fetch(url, { credentials: 'include' }).then(
           (res) => {
             if (!res.ok) throw new Error('Falha ao carregar grupos')
-            return res.json() as Promise<{ groups: GroupWithStats[] }>
+            return res.json() as Promise<{
+              groups: GroupWithStats[]
+              matched_invite_group_id: string | null
+            }>
           },
-        ),
+        )
+      },
       30_000,
     )
       .then((data) => {
         setGroups(data.groups)
+        if (normalisedPendingInvite) {
+          setJoinOpen((current) => current || !data.matched_invite_group_id)
+        }
         setLoading(false)
       })
       .catch((err) => {
@@ -65,7 +78,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   useEffect(() => {
     fetchGroups()
-  }, [])
+  }, [normalisedPendingInvite])
 
   function handleGroupCreated() {
     fetchGroups(true)
@@ -73,7 +86,8 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   }
 
   function handleGroupJoined(group: { id: string; name: string }) {
-    navigate(`/grupos/${group.id}`)
+    invalidateApiCache('groups:')
+    navigate(`/grupos/${group.id}`, pendingInvite ? { replace: true } : undefined)
   }
 
   if (loading) {
