@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { config } from '../../config'
 import Button from '../../components/Button'
@@ -28,44 +28,57 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const pendingInvite = searchParams.get('convite') ?? undefined
+  const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
   const canCreateGroup = user.feature_flags?.create_group ?? false
   const [groups, setGroups] = useState<GroupWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [joinOpen, setJoinOpen] = useState(!!pendingInvite)
+  const [joinOpen, setJoinOpen] = useState(false)
 
-  function fetchGroups(forceRefresh = false) {
+  const fetchGroups = useCallback((forceRefresh = false) => {
     setLoading(true)
     if (forceRefresh) {
       invalidateApiCache('groups:')
     }
 
     fetchCachedJson(
-      'groups:list',
-      () =>
-        fetch(`${config.apiUrl}/groups`, { credentials: 'include' }).then(
+      `groups:list:${normalizedPendingInvite ?? 'default'}`,
+      () => {
+        const url = new URL(`${config.apiUrl}/groups`)
+        if (normalizedPendingInvite) {
+          url.searchParams.set('invite_code', normalizedPendingInvite)
+        }
+
+        return fetch(url, { credentials: 'include' }).then(
           (res) => {
             if (!res.ok) throw new Error('Falha ao carregar grupos')
-            return res.json() as Promise<{ groups: GroupWithStats[] }>
+            return res.json() as Promise<{
+              groups: GroupWithStats[]
+              matched_invite_group_id: string | null
+            }>
           },
-        ),
+        )
+      },
       30_000,
     )
       .then((data) => {
         setGroups(data.groups)
+        if (normalizedPendingInvite) {
+          setJoinOpen(!data.matched_invite_group_id)
+        }
         setLoading(false)
       })
       .catch((err) => {
         setError(err.message)
         setLoading(false)
       })
-  }
+  }, [normalizedPendingInvite])
 
   useEffect(() => {
     fetchGroups()
-  }, [])
+  }, [fetchGroups])
 
   function handleGroupCreated() {
     fetchGroups(true)
@@ -73,7 +86,8 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   }
 
   function handleGroupJoined(group: { id: string; name: string }) {
-    navigate(`/grupos/${group.id}`)
+    invalidateApiCache('groups:')
+    navigate(`/grupos/${group.id}`, pendingInvite ? { replace: true } : undefined)
   }
 
   if (loading) {

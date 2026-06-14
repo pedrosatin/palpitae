@@ -24,6 +24,39 @@ describe('DashboardPage', () => {
     vi.restoreAllMocks()
   })
 
+  it('does not open the join modal from convite query when the user already belongs to that group', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({
+        groups: [
+          {
+            id: 'g1',
+            name: 'Os Craques',
+            competition_id: 'c1',
+            invite_code: 'INV123',
+            is_admin: false,
+            created_at: '2026-06-14T00:00:00.000Z',
+            member_count: 8,
+            user_position: 2,
+            user_points: 15,
+          },
+        ],
+        matched_invite_group_id: 'g1',
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={['/?convite=INV123']}>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Seus grupos')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('closes the create group modal after a successful creation', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
