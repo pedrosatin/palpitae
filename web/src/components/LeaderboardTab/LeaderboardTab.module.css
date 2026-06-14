@@ -41,6 +41,7 @@
 .rowSelf {
   border-bottom: 1px solid var(--color-border);
   transition: background-color 0.1s;
+  cursor: pointer;
 }
 
 .row:hover {
@@ -186,4 +187,117 @@
   border-radius: var(--radius-lg);
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+/* ── Predictions modal ─────────────────────────────── */
+
+.modalLoading,
+.modalEmpty {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: var(--space-4) 0;
+}
+
+.modalError {
+  color: #ff4d4f;
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: var(--space-4) 0;
+}
+
+.predList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.predItem {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.predMatch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.predTeam {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.predTeamAway {
+  flex-direction: row-reverse;
+}
+
+.predCrest {
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.predVs {
+  flex: 1;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.predScores {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.predLabel {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.predScore {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.predMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.predRound,
+.predDate {
+  color: var(--color-text-muted);
+}
+
+.predPointsGreen {
+  font-weight: var(--font-weight-semibold);
+  color: #52c41a;
+  margin-left: auto;
+}
+
+.predPointsZero {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  margin-left: auto;
 }
