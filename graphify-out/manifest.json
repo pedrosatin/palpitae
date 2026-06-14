@@ -32,7 +32,7 @@
     "hash": "b54cbeb857db60e9bab77808881e28ad"
   },
   "/home/satin/Work/palpitae/api/src/wrangler-config.test.ts": {
-    "mtime": 1781447581.577408,
+    "mtime": 1781447703.6580882,
     "hash": "bd614bbed4493dc034bdf52e62c956b0"
   },
   "/home/satin/Work/palpitae/api/src/auth/encoding.ts": {
@@ -438,6 +438,10 @@
   "/home/satin/Work/palpitae/README.md": {
     "mtime": 1781447381.3548934,
     "hash": "808dd3fc73d8c99048dcef2f9077b0c9"
+  },
+  "/home/satin/Work/palpitae/GEMINI.md": {
+    "mtime": 1781447608.1361454,
+    "hash": "da79aa9343cd2b362206f03762160abc"
   },
   "/home/satin/Work/palpitae/docs/architecture/decisions.md": {
     "mtime": 1777849582.3451028,
