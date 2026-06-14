@@ -1,4 +1,7 @@
+/// <reference types="vite/client" />
+
 import { describe, expect, it } from 'vitest'
+import deployWorkflow from '../../.github/workflows/deploy-api.yml?raw'
 import packageJsonFile from '../package.json'
 
 type PackageJson = {
@@ -42,5 +45,9 @@ describe('wrangler api config', () => {
 
     expect(wranglerVersion).toBeDefined()
     expect(isAtLeastVersion(wranglerVersion!, [4, 100, 0])).toBe(true)
+  })
+
+  it('pins the api wrangler config for remote migrations in ci', () => {
+    expect(deployWorkflow).toContain('npx wrangler d1 migrations apply palpitae --remote --config ./wrangler.toml')
   })
 })
