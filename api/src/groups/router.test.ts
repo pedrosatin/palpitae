@@ -57,6 +57,7 @@ function createGroupsListDbMock() {
                       name: 'Meu Grupo',
                       competition_id: 'comp-1',
                       admin_id: 'user-9',
+                      invite_code: 'INV123',
                       created_at: '2026-01-01T00:00:00Z',
                       member_count: 3,
                       user_points: 12,
@@ -122,7 +123,7 @@ async function request(email: string, body: Record<string, unknown>) {
   )
 }
 
-async function requestGroupsList(email: string) {
+async function requestGroupsList(email: string, inviteCode?: string) {
   const token = await signJwt({ sub: 'user-1', email }, JWT_SECRET, 3600)
   const headers = new Headers({
     Cookie: `session=${token}`,
@@ -131,8 +132,12 @@ async function requestGroupsList(email: string) {
   const app = new Hono<AppContext>()
   app.route('/groups', groupsRouter)
 
+  const url = inviteCode
+    ? `http://localhost/groups?invite_code=${encodeURIComponent(inviteCode)}`
+    : 'http://localhost/groups'
+
   return app.fetch(
-    new Request('http://localhost/groups', {
+    new Request(url, {
       method: 'GET',
       headers,
     }),
@@ -220,6 +225,15 @@ describe('groups router', () => {
 
     expect(body.groups).toHaveLength(1)
     expect(body.groups[0]?.member_count).toBe(3)
+  })
+
+  it('returns the matched group id for an invite code the user already belongs to', async () => {
+    const res = await requestGroupsList('user@example.com', 'INV123')
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { matched_invite_group_id: string | null }
+
+    expect(body.matched_invite_group_id).toBe('group-1')
   })
 
   it('blocks group creation for users outside the allowlist', async () => {
