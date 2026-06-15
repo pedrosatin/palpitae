@@ -57,6 +57,13 @@
   margin: 0;
 }
 
+.groupActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
 .stats {
   display: flex;
   gap: var(--space-6);
@@ -81,6 +88,32 @@
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.leaveGroupBtn {
+  background: none;
+  border: 1px solid #ff7a7a;
+  border-radius: var(--radius-sm);
+  color: #ff9c9c;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-base);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-4);
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background-color 0.15s;
+}
+
+.leaveGroupBtn:hover:not(:disabled) {
+  border-color: #ffb3b3;
+  color: #ffffff;
+  background-color: rgba(255, 122, 122, 0.12);
+}
+
+.leaveGroupBtn:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 /* ─── Invite Section (admin only) ─────────────────────────────────────── */
@@ -255,6 +288,16 @@
   .groupHeader {
     flex-direction: column;
     gap: var(--space-4);
+  }
+
+  .groupActions {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .stats {
+    justify-content: space-between;
+    width: 100%;
   }
 
   .groupName {
