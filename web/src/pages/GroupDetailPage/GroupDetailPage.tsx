@@ -73,6 +73,7 @@ export default function GroupDetailPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tabsOffset, setTabsOffset] = useState(0)
+  const [leaving, setLeaving] = useState(false)
   const activeTab = parseTab(searchParams.get('tab'))
 
   function setActiveTab(tab: Tab) {
@@ -164,6 +165,35 @@ export default function GroupDetailPage({
     navigate(`/grupos/${nextGroup.id}`)
   }
 
+  async function leaveGroup() {
+    if (!groupId) return
+
+    if (!window.confirm('Tem certeza que deseja sair deste grupo?')) {
+      return
+    }
+
+    setLeaving(true)
+
+    try {
+      const res = await fetch(`${config.apiUrl}/groups/${groupId}/members/${user.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string }
+        throw new Error(body.error ?? 'Erro ao sair do grupo')
+      }
+
+      invalidateApiCache('groups:')
+      navigate('/', { replace: true })
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : 'Erro ao sair do grupo')
+    } finally {
+      setLeaving(false)
+    }
+  }
+
   const modals = (
     <>
       <CreateGroupModal
@@ -232,19 +262,30 @@ export default function GroupDetailPage({
             </span>
             <h1 className={styles.groupName}>{group.name}</h1>
           </div>
-          <div className={styles.stats}>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>{group.member_count}</span>
-              <span className={styles.statLabel}>membros</span>
+          <div className={styles.groupActions}>
+            <div className={styles.stats}>
+              <div className={styles.statItem}>
+                <span className={styles.statValue}>{group.member_count}</span>
+                <span className={styles.statLabel}>membros</span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statValue}>#{group.user_position}</span>
+                <span className={styles.statLabel}>sua posição</span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statValue}>{group.user_points}</span>
+                <span className={styles.statLabel}>pontos</span>
+              </div>
             </div>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>#{group.user_position}</span>
-              <span className={styles.statLabel}>sua posição</span>
-            </div>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>{group.user_points}</span>
-              <span className={styles.statLabel}>pontos</span>
-            </div>
+            {!isAdmin && (
+              <button
+                className={styles.leaveGroupBtn}
+                onClick={leaveGroup}
+                disabled={leaving}
+              >
+                {leaving ? 'Saindo...' : 'Sair do grupo'}
+              </button>
+            )}
           </div>
         </div>
 
