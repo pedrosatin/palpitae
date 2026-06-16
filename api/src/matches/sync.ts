@@ -3,6 +3,66 @@ import type { D1Database } from '@cloudflare/workers-types'
 const PROVIDER = 'football-data'
 const API_BASE = 'https://api.football-data.org/v4'
 
+const TEAM_TRANSLATIONS: Record<string, { name: string; short_name: string }> = {
+  Germany: { name: 'Alemanha', short_name: 'ALE' },
+  'Saudi Arabia': { name: 'Arábia Saudita', short_name: 'ARA' },
+  Argentina: { name: 'Argentina', short_name: 'ARG' },
+  Australia: { name: 'Austrália', short_name: 'AUS' },
+  Belgium: { name: 'Bélgica', short_name: 'BEL' },
+  Brazil: { name: 'Brasil', short_name: 'BRA' },
+  Cameroon: { name: 'Camarões', short_name: 'CAM' },
+  Canada: { name: 'Canadá', short_name: 'CAN' },
+  Qatar: { name: 'Catar', short_name: 'CAT' },
+  'South Korea': { name: 'Coreia do Sul', short_name: 'COR' },
+  'Costa Rica': { name: 'Costa Rica', short_name: 'CRC' },
+  Croatia: { name: 'Croácia', short_name: 'CRO' },
+  Denmark: { name: 'Dinamarca', short_name: 'DIN' },
+  Ecuador: { name: 'Equador', short_name: 'EQU' },
+  Spain: { name: 'Espanha', short_name: 'ESP' },
+  USA: { name: 'Estados Unidos', short_name: 'EUA' },
+  'United States': { name: 'Estados Unidos', short_name: 'EUA' },
+  France: { name: 'França', short_name: 'FRA' },
+  Wales: { name: 'Gales', short_name: 'GAL' },
+  Ghana: { name: 'Gana', short_name: 'GAN' },
+  Netherlands: { name: 'Holanda', short_name: 'HOL' },
+  England: { name: 'Inglaterra', short_name: 'ING' },
+  Iran: { name: 'Irã', short_name: 'IRA' },
+  Italy: { name: 'Itália', short_name: 'ITA' },
+  Japan: { name: 'Japão', short_name: 'JAP' },
+  Morocco: { name: 'Marrocos', short_name: 'MAR' },
+  Mexico: { name: 'México', short_name: 'MEX' },
+  Poland: { name: 'Polônia', short_name: 'POL' },
+  Portugal: { name: 'Portugal', short_name: 'POR' },
+  Senegal: { name: 'Senegal', short_name: 'SEN' },
+  Serbia: { name: 'Sérvia', short_name: 'SER' },
+  Switzerland: { name: 'Suíça', short_name: 'SUI' },
+  Tunisia: { name: 'Tunísia', short_name: 'TUN' },
+  Uruguay: { name: 'Uruguai', short_name: 'URU' },
+  Algeria: { name: 'Argélia', short_name: 'ARG' },
+  Austria: { name: 'Áustria', short_name: 'AUT' },
+  Bolivia: { name: 'Bolívia', short_name: 'BOL' },
+  Chile: { name: 'Chile', short_name: 'CHI' },
+  Colombia: { name: 'Colômbia', short_name: 'COL' },
+  'Ivory Coast': { name: 'Costa do Marfim', short_name: 'CIV' },
+  Egypt: { name: 'Egito', short_name: 'EGI' },
+  Greece: { name: 'Grécia', short_name: 'GRE' },
+  Nigeria: { name: 'Nigéria', short_name: 'NIG' },
+  Norway: { name: 'Noruega', short_name: 'NOR' },
+  Paraguay: { name: 'Paraguai', short_name: 'PAR' },
+  Peru: { name: 'Peru', short_name: 'PER' },
+  'Czech Republic': { name: 'República Tcheca', short_name: 'TCH' },
+  Sweden: { name: 'Suécia', short_name: 'SUE' },
+  Turkey: { name: 'Turquia', short_name: 'TUR' },
+  Ukraine: { name: 'Ucrânia', short_name: 'UCR' },
+  Venezuela: { name: 'Venezuela', short_name: 'VEN' },
+}
+
+const COMP_TRANSLATIONS: Record<string, string> = {
+  'World Cup': 'Copa do Mundo',
+  'European Championship': 'Eurocopa',
+  'Copa América': 'Copa América',
+}
+
 type ApiTeam = {
   id: number
   name: string
@@ -99,12 +159,13 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   const { competition: apiComp, matches } = data
 
+  const competitionName = apiComp ? (COMP_TRANSLATIONS[apiComp.name] ?? apiComp.name) : competitionCode
+
   if (matches.length === 0) {
-    return { competition: apiComp?.name ?? competitionCode, competitionId: '', matches: 0, teams: 0 }
+    return { competition: competitionName, competitionId: '', matches: 0, teams: 0 }
   }
 
   const competitionExternalId = String(apiComp.id)
-  const competitionName = apiComp.name
   const competitionSlug = slugify(`${competitionName}-${season}`)
 
   // Upsert competition
@@ -143,19 +204,22 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   // Upsert teams
   for (const team of teamMap.values()) {
+    const translated = TEAM_TRANSLATIONS[team.name]
+    const finalName = translated?.name ?? team.name
+    const finalShortName =
+      translated?.short_name ?? (team.tla ?? team.shortName ?? team.name.substring(0, 3).toUpperCase())
+
     await db
       .prepare(
         `INSERT INTO teams (id, name, short_name, slug, logo_url, external_id, provider)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (external_id, provider) DO UPDATE SET
-           name       = excluded.name,
-           short_name = excluded.short_name,
            logo_url   = excluded.logo_url`,
       )
       .bind(
         crypto.randomUUID(),
-        team.name,
-        team.tla ?? team.shortName ?? team.name.substring(0, 3).toUpperCase(),
+        finalName,
+        finalShortName,
         slugify(team.name),
         team.crest ?? null,
         String(team.id),
