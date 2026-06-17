@@ -4,9 +4,10 @@ import { authRouter } from './auth/router'
 import { bracketRouter } from './bracket/router'
 import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
+import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { predictionsRouter } from './predictions/router'
-import type { AppContext } from './types'
+import type { AppContext, Env } from './types'
 
 const app = new Hono<AppContext>()
 
@@ -37,4 +38,12 @@ app.route('/predictions', predictionsRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
-export default app
+export default {
+  fetch: app.fetch,
+
+  // Cron Trigger — busca resultados de jogos na janela ativa e pontua (ADR-007).
+  // Agendado em wrangler.toml: "0,30 * * * *" (a cada 30 min).
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? ''))
+  },
+}

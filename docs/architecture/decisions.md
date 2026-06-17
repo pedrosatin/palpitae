@@ -141,6 +141,87 @@ Implement **direct Google OAuth 2.0 (Authorization Code flow)** in the Hono API.
 
 ---
 
+## ADR-007: Result Sync Strategy — Cron-Triggered Time-Window Poller
+
+**Status:** Accepted
+**Date:** 2026-06-16
+
+### Context
+
+Match results must be fetched from football-data.org and scored against user predictions as soon as matches finish. The original approach (`maybeSyncResults`) fires as a `waitUntil` task on every `GET /matches` request — it calls the external API if any match started more than 3 hours ago and isn't marked `finished` yet.
+
+This has two structural problems:
+
+1. **Depends on user traffic.** If no one opens the app during or after a match, scoring never happens.
+2. **Imprecise trigger window.** A fixed 3-hour threshold doesn't reflect actual match structure — it fires too early (matches are still running) or too late (missed results from previous matches).
+
+### Decision
+
+Add a **Cron Trigger** to the existing `palpitae-api` Worker that runs every **30 minutes** (on the hour and half-hour: `0,30 * * * *`) and polls only during the proven active window for each match.
+
+**Timing math:**
+
+```
+First half:           45 min
+First half stoppage:   5 min
+Half-time interval:   15 min
+Second half:          45 min
+Second half stoppage:  5 min
+─────────────────────────────
+Minimum match length: 115 min  ← start polling here
+```
+
+The poller starts checking at `start_time + 115 min`. The upper bound is `start_time + 200 min`, which covers knockout rounds (extra time: 30 min + ~10 min stoppage + penalty shootout: ~15 min), with margin.
+
+**Query:** select distinct `(competition, round)` pairs whose matches are in the active window.
+
+```sql
+SELECT DISTINCT c.id AS comp_id, c.external_id, c.season, m.round
+FROM matches m
+JOIN competitions c ON c.id = m.competition_id
+WHERE m.start_time <= ?  -- now − 115 min (ISO 8601, computed in JS)
+  AND m.start_time >= ?  -- now − 200 min (ISO 8601, computed in JS)
+  AND m.status != 'finished'
+  AND c.provider = 'football-data'
+```
+
+> **Note:** the window bounds are computed in JS with `new Date(...).toISOString()` and bound as parameters, **not** via SQLite's `datetime('now', ...)`. `start_time` is stored as ISO 8601 with `T`/`Z` (`2026-06-16T22:00:00Z`, per ADR-001), and `datetime()` returns a space-separated form (`2026-06-16 23:21:20`). Since `start_time` is `TEXT`, the comparison is lexicographic — the `T` (ASCII 84) vs space (ASCII 32) at position 10 makes `start_time <= datetime(...)` always false. Computing the bounds in JS keeps both sides in the same ISO format (matching the existing `maybeSyncResults` convention).
+
+For each active round, call `syncFixtures` scoped to that `matchday` (numeric rounds = group stage). Non-numeric rounds (knockout phases) fall back to a full-competition fetch. After syncing a competition's active rounds, run `scoreUnprocessedMatches` once for that competition. If a match is not yet finished according to the API, the next 30-minute tick tries again automatically.
+
+**`maybeSyncResults` is kept** in the `GET /matches` request path as a fallback for now; it will be removed once the Cron is stable in production.
+
+### Alternatives Considered
+
+**Multi-source cascading poller (football-data → API-Football → scraper)**
+Polls multiple APIs/sites every 5–10 minutes and falls through to the next source when one fails or rate-limits.
+
+- Rejected: overkill at this scale. Copa do Mundo 2026 has at most 3 games/day. football-data.org free tier allows 10 req/min — we'll never hit the limit with ~1 call per active round per 30-minute tick. Adds significant maintenance surface with no concrete benefit today.
+
+**Keep current (lazy request-triggered)**
+
+- Rejected: depends on user traffic; broken for low-traffic periods or early morning matches.
+
+### Implementation
+
+The Cron Trigger is added to the **existing `palpitae-api` Worker** (not a separate service), since it shares the same D1 binding and `FOOTBALL_API_KEY` secret. No new deployment pipeline is needed.
+
+- New file: `api/src/matches/poller.ts` — contains the active-window query and orchestration
+- `api/src/index.ts` — default export becomes `{ fetch, scheduled }`; the `scheduled` handler calls the poller
+- `api/wrangler.toml` — adds `[triggers] crons = ["0,30 * * * *"]`
+- `api/src/matches/router.ts` — unchanged for now; `maybeSyncResults` stays as a fallback until the Cron is proven in production
+
+### Consequences
+
+- Results are scored within at most 30 minutes of a match finishing, regardless of user traffic. Matches start on the hour or half-hour; the active window is 85 min wide (200 − 115), so at most one tick passes between match end and scoring.
+- `GET /matches` is now a pure DB read — no background API calls piggybacking on user requests
+- football-data.org is called only while matches are actively in their time window — no wasted polling
+- Knockout extra time and penalties are covered by the 200-min upper bound; if still not finished, the next day's manual admin sync catches edge cases
+- If football-data.org is down during a tick, the next tick retries automatically; the scoring gap is bounded by the 30-min cron interval
+- During the transition, both the Cron and `maybeSyncResults` may sync — this is safe because `scoreUnprocessedMatches` is idempotent (skips matches with `scored_at` set)
+
+---
+
 ## ADR-006: Frontend Stack — Vite + React (Static Site)
 
 **Status:** Accepted
