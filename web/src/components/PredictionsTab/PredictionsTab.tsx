@@ -90,7 +90,7 @@ export default function PredictionsTab({
             if (!r.ok) throw new Error('Erro ao carregar jogos')
             return r.json() as Promise<{ matches: Match[] }>
           }),
-        300_000,
+        30_000,
       ),
       fetch(
         `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
