@@ -87,7 +87,7 @@ describe('matches router – GET /', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({ matches: [] })
+    await expect(response.json()).resolves.toEqual({ matches: [], default_round: null })
     expect(waitUntil).toHaveBeenCalledTimes(1)
     expect(syncFixturesSpy).toHaveBeenCalledTimes(1)
   })
@@ -175,7 +175,7 @@ describe('matches router – GET /', () => {
       const second = makeCtx()
       const r2 = await app.fetch(newRequest(), env, second.ctx)
       expect(r2.status).toBe(200)
-      await expect(r2.json()).resolves.toEqual({ matches: [{ status: 'finished' }] })
+      await expect(r2.json()).resolves.toEqual({ matches: [{ status: 'finished' }], default_round: null })
 
       // Only the first request queried D1; the second came from the edge cache.
       expect(counter.mainQueries).toBe(1)
