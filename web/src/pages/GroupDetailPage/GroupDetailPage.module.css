@@ -192,6 +192,7 @@
   margin-bottom: var(--space-6);
   gap: var(--space-1);
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 
