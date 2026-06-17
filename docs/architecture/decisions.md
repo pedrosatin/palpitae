@@ -222,6 +222,37 @@ The Cron Trigger is added to the **existing `palpitae-api` Worker** (not a separ
 
 ---
 
+## ADR-008: Caching Strategy for `GET /matches` — Content-Derived TTL + Edge Cache API
+
+**Status:** Accepted
+**Date:** 2026-06-17
+
+### Context
+
+`GET /matches` is the highest-traffic read in the app. D1 bills per **row read/written**, so responses are cached to limit reads. The original `Cache-Control` was chosen from the `status` **query param**: the no-status form (the only one the frontend uses) fell into a default of `max-age=3600, stale-while-revalidate=86400`.
+
+But that response is a **mixed list** (scheduled + live + finished). When a live match transitioned to `finished` and was scored by the Cron (ADR-007), the browser/CDN kept serving the stale "ao vivo" snapshot for up to 1h (and up to 24h under `stale-while-revalidate`). The Cron and scoring were correct — the bug was purely cache staleness on the read path.
+
+### Decision
+
+1. **Derive `Cache-Control` from the response _contents_, not the query param.** A list is only safe to cache long-term when every match is `finished` (a terminal state):
+   - all `finished` → `max-age=86400` (never changes)
+   - any `live` → `max-age=30`
+   - otherwise / empty → `max-age=60` (a `scheduled` match flips to `live` at kickoff)
+2. **Add an explicit edge cache via the Cache API** (`caches.default`), keyed by request URL. A hit returns before querying D1, saving rows read and sharing the result across users in the same colo. Worker-generated responses are **not** edge-cached by `Cache-Control` alone, so the `put()` is explicit.
+3. **Frontend:** align the in-memory `fetchCachedJson` TTL for matches to 30s across `DashboardPage`, `PredictionsTab`, `GroupPicksTab` (was 5 min in the latter two).
+
+### Consequences
+
+- A `live → finished` transition is reflected within ~30s instead of up to 1h.
+- Finished rounds are still cached 24h — that's the bulk of long-lived cacheable traffic.
+- **No extra infra cost:** the Cache API is not billed per operation or for storage. It is best-effort and **per-colo** (may be evicted), so correctness never depends on it.
+- **D1 cost stays negligible:** reads are cheap and the free tier is generous (~5M rows/day); `GET /matches` reads ~120–216 rows. The short TTLs add a trivial number of reads.
+- The **Cron does not use this endpoint** — it queries D1 directly via the binding — so result freshness is unaffected by these TTLs.
+- `maybeSyncResults` still fires on cache **misses**; on hits it is skipped, which is fine because the Cron (ADR-007) is the primary sync path.
+
+---
+
 ## ADR-006: Frontend Stack — Vite + React (Static Site)
 
 **Status:** Accepted

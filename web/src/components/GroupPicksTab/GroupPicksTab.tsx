@@ -63,7 +63,7 @@ export default function GroupPicksTab({
             if (!r.ok) throw new Error('Erro ao carregar jogos')
             return r.json() as Promise<{ matches: Match[] }>
           }),
-        300_000,
+        30_000,
       ),
       fetch(
         `${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`,
