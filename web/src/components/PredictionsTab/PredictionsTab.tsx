@@ -11,14 +11,6 @@ interface PredictionsTabProps {
 
 type PredictionMap = Map<string, Prediction>
 
-function defaultRoundIndex(rounds: Map<string, Match[]>): number {
-  const keys = Array.from(rounds.keys())
-  const idx = keys.findIndex((k) =>
-    rounds.get(k)!.some((m) => m.status === 'scheduled' || m.status === 'live'),
-  )
-  return idx >= 0 ? idx : keys.length - 1
-}
-
 export default function PredictionsTab({
   groupId,
   competitionId,
@@ -88,7 +80,7 @@ export default function PredictionsTab({
             },
           ).then((r) => {
             if (!r.ok) throw new Error('Erro ao carregar jogos')
-            return r.json() as Promise<{ matches: Match[] }>
+            return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
           }),
         30_000,
       ),
@@ -108,13 +100,11 @@ export default function PredictionsTab({
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
         setPredictions(map)
 
-        // compute rounds here so we can pick the default
-        const r = new Map<string, Match[]>()
-        for (const m of matchesData.matches) {
-          if (!r.has(m.round)) r.set(m.round, [])
-          r.get(m.round)!.push(m)
+        if (matchesData.default_round != null) {
+          const keys = [...new Set(matchesData.matches.map((m) => m.round))]
+          const idx = keys.indexOf(matchesData.default_round)
+          setRoundIndex(idx >= 0 ? idx : 0)
         }
-        setRoundIndex(defaultRoundIndex(r))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
