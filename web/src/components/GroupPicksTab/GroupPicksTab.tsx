@@ -30,13 +30,6 @@ interface GroupPicksResponse {
   predictions: MemberPrediction[]
 }
 
-function defaultRoundIndex(rounds: Map<string, Match[]>): number {
-  const keys = Array.from(rounds.keys())
-  const idx = keys.findIndex((k) =>
-    rounds.get(k)!.some((m) => m.status === 'scheduled' || m.status === 'live'),
-  )
-  return idx >= 0 ? idx : keys.length - 1
-}
 
 export default function GroupPicksTab({
   groupId,
@@ -61,7 +54,7 @@ export default function GroupPicksTab({
             { credentials: 'include' },
           ).then((r) => {
             if (!r.ok) throw new Error('Erro ao carregar jogos')
-            return r.json() as Promise<{ matches: Match[] }>
+            return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
           }),
         30_000,
       ),
@@ -77,12 +70,11 @@ export default function GroupPicksTab({
         setMatches(matchesData.matches)
         setPicks(picksData)
 
-        const r = new Map<string, Match[]>()
-        for (const m of matchesData.matches) {
-          if (!r.has(m.round)) r.set(m.round, [])
-          r.get(m.round)!.push(m)
+        if (matchesData.default_round != null) {
+          const keys = [...new Set(matchesData.matches.map((m) => m.round))]
+          const idx = keys.indexOf(matchesData.default_round)
+          setRoundIndex(idx >= 0 ? idx : 0)
         }
-        setRoundIndex(defaultRoundIndex(r))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
