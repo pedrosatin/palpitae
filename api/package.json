@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --config ./wrangler.toml --port 8787",
+    "dev:cron": "wrangler dev --config ./wrangler.toml --test-scheduled --port 8787",
     "deploy": "wrangler deploy --config ./wrangler.toml",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
