@@ -8,6 +8,12 @@ database_name = "palpitae"
 database_id = "ffd7a7ed-3434-4db8-a505-b74c1cf79d6a"
 migrations_dir = "migrations"
 
+# Result poller — busca resultados na janela ativa dos jogos e pontua (ADR-007).
+# A cada 30 min (hora cheia e meia hora). Janela ativa = 85 min, então no máximo
+# 1 tick de atraso entre o fim do jogo e a pontuação.
+[triggers]
+crons = ["0,30 * * * *"]
+
 [vars]
 BASE_URL = "https://api.palpitae.com.br"
 FRONTEND_URL = "https://palpitae.com.br"
