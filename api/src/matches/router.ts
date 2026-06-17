@@ -129,7 +129,13 @@ router.get('/', async (c) => {
     // response is NOT edge-cached automatically by Cache-Control — only the
     // explicit caches.default.put() does that. The Worker still runs on every
     // request, but a cache hit (above) skips the D1 query.
-    const response = c.json({ matches: result.results })
+    const nowIso = new Date().toISOString()
+    type MatchRow = { status: string; start_time: string; round: string }
+    const rows = result.results as MatchRow[]
+    const firstOpen = rows.find((m) => m.start_time > nowIso)
+    const defaultRound = firstOpen?.round ?? rows[rows.length - 1]?.round ?? null
+
+    const response = c.json({ matches: result.results, default_round: defaultRound })
     response.headers.set('Cache-Control', matchesCacheControl(result.results))
 
     if (cache) {
