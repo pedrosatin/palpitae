@@ -7,10 +7,15 @@ import { type Match } from '../MatchCard'
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
 function makeMatch(overrides: Partial<Match> = {}): Match {
+  const status = overrides.status ?? 'scheduled'
+  const defaultStartTime =
+    status === 'scheduled'
+      ? new Date(Date.now() + 3_600_000).toISOString()
+      : new Date(Date.now() - 3_600_000).toISOString()
   return {
     id: 'm1',
-    start_time: new Date(Date.now() + 3_600_000).toISOString(),
-    status: 'scheduled',
+    start_time: defaultStartTime,
+    status,
     home_score: null,
     away_score: null,
     phase: 'group',
@@ -32,9 +37,12 @@ function mockFetch(matches: Match[]) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
     if (u.includes('/matches')) {
+      const nowIso = new Date().toISOString()
+      const firstOpen = matches.find((m) => m.start_time > nowIso)
+      const default_round = firstOpen?.round ?? matches[matches.length - 1]?.round ?? null
       return Promise.resolve({
         ok: true,
-        json: async () => ({ matches }),
+        json: async () => ({ matches, default_round }),
       } as Response)
     }
     if (u.includes('/predictions')) {
@@ -70,7 +78,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
     })
   })
 
-  it('selects the first round with a live match', async () => {
+  it('skips the live round and selects the next open round', async () => {
     const matches: Match[] = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'live' }),
@@ -82,7 +90,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
 
     await waitFor(() => {
       const select = screen.getByRole('combobox') as HTMLSelectElement
-      expect(select.value).toBe('2')
+      expect(select.value).toBe('3')
     })
   })
 
@@ -197,8 +205,6 @@ describe('PredictionsTab – Round navigation', () => {
   }
 
   it('disables "Anterior" button on the first round', async () => {
-    // Both rounds finished → defaultRoundIndex picks last = index 1 → but we
-    // want to start at index 0, so make round 1 scheduled.
     const matches: Match[] = [
       makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '2', status: 'finished' }),
