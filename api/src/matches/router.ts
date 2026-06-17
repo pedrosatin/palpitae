@@ -9,6 +9,25 @@ import { syncFixtures } from './sync'
 const router = new Hono<AppContext>()
 
 /**
+ * Picks a Cache-Control header for a /matches response based on what it
+ * actually contains:
+ *   - all matches finished → 24h (terminal, scores never change)
+ *   - any match live       → 30s (scores update during the game)
+ *   - otherwise            → 60s (scheduled matches flip to live at kickoff;
+ *                                 a short TTL keeps that transition fresh)
+ * An empty list also gets the short TTL so it repopulates quickly.
+ */
+function matchesCacheControl(matches: { status: string }[]): string {
+  if (matches.length > 0 && matches.every((m) => m.status === 'finished')) {
+    return 'public, max-age=86400'
+  }
+  if (matches.some((m) => m.status === 'live')) {
+    return 'public, max-age=30'
+  }
+  return 'public, max-age=60'
+}
+
+/**
  * GET /matches?competition_id=xxx[&round=xxx][&status=scheduled|live|finished]
  *
  * Returns matches for a competition with team info.
@@ -41,6 +60,20 @@ router.get('/', async (c) => {
   }
 
   const db = c.env.DB
+
+  // Edge cache (Cache API) — shared across users within the same Cloudflare
+  // colo, at no extra cost. Best-effort: per-colo and may be evicted. A hit
+  // returns without touching D1, so it saves rows read. `caches` is undefined
+  // outside the Workers runtime (e.g. node tests), hence the guard.
+  // `caches.default` is a Cloudflare extension; cast past the lib.dom
+  // CacheStorage type, which only knows the standard open()/match() surface.
+  const cache =
+    typeof caches !== 'undefined' ? (caches as unknown as { default: Cache }).default : undefined
+  const cacheKey = new Request(c.req.url)
+  if (cache) {
+    const cached = await cache.match(cacheKey)
+    if (cached) return cached
+  }
 
   let query = `
     SELECT
@@ -80,24 +113,30 @@ router.get('/', async (c) => {
 
   query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC`
 
-  // Cache strategy based on status:
-  //   live     → 30s (scores change frequently)
-  //   finished → 24h (scores never change)
-  //   default  → 1h, serve stale for 24h while revalidating
-  // Cloudflare CDN absorbs identical requests at the edge — the Worker isn't
-  // even invoked when a cached response exists, so D1 is never queried.
-  if (status === 'live') {
-    c.header('Cache-Control', 'public, max-age=30')
-  } else if (status === 'finished') {
-    c.header('Cache-Control', 'public, max-age=86400')
-  } else {
-    c.header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
-  }
-
   try {
     const dbStartedAt = Date.now()
-    const result = await db.prepare(query).bind(...(params as string[])).all()
+    const result = await db.prepare(query).bind(...(params as string[])).all<{ status: string }>()
     const dbMs = Date.now() - dbStartedAt
+
+    // Cache strategy is derived from the RESPONSE CONTENTS, not the query param:
+    // a list is only safe to cache long-term when every match is 'finished' (a
+    // terminal state). Any list with a live/not-yet-finished match uses a short
+    // TTL, so a match that goes live → finished doesn't keep serving its stale
+    // "ao vivo" snapshot for the whole window.
+    //
+    // The same Cache-Control drives two layers: the browser cache (per user)
+    // and the edge Cache API below (shared per colo). Note: a Worker-generated
+    // response is NOT edge-cached automatically by Cache-Control — only the
+    // explicit caches.default.put() does that. The Worker still runs on every
+    // request, but a cache hit (above) skips the D1 query.
+    const response = c.json({ matches: result.results })
+    response.headers.set('Cache-Control', matchesCacheControl(result.results))
+
+    if (cache) {
+      // clone(): a response body can only be consumed once — the cache keeps
+      // its own copy while we still return the original to the caller.
+      c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
+    }
 
     // Background result sync: fire-and-forget after response is sent.
     // Checks for matches that started >3h ago but aren't finished in our DB.
@@ -121,7 +160,7 @@ router.get('/', async (c) => {
       },
     })
 
-    return c.json({ matches: result.results })
+    return response
   } catch (error) {
     console.error('Erro ao buscar jogos:', error)
     return c.json({ error: 'Erro ao carregar jogos' }, 500)
