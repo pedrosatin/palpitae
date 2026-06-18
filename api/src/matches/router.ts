@@ -130,10 +130,22 @@ router.get('/', async (c) => {
     // explicit caches.default.put() does that. The Worker still runs on every
     // request, but a cache hit (above) skips the D1 query.
     const nowIso = new Date().toISOString()
-    type MatchRow = { status: string; start_time: string; round: string }
-    const rows = result.results as MatchRow[]
-    const firstOpen = rows.find((m) => m.start_time > nowIso)
-    const defaultRound = firstOpen?.round ?? rows[rows.length - 1]?.round ?? null
+    const defaultRoundRow = await db
+      .prepare(
+        `SELECT round FROM matches
+         WHERE competition_id = ?
+         GROUP BY round
+         HAVING MAX(start_time) > ?
+         ORDER BY MAX(start_time) ASC
+         LIMIT 1`,
+      )
+      .bind(competitionId, nowIso)
+      .first<{ round: string }>()
+
+    const defaultRound =
+      defaultRoundRow?.round ??
+      (result.results as { round?: string }[]).at(-1)?.round ??
+      null
 
     const response = c.json({ matches: result.results, default_round: defaultRound })
     response.headers.set('Cache-Control', matchesCacheControl(result.results))
