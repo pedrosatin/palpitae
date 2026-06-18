@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   useNavigate,
   useParams,
@@ -74,6 +74,8 @@ export default function GroupDetailPage({
   const [error, setError] = useState<string | null>(null)
   const [tabsOffset, setTabsOffset] = useState(0)
   const [leaving, setLeaving] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const activeTab = parseTab(searchParams.get('tab'))
 
   function setActiveTab(tab: Tab) {
@@ -136,6 +138,27 @@ export default function GroupDetailPage({
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const handlePointer = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('keydown', handleKey)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [menuOpen])
 
   if (!groupId) return <Navigate to="/" replace />
 
@@ -260,7 +283,34 @@ export default function GroupDetailPage({
             <span className={styles.competition}>
               {group.competition_name ?? group.competition_id}
             </span>
-            <h1 className={styles.groupName}>{group.name}</h1>
+            <div className={styles.groupNameRow}>
+              <h1 className={styles.groupName}>{group.name}</h1>
+              {!isAdmin && (
+                <div className={styles.menuWrap} ref={menuRef}>
+                  <button
+                    className={styles.kebabBtn}
+                    onClick={() => setMenuOpen((o) => !o)}
+                    aria-label="Opções do grupo"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                  >
+                    ⋯
+                  </button>
+                  {menuOpen && (
+                    <div className={styles.menu} role="menu">
+                      <button
+                        className={styles.menuItem}
+                        role="menuitem"
+                        onClick={leaveGroup}
+                        disabled={leaving}
+                      >
+                        {leaving ? 'Saindo...' : 'Sair do grupo'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className={styles.groupActions}>
             <div className={styles.stats}>
@@ -277,15 +327,6 @@ export default function GroupDetailPage({
                 <span className={styles.statLabel}>pontos</span>
               </div>
             </div>
-            {!isAdmin && (
-              <button
-                className={styles.leaveGroupBtn}
-                onClick={leaveGroup}
-                disabled={leaving}
-              >
-                {leaving ? 'Saindo...' : 'Sair do grupo'}
-              </button>
-            )}
           </div>
         </div>
 
