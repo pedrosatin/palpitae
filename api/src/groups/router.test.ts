@@ -279,6 +279,16 @@ describe('groups router', () => {
       expect(body.error).toBe('Apenas o administrador pode remover membros')
     })
 
+    it('allows a non-admin member to leave the group themselves', async () => {
+      const { db, deleteRun } = createRemoveMemberDbMock({ isAdmin: false, targetIsMember: true })
+      const res = await requestRemoveMember('user-2', 'user@example.com', 'group-1', 'user-2', db)
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { success: boolean }
+      expect(body.success).toBe(true)
+      expect(deleteRun).toHaveBeenCalled()
+    })
+
     it('returns 400 when admin tries to remove themselves', async () => {
       const { db } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: true })
       const res = await requestRemoveMember('user-1', 'admin@example.com', 'group-1', 'user-1', db)
