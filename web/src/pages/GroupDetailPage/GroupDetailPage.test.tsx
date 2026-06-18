@@ -86,6 +86,20 @@ function mockGroupFetch(group = baseGroup, ok = true) {
   } as Response)
 }
 
+function mockGroupFetchSequence(...responses: Array<{ ok?: boolean; body?: unknown }>) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+    const next = responses.shift()
+    if (!next) {
+      throw new Error('Unexpected fetch call')
+    }
+
+    return {
+      ok: next.ok ?? true,
+      json: async () => next.body,
+    } as Response
+  })
+}
+
 // ─── Render helper ─────────────────────────────────────────────────────────
 
 function renderPage(path = '/groups/abc', routePattern = '/groups/:groupId') {
@@ -246,5 +260,72 @@ describe('GroupDetailPage – Header modals', () => {
     expect(
       screen.getByRole('dialog', { name: /entrar em grupo/i }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('GroupDetailPage – leave group', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('exposes the leave action via the group options menu for non-admin members', async () => {
+    mockGroupFetch()
+
+    renderPage()
+
+    // The leave action lives inside the kebab menu and is hidden until opened.
+    expect(
+      screen.queryByRole('menuitem', { name: /sair do grupo/i }),
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /opções do grupo/i }),
+    )
+
+    expect(
+      screen.getByRole('menuitem', { name: /sair do grupo/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not show the options menu for admins', async () => {
+    mockGroupFetch({ ...baseGroup, is_admin: true })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Grupo Teste')).toBeInTheDocument()
+    })
+
+    expect(
+      screen.queryByRole('button', { name: /opções do grupo/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: /sair do grupo/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('removes the current user from the group after confirmation', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockGroupFetchSequence(
+      { body: { group: baseGroup } },
+      { body: { success: true } },
+    )
+
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /opções do grupo/i }),
+    )
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /sair do grupo/i }),
+    )
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Tem certeza que deseja sair deste grupo?',
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Home')).toBeInTheDocument()
+    })
   })
 })
