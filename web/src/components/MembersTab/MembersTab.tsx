@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { useConfirm } from '../ConfirmModal'
 import styles from './MembersTab.module.css'
 
 interface MembersTabProps {
@@ -27,6 +28,7 @@ export default function MembersTab({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [removing, setRemoving] = useState<string | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
 
   useEffect(() => {
     setLoading(true)
@@ -44,7 +46,13 @@ export default function MembersTab({
   }, [groupId])
 
   async function removeMember(targetUserId: string, displayName: string) {
-    if (!confirm(`Remover "${displayName}" do grupo?`)) return
+    const ok = await confirm({
+      title: 'Remover membro',
+      message: `Remover "${displayName}" do grupo?`,
+      confirmLabel: 'Remover',
+      danger: true,
+    })
+    if (!ok) return
     setRemoving(targetUserId)
     try {
       const res = await fetch(
@@ -114,6 +122,7 @@ export default function MembersTab({
           </li>
         ))}
       </ul>
+      {confirmDialog}
     </div>
   )
 }

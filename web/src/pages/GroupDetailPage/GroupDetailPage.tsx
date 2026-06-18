@@ -6,6 +6,7 @@ import {
   Navigate,
 } from 'react-router-dom'
 import { config } from '../../config'
+import { useConfirm } from '../../components/ConfirmModal'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
@@ -75,6 +76,7 @@ export default function GroupDetailPage({
   const [tabsOffset, setTabsOffset] = useState(0)
   const [leaving, setLeaving] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const { confirm, confirmDialog } = useConfirm()
   const menuRef = useRef<HTMLDivElement>(null)
   const activeTab = parseTab(searchParams.get('tab'))
 
@@ -191,9 +193,13 @@ export default function GroupDetailPage({
   async function leaveGroup() {
     if (!groupId) return
 
-    if (!window.confirm('Tem certeza que deseja sair deste grupo?')) {
-      return
-    }
+    const ok = await confirm({
+      title: 'Sair do grupo',
+      message: 'Tem certeza que deseja sair deste grupo?',
+      confirmLabel: 'Sair',
+      danger: true,
+    })
+    if (!ok) return
 
     setLeaving(true)
 
@@ -229,6 +235,7 @@ export default function GroupDetailPage({
         onClose={() => setJoinOpen(false)}
         onJoined={handleGroupJoined}
       />
+      {confirmDialog}
     </>
   )
 

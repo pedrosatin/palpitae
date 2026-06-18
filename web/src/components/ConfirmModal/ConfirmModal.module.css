@@ -1,0 +1,27 @@
+/**
+ * Confirmation dialog styles — message + action row.
+ */
+
+.message {
+  margin: 0 0 var(--space-6);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* Destructive confirm action — overrides the primary button colors. */
+.danger {
+  background-color: #ff4d4f;
+  border-color: #ff4d4f;
+  color: #ffffff;
+}
+
+.danger:hover:not(:disabled) {
+  background-color: #e0393b;
+  border-color: #e0393b;
+}
