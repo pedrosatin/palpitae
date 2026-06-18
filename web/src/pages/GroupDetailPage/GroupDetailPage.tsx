@@ -14,6 +14,7 @@ import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
+import StandingsTab from '../../components/StandingsTab'
 import { invalidateApiCache } from '../../lib/api-cache'
 import styles from './GroupDetailPage.module.css'
 
@@ -43,6 +44,7 @@ interface GroupDetail {
 
 const TABS = [
   'predictions',
+  'standings',
   'group-picks',
   'leaderboard',
   'bracket',
@@ -286,6 +288,12 @@ export default function GroupDetailPage({
             Previsões
           </button>
           <button
+            className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('standings')}
+          >
+            Tabela
+          </button>
+          <button
             className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('group-picks')}
           >
@@ -319,6 +327,9 @@ export default function GroupDetailPage({
               groupId={groupId}
               competitionId={group.competition_id}
             />
+          )}
+          {activeTab === 'standings' && (
+            <StandingsTab competitionId={group.competition_id} />
           )}
           {activeTab === 'group-picks' && (
             <GroupPicksTab
