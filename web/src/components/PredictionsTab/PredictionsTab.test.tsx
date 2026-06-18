@@ -2,36 +2,8 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import PredictionsTab from './PredictionsTab'
+import { makeMatch } from '../matchFixtures'
 import { type Match } from '../MatchCard'
-
-// ─── Fixtures ──────────────────────────────────────────────────────────────
-
-function makeMatch(overrides: Partial<Match> = {}): Match {
-  const status = overrides.status ?? 'scheduled'
-  const defaultStartTime =
-    status === 'scheduled'
-      ? new Date(Date.now() + 3_600_000).toISOString()
-      : new Date(Date.now() - 3_600_000).toISOString()
-  return {
-    id: 'm1',
-    start_time: defaultStartTime,
-    status,
-    home_score: null,
-    away_score: null,
-    phase: 'group',
-    round: '1',
-    group_name: null,
-    home_team_id: 'ht-1',
-    home_team_name: 'Brasil',
-    home_team_short_name: 'BRA',
-    home_team_logo: '/bra.png',
-    away_team_id: 'at-1',
-    away_team_name: 'Argentina',
-    away_team_short_name: 'ARG',
-    away_team_logo: '/arg.png',
-    ...overrides,
-  }
-}
 
 function mockFetch(matches: Match[]) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
@@ -46,7 +18,11 @@ function mockFetch(matches: Match[]) {
       const activeRound = [...roundMaxStart.entries()]
         .filter(([, max]) => max > nowIso)
         .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
-      const default_round = activeRound?.[0] ?? matches.at(-1)?.round ?? null
+      const chronologicalLast = matches.reduce<Match | undefined>(
+        (acc, m) => !acc || m.start_time >= acc.start_time ? m : acc,
+        undefined,
+      )
+      const default_round = activeRound?.[0] ?? chronologicalLast?.round ?? null
       return Promise.resolve({
         ok: true,
         json: async () => ({ matches, default_round }),
