@@ -1,31 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import GroupPicksTab from './GroupPicksTab'
+import { makeMatch } from '../matchFixtures'
 import { type Match } from '../MatchCard'
-
-// ─── Fixtures ──────────────────────────────────────────────────────────────
-
-function makeMatch(overrides: Partial<Match> = {}): Match {
-  return {
-    id: 'm1',
-    start_time: new Date(Date.now() + 3_600_000).toISOString(),
-    status: 'scheduled',
-    home_score: null,
-    away_score: null,
-    phase: 'group',
-    round: '1',
-    group_name: null,
-    home_team_id: 'ht-1',
-    home_team_name: 'Brasil',
-    home_team_short_name: 'BRA',
-    home_team_logo: '/bra.png',
-    away_team_id: 'at-1',
-    away_team_name: 'Argentina',
-    away_team_short_name: 'ARG',
-    away_team_logo: '/arg.png',
-    ...overrides,
-  }
-}
 
 interface GroupPicksResponse {
   self_user_id: string
@@ -37,9 +14,23 @@ function mockFetch(matches: Match[], picks: GroupPicksResponse) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
     if (u.includes('/matches')) {
+      const nowIso = new Date().toISOString()
+      const roundMaxStart = new Map<string, string>()
+      for (const m of matches) {
+        const cur = roundMaxStart.get(m.round)
+        if (!cur || m.start_time > cur) roundMaxStart.set(m.round, m.start_time)
+      }
+      const activeRound = [...roundMaxStart.entries()]
+        .filter(([, max]) => max > nowIso)
+        .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
+      const chronologicalLast = matches.reduce<Match | undefined>(
+        (acc, m) => !acc || m.start_time >= acc.start_time ? m : acc,
+        undefined,
+      )
+      const default_round = activeRound?.[0] ?? chronologicalLast?.round ?? null
       return Promise.resolve({
         ok: true,
-        json: async () => ({ matches }),
+        json: async () => ({ matches, default_round }),
       } as Response)
     }
     if (u.includes('/predictions/group')) {

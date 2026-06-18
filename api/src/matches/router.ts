@@ -113,9 +113,55 @@ router.get('/', async (c) => {
 
   query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC`
 
+  // default_round only makes sense for the unfiltered full list. With ?round or
+  // ?status active the response is a subset, so a global default_round would be
+  // unrelated to the matches actually returned — we skip computing/returning it.
+  const hasFilters = Boolean(round) || Boolean(status)
+
   try {
     const dbStartedAt = Date.now()
-    const result = await db.prepare(query).bind(...(params as string[])).all<{ status: string }>()
+
+    let result: { results: { status: string }[] }
+    let defaultRound: string | null = null
+
+    if (hasFilters) {
+      result = await db.prepare(query).bind(...(params as string[])).all<{ status: string }>()
+    } else {
+      const nowIso = new Date().toISOString()
+      // One D1 round-trip for the full list plus the two queries that pick the
+      // default round: the first round still open (earliest with a match in the
+      // future), falling back to the most recent match chronologically. The
+      // fallback is its own query rather than result.results.at(-1) because the
+      // main list is ordered by group_name first — knockout matches (NULL group)
+      // sort last and would otherwise hijack the fallback.
+      const batchResults = await db.batch([
+        db.prepare(query).bind(...(params as string[])),
+        db
+          .prepare(
+            `SELECT round FROM matches
+             WHERE competition_id = ?
+             GROUP BY round
+             HAVING MAX(start_time) > ?
+             ORDER BY MAX(start_time) ASC
+             LIMIT 1`,
+          )
+          .bind(competitionId, nowIso),
+        db
+          .prepare(
+            `SELECT round FROM matches
+             WHERE competition_id = ?
+             ORDER BY start_time DESC
+             LIMIT 1`,
+          )
+          .bind(competitionId),
+      ])
+
+      result = batchResults[0] as { results: { status: string }[] }
+      const activeRound = (batchResults[1].results as { round?: string }[])[0]?.round
+      const lastRound = (batchResults[2].results as { round?: string }[])[0]?.round
+      defaultRound = activeRound ?? lastRound ?? null
+    }
+
     const dbMs = Date.now() - dbStartedAt
 
     // Cache strategy is derived from the RESPONSE CONTENTS, not the query param:
@@ -129,25 +175,10 @@ router.get('/', async (c) => {
     // response is NOT edge-cached automatically by Cache-Control — only the
     // explicit caches.default.put() does that. The Worker still runs on every
     // request, but a cache hit (above) skips the D1 query.
-    const nowIso = new Date().toISOString()
-    const defaultRoundRow = await db
-      .prepare(
-        `SELECT round FROM matches
-         WHERE competition_id = ?
-         GROUP BY round
-         HAVING MAX(start_time) > ?
-         ORDER BY MAX(start_time) ASC
-         LIMIT 1`,
-      )
-      .bind(competitionId, nowIso)
-      .first<{ round: string }>()
-
-    const defaultRound =
-      defaultRoundRow?.round ??
-      (result.results as { round?: string }[]).at(-1)?.round ??
-      null
-
-    const response = c.json({ matches: result.results, default_round: defaultRound })
+    const response = c.json({
+      matches: result.results,
+      ...(hasFilters ? {} : { default_round: defaultRound }),
+    })
     response.headers.set('Cache-Control', matchesCacheControl(result.results))
 
     if (cache) {
