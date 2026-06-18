@@ -1,0 +1,158 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.groupHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: var(--space-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.groupHeader:hover {
+  color: var(--color-text-primary);
+}
+
+.groupHint {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-primary);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: 32rem;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.table th {
+  padding: var(--space-1) var(--space-2);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.table td {
+  padding: var(--space-2);
+  text-align: center;
+  color: var(--color-text-primary);
+}
+
+.table tbody tr:nth-child(odd) td {
+  background: var(--color-surface);
+}
+
+.colPos {
+  width: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.colCrest {
+  width: 2rem;
+  padding-right: 0 !important;
+}
+
+/* Team column is the only flexible one; under table-layout: fixed it absorbs
+   the same remainder in every group's table, so the numeric columns line up. */
+.colTeam {
+  text-align: left !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: var(--font-weight-semibold);
+}
+
+.num {
+  width: 2.75rem;
+}
+
+.crest {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
+}
+
+.points {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.matchList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.matchItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+}
+
+.matchItem:last-child {
+  border-bottom: none;
+}
+
+.matchTeams {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.matchInfo {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.loading,
+.empty {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
+  padding: var(--space-8) 0;
+  text-align: center;
+}
+
+.error {
+  color: #f25b1b;
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
