@@ -268,17 +268,26 @@ describe('GroupDetailPage – leave group', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows a leave button for non-admin members', async () => {
+  it('exposes the leave action via the group options menu for non-admin members', async () => {
     mockGroupFetch()
 
     renderPage()
 
+    // The leave action lives inside the kebab menu and is hidden until opened.
     expect(
-      await screen.findByRole('button', { name: /sair do grupo/i }),
+      screen.queryByRole('menuitem', { name: /sair do grupo/i }),
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /opções do grupo/i }),
+    )
+
+    expect(
+      screen.getByRole('menuitem', { name: /sair do grupo/i }),
     ).toBeInTheDocument()
   })
 
-  it('does not show a leave button for admins', async () => {
+  it('does not show the options menu for admins', async () => {
     mockGroupFetch({ ...baseGroup, is_admin: true })
 
     renderPage()
@@ -288,7 +297,10 @@ describe('GroupDetailPage – leave group', () => {
     })
 
     expect(
-      screen.queryByRole('button', { name: /sair do grupo/i }),
+      screen.queryByRole('button', { name: /opções do grupo/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: /sair do grupo/i }),
     ).not.toBeInTheDocument()
   })
 
@@ -302,7 +314,10 @@ describe('GroupDetailPage – leave group', () => {
     renderPage()
 
     await userEvent.click(
-      await screen.findByRole('button', { name: /sair do grupo/i }),
+      await screen.findByRole('button', { name: /opções do grupo/i }),
+    )
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /sair do grupo/i }),
     )
 
     expect(confirmSpy).toHaveBeenCalledWith(
