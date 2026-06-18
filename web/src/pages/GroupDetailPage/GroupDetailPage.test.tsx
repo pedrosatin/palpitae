@@ -305,7 +305,6 @@ describe('GroupDetailPage – leave group', () => {
   })
 
   it('removes the current user from the group after confirmation', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     mockGroupFetchSequence(
       { body: { group: baseGroup } },
       { body: { success: true } },
@@ -320,9 +319,11 @@ describe('GroupDetailPage – leave group', () => {
       screen.getByRole('menuitem', { name: /sair do grupo/i }),
     )
 
-    expect(confirmSpy).toHaveBeenCalledWith(
-      'Tem certeza que deseja sair deste grupo?',
-    )
+    // Confirmation dialog appears instead of window.confirm.
+    expect(
+      await screen.findByText('Tem certeza que deseja sair deste grupo?'),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
 
     await waitFor(() => {
       expect(screen.getByText('Home')).toBeInTheDocument()
