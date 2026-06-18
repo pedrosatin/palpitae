@@ -428,8 +428,9 @@ router.get('/:id/members', requireAuth, async (c) => {
  * DELETE /groups/:id/members/:memberId
  *
  * Removes a member from the group.
- * Only the group admin (owner) can remove members.
- * The admin cannot remove themselves.
+ * The group admin (owner) can remove other members.
+ * A non-owner member can remove themselves from the group.
+ * The owner cannot remove themselves.
  */
 router.delete('/:id/members/:memberId', requireAuth, async (c) => {
   const userId = c.get('userId')
@@ -446,12 +447,12 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
 
-  if (group.owner_user_id !== userId) {
-    return c.json({ error: 'Apenas o administrador pode remover membros' }, 403)
-  }
-
   if (targetUserId === userId) {
-    return c.json({ error: 'Você não pode remover a si mesmo do grupo' }, 400)
+    if (group.owner_user_id === userId) {
+      return c.json({ error: 'Você não pode remover a si mesmo do grupo' }, 400)
+    }
+  } else if (group.owner_user_id !== userId) {
+    return c.json({ error: 'Apenas o administrador pode remover membros' }, 403)
   }
 
   const membership = await db
