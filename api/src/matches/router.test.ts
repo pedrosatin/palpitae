@@ -26,19 +26,29 @@ function fakeEnv(db: D1Database): AppContext['Bindings'] {
 function createMatchesDbMock(
   matchRows: { status: string }[] = [],
   counter?: { mainQueries: number },
+  defaultRoundRows?: { active?: string; last?: string },
 ) {
+  function resultsFor(sql: string): { results: unknown[] } {
+    if (sql.includes('FROM matches m')) {
+      if (counter) counter.mainQueries++
+      return { results: matchRows }
+    }
+    if (sql.includes('GROUP BY round') && defaultRoundRows?.active) {
+      return { results: [{ round: defaultRoundRows.active }] }
+    }
+    if (sql.includes('start_time DESC') && defaultRoundRows?.last) {
+      return { results: [{ round: defaultRoundRows.last }] }
+    }
+    return { results: [] }
+  }
+
   const db = {
     prepare(sql: string) {
       return {
         bind(...params: unknown[]) {
           return {
             async all() {
-              if (sql.includes('FROM matches m')) {
-                if (counter) counter.mainQueries++
-                return { results: matchRows }
-              }
-
-              return { results: [] }
+              return resultsFor(sql)
             },
             async first() {
               if (sql.includes('FROM competitions WHERE id = ?')) {
@@ -53,15 +63,14 @@ function createMatchesDbMock(
                 return { count: 0 }
               }
 
-              if (sql.includes('GROUP BY round')) {
-                return null
-              }
-
               throw new Error(`Unexpected first() query: ${sql} :: ${params.join(',')}`)
             },
           }
         },
       }
+    },
+    async batch(statements: { all: () => Promise<{ results: unknown[] }> }[]) {
+      return Promise.all(statements.map((s) => s.all()))
     },
   }
 
@@ -77,6 +86,46 @@ describe('matches router – GET /', () => {
       matches: 0,
       teams: 0,
     })
+  })
+
+  it('returns the first open round as default_round', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/matches', matchesRouter)
+
+    const response = await app.fetch(
+      new Request('http://localhost/matches?competition_id=comp-1'),
+      fakeEnv(createMatchesDbMock([{ status: 'scheduled' }], undefined, { active: '3' })),
+      { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
+    )
+
+    await expect(response.json()).resolves.toMatchObject({ default_round: '3' })
+  })
+
+  it('falls back to the last match round when no open round exists', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/matches', matchesRouter)
+
+    const response = await app.fetch(
+      new Request('http://localhost/matches?competition_id=comp-1'),
+      fakeEnv(createMatchesDbMock([{ status: 'finished' }], undefined, { last: '2' })),
+      { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
+    )
+
+    await expect(response.json()).resolves.toMatchObject({ default_round: '2' })
+  })
+
+  it('omits default_round when a round filter is active', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/matches', matchesRouter)
+
+    const response = await app.fetch(
+      new Request('http://localhost/matches?competition_id=comp-1&round=1'),
+      fakeEnv(createMatchesDbMock([{ status: 'scheduled' }])),
+      { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
+    )
+
+    const body = await response.json() as Record<string, unknown>
+    expect(body).not.toHaveProperty('default_round')
   })
 
   it('returns immediately and delegates first sync to waitUntil when no matches are cached locally', async () => {
