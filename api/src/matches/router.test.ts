@@ -53,6 +53,10 @@ function createMatchesDbMock(
                 return { count: 0 }
               }
 
+              if (sql.includes('GROUP BY round')) {
+                return null
+              }
+
               throw new Error(`Unexpected first() query: ${sql} :: ${params.join(',')}`)
             },
           }

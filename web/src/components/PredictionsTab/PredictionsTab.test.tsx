@@ -38,8 +38,15 @@ function mockFetch(matches: Match[]) {
     const u = url.toString()
     if (u.includes('/matches')) {
       const nowIso = new Date().toISOString()
-      const firstOpen = matches.find((m) => m.start_time > nowIso)
-      const default_round = firstOpen?.round ?? matches[matches.length - 1]?.round ?? null
+      const roundMaxStart = new Map<string, string>()
+      for (const m of matches) {
+        const cur = roundMaxStart.get(m.round)
+        if (!cur || m.start_time > cur) roundMaxStart.set(m.round, m.start_time)
+      }
+      const activeRound = [...roundMaxStart.entries()]
+        .filter(([, max]) => max > nowIso)
+        .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
+      const default_round = activeRound?.[0] ?? matches.at(-1)?.round ?? null
       return Promise.resolve({
         ok: true,
         json: async () => ({ matches, default_round }),
