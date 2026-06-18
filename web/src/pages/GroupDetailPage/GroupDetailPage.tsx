@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   useNavigate,
   useParams,
@@ -73,6 +73,9 @@ export default function GroupDetailPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tabsOffset, setTabsOffset] = useState(0)
+  const [leaving, setLeaving] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const activeTab = parseTab(searchParams.get('tab'))
 
   function setActiveTab(tab: Tab) {
@@ -136,6 +139,27 @@ export default function GroupDetailPage({
     }
   }, [])
 
+  useEffect(() => {
+    if (!menuOpen) return
+
+    const handlePointer = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('keydown', handleKey)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [menuOpen])
+
   if (!groupId) return <Navigate to="/" replace />
 
   function getShareLink() {
@@ -162,6 +186,35 @@ export default function GroupDetailPage({
   function handleGroupJoined(nextGroup: { id: string }) {
     invalidateApiCache('groups:')
     navigate(`/grupos/${nextGroup.id}`)
+  }
+
+  async function leaveGroup() {
+    if (!groupId) return
+
+    if (!window.confirm('Tem certeza que deseja sair deste grupo?')) {
+      return
+    }
+
+    setLeaving(true)
+
+    try {
+      const res = await fetch(`${config.apiUrl}/groups/${groupId}/members/${user.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string }
+        throw new Error(body.error ?? 'Erro ao sair do grupo')
+      }
+
+      invalidateApiCache('groups:')
+      navigate('/', { replace: true })
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : 'Erro ao sair do grupo')
+    } finally {
+      setLeaving(false)
+    }
   }
 
   const modals = (
@@ -230,20 +283,49 @@ export default function GroupDetailPage({
             <span className={styles.competition}>
               {group.competition_name ?? group.competition_id}
             </span>
-            <h1 className={styles.groupName}>{group.name}</h1>
+            <div className={styles.groupNameRow}>
+              <h1 className={styles.groupName}>{group.name}</h1>
+              {!isAdmin && (
+                <div className={styles.menuWrap} ref={menuRef}>
+                  <button
+                    className={styles.kebabBtn}
+                    onClick={() => setMenuOpen((o) => !o)}
+                    aria-label="Opções do grupo"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                  >
+                    ⋯
+                  </button>
+                  {menuOpen && (
+                    <div className={styles.menu} role="menu">
+                      <button
+                        className={styles.menuItem}
+                        role="menuitem"
+                        onClick={leaveGroup}
+                        disabled={leaving}
+                      >
+                        {leaving ? 'Saindo...' : 'Sair do grupo'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-          <div className={styles.stats}>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>{group.member_count}</span>
-              <span className={styles.statLabel}>membros</span>
-            </div>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>#{group.user_position}</span>
-              <span className={styles.statLabel}>sua posição</span>
-            </div>
-            <div className={styles.statItem}>
-              <span className={styles.statValue}>{group.user_points}</span>
-              <span className={styles.statLabel}>pontos</span>
+          <div className={styles.groupActions}>
+            <div className={styles.stats}>
+              <div className={styles.statItem}>
+                <span className={styles.statValue}>{group.member_count}</span>
+                <span className={styles.statLabel}>membros</span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statValue}>#{group.user_position}</span>
+                <span className={styles.statLabel}>sua posição</span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statValue}>{group.user_points}</span>
+                <span className={styles.statLabel}>pontos</span>
+              </div>
             </div>
           </div>
         </div>
