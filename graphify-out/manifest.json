@@ -20,7 +20,7 @@
     "hash": "daa4b046bed79edef246035da3fb256d"
   },
   "/home/satin/Work/personal/palpitae/api/migrations/0005_translate_teams.sql": {
-    "mtime": 1781568864.7772253,
+    "mtime": 1781815119.0143466,
     "hash": "f52df38cc44ed7d7bef38abec5d764ad"
   },
   "/home/satin/Work/personal/palpitae/api/src/observability.ts": {
@@ -36,7 +36,7 @@
     "hash": "46d5da2356a7916edb90358626da0767"
   },
   "/home/satin/Work/personal/palpitae/api/src/index.ts": {
-    "mtime": 1781657428.6653886,
+    "mtime": 1781815119.0143466,
     "hash": "b225d2c680967126bbba20b4f50c3985"
   },
   "/home/satin/Work/personal/palpitae/api/src/auth/encoding.ts": {
@@ -84,12 +84,12 @@
     "hash": "1b56b0f04cf67680b4f336220f899210"
   },
   "/home/satin/Work/personal/palpitae/api/src/groups/router.test.ts": {
-    "mtime": 1781562667.62858,
-    "hash": "34665a987033bb2f27c2e75d4295a8e8"
+    "mtime": 1781816316.3500628,
+    "hash": "2de62531d4ea4eb0dd1a8482a66b9e59"
   },
   "/home/satin/Work/personal/palpitae/api/src/groups/router.ts": {
-    "mtime": 1781562667.6287587,
-    "hash": "0585b3c758c4f8e68f38f567577cf32c"
+    "mtime": 1781816316.3506944,
+    "hash": "4d847e6df5321698703ba1c863f9a0ab"
   },
   "/home/satin/Work/personal/palpitae/api/src/competitions/router.ts": {
     "mtime": 1778375641.2570822,
@@ -107,25 +107,25 @@
     "mtime": 1781447381.3563623,
     "hash": "858142daa6f774cffc2ca51ec3f5082a"
   },
-  "/home/satin/Work/personal/palpitae/api/src/matches/sync.ts": {
-    "mtime": 1781569013.7500548,
-    "hash": "1e76940ca996172caeb177e38c119bca"
-  },
-  "/home/satin/Work/personal/palpitae/api/src/matches/poller.ts": {
-    "mtime": 1781659049.9145954,
-    "hash": "4c3cba9d40d2841992e3e4c824d9ffc2"
-  },
   "/home/satin/Work/personal/palpitae/api/src/matches/poller.test.ts": {
-    "mtime": 1781659069.5032587,
+    "mtime": 1781815119.0143466,
     "hash": "e29afa8167dd8a9a556d5aa4910e80fb"
   },
-  "/home/satin/Work/personal/palpitae/api/src/matches/router.ts": {
-    "mtime": 1781791660.5855565,
-    "hash": "1a895733da1e68084c8d8be8c7a43afa"
+  "/home/satin/Work/personal/palpitae/api/src/matches/poller.ts": {
+    "mtime": 1781815119.0143466,
+    "hash": "4c3cba9d40d2841992e3e4c824d9ffc2"
   },
   "/home/satin/Work/personal/palpitae/api/src/matches/router.test.ts": {
-    "mtime": 1781791694.6133637,
+    "mtime": 1781815119.0143466,
     "hash": "c0b3d297ee294400dec5fa7c8ae10011"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/matches/router.ts": {
+    "mtime": 1781815119.0143466,
+    "hash": "1a895733da1e68084c8d8be8c7a43afa"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/matches/sync.ts": {
+    "mtime": 1781815119.0143466,
+    "hash": "1e76940ca996172caeb177e38c119bca"
   },
   "/home/satin/Work/personal/palpitae/api/src/predictions/router.test.ts": {
     "mtime": 1781447381.3563623,
@@ -164,7 +164,7 @@
     "hash": "744293b4e22e4afbce2453b738771b91"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/matchFixtures.ts": {
-    "mtime": 1781791644.2226458,
+    "mtime": 1781815119.0233312,
     "hash": "cbd977ce9f5828f32b405b3913f841ec"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/BracketTab/BracketTab.test.tsx": {
@@ -307,13 +307,13 @@
     "mtime": 1781447381.3715951,
     "hash": "a284dfbe9d1575e3ab7d4ce9c8da97b4"
   },
-  "/home/satin/Work/personal/palpitae/web/src/components/GroupPicksTab/GroupPicksTab.tsx": {
-    "mtime": 1781791709.8371358,
-    "hash": "f8460e05536a34315fe351c7117c0d11"
-  },
   "/home/satin/Work/personal/palpitae/web/src/components/GroupPicksTab/GroupPicksTab.test.tsx": {
-    "mtime": 1781792205.2884352,
+    "mtime": 1781815119.022664,
     "hash": "36748046170d35195a9b723a2b9f46a4"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/GroupPicksTab/GroupPicksTab.tsx": {
+    "mtime": 1781815119.022758,
+    "hash": "f8460e05536a34315fe351c7117c0d11"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/Header/Header.test.tsx": {
     "mtime": 1781447381.3716788,
@@ -359,13 +359,13 @@
     "mtime": 1781447381.372261,
     "hash": "cc49998087d650125a912600582d07a1"
   },
-  "/home/satin/Work/personal/palpitae/web/src/components/MembersTab/MembersTab.tsx": {
-    "mtime": 1781447381.3723142,
-    "hash": "0276852d94ab63b45fc409971ac0be37"
-  },
   "/home/satin/Work/personal/palpitae/web/src/components/MembersTab/index.ts": {
     "mtime": 1781447381.3724036,
     "hash": "07fd1892a036b7f319c76df4c8b64ab4"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/MembersTab/MembersTab.tsx": {
+    "mtime": 1781816505.7807162,
+    "hash": "824e21bc0b3c3e5c8116fd0e2379abbc"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/Modal/Modal.test.tsx": {
     "mtime": 1781447381.3724716,
@@ -383,25 +383,37 @@
     "mtime": 1781447381.372685,
     "hash": "498de1f9f9d05eb71889d71c98fbd647"
   },
-  "/home/satin/Work/personal/palpitae/web/src/components/PredictionsTab/PredictionsTab.tsx": {
-    "mtime": 1781791712.245256,
-    "hash": "2fa8ef5829440357801f4912c82d3c3e"
-  },
   "/home/satin/Work/personal/palpitae/web/src/components/PredictionsTab/PredictionsTab.test.tsx": {
-    "mtime": 1781792214.677626,
+    "mtime": 1781815119.0229306,
     "hash": "362e346339d60a7edaa2ecd965d5158f"
   },
-  "/home/satin/Work/personal/palpitae/web/src/components/StandingsTab/index.ts": {
-    "mtime": 1781743262.4217868,
-    "hash": "ed8a50804de81fd2cc951cdc5133238b"
+  "/home/satin/Work/personal/palpitae/web/src/components/PredictionsTab/PredictionsTab.tsx": {
+    "mtime": 1781815119.0230398,
+    "hash": "2fa8ef5829440357801f4912c82d3c3e"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/StandingsTab/StandingsTab.test.tsx": {
-    "mtime": 1781743287.547774,
+    "mtime": 1781815119.0231428,
     "hash": "41561dcbe13d921c62816cc02380bd8b"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/StandingsTab/StandingsTab.tsx": {
-    "mtime": 1781743780.2565145,
+    "mtime": 1781815119.0232453,
     "hash": "b05539388520f59d235c1ce2b374125c"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/StandingsTab/index.ts": {
+    "mtime": 1781815119.0232835,
+    "hash": "ed8a50804de81fd2cc951cdc5133238b"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/ConfirmModal/ConfirmModal.tsx": {
+    "mtime": 1781816479.309413,
+    "hash": "d7828013630b78865398e77658536732"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/ConfirmModal/useConfirm.tsx": {
+    "mtime": 1781816487.828511,
+    "hash": "e9234b2214264555ecf7b22598dcf284"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/ConfirmModal/index.ts": {
+    "mtime": 1781816488.5855198,
+    "hash": "6c9e648e59482d983cfdde427c3353e8"
   },
   "/home/satin/Work/personal/palpitae/web/src/lib/api-cache.test.ts": {
     "mtime": 1781447381.372813,
@@ -412,7 +424,7 @@
     "hash": "a0830beea1b345f2fb2bf9b3b23ff5b7"
   },
   "/home/satin/Work/personal/palpitae/web/src/lib/rounds.ts": {
-    "mtime": 1781791641.385485,
+    "mtime": 1781815119.0233312,
     "hash": "d5a47245f85a02cb5b524a26c6472bca"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/DashboardPage/index.ts": {
@@ -431,13 +443,13 @@
     "mtime": 1781447381.3732784,
     "hash": "cfb81fce3016bebc4c29a8bedcd9a651"
   },
-  "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.test.tsx": {
-    "mtime": 1781562667.6291552,
-    "hash": "2ba8817b482c33433e5551d1d2d4becb"
-  },
   "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.tsx": {
-    "mtime": 1781743646.737399,
-    "hash": "a0c791c424e239a48e01aaf4689db25a"
+    "mtime": 1781816525.9632337,
+    "hash": "a904a115ef349c59db8c060a28bd2266"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.test.tsx": {
+    "mtime": 1781816533.8790338,
+    "hash": "c6b722a615e458fbd9c4c6b86809e999"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
     "mtime": 1781447381.373338,
@@ -471,14 +483,6 @@
     "mtime": 1781447381.3548934,
     "hash": "808dd3fc73d8c99048dcef2f9077b0c9"
   },
-  "/home/satin/Work/personal/palpitae/GEMINI.md": {
-    "mtime": 1781563052.63664,
-    "hash": "a307d64df546c3a52122a838024062f6"
-  },
-  "/home/satin/Work/personal/palpitae/context.md": {
-    "mtime": 1781744482.4535475,
-    "hash": "0a5e51ef938c881b98e5f33232af971b"
-  },
   "/home/satin/Work/personal/palpitae/docs/architecture/system.md": {
     "mtime": 1778331762.3974855,
     "hash": "08c659e6b94f36f534d19b382ef52c94"
@@ -488,7 +492,7 @@
     "hash": "d2c78de6087c6084a2202dc9e998cce4"
   },
   "/home/satin/Work/personal/palpitae/docs/architecture/decisions.md": {
-    "mtime": 1781735770.6541517,
+    "mtime": 1781815119.0152595,
     "hash": "532c709e98a1d3a2267e8b6498cdf5f0"
   },
   "/home/satin/Work/personal/palpitae/docs/ideas/palpitae-refined.md": {
@@ -500,7 +504,7 @@
     "hash": "be9b2a2d1291db19cf3291d1eeb1375e"
   },
   "/home/satin/Work/personal/palpitae/docs/runtime/context.md": {
-    "mtime": 1777891912.379671,
+    "mtime": 1781815119.0152595,
     "hash": "7f2e02ee1e07cd190d2f3551e8410d24"
   },
   "/home/satin/Work/personal/palpitae/web/index.html": {

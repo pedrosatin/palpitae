@@ -1,16 +1,16 @@
 # Graph Report - palpitae  (2026-06-18)
 
 ## Corpus Check
-- 126 files · ~56,991 words
+- 127 files · ~56,952 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1047 nodes · 1886 edges · 74 communities (66 shown, 8 thin omitted)
-- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 9 edges (avg confidence: 0.53)
+- 1055 nodes · 1898 edges · 72 communities (66 shown, 6 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 11 edges (avg confidence: 0.58)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `eb144949`
+- Built from commit: `ba33b3d5`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -78,8 +78,6 @@
 - [[_COMMUNITY_Community 60|Community 60]]
 - [[_COMMUNITY_Community 61|Community 61]]
 - [[_COMMUNITY_Community 62|Community 62]]
-- [[_COMMUNITY_Community 63|Community 63]]
-- [[_COMMUNITY_Community 64|Community 64]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `config` - 35 edges
@@ -98,182 +96,186 @@
   api/src/matches/poller.ts → /home/satin/Work/palpitae/api/src/matches/scoring.ts
 - `maybeSyncResults()` --calls--> `scoreUnprocessedMatches()`  [EXTRACTED]
   api/src/matches/router.ts → /home/satin/Work/palpitae/api/src/matches/scoring.ts
-- `scheduled()` --calls--> `pollActiveMatches()`  [EXTRACTED]
-  api/src/index.ts → api/src/matches/poller.ts
-- `base64UrlEncode()` --calls--> `signJwt()`  [EXTRACTED]
-  /home/satin/Work/palpitae/api/src/auth/encoding.ts → /home/satin/Work/palpitae/api/src/auth/jwt.ts
-- `base64UrlDecode()` --calls--> `verifyJwt()`  [EXTRACTED]
-  /home/satin/Work/palpitae/api/src/auth/encoding.ts → /home/satin/Work/palpitae/api/src/auth/jwt.ts
+- `signJwt()` --calls--> `request()`  [EXTRACTED]
+  /home/satin/Work/palpitae/api/src/auth/jwt.ts → api/src/groups/router.test.ts
+- `signJwt()` --calls--> `requestGroupsList()`  [EXTRACTED]
+  /home/satin/Work/palpitae/api/src/auth/jwt.ts → api/src/groups/router.test.ts
+- `requestRemoveMember()` --calls--> `signJwt()`  [EXTRACTED]
+  api/src/groups/router.test.ts → /home/satin/Work/palpitae/api/src/auth/jwt.ts
 
-## Communities (74 total, 8 thin omitted)
+## Communities (72 total, 6 thin omitted)
 
 ### Community 0 - "Bracket UI Components"
 Cohesion: 0.06
 Nodes (67): BracketColumn(), BracketColumnProps, ROUND_INDEX, column, { container }, renderColumn(), slot(), slots (+59 more)
 
 ### Community 1 - "API Routers & Auth Middleware"
-Cohesion: 0.05
-Nodes (69): ALGORITHM, importKey(), JwtPayload, signJwt(), [, body], [h, , s], payload, tamperedBody (+61 more)
+Cohesion: 0.09
+Nodes (43): ALGORITHM, importKey(), JwtPayload, signJwt(), [, body], [h, , s], payload, tamperedBody (+35 more)
 
 ### Community 2 - "Auth Encoding & Google OAuth"
-Cohesion: 0.05
-Nodes (55): ActiveRound, pollActiveMatches(), ActiveRow, db, [earliestOver, stillRelevant], matchdays, scoreMock, syncFixturesMock (+47 more)
+Cohesion: 0.07
+Nodes (32): makeMatch(), defaultRoundIndex(), GroupMember, GroupPicksResponse, GroupPicksTab(), GroupPicksTabProps, MemberPrediction, GroupPicksResponse (+24 more)
 
 ### Community 3 - "Architecture Decision Records"
-Cohesion: 0.05
-Nodes (59): API Football (External Provider), Cloudflare D1 (SQLite), Cloudflare Pages, Cloudflare Workers, Architecture Decision Records, Auth Domain Module, Competitions Domain Module, Groups Domain Module (+51 more)
+Cohesion: 0.07
+Nodes (43): API Football (External Provider), Cloudflare D1 (SQLite), Cloudflare Pages, Cloudflare Workers, Architecture Decision Records, Auth Domain Module, Competitions Domain Module, Groups Domain Module (+35 more)
 
 ### Community 4 - "Create Group Modal (legacy)"
 Cohesion: 0.12
 Nodes (34): base64UrlDecode(), base64UrlEncode(), buf, decoded, encoded, original, result, buildAuthUrl() (+26 more)
 
 ### Community 5 - "Dashboard & Group Detail Pages"
+Cohesion: 0.07
+Nodes (16): DashboardPageProps, User, GroupDetail, GroupDetailPage(), GroupDetailPageProps, parseTab(), Tab, TABS (+8 more)
+
+### Community 6 - "Predictions Tab (legacy)"
 Cohesion: 0.05
 Nodes (36): 🔐 Authentication, Backend (API), Competition, 📏 Constraints, 🧱 Core Product Concept, 🧠 Design Principles, ⚽ Domain Model, Excluded (future): (+28 more)
 
-### Community 6 - "Predictions Tab (legacy)"
+### Community 7 - "Bracket API Router"
 Cohesion: 0.12
 Nodes (28): FEATURE_ALLOWLISTS, FEATURE_KEYS, FeatureFlags, FeatureKey, getFeatureFlags(), hasFeatureAccess(), body, candidate (+20 more)
 
-### Community 7 - "Bracket API Router"
+### Community 8 - "App Entry & Login"
 Cohesion: 0.13
 Nodes (28): byMatch, groupId, importStatements, locked, match, matchId, matchIds, matchRows (+20 more)
 
-### Community 8 - "App Entry & Login"
-Cohesion: 0.11
-Nodes (14): formatDate(), Match, MatchCard(), MatchCardProps, Prediction, input, pastMatch, saveBtn (+6 more)
-
 ### Community 9 - "Match Card Component"
-Cohesion: 0.17
-Nodes (12): dialog, fetchSpy, mockResponse(), user, GoogleLoginButton(), GoogleLogo(), Member, MembersTab() (+4 more)
+Cohesion: 0.12
+Nodes (26): allPicksBySlot, allPicksResult, byPos, competitionId, data, ensureSlot(), groupId, KNOCKOUT_PHASES (+18 more)
 
 ### Community 10 - "Predictions Tab Component"
-Cohesion: 0.13
-Nodes (10): GroupCard(), GroupCardProps, GroupWithStats, baseGroup, onClick, BrowserFrame(), FeatureRow(), LandingPage() (+2 more)
+Cohesion: 0.1
+Nodes (22): ActiveRound, pollActiveMatches(), ActiveRow, db, [earliestOver, stillRelevant], matchdays, scoreMock, syncFixturesMock (+14 more)
 
 ### Community 11 - "Group Card (legacy)"
-Cohesion: 0.13
-Nodes (7): GroupDetail, GroupDetailPage(), GroupDetailPageProps, parseTab(), Tab, TABS, User
+Cohesion: 0.12
+Nodes (20): cacheKey, competition, competitionId, dbStartedAt, defaultRoundRow, firstOpen, MatchRow, nowIso (+12 more)
 
 ### Community 12 - "Group Card Component"
 Cohesion: 0.11
-Nodes (11): ButtonProps, onClick, Competition, CreatedGroup, CreateGroupModalProps, HeaderProps, User, GroupDetail (+3 more)
+Nodes (14): formatDate(), Match, MatchCard(), MatchCardProps, Prediction, input, pastMatch, saveBtn (+6 more)
 
 ### Community 13 - "Fixture Sync (API Football)"
-Cohesion: 0.11
-Nodes (17): code:mermaid (erDiagram), code:sql (PRAGMA foreign_keys = ON;), `competitions`, Database Schema — Palpitae, Entities, Entity Relationship Diagram, `group_members`, `groups` (+9 more)
+Cohesion: 0.13
+Nodes (10): GroupCard(), GroupCardProps, GroupWithStats, baseGroup, onClick, BrowserFrame(), FeatureRow(), LandingPage() (+2 more)
 
 ### Community 14 - "Create Group Modal"
 Cohesion: 0.11
-Nodes (17): ✅ Alta Confiança, Anti-Abuse Strategy (MVP), ⚠️ Corrigido, ✅ In Scope, Key Assumptions to Validate, MVP Scope, Next Steps, Not Doing (and Why) (+9 more)
+Nodes (17): code:mermaid (erDiagram), code:sql (PRAGMA foreign_keys = ON;), `competitions`, Database Schema — Palpitae, Entities, Entity Relationship Diagram, `group_members`, `groups` (+9 more)
 
 ### Community 15 - "Button & Header (legacy)"
+Cohesion: 0.11
+Nodes (17): ✅ Alta Confiança, Anti-Abuse Strategy (MVP), ⚠️ Corrigido, ✅ In Scope, Key Assumptions to Validate, MVP Scope, Next Steps, Not Doing (and Why) (+9 more)
+
+### Community 16 - "Join Group Modal"
+Cohesion: 0.26
+Nodes (13): calculatePoints(), recalculateLeaderboard(), scoreMatch(), scoreUnprocessedMatches(), batchSpy, buildFakeDb(), db, FakeMatch (+5 more)
+
+### Community 17 - "Header Tests (legacy)"
 Cohesion: 0.16
 Nodes (11): app, cacheHeaderFor(), counter, createMatchesDbMock(), env, fakeEnv(), first, second (+3 more)
 
-### Community 16 - "Join Group Modal"
+### Community 18 - "Group Detail Page Tests (legacy)"
 Cohesion: 0.24
 Nodes (13): formatDate(), Match, MatchCard(), MatchCardProps, Prediction, awayInput, homeInput, input (+5 more)
 
-### Community 17 - "Header Tests (legacy)"
-Cohesion: 0.21
-Nodes (10): makeMatch(), GroupPicksResponse, makeMatch(), matches, mockFetch(), makeMatch(), matches, mockFetch() (+2 more)
+### Community 19 - "Group Detail Page (legacy)"
+Cohesion: 0.12
+Nodes (16): 🤖 AGENTS.md — Palpitae, ⚠️ Anti-Patterns (Avoid), 🏗️ Architecture Guidelines, 🧩 Code Guidelines, 🗄️ Database Rules, ⚽ Domain Rules (Critical), 🧠 General Principles, 🎯 Goal (+8 more)
 
-### Community 18 - "Group Detail Page Tests (legacy)"
+### Community 20 - "Modal (legacy)"
+Cohesion: 0.12
+Nodes (10): ButtonProps, onClick, HeaderProps, baseUser, link, onCreateGroup, onJoinGroup, onLogout (+2 more)
+
+### Community 21 - "Card (legacy)"
+Cohesion: 0.21
+Nodes (8): GoogleLoginButton(), GoogleLogo(), Member, MembersTab(), MembersTabProps, buildApiUrl(), config, isAbsoluteUrl()
+
+### Community 22 - "Card Component"
 Cohesion: 0.2
 Nodes (10): Header(), HeaderProps, baseUser, link, onCreateGroup, onJoinGroup, onLogout, renderHeader() (+2 more)
 
-### Community 19 - "Group Detail Page (legacy)"
+### Community 23 - "Modal Component"
 Cohesion: 0.15
 Nodes (4): App(), AuthStatus, User, rootEl
 
-### Community 20 - "Modal (legacy)"
+### Community 24 - "Team Badge Component"
 Cohesion: 0.13
 Nodes (9): GroupCardProps, GroupWithStats, baseGroup, onClick, DashboardPageProps, dialog, fetchSpy, user (+1 more)
 
-### Community 21 - "Card (legacy)"
+### Community 25 - "Dashboard Page Tests (legacy)"
 Cohesion: 0.13
 Nodes (8): JoinedGroup, JoinGroupModalProps, body, defaultProps, fetchSpy, joinedGroup, ModalProps, onClose
 
-### Community 22 - "Card Component"
+### Community 26 - "Button Component"
 Cohesion: 0.18
-Nodes (13): 1. `GroupDetailPage.tsx` — adicionar a aba, 2. Novo arquivo: `api/src/matches/poller.ts`, 2. Query de `default_round` ignora filtros `?round=X` / `?status=X`, 3. `api/src/index.ts` — exportar handler `scheduled`, 3. Duas queries D1 sequenciais por cache miss — usar `db.batch()`, 4. Fallback `.at(-1)?.round` usa ordenação por `group_name`, não cronológica, 5. `makeMatch` e `mockFetch` desatualizados em `GroupPicksTab.test.tsx`, code:ts (const [result, defaultRoundResult] = await db.batch([) (+5 more)
+Nodes (13): 1. `default_round: null/undefined` → mostra rodada 1 em vez da última, 1. `GroupDetailPage.tsx` — adicionar a aba, 2. Novo arquivo: `api/src/matches/poller.ts`, 3. `api/src/index.ts` — exportar handler `scheduled`, 3. Duas queries D1 sequenciais por cache miss — usar `db.batch()`, 4. Fallback `.at(-1)?.round` usa ordenação por `group_name`, não cronológica, 5. `makeMatch` e `mockFetch` desatualizados em `GroupPicksTab.test.tsx`, code:ts (const [result, defaultRoundResult] = await db.batch([) (+5 more)
 
-### Community 23 - "Modal Component"
-Cohesion: 0.22
-Nodes (8): JoinedGroup, JoinGroupModal(), JoinGroupModalProps, formatDate(), LeaderboardTab(), LeaderboardTabProps, Member, UserPrediction
+### Community 27 - "Google Login Button"
+Cohesion: 0.19
+Nodes (8): ConfirmModalProps, ConfirmOptions, useConfirm(), formatDate(), LeaderboardTab(), LeaderboardTabProps, Member, UserPrediction
 
-### Community 24 - "Team Badge Component"
+### Community 28 - "Brand SVG Assets"
 Cohesion: 0.15
 Nodes (13): ADR-006: Frontend Stack — Vite + React (Static Site), Consequences, Consequences, Consequences, Consequences, Context, Context, Decision (+5 more)
 
-### Community 25 - "Dashboard Page Tests (legacy)"
+### Community 29 - "Pages Function Proxy"
+Cohesion: 0.15
+Nodes (8): GroupDetail, GroupDetailPageProps, Tab, baseGroup, baseUser, fetchSpy, spy, User
+
+### Community 30 - "Web App Entry"
+Cohesion: 0.24
+Nodes (8): competitions, createdGroup, defaultProps, mockFetchCompetitions(), body, defaultProps, fetchSpy, joinedGroup
+
+### Community 31 - "Icon SVG Assets"
 Cohesion: 0.17
 Nodes (3): CardProps, { container }, div
 
-### Community 26 - "Button Component"
-Cohesion: 0.27
-Nodes (8): Competition, CreatedGroup, CreateGroupModal(), CreateGroupModalProps, competitions, createdGroup, defaultProps, mockFetchCompetitions()
-
-### Community 27 - "Google Login Button"
-Cohesion: 0.38
-Nodes (5): CacheEntry, fetchCachedJson(), invalidateApiCache(), responseCache, loader
-
-### Community 28 - "Brand SVG Assets"
+### Community 32 - "API Vitest Config"
 Cohesion: 0.18
 Nodes (10): 2. `StandingsTab.tsx` — componente principal, 3. `StandingsTab.test.tsx` — testes, 4. `index.ts` — barrel export, code:ts (const groupMatches = matches.filter((m) => m.group_name !== ), code:ts (interface TeamStanding {), code:ts (const [selectedGroup, setSelectedGroup] = useState<string | ), code:block13 ([Grupo A]                          ← header clicável → abre ), code:ts (export { default } from './StandingsTab') (+2 more)
 
-### Community 29 - "Pages Function Proxy"
+### Community 33 - "Web Vite Config"
 Cohesion: 0.2
 Nodes (9): Build Order, Current Status, Key rules encoded in schema, ~~Legacy SQL Draft~~, Next Steps, Open Decisions, Runtime Context, Schema (+1 more)
 
-### Community 30 - "Web App Entry"
+### Community 34 - "Vite Env Types"
 Cohesion: 0.2
 Nodes (9): Build Order, Current Status, Key rules encoded in schema, ~~Legacy SQL Draft~~, Next Steps, Open Decisions, Runtime Context, Schema (+1 more)
 
-### Community 31 - "Icon SVG Assets"
-Cohesion: 0.39
-Nodes (7): baseGroup, baseUser, fetchSpy, mockGroupFetch(), renderPage(), spy, tabs
+### Community 35 - "Web Test Setup"
+Cohesion: 0.2
+Nodes (6): Competition, CreatedGroup, CreateGroupModalProps, competitions, createdGroup, defaultProps
 
-### Community 32 - "API Vitest Config"
+### Community 36 - "Dashboard Page Barrel"
 Cohesion: 0.22
 Nodes (9): ADR-007: Result Sync Strategy — Cron-Triggered Time-Window Poller, Alternatives Considered, code:block1 (First half:           45 min), code:sql (SELECT DISTINCT c.id AS comp_id, c.external_id, c.season, m.), Consequences, Consequences, Context, Decision (+1 more)
 
-### Community 33 - "Web Vite Config"
+### Community 37 - "Group Detail Page Barrel"
 Cohesion: 0.22
-Nodes (9): 1. `default_round: null/undefined` → mostra rodada 1 em vez da última, Arquivos a criar, Arquivos tocados, code:ts (const dr = matchesData.default_round   // string | null | un), Decisões, Janela de tempo, Objetivo, Próximos passos (após estabilizar o Cron) (+1 more)
+Nodes (9): 1. `api/wrangler.toml` — adicionar Cron Trigger, 2. `api/src/matches/poller.ts` (implementado), 2. Query de `default_round` ignora filtros `?round=X` / `?status=X`, 3. `api/src/index.ts` — handler `scheduled` (implementado), 4. `api/src/matches/router.ts` — sem mudança, 4. `api/src/matches/router.ts` — sem mudança agora, Arquivos a modificar, code:ts (const defaultRoundRow = (!round && !status)) (+1 more)
 
-### Community 34 - "Vite Env Types"
+### Community 38 - "Login Page Barrel"
 Cohesion: 0.22
 Nodes (9): API externa, Arquivos novos a criar, Arquivos relevantes, context.md — Tarefa atual: Result Sync & Scoring, Cooldown / proteção de rate limit, Fluxo acordado, Leaderboard, Mudanças no schema (migração necessária) (+1 more)
 
-### Community 35 - "Web Test Setup"
+### Community 39 - "Bracket Tab Barrel"
 Cohesion: 0.36
 Nodes (4): TeamBadge(), TeamBadgeProps, { container }, img
 
-### Community 36 - "Dashboard Page Barrel"
+### Community 40 - "Community 40"
 Cohesion: 0.36
 Nodes (4): Card(), CardProps, { container }, div
 
-### Community 37 - "Group Detail Page Barrel"
+### Community 41 - "Community 41"
 Cohesion: 0.36
 Nodes (4): Modal(), ModalProps, onClose, renderModal()
 
-### Community 38 - "Login Page Barrel"
-Cohesion: 0.39
-Nodes (5): applyDefaultRound(), defaultRoundIndex(), PredictionMap, PredictionsTab(), PredictionsTabProps
-
-### Community 40 - "Community 40"
-Cohesion: 0.43
-Nodes (6): defaultRoundIndex(), GroupMember, GroupPicksResponse, GroupPicksTab(), GroupPicksTabProps, MemberPrediction
-
-### Community 41 - "Community 41"
-Cohesion: 0.25
-Nodes (8): 1. `api/wrangler.toml` — adicionar Cron Trigger, 2. `api/src/matches/poller.ts` (implementado), 3. `api/src/index.ts` — handler `scheduled` (implementado), 4. `api/src/matches/router.ts` — sem mudança, 4. `api/src/matches/router.ts` — sem mudança agora, Arquivos a modificar, code:ts (const defaultRoundRow = (!round && !status)), O que muda
-
 ### Community 42 - "Community 42"
 Cohesion: 0.25
-Nodes (6): baseUser, link, onCreateGroup, onJoinGroup, onLogout, sairBtn
+Nodes (8): Arquivos a criar, Arquivos tocados, code:ts (const dr = matchesData.default_round   // string | null | un), Decisões, Janela de tempo, Objetivo, Próximos passos (após estabilizar o Cron), Tarefa atual: Cron Poller de Resultados
 
 ### Community 43 - "Community 43"
 Cohesion: 0.57
@@ -289,71 +291,67 @@ Nodes (7): code:ts (export interface Match {), Convenções do projeto, Decisõe
 
 ### Community 46 - "Community 46"
 Cohesion: 0.33
-Nodes (4): computeStandings(), StandingsTab(), StandingsTabProps, TeamStanding
+Nodes (5): ADR-001: Database Platform — Cloudflare D1, Architecture Decision Records, Consequences, Context, Decision
 
 ### Community 47 - "Community 47"
-Cohesion: 0.29
-Nodes (4): baseGroup, baseUser, fetchSpy, spy
+Cohesion: 0.53
+Nodes (4): Competition, CreatedGroup, CreateGroupModal(), CreateGroupModalProps
 
 ### Community 48 - "Community 48"
-Cohesion: 0.33
-Nodes (5): ADR-001: Database Platform — Cloudflare D1, Architecture Decision Records, Consequences, Context, Decision
+Cohesion: 0.47
+Nodes (3): JoinedGroup, JoinGroupModal(), JoinGroupModalProps
 
 ### Community 49 - "Community 49"
 Cohesion: 0.53
-Nodes (4): body, defaultProps, fetchSpy, joinedGroup
+Nodes (4): dialog, fetchSpy, mockResponse(), user
+
+### Community 51 - "Community 51"
+Cohesion: 0.4
+Nodes (3): Overview, System Architecture — Palpitae, Working with Architecture
 
 ### Community 52 - "Community 52"
 Cohesion: 0.4
-Nodes (3): Overview, System Architecture — Palpitae, Working with Architecture
+Nodes (5): ADR-002: Migration Strategy — Wrangler D1 Migrations, Consequences, Context, Decision, Rules
 
 ### Community 53 - "Community 53"
 Cohesion: 0.4
 Nodes (5): ADR-005: Authentication — Direct Google OAuth 2.0, Consequences, Context, Decision, Security Requirements
 
 ### Community 54 - "Community 54"
-Cohesion: 0.4
-Nodes (5): ADR-002: Migration Strategy — Wrangler D1 Migrations, Consequences, Context, Decision, Rules
-
-### Community 55 - "Community 55"
-Cohesion: 0.4
-Nodes (3): competitions, createdGroup, defaultProps
-
-### Community 56 - "Community 56"
-Cohesion: 0.5
-Nodes (4): ADR-004: Prediction Locking — Derived at Runtime, Consequences, Context, Decision
-
-### Community 57 - "Community 57"
 Cohesion: 0.5
 Nodes (4): ADR-003: API Runtime — Cloudflare Workers + Hono, Consequences, Context, Decision
 
-### Community 58 - "Community 58"
+### Community 55 - "Community 55"
+Cohesion: 0.5
+Nodes (4): ADR-004: Prediction Locking — Derived at Runtime, Consequences, Context, Decision
+
+### Community 56 - "Community 56"
 Cohesion: 0.5
 Nodes (4): ADR-008: Caching Strategy for `GET /matches` — Content-Derived TTL + Edge Cache API, Consequences, Context, Decision
 
-### Community 60 - "Community 60"
+### Community 58 - "Community 58"
 Cohesion: 0.67
 Nodes (3): Logo 2 SVG, Logo SVG (Logo.svg), Logo Text SVG
 
 ## Knowledge Gaps
-- **250 isolated node(s):** `app`, `TEAM_TRANSLATIONS`, `COMP_TRANSLATIONS`, `ApiTeam`, `ApiMatch` (+245 more)
+- **252 isolated node(s):** `app`, `syncFixturesMock`, `scoreMock`, `ActiveRow`, `db` (+247 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **8 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **6 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `config` connect `Match Card Component` to `Bracket UI Components`, `Login Page Barrel`, `Bracket Tab Barrel`, `Community 40`, `App Entry & Login`, `Group Card (legacy)`, `Group Card Component`, `Community 46`, `Join Group Modal`, `Group Detail Page (legacy)`, `Modal (legacy)`, `Card (legacy)`, `Modal Component`, `Dashboard Page Tests (legacy)`, `Button Component`?**
-  _High betweenness centrality (0.066) - this node is a cross-community bridge._
-- **Why does `AppContext` connect `API Routers & Auth Middleware` to `Auth Encoding & Google OAuth`, `Create Group Modal (legacy)`, `Predictions Tab (legacy)`, `Bracket API Router`, `Button & Header (legacy)`?**
-  _High betweenness centrality (0.024) - this node is a cross-community bridge._
-- **What connects `app`, `TEAM_TRANSLATIONS`, `COMP_TRANSLATIONS` to the rest of the system?**
-  _250 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `config` connect `Card (legacy)` to `Bracket UI Components`, `Auth Encoding & Google OAuth`, `Web Test Setup`, `Dashboard & Group Detail Pages`, `Group Card Component`, `Community 47`, `Community 48`, `Community 49`, `Group Detail Page Tests (legacy)`, `Modal Component`, `Team Badge Component`, `Dashboard Page Tests (legacy)`, `Google Login Button`, `Pages Function Proxy`, `Icon SVG Assets`?**
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
+- **Why does `AppContext` connect `API Routers & Auth Middleware` to `Create Group Modal (legacy)`, `Bracket API Router`, `App Entry & Login`, `Match Card Component`, `Predictions Tab Component`, `Group Card (legacy)`, `Header Tests (legacy)`?**
+  _High betweenness centrality (0.016) - this node is a cross-community bridge._
+- **What connects `app`, `syncFixturesMock`, `scoreMock` to the rest of the system?**
+  _252 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Bracket UI Components` be split into smaller, more focused modules?**
   _Cohesion score 0.06 - nodes in this community are weakly interconnected._
 - **Should `API Routers & Auth Middleware` be split into smaller, more focused modules?**
-  _Cohesion score 0.05 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.09 - nodes in this community are weakly interconnected._
 - **Should `Auth Encoding & Google OAuth` be split into smaller, more focused modules?**
-  _Cohesion score 0.05 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
 - **Should `Architecture Decision Records` be split into smaller, more focused modules?**
-  _Cohesion score 0.05 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
