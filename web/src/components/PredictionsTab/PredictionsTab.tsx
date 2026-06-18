@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { fetchCachedJson } from '../../lib/api-cache'
+import { applyDefaultRound } from '../../lib/rounds'
 import MatchCard, { type Match, type Prediction } from '../MatchCard'
 import styles from './PredictionsTab.module.css'
 
@@ -100,11 +101,8 @@ export default function PredictionsTab({
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
         setPredictions(map)
 
-        if (matchesData.default_round != null) {
-          const keys = [...new Set(matchesData.matches.map((m) => m.round))]
-          const idx = keys.indexOf(matchesData.default_round)
-          setRoundIndex(idx >= 0 ? idx : 0)
-        }
+        const keys = [...new Set(matchesData.matches.map((m) => m.round))]
+        applyDefaultRound(matchesData.default_round, keys, setRoundIndex)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
