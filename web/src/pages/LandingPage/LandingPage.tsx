@@ -26,7 +26,7 @@ export default function LandingPage() {
           <a href="#pontuacao" className={styles.navLink}>
             Pontuação
           </a>
-          <Link to="/" className={styles.navCta}>
+          <Link to="/entrar" className={styles.navCta}>
             Entrar
           </Link>
         </nav>
@@ -57,6 +57,8 @@ export default function LandingPage() {
             <img
               src="/screenshots/grupos.png"
               alt="Tela de grupos do Palpitae mostrando os bolões do usuário"
+              width={1336}
+              height={717}
               loading="eager"
             />
           </BrowserFrame>
@@ -70,6 +72,8 @@ export default function LandingPage() {
             description="Monte um bolão com a galera em segundos. Compartilhe um código ou link de convite e acompanhe membros, sua posição e seus pontos de cada grupo."
             shot="/screenshots/grupos.png"
             shotAlt="Lista de grupos com membros, posição e pontos"
+            shotWidth={1336}
+            shotHeight={717}
           />
           <FeatureRow
             reversed
@@ -78,6 +82,8 @@ export default function LandingPage() {
             description="Cravou o placar? Ajuste os números de cada jogo e salve um por um — ou de uma vez com 'Salvar todos'. Navegue entre as rodadas e palpite com antecedência."
             shot="/screenshots/palpites.png"
             shotAlt="Tela de previsões com cards de jogos e seletores de placar"
+            shotWidth={1297}
+            shotHeight={840}
           />
           <FeatureRow
             tag="Chaveamento"
@@ -85,6 +91,8 @@ export default function LandingPage() {
             description="Das oitavas à final, escolha quem avança em cada chave. As escolhas inválidas se ajustam automaticamente, e dá pra ver o chaveamento dos outros membros do grupo."
             shot="/screenshots/chaveamento.png"
             shotAlt="Tela de chaveamento do mata-mata da copa"
+            shotWidth={1296}
+            shotHeight={839}
           />
         </section>
 
@@ -133,6 +141,8 @@ function FeatureRow({
   description,
   shot,
   shotAlt,
+  shotWidth,
+  shotHeight,
   reversed = false,
 }: {
   tag: string
@@ -140,6 +150,8 @@ function FeatureRow({
   description: string
   shot: string
   shotAlt: string
+  shotWidth: number
+  shotHeight: number
   reversed?: boolean
 }) {
   return (
@@ -150,7 +162,7 @@ function FeatureRow({
         <p className={styles.featureDesc}>{description}</p>
       </div>
       <BrowserFrame className={styles.featureShot}>
-        <img src={shot} alt={shotAlt} loading="lazy" />
+        <img src={shot} alt={shotAlt} width={shotWidth} height={shotHeight} loading="lazy" />
       </BrowserFrame>
     </article>
   )
