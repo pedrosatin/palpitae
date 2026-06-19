@@ -57,7 +57,7 @@ export default function LandingPage() {
           </div>
 
           <BrowserFrame className={styles.heroShot}>
-            <img
+            <Shot
               src="/screenshots/grupos.png"
               alt="Tela de grupos do Palpitae mostrando os bolões do usuário"
               width={1336}
@@ -188,7 +188,7 @@ function FeatureRow({
         <p className={styles.featureDesc}>{description}</p>
       </div>
       <BrowserFrame className={styles.featureShot}>
-        <img src={shot} alt={shotAlt} width={shotWidth} height={shotHeight} loading="lazy" />
+        <Shot src={shot} alt={shotAlt} width={shotWidth} height={shotHeight} loading="lazy" />
       </BrowserFrame>
     </article>
   )
@@ -217,6 +217,35 @@ function ScoreCard({
       <span className={styles.scorePoints}>{points}</span>
       <span className={styles.scorePhase}>{phase}</span>
     </li>
+  )
+}
+
+/**
+ * Product screenshot that prefers a WebP source (30-65% smaller) and falls
+ * back to the original PNG on browsers without WebP support. The WebP path is
+ * derived from the PNG path by extension, so both files share one source of
+ * truth. The hero shot passes loading="eager" (it's the LCP element); the rest
+ * lazy-load.
+ */
+function Shot({
+  src,
+  alt,
+  width,
+  height,
+  loading,
+}: {
+  src: string
+  alt: string
+  width: number
+  height: number
+  loading: 'eager' | 'lazy'
+}) {
+  const webp = src.replace(/\.png$/, '.webp')
+  return (
+    <picture>
+      <source srcSet={webp} type="image/webp" />
+      <img src={src} alt={alt} width={width} height={height} loading={loading} />
+    </picture>
   )
 }
 

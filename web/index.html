@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+    <!-- Fundo escuro no primeiro paint, antes do CSS externo carregar, pra
+         nunca haver flash branco enquanto JS/CSS e o auth resolvem -->
+    <style>
+      html { background-color: #0d0d0d; }
+    </style>
+
+    <!-- Aquece a conexão com a API (auth/me roda no boot, em outro domínio) -->
+    <link rel="preconnect" href="https://api.palpitae.com.br" crossorigin />
+    <link rel="dns-prefetch" href="https://api.palpitae.com.br" />
+
     <!-- SEO básico -->
     <title>Palpitae — Bolões de futebol para a Copa do Mundo 2026</title>
     <meta name="description" content="Crie grupos privados com amigos, dê seus palpites rodada a rodada, monte o chaveamento do mata-mata e dispute a classificação. O bolão online da Copa 2026." />
@@ -37,8 +47,9 @@
     <!-- Cor do browser (mobile) -->
     <meta name="theme-color" content="#0d0d0d" />
 
-    <!-- Preload da imagem hero (melhora LCP) -->
-    <link rel="preload" as="image" href="/screenshots/grupos.png" />
+    <!-- Preload da imagem hero em WebP (melhora LCP); navegadores sem suporte
+         a WebP ignoram o preload e carregam o PNG via <picture> -->
+    <link rel="preload" as="image" href="/screenshots/grupos.webp" type="image/webp" />
 
     <!-- JSON-LD: dados estruturados para o Google -->
     <script type="application/ld+json">
