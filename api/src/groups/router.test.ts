@@ -236,19 +236,8 @@ describe('groups router', () => {
     expect(body.matched_invite_group_id).toBe('group-1')
   })
 
-  it('blocks group creation for users outside the allowlist', async () => {
+  it('allows group creation for any authenticated user', async () => {
     const res = await request('user@example.com', {
-      name: 'Os Craques',
-      competition_id: 'comp-1',
-    })
-
-    expect(res.status).toBe(403)
-    const body = await res.json() as { error: string }
-    expect(body.error).toBe('Você não tem permissão para criar grupos')
-  })
-
-  it('allows group creation for the allowlisted email', async () => {
-    const res = await request('pedro5satin@gmail.com', {
       name: 'Os Craques',
       competition_id: 'comp-1',
     })
