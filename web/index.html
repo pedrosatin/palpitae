@@ -7,11 +7,13 @@
     <!-- SEO básico -->
     <title>Palpitae — Bolões de futebol para a Copa do Mundo 2026</title>
     <meta name="description" content="Crie grupos privados com amigos, dê seus palpites rodada a rodada, monte o chaveamento do mata-mata e dispute a classificação. O bolão online da Copa 2026." />
+    <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://palpitae.com.br/" />
 
     <!-- Favicon e ícones -->
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
 
     <!-- Open Graph (WhatsApp, LinkedIn, Facebook, Telegram) -->
     <meta property="og:type" content="website" />
@@ -54,6 +56,59 @@
         "price": "0",
         "priceCurrency": "BRL"
       }
+    }
+    </script>
+
+    <!-- JSON-LD: organização (ajuda em sitelinks/knowledge panel) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Palpitae",
+      "url": "https://palpitae.com.br",
+      "logo": "https://palpitae.com.br/apple-touch-icon.png"
+    }
+    </script>
+
+    <!-- JSON-LD: FAQ (espelha a seção de perguntas frequentes da landing) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "O Palpitae é gratuito?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Sim. Você entra com sua conta Google e cria bolões sem pagar nada."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Como funciona a pontuação?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Você ganha pontos acertando os palpites. No mata-mata os acertos valem cada vez mais: começam em 1 ponto nos 16-avos e dobram a cada fase até 16 pontos na final."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Como entro em um grupo?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Peça o código ou o link de convite ao admin do grupo e use a opção \"Entrar em grupo\"."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Preciso instalar algum aplicativo?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Não. O Palpitae funciona direto no navegador, no celular ou no computador."
+          }
+        }
+      ]
     }
     </script>
   </head>

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Card from '../../components/Card'
 import GoogleLoginButton from '../../components/GoogleLoginButton'
+import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './LoginPage.module.css'
 
 /**
@@ -13,6 +14,7 @@ import styles from './LoginPage.module.css'
  * initiates the PKCE OAuth2 flow. No credentials are handled client-side.
  */
 export default function LoginPage() {
+  useDocumentTitle('Entrar')
   return (
     <main className={styles.root}>
       <Card className={styles.card}>
