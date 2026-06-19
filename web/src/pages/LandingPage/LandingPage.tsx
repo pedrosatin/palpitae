@@ -26,6 +26,9 @@ export default function LandingPage() {
           <a href="#pontuacao" className={styles.navLink}>
             Pontuação
           </a>
+          <a href="#faq" className={styles.navLink}>
+            Dúvidas
+          </a>
           <Link to="/entrar" className={styles.navCta}>
             Entrar
           </Link>
@@ -111,6 +114,29 @@ export default function LandingPage() {
           </ul>
         </section>
 
+        {/* ─── FAQ ──────────────────────────────────────────────────────── */}
+        <section id="faq" className={styles.faq}>
+          <h2 className={styles.sectionTitle}>Perguntas frequentes</h2>
+          <dl className={styles.faqList}>
+            <FaqItem
+              q="O Palpitae é gratuito?"
+              a="Sim. Você entra com sua conta Google e cria bolões sem pagar nada."
+            />
+            <FaqItem
+              q="Como funciona a pontuação?"
+              a="Você ganha pontos acertando os palpites. No mata-mata os acertos valem cada vez mais: começam em 1 ponto nos 16-avos e dobram a cada fase até 16 pontos na final."
+            />
+            <FaqItem
+              q="Como entro em um grupo?"
+              a={'Peça o código ou o link de convite ao admin do grupo e use a opção "Entrar em grupo".'}
+            />
+            <FaqItem
+              q="Preciso instalar algum aplicativo?"
+              a="Não. O Palpitae funciona direto no navegador, no celular ou no computador."
+            />
+          </dl>
+        </section>
+
         {/* ─── Final CTA ────────────────────────────────────────────────── */}
         <section className={styles.cta}>
           <h2 className={styles.ctaTitle}>Pronto para palpitar?</h2>
@@ -165,6 +191,15 @@ function FeatureRow({
         <img src={shot} alt={shotAlt} width={shotWidth} height={shotHeight} loading="lazy" />
       </BrowserFrame>
     </article>
+  )
+}
+
+function FaqItem({ q, a }: { q: string; a: string }) {
+  return (
+    <div className={styles.faqItem}>
+      <dt className={styles.faqQuestion}>{q}</dt>
+      <dd className={styles.faqAnswer}>{a}</dd>
+    </div>
   )
 }
 

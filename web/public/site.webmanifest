@@ -1,0 +1,14 @@
+{
+  "name": "Palpitae",
+  "short_name": "Palpitae",
+  "description": "Bolões de futebol para a Copa do Mundo 2026.",
+  "start_url": "/",
+  "display": "standalone",
+  "lang": "pt-BR",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
