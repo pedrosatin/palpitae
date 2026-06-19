@@ -294,6 +294,41 @@
   color: var(--color-text-secondary);
 }
 
+/* ─── FAQ ─────────────────────────────────────────────────────────────── */
+
+.faq {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.faqList {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-10);
+  text-align: left;
+}
+
+.faqItem {
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+}
+
+.faqQuestion {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.faqAnswer {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed, 1.6);
+}
+
 /* ─── Final CTA ───────────────────────────────────────────────────────── */
 
 .cta {

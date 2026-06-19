@@ -17,6 +17,7 @@ import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
 import StandingsTab from '../../components/StandingsTab'
 import { invalidateApiCache } from '../../lib/api-cache'
+import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './GroupDetailPage.module.css'
 
 interface User {
@@ -54,6 +55,15 @@ const TABS = [
 type Tab = (typeof TABS)[number]
 const DEFAULT_TAB: Tab = 'predictions'
 
+const TAB_LABELS: Record<Tab, string> = {
+  predictions: 'Previsões',
+  standings: 'Tabela',
+  'group-picks': 'Palpites do grupo',
+  leaderboard: 'Classificação',
+  bracket: 'Chaveamento',
+  members: 'Membros',
+}
+
 function parseTab(value: string | null): Tab {
   return TABS.includes(value as Tab) ? (value as Tab) : DEFAULT_TAB
 }
@@ -79,6 +89,8 @@ export default function GroupDetailPage({
   const { confirm, confirmDialog } = useConfirm()
   const menuRef = useRef<HTMLDivElement>(null)
   const activeTab = parseTab(searchParams.get('tab'))
+
+  useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
 
   function setActiveTab(tab: Tab) {
     setSearchParams(
