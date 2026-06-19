@@ -7,6 +7,7 @@ import GroupCard, { type GroupWithStats } from '../../components/GroupCard'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
 import { fetchCachedJson, invalidateApiCache } from '../../lib/api-cache'
+import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './DashboardPage.module.css'
 
 interface User {
@@ -25,6 +26,7 @@ interface DashboardPageProps {
 }
 
 export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
+  useDocumentTitle('Meus grupos')
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const pendingInvite = searchParams.get('convite') ?? undefined
