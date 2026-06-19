@@ -45,23 +45,13 @@ async function requestWithCookie(email: string) {
 }
 
 describe('auth router', () => {
-  it('returns can_create_group false for non-allowed users', async () => {
+  it('returns create_group true for any authenticated user', async () => {
     const res = await requestWithCookie('user@example.com')
     expect(res.status).toBe(200)
     const body = await res.json() as {
       user: { email: string; feature_flags: { create_group: boolean } }
     }
     expect(body.user.email).toBe('user@example.com')
-    expect(body.user.feature_flags.create_group).toBe(false)
-  })
-
-  it('returns can_create_group true for the allowlisted email', async () => {
-    const res = await requestWithCookie('pedro5satin@gmail.com')
-    expect(res.status).toBe(200)
-    const body = await res.json() as {
-      user: { email: string; feature_flags: { create_group: boolean } }
-    }
-    expect(body.user.email).toBe('pedro5satin@gmail.com')
     expect(body.user.feature_flags.create_group).toBe(true)
   })
 })
