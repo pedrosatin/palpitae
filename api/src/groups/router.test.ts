@@ -214,6 +214,57 @@ async function requestRemoveMember(
   )
 }
 
+function createGroupByIdDbMock(ownerId: string | null) {
+  const updateRun = vi.fn().mockResolvedValue({ success: true })
+
+  const db = {
+    prepare(sql: string) {
+      return {
+        bind() {
+          return {
+            async first() {
+              if (sql.includes('FROM groups WHERE id = ? AND deleted_at IS NULL')) {
+                return ownerId ? { owner_user_id: ownerId } : null
+              }
+              return null
+            },
+            run: updateRun,
+          }
+        },
+      }
+    },
+  }
+
+  return { db: db as unknown as D1Database, updateRun }
+}
+
+async function requestGroupMutation(
+  method: 'PATCH' | 'DELETE',
+  callerId: string,
+  callerEmail: string,
+  groupId: string,
+  db: D1Database,
+  body?: Record<string, unknown>,
+) {
+  const token = await signJwt({ sub: callerId, email: callerEmail }, JWT_SECRET, 3600)
+  const headers = new Headers({
+    Cookie: `session=${token}`,
+    'Content-Type': 'application/json',
+  })
+
+  const app = new Hono<AppContext>()
+  app.route('/groups', groupsRouter)
+
+  return app.fetch(
+    new Request(`http://localhost/groups/${groupId}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+    { ...fakeEnv(callerEmail), DB: db },
+  )
+}
+
 describe('groups router', () => {
   it('returns the total member count for the groups list', async () => {
     const res = await requestGroupsList('user@example.com')
@@ -294,6 +345,76 @@ describe('groups router', () => {
       expect(res.status).toBe(404)
       const body = await res.json() as { error: string }
       expect(body.error).toBe('Membro não encontrado no grupo')
+    })
+  })
+
+  describe('PATCH /groups/:id', () => {
+    it('renames the group when called by the owner', async () => {
+      const { db, updateRun } = createGroupByIdDbMock('user-1')
+      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
+        name: 'Novo Nome',
+      })
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { group: { id: string; name: string } }
+      expect(body.group.name).toBe('Novo Nome')
+      expect(updateRun).toHaveBeenCalled()
+    })
+
+    it('returns 403 when caller is not the owner', async () => {
+      const { db, updateRun } = createGroupByIdDbMock('user-other')
+      const res = await requestGroupMutation('PATCH', 'user-1', 'user@example.com', 'group-1', db, {
+        name: 'Novo Nome',
+      })
+
+      expect(res.status).toBe(403)
+      expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it('returns 400 for an invalid name length', async () => {
+      const { db, updateRun } = createGroupByIdDbMock('user-1')
+      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
+        name: 'x',
+      })
+
+      expect(res.status).toBe(400)
+      expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when the group does not exist or is already deleted', async () => {
+      const { db } = createGroupByIdDbMock(null)
+      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
+        name: 'Novo Nome',
+      })
+
+      expect(res.status).toBe(404)
+    })
+  })
+
+  describe('DELETE /groups/:id', () => {
+    it('soft-deletes the group when called by the owner', async () => {
+      const { db, updateRun } = createGroupByIdDbMock('user-1')
+      const res = await requestGroupMutation('DELETE', 'user-1', 'admin@example.com', 'group-1', db)
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as { success: boolean }
+      expect(body.success).toBe(true)
+      expect(updateRun).toHaveBeenCalled()
+    })
+
+    it('returns 403 when caller is not the owner', async () => {
+      const { db, updateRun } = createGroupByIdDbMock('user-other')
+      const res = await requestGroupMutation('DELETE', 'user-1', 'user@example.com', 'group-1', db)
+
+      expect(res.status).toBe(403)
+      expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when the group does not exist or is already deleted', async () => {
+      const { db } = createGroupByIdDbMock(null)
+      const res = await requestGroupMutation('DELETE', 'user-1', 'admin@example.com', 'group-1', db)
+
+      expect(res.status).toBe(404)
     })
   })
 })

@@ -287,18 +287,21 @@ describe('GroupDetailPage – leave group', () => {
     ).toBeInTheDocument()
   })
 
-  it('does not show the options menu for admins', async () => {
+  it('shows edit/delete actions (not leave) in the options menu for admins', async () => {
     mockGroupFetch({ ...baseGroup, is_admin: true })
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Grupo Teste')).toBeInTheDocument()
-    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: /opções do grupo/i }),
+    )
 
     expect(
-      screen.queryByRole('button', { name: /opções do grupo/i }),
-    ).not.toBeInTheDocument()
+      screen.getByRole('menuitem', { name: /editar nome/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /excluir grupo/i }),
+    ).toBeInTheDocument()
     expect(
       screen.queryByRole('menuitem', { name: /sair do grupo/i }),
     ).not.toBeInTheDocument()
@@ -324,6 +327,62 @@ describe('GroupDetailPage – leave group', () => {
       await screen.findByText('Tem certeza que deseja sair deste grupo?'),
     ).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Home')).toBeInTheDocument()
+    })
+  })
+})
+
+describe('GroupDetailPage – admin: rename & delete', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('renames the group via the edit modal', async () => {
+    mockGroupFetchSequence(
+      { body: { group: { ...baseGroup, is_admin: true } } },
+      { body: { group: { id: baseGroup.id, name: 'Novo Nome' } } },
+    )
+
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /opções do grupo/i }),
+    )
+    await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
+
+    const input = screen.getByPlaceholderText('Nome do grupo')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Novo Nome')
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: 'Novo Nome' }),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('soft-deletes the group after confirmation', async () => {
+    mockGroupFetchSequence(
+      { body: { group: { ...baseGroup, is_admin: true } } },
+      { body: { success: true } },
+    )
+
+    renderPage()
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /opções do grupo/i }),
+    )
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: /excluir grupo/i }),
+    )
+
+    expect(
+      await screen.findByText(/deixará de aparecer para todos os membros/i),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Excluir' }))
 
     await waitFor(() => {
       expect(screen.getByText('Home')).toBeInTheDocument()

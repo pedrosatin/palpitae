@@ -7,9 +7,11 @@ import {
 } from 'react-router-dom'
 import { config } from '../../config'
 import { useConfirm } from '../../components/ConfirmModal'
+import Button from '../../components/Button'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
+import Modal from '../../components/Modal'
 import BracketTab from '../../components/BracketTab/BracketTab'
 import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
@@ -85,7 +87,12 @@ export default function GroupDetailPage({
   const [error, setError] = useState<string | null>(null)
   const [tabsOffset, setTabsOffset] = useState(0)
   const [leaving, setLeaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [renameError, setRenameError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
   const menuRef = useRef<HTMLDivElement>(null)
   const activeTab = parseTab(searchParams.get('tab'))
@@ -235,6 +242,85 @@ export default function GroupDetailPage({
     }
   }
 
+  function openRename() {
+    if (!group) return
+    setMenuOpen(false)
+    setRenameValue(group.name)
+    setRenameError(null)
+    setRenameOpen(true)
+  }
+
+  async function submitRename(event: React.FormEvent) {
+    event.preventDefault()
+    if (!groupId) return
+
+    const name = renameValue.trim()
+    if (name.length < 2 || name.length > 50) {
+      setRenameError('Nome deve ter entre 2 e 50 caracteres')
+      return
+    }
+
+    setRenaming(true)
+    setRenameError(null)
+
+    try {
+      const res = await fetch(`${config.apiUrl}/groups/${groupId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string }
+        throw new Error(body.error ?? 'Erro ao renomear grupo')
+      }
+
+      setGroup((prev) => (prev ? { ...prev, name } : prev))
+      invalidateApiCache('groups:')
+      setRenameOpen(false)
+    } catch (e: unknown) {
+      setRenameError(e instanceof Error ? e.message : 'Erro ao renomear grupo')
+    } finally {
+      setRenaming(false)
+    }
+  }
+
+  async function deleteGroup() {
+    if (!groupId) return
+    setMenuOpen(false)
+
+    const ok = await confirm({
+      title: 'Excluir grupo',
+      message:
+        'Tem certeza que deseja excluir este grupo? Ele deixará de aparecer para todos os membros.',
+      confirmLabel: 'Excluir',
+      danger: true,
+    })
+    if (!ok) return
+
+    setDeleting(true)
+
+    try {
+      const res = await fetch(`${config.apiUrl}/groups/${groupId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string }
+        throw new Error(body.error ?? 'Erro ao excluir grupo')
+      }
+
+      invalidateApiCache('groups:')
+      navigate('/', { replace: true })
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : 'Erro ao excluir grupo')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const modals = (
     <>
       <CreateGroupModal
@@ -247,6 +333,36 @@ export default function GroupDetailPage({
         onClose={() => setJoinOpen(false)}
         onJoined={handleGroupJoined}
       />
+      <Modal
+        isOpen={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        title="Editar nome do grupo"
+      >
+        <form onSubmit={submitRename} className={styles.renameForm}>
+          <input
+            className={styles.renameInput}
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            maxLength={50}
+            placeholder="Nome do grupo"
+            autoFocus
+          />
+          {renameError && <p className={styles.renameError}>{renameError}</p>}
+          <div className={styles.renameActions}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setRenameOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={renaming}>
+              {renaming ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
       {confirmDialog}
     </>
   )
@@ -304,19 +420,37 @@ export default function GroupDetailPage({
             </span>
             <div className={styles.groupNameRow}>
               <h1 className={styles.groupName}>{group.name}</h1>
-              {!isAdmin && (
-                <div className={styles.menuWrap} ref={menuRef}>
-                  <button
-                    className={styles.kebabBtn}
-                    onClick={() => setMenuOpen((o) => !o)}
-                    aria-label="Opções do grupo"
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                  >
-                    ⋯
-                  </button>
-                  {menuOpen && (
-                    <div className={styles.menu} role="menu">
+              <div className={styles.menuWrap} ref={menuRef}>
+                <button
+                  className={styles.kebabBtn}
+                  onClick={() => setMenuOpen((o) => !o)}
+                  aria-label="Opções do grupo"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                >
+                  ⋯
+                </button>
+                {menuOpen && (
+                  <div className={styles.menu} role="menu">
+                    {isAdmin ? (
+                      <>
+                        <button
+                          className={styles.menuItemNeutral}
+                          role="menuitem"
+                          onClick={openRename}
+                        >
+                          Editar nome
+                        </button>
+                        <button
+                          className={styles.menuItem}
+                          role="menuitem"
+                          onClick={deleteGroup}
+                          disabled={deleting}
+                        >
+                          {deleting ? 'Excluindo...' : 'Excluir grupo'}
+                        </button>
+                      </>
+                    ) : (
                       <button
                         className={styles.menuItem}
                         role="menuitem"
@@ -325,10 +459,10 @@ export default function GroupDetailPage({
                       >
                         {leaving ? 'Saindo...' : 'Sair do grupo'}
                       </button>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className={styles.groupActions}>
