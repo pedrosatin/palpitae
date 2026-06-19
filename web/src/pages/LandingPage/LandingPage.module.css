@@ -377,7 +377,9 @@
 }
 
 .footerNote {
-  color: var(--color-text-muted);
+  /* text-secondary (#a3a3a3) em vez de text-muted (#555): #555 sobre o fundo
+     escuro dá só 2.6:1, abaixo do mínimo WCAG AA (4.5:1) — pego no Lighthouse */
+  color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
 }
 
