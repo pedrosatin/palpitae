@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { config } from './config'
-import LoginPage from './pages/LoginPage'
 import LandingPage from './pages/LandingPage'
-import DashboardPage from './pages/DashboardPage'
-import GroupDetailPage from './pages/GroupDetailPage'
+import LoginPage from './pages/LoginPage'
+
+/**
+ * The authenticated pages pull in the heavy app surface (bracket, modals,
+ * tabs). They are code-split so a first-time visitor on the public landing
+ * only downloads the marketing chunk, not the whole app. While a chunk loads
+ * the Suspense fallback is null — the dark background (painted inline in
+ * index.html) carries the screen, so there's no spinner flash.
+ */
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const GroupDetailPage = lazy(() => import('./pages/GroupDetailPage'))
 
 /**
  * Represents an authenticated user's basic profile.
@@ -55,6 +63,8 @@ export default function App() {
     })
   }
 
+  // While auth resolves, render nothing — the dark background painted inline in
+  // index.html keeps the screen calm (no white flash) until the route appears.
   if (status === 'loading') return null
 
   if (status === 'unauthenticated')
@@ -67,16 +77,18 @@ export default function App() {
     )
 
   return (
-    <Routes>
-      <Route
-        path="/"
-        element={<DashboardPage user={user!} onLogout={handleLogout} />}
-      />
-      <Route
-        path="/grupos/:groupId"
-        element={<GroupDetailPage user={user!} onLogout={handleLogout} />}
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={null}>
+      <Routes>
+        <Route
+          path="/"
+          element={<DashboardPage user={user!} onLogout={handleLogout} />}
+        />
+        <Route
+          path="/grupos/:groupId"
+          element={<GroupDetailPage user={user!} onLogout={handleLogout} />}
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   )
 }
