@@ -147,21 +147,21 @@
     "mtime": 1777891912.9094546,
     "hash": "0352474ba2918efe13895edbc3780d94"
   },
-  "/home/satin/Work/personal/palpitae/web/src/main.tsx": {
-    "mtime": 1781447381.3729103,
-    "hash": "c6a65174ad3a06e1c349b3d3290c1588"
-  },
   "/home/satin/Work/personal/palpitae/web/src/test-setup.ts": {
     "mtime": 1781447381.3737254,
     "hash": "ce15c1a336ba7a5e9b209d35f1c22708"
   },
-  "/home/satin/Work/personal/palpitae/web/src/config.ts": {
-    "mtime": 1781449166.0732465,
-    "hash": "744293b4e22e4afbce2453b738771b91"
-  },
   "/home/satin/Work/personal/palpitae/web/src/App.tsx": {
     "mtime": 1781903795.269335,
     "hash": "883825e8169c45939f05c14da41fc083"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/config.ts": {
+    "mtime": 1781907652.2878432,
+    "hash": "d45560b2c7cf01cd90973874cdf276e3"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/main.tsx": {
+    "mtime": 1781907710.5638158,
+    "hash": "4393dd1c207bfca18aadf1ffe13a3896"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/matchFixtures.ts": {
     "mtime": 1781815119.0233312,
@@ -415,6 +415,18 @@
     "mtime": 1781816488.5855198,
     "hash": "6c9e648e59482d983cfdde427c3353e8"
   },
+  "/home/satin/Work/personal/palpitae/web/src/components/CookieConsent/CookieConsent.tsx": {
+    "mtime": 1781907679.915312,
+    "hash": "cb4cc768bb31b39d31525f9d0e5cb4fa"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/CookieConsent/index.ts": {
+    "mtime": 1781907683.38337,
+    "hash": "ec13f6f0aa74e34bc02bcbd11c27a423"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/components/CookieConsent/CookieConsent.test.tsx": {
+    "mtime": 1781907776.9520698,
+    "hash": "f64f535d6c20652218753520568510a7"
+  },
   "/home/satin/Work/personal/palpitae/web/src/lib/api-cache.test.ts": {
     "mtime": 1781447381.372813,
     "hash": "af8b05d99d94eb17ff0a235e21995fb1"
@@ -456,8 +468,8 @@
     "hash": "6217117c48620fe4a505faec7ee5b93a"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
-    "mtime": 1781902829.6929889,
-    "hash": "c38171141998f662148b02088ca67325"
+    "mtime": 1781904833.8136737,
+    "hash": "ca3ef76e8e090dffe81ead62bc3ea6ee"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LoginPage/index.ts": {
     "mtime": 1781447381.3736243,
@@ -470,6 +482,10 @@
   "/home/satin/Work/personal/palpitae/web/src/hooks/useDocumentTitle.ts": {
     "mtime": 1781901594.8879278,
     "hash": "4bf96f24af2b3226418e000d863f65fc"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/analytics/ga.ts": {
+    "mtime": 1781907666.7580905,
+    "hash": "740a354943f37391a0e5baf99759ec92"
   },
   "/home/satin/Work/personal/palpitae/web/functions/api/[[path]].ts": {
     "mtime": 1781447381.368172,
@@ -487,9 +503,9 @@
     "mtime": 1781447381.3548934,
     "hash": "808dd3fc73d8c99048dcef2f9077b0c9"
   },
-  "/home/satin/Work/personal/palpitae/context.md": {
-    "mtime": 1781901792.5764604,
-    "hash": "63fe48d09d3f2bf620700145433b73d9"
+  "/home/satin/Work/personal/palpitae/contex.md": {
+    "mtime": 1781907806.3720224,
+    "hash": "c0d5f4255e69b8ee866794d5160e3576"
   },
   "/home/satin/Work/personal/palpitae/docs/architecture/system.md": {
     "mtime": 1778331762.3974855,

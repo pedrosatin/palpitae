@@ -17,7 +17,13 @@ export default function LandingPage() {
     <div className={styles.root}>
       <header className={styles.nav}>
         <Link to="/" className={styles.brand}>
-          <img src="/logo-text.svg" alt="Palpitae" className={styles.brandLogo} />
+          <img
+            src="/logo-text.svg"
+            alt="Palpitae"
+            width={110}
+            height={28}
+            className={styles.brandLogo}
+          />
         </Link>
         <nav className={styles.navLinks}>
           <a href="#recursos" className={styles.navLink}>
@@ -150,7 +156,13 @@ export default function LandingPage() {
       </main>
 
       <footer className={styles.footer}>
-        <img src="/logo-text.svg" alt="Palpitae" className={styles.footerLogo} />
+        <img
+          src="/logo-text.svg"
+          alt="Palpitae"
+          width={86}
+          height={22}
+          className={styles.footerLogo}
+        />
         <span className={styles.footerNote}>
           Palpitae — Bolões de futebol com seus amigos
         </span>
