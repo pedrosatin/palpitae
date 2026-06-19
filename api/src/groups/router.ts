@@ -80,6 +80,7 @@ router.get('/', requireAuth, async (c) => {
         FROM groups g
         INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
         LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
+        WHERE g.deleted_at IS NULL
         GROUP BY g.id
         ORDER BY g.created_at DESC
         `
@@ -240,7 +241,7 @@ router.post('/join', requireAuth, async (c) => {
   const db = c.env.DB
 
   const group = await db
-    .prepare('SELECT id, name, max_members FROM groups WHERE invite_code = ?')
+    .prepare('SELECT id, name, max_members FROM groups WHERE invite_code = ? AND deleted_at IS NULL')
     .bind(invite_code)
     .first<{ id: string; name: string; max_members: number }>()
 
@@ -318,7 +319,7 @@ router.get('/:id', requireAuth, async (c) => {
        INNER JOIN group_members gm ON g.id = gm.group_id
        LEFT JOIN competitions c ON g.competition_id = c.id
        LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
-       WHERE g.id = ?
+       WHERE g.id = ? AND g.deleted_at IS NULL
        GROUP BY g.id`,
     )
     .bind(userId, groupId)
@@ -368,6 +369,80 @@ router.get('/:id', requireAuth, async (c) => {
       user_position,
     },
   })
+})
+
+/**
+ * PATCH /groups/:id
+ *
+ * Renames a group. Only the group owner (admin) may do this.
+ *
+ * Body: { name: string }
+ * Response 200: { group: { id, name } }
+ */
+router.patch('/:id', requireAuth, async (c) => {
+  const userId = c.get('userId')
+  const groupId = c.req.param('id')
+  const db = c.env.DB
+
+  const body = await c.req.json<{ name?: string }>()
+  const name = body.name?.trim()
+
+  if (!name) {
+    return c.json({ error: 'Nome é obrigatório' }, 400)
+  }
+
+  if (name.length < 2 || name.length > 50) {
+    return c.json({ error: 'Nome deve ter entre 2 e 50 caracteres' }, 400)
+  }
+
+  const group = await db
+    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
+    .bind(groupId)
+    .first<{ owner_user_id: string }>()
+
+  if (!group) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
+  if (group.owner_user_id !== userId) {
+    return c.json({ error: 'Apenas o administrador pode editar o grupo' }, 403)
+  }
+
+  await db.prepare('UPDATE groups SET name = ? WHERE id = ?').bind(name, groupId).run()
+
+  return c.json({ group: { id: groupId, name } })
+})
+
+/**
+ * DELETE /groups/:id
+ *
+ * Soft-deletes a group (sets deleted_at). Only the owner (admin) may do this.
+ * The group is hidden from listings and detail views; its data is retained.
+ */
+router.delete('/:id', requireAuth, async (c) => {
+  const userId = c.get('userId')
+  const groupId = c.req.param('id')
+  const db = c.env.DB
+
+  const group = await db
+    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
+    .bind(groupId)
+    .first<{ owner_user_id: string }>()
+
+  if (!group) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
+  if (group.owner_user_id !== userId) {
+    return c.json({ error: 'Apenas o administrador pode excluir o grupo' }, 403)
+  }
+
+  await db
+    .prepare(`UPDATE groups SET deleted_at = datetime('now') WHERE id = ?`)
+    .bind(groupId)
+    .run()
+
+  return c.json({ success: true })
 })
 
 /**
