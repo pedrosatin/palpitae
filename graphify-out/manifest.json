@@ -160,8 +160,8 @@
     "hash": "744293b4e22e4afbce2453b738771b91"
   },
   "/home/satin/Work/personal/palpitae/web/src/App.tsx": {
-    "mtime": 1781899609.1825778,
-    "hash": "b04c3c4edb1ba3f9ebf865ae6185ae96"
+    "mtime": 1781903795.269335,
+    "hash": "883825e8169c45939f05c14da41fc083"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/matchFixtures.ts": {
     "mtime": 1781815119.0233312,
@@ -456,8 +456,8 @@
     "hash": "6217117c48620fe4a505faec7ee5b93a"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
-    "mtime": 1781901704.9153109,
-    "hash": "82e1005699e2ba88c311c9d6546e9f66"
+    "mtime": 1781902829.6929889,
+    "hash": "c38171141998f662148b02088ca67325"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LoginPage/index.ts": {
     "mtime": 1781447381.3736243,
@@ -487,13 +487,9 @@
     "mtime": 1781447381.3548934,
     "hash": "808dd3fc73d8c99048dcef2f9077b0c9"
   },
-  "/home/satin/Work/personal/palpitae/context-improv.md": {
+  "/home/satin/Work/personal/palpitae/context.md": {
     "mtime": 1781901792.5764604,
     "hash": "63fe48d09d3f2bf620700145433b73d9"
-  },
-  "/home/satin/Work/personal/palpitae/context.md": {
-    "mtime": 1781901800.3037207,
-    "hash": "a483ef6e7366f88755060e617900d8f0"
   },
   "/home/satin/Work/personal/palpitae/docs/architecture/system.md": {
     "mtime": 1778331762.3974855,
@@ -520,8 +516,8 @@
     "hash": "7f2e02ee1e07cd190d2f3551e8410d24"
   },
   "/home/satin/Work/personal/palpitae/web/index.html": {
-    "mtime": 1781901662.8559206,
-    "hash": "7a19afcbe7bff1eb37e077f061bb4272"
+    "mtime": 1781903311.3912046,
+    "hash": "926d7a5f1868d9e4d1c8b5eb6a84749d"
   },
   "/home/satin/Work/personal/palpitae/web/public/robots.txt": {
     "mtime": 1781899665.1897962,
@@ -570,5 +566,17 @@
   "/home/satin/Work/personal/palpitae/web/public/screenshots/palpites.png": {
     "mtime": 1781447381.3696768,
     "hash": "2c9dc432faa992e26208ab61f22c4855"
+  },
+  "/home/satin/Work/personal/palpitae/web/public/screenshots/grupos.webp": {
+    "mtime": 1781902777.2952487,
+    "hash": "8fc2763af54c875f8e48768b523966ad"
+  },
+  "/home/satin/Work/personal/palpitae/web/public/screenshots/palpites.webp": {
+    "mtime": 1781902777.4682512,
+    "hash": "340a16b6e5046fc8c6eb8c92b83694d1"
+  },
+  "/home/satin/Work/personal/palpitae/web/public/screenshots/chaveamento.webp": {
+    "mtime": 1781902777.6522539,
+    "hash": "3063e304efb802276a220656691dc041"
   }
 }
