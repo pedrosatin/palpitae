@@ -5,12 +5,15 @@ import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
+import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
 import { predictionsRouter } from './predictions/router'
 import type { AppContext, Env } from './types'
 
 // Cron do cold path diário (deve bater com wrangler.toml). Os demais ticks rodam o poller.
 const DAILY_EXPORT_CRON = '5 0 * * *'
+// Cron do lembrete de rodada (deve bater com wrangler.toml). 1x/dia.
+const ROUND_REMINDER_CRON = '0 10 * * *'
 
 const app = new Hono<AppContext>()
 
@@ -48,6 +51,12 @@ export default {
     if (controller.cron === DAILY_EXPORT_CRON) {
       // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))
+      return
+    }
+
+    if (controller.cron === ROUND_REMINDER_CRON) {
+      // Lembrete de rodadas que começam amanhã (1x/dia).
+      ctx.waitUntil(sendRoundReminders(env.DB, env.RESEND_API_KEY ?? ''))
       return
     }
 
