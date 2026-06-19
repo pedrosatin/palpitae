@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /$
+Allow: /og-image.png
+Allow: /screenshots/
+Disallow: /grupos/
+Disallow: /entrar
+
+Sitemap: https://palpitae.com.br/sitemap.xml

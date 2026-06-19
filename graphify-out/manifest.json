@@ -27,17 +27,17 @@
     "mtime": 1781447381.3563623,
     "hash": "b5e08e4a78806a5338873289264d1868"
   },
-  "/home/satin/Work/personal/palpitae/api/src/types.ts": {
-    "mtime": 1781447381.356637,
-    "hash": "b54cbeb857db60e9bab77808881e28ad"
-  },
   "/home/satin/Work/personal/palpitae/api/src/wrangler-config.test.ts": {
     "mtime": 1781448614.273173,
     "hash": "46d5da2356a7916edb90358626da0767"
   },
   "/home/satin/Work/personal/palpitae/api/src/index.ts": {
-    "mtime": 1781815119.0143466,
+    "mtime": 1781896090.965451,
     "hash": "b225d2c680967126bbba20b4f50c3985"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/types.ts": {
+    "mtime": 1781896090.966451,
+    "hash": "b54cbeb857db60e9bab77808881e28ad"
   },
   "/home/satin/Work/personal/palpitae/api/src/auth/encoding.ts": {
     "mtime": 1777847034.184419,
@@ -63,33 +63,33 @@
     "mtime": 1778376478.381484,
     "hash": "206b88b28a27b203a171031595375214"
   },
-  "/home/satin/Work/personal/palpitae/api/src/auth/middleware.test.ts": {
-    "mtime": 1781447381.3548934,
-    "hash": "46d00813d40cab61ec87c9568d6b2dd8"
-  },
   "/home/satin/Work/personal/palpitae/api/src/auth/middleware.ts": {
     "mtime": 1781447381.3548934,
     "hash": "bc2934eb7dc9084c2444df1653f25133"
-  },
-  "/home/satin/Work/personal/palpitae/api/src/auth/permissions.ts": {
-    "mtime": 1781447381.3548934,
-    "hash": "4f4ba81d010b140f69aacfcfcb5cca5c"
-  },
-  "/home/satin/Work/personal/palpitae/api/src/auth/router.test.ts": {
-    "mtime": 1781447381.3548934,
-    "hash": "89d3a34b7309744de7790bb4aaafb2e3"
   },
   "/home/satin/Work/personal/palpitae/api/src/auth/router.ts": {
     "mtime": 1781447381.3548934,
     "hash": "1b56b0f04cf67680b4f336220f899210"
   },
-  "/home/satin/Work/personal/palpitae/api/src/groups/router.test.ts": {
-    "mtime": 1781816316.3500628,
-    "hash": "2de62531d4ea4eb0dd1a8482a66b9e59"
+  "/home/satin/Work/personal/palpitae/api/src/auth/permissions.ts": {
+    "mtime": 1781874443.6722114,
+    "hash": "ba5d7a2cd7ee27fb5b2bcb3231e9a956"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/auth/middleware.test.ts": {
+    "mtime": 1781896090.965451,
+    "hash": "46d00813d40cab61ec87c9568d6b2dd8"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/auth/router.test.ts": {
+    "mtime": 1781896090.965451,
+    "hash": "7dbc59d01994b4cbf7908815ab42995f"
   },
   "/home/satin/Work/personal/palpitae/api/src/groups/router.ts": {
     "mtime": 1781816316.3506944,
     "hash": "4d847e6df5321698703ba1c863f9a0ab"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/groups/router.test.ts": {
+    "mtime": 1781896090.965451,
+    "hash": "8fe1a90ca7ee0658835390620b3a1eed"
   },
   "/home/satin/Work/personal/palpitae/api/src/competitions/router.ts": {
     "mtime": 1778375641.2570822,
@@ -115,10 +115,6 @@
     "mtime": 1781815119.0143466,
     "hash": "4c3cba9d40d2841992e3e4c824d9ffc2"
   },
-  "/home/satin/Work/personal/palpitae/api/src/matches/router.test.ts": {
-    "mtime": 1781815119.0143466,
-    "hash": "c0b3d297ee294400dec5fa7c8ae10011"
-  },
   "/home/satin/Work/personal/palpitae/api/src/matches/router.ts": {
     "mtime": 1781815119.0143466,
     "hash": "1a895733da1e68084c8d8be8c7a43afa"
@@ -127,13 +123,17 @@
     "mtime": 1781815119.0143466,
     "hash": "1e76940ca996172caeb177e38c119bca"
   },
-  "/home/satin/Work/personal/palpitae/api/src/predictions/router.test.ts": {
-    "mtime": 1781447381.3563623,
-    "hash": "c2ad3172b143012f307fc6b069aa0b52"
+  "/home/satin/Work/personal/palpitae/api/src/matches/router.test.ts": {
+    "mtime": 1781896090.965451,
+    "hash": "c0b3d297ee294400dec5fa7c8ae10011"
   },
   "/home/satin/Work/personal/palpitae/api/src/predictions/router.ts": {
     "mtime": 1781448440.4874167,
     "hash": "b84fe83005dc4a38188ac32200159f13"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/predictions/router.test.ts": {
+    "mtime": 1781896090.966451,
+    "hash": "c2ad3172b143012f307fc6b069aa0b52"
   },
   "/home/satin/Work/personal/palpitae/api/scripts/test-results-api.ts": {
     "mtime": 1781447381.3548934,
@@ -147,10 +147,6 @@
     "mtime": 1777891912.9094546,
     "hash": "0352474ba2918efe13895edbc3780d94"
   },
-  "/home/satin/Work/personal/palpitae/web/src/App.tsx": {
-    "mtime": 1781447381.3697627,
-    "hash": "20dc745e1f21ffdd369f274f1244aff0"
-  },
   "/home/satin/Work/personal/palpitae/web/src/main.tsx": {
     "mtime": 1781447381.3729103,
     "hash": "c6a65174ad3a06e1c349b3d3290c1588"
@@ -162,6 +158,10 @@
   "/home/satin/Work/personal/palpitae/web/src/config.ts": {
     "mtime": 1781449166.0732465,
     "hash": "744293b4e22e4afbce2453b738771b91"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/App.tsx": {
+    "mtime": 1781899609.1825778,
+    "hash": "b04c3c4edb1ba3f9ebf865ae6185ae96"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/matchFixtures.ts": {
     "mtime": 1781815119.0233312,
@@ -451,21 +451,21 @@
     "mtime": 1781816533.8790338,
     "hash": "c6b722a615e458fbd9c4c6b86809e999"
   },
-  "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
-    "mtime": 1781447381.373338,
-    "hash": "d77b9cd28e1f45fca8c1b84b24d46734"
-  },
   "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/index.ts": {
     "mtime": 1781447381.3733914,
     "hash": "6217117c48620fe4a505faec7ee5b93a"
   },
-  "/home/satin/Work/personal/palpitae/web/src/pages/LoginPage/LoginPage.tsx": {
-    "mtime": 1781447381.3736243,
-    "hash": "2f132f71aa82f8b0db3c5dd9e657354f"
+  "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
+    "mtime": 1781899640.2489567,
+    "hash": "ec773f8a2c675ab98b1b042fe7131cd9"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LoginPage/index.ts": {
     "mtime": 1781447381.3736243,
     "hash": "22ed06febeebb6d1dccc8ca1edce84ba"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/pages/LoginPage/LoginPage.tsx": {
+    "mtime": 1781899610.5185943,
+    "hash": "9fe749c9d5998fc0ce9bf8117a576723"
   },
   "/home/satin/Work/personal/palpitae/web/functions/api/[[path]].ts": {
     "mtime": 1781447381.368172,
@@ -483,6 +483,14 @@
     "mtime": 1781447381.3548934,
     "hash": "808dd3fc73d8c99048dcef2f9077b0c9"
   },
+  "/home/satin/Work/personal/palpitae/context.md": {
+    "mtime": 1781898704.863845,
+    "hash": "8059e7d8b0124e09e512faa1e3780bde"
+  },
+  "/home/satin/Work/personal/palpitae/context-improv.md": {
+    "mtime": 1781898723.5143337,
+    "hash": "48c58fa4d5ebc746511aa34ecd95ed0b"
+  },
   "/home/satin/Work/personal/palpitae/docs/architecture/system.md": {
     "mtime": 1778331762.3974855,
     "hash": "08c659e6b94f36f534d19b382ef52c94"
@@ -492,7 +500,7 @@
     "hash": "d2c78de6087c6084a2202dc9e998cce4"
   },
   "/home/satin/Work/personal/palpitae/docs/architecture/decisions.md": {
-    "mtime": 1781815119.0152595,
+    "mtime": 1781896090.966451,
     "hash": "532c709e98a1d3a2267e8b6498cdf5f0"
   },
   "/home/satin/Work/personal/palpitae/docs/ideas/palpitae-refined.md": {
@@ -508,8 +516,12 @@
     "hash": "7f2e02ee1e07cd190d2f3551e8410d24"
   },
   "/home/satin/Work/personal/palpitae/web/index.html": {
-    "mtime": 1777891912.8076015,
-    "hash": "c641e0c78d60d697f3c410485b5c43cc"
+    "mtime": 1781899662.640823,
+    "hash": "d7fdbfb0bf147420f66f7d04f179fe7a"
+  },
+  "/home/satin/Work/personal/palpitae/web/public/robots.txt": {
+    "mtime": 1781899665.1897962,
+    "hash": "95b8749a761705a29d6250edb9489c7b"
   },
   "/home/satin/Work/personal/palpitae/web/public/logo-text.svg": {
     "mtime": 1777847756.8238344,
@@ -534,6 +546,14 @@
   "/home/satin/Work/personal/palpitae/web/public/Logo.svg": {
     "mtime": 1781447381.3686552,
     "hash": "f6c2d6d9208c11f88e94d7f35e2a0ba9"
+  },
+  "/home/satin/Work/personal/palpitae/web/public/apple-touch-icon.png": {
+    "mtime": 1781898637.8339536,
+    "hash": "030c9d191b157c1e2a0a29ab65be8652"
+  },
+  "/home/satin/Work/personal/palpitae/web/public/og-image.png": {
+    "mtime": 1781899734.9881532,
+    "hash": "060796b7377ba80a4afb6e288bb1c0f8"
   },
   "/home/satin/Work/personal/palpitae/web/public/screenshots/chaveamento.png": {
     "mtime": 1781447381.3691702,
