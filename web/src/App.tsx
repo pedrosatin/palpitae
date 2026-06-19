@@ -60,7 +60,8 @@ export default function App() {
   if (status === 'unauthenticated')
     return (
       <Routes>
-        <Route path="/conheca" element={<LandingPage />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/entrar" element={<LoginPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     )

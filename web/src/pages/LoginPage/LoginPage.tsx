@@ -25,8 +25,8 @@ export default function LoginPage() {
 
         <GoogleLoginButton />
 
-        <Link to="/conheca" className={styles.previewLink}>
-          Conheça o Palpitae antes de entrar →
+        <Link to="/" className={styles.previewLink}>
+          ← Conheça o Palpitae
         </Link>
       </Card>
     </main>
