@@ -7,10 +7,14 @@
  * VITE_API_URL  — base URL for the Palpitae API
  *                 Set in .env.development for local dev (http://localhost:8787)
  *                 Set in .env.production for deployed environments
+ * VITE_GA_MEASUREMENT_ID — Google Analytics 4 measurement id (G-XXXXXXXXXX).
+ *                 When empty, analytics is fully disabled (no script, no banner).
+ *                 Set it as a build-time env var in Cloudflare Pages.
  */
 export const config = {
   apiUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:8787',
   authUrl: import.meta.env.VITE_AUTH_URL ?? 'http://localhost:8787',
+  gaMeasurementId: import.meta.env.VITE_GA_MEASUREMENT_ID ?? '',
 } as const
 
 function isAbsoluteUrl(value: string): boolean {
