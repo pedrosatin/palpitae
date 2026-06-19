@@ -622,11 +622,11 @@ router.post('/import', requireAuth, async (c) => {
   // Verify both groups belong to the same competition
   const [sourceGroup, targetGroup] = await Promise.all([
     db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ?`)
+      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
       .bind(source_group_id)
       .first<{ competition_id: string }>(),
     db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ?`)
+      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
       .bind(target_group_id)
       .first<{ competition_id: string }>(),
   ])
