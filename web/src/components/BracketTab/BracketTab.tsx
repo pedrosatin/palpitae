@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import {
   buildMyPicksMap,
   clearInvalidatedPicks,
@@ -69,6 +70,7 @@ export default function BracketTab({
 
   async function handlePick(position: number, round: Round, teamId: string) {
     if (!data || viewedMember !== null) return
+    trackEvent('click_bracket_escolher_time', { round, position })
     const key = `${round}:${position}`
     setSavingKey(key)
     setSaveError(null)
@@ -232,7 +234,11 @@ export default function BracketTab({
             id="bracket-view-member"
             className={styles.viewSelect}
             value={viewedMember ?? ''}
-            onChange={(e) => setViewedMember(e.target.value || null)}
+            onChange={(e) => {
+              const value = e.target.value || null
+              if (value) trackEvent('change_bracket_ver_membro')
+              setViewedMember(value)
+            }}
           >
             <option value="">Meu chaveamento (editável)</option>
             {memberOptions.map((m) => (
@@ -259,7 +265,7 @@ export default function BracketTab({
         <button
           type="button"
           className={styles.expandBtn}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => { trackEvent(expanded ? 'click_bracket_reduzir' : 'click_bracket_expandir'); setExpanded((v) => !v) }}
           title={expanded ? 'Sair da tela cheia (Esc)' : 'Expandir chaveamento'}
           aria-label={expanded ? 'Sair da tela cheia' : 'Expandir chaveamento'}
           aria-pressed={expanded}

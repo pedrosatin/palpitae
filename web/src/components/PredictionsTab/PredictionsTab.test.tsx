@@ -385,6 +385,20 @@ describe('PredictionsTab – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_salvar_todos', { count: 1, round: '1' })
   })
 
+  it('fires change_predictions_rodada when the round select is changed', async () => {
+    mockFetch([
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+    ])
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1')
+    })
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Rodada 2')
+    expect(mockTrackEvent).toHaveBeenCalledWith('change_predictions_rodada', { round: '2' })
+  })
+
   it('fires click_predictions_importar when Importar is clicked', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import Modal from '../Modal'
 import styles from './LeaderboardTab.module.css'
 
@@ -76,6 +77,7 @@ export default function LeaderboardTab({
 
   const openMemberModal = useCallback(
     (member: Member) => {
+      trackEvent('click_leaderboard_ver_palpites')
       setSelectedMember(member)
       setModalPredictions([])
       setModalError(null)
