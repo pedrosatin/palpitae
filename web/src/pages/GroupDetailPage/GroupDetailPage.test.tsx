@@ -2,7 +2,11 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import * as ga from '../../analytics/ga'
 import GroupDetailPage from './GroupDetailPage'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 // ─── Mock heavy child components ───────────────────────────────────────────
 
@@ -387,5 +391,62 @@ describe('GroupDetailPage – admin: rename & delete', () => {
     await waitFor(() => {
       expect(screen.getByText('Home')).toBeInTheDocument()
     })
+  })
+})
+
+describe('GroupDetailPage – analytics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+  })
+
+  it('fires click_grupo_tab with the tab name when a tab button is clicked', async () => {
+    mockGroupFetch()
+    renderPage()
+    await waitFor(() => screen.getByTestId('predictions-tab'))
+    await userEvent.click(screen.getByRole('button', { name: /Classificação/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_tab', { tab: 'leaderboard' })
+  })
+
+  it('fires click_grupo_menu_sair when Sair do grupo is clicked', async () => {
+    mockGroupFetch()
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /sair do grupo/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_menu_sair')
+  })
+
+  it('fires click_grupo_menu_editar_nome when Editar nome is clicked', async () => {
+    mockGroupFetch({ ...baseGroup, is_admin: true })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_menu_editar_nome')
+  })
+
+  it('fires click_grupo_menu_excluir when Excluir grupo is clicked', async () => {
+    mockGroupFetch({ ...baseGroup, is_admin: true })
+    renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /excluir grupo/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_menu_excluir')
+  })
+
+  it('fires click_grupo_copiar_codigo when the copy code button is clicked', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    mockGroupFetch({ ...baseGroup, is_admin: true })
+    renderPage()
+    const copyBtn = await screen.findByRole('button', { name: /^Copiar$/ })
+    await userEvent.click(copyBtn)
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_copiar_codigo')
+  })
+
+  it('fires click_grupo_copiar_link when the copy link button is clicked', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    mockGroupFetch({ ...baseGroup, is_admin: true })
+    renderPage()
+    const copyLinkBtn = await screen.findByRole('button', { name: /Copiar link/ })
+    await userEvent.click(copyLinkBtn)
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_copiar_link')
   })
 })
