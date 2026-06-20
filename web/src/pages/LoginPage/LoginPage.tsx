@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import Card from '../../components/Card'
 import GoogleLoginButton from '../../components/GoogleLoginButton'
+import { trackEvent } from '../../analytics/ga'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './LoginPage.module.css'
 
@@ -27,7 +28,7 @@ export default function LoginPage() {
 
         <GoogleLoginButton />
 
-        <Link to="/" className={styles.previewLink}>
+        <Link to="/" className={styles.previewLink} onClick={() => trackEvent('click_login_conheca')}>
           ← Conheça o Palpitae
         </Link>
       </Card>

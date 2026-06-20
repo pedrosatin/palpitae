@@ -360,7 +360,10 @@ export default function PredictionsTab({
           name="predictions-round-select"
           className={styles.roundSelect}
           value={selectedRound}
-          onChange={(e) => setRoundIndex(roundKeys.indexOf(e.target.value))}
+          onChange={(e) => {
+            trackEvent('change_predictions_rodada', { round: e.target.value })
+            setRoundIndex(roundKeys.indexOf(e.target.value))
+          }}
         >
           {roundKeys.map((r) => (
             <option key={r} value={r}>

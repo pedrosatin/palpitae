@@ -101,7 +101,7 @@ export default function GroupDetailPage({
   useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
 
   function setActiveTab(tab: Tab) {
-    trackEvent('click_grupo_tab', { tab })
+    trackEvent('click_group_detail_tab', { tab })
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
@@ -191,14 +191,14 @@ export default function GroupDetailPage({
 
   async function copyCode() {
     await navigator.clipboard.writeText(group!.invite_code)
-    trackEvent('click_grupo_copiar_codigo')
+    trackEvent('click_group_detail_copiar_codigo')
     setCopied('code')
     setTimeout(() => setCopied(null), 2000)
   }
 
   async function copyLink() {
     await navigator.clipboard.writeText(getShareLink())
-    trackEvent('click_grupo_copiar_link')
+    trackEvent('click_group_detail_copiar_link')
     setCopied('link')
     setTimeout(() => setCopied(null), 2000)
   }
@@ -215,7 +215,7 @@ export default function GroupDetailPage({
 
   async function leaveGroup() {
     if (!groupId) return
-    trackEvent('click_grupo_menu_sair')
+    trackEvent('click_group_detail_menu_sair')
 
     const ok = await confirm({
       title: 'Sair do grupo',
@@ -249,7 +249,7 @@ export default function GroupDetailPage({
 
   function openRename() {
     if (!group) return
-    trackEvent('click_grupo_menu_editar_nome')
+    trackEvent('click_group_detail_menu_editar_nome')
     setMenuOpen(false)
     setRenameValue(group.name)
     setRenameError(null)
@@ -282,6 +282,7 @@ export default function GroupDetailPage({
         throw new Error(body.error ?? 'Erro ao renomear grupo')
       }
 
+      trackEvent('submit_renomear_grupo')
       setGroup((prev) => (prev ? { ...prev, name } : prev))
       invalidateApiCache('groups:')
       setRenameOpen(false)
@@ -294,7 +295,7 @@ export default function GroupDetailPage({
 
   async function deleteGroup() {
     if (!groupId) return
-    trackEvent('click_grupo_menu_excluir')
+    trackEvent('click_group_detail_menu_excluir')
     setMenuOpen(false)
 
     const ok = await confirm({
