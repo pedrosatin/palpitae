@@ -5,8 +5,8 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 
 /**
- * The authenticated pages pull in the heavy app surface (bracket, modals,
- * tabs). They are code-split so a first-time visitor on the public landing
+ * The authenticated pages pull in the heavy app surface (modals, tabs).
+ * They are code-split so a first-time visitor on the public landing
  * only downloads the marketing chunk, not the whole app. While a chunk loads
  * the Suspense fallback is null — the dark background (painted inline in
  * index.html) carries the screen, so there's no spinner flash.
