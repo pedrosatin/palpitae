@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as ga from '../../analytics/ga'
 import MatchCard, { type Match, type Prediction } from './MatchCard'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -214,6 +218,29 @@ describe('MatchCard – Stepper "−"', () => {
     )
 
     expect(input.value).toBe('0')
+  })
+})
+
+describe('MatchCard – analytics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+  })
+
+  it('fires click_matchcard_salvar with the match_id when the save button is clicked', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    const match = makeMatch()
+    renderCard(match, undefined)
+
+    // make the save button active by changing a score
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_matchcard_salvar', { match_id: 'match-1' })
   })
 })
 

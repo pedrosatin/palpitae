@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as ga from '../../analytics/ga'
 import Header from './Header'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 const baseUser = {
   email: 'user@example.com',
@@ -85,5 +89,40 @@ describe('Header', () => {
     const link = screen.getByRole('link', { name: 'Ir para a home' })
     expect(link).toBeInTheDocument()
     expect(link).toHaveAttribute('href', '/')
+  })
+})
+
+describe('Header – analytics', () => {
+  beforeEach(() => mockTrackEvent.mockClear())
+
+  it('fires click_header_entrar_grupo when Entrar em grupo is clicked', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar em grupo' }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_header_entrar_grupo')
+  })
+
+  it('fires click_header_criar_grupo when Criar grupo is clicked', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_header_criar_grupo')
+  })
+
+  it('fires click_header_user_menu when the user avatar/name is clicked', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByText('TestUser'))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_header_user_menu')
+  })
+
+  it('fires click_header_logout when Sair is clicked', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByText('TestUser'))
+    await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_header_logout')
+  })
+
+  it('fires click_header_logo when the logo link is clicked', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByRole('link', { name: 'Ir para a home' }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_header_logo')
   })
 })
