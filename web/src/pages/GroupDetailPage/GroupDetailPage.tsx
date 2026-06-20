@@ -12,7 +12,6 @@ import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
 import Modal from '../../components/Modal'
-import BracketTab from '../../components/BracketTab/BracketTab'
 import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
@@ -52,7 +51,6 @@ const TABS = [
   'standings',
   'group-picks',
   'leaderboard',
-  'bracket',
   'members',
 ] as const
 type Tab = (typeof TABS)[number]
@@ -63,7 +61,6 @@ const TAB_LABELS: Record<Tab, string> = {
   standings: 'Tabela',
   'group-picks': 'Palpites do grupo',
   leaderboard: 'Classificação',
-  bracket: 'Chaveamento',
   members: 'Membros',
 }
 
@@ -548,12 +545,6 @@ export default function GroupDetailPage({
           >
             Classificação
           </button>
-          <button
-            className={`${styles.tab} ${activeTab === 'bracket' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('bracket')}
-          >
-            Chaveamento
-          </button>
           {isAdmin && (
             <button
               className={`${styles.tab} ${activeTab === 'members' ? styles.tabActive : ''}`}
@@ -585,12 +576,6 @@ export default function GroupDetailPage({
           )}
           {activeTab === 'members' && isAdmin && (
             <MembersTab groupId={groupId} currentUserId={user.id} />
-          )}
-          {activeTab === 'bracket' && (
-            <BracketTab
-              groupId={groupId}
-              competitionId={group.competition_id}
-            />
           )}
         </div>
       </main>
