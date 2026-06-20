@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
 import { type Match } from '../MatchCard'
 import Modal from '../Modal'
@@ -205,7 +206,7 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
         <div key={group} className={styles.group}>
           <button
             className={styles.groupHeader}
-            onClick={() => setSelectedGroup(group)}
+            onClick={() => { trackEvent('click_standings_ver_grupo', { group }); setSelectedGroup(group) }}
           >
             <span>Grupo {group}</span>
             <span className={styles.groupHint}>ver jogos</span>

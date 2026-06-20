@@ -17,7 +17,7 @@ export default function LandingPage() {
   return (
     <div className={styles.root}>
       <header className={styles.nav}>
-        <Link to="/" className={styles.brand}>
+        <Link to="/" className={styles.brand} onClick={() => trackEvent('click_landing_brand')}>
           <img
             src="/logo-text.svg"
             alt="Palpitae"

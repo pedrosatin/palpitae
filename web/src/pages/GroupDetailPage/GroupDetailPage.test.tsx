@@ -400,53 +400,73 @@ describe('GroupDetailPage – analytics', () => {
     mockTrackEvent.mockClear()
   })
 
-  it('fires click_grupo_tab with the tab name when a tab button is clicked', async () => {
+  it('fires click_group_detail_tab with the tab name when a tab button is clicked', async () => {
     mockGroupFetch()
     renderPage()
     await waitFor(() => screen.getByTestId('predictions-tab'))
     await userEvent.click(screen.getByRole('button', { name: /Classificação/i }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_tab', { tab: 'leaderboard' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_tab', { tab: 'leaderboard' })
   })
 
-  it('fires click_grupo_menu_sair when Sair do grupo is clicked', async () => {
+  it('fires click_group_detail_menu_sair when Sair do grupo is clicked', async () => {
     mockGroupFetch()
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
     await userEvent.click(screen.getByRole('menuitem', { name: /sair do grupo/i }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_menu_sair')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_menu_sair')
   })
 
-  it('fires click_grupo_menu_editar_nome when Editar nome is clicked', async () => {
+  it('fires click_group_detail_menu_editar_nome when Editar nome is clicked', async () => {
     mockGroupFetch({ ...baseGroup, is_admin: true })
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
     await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_menu_editar_nome')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_menu_editar_nome')
   })
 
-  it('fires click_grupo_menu_excluir when Excluir grupo is clicked', async () => {
+  it('fires click_group_detail_menu_excluir when Excluir grupo is clicked', async () => {
     mockGroupFetch({ ...baseGroup, is_admin: true })
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
     await userEvent.click(screen.getByRole('menuitem', { name: /excluir grupo/i }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_menu_excluir')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_menu_excluir')
   })
 
-  it('fires click_grupo_copiar_codigo when the copy code button is clicked', async () => {
+  it('fires click_group_detail_copiar_codigo when the copy code button is clicked', async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
     mockGroupFetch({ ...baseGroup, is_admin: true })
     renderPage()
     const copyBtn = await screen.findByRole('button', { name: /^Copiar$/ })
     await userEvent.click(copyBtn)
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_copiar_codigo')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_copiar_codigo')
   })
 
-  it('fires click_grupo_copiar_link when the copy link button is clicked', async () => {
+  it('fires click_group_detail_copiar_link when the copy link button is clicked', async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
     mockGroupFetch({ ...baseGroup, is_admin: true })
     renderPage()
     const copyLinkBtn = await screen.findByRole('button', { name: /Copiar link/ })
     await userEvent.click(copyLinkBtn)
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_grupo_copiar_link')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_copiar_link')
+  })
+
+  it('fires submit_renomear_grupo when the rename succeeds', async () => {
+    mockGroupFetchSequence(
+      { body: { group: { ...baseGroup, is_admin: true } } },
+      { body: { group: { id: baseGroup.id, name: 'Novo Nome' } } },
+    )
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
+
+    const input = screen.getByPlaceholderText('Nome do grupo')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Novo Nome')
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    await waitFor(() => {
+      expect(mockTrackEvent).toHaveBeenCalledWith('submit_renomear_grupo')
+    })
   })
 })

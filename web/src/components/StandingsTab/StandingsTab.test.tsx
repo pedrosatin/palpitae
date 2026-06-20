@@ -1,8 +1,12 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as ga from '../../analytics/ga'
 import StandingsTab, { computeStandings } from './StandingsTab'
 import { type Match } from '../MatchCard'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -216,5 +220,22 @@ describe('StandingsTab – render', () => {
         screen.getByText(/não tem fase de grupos/i),
       ).toBeInTheDocument()
     })
+  })
+})
+
+describe('StandingsTab – analytics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+  })
+
+  it('fires click_standings_ver_grupo with the group when a group header is clicked', async () => {
+    mockFetch([makeMatch({ id: 'm1', group_name: 'A' })])
+    render(<StandingsTab competitionId="c1" />)
+
+    await waitFor(() => screen.getByText('Grupo A'))
+    await userEvent.click(screen.getByRole('button', { name: /Grupo A/i }))
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_standings_ver_grupo', { group: 'A' })
   })
 })
