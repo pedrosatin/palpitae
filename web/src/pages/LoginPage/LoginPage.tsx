@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Card from '../../components/Card'
 import GoogleLoginButton from '../../components/GoogleLoginButton'
@@ -16,6 +17,15 @@ import styles from './LoginPage.module.css'
  */
 export default function LoginPage() {
   useDocumentTitle('Entrar')
+
+  // Attribution for the static guide pages: they link here with ?from=guia_<slug>.
+  // The click can't be tracked there (JS-less static HTML), so we fire the event
+  // on arrival instead. Lets us see which content drove people to sign in.
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get('from')
+    if (from) trackEvent('entrar_origem', { origem: from })
+  }, [])
+
   return (
     <main className={styles.root}>
       <Card className={styles.card}>

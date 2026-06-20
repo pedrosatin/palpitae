@@ -1,2 +1,11 @@
 /api/* https://api.palpitae.com.br/:splat 200
-/* /index.html 200
+
+# SPA client-side routes — serve the app shell so deep links and refreshes work.
+# (Root "/" and all static assets — /guias/*, sitemap.xml, og-image.png, … — are
+#  matched as static files before these rules, so they win automatically.)
+/entrar /index.html 200
+/grupos/* /index.html 200
+
+# Anything else is a genuine 404: the static page, served with a 404 status
+# (no more soft-404s where unknown URLs returned the SPA with 200).
+/* /404.html 404

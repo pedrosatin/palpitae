@@ -11,11 +11,22 @@
  * On Cloudflare Pages static assets are served before the SPA fallback in
  * _redirects (`/* /index.html 200`), so these files win over the React app.
  */
+import { execSync } from 'node:child_process'
 import type { Connect, Plugin } from 'vite'
 
 const SITE_URL = 'https://palpitae.com.br'
 /** Where the CTAs send visitors: the login page (Google sign-in → create pool). */
 const LOGIN_PATH = '/entrar'
+
+/**
+ * Login URL carrying a `from` token. The guide pages are JS-less static HTML, so
+ * the CTA click itself can't be tracked — instead the SPA reads `?from=` when the
+ * login page mounts and fires a GA event (see pages/LoginPage). This is how we
+ * attribute "which guide drove someone to sign in".
+ */
+function loginHref(from: string): string {
+  return `${LOGIN_PATH}?from=${from}`
+}
 
 export interface GuideSection {
   heading: string
@@ -213,6 +224,10 @@ a.card:focus-visible{outline:2px solid #49f21b;outline-offset:2px}
 a.card .card-title{display:block;color:#fff;font-size:1.125rem;font-weight:600}
 a.card .card-teaser{display:block;color:#a3a3a3;font-size:1rem;line-height:1.55;margin-top:6px}
 a.card .card-go{display:inline-block;color:#49f21b;font-size:.9375rem;font-weight:600;margin-top:14px}
+nav.related{margin:44px 0 8px;padding-top:8px;border-top:1px solid #2a2a2a}
+nav.related h2{font-size:1.125rem;margin:24px 0 12px}
+nav.related ul{list-style:none;display:flex;flex-direction:column;gap:10px}
+nav.related a{color:#49f21b;font-weight:500}
 @media (prefers-reduced-motion:reduce){a.card{transition:none}a.card:hover{transform:none}}
 `.trim()
 
@@ -244,7 +259,10 @@ function head(path: string, title: string, description: string, jsonLd: object[]
     ${ld}`
 }
 
-const SITE_HEADER = `<header class="site"><a class="brand" href="/" aria-label="Ir para a página inicial"><img src="/logo-text.svg" alt="Palpitae" width="94" height="24" /></a><a class="navcta" href="${LOGIN_PATH}">Criar bolão</a></header>`
+/** Shared top bar; `from` flows into the "Criar bolão" CTA for attribution. */
+function siteHeader(from: string): string {
+  return `<header class="site"><a class="brand" href="/" aria-label="Ir para a página inicial"><img src="/logo-text.svg" alt="Palpitae" width="94" height="24" /></a><a class="navcta" href="${loginHref(from)}">Criar bolão</a></header>`
+}
 const SITE_FOOTER = `<footer class="site">Palpitae — bolões de futebol online e gratuitos. <a href="/">Voltar ao início</a></footer>`
 
 const breadcrumb = (path: string, name: string) => ({
@@ -282,6 +300,14 @@ export function renderGuide(g: Guide): string {
         `<h2>${escapeHtml(s.heading)}</h2>\n${s.body.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n')}`,
     )
     .join('\n')
+  // Contextual internal links to the sibling guides — strengthens the topic
+  // cluster for SEO and keeps the other pages from being orphaned.
+  const related = guides.filter((o) => o.slug !== g.slug)
+  const relatedHtml = related.length
+    ? `<nav class="related" aria-label="Guias relacionados"><h2>Continue lendo</h2><ul>${related
+        .map((o) => `<li><a href="${guidePath(o.slug)}">${escapeHtml(o.title)}</a></li>`)
+        .join('')}</ul></nav>`
+    : ''
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
@@ -289,7 +315,7 @@ ${head(path, g.title, g.description, [breadcrumb(path, g.title), article])}
   </head>
   <body>
     <div class="wrap">
-      ${SITE_HEADER}
+      ${siteHeader(`guia_${g.slug}_header`)}
       <nav class="crumbs"><a href="/">Início</a> › <a href="/guias/">Guias</a> › ${escapeHtml(g.title)}</nav>
       <article>
         <h1>${escapeHtml(g.title)}</h1>
@@ -299,8 +325,9 @@ ${head(path, g.title, g.description, [breadcrumb(path, g.title), article])}
       <div class="cta">
         <strong>Pronto para começar?</strong>
         <p>Crie um bolão grátis e convide seus amigos em segundos.</p>
-        <a class="btn" href="${LOGIN_PATH}">Criar meu bolão grátis</a>
+        <a class="btn" href="${loginHref(`guia_${g.slug}`)}">Criar meu bolão grátis</a>
       </div>
+      ${relatedHtml}
       ${SITE_FOOTER}
     </div>
   </body>
@@ -334,13 +361,46 @@ ${head(path, 'Guias de bolão de futebol', 'Guias e dicas para organizar e dispu
   </head>
   <body>
     <div class="wrap">
-      ${SITE_HEADER}
+      ${siteHeader('guias_header')}
       <nav class="crumbs"><a href="/">Início</a> › Guias</nav>
       <h1>Guias de bolão de futebol</h1>
       <p class="intro">Tudo o que você precisa para organizar e disputar bolões com os amigos.</p>
       <ul class="guides">
         ${items}
       </ul>
+      ${SITE_FOOTER}
+    </div>
+  </body>
+</html>
+`
+}
+
+/**
+ * Render the static 404 page. Cloudflare Pages serves /404.html (with a real 404
+ * status) for any URL not matched by a static asset or a _redirects rule. It's
+ * `noindex` so a crawler that lands on a stale link doesn't index an error page.
+ */
+export function render404(): string {
+  return `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Página não encontrada — Palpitae</title>
+    <meta name="robots" content="noindex, follow" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#0d0d0d" />
+    <style>${PAGE_CSS}</style>
+  </head>
+  <body>
+    <div class="wrap">
+      ${siteHeader('404_header')}
+      <article style="padding:56px 0 0">
+        <h1>Página não encontrada</h1>
+        <p class="intro">A página que você procura não existe ou foi movida.</p>
+        <p><a href="/">← Voltar ao início</a> &nbsp;·&nbsp; <a href="/guias/">Ver os guias</a></p>
+      </article>
       ${SITE_FOOTER}
     </div>
   </body>
@@ -393,16 +453,53 @@ export function guidesPlugin(): Plugin {
           source: renderGuide(g),
         })
       }
+      // Static 404 page served by Cloudflare Pages for unmatched URLs.
+      this.emitFile({ type: 'asset', fileName: '404.html', source: render404() })
     },
   }
 }
 
+/**
+ * Last commit date (YYYY-MM-DD) touching any of `paths`, for a truthful sitemap
+ * <lastmod>. Uses git so it reflects real content changes instead of the build
+ * date. Falls back to `fallback` when git history is unavailable (e.g. a shallow
+ * CI checkout or an untracked path), so the build never breaks.
+ */
+function gitLastModified(paths: string[], fallback: string): string {
+  let latest = ''
+  for (const p of paths) {
+    try {
+      const out = execSync(`git log -1 --format=%cs -- ${p}`, {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .toString()
+        .trim()
+      if (out && out > latest) latest = out // ISO dates sort lexicographically
+    } catch {
+      // git missing or path untracked — skip; fallback applies below
+    }
+  }
+  return latest || fallback
+}
+
 /** All indexable public URLs, with lastmod, for the sitemap. */
 export function sitemapUrls(): { loc: string; lastmod: string; priority: string }[] {
-  const today = new Date().toISOString().slice(0, 10)
+  const fallback = new Date().toISOString().slice(0, 10)
   return [
-    { loc: `${SITE_URL}/`, lastmod: today, priority: '1.0' },
-    { loc: `${SITE_URL}/guias/`, lastmod: today, priority: '0.6' },
+    {
+      loc: `${SITE_URL}/`,
+      // Landing markup lives in index.html + the LandingPage component.
+      lastmod: gitLastModified(['index.html', 'src/pages/LandingPage'], fallback),
+      priority: '1.0',
+    },
+    {
+      loc: `${SITE_URL}/guias/`,
+      // The index is generated from the guide catalog in this file.
+      lastmod: gitLastModified(['build/guides.ts'], fallback),
+      priority: '0.6',
+    },
+    // Per-guide dates stay manual (`updated`): granular and truthful — bump it
+    // when you edit a guide's content.
     ...guides.map((g) => ({
       loc: `${SITE_URL}${guidePath(g.slug)}`,
       lastmod: g.updated,
