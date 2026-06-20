@@ -144,8 +144,8 @@
     "hash": "561e77372fd72f892a6b8a06b1d343fb"
   },
   "/home/satin/Work/personal/palpitae/web/vite.config.ts": {
-    "mtime": 1781901732.1593301,
-    "hash": "2625ea76920863d91641cb1f74301975"
+    "mtime": 1781972332.1179338,
+    "hash": "32879705c5015165863e67fa6aa1b64e"
   },
   "/home/satin/Work/personal/palpitae/web/src/vite-env.d.ts": {
     "mtime": 1777891912.9094546,
@@ -479,13 +479,13 @@
     "mtime": 1781447381.3733914,
     "hash": "6217117c48620fe4a505faec7ee5b93a"
   },
-  "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
-    "mtime": 1781966388.923924,
-    "hash": "15dc1b319af739a126f30ab0d7ddde03"
-  },
   "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.test.tsx": {
     "mtime": 1781966815.9241982,
     "hash": "3d3df8e46b090388f9f517082fb2ee80"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/LandingPage.tsx": {
+    "mtime": 1781972450.0858693,
+    "hash": "92cfe4998069d4a1c375641cf842308f"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LoginPage/index.ts": {
     "mtime": 1781447381.3736243,
@@ -515,10 +515,6 @@
     "mtime": 1781447381.3548934,
     "hash": "808dd3fc73d8c99048dcef2f9077b0c9"
   },
-  "/home/satin/Work/personal/palpitae/context-seo.md": {
-    "mtime": 1781908594.7960665,
-    "hash": "ec3e952674e4d2af72682f47eb37362f"
-  },
   "/home/satin/Work/personal/palpitae/context-observability.md": {
     "mtime": 1781924311.450171,
     "hash": "c1f480f2482849689bccad62e5a5ef48"
@@ -530,6 +526,10 @@
   "/home/satin/Work/personal/palpitae/AGENTS.md": {
     "mtime": 1781967228.624619,
     "hash": "d0a1118e5b2feeb8f087b5adf9e51e02"
+  },
+  "/home/satin/Work/personal/palpitae/context-seo.md": {
+    "mtime": 1781972578.9908748,
+    "hash": "3096e3388714abf1b476654451ede92d"
   },
   "/home/satin/Work/personal/palpitae/docs/architecture/system.md": {
     "mtime": 1778331762.3974855,
@@ -562,6 +562,10 @@
   "/home/satin/Work/personal/palpitae/web/public/robots.txt": {
     "mtime": 1781899665.1897962,
     "hash": "95b8749a761705a29d6250edb9489c7b"
+  },
+  "/home/satin/Work/personal/palpitae/web/public/llms.txt": {
+    "mtime": 1781971624.2112744,
+    "hash": "25adadb501d2d683945c0cbb73209605"
   },
   "/home/satin/Work/personal/palpitae/web/public/logo-text.svg": {
     "mtime": 1777847756.8238344,
