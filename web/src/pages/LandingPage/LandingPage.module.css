@@ -383,6 +383,15 @@
   font-size: var(--font-size-sm);
 }
 
+.footerLink {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.footerLink:hover {
+  color: var(--color-primary);
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────────── */
 
 @media (max-width: 860px) {
