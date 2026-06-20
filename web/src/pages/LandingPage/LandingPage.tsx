@@ -51,9 +51,8 @@ export default function LandingPage() {
               Bolões de futebol <span className={styles.accent}>com seus amigos</span>
             </h1>
             <p className={styles.heroSubtitle}>
-              Crie grupos privados, dê seus palpites rodada a rodada, monte o
-              chaveamento do mata-mata e dispute o topo da classificação. Tudo em
-              um só lugar.
+              Crie grupos privados, dê seus palpites rodada a rodada e dispute
+              o topo da classificação. Tudo em um só lugar.
             </p>
             <div className={styles.heroActions}>
               <GoogleLoginButton />
@@ -95,30 +94,6 @@ export default function LandingPage() {
             shotWidth={1297}
             shotHeight={840}
           />
-          <FeatureRow
-            tag="Chaveamento"
-            title="Monte o bracket do mata-mata"
-            description="Das oitavas à final, escolha quem avança em cada chave. As escolhas inválidas se ajustam automaticamente, e dá pra ver o chaveamento dos outros membros do grupo."
-            shot="/screenshots/chaveamento.png"
-            shotAlt="Tela de chaveamento do mata-mata da copa"
-            shotWidth={1296}
-            shotHeight={839}
-          />
-        </section>
-
-        {/* ─── Scoring ──────────────────────────────────────────────────── */}
-        <section id="pontuacao" className={styles.scoring}>
-          <h2 className={styles.sectionTitle}>Quanto mais longe, mais vale</h2>
-          <p className={styles.sectionLead}>
-            Acertos no mata-mata pesam de forma crescente até a grande final.
-          </p>
-          <ul className={styles.scoringGrid}>
-            <ScoreCard phase="16 avos" points="1pt" />
-            <ScoreCard phase="Oitavas" points="2pt" />
-            <ScoreCard phase="Quartas" points="4pt" />
-            <ScoreCard phase="Semi" points="8pt" />
-            <ScoreCard phase="Final" points="16pt" highlight />
-          </ul>
         </section>
 
         {/* ─── FAQ ──────────────────────────────────────────────────────── */}
@@ -131,7 +106,7 @@ export default function LandingPage() {
             />
             <FaqItem
               q="Como funciona a pontuação?"
-              a="Você ganha pontos acertando os palpites. No mata-mata os acertos valem cada vez mais: começam em 1 ponto nos 16-avos e dobram a cada fase até 16 pontos na final."
+              a="Você ganha 3 pontos por acertar o placar exato e 1 ponto por acertar apenas o resultado (vitória, empate ou derrota)."
             />
             <FaqItem
               q="Como entro em um grupo?"
@@ -222,23 +197,6 @@ function FaqItem({ q, a }: { q: string; a: string }) {
       <dt className={styles.faqQuestion}>{q}</dt>
       <dd className={styles.faqAnswer}>{a}</dd>
     </div>
-  )
-}
-
-function ScoreCard({
-  phase,
-  points,
-  highlight = false,
-}: {
-  phase: string
-  points: string
-  highlight?: boolean
-}) {
-  return (
-    <li className={`${styles.scoreCard} ${highlight ? styles.scoreCardHighlight : ''}`}>
-      <span className={styles.scorePoints}>{points}</span>
-      <span className={styles.scorePhase}>{phase}</span>
-    </li>
   )
 }
 
