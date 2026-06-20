@@ -1,7 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as ga from '../../analytics/ga'
 import CreateGroupModal from './CreateGroupModal'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 const competitions = [
   {
@@ -111,5 +115,66 @@ describe('CreateGroupModal', () => {
         screen.getByText('Erro de conexão. Tente novamente.'),
       ).toBeInTheDocument()
     })
+  })
+})
+
+describe('CreateGroupModal – analytics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+    defaultProps.onClose.mockClear()
+    defaultProps.onCreated.mockClear()
+  })
+
+  it('fires submit_criar_grupo when the group is created successfully', async () => {
+    mockFetchCompetitions()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' } }),
+    } as Response)
+
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => screen.getByLabelText('Nome do grupo'))
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
+    await userEvent.click(screen.getByRole('button', { name: /criar/i }))
+
+    await waitFor(() => screen.getByText('Grupo criado!'))
+    expect(mockTrackEvent).toHaveBeenCalledWith('submit_criar_grupo')
+  })
+
+  it('fires click_criar_grupo_copiar_codigo when Copiar is clicked after creation', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    mockFetchCompetitions()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' } }),
+    } as Response)
+
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => screen.getByLabelText('Nome do grupo'))
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
+    await userEvent.click(screen.getByRole('button', { name: /criar/i }))
+    await waitFor(() => screen.getByText('Grupo criado!'))
+
+    await userEvent.click(screen.getByRole('button', { name: /^Copiar$/ }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_criar_grupo_copiar_codigo')
+  })
+
+  it('fires click_criar_grupo_copiar_link when Copiar link is clicked after creation', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    mockFetchCompetitions()
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' } }),
+    } as Response)
+
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => screen.getByLabelText('Nome do grupo'))
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
+    await userEvent.click(screen.getByRole('button', { name: /criar/i }))
+    await waitFor(() => screen.getByText('Grupo criado!'))
+
+    await userEvent.click(screen.getByRole('button', { name: /Copiar link/ }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_criar_grupo_copiar_link')
   })
 })

@@ -1,7 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as ga from '../../analytics/ga'
 import JoinGroupModal from './JoinGroupModal'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 const defaultProps = {
   isOpen: true,
@@ -12,6 +16,7 @@ const defaultProps = {
 describe('JoinGroupModal', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
     defaultProps.onClose.mockClear()
     defaultProps.onJoined.mockClear()
   })
@@ -60,6 +65,21 @@ describe('JoinGroupModal', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Código inválido')).toBeInTheDocument()
+    })
+  })
+
+  it('fires submit_entrar_grupo when the user successfully joins a group', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: { id: 'g1', name: 'Group 1' } }),
+    } as Response)
+
+    render(<JoinGroupModal {...defaultProps} />)
+    await userEvent.type(screen.getByRole('textbox'), 'INVITE1')
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    await waitFor(() => {
+      expect(mockTrackEvent).toHaveBeenCalledWith('submit_entrar_grupo')
     })
   })
 
