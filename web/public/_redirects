@@ -1,11 +1,13 @@
 /api/* https://api.palpitae.com.br/:splat 200
 
-# SPA client-side routes — serve the app shell so deep links and refreshes work.
-# (Root "/" and all static assets — /guias/*, sitemap.xml, og-image.png, … — are
-#  matched as static files before these rules, so they win automatically.)
-/entrar /index.html 200
-/grupos/* /index.html 200
+# SPA client-side routes — rewrite to "/" (which serves index.html).
+# We target "/" instead of "/index.html" because Cloudflare Pages strips
+# .html extensions and /index suffixes, which triggers an infinite-loop
+# detection that silently disables the rule.
+# Static assets (/guias/*, sitemap.xml, og-image.png, …) are matched before
+# these rules, so they always win.
+/entrar / 200
+/grupos/* / 200
 
-# Anything else is a genuine 404: the static page, served with a 404 status
-# (no more soft-404s where unknown URLs returned the SPA with 200).
-/* /404.html 404
+# Unmatched paths: Cloudflare Pages automatically serves /404.html with a
+# real 404 status when the file exists in the build output — no rule needed.
