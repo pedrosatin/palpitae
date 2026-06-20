@@ -167,6 +167,15 @@ export default function LandingPage() {
         <span className={styles.footerNote}>
           Palpitae — Bolões de futebol com seus amigos
         </span>
+        {/* Static content pages live outside the SPA (built to /guias/*), so use
+            a native <a> for a full navigation — react-router has no such route. */}
+        <a
+          href="/guias/"
+          className={styles.footerLink}
+          onClick={() => trackEvent('click_footer_guias')}
+        >
+          Guias de bolão
+        </a>
       </footer>
     </div>
   )

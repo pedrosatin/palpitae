@@ -1,0 +1,31 @@
+# Palpitae
+
+> Palpitae é um app web gratuito de bolões de futebol para a Copa do Mundo 2026.
+> Você cria grupos privados com amigos, dá palpites rodada a rodada, monta o
+> chaveamento do mata-mata e disputa a classificação do grupo. Funciona direto
+> no navegador (celular ou computador), com login pela conta Google.
+
+## Como funciona
+
+- Crie um grupo privado e convide amigos por código ou link de convite.
+- Dê seus palpites de placar a cada rodada da Copa do Mundo 2026.
+- Na fase de mata-mata os acertos valem mais: começam em 1 ponto nos 16-avos e
+  dobram a cada fase, até 16 pontos na final.
+- Acompanhe a classificação do grupo em tempo real.
+
+## Detalhes
+
+- Gratuito: basta entrar com a conta Google, sem pagamento.
+- Sem instalação: roda no navegador, no celular ou no computador.
+- Idioma: português do Brasil (pt-BR).
+
+## Links
+
+- [Site oficial](https://palpitae.com.br/): página inicial com apresentação e FAQ.
+- [Sitemap](https://palpitae.com.br/sitemap.xml): URLs públicas indexáveis.
+- [robots.txt](https://palpitae.com.br/robots.txt): regras de rastreamento.
+
+## Observações
+
+- A única página pública é a inicial (`/`). As telas de grupos, palpites e
+  dashboard exigem login e não são indexáveis.
