@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import GoogleLoginButton from '../../components/GoogleLoginButton'
+import { trackEvent } from '../../analytics/ga'
 import styles from './LandingPage.module.css'
 
 /**
@@ -26,16 +27,16 @@ export default function LandingPage() {
           />
         </Link>
         <nav className={styles.navLinks}>
-          <a href="#recursos" className={styles.navLink}>
+          <a href="#recursos" className={styles.navLink} onClick={() => trackEvent('click_nav_recursos')}>
             Recursos
           </a>
-          <a href="#pontuacao" className={styles.navLink}>
+          <a href="#pontuacao" className={styles.navLink} onClick={() => trackEvent('click_nav_pontuacao')}>
             Pontuação
           </a>
-          <a href="#faq" className={styles.navLink}>
+          <a href="#faq" className={styles.navLink} onClick={() => trackEvent('click_nav_faq')}>
             Dúvidas
           </a>
-          <Link to="/entrar" className={styles.navCta}>
+          <Link to="/entrar" className={styles.navCta} onClick={() => trackEvent('click_nav_entrar')}>
             Entrar
           </Link>
         </nav>
@@ -56,7 +57,7 @@ export default function LandingPage() {
             </p>
             <div className={styles.heroActions}>
               <GoogleLoginButton />
-              <a href="#recursos" className={styles.secondaryAction}>
+              <a href="#recursos" className={styles.secondaryAction} onClick={() => trackEvent('click_hero_ver_como_funciona')}>
                 Ver como funciona ↓
               </a>
             </div>
