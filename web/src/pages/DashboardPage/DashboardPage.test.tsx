@@ -2,8 +2,12 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
+import * as ga from '../../analytics/ga'
 import { config } from '../../config'
 import DashboardPage from './DashboardPage'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 const user = {
   id: 'u1',
@@ -148,5 +152,74 @@ describe('DashboardPage', () => {
     })
 
     expect(fetchSpy).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe('DashboardPage – analytics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+    Object.assign(config as { apiUrl: string; authUrl: string }, {
+      apiUrl: 'http://localhost:8787',
+      authUrl: 'http://localhost:8787',
+    })
+  })
+
+  it('fires click_dashboard_entrar_convite_empty when Entrar com convite is clicked in empty state', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({ groups: [], matched_invite_group_id: null }),
+    )
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getByText('Nenhum grupo ainda'))
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com convite' }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_entrar_convite_empty')
+  })
+
+  it('fires click_dashboard_criar_grupo_empty when Criar grupo is clicked in empty state', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({ groups: [], matched_invite_group_id: null }),
+    )
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getByText('Nenhum grupo ainda'))
+    await userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Criar grupo' }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_criar_grupo_empty')
+  })
+
+  it('fires click_dashboard_grupo with group_id when a group card is clicked', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({
+        groups: [
+          {
+            id: 'g1',
+            name: 'Os Craques',
+            competition_id: 'c1',
+            invite_code: 'INV123',
+            is_admin: false,
+            created_at: '2026-01-01T00:00:00Z',
+            member_count: 5,
+            user_position: 2,
+            user_points: 10,
+            exact_hits: 1,
+          },
+        ],
+        matched_invite_group_id: null,
+      }),
+    )
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getByText('Os Craques'))
+    await userEvent.click(screen.getByText('Os Craques'))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_grupo', { group_id: 'g1' })
   })
 })

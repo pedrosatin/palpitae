@@ -1,9 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as ga from '../../analytics/ga'
 import PredictionsTab from './PredictionsTab'
 import { makeMatch } from '../matchFixtures'
 import { type Match } from '../MatchCard'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 function mockFetch(matches: Match[]) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
@@ -320,5 +324,81 @@ describe('PredictionsTab – Initialisation', () => {
       const select = screen.getByRole('combobox') as HTMLSelectElement
       expect(select.value).toBe('2')
     })
+  })
+})
+
+// ─── Analytics ──────────────────────────────────────────────────────────────
+
+describe('PredictionsTab – analytics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+  })
+
+  function twoRounds() {
+    return [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled', home_team_name: 'Itália', home_team_short_name: 'ITA', away_team_name: 'França', away_team_short_name: 'FRA' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled', home_team_name: 'Japão', home_team_short_name: 'JPN', away_team_name: 'Coreia', away_team_short_name: 'KOR' }),
+    ]
+  }
+
+  it('fires click_predictions_proxima_rodada when Próxima is clicked', async () => {
+    mockFetch(twoRounds())
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1')
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Próxima rodada/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_proxima_rodada', { round: '2' })
+  })
+
+  it('fires click_predictions_rodada_anterior when Anterior is clicked', async () => {
+    mockFetch(twoRounds())
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+    // Default is round '1'; advance to '2' first
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1')
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Próxima rodada/i }))
+    mockTrackEvent.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: /Rodada anterior/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_anterior', { round: '1' })
+  })
+
+  it('fires click_predictions_salvar_todos with count and round when Salvar todos is clicked', async () => {
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/matches')) return Promise.resolve({ ok: true, json: async () => ({ matches, default_round: '1' }) } as Response)
+      if (u.includes('/predictions/bulk')) return Promise.resolve({ ok: true, json: async () => ({ saved: ['m1'] }) } as Response)
+      if (u.includes('/predictions')) return Promise.resolve({ ok: true, json: async () => ({ predictions: [] }) } as Response)
+      if (u.includes('/groups')) return Promise.resolve({ ok: true, json: async () => ({ groups: [] }) } as Response)
+      return Promise.reject(new Error(`Unexpected: ${u}`))
+    })
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+    await waitFor(() => screen.getByRole('button', { name: /^Salvar todos$/i }))
+
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Salvar todos \(1\)/i }))
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_salvar_todos', { count: 1, round: '1' })
+  })
+
+  it('fires click_predictions_importar when Importar is clicked', async () => {
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/groups')) return Promise.resolve({ ok: true, json: async () => ({ groups: [{ id: 'g-other', name: 'Outro', competition_id: 'c1' }] }) } as Response)
+      if (u.includes('/matches')) return Promise.resolve({ ok: true, json: async () => ({ matches, default_round: '1' }) } as Response)
+      if (u.includes('/predictions/import')) return Promise.resolve({ ok: true, json: async () => ({ ok: true, imported: 3, locked_skipped: 0 }) } as Response)
+      if (u.includes('/predictions')) return Promise.resolve({ ok: true, json: async () => ({ predictions: [] }) } as Response)
+      return Promise.reject(new Error(`Unexpected: ${u}`))
+    })
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+    await waitFor(() => screen.getByText(/Importar palpites de:/i))
+    await userEvent.click(screen.getByRole('button', { name: 'Importar' }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_importar')
   })
 })
