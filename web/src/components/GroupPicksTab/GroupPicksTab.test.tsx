@@ -1,8 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import * as ga from '../../analytics/ga'
 import GroupPicksTab from './GroupPicksTab'
 import { makeMatch } from '../matchFixtures'
 import { type Match } from '../MatchCard'
+
+vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 interface GroupPicksResponse {
   self_user_id: string
@@ -136,5 +141,62 @@ describe('GroupPicksTab', () => {
     await waitFor(() => {
       expect(screen.getByText('3 pt')).toBeInTheDocument()
     })
+  })
+})
+
+describe('GroupPicksTab – analytics', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+  })
+
+  function twoRounds() {
+    return {
+      matches: [
+        makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
+        makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
+      ],
+      picks: {
+        self_user_id: 'user-1',
+        members: [{ user_id: 'user-1', display: 'Pedro' }],
+        predictions: [],
+      },
+    }
+  }
+
+  it('fires click_group_picks_proxima_rodada when Próxima is clicked', async () => {
+    const { matches, picks } = twoRounds()
+    mockFetch(matches, picks)
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1')
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Próxima rodada/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_proxima_rodada', { round: '2' })
+  })
+
+  it('fires click_group_picks_rodada_anterior when Anterior is clicked', async () => {
+    const { matches, picks } = twoRounds()
+    mockFetch(matches, picks)
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1')
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Próxima rodada/i }))
+    mockTrackEvent.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: /Rodada anterior/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_rodada_anterior', { round: '1' })
+  })
+
+  it('fires change_group_picks_rodada when the round select is changed', async () => {
+    const { matches, picks } = twoRounds()
+    mockFetch(matches, picks)
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => screen.getByRole('combobox'))
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'Rodada 2')
+    expect(mockTrackEvent).toHaveBeenCalledWith('change_group_picks_rodada', { round: '2' })
   })
 })

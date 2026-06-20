@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
 import { applyDefaultRound } from '../../lib/rounds'
 import type { Match } from '../MatchCard'
@@ -114,10 +115,12 @@ export default function GroupPicksTab({
   const roundMatches = rounds.get(selectedRound) ?? []
 
   function prev() {
+    trackEvent('click_group_picks_rodada_anterior', { round: roundKeys[Math.max(0, safeIndex - 1)] })
     setRoundIndex((i) => Math.max(0, i - 1))
   }
 
   function next() {
+    trackEvent('click_group_picks_proxima_rodada', { round: roundKeys[Math.min(roundKeys.length - 1, safeIndex + 1)] })
     setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
   }
 
@@ -137,7 +140,10 @@ export default function GroupPicksTab({
           name="picks-round-select"
           className={styles.roundSelect}
           value={selectedRound}
-          onChange={(e) => setRoundIndex(roundKeys.indexOf(e.target.value))}
+          onChange={(e) => {
+            trackEvent('change_group_picks_rodada', { round: e.target.value })
+            setRoundIndex(roundKeys.indexOf(e.target.value))
+          }}
         >
           {roundKeys.map((r) => (
             <option key={r} value={r}>
