@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import styles from './MatchCard.module.css'
 
 export interface Match {
@@ -83,6 +84,7 @@ export default function MatchCard({
 
   async function handleSave() {
     if (!canSave) return
+    trackEvent('click_matchcard_salvar', { match_id: match.id })
     setSaving(true)
     setError(null)
     setSaved(false)
