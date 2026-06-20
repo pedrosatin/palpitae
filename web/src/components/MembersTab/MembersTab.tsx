@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import { useConfirm } from '../ConfirmModal'
 import styles from './MembersTab.module.css'
 
@@ -46,6 +47,7 @@ export default function MembersTab({
   }, [groupId])
 
   async function removeMember(targetUserId: string, displayName: string) {
+    trackEvent('click_members_remover')
     const ok = await confirm({
       title: 'Remover membro',
       message: `Remover "${displayName}" do grupo?`,

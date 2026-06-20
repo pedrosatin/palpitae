@@ -1,4 +1,5 @@
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import styles from './GoogleLoginButton.module.css'
 
 /**
@@ -13,6 +14,7 @@ import styles from './GoogleLoginButton.module.css'
  */
 export default function GoogleLoginButton() {
   function handleClick() {
+    trackEvent('click_login_google')
     const redirect =
       window.location.search || window.location.pathname !== '/'
         ? window.location.search
