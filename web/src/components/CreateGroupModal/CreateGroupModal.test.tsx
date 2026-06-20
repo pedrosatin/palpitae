@@ -142,7 +142,7 @@ describe('CreateGroupModal – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('submit_criar_grupo')
   })
 
-  it('fires click_criar_grupo_copiar_codigo when Copiar is clicked after creation', async () => {
+  it('fires click_create_group_copiar_codigo when Copiar is clicked after creation', async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
     mockFetchCompetitions()
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -157,10 +157,10 @@ describe('CreateGroupModal – analytics', () => {
     await waitFor(() => screen.getByText('Grupo criado!'))
 
     await userEvent.click(screen.getByRole('button', { name: /^Copiar$/ }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_criar_grupo_copiar_codigo')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_create_group_copiar_codigo')
   })
 
-  it('fires click_criar_grupo_copiar_link when Copiar link is clicked after creation', async () => {
+  it('fires click_create_group_copiar_link when Copiar link is clicked after creation', async () => {
     Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
     mockFetchCompetitions()
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
@@ -175,6 +175,6 @@ describe('CreateGroupModal – analytics', () => {
     await waitFor(() => screen.getByText('Grupo criado!'))
 
     await userEvent.click(screen.getByRole('button', { name: /Copiar link/ }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_criar_grupo_copiar_link')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_create_group_copiar_link')
   })
 })
