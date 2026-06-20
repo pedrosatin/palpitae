@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './JoinGroupModal.module.css'
@@ -74,6 +75,7 @@ export default function JoinGroupModal({
         return
       }
 
+      trackEvent('submit_entrar_grupo')
       setJoined(data.group!)
       onJoined(data.group!)
     } catch {

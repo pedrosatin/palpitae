@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
+import { trackEvent } from '../../analytics/ga'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './CreateGroupModal.module.css'
@@ -95,6 +96,7 @@ export default function CreateGroupModal({
         return
       }
 
+      trackEvent('submit_criar_grupo')
       setCreated(data.group!)
       onCreated(data.group!)
     } catch {
@@ -110,12 +112,14 @@ export default function CreateGroupModal({
 
   async function handleCopyCode(invite_code: string) {
     await navigator.clipboard.writeText(invite_code)
+    trackEvent('click_criar_grupo_copiar_codigo')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   async function handleCopyLink(invite_code: string) {
     await navigator.clipboard.writeText(getShareLink(invite_code))
+    trackEvent('click_criar_grupo_copiar_link')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
