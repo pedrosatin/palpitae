@@ -8,6 +8,7 @@ import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
 import { fetchCachedJson, invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
+import { trackEvent } from '../../analytics/ga'
 import styles from './DashboardPage.module.css'
 
 interface User {
@@ -140,11 +141,11 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
               </p>
               <div className={styles.ctaButtons}>
                 {canCreateGroup && (
-                  <Button variant="primary" onClick={() => setCreateOpen(true)}>
+                  <Button variant="primary" onClick={() => { trackEvent('click_dashboard_criar_grupo_empty'); setCreateOpen(true) }}>
                     Criar grupo
                   </Button>
                 )}
-                <Button variant="secondary" onClick={() => setJoinOpen(true)}>
+                <Button variant="secondary" onClick={() => { trackEvent('click_dashboard_entrar_convite_empty'); setJoinOpen(true) }}>
                   Entrar com convite
                 </Button>
               </div>
@@ -157,7 +158,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
                   <GroupCard
                     key={group.id}
                     group={group}
-                    onClick={() => navigate(`/grupos/${group.id}`)}
+                    onClick={() => { trackEvent('click_dashboard_grupo', { group_id: group.id }); navigate(`/grupos/${group.id}`) }}
                   />
                 ))}
               </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Button from '../Button'
+import { trackEvent } from '../../analytics/ga'
 import styles from './Header.module.css'
 
 interface User {
@@ -42,17 +43,17 @@ export default function Header({
   return (
     <header className={styles.header}>
       <div className={styles.inner}>
-        <a href="/" className={styles.logoLink} aria-label="Ir para a home">
+        <a href="/" className={styles.logoLink} aria-label="Ir para a home" onClick={() => trackEvent('click_header_logo')}>
           <img src="/logo-text.svg" alt="Palpitae" className={styles.logo} />
         </a>
 
         <div className={styles.actions}>
           <>
-            <Button variant="secondary" onClick={onJoinGroup}>
+            <Button variant="secondary" onClick={() => { trackEvent('click_header_entrar_grupo'); onJoinGroup() }}>
               Entrar em grupo
             </Button>
             {canCreateGroup && (
-              <Button variant="primary" onClick={onCreateGroup}>
+              <Button variant="primary" onClick={() => { trackEvent('click_header_criar_grupo'); onCreateGroup() }}>
                 Criar grupo
               </Button>
             )}
@@ -61,7 +62,7 @@ export default function Header({
           <div className={styles.userMenu} ref={menuRef}>
             <button
               className={styles.userMenuTrigger}
-              onClick={() => setMenuOpen((o) => !o)}
+              onClick={() => { if (!menuOpen) trackEvent('click_header_user_menu'); setMenuOpen((o) => !o) }}
               aria-expanded={menuOpen}
               aria-haspopup="true"
             >
@@ -85,6 +86,7 @@ export default function Header({
                 <button
                   className={styles.dropdownItem}
                   onClick={() => {
+                    trackEvent('click_header_logout')
                     setMenuOpen(false)
                     onLogout()
                   }}

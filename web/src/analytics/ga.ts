@@ -1,6 +1,10 @@
 /**
  * Google Analytics 4 com Consent Mode v2 (LGPD).
  *
+ * trackEvent() é o ponto de entrada para eventos customizados. Seguro chamar
+ * mesmo sem GA configurado ou com consent negado — o gtag descarta o hit.
+ * Nomes de evento seguem snake_case (padrão GA4).
+ *
  * O GA só é ativado quando `config.gaMeasurementId` está definido — em dev/local
  * sem a env `VITE_GA_MEASUREMENT_ID`, nada é carregado (sem script, sem banner).
  *
@@ -81,4 +85,12 @@ export function initGa(): void {
   script.async = true
   script.src = `https://www.googletagmanager.com/gtag/js?id=${config.gaMeasurementId}`
   document.head.appendChild(script)
+}
+
+/** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */
+export function trackEvent(
+  name: string,
+  params?: Record<string, string | number | boolean>,
+): void {
+  window.gtag?.('event', name, params)
 }

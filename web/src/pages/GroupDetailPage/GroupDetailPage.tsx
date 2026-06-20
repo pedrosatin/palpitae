@@ -20,6 +20,7 @@ import PredictionsTab from '../../components/PredictionsTab'
 import StandingsTab from '../../components/StandingsTab'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
+import { trackEvent } from '../../analytics/ga'
 import styles from './GroupDetailPage.module.css'
 
 interface User {
@@ -100,6 +101,7 @@ export default function GroupDetailPage({
   useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
 
   function setActiveTab(tab: Tab) {
+    trackEvent('click_grupo_tab', { tab })
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
@@ -189,12 +191,14 @@ export default function GroupDetailPage({
 
   async function copyCode() {
     await navigator.clipboard.writeText(group!.invite_code)
+    trackEvent('click_grupo_copiar_codigo')
     setCopied('code')
     setTimeout(() => setCopied(null), 2000)
   }
 
   async function copyLink() {
     await navigator.clipboard.writeText(getShareLink())
+    trackEvent('click_grupo_copiar_link')
     setCopied('link')
     setTimeout(() => setCopied(null), 2000)
   }
@@ -211,6 +215,7 @@ export default function GroupDetailPage({
 
   async function leaveGroup() {
     if (!groupId) return
+    trackEvent('click_grupo_menu_sair')
 
     const ok = await confirm({
       title: 'Sair do grupo',
@@ -244,6 +249,7 @@ export default function GroupDetailPage({
 
   function openRename() {
     if (!group) return
+    trackEvent('click_grupo_menu_editar_nome')
     setMenuOpen(false)
     setRenameValue(group.name)
     setRenameError(null)
@@ -288,6 +294,7 @@ export default function GroupDetailPage({
 
   async function deleteGroup() {
     if (!groupId) return
+    trackEvent('click_grupo_menu_excluir')
     setMenuOpen(false)
 
     const ok = await confirm({

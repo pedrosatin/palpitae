@@ -120,6 +120,34 @@ If there is a conflict:
 
 ---
 
+## 📊 Analytics — GA Events (obrigatório)
+
+Sempre que adicionar ou modificar um elemento clicável (`button`, `Link`, `a`, ou qualquer elemento com `onClick`), adicione um `trackEvent()` correspondente.
+
+```ts
+import { trackEvent } from '../../analytics/ga'
+
+// botão
+<button onClick={() => { trackEvent('click_<contexto>_<acao>'); doSomething() }}>
+
+// link
+<Link to="/rota" onClick={() => trackEvent('click_<contexto>_<acao>')}>
+```
+
+**Convenções de nome:**
+- snake_case, prefixo `click_` para cliques, `submit_` para envios bem-sucedidos
+- padrão: `click_<página/componente>_<ação>` — ex: `click_header_logout`, `click_grupo_tab`
+- inclua params quando útil: `{ tab }`, `{ group_id }`, `{ round }`, `{ count }`
+
+**Rastrear vs. ignorar:**
+- ✅ Rastrear: toda ação intencional (navegar, abrir modal, salvar, copiar, confirmar)
+- ❌ Ignorar: steppers de placar (−/+ no MatchCard) — volume alto, baixo valor
+- ❌ Ignorar: fechar modal via backdrop/ESC — ruído sem intenção clara
+
+**Helper:** `web/src/analytics/ga.ts` → `trackEvent(name, params?)`
+
+---
+
 ## 🧩 Code Guidelines
 
 - Prefer small, composable functions
