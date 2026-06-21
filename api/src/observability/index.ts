@@ -1,3 +1,5 @@
+export * from './events'
+
 type RequestPerfMetrics = {
   status: number
   totalMs: number

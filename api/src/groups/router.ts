@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
-import { logRequestPerf } from '../observability'
+import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 
 const router = new Hono<AppContext>()
@@ -211,6 +211,10 @@ router.post('/', requireAuth, async (c) => {
         .bind(memberId, groupId, userId),
     ])
 
+    logEvent(c.env.AE, 'group_created', {
+      blobs: [groupId, competition_id, await hashUserId(userId)],
+    })
+
     return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
   } catch (error) {
     console.error('Error creating group:', error)
@@ -274,6 +278,10 @@ router.post('/join', requireAuth, async (c) => {
     .prepare(`INSERT INTO group_members (id, group_id, user_id, role) VALUES (?, ?, ?, 'member')`)
     .bind(memberId, group.id, userId)
     .run()
+
+  logEvent(c.env.AE, 'group_joined', {
+    blobs: [group.id, await hashUserId(userId)],
+  })
 
   return c.json({ group: { id: group.id, name: group.name } })
 })
@@ -410,6 +418,10 @@ router.patch('/:id', requireAuth, async (c) => {
 
   await db.prepare('UPDATE groups SET name = ? WHERE id = ?').bind(name, groupId).run()
 
+  logEvent(c.env.AE, 'group_renamed', {
+    blobs: [groupId, await hashUserId(userId)],
+  })
+
   return c.json({ group: { id: groupId, name } })
 })
 
@@ -543,6 +555,11 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
     .bind(groupId, targetUserId)
     .run()
+
+  logEvent(c.env.AE, 'member_removed', {
+    // 'self' = saiu sozinho; 'admin' = removido pelo dono do grupo.
+    blobs: [groupId, await hashUserId(targetUserId), targetUserId === userId ? 'self' : 'admin'],
+  })
 
   return c.json({ success: true })
 })
