@@ -1,11 +1,41 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { hashUserId, logEvent } from '../observability/events'
-import { sendEmail } from './email'
+import { type EmailMessage, EmailError, sendEmail } from './email'
 import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
 
+// Resend's default account limit is ~2 req/s. Sequential awaited sends already
+// pace us, but a burst still risks 429s, and transient 5xx happen. Retry those
+// (the once-a-day cron never gets a second chance otherwise); fail fast on other
+// 4xx, which are permanent (bad address, etc.).
+const MAX_SEND_ATTEMPTS = 3
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Sends one e-mail, retrying on 429 (rate limit) and 5xx / network errors with
+ * exponential backoff that honours Resend's Retry-After. Permanent 4xx fail fast.
+ * Throws if every attempt fails so the caller counts it and moves on.
+ */
+async function sendWithRetry(apiKey: string, msg: EmailMessage): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await sendEmail(apiKey, msg)
+      return
+    } catch (err) {
+      const status = err instanceof EmailError ? err.status : 0
+      const transient = status === 429 || status >= 500 || status === 0
+      if (!transient || attempt >= MAX_SEND_ATTEMPTS) throw err
+      const retryAfterMs = err instanceof EmailError ? err.retryAfterMs : undefined
+      // Reactive backoff: on 429 this self-throttles the batch under the limit.
+      await sleep(retryAfterMs ?? 500 * 2 ** (attempt - 1))
+    }
+  }
+}
+
 type ReminderRow = {
+  competition_id: string
   competition_name: string
   round: string
   user_id: string
@@ -25,6 +55,7 @@ type UnsubConfig = {
 }
 
 type MatchRow = {
+  competition_id: string
   competition_name: string
   round: string
   home_team: string
@@ -43,6 +74,7 @@ type MatchInfo = {
 }
 
 type RoundGroup = {
+  competitionId: string
   competitionName: string
   round: string
   recipients: Recipient[]
@@ -60,7 +92,10 @@ type RoundGroup = {
  * the once-a-day cron, no per-send dedupe table is needed.
  *
  * start_time is stored as ISO 8601 with T/Z (e.g. "2026-06-16T22:00:00Z"), which
- * SQLite's date() parses correctly. All date math here is in UTC.
+ * SQLite's date() parses correctly. Date math shifts by '-3 hours' to align day
+ * boundaries with BRT (UTC-3, no DST since 2019) — without this, a match at
+ * 21:00–23:59 BRT lands on the following UTC day, causing the e-mail to say
+ * "começa amanhã" when the match is actually today for Brazilian users.
  */
 export async function sendRoundReminders(
   db: D1Database,
@@ -70,6 +105,14 @@ export async function sendRoundReminders(
   unsub?: UnsubConfig,
 ): Promise<void> {
   const startedAt = Date.now()
+
+  // Fail loud, not silent: with no key every send would 401 and be counted as a
+  // dropped reminder. Skip the run and surface the misconfiguration instead.
+  if (!resendApiKey) {
+    console.error('[roundReminder] RESEND_API_KEY ausente — nenhum lembrete enviado.')
+    logEvent(ae, 'cron_round_reminder', { doubles: [0, 0, 0] })
+    return
+  }
 
   // ISO 8601 with T/Z, same format the matches list endpoint uses (matches/router.ts)
   // so the default_round subquery below resolves to EXACTLY the same round the app
@@ -88,6 +131,7 @@ export async function sendRoundReminders(
   const userRows = await db
     .prepare(
       `SELECT DISTINCT
+         c.id    AS competition_id,
          c.name  AS competition_name,
          m.round AS round,
          u.id    AS user_id,
@@ -99,9 +143,9 @@ export async function sendRoundReminders(
        JOIN users u          ON u.id = gm.user_id
        WHERE m.status = 'scheduled'
          AND u.email_unsubscribed_at IS NULL
-         AND date(m.start_time) = date('now', '+1 day')
-         AND date(m.start_time) = (
-           SELECT MIN(date(m2.start_time))
+         AND date(m.start_time, '-3 hours') = date('now', '-3 hours', '+1 day')
+         AND date(m.start_time, '-3 hours') = (
+           SELECT MIN(date(m2.start_time, '-3 hours'))
            FROM matches m2
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
@@ -139,7 +183,7 @@ export async function sendRoundReminders(
   // A but not group B of the same competition, appearing twice in the result.
   const grouped = new Map<string, RoundGroup>()
   for (const row of userRows.results) {
-    const key = `${row.competition_name}::${row.round}`
+    const key = `${row.competition_id}::${row.round}`
     const entry = grouped.get(key)
     if (entry) {
       if (!entry.recipients.some((r) => r.email === row.email)) {
@@ -147,6 +191,7 @@ export async function sendRoundReminders(
       }
     } else {
       grouped.set(key, {
+        competitionId: row.competition_id,
         competitionName: row.competition_name,
         round: row.round,
         recipients: [{ id: row.user_id, email: row.email }],
@@ -160,6 +205,7 @@ export async function sendRoundReminders(
   const matchRows = await db
     .prepare(
       `SELECT
+         c.id         AS competition_id,
          c.name       AS competition_name,
          m.round      AS round,
          ht.name      AS home_team,
@@ -173,11 +219,11 @@ export async function sendRoundReminders(
        JOIN teams awt      ON awt.id = m.away_team_id
        WHERE m.status = 'scheduled'
          AND (
-           SELECT MIN(date(m2.start_time))
+           SELECT MIN(date(m2.start_time, '-3 hours'))
            FROM matches m2
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
-         ) = date('now', '+1 day')
+         ) = date('now', '-3 hours', '+1 day')
          AND m.round = (
            SELECT m3.round
            FROM matches m3
@@ -194,7 +240,7 @@ export async function sendRoundReminders(
 
   // Attach match info to the corresponding round group.
   for (const row of matchRows.results) {
-    const key = `${row.competition_name}::${row.round}`
+    const key = `${row.competition_id}::${row.round}`
     const entry = grouped.get(key)
     if (entry) {
       entry.matches.push({
@@ -207,7 +253,10 @@ export async function sendRoundReminders(
     }
   }
 
-  const apiBaseUrl = unsub?.apiBaseUrl.replace(/\/+$/, '')
+  // Guard an empty/undefined apiBaseUrl: `.replace` on undefined would throw and
+  // abort the whole batch inside waitUntil. Without a base URL we simply render
+  // no unsubscribe link (the `unsub && apiBaseUrl` check below).
+  const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
 
   let sent = 0
   let failed = 0
@@ -235,7 +284,7 @@ export async function sendRoundReminders(
             }
           : undefined
 
-        await sendEmail(resendApiKey, { to: email, subject, html, text, headers })
+        await sendWithRetry(resendApiKey, { to: email, subject, html, text, headers })
         sent++
         // user_hash do id (não o e-mail cru — PII, regra LGPD).
         logEvent(ae, 'email_reminder_sent', {
