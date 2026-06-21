@@ -454,6 +454,10 @@ router.delete('/:id', requireAuth, async (c) => {
     .bind(groupId)
     .run()
 
+  logEvent(c.env.AE, 'group_deleted', {
+    blobs: [groupId, await hashUserId(userId)],
+  })
+
   return c.json({ success: true })
 })
 
