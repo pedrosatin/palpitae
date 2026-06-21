@@ -9,7 +9,7 @@ database_id = "ffd7a7ed-3434-4db8-a505-b74c1cf79d6a"
 migrations_dir = "migrations"
 
 # Workers Logs — console.* viram pesquisáveis no dashboard (Free: 200k eventos/dia,
-# retenção 3 dias). Debug operacional, não métrica histórica. Ver context-observability.md.
+# retenção 3 dias). Debug operacional, não métrica histórica. Ver docs/observability.md.
 [observability]
 enabled = true
 
@@ -20,11 +20,19 @@ enabled = true
 binding = "AE"
 dataset = "palpitae_events"
 
-# Result poller — busca resultados na janela ativa dos jogos e pontua (ADR-007).
-# A cada 30 min (hora cheia e meia hora). Janela ativa = 85 min, então no máximo
-# 1 tick de atraso entre o fim do jogo e a pontuação.
+# Crons (o handler `scheduled` distingue pelo controller.cron):
+#  - "0,30 * * * *" → result poller: resultados da janela ativa + pontuação (ADR-007).
+#    A cada 30 min; janela ativa = 85 min ⇒ no máx. 1 tick de atraso até pontuar.
+#  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
+#    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
 [triggers]
-crons = ["0,30 * * * *"]
+crons = ["0,30 * * * *", "5 0 * * *"]
+
+# Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
+# Criar antes do deploy: wrangler r2 bucket create palpitae-events
+[[r2_buckets]]
+binding = "EVENTS"
+bucket_name = "palpitae-events"
 
 [vars]
 BASE_URL = "https://api.palpitae.com.br"
@@ -34,4 +42,6 @@ FRONTEND_URL = "https://palpitae.com.br"
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
 #   wrangler secret put FOOTBALL_API_KEY
+#   wrangler secret put CF_ACCOUNT_ID    # cold path: conta da SQL API do Analytics Engine
+#   wrangler secret put AE_SQL_TOKEN     # cold path: token Account Analytics:Read
 # Local overrides go in .dev.vars (already has localhost values)

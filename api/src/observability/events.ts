@@ -3,7 +3,7 @@
  *
  * Hoje só escreve no Analytics Engine (hot path, retenção ~3 meses, grátis). O cold
  * path (R2, retenção ilimitada) virá de um cron diário que exporta este dataset —
- * não muda nada aqui. Ver `context-observability.md` para a arquitetura completa.
+ * não muda nada aqui. Ver `docs/observability.md` para a arquitetura completa.
  *
  * Modelo fixo do Analytics Engine: até 20 `blobs` (strings/dimensões), até 20
  * `doubles` (números/medidas), 1 `index` (chave de sampling). Convenção do projeto:
