@@ -184,7 +184,12 @@ router.get('/', async (c) => {
     })
     response.headers.set('Cache-Control', matchesCacheControl(result.results))
 
-    if (cache) {
+    // Só cacheia listas não-vazias. Isso (a) evita servir um snapshot vazio de uma
+    // competição que ainda vai ser sincronizada e (b) fecha o abuso: um competition_id
+    // inexistente sempre retorna vazio → nunca entra no edge cache → nunca vira um HIT,
+    // então o blob de `matches_cache` no hit só carrega competição real (cardinalidade
+    // limitada). O Cache-Control (browser) continua valendo p/ a resposta vazia.
+    if (cache && result.results.length > 0) {
       // clone(): a response body can only be consumed once — the cache keeps
       // its own copy while we still return the original to the caller.
       c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
@@ -196,10 +201,14 @@ router.get('/', async (c) => {
     // because once a match is 'finished' + scored_at is set, it never triggers again.
     const apiKey = c.env.FOOTBALL_API_KEY
     if (apiKey) {
-      c.executionCtx.waitUntil(maybeSyncResults(competitionId, db, apiKey))
+      c.executionCtx.waitUntil(maybeSyncResults(competitionId, db, apiKey, c.env.AE))
     }
 
-    logEvent(c.env.AE, 'matches_cache', { blobs: ['miss', competitionId] })
+    // Cap dimension cardinality: only real competitions (response had games)
+    // get their id; random junk competition_id from anon flooding all collapse
+    // into one 'unknown' bucket.
+    const cacheCompetition = result.results.length > 0 ? competitionId : 'unknown'
+    logEvent(c.env.AE, 'matches_cache', { blobs: ['miss', cacheCompetition] })
 
     logRequestPerf('GET /matches', {
       status: 200,
@@ -221,7 +230,12 @@ router.get('/', async (c) => {
   }
 })
 
-async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: string): Promise<void> {
+async function maybeSyncResults(
+  competitionId: string,
+  db: D1Database,
+  apiKey: string,
+  ae?: AnalyticsEngineDataset,
+): Promise<void> {
   const startedAt = Date.now()
   try {
     const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
@@ -265,12 +279,21 @@ async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: s
 
       if (!competition || competition.provider !== 'football-data') return
 
-      await syncFixtures({
-        competitionCode: competition.external_id,
-        season: Number(competition.season),
-        apiKey,
-        db,
-      })
+      try {
+        await syncFixtures({
+          competitionCode: competition.external_id,
+          season: Number(competition.season),
+          apiKey,
+          db,
+        })
+      } catch (err) {
+        // football_api_error é só pra falha da API externa — não para erros de D1/
+        // scoring (esses caem no catch externo, sem virar "erro de API").
+        const message = err instanceof Error ? err.message : 'Erro desconhecido'
+        logEvent(ae, 'football_api_error', { blobs: ['matches_background', message] })
+        console.error('Background result sync (API Football) falhou:', err)
+        return // não pontua se o sync falhou
+      }
     }
 
     await scoreUnprocessedMatches(competitionId, db)
@@ -287,6 +310,8 @@ async function maybeSyncResults(competitionId: string, db: D1Database, apiKey: s
       }),
     )
   } catch (err) {
+    // Erro inesperado (D1/scoring) — não é falha da API Football, então não emite
+    // football_api_error; só registra nos Workers Logs.
     console.error('Background result sync falhou:', err)
   }
 }
@@ -335,6 +360,7 @@ router.post('/sync', requireAuth, async (c) => {
     return c.json({ ok: true, synced: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido'
+    logEvent(c.env.AE, 'football_api_error', { blobs: ['sync_endpoint', message] })
     console.error('Erro no sync:', error)
     return c.json({ error: `Erro ao sincronizar: ${message}` }, 500)
   }
