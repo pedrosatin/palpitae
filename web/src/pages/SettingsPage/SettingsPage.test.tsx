@@ -79,6 +79,23 @@ describe('SettingsPage', () => {
     })
   })
 
+  it('shows a retry button after initial load failure and recovers on retry', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockResponse(null, false))                    // initial GET fails
+      .mockResolvedValueOnce(mockResponse({ round_reminders: true }))     // retry succeeds
+
+    renderPage()
+
+    const retryButton = await screen.findByRole('button', { name: /tentar novamente/i })
+    expect(retryButton).toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).toBeDisabled()
+
+    await userEvent.click(retryButton)
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /tentar novamente/i })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeDisabled())
+  })
+
   it('rolls back the toggle when the PATCH fails', async () => {
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(mockResponse({ round_reminders: true })) // GET
