@@ -50,3 +50,14 @@ export function logEvent(ae: AnalyticsEngineDataset | undefined, type: EventType
     doubles: dims.doubles ?? [],
   })
 }
+
+/**
+ * Pseudonimiza um user_id para uso em eventos (regra LGPD: nunca PII crua nem o id
+ * cru, pra não reidentificar). SHA-256 truncado em 64 bits — estável por usuário
+ * (permite contar usuários distintos via COUNT(DISTINCT)), não reversível na prática.
+ */
+export async function hashUserId(userId: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(userId))
+  const bytes = new Uint8Array(digest, 0, 8)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
