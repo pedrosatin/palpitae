@@ -5,12 +5,16 @@
  */
 
 const RESEND_API = 'https://api.resend.com/emails'
-const FROM = 'Palpitae <noreply@send.palpitae.com.br>'
+const FROM = 'Palpitae <naoresponda@palpitae.com.br>'
 
 export type EmailMessage = {
   to: string
   subject: string
   html: string
+  /** Plain-text fallback. Optional, but recommended for deliverability. */
+  text?: string
+  /** Extra MIME headers (e.g. List-Unsubscribe). Forwarded to Resend as-is. */
+  headers?: Record<string, string>
 }
 
 /**
@@ -24,7 +28,14 @@ export async function sendEmail(apiKey: string, msg: EmailMessage): Promise<void
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from: FROM, to: msg.to, subject: msg.subject, html: msg.html }),
+    body: JSON.stringify({
+      from: FROM,
+      to: msg.to,
+      subject: msg.subject,
+      html: msg.html,
+      ...(msg.text ? { text: msg.text } : {}),
+      ...(msg.headers ? { headers: msg.headers } : {}),
+    }),
   })
 
   if (!res.ok) {

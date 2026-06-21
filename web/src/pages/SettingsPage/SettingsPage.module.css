@@ -1,0 +1,83 @@
+/**
+ * SettingsPage styles
+ *
+ * User settings, starting with e-mail notification preferences.
+ * Follows the Palpitae design system (CSS custom properties).
+ */
+
+.root {
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  padding: var(--space-8) var(--space-6);
+}
+
+.content {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.title {
+  margin-bottom: var(--space-6);
+}
+
+.errorMessage {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid #ff4d4f;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  color: #ff4d4f;
+  margin-bottom: var(--space-6);
+}
+
+.section {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+.sectionTitle {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-4);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  cursor: pointer;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rowLabel {
+  font-weight: 600;
+}
+
+.rowHint {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.toggle {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: #16a34a;
+  cursor: pointer;
+}
+
+.toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
