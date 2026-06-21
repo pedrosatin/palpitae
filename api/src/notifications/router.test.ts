@@ -19,7 +19,7 @@ function fakeDb(captured: Captured) {
           return stmt
         },
         async run() {
-          return { success: true }
+          return { success: true, meta: { changes: 1 } }
         },
         async first<T>() {
           return (captured.row ?? null) as T | null
@@ -55,7 +55,7 @@ async function authHeaders() {
 }
 
 describe('notifications router — unsubscribe', () => {
-  it('GET /unsubscribe with a valid token marks the user unsubscribed', async () => {
+  it('GET /unsubscribe with a valid token shows confirmation form and does not mutate', async () => {
     const captured: Captured = { sqls: [], binds: [] }
     const token = await signUnsubToken('user-42', JWT_SECRET)
 
@@ -65,9 +65,12 @@ describe('notifications router — unsubscribe', () => {
     )
 
     expect(res.status).toBe(200)
-    expect(await res.text()).toContain('não receberá')
-    expect(captured.sqls.some((s) => s.includes('email_unsubscribed_at = datetime'))).toBe(true)
-    expect(captured.binds[0]).toEqual(['user-42'])
+    const text = await res.text()
+    // Must render a confirmation form — not the success message yet
+    expect(text).toContain('<form')
+    expect(text).toContain(token)
+    // Must NOT touch the database (e-mail scanner safety — RFC 8058)
+    expect(captured.sqls).toHaveLength(0)
   })
 
   it('GET /unsubscribe without a token returns 400', async () => {

@@ -4,17 +4,8 @@ import { trackEvent } from '../../analytics/ga'
 import Header from '../../components/Header'
 import { buildApiUrl } from '../../config'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
+import type { User } from '../../types'
 import styles from './SettingsPage.module.css'
-
-interface User {
-  id: string
-  email: string
-  nickname?: string
-  avatar_url?: string
-  feature_flags?: {
-    create_group?: boolean
-  }
-}
 
 interface SettingsPageProps {
   user: User
@@ -29,7 +20,8 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  function loadPreferences() {
+    setError(null)
     fetch(buildApiUrl('/notifications/preferences'), { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('Falha ao carregar preferências')
@@ -37,6 +29,10 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
       })
       .then((data) => setRoundReminders(data.round_reminders))
       .catch((err) => setError(err.message))
+  }
+
+  useEffect(() => {
+    loadPreferences()
   }, [])
 
   function handleToggle(next: boolean) {
@@ -77,7 +73,23 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
         <div className={styles.content}>
           <h1 className={styles.title}>Configurações</h1>
 
-          {error && <div className={styles.errorMessage}>{error}</div>}
+          {error && (
+            <div className={styles.errorMessage}>
+              {error}
+              {roundReminders === null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    trackEvent('click_settings_retry_preferencias')
+                    loadPreferences()
+                  }}
+                  className={styles.retryButton}
+                >
+                  Tentar novamente
+                </button>
+              )}
+            </div>
+          )}
 
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>E-mails</h2>
