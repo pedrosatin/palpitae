@@ -303,7 +303,7 @@ export async function sendRoundReminders(
         })
       } catch (err) {
         failed++
-        console.error(`[roundReminder] Falha ao enviar para ${email}:`, err)
+        console.error(`[roundReminder] Falha ao enviar para ${await hashUserId(id)}:`, err)
       }
     }
   }
@@ -367,7 +367,7 @@ function withEmailUtm(url: string): string {
  * a missing crest never breaks the layout.
  */
 function crestImg(url: string | null, alt: string): string {
-  if (!url) return ''
+  if (!url || !/^https?:\/\//i.test(url)) return ''
   return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" width="20" height="20" style="vertical-align: middle; border: 0;">`
 }
 
