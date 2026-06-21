@@ -8,6 +8,18 @@ database_name = "palpitae"
 database_id = "ffd7a7ed-3434-4db8-a505-b74c1cf79d6a"
 migrations_dir = "migrations"
 
+# Workers Logs — console.* viram pesquisáveis no dashboard (Free: 200k eventos/dia,
+# retenção 3 dias). Debug operacional, não métrica histórica. Ver context-observability.md.
+[observability]
+enabled = true
+
+# Analytics Engine — hot path de eventos de negócio/saúde (retenção ~3 meses,
+# grátis). O cold path (R2, retenção ilimitada) virá de um cron diário que exporta
+# este dataset. Dataset é criado sozinho no primeiro writeDataPoint. Binding = AE.
+[[analytics_engine_datasets]]
+binding = "AE"
+dataset = "palpitae_events"
+
 # Result poller — busca resultados na janela ativa dos jogos e pontua (ADR-007).
 # A cada 30 min (hora cheia e meia hora). Janela ativa = 85 min, então no máximo
 # 1 tick de atraso entre o fim do jogo e a pontuação.

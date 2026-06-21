@@ -1,5 +1,8 @@
 export type Env = {
   DB: D1Database
+  // Analytics Engine — opcional: não existe em dev local / testes (writeDataPoint
+  // vira no-op via logEvent). Em produção o binding sempre está presente.
+  AE?: AnalyticsEngineDataset
   JWT_SECRET: string
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
