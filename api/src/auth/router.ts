@@ -22,6 +22,18 @@ const VERIFIER_COOKIE = 'oauth_verifier'
 const REDIRECT_COOKIE = 'oauth_redirect'
 const SESSION_TTL = 24 * 60 * 60 // 24 hours
 
+// Conjunto conhecido de códigos de erro do Google OAuth. Limita a cardinalidade
+// do evento oauth_error — o parâmetro `error` do callback é público e arbitrário.
+const KNOWN_OAUTH_ERRORS = new Set([
+  'access_denied',
+  'invalid_request',
+  'unauthorized_client',
+  'unsupported_response_type',
+  'invalid_scope',
+  'server_error',
+  'temporarily_unavailable',
+])
+
 function cookieDomain(baseUrl: string): string | undefined {
   if (!baseUrl.startsWith('https')) return undefined
   const hostname = new URL(baseUrl).hostname
@@ -78,7 +90,8 @@ authRouter.get('/callback', async (c) => {
   const { code, state, error } = c.req.query()
 
   if (error) {
-    logEvent(c.env.AE, 'oauth_error', { blobs: [error] })
+    const errorCode = KNOWN_OAUTH_ERRORS.has(error) ? error : 'other'
+    logEvent(c.env.AE, 'oauth_error', { blobs: [errorCode] })
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(error)}`)
   }
 
