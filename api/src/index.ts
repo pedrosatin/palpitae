@@ -42,6 +42,6 @@ export default {
   // Cron Trigger — busca resultados de jogos na janela ativa e pontua (ADR-007).
   // Agendado em wrangler.toml: "0,30 * * * *" (a cada 30 min).
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? ''))
+    ctx.waitUntil(pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
   },
 }

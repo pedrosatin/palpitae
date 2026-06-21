@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { logEvent } from '../observability/events'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -24,7 +25,11 @@ type ActiveRound = {
  * call is scoped to the active round. Non-numeric rounds (knockout phases) fall
  * back to a full-competition fetch.
  */
-export async function pollActiveMatches(db: D1Database, apiKey: string): Promise<void> {
+export async function pollActiveMatches(
+  db: D1Database,
+  apiKey: string,
+  ae?: AnalyticsEngineDataset,
+): Promise<void> {
   const startedAt = Date.now()
 
   // start_time is stored as ISO 8601 with `T`/`Z` (e.g. "2026-06-16T22:00:00Z").
@@ -54,6 +59,10 @@ export async function pollActiveMatches(db: D1Database, apiKey: string): Promise
 
   if (rows.results.length === 0) {
     console.info('[poller] Nenhum jogo na janela ativa.')
+    logEvent(ae, 'poller_run', {
+      blobs: ['ok'],
+      doubles: [0, 0, 0, Date.now() - startedAt], // matches_checked, fixtures_updated, api_calls, duration_ms
+    })
     return
   }
 
@@ -69,6 +78,11 @@ export async function pollActiveMatches(db: D1Database, apiKey: string): Promise
     }
   }
 
+  // Métricas agregadas do run — viram um único evento `poller_run` no fim.
+  let footballApiCalls = 0
+  let fixturesUpdated = 0
+  let hadError = false
+
   for (const { comp, rounds } of byComp.values()) {
     let synced = false
 
@@ -78,16 +92,22 @@ export async function pollActiveMatches(db: D1Database, apiKey: string): Promise
       const matchdayParam = Number.isNaN(matchday) ? undefined : matchday
 
       try {
-        await syncFixtures({
+        footballApiCalls++ // cada syncFixtures faz exatamente 1 fetch à API Football
+        const result = await syncFixtures({
           competitionCode: comp.external_id,
           season: Number(comp.season),
           matchday: matchdayParam,
           apiKey,
           db,
         })
+        fixturesUpdated += result?.matches ?? 0
         synced = true
       } catch (err) {
+        hadError = true
         console.error(`[poller] Sync falhou comp=${comp.comp_id} round=${round}:`, err)
+        logEvent(ae, 'football_api_error', {
+          blobs: [comp.comp_id, round, err instanceof Error ? err.message : String(err)],
+        })
       }
     }
 
@@ -95,6 +115,13 @@ export async function pollActiveMatches(db: D1Database, apiKey: string): Promise
       await scoreUnprocessedMatches(comp.comp_id, db)
     }
   }
+
+  // matches_checked = nº de (comp, round) na janela ativa — proxy de quantos jogos
+  // o run avaliou. Ver convenção de doubles em observability/events.ts.
+  logEvent(ae, 'poller_run', {
+    blobs: [hadError ? 'error' : 'ok'],
+    doubles: [rows.results.length, fixturesUpdated, footballApiCalls, Date.now() - startedAt],
+  })
 
   console.info(
     '[perf]',
