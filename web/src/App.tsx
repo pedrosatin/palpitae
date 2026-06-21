@@ -13,6 +13,7 @@ import LoginPage from './pages/LoginPage'
  */
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const GroupDetailPage = lazy(() => import('./pages/GroupDetailPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 /**
  * Represents an authenticated user's basic profile.
@@ -86,6 +87,10 @@ export default function App() {
         <Route
           path="/grupos/:groupId"
           element={<GroupDetailPage user={user!} onLogout={handleLogout} />}
+        />
+        <Route
+          path="/configuracoes"
+          element={<SettingsPage user={user!} onLogout={handleLogout} />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
