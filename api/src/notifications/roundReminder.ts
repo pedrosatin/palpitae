@@ -1,12 +1,27 @@
-import type { D1Database } from '@cloudflare/workers-types'
+import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
+import { hashUserId, logEvent } from '../observability/events'
 import { sendEmail } from './email'
+import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
 
 type ReminderRow = {
   competition_name: string
   round: string
+  user_id: string
   email: string
+}
+
+/** A user to notify. id is needed to mint the per-user unsubscribe token. */
+type Recipient = {
+  id: string
+  email: string
+}
+
+/** Config for unsubscribe links/headers. Omitted in tests → no link rendered. */
+type UnsubConfig = {
+  secret: string
+  apiBaseUrl: string
 }
 
 type MatchRow = {
@@ -14,25 +29,30 @@ type MatchRow = {
   round: string
   home_team: string
   away_team: string
+  home_logo: string | null
+  away_logo: string | null
   start_time: string
 }
 
 type MatchInfo = {
   home: string
   away: string
+  homeLogo: string | null
+  awayLogo: string | null
   time: string
 }
 
 type RoundGroup = {
   competitionName: string
   round: string
-  emails: string[]
+  recipients: Recipient[]
   matches: MatchInfo[]
 }
 
 /**
  * Sends an e-mail reminder to every group member whose competition has a round
- * starting tomorrow. Designed to run once a day from a daily Cron Trigger.
+ * starting tomorrow AND who has not predicted any of that round's matches yet.
+ * Designed to run once a day from a daily Cron Trigger.
  *
  * Only fires on the round's FIRST match day: the WHERE clause requires tomorrow
  * to equal the earliest scheduled match date of that (competition, round). This
@@ -42,15 +62,35 @@ type RoundGroup = {
  * start_time is stored as ISO 8601 with T/Z (e.g. "2026-06-16T22:00:00Z"), which
  * SQLite's date() parses correctly. All date math here is in UTC.
  */
-export async function sendRoundReminders(db: D1Database, resendApiKey: string): Promise<void> {
+export async function sendRoundReminders(
+  db: D1Database,
+  resendApiKey: string,
+  ae?: AnalyticsEngineDataset,
+  appUrl: string = APP_URL,
+  unsub?: UnsubConfig,
+): Promise<void> {
   const startedAt = Date.now()
 
+  // ISO 8601 with T/Z, same format the matches list endpoint uses (matches/router.ts)
+  // so the default_round subquery below resolves to EXACTLY the same round the app
+  // shows by default. start_time is stored in this format, so the `> ?` comparison
+  // is a correct lexicographic compare.
+  const nowIso = new Date().toISOString()
+
   // Query 1: which users need to be notified?
+  //  - the round's first match is tomorrow (don't re-notify mid-round);
+  //  - the round is the competition's default_round — the earliest round still
+  //    open (MAX(start_time) in the future). This MUST match matches/router.ts so
+  //    the e-mail never goes out before the app has advanced to that round (e.g.
+  //    while the previous round still has an unfinished match);
+  //  - the user has no prediction yet for any match of that round in that group
+  //    (NOT EXISTS).
   const userRows = await db
     .prepare(
       `SELECT DISTINCT
          c.name  AS competition_name,
          m.round AS round,
+         u.id    AS user_id,
          u.email AS email
        FROM matches m
        JOIN competitions c   ON c.id = m.competition_id
@@ -58,33 +98,58 @@ export async function sendRoundReminders(db: D1Database, resendApiKey: string): 
        JOIN group_members gm ON gm.group_id = g.id
        JOIN users u          ON u.id = gm.user_id
        WHERE m.status = 'scheduled'
+         AND u.email_unsubscribed_at IS NULL
          AND date(m.start_time) = date('now', '+1 day')
          AND date(m.start_time) = (
            SELECT MIN(date(m2.start_time))
            FROM matches m2
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
+         )
+         AND m.round = (
+           SELECT m3.round
+           FROM matches m3
+           WHERE m3.competition_id = m.competition_id
+           GROUP BY m3.round
+           HAVING MAX(m3.start_time) > ?1
+           ORDER BY MAX(m3.start_time) ASC
+           LIMIT 1
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM predictions p
+           JOIN matches pm ON pm.id = p.match_id
+           WHERE p.user_id  = u.id
+             AND p.group_id = g.id
+             AND pm.competition_id = c.id
+             AND pm.round = m.round
          )`,
     )
+    .bind(nowIso)
     .all<ReminderRow>()
 
   if (userRows.results.length === 0) {
     console.info('[roundReminder] Nenhuma rodada começa amanhã.')
+    logEvent(ae, 'cron_round_reminder', { doubles: [0, 0, 0] })
     return
   }
 
-  // Group by competition + round, collecting e-mail addresses.
+  // Group by competition + round, collecting e-mail addresses. Dedupe is still
+  // required even with the NOT EXISTS filter: a user may have predicted in group
+  // A but not group B of the same competition, appearing twice in the result.
   const grouped = new Map<string, RoundGroup>()
   for (const row of userRows.results) {
     const key = `${row.competition_name}::${row.round}`
     const entry = grouped.get(key)
     if (entry) {
-      if (!entry.emails.includes(row.email)) entry.emails.push(row.email)
+      if (!entry.recipients.some((r) => r.email === row.email)) {
+        entry.recipients.push({ id: row.user_id, email: row.email })
+      }
     } else {
       grouped.set(key, {
         competitionName: row.competition_name,
         round: row.round,
-        emails: [row.email],
+        recipients: [{ id: row.user_id, email: row.email }],
         matches: [],
       })
     }
@@ -95,10 +160,12 @@ export async function sendRoundReminders(db: D1Database, resendApiKey: string): 
   const matchRows = await db
     .prepare(
       `SELECT
-         c.name   AS competition_name,
-         m.round  AS round,
-         ht.name  AS home_team,
-         awt.name AS away_team,
+         c.name       AS competition_name,
+         m.round      AS round,
+         ht.name      AS home_team,
+         awt.name     AS away_team,
+         ht.logo_url  AS home_logo,
+         awt.logo_url AS away_logo,
          m.start_time
        FROM matches m
        JOIN competitions c ON c.id = m.competition_id
@@ -111,8 +178,18 @@ export async function sendRoundReminders(db: D1Database, resendApiKey: string): 
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
          ) = date('now', '+1 day')
+         AND m.round = (
+           SELECT m3.round
+           FROM matches m3
+           WHERE m3.competition_id = m.competition_id
+           GROUP BY m3.round
+           HAVING MAX(m3.start_time) > ?1
+           ORDER BY MAX(m3.start_time) ASC
+           LIMIT 1
+         )
        ORDER BY m.start_time ASC`,
     )
+    .bind(nowIso)
     .all<MatchRow>()
 
   // Attach match info to the corresponding round group.
@@ -123,27 +200,55 @@ export async function sendRoundReminders(db: D1Database, resendApiKey: string): 
       entry.matches.push({
         home: row.home_team,
         away: row.away_team,
+        homeLogo: row.home_logo,
+        awayLogo: row.away_logo,
         time: formatBRT(row.start_time),
       })
     }
   }
 
+  const apiBaseUrl = unsub?.apiBaseUrl.replace(/\/+$/, '')
+
   let sent = 0
-  for (const { competitionName, round, emails, matches } of grouped.values()) {
-    const html = buildEmailHtml(competitionName, round, matches)
+  let failed = 0
+  for (const { competitionName, round, recipients, matches } of grouped.values()) {
     const subject = `Rodada ${round} começa amanhã — faça seus palpites!`
 
     // One e-mail per user (no shared BCC, so addresses never leak between users).
     // A single send failure is isolated so the rest of the batch still goes out.
-    for (const email of emails) {
+    // The unsubscribe link is per-user (signed token), so the body is built per
+    // recipient — match list rebuild is cheap at this volume.
+    for (const { id, email } of recipients) {
       try {
-        await sendEmail(resendApiKey, { to: email, subject, html })
+        const unsubUrl =
+          unsub && apiBaseUrl
+            ? `${apiBaseUrl}/notifications/unsubscribe?token=${await signUnsubToken(id, unsub.secret)}`
+            : undefined
+
+        const html = buildEmailHtml(competitionName, round, matches, appUrl, unsubUrl)
+        const text = buildEmailText(competitionName, round, matches, appUrl, unsubUrl)
+        // RFC 8058 one-click unsubscribe — Gmail/Apple show a native button.
+        const headers = unsubUrl
+          ? {
+              'List-Unsubscribe': `<${unsubUrl}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            }
+          : undefined
+
+        await sendEmail(resendApiKey, { to: email, subject, html, text, headers })
         sent++
+        // user_hash do id (não o e-mail cru — PII, regra LGPD).
+        logEvent(ae, 'email_reminder_sent', {
+          blobs: [await hashUserId(id), competitionName, round],
+        })
       } catch (err) {
+        failed++
         console.error(`[roundReminder] Falha ao enviar para ${email}:`, err)
       }
     }
   }
+
+  logEvent(ae, 'cron_round_reminder', { doubles: [grouped.size, sent, failed] })
 
   console.info(
     '[perf]',
@@ -151,13 +256,14 @@ export async function sendRoundReminders(db: D1Database, resendApiKey: string): 
       route: 'cron sendRoundReminders',
       rounds: grouped.size,
       sent,
+      failed,
       total_ms: Date.now() - startedAt,
     }),
   )
 }
 
 // BRT = UTC-3, no DST since 2019.
-function formatBRT(isoUtc: string): string {
+export function formatBRT(isoUtc: string): string {
   return new Date(isoUtc).toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     weekday: 'short',
@@ -168,15 +274,58 @@ function formatBRT(isoUtc: string): string {
   })
 }
 
-function buildEmailHtml(competitionName: string, round: string, matches: MatchInfo[]): string {
+/**
+ * Escapes the five HTML-significant characters. Round names and team names come
+ * from the database and may legitimately contain `"`, `'` or `&` (e.g. "Quartas
+ * de Final", apostrophes). Escaping keeps the markup well-formed and avoids any
+ * injection into the rendered e-mail.
+ */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * Appends UTM params to the CTA link so GA4 (which auto-captures utm_*) attributes
+ * site visits originating from this e-mail. See docs/analytics.md.
+ */
+function withEmailUtm(url: string): string {
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}utm_source=email&utm_medium=email&utm_campaign=round_reminder`
+}
+
+/**
+ * Renders a team crest as an inline <img>. Returns '' when there's no logo.
+ *
+ * NOTE: many crests from football-data.org are SVG, and Gmail/Outlook do not
+ * render SVG images in e-mail — those degrade to the `alt` text. PNG crests show
+ * fine. The image is kept small and the team name is always shown next to it, so
+ * a missing crest never breaks the layout.
+ */
+function crestImg(url: string | null, alt: string): string {
+  if (!url) return ''
+  return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" width="20" height="20" style="vertical-align: middle; border: 0;">`
+}
+
+function buildEmailHtml(
+  competitionName: string,
+  round: string,
+  matches: MatchInfo[],
+  appUrl: string,
+  unsubUrl?: string,
+): string {
   const matchRows = matches
     .map(
       (m) => `
       <tr>
-        <td style="padding: 8px 4px; text-align: right; font-weight: bold;">${m.home}</td>
+        <td style="padding: 8px 4px; text-align: right; font-weight: bold;">${escapeHtml(m.home)}&nbsp;${crestImg(m.homeLogo, m.home)}</td>
         <td style="padding: 8px 8px; text-align: center; color: #6b7280;">vs</td>
-        <td style="padding: 8px 4px; text-align: left; font-weight: bold;">${m.away}</td>
-        <td style="padding: 8px 4px 8px 16px; text-align: left; color: #6b7280; white-space: nowrap;">${m.time}</td>
+        <td style="padding: 8px 4px; text-align: left; font-weight: bold;">${crestImg(m.awayLogo, m.away)}&nbsp;${escapeHtml(m.away)}</td>
+        <td style="padding: 8px 4px 8px 16px; text-align: left; color: #6b7280; white-space: nowrap;">${escapeHtml(m.time)}</td>
       </tr>`,
     )
     .join('')
@@ -186,16 +335,60 @@ function buildEmailHtml(competitionName: string, round: string, matches: MatchIn
       ? `<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">${matchRows}</table>`
       : ''
 
-  return `
-    <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto;">
-      <h2 style="margin-bottom: 4px;">A Rodada ${round} começa amanhã!</h2>
-      <p style="color: #6b7280; margin-top: 0;">${competitionName}</p>
-      ${matchTable}
-      <p style="margin-top: 16px;">Não esquece de registrar seus palpites antes do primeiro jogo!</p>
-      <a href="${APP_URL}" style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">Fazer meus palpites</a>
-      <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
-        Você está recebendo este e-mail porque participa de um grupo no Palpitae.
-      </p>
-    </div>
-  `
+  const safeRound = escapeHtml(round)
+  const safeCompetition = escapeHtml(competitionName)
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rodada ${safeRound} começa amanhã</title>
+</head>
+<body style="margin: 0; padding: 0; background: #f3f4f6;">
+  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+    <h2 style="margin-bottom: 4px;">A Rodada ${safeRound} começa amanhã!</h2>
+    <p style="color: #6b7280; margin-top: 0;">${safeCompetition}</p>
+    ${matchTable}
+    <p style="margin-top: 16px;">Não esquece de registrar seus palpites antes do primeiro jogo!</p>
+    <a href="${escapeHtml(withEmailUtm(appUrl))}" style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">Fazer meus palpites</a>
+    <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
+      Você está recebendo este e-mail porque participa de um grupo no Palpitae.${
+        unsubUrl
+          ? `<br>Não quer mais estes lembretes? <a href="${escapeHtml(unsubUrl)}" style="color: #6b7280;">Cancelar inscrição</a>.`
+          : ''
+      }
+    </p>
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Plain-text fallback for clients that prefer text/plain over HTML. Resend sends
+ * whichever the recipient's client picks; without this, text-only clients show
+ * raw HTML.
+ */
+function buildEmailText(
+  competitionName: string,
+  round: string,
+  matches: MatchInfo[],
+  appUrl: string,
+  unsubUrl?: string,
+): string {
+  const lines = [
+    `A Rodada ${round} começa amanhã!`,
+    competitionName,
+    '',
+  ]
+  for (const m of matches) {
+    lines.push(`${m.home} vs ${m.away} — ${m.time}`)
+  }
+  if (matches.length > 0) lines.push('')
+  lines.push('Não esquece de registrar seus palpites antes do primeiro jogo!')
+  lines.push(`Fazer meus palpites: ${withEmailUtm(appUrl)}`)
+  lines.push('')
+  lines.push('Você está recebendo este e-mail porque participa de um grupo no Palpitae.')
+  if (unsubUrl) lines.push(`Cancelar inscrição: ${unsubUrl}`)
+  return lines.join('\n')
 }

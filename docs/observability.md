@@ -106,6 +106,10 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`) | `error_message` (só em `exchange_failed`) | — | — |
 | `oauth_error` | `error_code` | — | — | — |
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
+| `email_reminder_sent` | `user_hash` | `competition_name` | `round` | — |
+| `cron_round_reminder` | — | — | — | `double1`=rounds, `double2`=sent, `double3`=failed |
+| `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app) | — | — |
+| `email_resubscribed` | `user_hash` | `source` (`settings`) | — | — |
 
 Observação sobre `football_api_error`: tem **duas formas** de chamada. No poller
 (`matches/poller.ts`) é `[comp_id, round, error_message]`; nos endpoints de matches
