@@ -5,7 +5,7 @@ import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
-import { exportEventsToR2 } from './observability/export'
+import { exportRecentDays } from './observability/export'
 import { predictionsRouter } from './predictions/router'
 import type { AppContext, Env } from './types'
 
@@ -46,9 +46,8 @@ export default {
   // Cron Triggers (ver wrangler.toml). O controller.cron diz qual agendamento disparou.
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     if (controller.cron === DAILY_EXPORT_CRON) {
-      // Cold path — arquiva o dia ANTERIOR (já completo) no R2.
-      const yesterday = new Date(controller.scheduledTime - 24 * 60 * 60 * 1000)
-      ctx.waitUntil(exportEventsToR2(env, yesterday))
+      // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
+      ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))
       return
     }
 
