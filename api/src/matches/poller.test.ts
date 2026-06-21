@@ -44,10 +44,32 @@ function buildFakeDb(rows: ActiveRow[]) {
   return db
 }
 
+/**
+ * Fake AnalyticsEngineDataset. logEvent() calls .writeDataPoint() with
+ * { indexes, blobs, doubles }, where blobs[0] is always the event_type and
+ * blobs[1..] are the dims passed in. So a poller_run with dims.blobs ['ok']
+ * surfaces here as blobs === ['poller_run', 'ok'].
+ */
+function buildFakeAe() {
+  return { writeDataPoint: vi.fn() }
+}
+
+type WrittenPoint = { indexes?: string[]; blobs?: string[]; doubles?: number[] }
+
+function pointsOfType(ae: { writeDataPoint: ReturnType<typeof vi.fn> }, type: string): WrittenPoint[] {
+  return ae.writeDataPoint.mock.calls
+    .map((c) => c[0] as WrittenPoint)
+    .filter((p) => p.blobs?.[0] === type)
+}
+
 describe('pollActiveMatches', () => {
   beforeEach(() => {
-    syncFixturesMock.mockClear()
-    scoreMock.mockClear()
+    syncFixturesMock.mockReset()
+    scoreMock.mockReset()
+    // Restore the happy-path defaults from the vi.mock factory after the reset,
+    // so a persistent mockRejectedValue in one test can't leak into the next.
+    syncFixturesMock.mockResolvedValue(undefined as never)
+    scoreMock.mockResolvedValue(undefined)
   })
 
   it('does nothing when no matches are in the active window', async () => {
@@ -165,5 +187,64 @@ describe('pollActiveMatches', () => {
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
     expect(scoreMock).not.toHaveBeenCalled()
+  })
+
+  it('emits a poller_run with status ok and zeroed counters for an empty window', async () => {
+    const ae = buildFakeAe()
+    const db = buildFakeDb([])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+
+    const runs = pointsOfType(ae, 'poller_run')
+    expect(runs).toHaveLength(1)
+    // blobs[0] is the event_type, blobs[1] is the run status.
+    expect(runs[0].blobs?.[1]).toBe('ok')
+    // doubles = [matches_checked, fixtures_updated, api_calls, duration_ms]
+    const doubles = runs[0].doubles ?? []
+    expect(doubles.slice(0, 3)).toEqual([0, 0, 0])
+    expect(doubles[3]).toBeGreaterThanOrEqual(0)
+    expect(pointsOfType(ae, 'football_api_error')).toHaveLength(0)
+  })
+
+  it('emits a poller_run with status ok and counters reflecting rounds/fixtures/api_calls on success', async () => {
+    syncFixturesMock.mockResolvedValue({ matches: 4 } as never)
+    const ae = buildFakeAe()
+    const db = buildFakeDb([
+      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' },
+      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '2' },
+    ])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+
+    const runs = pointsOfType(ae, 'poller_run')
+    expect(runs).toHaveLength(1)
+    expect(runs[0].blobs?.[1]).toBe('ok')
+    const [matchesChecked, fixturesUpdated, apiCalls] = runs[0].doubles ?? []
+    // Two (comp, round) rows in the window, two syncFixtures calls, 4 fixtures each.
+    expect(matchesChecked).toBe(2)
+    expect(apiCalls).toBe(2)
+    expect(fixturesUpdated).toBe(8)
+    expect(pointsOfType(ae, 'football_api_error')).toHaveLength(0)
+  })
+
+  it('emits football_api_error and a poller_run with status error when a sync rejects', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('API down'))
+    const ae = buildFakeAe()
+    const db = buildFakeDb([
+      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' },
+    ])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+
+    const errors = pointsOfType(ae, 'football_api_error')
+    expect(errors).toHaveLength(1)
+    // football_api_error blobs = [event_type, comp_id, round, message]
+    expect(errors[0].blobs?.[1]).toBe('c1')
+    expect(errors[0].blobs?.[2]).toBe('1')
+    expect(errors[0].blobs?.[3]).toBe('API down')
+
+    const runs = pointsOfType(ae, 'poller_run')
+    expect(runs).toHaveLength(1)
+    expect(runs[0].blobs?.[1]).toBe('error')
   })
 })

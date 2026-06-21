@@ -25,6 +25,7 @@ export type EventType =
   | 'group_joined'
   | 'member_removed'
   | 'group_renamed'
+  | 'group_deleted'
   | 'login_success'
   | 'login_failure'
   | 'oauth_error'
@@ -46,7 +47,7 @@ export function logEvent(ae: AnalyticsEngineDataset | undefined, type: EventType
   if (!ae) return
   ae.writeDataPoint({
     indexes: [type],
-    blobs: [type, ...(dims.blobs ?? [])].map((b) => b ?? ''),
+    blobs: [type, ...(dims.blobs ?? [])].map((b) => (b ?? '').slice(0, 256)),
     doubles: dims.doubles ?? [],
   })
 }
