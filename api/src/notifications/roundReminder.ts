@@ -40,12 +40,15 @@ type ReminderRow = {
   round: string
   user_id: string
   email: string
+  group_id: string
+  group_name: string
 }
 
-/** A user to notify. id is needed to mint the per-user unsubscribe token. */
+/** A user to notify. groups are all their groups for this competition+round. */
 type Recipient = {
   id: string
   email: string
+  groups: { id: string; name: string }[]
 }
 
 /** Config for unsubscribe links/headers. Omitted in tests → no link rendered. */
@@ -135,7 +138,9 @@ export async function sendRoundReminders(
          c.name  AS competition_name,
          m.round AS round,
          u.id    AS user_id,
-         u.email AS email
+         u.email AS email,
+         g.id    AS group_id,
+         g.name  AS group_name
        FROM matches m
        JOIN competitions c   ON c.id = m.competition_id
        JOIN groups g         ON g.competition_id = c.id
@@ -186,15 +191,21 @@ export async function sendRoundReminders(
     const key = `${row.competition_id}::${row.round}`
     const entry = grouped.get(key)
     if (entry) {
-      if (!entry.recipients.some((r) => r.email === row.email)) {
-        entry.recipients.push({ id: row.user_id, email: row.email })
+      const existing = entry.recipients.find((r) => r.email === row.email)
+      if (existing) {
+        // Same user, additional group for this competition+round → add group link.
+        if (!existing.groups.some((g) => g.id === row.group_id)) {
+          existing.groups.push({ id: row.group_id, name: row.group_name })
+        }
+      } else {
+        entry.recipients.push({ id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] })
       }
     } else {
       grouped.set(key, {
         competitionId: row.competition_id,
         competitionName: row.competition_name,
         round: row.round,
-        recipients: [{ id: row.user_id, email: row.email }],
+        recipients: [{ id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] }],
         matches: [],
       })
     }
@@ -267,15 +278,15 @@ export async function sendRoundReminders(
     // A single send failure is isolated so the rest of the batch still goes out.
     // The unsubscribe link is per-user (signed token), so the body is built per
     // recipient — match list rebuild is cheap at this volume.
-    for (const { id, email } of recipients) {
+    for (const { id, email, groups: recipientGroups } of recipients) {
       try {
         const unsubUrl =
           unsub && apiBaseUrl
             ? `${apiBaseUrl}/notifications/unsubscribe?token=${await signUnsubToken(id, unsub.secret)}`
             : undefined
 
-        const html = buildEmailHtml(competitionName, round, matches, appUrl, unsubUrl)
-        const text = buildEmailText(competitionName, round, matches, appUrl, unsubUrl)
+        const html = buildEmailHtml(competitionName, round, matches, appUrl, recipientGroups, unsubUrl)
+        const text = buildEmailText(competitionName, round, matches, appUrl, recipientGroups, unsubUrl)
         // RFC 8058 one-click unsubscribe — Gmail/Apple show a native button.
         const headers = unsubUrl
           ? {
@@ -365,6 +376,7 @@ function buildEmailHtml(
   round: string,
   matches: MatchInfo[],
   appUrl: string,
+  groups: { id: string; name: string }[],
   unsubUrl?: string,
 ): string {
   const matchRows = matches
@@ -384,8 +396,19 @@ function buildEmailHtml(
       ? `<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">${matchRows}</table>`
       : ''
 
+  const ctaButtons =
+    groups.length === 1
+      ? `<a href="${escapeHtml(withEmailUtm(`${appUrl}/grupos/${groups[0].id}`))}" style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">Fazer meus palpites</a>`
+      : groups
+          .map(
+            (g) =>
+              `<a href="${escapeHtml(withEmailUtm(`${appUrl}/grupos/${g.id}`))}" style="display: inline-block; background: #16a34a; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; margin: 4px 4px 0 0;">${escapeHtml(g.name)}</a>`,
+          )
+          .join('')
+
   const safeRound = escapeHtml(round)
   const safeCompetition = escapeHtml(competitionName)
+  const logoUrl = escapeHtml(`${appUrl}/apple-touch-icon.png`)
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -396,11 +419,16 @@ function buildEmailHtml(
 </head>
 <body style="margin: 0; padding: 0; background: #f3f4f6;">
   <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+    <div style="text-align: center; padding: 16px 0 24px;">
+      <img src="${logoUrl}" alt="" width="48" height="48" style="border-radius: 10px; border: 0; display: block; margin: 0 auto 8px;">
+      <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
+    </div>
     <h2 style="margin-bottom: 4px;">A Rodada ${safeRound} começa amanhã!</h2>
     <p style="color: #6b7280; margin-top: 0;">${safeCompetition}</p>
     ${matchTable}
     <p style="margin-top: 16px;">Não esquece de registrar seus palpites antes do primeiro jogo!</p>
-    <a href="${escapeHtml(withEmailUtm(appUrl))}" style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">Fazer meus palpites</a>
+    ${groups.length > 1 ? '<p style="margin-bottom: 4px; font-weight: bold;">Fazer meus palpites:</p>' : ''}
+    ${ctaButtons}
     <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
       Você está recebendo este e-mail porque participa de um grupo no Palpitae.${
         unsubUrl
@@ -423,6 +451,7 @@ function buildEmailText(
   round: string,
   matches: MatchInfo[],
   appUrl: string,
+  groups: { id: string; name: string }[],
   unsubUrl?: string,
 ): string {
   const lines = [
@@ -435,7 +464,14 @@ function buildEmailText(
   }
   if (matches.length > 0) lines.push('')
   lines.push('Não esquece de registrar seus palpites antes do primeiro jogo!')
-  lines.push(`Fazer meus palpites: ${withEmailUtm(appUrl)}`)
+  if (groups.length === 1) {
+    lines.push(`Fazer meus palpites: ${withEmailUtm(`${appUrl}/grupos/${groups[0].id}`)}`)
+  } else {
+    lines.push('Fazer meus palpites:')
+    for (const g of groups) {
+      lines.push(`  ${g.name}: ${withEmailUtm(`${appUrl}/grupos/${g.id}`)}`)
+    }
+  }
   lines.push('')
   lines.push('Você está recebendo este e-mail porque participa de um grupo no Palpitae.')
   if (unsubUrl) lines.push(`Cancelar inscrição: ${unsubUrl}`)
