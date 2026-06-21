@@ -259,7 +259,16 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
            home_score = excluded.home_score,
            away_score = excluded.away_score,
            start_time = excluded.start_time,
-           group_name = excluded.group_name`,
+           group_name = excluded.group_name,
+           -- If a provider score-correction lands after the match was already
+           -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
+           -- points/leaderboard recompute against the final score. Without this,
+           -- the displayed score updates but points stay frozen on the stale one
+           -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
+           scored_at  = CASE
+             WHEN matches.home_score IS NOT excluded.home_score
+               OR matches.away_score IS NOT excluded.away_score
+             THEN NULL ELSE matches.scored_at END`,
       )
       .bind(
         crypto.randomUUID(),
