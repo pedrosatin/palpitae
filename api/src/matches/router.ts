@@ -1,7 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
-import { logRequestPerf } from '../observability'
+import { logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
@@ -72,7 +72,10 @@ router.get('/', async (c) => {
   const cacheKey = new Request(c.req.url)
   if (cache) {
     const cached = await cache.match(cacheKey)
-    if (cached) return cached
+    if (cached) {
+      logEvent(c.env.AE, 'matches_cache', { blobs: ['hit', competitionId] })
+      return cached
+    }
   }
 
   let query = `
@@ -195,6 +198,8 @@ router.get('/', async (c) => {
     if (apiKey) {
       c.executionCtx.waitUntil(maybeSyncResults(competitionId, db, apiKey))
     }
+
+    logEvent(c.env.AE, 'matches_cache', { blobs: ['miss', competitionId] })
 
     logRequestPerf('GET /matches', {
       status: 200,

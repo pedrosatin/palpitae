@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
-import { logRequestPerf } from '../observability'
+import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 
 const router = new Hono<AppContext>()
@@ -367,13 +367,13 @@ router.put('/', requireAuth, async (c) => {
   // Verify match belongs to the group's competition
   const match = await db
     .prepare(
-      `SELECT m.id, m.start_time
+      `SELECT m.id, m.start_time, m.round
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        WHERE m.id = ? AND g.id = ?`,
     )
     .bind(match_id, group_id)
-    .first<{ id: string; start_time: string }>()
+    .first<{ id: string; start_time: string; round: string }>()
 
   if (!match) {
     return c.json({ error: 'Jogo não encontrado nesta competição' }, 404)
@@ -405,6 +405,11 @@ router.put('/', requireAuth, async (c) => {
       now,
     )
     .run()
+
+  logEvent(c.env.AE, 'prediction_saved', {
+    blobs: [group_id, match.round, await hashUserId(userId), 'single'],
+    doubles: [1],
+  })
 
   return c.json({ ok: true })
 })
@@ -545,6 +550,10 @@ router.put('/bulk', requireAuth, async (c) => {
 
   if (statements.length > 0) {
     await db.batch(statements)
+    logEvent(c.env.AE, 'prediction_saved', {
+      blobs: [group_id, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
+      doubles: [saved.length],
+    })
   }
 
   return c.json({ ok: true, saved, locked, not_found: notFound })
@@ -699,6 +708,11 @@ router.post('/import', requireAuth, async (c) => {
   )
 
   await db.batch(importStatements)
+
+  logEvent(c.env.AE, 'prediction_saved', {
+    blobs: [target_group_id, '', await hashUserId(userId), 'import'],
+    doubles: [toImport.length],
+  })
 
   return c.json({ ok: true, imported: toImport.length, locked_skipped: lockedSkipped })
 })
