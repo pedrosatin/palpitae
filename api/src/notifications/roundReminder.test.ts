@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatBRT, sendRoundReminders } from './roundReminder'
 
-type ReminderRow = { competition_id?: string; competition_name: string; round: string; email: string; user_id?: string }
+type ReminderRow = { competition_id?: string; competition_name: string; round: string; email: string; user_id?: string; group_id?: string; group_name?: string }
 type MatchRow = {
   competition_id?: string
   competition_name: string
@@ -30,6 +30,8 @@ function buildFakeDb(userRows: ReminderRow[], matchRows: MatchRow[] = []) {
         ...r,
         competition_id: r.competition_id ?? r.competition_name,
         user_id: r.user_id ?? r.email,
+        group_id: r.group_id ?? 'default-group',
+        group_name: r.group_name ?? 'Grupo',
       }))
       const normalizedMatches = matchRows.map((r) => ({
         ...r,
@@ -120,15 +122,20 @@ describe('sendRoundReminders', () => {
     expect(recipients.sort()).toEqual(['a@x.com', 'b@x.com'])
   })
 
-  it('deduplicates a member who appears in multiple groups of the same round', async () => {
+  it('sends one e-mail with per-group CTAs when a member is in multiple groups of the same round', async () => {
     const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
+      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com', group_id: 'g1', group_name: 'Grupo A' },
+      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com', group_id: 'g2', group_name: 'Grupo B' },
     ])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
     expect(fetch).toHaveBeenCalledTimes(1)
+    const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
+    expect(html).toContain('/grupos/g1')
+    expect(html).toContain('/grupos/g2')
+    expect(html).toContain('Grupo A')
+    expect(html).toContain('Grupo B')
   })
 
   it('includes match details in the e-mail body', async () => {
@@ -355,7 +362,9 @@ describe('sendRoundReminders', () => {
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
     const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    expect(html).not.toContain('<img')
+    // Logo <img> still present; no crest <img> since both logo_url are null.
+    const imgTags = [...html.matchAll(/<img[^>]+>/g)].map((m: RegExpMatchArray) => m[0])
+    expect(imgTags.every((t: string) => t.includes('apple-touch-icon'))).toBe(true)
     expect(html).toContain('Brasil')
   })
 
@@ -367,8 +376,10 @@ describe('sendRoundReminders', () => {
     await sendRoundReminders(db as unknown as D1Database, 'key', undefined, 'http://localhost:5173')
 
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.html).toContain('href="http://localhost:5173?utm_source=email')
-    expect(body.text).toContain('http://localhost:5173?utm_source=email')
+    expect(body.html).toContain('http://localhost:5173/grupos/')
+    expect(body.html).toContain('utm_source=email')
+    expect(body.text).toContain('http://localhost:5173/grupos/')
+    expect(body.text).toContain('utm_source=email')
   })
 
   it('adds email UTM params to the CTA so GA4 attributes the visit', async () => {
