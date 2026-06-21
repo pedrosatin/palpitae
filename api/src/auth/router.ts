@@ -12,6 +12,7 @@ import {
 import { getFeatureFlags } from './permissions'
 import { signJwt } from './jwt'
 import { requireAuth } from './middleware'
+import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
 
 const SESSION_COOKIE = 'session'
@@ -77,6 +78,7 @@ authRouter.get('/callback', async (c) => {
   const { code, state, error } = c.req.query()
 
   if (error) {
+    logEvent(c.env.AE, 'oauth_error', { blobs: [error] })
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(error)}`)
   }
 
@@ -94,10 +96,12 @@ authRouter.get('/callback', async (c) => {
   deleteCookie(c, REDIRECT_COOKIE, clearOpts)
 
   if (!storedState || !storedNonce || !codeVerifier) {
+    logEvent(c.env.AE, 'login_failure', { blobs: ['session_expired'] })
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=session_expired`)
   }
 
   if (state !== storedState) {
+    logEvent(c.env.AE, 'login_failure', { blobs: ['state_mismatch'] })
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=state_mismatch`)
   }
 
@@ -132,12 +136,15 @@ authRouter.get('/callback', async (c) => {
 
     setCookie(c, SESSION_COOKIE, sessionToken, cookieOptions(c.env.BASE_URL, SESSION_TTL))
 
+    logEvent(c.env.AE, 'login_success', { blobs: [await hashUserId(user.id)] })
+
     const destination = storedRedirect.startsWith('?')
       ? `${c.env.FRONTEND_URL}${storedRedirect}`
       : c.env.FRONTEND_URL
     return c.redirect(destination)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'auth_failed'
+    logEvent(c.env.AE, 'login_failure', { blobs: ['exchange_failed', message] })
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(message)}`)
   }
 })
