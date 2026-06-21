@@ -59,10 +59,13 @@ export default {
     if (controller.cron === ROUND_REMINDER_CRON) {
       // Lembrete de rodadas que começam amanhã (1x/dia).
       ctx.waitUntil(
-        sendRoundReminders(env.DB, env.RESEND_API_KEY ?? '', env.AE, env.FRONTEND_URL, {
-          secret: env.JWT_SECRET,
-          apiBaseUrl: env.BASE_URL,
-        }),
+        sendRoundReminders(
+          env.DB,
+          env.RESEND_API_KEY ?? '',
+          env.AE,
+          env.FRONTEND_URL,
+          env.BASE_URL ? { secret: env.JWT_SECRET, apiBaseUrl: env.BASE_URL } : undefined,
+        ),
       )
       return
     }

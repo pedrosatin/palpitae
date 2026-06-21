@@ -2,8 +2,9 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatBRT, sendRoundReminders } from './roundReminder'
 
-type ReminderRow = { competition_name: string; round: string; email: string; user_id?: string }
+type ReminderRow = { competition_id?: string; competition_name: string; round: string; email: string; user_id?: string }
 type MatchRow = {
+  competition_id?: string
   competition_name: string
   round: string
   home_team: string
@@ -25,8 +26,16 @@ function buildFakeDb(userRows: ReminderRow[], matchRows: MatchRow[] = []) {
     prepare(sql: string) {
       captured.sqls.push(sql)
       // Default user_id to the e-mail so the source always has a stable id to hash.
-      const normalizedUsers = userRows.map((r) => ({ ...r, user_id: r.user_id ?? r.email }))
-      const rows = sql.includes('home_team') ? matchRows : normalizedUsers
+      const normalizedUsers = userRows.map((r) => ({
+        ...r,
+        competition_id: r.competition_id ?? r.competition_name,
+        user_id: r.user_id ?? r.email,
+      }))
+      const normalizedMatches = matchRows.map((r) => ({
+        ...r,
+        competition_id: r.competition_id ?? r.competition_name,
+      }))
+      const rows = sql.includes('home_team') ? normalizedMatches : normalizedUsers
       const stmt = {
         bind() {
           return stmt
@@ -74,8 +83,8 @@ describe('sendRoundReminders', () => {
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
-    expect(userSql(db)).toContain("date(m.start_time) = date('now', '+1 day')")
-    expect(userSql(db)).toContain('MIN(date(m2.start_time))')
+    expect(userSql(db)).toContain("date(m.start_time, '-3 hours') = date('now', '-3 hours', '+1 day')")
+    expect(userSql(db)).toContain("MIN(date(m2.start_time, '-3 hours'))")
     expect(userSql(db)).toContain("m.status = 'scheduled'")
   })
 
@@ -171,9 +180,10 @@ describe('sendRoundReminders', () => {
     expect(body.from).toContain('palpitae.com.br')
   })
 
-  it('isolates a single send failure and still sends the rest', async () => {
+  it('isolates a single permanent send failure and still sends the rest', async () => {
+    // 422 is permanent (bad address etc.) — fail fast, no retry, isolate it.
     vi.mocked(fetch)
-      .mockResolvedValueOnce(new Response('boom', { status: 500 }))
+      .mockResolvedValueOnce(new Response('boom', { status: 422 }))
       .mockResolvedValueOnce(new Response(null, { status: 200 }))
     const db = buildFakeDb([
       { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
@@ -183,6 +193,36 @@ describe('sendRoundReminders', () => {
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
     expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries a 429 (honouring Retry-After) and eventually succeeds', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response('rate', { status: 429, headers: { 'Retry-After': '0' } }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
+
+    await sendRoundReminders(db as unknown as D1Database, 'key')
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('gives up after MAX_SEND_ATTEMPTS on persistent rate limiting', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response('rate', { status: 429, headers: { 'Retry-After': '0' } }),
+    )
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
+
+    await sendRoundReminders(db as unknown as D1Database, 'key')
+
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('does nothing and reports zero when the Resend key is missing', async () => {
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
+
+    await sendRoundReminders(db as unknown as D1Database, '')
+
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('excludes users who already predicted (NOT EXISTS on predictions)', async () => {
@@ -393,6 +433,19 @@ describe('sendRoundReminders', () => {
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
     expect(body.html).not.toContain('Cancelar inscrição')
     expect(body.headers).toBeUndefined()
+  })
+
+  it('treats same-named competitions as separate when they have different IDs', async () => {
+    // Same competition name, different IDs — old string key would collapse them into
+    // one group, so the same user would only get one e-mail instead of two.
+    const db = buildFakeDb([
+      { competition_id: 'comp-1', competition_name: 'Liga', round: '3', email: 'a@x.com' },
+      { competition_id: 'comp-2', competition_name: 'Liga', round: '3', email: 'a@x.com' },
+    ])
+
+    await sendRoundReminders(db as unknown as D1Database, 'key')
+
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 })
 
