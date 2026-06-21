@@ -122,29 +122,25 @@ If there is a conflict:
 
 ## 📊 Analytics — GA Events (obrigatório)
 
-Sempre que adicionar ou modificar um elemento clicável (`button`, `Link`, `a`, ou qualquer elemento com `onClick`), adicione um `trackEvent()` correspondente.
+Ao adicionar ou modificar um elemento clicável (`button`, `Link`, `a`, ou qualquer elemento
+com `onClick`), adicione `trackEvent('click_<contexto>_<acao>')` (`web/src/analytics/ga.ts`).
+Contexto em inglês, ação em português. NÃO rastreie steppers de placar nem fechar modal por
+backdrop/ESC.
 
-```ts
-import { trackEvent } from '../../analytics/ga'
+Convenções de nome, params, o que ignorar e eventos já mapeados:
+[`docs/analytics.md`](docs/analytics.md).
 
-// botão
-<button onClick={() => { trackEvent('click_<contexto>_<acao>'); doSomething() }}>
+---
 
-// link
-<Link to="/rota" onClick={() => trackEvent('click_<contexto>_<acao>')}>
-```
+## 📡 Observability — Server-Side Events (obrigatório)
 
-**Convenções de nome:**
-- snake_case, prefixo `click_` para cliques, `submit_` para envios bem-sucedidos
-- padrão: `click_<página/componente>_<ação>` — ex: `click_header_logout`, `click_grupo_tab`
-- inclua params quando útil: `{ tab }`, `{ group_id }`, `{ round }`, `{ count }`
+Ao **criar ou modificar um endpoint que faz mutação de negócio** (cria/edita/remove estado:
+palpite, grupo, membro, login...), adicione `logEvent(c.env.AE, '<tipo>', { ... })` após a
+escrita — equivalente server-side do `trackEvent()`. Pseudonimize PII com `hashUserId()`
+(LGPD). NÃO instrumente leituras (`GET`) nem cliques (cliques = GA no cliente).
 
-**Rastrear vs. ignorar:**
-- ✅ Rastrear: toda ação intencional (navegar, abrir modal, salvar, copiar, confirmar)
-- ❌ Ignorar: steppers de placar (−/+ no MatchCard) — volume alto, baixo valor
-- ❌ Ignorar: fechar modal via backdrop/ESC — ruído sem intenção clara
-
-**Helper:** `web/src/analytics/ga.ts` → `trackEvent(name, params?)`
+Convenções, esquema de eventos, arquitetura e decisões descartadas:
+[`docs/observability.md`](docs/observability.md).
 
 ---
 

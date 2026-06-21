@@ -4,39 +4,32 @@ O trabalho de SEO/performance/analytics está documentado em
 [`context-seo.md`](context-seo.md): o que já foi feito, o que falta e as decisões
 descartadas. Leia antes de mexer em qualquer coisa desses tópicos.
 
-## Analytics — regra obrigatória para eventos de clique
+## Observabilidade — eventos server-side (obrigatório)
 
-**Sempre que adicionar ou modificar um elemento clicável** (button, Link, a, ou qualquer elemento com `onClick`), adicione um `trackEvent()` correspondente.
+**Ao criar ou modificar um endpoint que faz mutação de negócio** (cria/edita/remove
+estado: palpite, grupo, membro, login...), adicione um `logEvent(c.env.AE, '<tipo>', { ... })`
+após a escrita — equivalente server-side do `trackEvent()`. Pseudonimize PII com
+`hashUserId()` (LGPD). Não instrumente leituras (`GET`) nem cliques (cliques = GA no cliente).
 
-```ts
-import { trackEvent } from '../../analytics/ga'
+Arquitetura, esquema de eventos, convenções e decisões descartadas:
+[`docs/observability.md`](docs/observability.md). Leia antes de mexer em logs/métricas/eventos.
 
-// botão
-<button onClick={() => { trackEvent('click_<contexto>_<acao>'); doSomething() }}>
+## Analytics — eventos de clique (obrigatório)
 
-// link
-<Link to="/rota" onClick={() => trackEvent('click_<contexto>_<acao>')}>
-```
+**Ao adicionar ou modificar um elemento clicável** (`button`, `Link`, `a`, ou qualquer
+elemento com `onClick`), adicione um `trackEvent('click_<contexto>_<acao>')` correspondente
+(`web/src/analytics/ga.ts`). Contexto em inglês, ação em português. Não rastreie steppers de
+placar nem fechamento de modal por backdrop/ESC.
 
-**Convenções de nome:**
-- snake_case, prefixo `click_` para cliques, `submit_` para envios de formulário bem-sucedidos
-- padrão: `click_<página/componente>_<ação>` — ex: `click_header_logout`, `click_grupo_tab`
-- inclua params quando útil para segmentação: `{ tab }`, `{ group_id }`, `{ round }`, `{ count }`
-
-**O que rastrear vs. ignorar:**
-- Rastrear: toda ação intencional do usuário (navegar, abrir modal, salvar, copiar, confirmar)
-- Ignorar: steppers de placar (−/+ no MatchCard) — volume alto, baixo valor analítico
-- Ignorar: fechamento de modal via backdrop/ESC (ruído sem intenção clara)
-
-**Onde está tudo:**
-- Helper: `web/src/analytics/ga.ts` → `trackEvent(name, params?)`
-- Eventos já mapeados: ver tabela no commit de instrumentação (2026-06-19)
+Convenções de nome, params, o que ignorar e eventos já mapeados:
+[`docs/analytics.md`](docs/analytics.md).
 
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
 Rules:
+
 - ALWAYS read graphify-out/GRAPH_REPORT.md before reading any source files, running grep/glob searches, or answering codebase questions. The graph is your primary map of the codebase.
 - IF graphify-out/wiki/index.md EXISTS, navigate it instead of reading raw files
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
