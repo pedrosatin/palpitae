@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import Header from './Header'
@@ -23,7 +24,11 @@ function renderHeader(props?: Partial<Parameters<typeof Header>[0]>) {
     onJoinGroup: vi.fn(),
     onLogout: vi.fn(),
   }
-  return render(<Header {...defaults} {...props} />)
+  return render(
+    <MemoryRouter>
+      <Header {...defaults} {...props} />
+    </MemoryRouter>,
+  )
 }
 
 describe('Header', () => {

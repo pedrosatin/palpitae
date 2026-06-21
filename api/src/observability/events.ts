@@ -30,6 +30,11 @@ export type EventType =
   | 'login_failure'
   | 'oauth_error'
   | 'matches_cache'
+  // Notificações por e-mail
+  | 'email_reminder_sent'
+  | 'cron_round_reminder'
+  | 'email_unsubscribed'
+  | 'email_resubscribed'
 
 export type EventDims = {
   /** Dimensões string. Viram blob2, blob3, ... (blob1 é sempre o event_type). */
