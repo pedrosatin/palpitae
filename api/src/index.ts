@@ -5,6 +5,7 @@ import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
+import { notificationsRouter } from './notifications/router'
 import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
 import { predictionsRouter } from './predictions/router'
@@ -40,6 +41,7 @@ app.route('/competitions', competitionsRouter)
 app.route('/groups', groupsRouter)
 app.route('/matches', matchesRouter)
 app.route('/predictions', predictionsRouter)
+app.route('/notifications', notificationsRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
@@ -56,7 +58,12 @@ export default {
 
     if (controller.cron === ROUND_REMINDER_CRON) {
       // Lembrete de rodadas que começam amanhã (1x/dia).
-      ctx.waitUntil(sendRoundReminders(env.DB, env.RESEND_API_KEY ?? ''))
+      ctx.waitUntil(
+        sendRoundReminders(env.DB, env.RESEND_API_KEY ?? '', env.AE, env.FRONTEND_URL, {
+          secret: env.JWT_SECRET,
+          apiBaseUrl: env.BASE_URL,
+        }),
+      )
       return
     }
 
