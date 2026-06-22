@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Button from '../Button'
 import { trackEvent } from '../../analytics/ga'
 import styles from './Header.module.css'
@@ -83,6 +84,16 @@ export default function Header({
 
             {menuOpen && (
               <div className={styles.dropdown}>
+                <Link
+                  to="/configuracoes"
+                  className={styles.dropdownItem}
+                  onClick={() => {
+                    trackEvent('click_header_configuracoes')
+                    setMenuOpen(false)
+                  }}
+                >
+                  Configurações
+                </Link>
                 <button
                   className={styles.dropdownItem}
                   onClick={() => {

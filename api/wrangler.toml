@@ -25,8 +25,10 @@ dataset = "palpitae_events"
 #    A cada 30 min; janela ativa = 85 min ⇒ no máx. 1 tick de atraso até pontuar.
 #  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
 #    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
+#  - "0 10 * * *"   → round reminder: e-mail de lembrete para rodadas que começam
+#    amanhã. 1x/dia às 10h UTC (07h BRT). Idempotente por design (ver roundReminder.ts).
 [triggers]
-crons = ["0,30 * * * *", "5 0 * * *"]
+crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *"]
 
 # Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
 # Criar antes do deploy: wrangler r2 bucket create palpitae-events
@@ -44,4 +46,5 @@ FRONTEND_URL = "https://palpitae.com.br"
 #   wrangler secret put FOOTBALL_API_KEY
 #   wrangler secret put CF_ACCOUNT_ID    # cold path: conta da SQL API do Analytics Engine
 #   wrangler secret put AE_SQL_TOKEN     # cold path: token Account Analytics:Read
+#   wrangler secret put RESEND_API_KEY   # round reminder: API key do Resend
 # Local overrides go in .dev.vars (already has localhost values)
