@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import styles from './MatchCard.module.css'
@@ -69,6 +69,13 @@ export default function MatchCard({
   )
   const [homeTouched, setHomeTouched] = useState(false)
   const [awayTouched, setAwayTouched] = useState(false)
+
+  useEffect(() => {
+    if (prediction !== undefined) {
+      setHome(String(prediction.predicted_home_score))
+      setAway(String(prediction.predicted_away_score))
+    }
+  }, [prediction])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
