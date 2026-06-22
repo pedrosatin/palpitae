@@ -1,9 +1,3 @@
-## SEO, Performance & Analytics
-
-O trabalho de SEO/performance/analytics está documentado em
-[`context-seo.md`](context-seo.md): o que já foi feito, o que falta e as decisões
-descartadas. Leia antes de mexer em qualquer coisa desses tópicos.
-
 ## Observabilidade — eventos server-side (obrigatório)
 
 **Ao criar ou modificar um endpoint que faz mutação de negócio** (cria/edita/remove
