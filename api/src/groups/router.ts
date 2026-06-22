@@ -149,7 +149,13 @@ router.post('/', requireAuth, async (c) => {
     return c.json({ error: 'Você não tem permissão para criar grupos' }, 403)
   }
 
-  const body = await c.req.json<{ name?: string; competition_id?: string }>()
+  const body = await c.req.json<{
+    name?: string
+    competition_id?: string
+    points_exact?: number
+    points_winner?: number
+    predictions_visibility?: string
+  }>()
 
   const name = body.name?.trim()
   const competition_id = body.competition_id?.trim()
@@ -160,6 +166,36 @@ router.post('/', requireAuth, async (c) => {
 
   if (name.length < 2 || name.length > 50) {
     return c.json({ error: 'Nome deve ter entre 2 e 50 caracteres' }, 400)
+  }
+
+  // Scoring rules & visibility — set at creation, immutable afterwards.
+  const points_exact = body.points_exact ?? 3
+  const points_winner = body.points_winner ?? 1
+  const predictions_visibility = body.predictions_visibility ?? 'hidden'
+
+  if (
+    !Number.isInteger(points_exact) ||
+    points_exact < 0 ||
+    points_exact > 10 ||
+    !Number.isInteger(points_winner) ||
+    points_winner < 0 ||
+    points_winner > 10
+  ) {
+    return c.json({ error: 'Pontuação deve ser inteiro entre 0 e 10' }, 400)
+  }
+  // points_exact === 0 enables the "só vencedor" (1X2) mode and is always allowed.
+  // Otherwise an exact hit must be worth at least as much as a plain winner hit.
+  if (points_exact > 0 && points_exact < points_winner) {
+    return c.json(
+      { error: 'Pontos por placar exato deve ser maior ou igual a pontos por vencedor' },
+      400,
+    )
+  }
+  if (points_exact + points_winner === 0) {
+    return c.json({ error: 'Pelo menos um tipo de pontuação deve ser maior que zero' }, 400)
+  }
+  if (!['hidden', 'public'].includes(predictions_visibility)) {
+    return c.json({ error: 'Visibilidade inválida' }, 400)
   }
 
   const db = c.env.DB
@@ -199,10 +235,19 @@ router.post('/', requireAuth, async (c) => {
     await db.batch([
       db
         .prepare(
-          `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code)
-           VALUES (?, ?, ?, ?, ?)`,
+          `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, predictions_visibility)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .bind(groupId, name, competition_id, userId, invite_code),
+        .bind(
+          groupId,
+          name,
+          competition_id,
+          userId,
+          invite_code,
+          points_exact,
+          points_winner,
+          predictions_visibility,
+        ),
       db
         .prepare(
           `INSERT INTO group_members (id, group_id, user_id, role)
@@ -212,7 +257,8 @@ router.post('/', requireAuth, async (c) => {
     ])
 
     logEvent(c.env.AE, 'group_created', {
-      blobs: [groupId, competition_id, await hashUserId(userId)],
+      blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
+      doubles: [points_exact, points_winner],
     })
 
     return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
@@ -320,6 +366,9 @@ router.get('/:id', requireAuth, async (c) => {
          g.owner_user_id AS admin_id,
          g.invite_code,
          g.created_at,
+         g.points_exact,
+         g.points_winner,
+         g.predictions_visibility,
          COUNT(DISTINCT gm.user_id) AS member_count,
          COALESCE(l.total_points, 0) AS user_points,
          COALESCE(l.exact_hits, 0) AS exact_hits
@@ -339,6 +388,9 @@ router.get('/:id', requireAuth, async (c) => {
       admin_id: string
       invite_code: string
       created_at: string
+      points_exact: number
+      points_winner: number
+      predictions_visibility: string
       member_count: number
       user_points: number
       exact_hits: number
@@ -371,6 +423,9 @@ router.get('/:id', requireAuth, async (c) => {
       is_admin: group.admin_id === userId,
       invite_code: group.invite_code,
       created_at: group.created_at,
+      points_exact: group.points_exact,
+      points_winner: group.points_winner,
+      predictions_visibility: group.predictions_visibility,
       member_count: group.member_count,
       user_points: group.user_points,
       exact_hits: group.exact_hits,

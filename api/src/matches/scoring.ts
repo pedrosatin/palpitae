@@ -5,23 +5,38 @@ export function calculatePoints(
   actualAway: number,
   predictedHome: number,
   predictedAway: number,
+  pointsExact = 3,
+  pointsWinner = 1,
 ): number {
-  if (predictedHome === actualHome && predictedAway === actualAway) return 3
+  // pointsExact === 0 is the "winner only" / 1X2 mode: there is no exact-score bonus,
+  // so we never short-circuit here — otherwise a 1X2 pick stored as (1,0)/(0,0)/(0,1)
+  // would accidentally score the exact value when the real score happens to match.
+  if (pointsExact > 0 && predictedHome === actualHome && predictedAway === actualAway)
+    return pointsExact
   const actualWinner = actualHome > actualAway ? 'home' : actualHome < actualAway ? 'away' : 'draw'
   const predictedWinner =
     predictedHome > predictedAway ? 'home' : predictedHome < predictedAway ? 'away' : 'draw'
-  return actualWinner === predictedWinner ? 1 : 0
+  return actualWinner === predictedWinner ? pointsWinner : 0
 }
 
 async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<void> {
+  // exact_hits is inferred from the awarded points: a prediction is an exact hit
+  // when it scored the group's points_exact. We only count it when the exact bonus
+  // is distinguishable from a plain winner hit (points_exact > points_winner) — when
+  // they're equal there's no exact bonus to detect, so exact_hits stays 0.
   const rows = await db
     .prepare(
-      `SELECT user_id,
-              SUM(points_awarded) AS total_points,
-              SUM(CASE WHEN points_awarded = 3 THEN 1 ELSE 0 END) AS exact_hits
-       FROM predictions
-       WHERE group_id = ?
-       GROUP BY user_id`,
+      `SELECT p.user_id,
+              SUM(p.points_awarded) AS total_points,
+              SUM(
+                CASE WHEN g.points_exact > g.points_winner
+                       AND p.points_awarded = g.points_exact
+                     THEN 1 ELSE 0 END
+              ) AS exact_hits
+       FROM predictions p
+       JOIN groups g ON g.id = p.group_id
+       WHERE p.group_id = ?
+       GROUP BY p.user_id`,
     )
     .bind(groupId)
     .all<{ user_id: string; total_points: number; exact_hits: number }>()
@@ -53,8 +68,12 @@ async function scoreMatch(
 ): Promise<void> {
   const predictions = await db
     .prepare(
-      `SELECT id, group_id, user_id, predicted_home_score, predicted_away_score
-       FROM predictions WHERE match_id = ?`,
+      `SELECT p.id, p.group_id, p.user_id,
+              p.predicted_home_score, p.predicted_away_score,
+              g.points_exact, g.points_winner
+       FROM predictions p
+       JOIN groups g ON g.id = p.group_id
+       WHERE p.match_id = ?`,
     )
     .bind(matchId)
     .all<{
@@ -63,6 +82,8 @@ async function scoreMatch(
       user_id: string
       predicted_home_score: number
       predicted_away_score: number
+      points_exact: number
+      points_winner: number
     }>()
 
   const now = new Date().toISOString()
@@ -70,7 +91,14 @@ async function scoreMatch(
 
   const affectedGroups = new Set<string>()
   for (const p of predictions.results) {
-    const points = calculatePoints(homeScore, awayScore, p.predicted_home_score, p.predicted_away_score)
+    const points = calculatePoints(
+      homeScore,
+      awayScore,
+      p.predicted_home_score,
+      p.predicted_away_score,
+      p.points_exact,
+      p.points_winner,
+    )
     statements.push(
       db.prepare(`UPDATE predictions SET points_awarded = ? WHERE id = ?`).bind(points, p.id),
     )
