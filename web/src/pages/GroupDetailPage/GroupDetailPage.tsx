@@ -57,10 +57,10 @@ type Tab = (typeof TABS)[number]
 const DEFAULT_TAB: Tab = 'predictions'
 
 const TAB_LABELS: Record<Tab, string> = {
-  predictions: 'Palpites',
+  predictions: 'Palpitar',
   standings: 'Tabela',
-  'group-picks': 'Palpites do grupo',
-  leaderboard: 'Classificação',
+  'group-picks': 'Grupo',
+  leaderboard: 'Ranking',
   members: 'Membros',
 }
 
@@ -525,7 +525,7 @@ export default function GroupDetailPage({
             className={`${styles.tab} ${activeTab === 'predictions' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('predictions')}
           >
-            Palpites
+            Palpitar
           </button>
           <button
             className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
@@ -537,13 +537,13 @@ export default function GroupDetailPage({
             className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('group-picks')}
           >
-            Palpites do grupo
+            Grupo
           </button>
           <button
             className={`${styles.tab} ${activeTab === 'leaderboard' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('leaderboard')}
           >
-            Classificação
+            Ranking
           </button>
           {isAdmin && (
             <button
