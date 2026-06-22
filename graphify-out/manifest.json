@@ -300,8 +300,8 @@
     "hash": "fd62123850d3b437042207b3996b3536"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/GroupPicksTab/GroupPicksTab.tsx": {
-    "mtime": 1782014765.325844,
-    "hash": "316a004568b94124f20a8d2318d19b2b"
+    "mtime": 1782100249.2073665,
+    "hash": "a50904abcfb2353e45580a9d07bf02e2"
   },
   "/home/satin/Work/personal/palpitae/web/src/components/Header/index.ts": {
     "mtime": 1781447381.3717673,
@@ -451,13 +451,13 @@
     "mtime": 1781447381.3732784,
     "hash": "cfb81fce3016bebc4c29a8bedcd9a651"
   },
-  "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.test.tsx": {
-    "mtime": 1782014765.3276224,
-    "hash": "37b752f5743ff325f41b0eb14517c089"
-  },
   "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.tsx": {
-    "mtime": 1782014765.3277454,
-    "hash": "2c7530bf06e0783276b9a8c02339adc3"
+    "mtime": 1782100232.7406025,
+    "hash": "7eddaa2a9887a8c713a71039f2e3052e"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.test.tsx": {
+    "mtime": 1782100251.524397,
+    "hash": "25cbc0ad31afb41360363ff3ee4a802d"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/index.ts": {
     "mtime": 1781447381.3733914,

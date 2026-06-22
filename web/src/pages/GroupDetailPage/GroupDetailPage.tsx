@@ -57,7 +57,7 @@ type Tab = (typeof TABS)[number]
 const DEFAULT_TAB: Tab = 'predictions'
 
 const TAB_LABELS: Record<Tab, string> = {
-  predictions: 'Previsões',
+  predictions: 'Palpites',
   standings: 'Tabela',
   'group-picks': 'Palpites do grupo',
   leaderboard: 'Classificação',
@@ -525,7 +525,7 @@ export default function GroupDetailPage({
             className={`${styles.tab} ${activeTab === 'predictions' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('predictions')}
           >
-            Previsões
+            Palpites
           </button>
           <button
             className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}

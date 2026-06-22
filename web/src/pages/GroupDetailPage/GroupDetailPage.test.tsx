@@ -209,7 +209,7 @@ describe('GroupDetailPage – tabs', () => {
     expect(screen.getByTestId('leaderboard-tab')).toBeInTheDocument()
   })
 
-  it('switches back to Previsões tab when that button is clicked', async () => {
+  it('switches back to Palpites tab when that button is clicked', async () => {
     mockGroupFetch()
 
     renderPage()
@@ -221,7 +221,7 @@ describe('GroupDetailPage – tabs', () => {
     await userEvent.click(
       screen.getByRole('button', { name: /Classificação/i }),
     )
-    await userEvent.click(screen.getByRole('button', { name: /Previsões/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Palpites/i }))
 
     expect(screen.getByTestId('predictions-tab')).toBeInTheDocument()
   })
