@@ -4,18 +4,10 @@
  */
 
 import { base64UrlEncode, base64UrlDecode } from './encoding'
+import { HMAC_SHA256, importHmacKey } from './crypto'
 
-const ALGORITHM = { name: 'HMAC', hash: 'SHA-256' } as const
-
-async function importKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    ALGORITHM,
-    false,
-    ['sign', 'verify'],
-  )
-}
+const ALGORITHM = HMAC_SHA256
+const importKey = importHmacKey
 
 export interface JwtPayload {
   sub: string
