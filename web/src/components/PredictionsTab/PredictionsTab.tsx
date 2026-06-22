@@ -9,6 +9,8 @@ import styles from './PredictionsTab.module.css'
 interface PredictionsTabProps {
   groupId: string
   competitionId: string
+  /** Group's points for an exact score. When 0, matches use the 1X2 button UI. */
+  pointsExact?: number
 }
 
 type PredictionMap = Map<string, Prediction>
@@ -16,6 +18,7 @@ type PredictionMap = Map<string, Prediction>
 export default function PredictionsTab({
   groupId,
   competitionId,
+  pointsExact = 3,
 }: PredictionsTabProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
@@ -410,6 +413,7 @@ export default function PredictionsTab({
                 match={match}
                 prediction={predictions.get(match.id)}
                 groupId={groupId}
+                outcomeOnly={pointsExact === 0}
                 onSaved={handleSaved}
                 onDraftChange={handleDraftChange}
               />
