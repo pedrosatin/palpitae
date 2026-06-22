@@ -13,16 +13,11 @@
  */
 
 import { base64UrlDecode, base64UrlEncode } from '../auth/encoding'
+import { HMAC_SHA256, importHmacKey } from '../auth/crypto'
 
-const ALGORITHM = { name: 'HMAC', hash: 'SHA-256' } as const
+const ALGORITHM = HMAC_SHA256
 const PREFIX = 'unsub:'
-
-function importKey(secret: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', new TextEncoder().encode(secret), ALGORITHM, false, [
-    'sign',
-    'verify',
-  ])
-}
+const importKey = importHmacKey
 
 /** Mints `<base64url(userId)>.<base64url(hmac)>` for the unsubscribe link. */
 export async function signUnsubToken(userId: string, secret: string): Promise<string> {

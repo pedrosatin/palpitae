@@ -33,6 +33,7 @@ export type EventType =
   // Notificações por e-mail
   | 'email_reminder_sent'
   | 'cron_round_reminder'
+  | 'cron_round_reminder_misconfig'
   | 'email_unsubscribed'
   | 'email_resubscribed'
 
