@@ -318,7 +318,7 @@ export default function GroupDetailPage({
       }
 
       invalidateApiCache('groups:')
-      navigate('/', { replace: true })
+      navigate('/', { replace: true, state: { refreshGroups: true } })
     } catch (e: unknown) {
       window.alert(e instanceof Error ? e.message : 'Erro ao excluir grupo')
     } finally {

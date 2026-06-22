@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { buildApiUrl } from '../../config'
 import Button from '../../components/Button'
 import CreateGroupModal from '../../components/CreateGroupModal'
@@ -29,6 +29,7 @@ interface DashboardPageProps {
 export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   useDocumentTitle('Meus grupos')
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const pendingInvite = searchParams.get('convite') ?? undefined
   const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
@@ -58,6 +59,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
           return fetch(buildApiUrl('/groups', searchParams), {
             credentials: 'include',
+            ...(forceRefresh ? { cache: 'no-store' } : {}),
           }).then((res) => {
             if (!res.ok) throw new Error('Falha ao carregar grupos')
             return res.json() as Promise<{
@@ -84,8 +86,9 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   )
 
   useEffect(() => {
-    fetchGroups()
-  }, [fetchGroups])
+    const needsRefresh = (location.state as { refreshGroups?: boolean } | null)?.refreshGroups === true
+    fetchGroups(needsRefresh)
+  }, [fetchGroups, location.state])
 
   function handleGroupCreated() {
     fetchGroups(true)
