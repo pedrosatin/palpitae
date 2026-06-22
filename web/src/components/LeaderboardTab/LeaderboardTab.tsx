@@ -104,6 +104,13 @@ export default function LeaderboardTab({
     setModalError(null)
   }, [])
 
+  const modalByRound = new Map<string, UserPrediction[]>()
+  for (const p of modalPredictions) {
+    if (!modalByRound.has(p.round)) modalByRound.set(p.round, [])
+    modalByRound.get(p.round)!.push(p)
+  }
+  const modalRoundKeys = Array.from(modalByRound.keys())
+
   if (loading) {
     return <p className={styles.loading}>Carregando classificação...</p>
   }
@@ -193,67 +200,73 @@ export default function LeaderboardTab({
             </p>
           )}
           {!modalLoading && !modalError && modalPredictions.length > 0 && (
-            <ul className={styles.predList}>
-              {modalPredictions.map((p) => {
-                const isFinished = p.match_status === 'finished'
-                return (
-                  <li key={p.match_id} className={styles.predItem}>
-                    <div className={styles.predMatch}>
-                      <span className={styles.predTeam}>
-                        <img
-                          src={p.home_team_logo}
-                          alt={p.home_team_short_name}
-                          className={styles.predCrest}
-                          loading="lazy"
-                        />
-                        {p.home_team_short_name}
-                      </span>
-                      <span className={styles.predVs}>×</span>
-                      <span className={`${styles.predTeam} ${styles.predTeamAway}`}>
-                        {p.away_team_short_name}
-                        <img
-                          src={p.away_team_logo}
-                          alt={p.away_team_short_name}
-                          className={styles.predCrest}
-                          loading="lazy"
-                        />
-                      </span>
-                    </div>
-                    <div className={styles.predScores}>
-                      <span className={styles.predLabel}>Palpite</span>
-                      <span className={styles.predScore}>
-                        {p.predicted_home_score} × {p.predicted_away_score}
-                      </span>
-                      {isFinished && (
-                        <>
-                          <span className={styles.predLabel}>Resultado</span>
-                          <span className={styles.predScore}>
-                            {p.home_score ?? '–'} × {p.away_score ?? '–'}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    <div className={styles.predMeta}>
-                      <span className={styles.predRound}>Rodada {p.round}</span>
-                      <span className={styles.predDate}>
-                        {formatDate(p.match_start_time)}
-                      </span>
-                      {isFinished && (
-                        <span
-                          className={
-                            p.points_awarded > 0
-                              ? styles.predPointsGreen
-                              : styles.predPointsZero
-                          }
-                        >
-                          {p.points_awarded} pt
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
+            <div className={styles.predRoundGroups}>
+              {modalRoundKeys.map((round) => (
+                <section key={round} className={styles.predRoundGroup}>
+                  <h3 className={styles.predRoundHeader}>Rodada {round}</h3>
+                  <ul className={styles.predList}>
+                    {modalByRound.get(round)!.map((p) => {
+                      const isFinished = p.match_status === 'finished'
+                      return (
+                        <li key={p.match_id} className={styles.predItem}>
+                          <div className={styles.predMatch}>
+                            <span className={styles.predTeam}>
+                              <img
+                                src={p.home_team_logo}
+                                alt={p.home_team_short_name}
+                                className={styles.predCrest}
+                                loading="lazy"
+                              />
+                              {p.home_team_short_name}
+                            </span>
+                            <span className={styles.predVs}>×</span>
+                            <span className={`${styles.predTeam} ${styles.predTeamAway}`}>
+                              {p.away_team_short_name}
+                              <img
+                                src={p.away_team_logo}
+                                alt={p.away_team_short_name}
+                                className={styles.predCrest}
+                                loading="lazy"
+                              />
+                            </span>
+                          </div>
+                          <div className={styles.predScores}>
+                            <span className={styles.predLabel}>Palpite</span>
+                            <span className={styles.predScore}>
+                              {p.predicted_home_score} × {p.predicted_away_score}
+                            </span>
+                            {isFinished && (
+                              <>
+                                <span className={styles.predLabel}>Resultado</span>
+                                <span className={styles.predScore}>
+                                  {p.home_score ?? '–'} × {p.away_score ?? '–'}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          <div className={styles.predMeta}>
+                            <span className={styles.predDate}>
+                              {formatDate(p.match_start_time)}
+                            </span>
+                            {isFinished && (
+                              <span
+                                className={
+                                  p.points_awarded > 0
+                                    ? styles.predPointsGreen
+                                    : styles.predPointsZero
+                                }
+                              >
+                                {p.points_awarded} pt
+                              </span>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
           )}
         </Modal>
       )}
