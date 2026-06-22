@@ -54,7 +54,45 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(toggle).not.toBeChecked())
   })
 
-  it('PATCHes the new preference and tracks the event when toggled off', async () => {
+  it('opens a confirmation modal when the toggle is clicked and tracks the intent', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({ round_reminders: true }),
+    )
+
+    renderPage()
+
+    const toggle = await screen.findByRole('checkbox')
+    await waitFor(() => expect(toggle).toBeChecked())
+
+    await userEvent.click(toggle)
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText(/desativar lembretes/i)).toBeInTheDocument()
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_toggle_lembretes', { enabled: false })
+  })
+
+  it('closes modal and tracks cancel when the user clicks Cancelar', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+
+    renderPage()
+
+    const toggle = await screen.findByRole('checkbox')
+    await waitFor(() => expect(toggle).toBeChecked())
+
+    await userEvent.click(toggle)
+    await screen.findByRole('dialog')
+
+    await userEvent.click(screen.getByRole('button', { name: /cancelar/i }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(fetchSpy.mock.calls.filter((c) => (c[1] as RequestInit)?.method === 'PATCH')).toHaveLength(0)
+    expect(toggle).toBeChecked()
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_cancelar_lembretes')
+  })
+
+  it('PATCHes the new preference and tracks confirm after confirmation', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(mockResponse({ round_reminders: true })) // initial GET
@@ -66,6 +104,8 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(toggle).toBeChecked())
 
     await userEvent.click(toggle)
+    await screen.findByRole('dialog')
+    await userEvent.click(screen.getByRole('button', { name: /confirmar/i }))
 
     await waitFor(() => expect(toggle).not.toBeChecked())
 
@@ -74,9 +114,28 @@ describe('SettingsPage', () => {
     expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({
       round_reminders: false,
     })
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_toggle_lembretes', {
-      enabled: false,
-    })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_confirmar_lembretes', { enabled: false })
+  })
+
+  it('shows a success message below the section after the PATCH succeeds', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+      .mockResolvedValueOnce(mockResponse({ round_reminders: false }))
+
+    renderPage()
+
+    const toggle = await screen.findByRole('checkbox')
+    await waitFor(() => expect(toggle).toBeChecked())
+
+    await userEvent.click(toggle)
+    await screen.findByRole('dialog')
+    await userEvent.click(screen.getByRole('button', { name: /confirmar/i }))
+
+    const msg = await screen.findByText(/configuração salva/i)
+    expect(msg).toBeInTheDocument()
+
+    // success message must appear after the toggle in the DOM (no layout shift above)
+    expect(toggle.compareDocumentPosition(msg) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('shows a retry button after initial load failure and recovers on retry', async () => {
@@ -107,8 +166,9 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(toggle).toBeChecked())
 
     await userEvent.click(toggle)
+    await screen.findByRole('dialog')
+    await userEvent.click(screen.getByRole('button', { name: /confirmar/i }))
 
-    // optimistic off, then rolled back to on after the failed PATCH
     await waitFor(() => expect(toggle).toBeChecked())
     expect(await screen.findByText(/Falha ao salvar/i)).toBeInTheDocument()
   })
