@@ -36,6 +36,12 @@ interface MatchCardProps {
   match: Match
   prediction: Prediction | undefined
   groupId: string
+  /**
+   * When true the group scores only the winner/draw (points_exact = 0), so the
+   * card shows 3 outcome buttons (Casa / Empate / Fora) instead of score inputs.
+   * The picks are still stored as scores: casa=(1,0), empate=(0,0), fora=(0,1).
+   */
+  outcomeOnly?: boolean
   onSaved: (matchId: string, home: number, away: number) => void
   /** Reports the current input draft up so a parent can offer "Salvar todos". */
   onDraftChange?: (matchId: string, home: string, away: string) => void
@@ -55,6 +61,7 @@ export default function MatchCard({
   match,
   prediction,
   groupId,
+  outcomeOnly = false,
   onSaved,
   onDraftChange,
 }: MatchCardProps) {
@@ -79,6 +86,7 @@ export default function MatchCard({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
 
   const isFinished = match.status === 'finished'
   const isLive = match.status === 'live'
@@ -89,9 +97,7 @@ export default function MatchCard({
     : homeTouched || awayTouched
   const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged
 
-  async function handleSave() {
-    if (!canSave) return
-    trackEvent('click_matchcard_salvar', { match_id: match.id })
+  async function persist(homeScore: number, awayScore: number) {
     setSaving(true)
     setError(null)
     setSaved(false)
@@ -103,8 +109,8 @@ export default function MatchCard({
       body: JSON.stringify({
         group_id: groupId,
         match_id: match.id,
-        predicted_home_score: Number(home),
-        predicted_away_score: Number(away),
+        predicted_home_score: homeScore,
+        predicted_away_score: awayScore,
       }),
     })
 
@@ -117,8 +123,42 @@ export default function MatchCard({
     }
 
     setSaved(true)
-    onSaved(match.id, Number(home), Number(away))
+    onSaved(match.id, homeScore, awayScore)
     setTimeout(() => setSaved(false), 2500)
+  }
+
+  async function handleSave() {
+    if (!canSave) return
+    trackEvent('click_matchcard_salvar', { match_id: match.id })
+    await persist(Number(home), Number(away))
+  }
+
+  // Outcome-only groups store the pick as a score: casa=(1,0), empate=(0,0), fora=(0,1).
+  const OUTCOMES = {
+    home: { home: 1, away: 0, label: 'Casa' },
+    draw: { home: 0, away: 0, label: 'Empate' },
+    away: { home: 0, away: 1, label: 'Fora' },
+  } as const
+  type Outcome = keyof typeof OUTCOMES
+
+  const selectedOutcome: Outcome | null = hasPrediction
+    ? prediction.predicted_home_score > prediction.predicted_away_score
+      ? 'home'
+      : prediction.predicted_home_score < prediction.predicted_away_score
+        ? 'away'
+        : 'draw'
+    : pendingOutcome
+
+  async function selectOutcome(outcome: Outcome) {
+    if (locked || saving) return
+    if (outcome === selectedOutcome) return
+    trackEvent('click_matchcard_resultado', { match_id: match.id, outcome })
+    const { home: h, away: a } = OUTCOMES[outcome]
+    setHome(String(h))
+    setAway(String(a))
+    setPendingOutcome(outcome)
+    onDraftChange?.(match.id, String(h), String(a))
+    await persist(h, a)
   }
 
   function updateHome(v: string) {
@@ -195,15 +235,23 @@ export default function MatchCard({
           hasPrediction ? (
             <div className={styles.lockedPrediction}>
               <span className={styles.lockedLabel}>seu palpite</span>
-              <div className={styles.lockedScores}>
-                <span className={styles.lockedScore}>
-                  {prediction.predicted_home_score}
-                </span>
-                <span className={styles.lockedSep}>×</span>
-                <span className={styles.lockedScore}>
-                  {prediction.predicted_away_score}
-                </span>
-              </div>
+              {outcomeOnly && selectedOutcome ? (
+                <div className={styles.lockedScores}>
+                  <span className={styles.lockedScore}>
+                    {OUTCOMES[selectedOutcome].label}
+                  </span>
+                </div>
+              ) : (
+                <div className={styles.lockedScores}>
+                  <span className={styles.lockedScore}>
+                    {prediction.predicted_home_score}
+                  </span>
+                  <span className={styles.lockedSep}>×</span>
+                  <span className={styles.lockedScore}>
+                    {prediction.predicted_away_score}
+                  </span>
+                </div>
+              )}
               {isFinished && (
                 <span
                   className={`${styles.points} ${prediction.points_awarded > 0 ? styles.pointsGreen : styles.pointsZero}`}
@@ -216,6 +264,22 @@ export default function MatchCard({
           ) : (
             <p className={styles.noPrediction}>sem palpite registrado</p>
           )
+        ) : outcomeOnly ? (
+          <div className={styles.outcomeRow}>
+            {(['home', 'draw', 'away'] as const).map((outcome) => (
+              <button
+                key={outcome}
+                type="button"
+                className={`${styles.outcomeBtn} ${selectedOutcome === outcome ? styles.outcomeBtnActive : ''}`}
+                onClick={() => selectOutcome(outcome)}
+                disabled={saving}
+                aria-pressed={selectedOutcome === outcome}
+              >
+                {OUTCOMES[outcome].label}
+              </button>
+            ))}
+            {saved && <span className={styles.outcomeSaved}>Salvo!</span>}
+          </div>
         ) : (
           <div className={styles.inputRow}>
             <div className={styles.stepper}>
