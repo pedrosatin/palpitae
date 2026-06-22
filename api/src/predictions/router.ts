@@ -166,7 +166,7 @@ router.get('/user', requireAuth, async (c) => {
        JOIN teams ht ON ht.id = m.home_team_id
        JOIN teams at ON at.id = m.away_team_id
        WHERE p.group_id = ? AND p.user_id = ? AND m.start_time <= ?
-       ORDER BY m.start_time ASC`,
+       ORDER BY CAST(m.round AS INTEGER) DESC, m.start_time ASC`,
     )
     .bind(groupId, targetUserId, now)
     .all()
