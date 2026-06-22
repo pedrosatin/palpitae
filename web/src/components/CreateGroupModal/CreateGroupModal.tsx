@@ -25,6 +25,54 @@ interface CreateGroupModalProps {
   onCreated: (group: CreatedGroup) => void
 }
 
+type ScoringPreset = 'classic' | 'exact_only' | 'winner_only' | 'custom'
+
+const PRESET_VALUES: Record<
+  Exclude<ScoringPreset, 'custom'>,
+  { exact: number; winner: number }
+> = {
+  classic: { exact: 3, winner: 1 },
+  exact_only: { exact: 3, winner: 0 },
+  // "Só vencedor": sem bônus por placar exato (points_exact = 0). Ativa a UI 1X2
+  // (Casa / Empate / Fora) no palpite.
+  winner_only: { exact: 0, winner: 1 },
+}
+
+const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
+  exact: 'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
+  winner:
+    'Vencedor: pontos para quem acerta só o resultado — mandante, visitante ou empate — sem cravar o placar.',
+}
+
+function InfoGlyph() {
+  return (
+    <svg
+      className={styles.infoSvg}
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="8" cy="5" r="0.9" fill="currentColor" />
+      <path
+        d="M8 7.4v3.9"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+const PRESET_LABELS: Record<ScoringPreset, string> = {
+  classic: 'Clássico',
+  exact_only: 'Só placar exato',
+  winner_only: 'Só vencedor',
+  custom: 'Personalizado',
+}
+
 export default function CreateGroupModal({
   isOpen,
   onClose,
@@ -35,6 +83,13 @@ export default function CreateGroupModal({
 
   const [name, setName] = useState('')
   const [competitionId, setCompetitionId] = useState('')
+  const [scoringPreset, setScoringPreset] = useState<ScoringPreset>('classic')
+  const [pointsExact, setPointsExact] = useState(3)
+  const [pointsWinner, setPointsWinner] = useState(1)
+  const [predictionsVisibility, setPredictionsVisibility] = useState<
+    'hidden' | 'public'
+  >('hidden')
+  const [scoringHelp, setScoringHelp] = useState<'exact' | 'winner' | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,6 +114,11 @@ export default function CreateGroupModal({
   function reset() {
     setName('')
     setCompetitionId(competitions[0]?.id ?? '')
+    setScoringPreset('classic')
+    setPointsExact(3)
+    setPointsWinner(1)
+    setPredictionsVisibility('hidden')
+    setScoringHelp(null)
     setError(null)
     setCreated(null)
     setCopied(false)
@@ -70,8 +130,43 @@ export default function CreateGroupModal({
     onClose()
   }
 
+  function handlePreset(preset: ScoringPreset) {
+    trackEvent('click_create_group_preset_selecionado', { preset })
+    setScoringPreset(preset)
+    if (preset !== 'custom') {
+      setPointsExact(PRESET_VALUES[preset].exact)
+      setPointsWinner(PRESET_VALUES[preset].winner)
+    }
+  }
+
+  function toggleScoringHelp(field: 'exact' | 'winner') {
+    trackEvent('click_create_group_ajuda_pontuacao', { campo: field })
+    setScoringHelp((cur) => (cur === field ? null : field))
+  }
+
+  function handleVisibility(visibility: 'hidden' | 'public') {
+    trackEvent(
+      visibility === 'public'
+        ? 'click_create_group_visibilidade_publica'
+        : 'click_create_group_visibilidade_oculta',
+    )
+    setPredictionsVisibility(visibility)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    if (pointsExact > 0 && pointsExact < pointsWinner) {
+      setError(
+        'Pontos por placar exato deve ser maior ou igual a pontos por vencedor',
+      )
+      return
+    }
+    if (pointsExact + pointsWinner === 0) {
+      setError('Pelo menos um tipo de pontuação deve ser maior que zero')
+      return
+    }
+
     setError(null)
     setSubmitting(true)
 
@@ -83,6 +178,9 @@ export default function CreateGroupModal({
         body: JSON.stringify({
           name: name.trim(),
           competition_id: competitionId,
+          points_exact: pointsExact,
+          points_winner: pointsWinner,
+          predictions_visibility: predictionsVisibility,
         }),
       })
 
@@ -212,6 +310,119 @@ export default function CreateGroupModal({
                 ))}
               </select>
             )}
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.label}>Regras de pontuação</span>
+            <div className={styles.presetGrid}>
+              {(
+                ['classic', 'exact_only', 'winner_only', 'custom'] as ScoringPreset[]
+              ).map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className={`${styles.presetBtn} ${scoringPreset === preset ? styles.presetBtnActive : ''}`}
+                  onClick={() => handlePreset(preset)}
+                  aria-pressed={scoringPreset === preset}
+                >
+                  {PRESET_LABELS[preset]}
+                </button>
+              ))}
+            </div>
+            <div className={styles.pointsRow}>
+              <div className={styles.pointsField}>
+                <label className={styles.pointsLabel} htmlFor="points-exact">
+                  Placar exato
+                  <button
+                    type="button"
+                    className={styles.infoIcon}
+                    aria-label="O que é placar exato?"
+                    aria-expanded={scoringHelp === 'exact'}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      toggleScoringHelp('exact')
+                    }}
+                  >
+                    <InfoGlyph />
+                  </button>
+                </label>
+                <input
+                  id="points-exact"
+                  className={styles.pointsInput}
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={pointsExact}
+                  disabled={scoringPreset !== 'custom'}
+                  onChange={(e) =>
+                    setPointsExact(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+                  }
+                />
+              </div>
+              <div className={styles.pointsField}>
+                <label className={styles.pointsLabel} htmlFor="points-winner">
+                  Vencedor
+                  <button
+                    type="button"
+                    className={styles.infoIcon}
+                    aria-label="O que é vencedor?"
+                    aria-expanded={scoringHelp === 'winner'}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      toggleScoringHelp('winner')
+                    }}
+                  >
+                    <InfoGlyph />
+                  </button>
+                </label>
+                <input
+                  id="points-winner"
+                  className={styles.pointsInput}
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={pointsWinner}
+                  disabled={scoringPreset !== 'custom'}
+                  onChange={(e) =>
+                    setPointsWinner(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+                  }
+                />
+              </div>
+            </div>
+            {scoringHelp && (
+              <p className={styles.scoringHelp} role="note">
+                {SCORING_HELP_TEXT[scoringHelp]}
+              </p>
+            )}
+          </div>
+
+          <div className={styles.field}>
+            <span className={styles.label}>Visibilidade dos palpites</span>
+            <div className={styles.visibilityGroup}>
+              <button
+                type="button"
+                className={`${styles.visibilityOption} ${predictionsVisibility === 'hidden' ? styles.visibilityOptionActive : ''}`}
+                onClick={() => handleVisibility('hidden')}
+                aria-pressed={predictionsVisibility === 'hidden'}
+              >
+                <span className={styles.visibilityTitle}>Oculto até palpitar</span>
+                <span className={styles.visibilityDesc}>
+                  Outros palpites só aparecem depois que você palpitar ou o jogo
+                  começar
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`${styles.visibilityOption} ${predictionsVisibility === 'public' ? styles.visibilityOptionActive : ''}`}
+                onClick={() => handleVisibility('public')}
+                aria-pressed={predictionsVisibility === 'public'}
+              >
+                <span className={styles.visibilityTitle}>Sempre visível</span>
+                <span className={styles.visibilityDesc}>
+                  Todos veem os palpites em tempo real
+                </span>
+              </button>
+            </div>
           </div>
 
           <div className={styles.actions}>

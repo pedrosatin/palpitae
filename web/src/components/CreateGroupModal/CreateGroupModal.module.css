@@ -84,6 +84,168 @@
   padding-top: var(--space-2);
 }
 
+/* ─── Scoring presets ─────────────────────────────────────────────────── */
+
+.presetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+}
+
+.presetBtn {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-base);
+  cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background-color 0.15s;
+}
+
+.presetBtn:hover {
+  border-color: var(--color-primary);
+}
+
+.presetBtnActive {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.pointsRow {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.pointsField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.pointsLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.infoIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -7px; /* enlarge tap target without shifting the label baseline */
+  background: none;
+  border: none;
+  border-radius: var(--radius-full, 999px);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+
+.infoSvg {
+  display: block;
+}
+
+.infoIcon:hover,
+.infoIcon:focus-visible {
+  color: var(--color-primary);
+  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.infoIcon[aria-expanded='true'] {
+  color: var(--color-primary);
+}
+
+.scoringHelp {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.pointsInput {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  font-family: var(--font-family-base);
+  padding: var(--space-2) var(--space-3);
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.pointsInput:focus {
+  border-color: var(--color-primary);
+}
+
+.pointsInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Visibility ──────────────────────────────────────────────────────── */
+
+.visibilityGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.visibilityOption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  text-align: left;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-family-base);
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+.visibilityOption:hover {
+  border-color: var(--color-primary);
+}
+
+.visibilityOptionActive {
+  border-color: var(--color-primary);
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.visibilityTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.visibilityDesc {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
 /* ─── Success state ───────────────────────────────────────────────────── */
 
 .success {

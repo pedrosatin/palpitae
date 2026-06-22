@@ -10,11 +10,12 @@ interface GroupMockOptions {
   isMember?: boolean
   members?: Array<{ user_id: string; display: string }>
   predictions?: Array<Record<string, unknown>>
+  visibility?: 'hidden' | 'public'
   capturedSql?: string[]
 }
 
 function createGroupPicksDbMock(opts: GroupMockOptions = {}) {
-  const { isMember = true, members = [], predictions = [], capturedSql } = opts
+  const { isMember = true, members = [], predictions = [], visibility = 'hidden', capturedSql } = opts
 
   const db = {
     prepare(sql: string) {
@@ -26,6 +27,10 @@ function createGroupPicksDbMock(opts: GroupMockOptions = {}) {
               // membership check
               if (sql.includes('FROM group_members WHERE')) {
                 return isMember ? { id: 'gm-1' } : null
+              }
+              // group visibility config lookup
+              if (sql.includes('FROM groups') && sql.includes('predictions_visibility')) {
+                return { predictions_visibility: visibility }
               }
               return null
             },
@@ -290,6 +295,37 @@ describe('predictions router – GET /group', () => {
     expect(predSql).toBeDefined()
     expect(predSql).toContain('m.start_time <= ?')
     expect(predSql).toContain('SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?')
+  })
+
+  it('public groups skip the anti-copy filter (no own-prediction subquery)', async () => {
+    const capturedSql: string[] = []
+    const predictions = [
+      {
+        match_id: 'm9',
+        user_id: 'user-2',
+        user_display: 'Ana',
+        predicted_home_score: 2,
+        predicted_away_score: 1,
+        points_awarded: 0,
+        locked: 0,
+      },
+    ]
+
+    const res = await requestGroupPicks(
+      createGroupPicksDbMock({ predictions, visibility: 'public', capturedSql }),
+      '?group_id=g1',
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { predictions: typeof predictions }
+    // A future/unlocked pick by another member is revealed even though the
+    // requester never predicted it — because the group is public.
+    expect(body.predictions).toHaveLength(1)
+    expect(body.predictions[0]?.match_id).toBe('m9')
+
+    const predSql = capturedSql.find((s) => s.includes('FROM predictions pr'))
+    expect(predSql).toBeDefined()
+    expect(predSql).not.toContain('SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?')
   })
 })
 
