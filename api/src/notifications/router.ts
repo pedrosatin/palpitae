@@ -123,7 +123,8 @@ router.get('/preferences', requireAuth, async (c) => {
     .bind(userId)
     .first<{ email_unsubscribed_at: string | null }>()
 
-  return c.json({ round_reminders: row?.email_unsubscribed_at == null })
+  if (!row) return c.json({ error: 'not found' }, 404)
+  return c.json({ round_reminders: row.email_unsubscribed_at == null })
 })
 
 /**
