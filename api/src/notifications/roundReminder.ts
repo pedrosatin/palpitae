@@ -80,7 +80,7 @@ type RoundGroup = {
   competitionId: string
   competitionName: string
   round: string
-  recipients: Recipient[]
+  recipientMap: Map<string, Recipient>  // keyed by user_id — O(1) dedup, correct token per user
   matches: MatchInfo[]
 }
 
@@ -111,9 +111,9 @@ export async function sendRoundReminders(
 
   // Fail loud, not silent: with no key every send would 401 and be counted as a
   // dropped reminder. Skip the run and surface the misconfiguration instead.
-  if (!resendApiKey) {
+  if (!resendApiKey.trim()) {
     console.error('[roundReminder] RESEND_API_KEY ausente — nenhum lembrete enviado.')
-    logEvent(ae, 'cron_round_reminder', { doubles: [0, 0, 0] })
+    logEvent(ae, 'cron_round_reminder_misconfig', { blobs: ['no_api_key'] })
     return
   }
 
@@ -122,6 +122,19 @@ export async function sendRoundReminders(
   // shows by default. start_time is stored in this format, so the `> ?` comparison
   // is a correct lexicographic compare.
   const nowIso = new Date().toISOString()
+
+  // Earliest round that still has ≥1 future match — matches the default_round logic
+  // in matches/router.ts. Extracted here so Q1 and Q2 always use identical logic;
+  // a change to one can't silently diverge from the other.
+  const DEFAULT_ROUND_SUBQ = `(
+    SELECT m3.round
+    FROM matches m3
+    WHERE m3.competition_id = m.competition_id
+    GROUP BY m3.round
+    HAVING MAX(m3.start_time) > ?1
+    ORDER BY MAX(m3.start_time) ASC
+    LIMIT 1
+  )`
 
   // Query 1: which users need to be notified?
   //  - the round's first match is tomorrow (don't re-notify mid-round);
@@ -155,15 +168,7 @@ export async function sendRoundReminders(
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
          )
-         AND m.round = (
-           SELECT m3.round
-           FROM matches m3
-           WHERE m3.competition_id = m.competition_id
-           GROUP BY m3.round
-           HAVING MAX(m3.start_time) > ?1
-           ORDER BY MAX(m3.start_time) ASC
-           LIMIT 1
-         )
+         AND m.round = ${DEFAULT_ROUND_SUBQ}
          AND NOT EXISTS (
            SELECT 1
            FROM predictions p
@@ -183,29 +188,31 @@ export async function sendRoundReminders(
     return
   }
 
-  // Group by competition + round, collecting e-mail addresses. Dedupe is still
-  // required even with the NOT EXISTS filter: a user may have predicted in group
-  // A but not group B of the same competition, appearing twice in the result.
+  // Group by competition + round. Keyed by user_id (not email): two accounts that
+  // happen to share an email are distinct users with distinct unsubscribe tokens.
+  // Map lookup is O(1) vs the O(n) array scan it replaces.
   const grouped = new Map<string, RoundGroup>()
   for (const row of userRows.results) {
     const key = `${row.competition_id}::${row.round}`
     const entry = grouped.get(key)
     if (entry) {
-      const existing = entry.recipients.find((r) => r.email === row.email)
+      const existing = entry.recipientMap.get(row.user_id)
       if (existing) {
         // Same user, additional group for this competition+round → add group link.
         if (!existing.groups.some((g) => g.id === row.group_id)) {
           existing.groups.push({ id: row.group_id, name: row.group_name })
         }
       } else {
-        entry.recipients.push({ id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] })
+        entry.recipientMap.set(row.user_id, { id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] })
       }
     } else {
+      const recipientMap = new Map<string, Recipient>()
+      recipientMap.set(row.user_id, { id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] })
       grouped.set(key, {
         competitionId: row.competition_id,
         competitionName: row.competition_name,
         round: row.round,
-        recipients: [{ id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] }],
+        recipientMap,
         matches: [],
       })
     }
@@ -235,15 +242,7 @@ export async function sendRoundReminders(
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
          ) = date('now', '-3 hours', '+1 day')
-         AND m.round = (
-           SELECT m3.round
-           FROM matches m3
-           WHERE m3.competition_id = m.competition_id
-           GROUP BY m3.round
-           HAVING MAX(m3.start_time) > ?1
-           ORDER BY MAX(m3.start_time) ASC
-           LIMIT 1
-         )
+         AND m.round = ${DEFAULT_ROUND_SUBQ}
        ORDER BY m.start_time ASC`,
     )
     .bind(nowIso)
@@ -271,14 +270,18 @@ export async function sendRoundReminders(
 
   let sent = 0
   let failed = 0
-  for (const { competitionName, round, recipients, matches } of grouped.values()) {
+  for (const { competitionName, round, recipientMap, matches } of grouped.values()) {
     const subject = `Rodada ${round} começa amanhã — faça seus palpites!`
 
     // One e-mail per user (no shared BCC, so addresses never leak between users).
     // A single send failure is isolated so the rest of the batch still goes out.
     // The unsubscribe link is per-user (signed token), so the body is built per
     // recipient — match list rebuild is cheap at this volume.
-    for (const { id, email, groups: recipientGroups } of recipients) {
+    for (const { id, email, groups: recipientGroups } of recipientMap.values()) {
+      // Hoist the hash: reused in both the success logEvent and the error console.error.
+      // .catch guards against SubtleCrypto being unavailable — if it throws inside
+      // the catch block the entire batch loop aborts and the summary metric never fires.
+      const hashedId = await hashUserId(id).catch(() => '<hash-error>')
       try {
         const unsubUrl =
           unsub && apiBaseUrl
@@ -298,12 +301,10 @@ export async function sendRoundReminders(
         await sendWithRetry(resendApiKey, { to: email, subject, html, text, headers })
         sent++
         // user_hash do id (não o e-mail cru — PII, regra LGPD).
-        logEvent(ae, 'email_reminder_sent', {
-          blobs: [await hashUserId(id), competitionName, round],
-        })
+        logEvent(ae, 'email_reminder_sent', { blobs: [hashedId, competitionName, round] })
       } catch (err) {
         failed++
-        console.error(`[roundReminder] Falha ao enviar para ${await hashUserId(id)}:`, err)
+        console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
       }
     }
   }
