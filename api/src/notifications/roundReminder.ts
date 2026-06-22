@@ -271,7 +271,7 @@ export async function sendRoundReminders(
   let sent = 0
   let failed = 0
   for (const { competitionName, round, recipientMap, matches } of grouped.values()) {
-    const subject = `Rodada ${round} começa amanhã — faça seus palpites!`
+    const subject = `Não esqueça! Rodada ${round} começa amanhã`
 
     // One e-mail per user (no shared BCC, so addresses never leak between users).
     // A single send failure is isolated so the rest of the batch still goes out.
@@ -293,9 +293,9 @@ export async function sendRoundReminders(
         // RFC 8058 one-click unsubscribe — Gmail/Apple show a native button.
         const headers = unsubUrl
           ? {
-              'List-Unsubscribe': `<${unsubUrl}>`,
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-            }
+            'List-Unsubscribe': `<${unsubUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          }
           : undefined
 
         await sendWithRetry(resendApiKey, { to: email, subject, html, text, headers })
@@ -401,15 +401,15 @@ function buildEmailHtml(
     groups.length === 1
       ? `<a href="${escapeHtml(withEmailUtm(`${appUrl}/grupos/${groups[0].id}`))}" style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">Fazer meus palpites</a>`
       : groups
-          .map(
-            (g) =>
-              `<a href="${escapeHtml(withEmailUtm(`${appUrl}/grupos/${g.id}`))}" style="display: inline-block; background: #16a34a; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; margin: 4px 4px 0 0;">${escapeHtml(g.name)}</a>`,
-          )
-          .join('')
+        .map(
+          (g) =>
+            `<a href="${escapeHtml(withEmailUtm(`${appUrl}/grupos/${g.id}`))}" style="display: inline-block; background: #16a34a; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; margin: 4px 4px 0 0;">${escapeHtml(g.name)}</a>`,
+        )
+        .join('')
 
   const safeRound = escapeHtml(round)
   const safeCompetition = escapeHtml(competitionName)
-  const logoUrl = escapeHtml(`${appUrl}/apple-touch-icon.png`)
+  const logoUrl = escapeHtml('https://palpitae.com.br/apple-touch-icon.png')
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -424,18 +424,17 @@ function buildEmailHtml(
       <img src="${logoUrl}" alt="" width="48" height="48" style="border-radius: 10px; border: 0; display: block; margin: 0 auto 8px;">
       <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
     </div>
-    <h2 style="margin-bottom: 4px;">A Rodada ${safeRound} começa amanhã!</h2>
+    <h2 style="margin-bottom: 4px;">Não esqueca! Rodada ${safeRound} começa amanhã</h2>
     <p style="color: #6b7280; margin-top: 0;">${safeCompetition}</p>
     ${matchTable}
     <p style="margin-top: 16px;">Não esquece de registrar seus palpites antes do primeiro jogo!</p>
     ${groups.length > 1 ? '<p style="margin-bottom: 4px; font-weight: bold;">Fazer meus palpites:</p>' : ''}
     ${ctaButtons}
     <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
-      Você está recebendo este e-mail porque participa de um grupo no Palpitae.${
-        unsubUrl
-          ? `<br>Não quer mais estes lembretes? <a href="${escapeHtml(unsubUrl)}" style="color: #6b7280;">Cancelar inscrição</a>.`
-          : ''
-      }
+      Você está recebendo este e-mail porque participa de um grupo no Palpitae.${unsubUrl
+      ? `<br>Não quer mais estes lembretes? <a href="${escapeHtml(unsubUrl)}" style="color: #6b7280;">Cancelar inscrição</a>.`
+      : ''
+    }
     </p>
   </div>
 </body>
