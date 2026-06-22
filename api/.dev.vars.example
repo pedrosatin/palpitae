@@ -5,3 +5,4 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 BASE_URL=http://localhost:8787
 FRONTEND_URL=http://localhost:5173
 FOOTBALL_API_KEY=your-api-football-key
+RESEND_API_KEY=re_your-resend-key

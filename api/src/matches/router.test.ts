@@ -19,6 +19,7 @@ function fakeEnv(db: D1Database): AppContext['Bindings'] {
     BASE_URL: 'http://localhost:8787',
     FRONTEND_URL: 'http://localhost:5173',
     FOOTBALL_API_KEY: 'test-api-key',
+    RESEND_API_KEY: 'test-resend-key',
     DB: db,
   }
 }

@@ -14,6 +14,7 @@ export type Env = {
   BASE_URL: string
   FRONTEND_URL: string
   FOOTBALL_API_KEY: string
+  RESEND_API_KEY: string
 }
 
 export type Variables = {
