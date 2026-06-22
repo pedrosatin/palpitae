@@ -231,7 +231,7 @@ export default function GroupPicksTab({
                 <p className={styles.hidden}>
                   {isLocked
                     ? '📭 Nenhum palpite foi feito para este jogo.'
-                    : '🔒 Faça seu palpite na aba Previsões para ver os palpites dos outros membros.'}
+                    : '🔒 Faça seu palpite na aba Palpites para ver os palpites dos outros membros.'}
                 </p>
               )}
             </div>
