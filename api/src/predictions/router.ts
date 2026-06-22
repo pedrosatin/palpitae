@@ -232,6 +232,19 @@ router.get('/group', requireAuth, async (c) => {
     return c.json({ error: 'Acesso negado' }, 403)
   }
 
+  // Visibility mode is set at group creation and immutable (migration 0008).
+  // 'public' shows everyone's picks in real time; 'hidden' applies the anti-copy rule.
+  const groupConfig = await db
+    .prepare(`SELECT predictions_visibility FROM groups WHERE id = ? AND deleted_at IS NULL`)
+    .bind(groupId)
+    .first<{ predictions_visibility: string }>()
+
+  if (!groupConfig) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
+  const isPublic = groupConfig.predictions_visibility === 'public'
+
   const now = new Date().toISOString()
 
   // Group roster (for stable column/row ordering on the frontend)
@@ -256,31 +269,54 @@ router.get('/group', requireAuth, async (c) => {
   //     the requester never predicted — they can no longer predict, so hiding
   //     others' picks would be pointless.
   const predictionsStartedAt = Date.now()
-  const predictionsResult = await db
-    .prepare(
-      `SELECT
-         pr.match_id,
-         pr.user_id,
-         COALESCE(p.nickname, u.email) AS user_display,
-         pr.predicted_home_score,
-         pr.predicted_away_score,
-         pr.points_awarded,
-         CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
-       FROM predictions pr
-       JOIN users u ON u.id = pr.user_id
-       LEFT JOIN profiles p ON p.user_id = pr.user_id
-       JOIN matches m ON m.id = pr.match_id
-       WHERE pr.group_id = ?
-         AND (
-           m.start_time <= ?
-           OR pr.match_id IN (
-             SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
-           )
-         )
-       ORDER BY m.start_time ASC, user_display ASC`,
-    )
-    .bind(now, groupId, now, groupId, userId)
-    .all()
+  const predictionsResult = isPublic
+    ? // Public group: every member's picks are visible in real time, no anti-copy filter.
+      await db
+        .prepare(
+          `SELECT
+             pr.match_id,
+             pr.user_id,
+             COALESCE(p.nickname, u.email) AS user_display,
+             pr.predicted_home_score,
+             pr.predicted_away_score,
+             pr.points_awarded,
+             CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+           FROM predictions pr
+           JOIN users u ON u.id = pr.user_id
+           LEFT JOIN profiles p ON p.user_id = pr.user_id
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.group_id = ?
+           ORDER BY m.start_time ASC, user_display ASC`,
+        )
+        .bind(now, groupId)
+        .all()
+    : // Hidden group (default): a member's pick for a match is only revealed once the
+      // requester has predicted that same match OR the match has already started.
+      await db
+        .prepare(
+          `SELECT
+             pr.match_id,
+             pr.user_id,
+             COALESCE(p.nickname, u.email) AS user_display,
+             pr.predicted_home_score,
+             pr.predicted_away_score,
+             pr.points_awarded,
+             CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+           FROM predictions pr
+           JOIN users u ON u.id = pr.user_id
+           LEFT JOIN profiles p ON p.user_id = pr.user_id
+           JOIN matches m ON m.id = pr.match_id
+           WHERE pr.group_id = ?
+             AND (
+               m.start_time <= ?
+               OR pr.match_id IN (
+                 SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
+               )
+             )
+           ORDER BY m.start_time ASC, user_display ASC`,
+        )
+        .bind(now, groupId, now, groupId, userId)
+        .all()
   const predictionsMs = Date.now() - predictionsStartedAt
 
   logRequestPerf('GET /predictions/group', {
@@ -291,6 +327,7 @@ router.get('/group', requireAuth, async (c) => {
     extra: {
       group_id: groupId,
       members: membersResult.results.length,
+      visibility: groupConfig.predictions_visibility,
     },
   })
 

@@ -301,6 +301,94 @@ describe('groups router', () => {
     expect(body.group.competition_id).toBe('comp-1')
   })
 
+  describe('POST /groups — scoring config & visibility', () => {
+    it('accepts valid custom scoring and visibility', async () => {
+      const res = await request('user@example.com', {
+        name: 'Custom',
+        competition_id: 'comp-1',
+        points_exact: 5,
+        points_winner: 2,
+        predictions_visibility: 'public',
+      })
+      expect(res.status).toBe(201)
+    })
+
+    it('rejects points outside 0–10', async () => {
+      const res = await request('user@example.com', {
+        name: 'Custom',
+        competition_id: 'comp-1',
+        points_exact: 11,
+        points_winner: 2,
+      })
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toContain('inteiro entre 0 e 10')
+    })
+
+    it('rejects non-integer points', async () => {
+      const res = await request('user@example.com', {
+        name: 'Custom',
+        competition_id: 'comp-1',
+        points_exact: 2.5,
+        points_winner: 1,
+      })
+      expect(res.status).toBe(400)
+    })
+
+    it('accepts points_exact = 0 (1X2 / "só vencedor" mode)', async () => {
+      const res = await request('user@example.com', {
+        name: 'Só vencedor',
+        competition_id: 'comp-1',
+        points_exact: 0,
+        points_winner: 1,
+      })
+      expect(res.status).toBe(201)
+    })
+
+    it('rejects points_exact < points_winner (when points_exact > 0)', async () => {
+      const res = await request('user@example.com', {
+        name: 'Custom',
+        competition_id: 'comp-1',
+        points_exact: 1,
+        points_winner: 3,
+      })
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toContain('maior ou igual')
+    })
+
+    it('rejects both points = 0', async () => {
+      const res = await request('user@example.com', {
+        name: 'Custom',
+        competition_id: 'comp-1',
+        points_exact: 0,
+        points_winner: 0,
+      })
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toContain('maior que zero')
+    })
+
+    it('rejects an invalid visibility value', async () => {
+      const res = await request('user@example.com', {
+        name: 'Custom',
+        competition_id: 'comp-1',
+        predictions_visibility: 'everyone',
+      })
+      expect(res.status).toBe(400)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toContain('Visibilidade inválida')
+    })
+
+    it('defaults to classic 3/1 hidden when fields are omitted', async () => {
+      const res = await request('user@example.com', {
+        name: 'Default',
+        competition_id: 'comp-1',
+      })
+      expect(res.status).toBe(201)
+    })
+  })
+
   describe('DELETE /groups/:id/members/:memberId', () => {
     it('removes a member when called by the group admin', async () => {
       const { db, deleteRun } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: true })
