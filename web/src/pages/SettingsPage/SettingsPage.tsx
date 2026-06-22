@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { trackEvent } from '../../analytics/ga'
+import Button from '../../components/Button'
 import Header from '../../components/Header'
+import Modal from '../../components/Modal'
 import { buildApiUrl } from '../../config'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import type { User } from '../../types'
@@ -17,8 +19,16 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
   const navigate = useNavigate()
 
   const [roundReminders, setRoundReminders] = useState<boolean | null>(null)
+  const [pending, setPending] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+
+  useEffect(() => {
+    if (!success) return
+    const id = setTimeout(() => setSuccess(false), 3000)
+    return () => clearTimeout(id)
+  }, [success])
 
   function loadPreferences() {
     setError(null)
@@ -35,14 +45,27 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
     loadPreferences()
   }, [])
 
-  function handleToggle(next: boolean) {
-    if (saving) return
+  function handleOpenModal(next: boolean) {
     trackEvent('click_settings_toggle_lembretes', { enabled: next })
+    setPending(next)
+  }
+
+  function handleCancel() {
+    trackEvent('click_settings_cancelar_lembretes')
+    setPending(null)
+  }
+
+  function handleConfirm() {
+    if (pending === null || saving) return
+    const next = pending
+    setPending(null)
+    trackEvent('click_settings_confirmar_lembretes', { enabled: next })
 
     const previous = roundReminders
-    setRoundReminders(next) // optimistic
+    setRoundReminders(next)
     setSaving(true)
     setError(null)
+    setSuccess(false)
 
     fetch(buildApiUrl('/notifications/preferences'), {
       method: 'PATCH',
@@ -52,9 +75,10 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
     })
       .then((res) => {
         if (!res.ok) throw new Error('Falha ao salvar preferência')
+        setSuccess(true)
       })
       .catch((err) => {
-        setRoundReminders(previous) // rollback
+        setRoundReminders(previous)
         setError(err.message)
       })
       .finally(() => setSaving(false))
@@ -106,12 +130,36 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
                 className={styles.toggle}
                 checked={roundReminders ?? false}
                 disabled={roundReminders === null || saving}
-                onChange={(e) => handleToggle(e.target.checked)}
+                onChange={(e) => handleOpenModal(e.target.checked)}
               />
             </label>
           </section>
+
+          {success && (
+            <div className={styles.successMessage}>Configuração salva com sucesso.</div>
+          )}
         </div>
       </main>
+
+      <Modal
+        isOpen={pending !== null}
+        onClose={handleCancel}
+        title={pending ? 'Ativar lembretes de rodada' : 'Desativar lembretes de rodada'}
+      >
+        <p className={styles.modalText}>
+          {pending
+            ? 'Você receberá um e-mail no dia anterior ao primeiro jogo de cada rodada.'
+            : 'Você não receberá mais e-mails de lembrete de rodada.'}
+        </p>
+        <div className={styles.modalActions}>
+          <Button variant="secondary" type="button" onClick={handleCancel}>
+            Cancelar
+          </Button>
+          <Button variant="primary" type="button" onClick={handleConfirm}>
+            Confirmar
+          </Button>
+        </div>
+      </Modal>
     </>
   )
 }
