@@ -244,6 +244,102 @@ describe('MatchCard – analytics', () => {
   })
 })
 
+describe('MatchCard – outcome-only (1X2) mode', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+  })
+
+  it('renders Casa/Empate/Fora buttons instead of score inputs', () => {
+    render(
+      <MatchCard
+        match={makeMatch()}
+        prediction={undefined}
+        groupId="group-1"
+        outcomeOnly
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Casa' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Empate' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fora' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('spinbutton', { name: /Placar Brasil/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('saves (1,0) and tracks the outcome when "Casa" is clicked', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+    const onSaved = vi.fn()
+
+    render(
+      <MatchCard
+        match={makeMatch()}
+        prediction={undefined}
+        groupId="group-1"
+        outcomeOnly
+        onSaved={onSaved}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Casa' }))
+
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_matchcard_resultado', {
+      match_id: 'match-1',
+      outcome: 'home',
+    })
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.predicted_home_score).toBe(1)
+    expect(body.predicted_away_score).toBe(0)
+    expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0)
+  })
+
+  it('marks the button matching the existing prediction as active', () => {
+    // prediction 0×1 → away wins → "Fora" active
+    render(
+      <MatchCard
+        match={makeMatch()}
+        prediction={makePrediction({ predicted_home_score: 0, predicted_away_score: 1 })}
+        groupId="group-1"
+        outcomeOnly
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Fora' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Casa' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('shows the outcome label (not a score) for a locked prediction', () => {
+    render(
+      <MatchCard
+        match={makeMatch()}
+        prediction={makePrediction({
+          predicted_home_score: 2,
+          predicted_away_score: 0,
+          locked: 1,
+        })}
+        groupId="group-1"
+        outcomeOnly
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('seu palpite')).toBeInTheDocument()
+    expect(screen.getByText('Casa')).toBeInTheDocument()
+  })
+})
+
 describe('MatchCard – Locked state', () => {
   beforeEach(() => {
     vi.restoreAllMocks()

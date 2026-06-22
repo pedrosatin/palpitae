@@ -40,6 +40,9 @@ interface GroupDetail {
   is_admin: boolean
   invite_code: string
   created_at: string
+  points_exact: number
+  points_winner: number
+  predictions_visibility: string
   member_count: number
   user_position: number
   user_points: number
@@ -560,6 +563,7 @@ export default function GroupDetailPage({
             <PredictionsTab
               groupId={groupId}
               competitionId={group.competition_id}
+              pointsExact={group.points_exact}
             />
           )}
           {activeTab === 'standings' && (
