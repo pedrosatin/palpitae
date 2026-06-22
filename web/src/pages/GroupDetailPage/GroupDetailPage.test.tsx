@@ -192,7 +192,7 @@ describe('GroupDetailPage – tabs', () => {
     expect(tabs).toHaveStyle('--tabs-offset: 72px')
   })
 
-  it('switches to Classificação tab when that button is clicked', async () => {
+  it('switches to Ranking tab when that button is clicked', async () => {
     mockGroupFetch()
 
     renderPage()
@@ -202,14 +202,14 @@ describe('GroupDetailPage – tabs', () => {
     })
 
     await userEvent.click(
-      screen.getByRole('button', { name: /Classificação/i }),
+      screen.getByRole('button', { name: /Ranking/i }),
     )
 
     expect(screen.queryByTestId('predictions-tab')).not.toBeInTheDocument()
     expect(screen.getByTestId('leaderboard-tab')).toBeInTheDocument()
   })
 
-  it('switches back to Palpites tab when that button is clicked', async () => {
+  it('switches back to Palpitar tab when that button is clicked', async () => {
     mockGroupFetch()
 
     renderPage()
@@ -219,9 +219,9 @@ describe('GroupDetailPage – tabs', () => {
     })
 
     await userEvent.click(
-      screen.getByRole('button', { name: /Classificação/i }),
+      screen.getByRole('button', { name: /Ranking/i }),
     )
-    await userEvent.click(screen.getByRole('button', { name: /Palpites/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Palpitar/i }))
 
     expect(screen.getByTestId('predictions-tab')).toBeInTheDocument()
   })
@@ -404,7 +404,7 @@ describe('GroupDetailPage – analytics', () => {
     mockGroupFetch()
     renderPage()
     await waitFor(() => screen.getByTestId('predictions-tab'))
-    await userEvent.click(screen.getByRole('button', { name: /Classificação/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Ranking/i }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_tab', { tab: 'leaderboard' })
   })
 
