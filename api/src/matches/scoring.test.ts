@@ -27,6 +27,35 @@ describe('calculatePoints', () => {
     it('predicted home win, actual draw', () => expect(calculatePoints(0, 0, 1, 0)).toBe(0))
     it('predicted away win, actual draw', () => expect(calculatePoints(0, 0, 0, 1)).toBe(0))
   })
+
+  describe('custom scoring (points_exact / points_winner)', () => {
+    it('uses custom exact points on exact hit', () =>
+      expect(calculatePoints(2, 0, 2, 0, 5, 2)).toBe(5))
+    it('uses custom winner points on correct outcome', () =>
+      expect(calculatePoints(2, 0, 3, 1, 5, 2)).toBe(2))
+    it('wrong outcome still scores 0 with custom points', () =>
+      expect(calculatePoints(0, 1, 1, 0, 5, 2)).toBe(0))
+    it('"só placar exato" (3,0): correct outcome scores 0', () =>
+      expect(calculatePoints(2, 0, 3, 1, 3, 0)).toBe(0))
+    it('"só placar exato" (3,0): exact still scores 3', () =>
+      expect(calculatePoints(2, 0, 2, 0, 3, 0)).toBe(3))
+    it('"só vencedor" (1,1): exact hit scores the winner value', () =>
+      expect(calculatePoints(2, 0, 2, 0, 1, 1)).toBe(1))
+    it('"só vencedor" (1,1): correct outcome scores 1', () =>
+      expect(calculatePoints(2, 0, 3, 1, 1, 1)).toBe(1))
+  })
+
+  describe('1X2 mode (points_exact = 0): exact-score bonus disabled', () => {
+    // Picks are stored as casa=(1,0), empate=(0,0), fora=(0,1).
+    it('correct winner scores the winner value', () =>
+      expect(calculatePoints(2, 0, 1, 0, 0, 1)).toBe(1))
+    it('a coincidental exact match still scores only the winner value, never 0', () =>
+      expect(calculatePoints(1, 0, 1, 0, 0, 1)).toBe(1))
+    it('correct draw scores the winner value', () =>
+      expect(calculatePoints(2, 2, 0, 0, 0, 1)).toBe(1))
+    it('wrong outcome scores 0', () =>
+      expect(calculatePoints(0, 1, 1, 0, 0, 1)).toBe(0))
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -52,7 +81,16 @@ type FakeMatch = {
   scored_at: string | null
 }
 
-function buildFakeDb(matches: FakeMatch[], predictions: FakePrediction[]) {
+type FakeGroupConfig = { points_exact: number; points_winner: number }
+
+function buildFakeDb(
+  matches: FakeMatch[],
+  predictions: FakePrediction[],
+  groups: Record<string, FakeGroupConfig> = {},
+) {
+  // Any group not explicitly configured uses the classic 3/1 scoring.
+  const groupConfig = (groupId: string): FakeGroupConfig =>
+    groups[groupId] ?? { points_exact: 3, points_winner: 1 }
   const updatedMatches: Record<string, Partial<FakeMatch>> = {}
   const updatedPredictions: Record<string, Partial<FakePrediction>> = {}
   const leaderboardUpserts: Array<{ group_id: string; user_id: string; total_points: number; exact_hits: number }> = []
@@ -87,20 +125,27 @@ function buildFakeDb(matches: FakeMatch[], predictions: FakePrediction[]) {
           ) as unknown as T[]
           return { results }
         }
-        if (sql.includes('FROM predictions') && sql.includes('WHERE match_id = ?')) {
+        if (sql.includes('FROM predictions') && sql.includes('WHERE p.match_id = ?')) {
           const matchId = params[0] as string
-          const results = predictions.filter((p) => p.match_id === matchId) as unknown as T[]
+          const results = predictions
+            .filter((p) => p.match_id === matchId)
+            .map((p) => ({ ...p, ...groupConfig(p.group_id) })) as unknown as T[]
           return { results }
         }
-        if (sql.includes('FROM predictions') && sql.includes('GROUP BY user_id')) {
+        if (sql.includes('FROM predictions') && sql.includes('GROUP BY p.user_id')) {
           const groupId = params[0] as string
+          const cfg = groupConfig(groupId)
           const grouped = new Map<string, { total_points: number; exact_hits: number }>()
           for (const p of predictions.filter((p) => p.group_id === groupId)) {
             const pts = updatedPredictions[p.id]?.points_awarded ?? p.points_awarded
             const cur = grouped.get(p.user_id) ?? { total_points: 0, exact_hits: 0 }
+            // Mirror the SQL: exact_hits counts rows awarded points_exact, but only
+            // when the exact bonus is distinguishable (points_exact > points_winner).
+            const isExact =
+              cfg.points_exact > cfg.points_winner && pts === cfg.points_exact
             grouped.set(p.user_id, {
               total_points: cur.total_points + (pts as number),
-              exact_hits: cur.exact_hits + (pts === 3 ? 1 : 0),
+              exact_hits: cur.exact_hits + (isExact ? 1 : 0),
             })
           }
           return {
@@ -282,6 +327,77 @@ describe('scoreUnprocessedMatches', () => {
     expect(u1?.exact_hits).toBe(1)
     expect(u2?.total_points).toBe(1)
     expect(u2?.exact_hits).toBe(0)
+  })
+
+  it('applies per-group scoring config when scoring a shared match', async () => {
+    const matches: FakeMatch[] = [
+      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+    ]
+    const predictions: FakePrediction[] = [
+      // exact hit in a custom-scored group (5/2) → 5 points
+      { id: 'p1', group_id: 'gCustom', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
+      // correct outcome (wrong score) in the same group → 2 points
+      { id: 'p2', group_id: 'gCustom', user_id: 'u2', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0, points_awarded: 0 },
+      // exact hit in a default group (3/1) → 3 points
+      { id: 'p3', group_id: 'gDefault', user_id: 'u3', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
+    ]
+    const db = buildFakeDb(matches, predictions, {
+      gCustom: { points_exact: 5, points_winner: 2 },
+    })
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(5)
+    expect(db._updatedPredictions['p2']?.points_awarded).toBe(2)
+    expect(db._updatedPredictions['p3']?.points_awarded).toBe(3)
+
+    const u1 = db._leaderboardUpserts.find((r) => r.user_id === 'u1')
+    expect(u1?.total_points).toBe(5)
+    expect(u1?.exact_hits).toBe(1) // 5 == points_exact and 5 > 2
+  })
+
+  it('scores a 1X2 group (points_exact = 0) by winner only, with 0 exact_hits', async () => {
+    const matches: FakeMatch[] = [
+      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 1, away_score: 0, scored_at: null },
+    ]
+    const predictions: FakePrediction[] = [
+      // "Casa" pick (1,0) coincides exactly with the 1-0 result — must still score the winner value, not 0.
+      { id: 'p1', group_id: 'g1X2', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0, points_awarded: 0 },
+      // "Fora" pick (0,1) — wrong outcome → 0.
+      { id: 'p2', group_id: 'g1X2', user_id: 'u2', match_id: 'm1', predicted_home_score: 0, predicted_away_score: 1, points_awarded: 0 },
+    ]
+    const db = buildFakeDb(matches, predictions, {
+      g1X2: { points_exact: 0, points_winner: 1 },
+    })
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1)
+    expect(db._updatedPredictions['p2']?.points_awarded).toBe(0)
+
+    const u1 = db._leaderboardUpserts.find((r) => r.user_id === 'u1')
+    expect(u1?.total_points).toBe(1)
+    expect(u1?.exact_hits).toBe(0)
+  })
+
+  it('reports 0 exact_hits when points_exact equals points_winner (indistinguishable)', async () => {
+    const matches: FakeMatch[] = [
+      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+    ]
+    const predictions: FakePrediction[] = [
+      // exact hit in a "só vencedor" group (1/1) → 1 point, but not counted as exact
+      { id: 'p1', group_id: 'gWinner', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
+    ]
+    const db = buildFakeDb(matches, predictions, {
+      gWinner: { points_exact: 1, points_winner: 1 },
+    })
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1)
+    const u1 = db._leaderboardUpserts.find((r) => r.user_id === 'u1')
+    expect(u1?.total_points).toBe(1)
+    expect(u1?.exact_hits).toBe(0)
   })
 
   it('only scores matches from the requested competition', async () => {
