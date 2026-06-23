@@ -119,7 +119,7 @@ describe('pollActiveMatches', () => {
     expect(syncFixturesMock).toHaveBeenCalledWith(
       expect.objectContaining({ competitionCode: 'WC', season: 2026, matchday: 3, apiKey: 'key' }),
     )
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), undefined)
   })
 
   it('omits matchday for non-numeric rounds (knockout phase)', async () => {
@@ -147,7 +147,7 @@ describe('pollActiveMatches', () => {
     const matchdays = syncFixturesMock.mock.calls.map((c) => c[0].matchday).sort()
     expect(matchdays).toEqual([1, 2])
     expect(scoreMock).toHaveBeenCalledTimes(1)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), undefined)
   })
 
   it('groups by competition — one score call per competition', async () => {
@@ -160,8 +160,8 @@ describe('pollActiveMatches', () => {
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(2)
     expect(scoreMock).toHaveBeenCalledTimes(2)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
-    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), undefined)
+    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything(), undefined)
   })
 
   it('isolates a sync failure and still scores the competition for synced rounds', async () => {
@@ -175,7 +175,7 @@ describe('pollActiveMatches', () => {
 
     // One round failed, the other succeeded → scoring still runs once.
     expect(scoreMock).toHaveBeenCalledTimes(1)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), undefined)
   })
 
   it('does not score a competition when all its rounds fail to sync', async () => {

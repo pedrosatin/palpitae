@@ -89,6 +89,7 @@ export default function CreateGroupModal({
   const [predictionsVisibility, setPredictionsVisibility] = useState<
     'hidden' | 'public'
   >('hidden')
+  const [penaltyPicksEnabled, setPenaltyPicksEnabled] = useState(true)
   const [scoringHelp, setScoringHelp] = useState<'exact' | 'winner' | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -118,6 +119,7 @@ export default function CreateGroupModal({
     setPointsExact(3)
     setPointsWinner(1)
     setPredictionsVisibility('hidden')
+    setPenaltyPicksEnabled(true)
     setScoringHelp(null)
     setError(null)
     setCreated(null)
@@ -142,6 +144,11 @@ export default function CreateGroupModal({
   function toggleScoringHelp(field: 'exact' | 'winner') {
     trackEvent('click_create_group_ajuda_pontuacao', { campo: field })
     setScoringHelp((cur) => (cur === field ? null : field))
+  }
+
+  function handlePenaltyToggle(enabled: boolean) {
+    trackEvent('click_create_group_penaltis', { enabled })
+    setPenaltyPicksEnabled(enabled)
   }
 
   function handleVisibility(visibility: 'hidden' | 'public') {
@@ -181,6 +188,7 @@ export default function CreateGroupModal({
           points_exact: pointsExact,
           points_winner: pointsWinner,
           predictions_visibility: predictionsVisibility,
+          penalty_picks_enabled: penaltyPicksEnabled,
         }),
       })
 
@@ -424,6 +432,39 @@ export default function CreateGroupModal({
               </button>
             </div>
           </div>
+
+          {pointsExact > 0 && (
+            <div className={styles.field}>
+              <span className={styles.label}>Palpite de pênaltis</span>
+              <div className={styles.visibilityGroup}>
+                <button
+                  type="button"
+                  className={`${styles.visibilityOption} ${penaltyPicksEnabled ? styles.visibilityOptionActive : ''}`}
+                  onClick={() => handlePenaltyToggle(true)}
+                  aria-pressed={penaltyPicksEnabled}
+                >
+                  <span className={styles.visibilityTitle}>Ativado</span>
+                  <span className={styles.visibilityDesc}>
+                    Em jogos de mata-mata, quando o palpite for empate, o
+                    participante escolhe qual time vence nos pênaltis. Acertar dá
+                    +1 ponto bônus.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.visibilityOption} ${!penaltyPicksEnabled ? styles.visibilityOptionActive : ''}`}
+                  onClick={() => handlePenaltyToggle(false)}
+                  aria-pressed={!penaltyPicksEnabled}
+                >
+                  <span className={styles.visibilityTitle}>Desativado</span>
+                  <span className={styles.visibilityDesc}>
+                    Empates em mata-mata pontuam como empate normal, sem bônus de
+                    pênaltis.
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className={styles.actions}>
             <Button

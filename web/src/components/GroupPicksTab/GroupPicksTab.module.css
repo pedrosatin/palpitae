@@ -161,6 +161,12 @@
   color: var(--color-text-primary);
 }
 
+.pickPenalty {
+  font-weight: var(--font-weight-normal, 400);
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-secondary);
+}
+
 .pickPoints {
   flex-shrink: 0;
   font-size: var(--font-size-xs, 0.75rem);

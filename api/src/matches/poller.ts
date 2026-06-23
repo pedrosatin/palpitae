@@ -112,7 +112,7 @@ export async function pollActiveMatches(
     }
 
     if (synced) {
-      await scoreUnprocessedMatches(comp.comp_id, db)
+      await scoreUnprocessedMatches(comp.comp_id, db, ae)
     }
   }
 

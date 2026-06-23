@@ -43,6 +43,7 @@ interface GroupDetail {
   points_exact: number
   points_winner: number
   predictions_visibility: string
+  penalty_picks_enabled: boolean
   member_count: number
   user_position: number
   user_points: number
@@ -564,6 +565,7 @@ export default function GroupDetailPage({
               groupId={groupId}
               competitionId={group.competition_id}
               pointsExact={group.points_exact}
+              penaltyPicksEnabled={group.penalty_picks_enabled}
             />
           )}
           {activeTab === 'standings' && (

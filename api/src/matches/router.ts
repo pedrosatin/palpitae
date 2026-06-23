@@ -3,7 +3,8 @@ import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
-import { scoreUnprocessedMatches } from './scoring'
+import { isKnockoutPhase, KNOCKOUT_PHASES_SQL } from './phases'
+import { PENALTY_DEFER_GRACE_MS, scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
 const router = new Hono<AppContext>()
@@ -17,7 +18,32 @@ const router = new Hono<AppContext>()
  *                                 a short TTL keeps that transition fresh)
  * An empty list also gets the short TTL so it repopulates quickly.
  */
-function matchesCacheControl(matches: { status: string }[]): string {
+type CacheableMatch = {
+  status: string
+  phase: string | null
+  home_score: number | null
+  away_score: number | null
+  penalty_winner_team_id: string | null
+  start_time: string
+}
+
+function matchesCacheControl(matches: CacheableMatch[]): string {
+  // A finished knockout draw still owes a penalty winner — keep TTL short until
+  // the shootout result arrives. Guard on the same grace window used by
+  // scoreUnprocessedMatches so a data gap can't lock the CDN at 30s forever.
+  const graceCutoffMs = Date.now() - PENALTY_DEFER_GRACE_MS
+  const hasPendingPenalty = matches.some(
+    (m) =>
+      m.status === 'finished' &&
+      isKnockoutPhase(m.phase) &&
+      m.home_score !== null &&
+      m.home_score === m.away_score &&
+      m.penalty_winner_team_id === null &&
+      new Date(m.start_time).getTime() > graceCutoffMs,
+  )
+  if (hasPendingPenalty) {
+    return 'public, max-age=30'
+  }
   if (matches.length > 0 && matches.every((m) => m.status === 'finished')) {
     return 'public, max-age=86400'
   }
@@ -88,6 +114,9 @@ router.get('/', async (c) => {
       m.phase,
       m.round,
       m.group_name,
+      m.penalty_winner_team_id,
+      m.penalty_home_score,
+      m.penalty_away_score,
       ht.id         AS home_team_id,
       ht.name       AS home_team_name,
       ht.short_name AS home_team_short_name,
@@ -124,11 +153,11 @@ router.get('/', async (c) => {
   try {
     const dbStartedAt = Date.now()
 
-    let result: { results: { status: string }[] }
+    let result: { results: CacheableMatch[] }
     let defaultRound: string | null = null
 
     if (hasFilters) {
-      result = await db.prepare(query).bind(...(params as string[])).all<{ status: string }>()
+      result = await db.prepare(query).bind(...(params as string[])).all<CacheableMatch>()
     } else {
       const nowIso = new Date().toISOString()
       // One D1 round-trip for the full list plus the two queries that pick the
@@ -159,7 +188,7 @@ router.get('/', async (c) => {
           .bind(competitionId),
       ])
 
-      result = batchResults[0] as { results: { status: string }[] }
+      result = batchResults[0] as { results: CacheableMatch[] }
       const activeRound = (batchResults[1].results as { round?: string }[])[0]?.round
       const lastRound = (batchResults[2].results as { round?: string }[])[0]?.round
       defaultRound = activeRound ?? lastRound ?? null
@@ -257,14 +286,25 @@ async function maybeSyncResults(
 
     const needsSync = (pending?.count ?? 0) > 0
 
-    // Also check for finished matches not yet scored (e.g. from a previous sync)
+    // Also check for finished matches not yet scored (e.g. from a previous sync).
+    // Mirror scoreUnprocessedMatches' defer guard so deferred knockout draws
+    // inside the grace window don't set needsScoring=true on every request.
+    const graceDeadline = new Date(Date.now() - PENALTY_DEFER_GRACE_MS).toISOString().slice(0, 19) + 'Z'
     const unscoredCheck = await db
       .prepare(
         `SELECT COUNT(*) AS count FROM matches
          WHERE competition_id = ? AND status = 'finished' AND scored_at IS NULL
-           AND home_score IS NOT NULL AND away_score IS NOT NULL`,
+           AND home_score IS NOT NULL AND away_score IS NOT NULL
+           AND (
+             home_score != away_score
+             OR phase NOT IN (${KNOCKOUT_PHASES_SQL})
+             OR phase IS NULL
+             OR penalty_winner_team_id IS NOT NULL
+             OR start_time IS NULL
+             OR start_time <= ?
+           )`,
       )
-      .bind(competitionId)
+      .bind(competitionId, graceDeadline)
       .first<{ count: number }>()
 
     const needsScoring = (unscoredCheck?.count ?? 0) > 0
@@ -296,7 +336,7 @@ async function maybeSyncResults(
       }
     }
 
-    await scoreUnprocessedMatches(competitionId, db)
+    await scoreUnprocessedMatches(competitionId, db, ae)
 
     console.info(
       '[perf]',

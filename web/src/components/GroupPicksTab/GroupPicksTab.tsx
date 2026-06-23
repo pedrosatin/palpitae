@@ -3,7 +3,7 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
 import { applyDefaultRound } from '../../lib/rounds'
-import type { Match } from '../MatchCard'
+import { penaltyWinnerShortName, type Match } from '../MatchCard'
 import styles from './GroupPicksTab.module.css'
 
 interface GroupPicksTabProps {
@@ -22,7 +22,9 @@ interface MemberPrediction {
   user_display: string
   predicted_home_score: number
   predicted_away_score: number
+  predicted_penalty_winner_team_id: string | null
   points_awarded: number
+  penalty_bonus: number
   locked: 0 | 1
 }
 
@@ -215,12 +217,22 @@ export default function GroupPicksTab({
                         </span>
                         <span className={styles.pickScore}>
                           {p.predicted_home_score} × {p.predicted_away_score}
+                          {p.predicted_penalty_winner_team_id != null && (
+                            <span className={styles.pickPenalty}>
+                              {' '}
+                              (pên:{' '}
+                              {penaltyWinnerShortName(match, p.predicted_penalty_winner_team_id)}
+                              )
+                            </span>
+                          )}
                         </span>
                         {isFinished && (
                           <span
-                            className={`${styles.pickPoints} ${p.points_awarded > 0 ? styles.pointsGreen : styles.pointsZero}`}
+                            className={`${styles.pickPoints} ${p.points_awarded + (p.penalty_bonus ?? 0) > 0 ? styles.pointsGreen : styles.pointsZero}`}
                           >
-                            {p.points_awarded} pt
+                            {(p.penalty_bonus ?? 0) > 0
+                              ? `${p.points_awarded}+${p.penalty_bonus} pt`
+                              : `${p.points_awarded + (p.penalty_bonus ?? 0)} pt`}
                           </span>
                         )}
                       </li>

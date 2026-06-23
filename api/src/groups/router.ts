@@ -155,6 +155,7 @@ router.post('/', requireAuth, async (c) => {
     points_exact?: number
     points_winner?: number
     predictions_visibility?: string
+    penalty_picks_enabled?: boolean
   }>()
 
   const name = body.name?.trim()
@@ -172,6 +173,12 @@ router.post('/', requireAuth, async (c) => {
   const points_exact = body.points_exact ?? 3
   const points_winner = body.points_winner ?? 1
   const predictions_visibility = body.predictions_visibility ?? 'hidden'
+  if (body.penalty_picks_enabled !== undefined && typeof body.penalty_picks_enabled !== 'boolean') {
+    return c.json({ error: 'penalty_picks_enabled deve ser booleano' }, 400)
+  }
+  // Penalty picks default on. Forced off for 1X2 ("só vencedor") groups: with no
+  // exact-score points there is no shootout bonus, so the toggle is meaningless.
+  const penalty_picks_enabled = points_exact > 0 && (body.penalty_picks_enabled ?? true) ? 1 : 0
 
   if (
     !Number.isInteger(points_exact) ||
@@ -235,8 +242,8 @@ router.post('/', requireAuth, async (c) => {
     await db.batch([
       db
         .prepare(
-          `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, predictions_visibility)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, predictions_visibility, penalty_picks_enabled)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           groupId,
@@ -247,6 +254,7 @@ router.post('/', requireAuth, async (c) => {
           points_exact,
           points_winner,
           predictions_visibility,
+          penalty_picks_enabled,
         ),
       db
         .prepare(
@@ -258,7 +266,7 @@ router.post('/', requireAuth, async (c) => {
 
     logEvent(c.env.AE, 'group_created', {
       blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
-      doubles: [points_exact, points_winner],
+      doubles: [points_exact, points_winner, penalty_picks_enabled],
     })
 
     return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
@@ -369,6 +377,7 @@ router.get('/:id', requireAuth, async (c) => {
          g.points_exact,
          g.points_winner,
          g.predictions_visibility,
+         g.penalty_picks_enabled,
          COUNT(DISTINCT gm.user_id) AS member_count,
          COALESCE(l.total_points, 0) AS user_points,
          COALESCE(l.exact_hits, 0) AS exact_hits
@@ -391,6 +400,7 @@ router.get('/:id', requireAuth, async (c) => {
       points_exact: number
       points_winner: number
       predictions_visibility: string
+      penalty_picks_enabled: number
       member_count: number
       user_points: number
       exact_hits: number
@@ -426,6 +436,7 @@ router.get('/:id', requireAuth, async (c) => {
       points_exact: group.points_exact,
       points_winner: group.points_winner,
       predictions_visibility: group.predictions_visibility,
+      penalty_picks_enabled: group.penalty_picks_enabled === 1,
       member_count: group.member_count,
       user_points: group.user_points,
       exact_hits: group.exact_hits,

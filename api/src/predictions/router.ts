@@ -1,9 +1,70 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { isKnockoutPhase, penaltyPicksActive } from '../matches/phases'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 
 const router = new Hono<AppContext>()
+
+const UPSERT_PREDICTION_SQL = `
+  INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner_team_id, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+    predicted_home_score               = excluded.predicted_home_score,
+    predicted_away_score               = excluded.predicted_away_score,
+    predicted_penalty_winner_team_id   = excluded.predicted_penalty_winner_team_id,
+    updated_at                         = excluded.updated_at`
+
+/**
+ * Resolves a user's penalty-winner pick against the match + group rules.
+ *
+ * Penalty picks are only active when the group has them enabled AND scores exact
+ * scores (points_exact > 0 — 1X2 groups never use them). A pick is only valid for
+ * a knockout match predicted as a draw, and must name one of the two teams.
+ *
+ * Returns either the resolved value to store (the team id for a valid knockout
+ * draw, or null in every other case) or an error describing why the input was
+ * rejected. `code` lets the bulk endpoint sort failures into buckets.
+ */
+function resolvePenaltyPick(opts: {
+  field: string | null | undefined
+  predictedHome: number
+  predictedAway: number
+  phase: string | null
+  homeTeamId: string
+  awayTeamId: string
+  penaltyPicksEnabled: number
+  pointsExact: number
+}):
+  | { ok: true; value: string | null }
+  | { ok: false; code: 'disabled' | 'not_knockout' | 'missing' | 'invalid_team'; error: string } {
+  const { field, predictedHome, predictedAway, phase, homeTeamId, awayTeamId } = opts
+  const wantsPick = field != null && field !== ''
+  const picksActive = penaltyPicksActive(opts.penaltyPicksEnabled, opts.pointsExact)
+  const isKnockout = isKnockoutPhase(phase)
+  const isDraw = predictedHome === predictedAway
+
+  // Injection guards: reject a pick that has no business being here.
+  if (wantsPick && !picksActive) {
+    return { ok: false, code: 'disabled', error: 'Este grupo não usa palpite de pênaltis' }
+  }
+  if (wantsPick && !isKnockout) {
+    return { ok: false, code: 'not_knockout', error: 'Palpite de pênaltis só vale para mata-mata' }
+  }
+
+  // Only a knockout draw in an active group carries a pick; otherwise store null.
+  if (!picksActive || !isKnockout || !isDraw) {
+    return { ok: true, value: null }
+  }
+
+  if (!wantsPick) {
+    return { ok: false, code: 'missing', error: 'Escolha o time que vence nos pênaltis' }
+  }
+  if (field !== homeTeamId && field !== awayTeamId) {
+    return { ok: false, code: 'invalid_team', error: 'Time de pênaltis inválido para este jogo' }
+  }
+  return { ok: true, value: field }
+}
 
 /**
  * GET /predictions?group_id=xxx[&match_id=xxx]
@@ -55,7 +116,9 @@ router.get('/', requireAuth, async (c) => {
       p.match_id,
       p.predicted_home_score,
       p.predicted_away_score,
+      p.predicted_penalty_winner_team_id,
       p.points_awarded,
+      p.penalty_bonus,
       p.created_at,
       p.updated_at,
       CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
@@ -149,11 +212,17 @@ router.get('/user', requireAuth, async (c) => {
          p.match_id,
          p.predicted_home_score,
          p.predicted_away_score,
+         p.predicted_penalty_winner_team_id,
          p.points_awarded,
+         p.penalty_bonus,
          m.status AS match_status,
          m.start_time AS match_start_time,
          m.home_score,
          m.away_score,
+         m.phase,
+         m.penalty_winner_team_id,
+         m.penalty_home_score,
+         m.penalty_away_score,
          m.round,
          ht.name AS home_team_name,
          ht.short_name AS home_team_short_name,
@@ -279,7 +348,9 @@ router.get('/group', requireAuth, async (c) => {
              COALESCE(p.nickname, u.email) AS user_display,
              pr.predicted_home_score,
              pr.predicted_away_score,
+             pr.predicted_penalty_winner_team_id,
              pr.points_awarded,
+             pr.penalty_bonus,
              CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
@@ -300,7 +371,9 @@ router.get('/group', requireAuth, async (c) => {
              COALESCE(p.nickname, u.email) AS user_display,
              pr.predicted_home_score,
              pr.predicted_away_score,
+             pr.predicted_penalty_winner_team_id,
              pr.points_awarded,
+             pr.penalty_bonus,
              CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
@@ -364,6 +437,7 @@ router.put('/', requireAuth, async (c) => {
     match_id?: string
     predicted_home_score?: number
     predicted_away_score?: number
+    predicted_penalty_winner_team_id?: string | null
   }
   try {
     body = await c.req.json()
@@ -401,16 +475,27 @@ router.put('/', requireAuth, async (c) => {
     return c.json({ error: 'Acesso negado' }, 403)
   }
 
-  // Verify match belongs to the group's competition
+  // Verify match belongs to the group's competition. Pulls the phase + team ids
+  // and the group's penalty config so we can validate any penalty-winner pick.
   const match = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.round
+      `SELECT m.id, m.start_time, m.round, m.phase, m.home_team_id, m.away_team_id,
+              g.penalty_picks_enabled, g.points_exact
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        WHERE m.id = ? AND g.id = ?`,
     )
     .bind(match_id, group_id)
-    .first<{ id: string; start_time: string; round: string }>()
+    .first<{
+      id: string
+      start_time: string
+      round: string
+      phase: string | null
+      home_team_id: string
+      away_team_id: string
+      penalty_picks_enabled: number
+      points_exact: number
+    }>()
 
   if (!match) {
     return c.json({ error: 'Jogo não encontrado nesta competição' }, 404)
@@ -422,15 +507,28 @@ router.put('/', requireAuth, async (c) => {
     return c.json({ error: 'Palpite bloqueado — o jogo já começou' }, 422)
   }
 
+  const pick = resolvePenaltyPick({
+    field: body.predicted_penalty_winner_team_id,
+    predictedHome: predicted_home_score,
+    predictedAway: predicted_away_score,
+    phase: match.phase,
+    homeTeamId: match.home_team_id,
+    awayTeamId: match.away_team_id,
+    penaltyPicksEnabled: match.penalty_picks_enabled,
+    pointsExact: match.points_exact,
+  })
+  // Injection guards (disabled / not_knockout) are hard errors — the client sent
+  // something it should never have sent. A missing pick for a knockout draw is a
+  // soft gap: save the score and let the user complete the pick later (consistent
+  // with how PUT /bulk handles the same case via missing_penalty[]).
+  if (!pick.ok && pick.code !== 'missing') {
+    return c.json({ error: pick.error }, 400)
+  }
+
+  const pickValue = pick.ok ? pick.value : null
+
   await db
-    .prepare(
-      `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-         predicted_home_score = excluded.predicted_home_score,
-         predicted_away_score = excluded.predicted_away_score,
-         updated_at           = excluded.updated_at`,
-    )
+    .prepare(UPSERT_PREDICTION_SQL)
     .bind(
       crypto.randomUUID(),
       userId,
@@ -438,17 +536,26 @@ router.put('/', requireAuth, async (c) => {
       match_id,
       predicted_home_score,
       predicted_away_score,
+      pickValue,
       now,
       now,
     )
     .run()
 
+  const userHash = await hashUserId(userId)
   logEvent(c.env.AE, 'prediction_saved', {
-    blobs: [group_id, match.round, await hashUserId(userId), 'single'],
+    blobs: [group_id, match.round, userHash, 'single'],
     doubles: [1],
   })
 
-  return c.json({ ok: true })
+  if (pickValue) {
+    logEvent(c.env.AE, 'prediction_penalty_pick_saved', {
+      blobs: [group_id, match_id, userHash, pickValue],
+      doubles: [1],
+    })
+  }
+
+  return c.json({ ok: true, ...(pick.ok === false ? { missing_penalty: true } : {}) })
 })
 
 /**
@@ -481,6 +588,7 @@ router.put('/bulk', requireAuth, async (c) => {
       match_id?: string
       predicted_home_score?: number
       predicted_away_score?: number
+      predicted_penalty_winner_team_id?: string | null
     }>
   }
   try {
@@ -517,22 +625,29 @@ router.put('/bulk', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  // Verify user is a member of the group
-  const membership = await db
-    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
+  // Verify user is a member of the group, and read the group's penalty config
+  // once (it's per-group, not per-match).
+  const groupConfig = await db
+    .prepare(
+      `SELECT gm.id AS membership_id, g.penalty_picks_enabled, g.points_exact
+       FROM group_members gm
+       JOIN groups g ON g.id = gm.group_id
+       WHERE gm.group_id = ? AND gm.user_id = ?`,
+    )
     .bind(group_id, userId)
-    .first()
+    .first<{ membership_id: string; penalty_picks_enabled: number; points_exact: number }>()
 
-  if (!membership) {
+  if (!groupConfig) {
     return c.json({ error: 'Acesso negado' }, 403)
   }
 
   // Dedupe by match_id (last value wins) so the IN-clause and batch stay 1:1
-  const byMatch = new Map<string, { home: number; away: number }>()
+  const byMatch = new Map<string, { home: number; away: number; penalty: string | null | undefined }>()
   for (const p of predictions) {
     byMatch.set(p.match_id as string, {
       home: p.predicted_home_score as number,
       away: p.predicted_away_score as number,
+      penalty: p.predicted_penalty_winner_team_id,
     })
   }
   const matchIds = Array.from(byMatch.keys())
@@ -541,59 +656,90 @@ router.put('/bulk', requireAuth, async (c) => {
   const placeholders = matchIds.map(() => '?').join(', ')
   const matchRows = await db
     .prepare(
-      `SELECT m.id, m.start_time
+      `SELECT m.id, m.start_time, m.phase, m.home_team_id, m.away_team_id
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        WHERE g.id = ? AND m.id IN (${placeholders})`,
     )
     .bind(group_id, ...matchIds)
-    .all<{ id: string; start_time: string }>()
+    .all<{
+      id: string
+      start_time: string
+      phase: string | null
+      home_team_id: string
+      away_team_id: string
+    }>()
 
-  const startTimes = new Map(matchRows.results.map((m) => [m.id, m.start_time]))
+  const matchById = new Map(matchRows.results.map((m) => [m.id, m]))
   const now = new Date().toISOString()
 
   const saved: string[] = []
   const locked: string[] = []
   const notFound: string[] = []
+  // Knockout-draw items that need a (valid) penalty winner but lack one — skipped
+  // like locked/not_found rather than failing the whole batch.
+  const missingPenalty: string[] = []
   const statements: D1PreparedStatement[] = []
+  let penaltyPicks = 0
 
   for (const matchId of matchIds) {
-    const startTime = startTimes.get(matchId)
-    if (!startTime) {
+    const match = matchById.get(matchId)
+    if (!match) {
       notFound.push(matchId)
       continue
     }
     // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
-    if (now >= startTime) {
+    if (now >= match.start_time) {
       locked.push(matchId)
       continue
     }
 
-    const { home, away } = byMatch.get(matchId)!
+    const { home, away, penalty } = byMatch.get(matchId)!
+    const pick = resolvePenaltyPick({
+      field: penalty,
+      predictedHome: home,
+      predictedAway: away,
+      phase: match.phase,
+      homeTeamId: match.home_team_id,
+      awayTeamId: match.away_team_id,
+      penaltyPicksEnabled: groupConfig.penalty_picks_enabled,
+      pointsExact: groupConfig.points_exact,
+    })
+    // A genuinely incomplete knockout draw (no pick / invalid team) is skipped
+    // and reported so the user can complete it. A stray pick that simply doesn't
+    // apply here (group disabled / not a knockout) must NOT cost the user their
+    // score — drop the pick and save the score with null, like the import path.
+    if (!pick.ok && (pick.code === 'missing' || pick.code === 'invalid_team')) {
+      missingPenalty.push(matchId)
+      continue
+    }
+    const pickValue = pick.ok ? pick.value : null
+
+    if (pickValue) penaltyPicks++
     statements.push(
       db
-        .prepare(
-          `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-             predicted_home_score = excluded.predicted_home_score,
-             predicted_away_score = excluded.predicted_away_score,
-             updated_at           = excluded.updated_at`,
-        )
-        .bind(crypto.randomUUID(), userId, group_id, matchId, home, away, now, now),
+        .prepare(UPSERT_PREDICTION_SQL)
+        .bind(crypto.randomUUID(), userId, group_id, matchId, home, away, pickValue, now, now),
     )
     saved.push(matchId)
   }
 
   if (statements.length > 0) {
     await db.batch(statements)
+    const userHash = await hashUserId(userId)
     logEvent(c.env.AE, 'prediction_saved', {
-      blobs: [group_id, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
+      blobs: [group_id, '', userHash, 'bulk'], // round vazio: múltiplas rodadas
       doubles: [saved.length],
     })
+    if (penaltyPicks > 0) {
+      logEvent(c.env.AE, 'prediction_penalty_pick_saved', {
+        blobs: [group_id, '', userHash, 'bulk'],
+        doubles: [penaltyPicks],
+      })
+    }
   }
 
-  return c.json({ ok: true, saved, locked, not_found: notFound })
+  return c.json({ ok: true, saved, locked, not_found: notFound, missing_penalty: missingPenalty })
 })
 
 /**
@@ -672,14 +818,25 @@ router.post('/import', requireAuth, async (c) => {
       .bind(source_group_id)
       .first<{ competition_id: string }>(),
     db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
+      .prepare(
+        `SELECT competition_id, penalty_picks_enabled, points_exact
+         FROM groups WHERE id = ? AND deleted_at IS NULL`,
+      )
       .bind(target_group_id)
-      .first<{ competition_id: string }>(),
+      .first<{ competition_id: string; penalty_picks_enabled: number; points_exact: number }>(),
   ])
 
   if (!sourceGroup || !targetGroup) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
+
+  // The penalty pick is copied only when the target group uses penalty picks
+  // (enabled AND scores exact scores). Otherwise it's dropped — the score copies,
+  // the pick stays null, and the user can add one later if relevant.
+  const targetPicksActive = penaltyPicksActive(
+    targetGroup.penalty_picks_enabled,
+    targetGroup.points_exact,
+  )
 
   if (sourceGroup.competition_id !== targetGroup.competition_id) {
     return c.json(
@@ -690,10 +847,12 @@ router.post('/import', requireAuth, async (c) => {
 
   const now = new Date().toISOString()
 
-  // Fetch user's predictions from source group for unlocked matches only
+  // Fetch user's predictions from source group for unlocked matches only.
+  // Include phase so we only copy penalty picks for knockout draws.
   const sourcePredictions = await db
     .prepare(
-      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score
+      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score,
+              p.predicted_penalty_winner_team_id, m.phase
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
        WHERE p.user_id = ? AND p.group_id = ? AND m.start_time > ?`,
@@ -703,6 +862,8 @@ router.post('/import', requireAuth, async (c) => {
       match_id: string
       predicted_home_score: number
       predicted_away_score: number
+      predicted_penalty_winner_team_id: string | null
+      phase: string | null
     }>()
 
   const toImport = sourcePredictions.results
@@ -724,14 +885,7 @@ router.post('/import', requireAuth, async (c) => {
   // Upsert all importable predictions in a single batch
   const importStatements = toImport.map((p) =>
     db
-      .prepare(
-        `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-           predicted_home_score = excluded.predicted_home_score,
-           predicted_away_score = excluded.predicted_away_score,
-           updated_at           = excluded.updated_at`,
-      )
+      .prepare(UPSERT_PREDICTION_SQL)
       .bind(
         crypto.randomUUID(),
         userId,
@@ -739,6 +893,13 @@ router.post('/import', requireAuth, async (c) => {
         p.match_id,
         p.predicted_home_score,
         p.predicted_away_score,
+        // Copy the pick only when the target group uses picks AND this is a
+        // knockout draw — same nulling logic resolvePenaltyPick applies on PUT/.
+        targetPicksActive &&
+        isKnockoutPhase(p.phase) &&
+        p.predicted_home_score === p.predicted_away_score
+          ? p.predicted_penalty_winner_team_id
+          : null,
         now,
         now,
       ),

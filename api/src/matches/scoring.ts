@@ -1,4 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { logEvent } from '../observability'
+import { isKnockoutPhase, KNOCKOUT_PHASES_SQL, penaltyPicksActive } from './phases'
+
+// After this window a knockout draw scores as a plain draw so a missing penalties payload can't freeze points forever.
+export const PENALTY_DEFER_GRACE_MS = 6 * 60 * 60 * 1000 // 6h, past the ~200min match window
 
 export function calculatePoints(
   actualHome: number,
@@ -19,15 +24,21 @@ export function calculatePoints(
   return actualWinner === predictedWinner ? pointsWinner : 0
 }
 
+// Caller gates this on isPenaltyShootout + penaltyPicksActive; this only compares the two team ids.
+export function penaltyBonus(
+  actualWinnerId: string | null,
+  predictedWinnerId: string | null,
+): 0 | 1 {
+  if (!actualWinnerId || !predictedWinnerId) return 0
+  return actualWinnerId === predictedWinnerId ? 1 : 0
+}
+
 async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<void> {
-  // exact_hits is inferred from the awarded points: a prediction is an exact hit
-  // when it scored the group's points_exact. We only count it when the exact bonus
-  // is distinguishable from a plain winner hit (points_exact > points_winner) — when
-  // they're equal there's no exact bonus to detect, so exact_hits stays 0.
+  // exact_hits compares only points_awarded (not penalty_bonus) so an exact-score pick that also nailed the shootout still counts.
   const rows = await db
     .prepare(
       `SELECT p.user_id,
-              SUM(p.points_awarded) AS total_points,
+              SUM(p.points_awarded + p.penalty_bonus) AS total_points,
               SUM(
                 CASE WHEN g.points_exact > g.points_winner
                        AND p.points_awarded = g.points_exact
@@ -64,13 +75,22 @@ async function scoreMatch(
   matchId: string,
   homeScore: number,
   awayScore: number,
+  phase: string | null,
+  penaltyWinnerTeamId: string | null,
   db: D1Database,
+  ae?: AnalyticsEngineDataset,
 ): Promise<void> {
+  // A penalty shootout: knockout match drawn at fullTime with a recorded winner.
+  // Only then can a penalty pick earn its bonus.
+  const isPenaltyShootout =
+    isKnockoutPhase(phase) && homeScore === awayScore && penaltyWinnerTeamId !== null
+
   const predictions = await db
     .prepare(
       `SELECT p.id, p.group_id, p.user_id,
               p.predicted_home_score, p.predicted_away_score,
-              g.points_exact, g.points_winner
+              p.predicted_penalty_winner_team_id,
+              g.points_exact, g.points_winner, g.penalty_picks_enabled
        FROM predictions p
        JOIN groups g ON g.id = p.group_id
        WHERE p.match_id = ?`,
@@ -82,14 +102,19 @@ async function scoreMatch(
       user_id: string
       predicted_home_score: number
       predicted_away_score: number
+      predicted_penalty_winner_team_id: string | null
       points_exact: number
       points_winner: number
+      penalty_picks_enabled: number
     }>()
 
   const now = new Date().toISOString()
   const statements: ReturnType<D1Database['prepare']>[] = []
 
   const affectedGroups = new Set<string>()
+  // Per-group shootout tallies for the penalty_bonus_awarded event.
+  const groupBonus = new Map<string, { awarded: number; total: number }>()
+
   for (const p of predictions.results) {
     const points = calculatePoints(
       homeScore,
@@ -99,44 +124,96 @@ async function scoreMatch(
       p.points_exact,
       p.points_winner,
     )
+
+    // Penalty bonus is gated on: the match being a shootout, the group having
+    // penalty picks enabled, AND the group scoring exact scores (points_exact > 0).
+    // 1X2 ("só vencedor") groups never award the bonus.
+    let bonus: 0 | 1 = 0
+    if (isPenaltyShootout && penaltyPicksActive(p.penalty_picks_enabled, p.points_exact)) {
+      bonus = penaltyBonus(penaltyWinnerTeamId, p.predicted_penalty_winner_team_id)
+      const tally = groupBonus.get(p.group_id) ?? { awarded: 0, total: 0 }
+      tally.total += 1
+      tally.awarded += bonus
+      groupBonus.set(p.group_id, tally)
+    }
+
     statements.push(
-      db.prepare(`UPDATE predictions SET points_awarded = ? WHERE id = ?`).bind(points, p.id),
+      db
+        .prepare(`UPDATE predictions SET points_awarded = ?, penalty_bonus = ? WHERE id = ?`)
+        .bind(points, bonus, p.id),
     )
     affectedGroups.add(p.group_id)
   }
 
-  statements.push(
-    db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId),
-  )
-
   await db.batch(statements)
 
-  for (const groupId of affectedGroups) {
-    await recalculateLeaderboard(groupId, db)
+  // Recalculate leaderboards before marking scored_at. Errors are logged but
+  // scored_at is always stamped — preventing the stamp would cause the poller to
+  // re-award points on every run, which is worse than a temporary leaderboard drift.
+  await Promise.allSettled(
+    [...affectedGroups].map((groupId) => recalculateLeaderboard(groupId, db)),
+  ).then((results) => {
+    for (const r of results) {
+      if (r.status === 'rejected') console.error('[scoring] leaderboard recalc failed:', r.reason)
+    }
+  })
+
+  await db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId).run()
+
+  if (isPenaltyShootout) {
+    for (const [groupId, tally] of groupBonus) {
+      logEvent(ae, 'penalty_bonus_awarded', {
+        blobs: [matchId, groupId],
+        doubles: [tally.awarded, tally.total],
+      })
+    }
   }
 }
 
-/**
- * Finds finished matches with no scored_at in the given competition and scores them.
- * Safe to call multiple times — matches already scored are skipped.
- */
+// Scores all finished unscored matches in a competition. Knockout draws wait for penalty_winner_team_id up to PENALTY_DEFER_GRACE_MS.
 export async function scoreUnprocessedMatches(
   competitionId: string,
   db: D1Database,
+  ae?: AnalyticsEngineDataset,
 ): Promise<void> {
+  // Truncate to seconds: 'T21:00:00Z' > 'T21:00:00.000Z' in ASCII, so milliseconds break the boundary comparison.
+  const graceDeadline = new Date(Date.now() - PENALTY_DEFER_GRACE_MS).toISOString().slice(0, 19) + 'Z'
   const unscored = await db
     .prepare(
-      `SELECT id, home_score, away_score FROM matches
+      `SELECT id, home_score, away_score, phase, penalty_winner_team_id FROM matches
        WHERE competition_id = ?
          AND status = 'finished'
          AND scored_at IS NULL
          AND home_score IS NOT NULL
-         AND away_score IS NOT NULL`,
+         AND away_score IS NOT NULL
+         AND (
+           home_score != away_score
+           -- hardcoded constant, not user input; D1 doesn't support array binding for IN
+           OR phase NOT IN (${KNOCKOUT_PHASES_SQL})
+           OR phase IS NULL
+           OR penalty_winner_team_id IS NOT NULL
+           OR start_time IS NULL
+           OR start_time <= ?
+         )`,
     )
-    .bind(competitionId)
-    .all<{ id: string; home_score: number; away_score: number }>()
+    .bind(competitionId, graceDeadline)
+    .all<{
+      id: string
+      home_score: number
+      away_score: number
+      phase: string | null
+      penalty_winner_team_id: string | null
+    }>()
 
   for (const match of unscored.results) {
-    await scoreMatch(match.id, match.home_score, match.away_score, db)
+    await scoreMatch(
+      match.id,
+      match.home_score,
+      match.away_score,
+      match.phase,
+      match.penalty_winner_team_id,
+      db,
+      ae,
+    )
   }
 }

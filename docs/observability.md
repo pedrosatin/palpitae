@@ -97,7 +97,9 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `poller_run` | `status` (`ok`/`error`) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
 | `football_api_error` | `context` (`matches_background`/`sync_endpoint`) **ou** `comp_id` (no poller) | `round` (só no poller) | `error_message` | — |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `double1`=count (nº de palpites salvos) |
-| `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner |
+| `prediction_penalty_pick_saved` | `group_id` | `match_id` (vazio em bulk) | `user_hash` | `team_id` vencedor em blob5 (single) **ou** `'bulk'` em blob5 (bulk); `double1`=nº de picks salvos |
+| `penalty_bonus_awarded` | `match_id` | `group_id` | — | `double1`=bônus concedidos (picks corretos), `double2`=total de palpites de pênaltis no grupo. Emitido por grupo, só quando o jogo foi PENALTY_SHOOTOUT |
+| `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=penalty_picks_enabled (0 ou 1) |
 | `group_joined` | `group_id` | `user_hash` | — | — |
 | `group_renamed` | `group_id` | `user_hash` | — | — |
 | `group_deleted` | `group_id` | `user_hash` | — | — |

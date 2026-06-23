@@ -81,14 +81,21 @@ async function requestGroupPicks(db: D1Database, query: string) {
   )
 }
 
+interface BulkMatchData {
+  start_time: string
+  phase?: string | null
+}
+
 interface BulkMockOptions {
   isMember?: boolean
-  // match_id -> start_time (ISO). Absent matches are treated as "not found".
-  matches?: Record<string, string>
+  // match_id -> start_time (ISO) or a richer object. Absent matches are "not found".
+  matches?: Record<string, string | BulkMatchData>
+  penaltyPicksEnabled?: number
+  pointsExact?: number
 }
 
 function createBulkDbMock(opts: BulkMockOptions = {}) {
-  const { isMember = true, matches = {} } = opts
+  const { isMember = true, matches = {}, penaltyPicksEnabled = 1, pointsExact = 3 } = opts
   const batched: unknown[] = []
 
   const db = {
@@ -98,6 +105,12 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
         bind(...params: unknown[]) {
           return {
             async first() {
+              // Bulk reads membership + group penalty config in one JOIN query.
+              if (sql.includes('FROM group_members gm')) {
+                return isMember
+                  ? { membership_id: 'gm-1', penalty_picks_enabled: penaltyPicksEnabled, points_exact: pointsExact }
+                  : null
+              }
               if (sql.includes('FROM group_members WHERE')) {
                 return isMember ? { id: 'gm-1' } : null
               }
@@ -109,7 +122,18 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
                 const matchIds = params.slice(1) as string[]
                 const results = matchIds
                   .filter((id) => matches[id] !== undefined)
-                  .map((id) => ({ id, start_time: matches[id] }))
+                  .map((id) => {
+                    const entry = matches[id]
+                    const start_time = typeof entry === 'string' ? entry : entry.start_time
+                    const phase = typeof entry === 'string' ? null : (entry.phase ?? null)
+                    return {
+                      id,
+                      start_time,
+                      phase,
+                      home_team_id: `${id}-home`,
+                      away_team_id: `${id}-away`,
+                    }
+                  })
                 return { results }
               }
               return { results: [] }
@@ -139,6 +163,74 @@ async function requestBulk(db: D1Database, body: unknown) {
 
   return app.fetch(
     new Request('http://localhost/predictions/bulk', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(body),
+    }),
+    fakeEnv(db),
+  )
+}
+
+interface SingleMatchConfig {
+  id: string
+  start_time: string
+  round: string
+  phase?: string | null
+  home_team_id?: string
+  away_team_id?: string
+  penalty_picks_enabled?: number
+  points_exact?: number
+}
+
+function createSingleDbMock(matchConfig: SingleMatchConfig | null, isMember = true) {
+  const runs: Array<{ sql: string; params: unknown[] }> = []
+  const db = {
+    _runs: runs,
+    prepare(sql: string) {
+      return {
+        bind(...params: unknown[]) {
+          return {
+            async first() {
+              if (sql.includes('FROM group_members WHERE')) {
+                return isMember ? { id: 'gm-1' } : null
+              }
+              if (sql.includes('penalty_picks_enabled')) {
+                if (!matchConfig) return null
+                return {
+                  id: matchConfig.id,
+                  start_time: matchConfig.start_time,
+                  round: matchConfig.round,
+                  phase: matchConfig.phase ?? null,
+                  home_team_id: matchConfig.home_team_id ?? 'team-home',
+                  away_team_id: matchConfig.away_team_id ?? 'team-away',
+                  penalty_picks_enabled: matchConfig.penalty_picks_enabled ?? 1,
+                  points_exact: matchConfig.points_exact ?? 3,
+                }
+              }
+              return null
+            },
+            async run() { runs.push({ sql, params }) },
+            async all() { return { results: [] } },
+          }
+        },
+      }
+    },
+  }
+  return db as unknown as D1Database & { _runs: typeof runs }
+}
+
+async function requestSinglePut(db: D1Database, body: unknown) {
+  const token = await signJwt({ sub: 'user-1', email: 'user@example.com' }, JWT_SECRET, 3600)
+  const headers = new Headers({
+    Cookie: `session=${token}`,
+    'Content-Type': 'application/json',
+  })
+
+  const app = new Hono<AppContext>()
+  app.route('/predictions', predictionsRouter)
+
+  return app.fetch(
+    new Request('http://localhost/predictions', {
       method: 'PUT',
       headers,
       body: JSON.stringify(body),
@@ -202,6 +294,159 @@ describe('predictions router – PUT /bulk', () => {
     expect(body.not_found).toEqual(['m3'])
     // Only the one saveable match is batched.
     expect(db.batched).toHaveLength(1)
+  })
+})
+
+describe('predictions router – PUT /bulk — penalty picks', () => {
+  const future = '2999-01-01T00:00:00.000Z'
+
+  it('saves a knockout draw with a valid penalty pick', async () => {
+    const db = createBulkDbMock({ matches: { m1: { start_time: future, phase: 'QUARTER_FINALS' } } })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [{
+        match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1,
+        predicted_penalty_winner_team_id: 'm1-home',
+      }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[]; missing_penalty: string[] }
+    expect(body.saved).toEqual(['m1'])
+    expect(body.missing_penalty).toEqual([])
+  })
+
+  it('puts a knockout draw without a penalty pick in missing_penalty', async () => {
+    const db = createBulkDbMock({ matches: { m1: { start_time: future, phase: 'QUARTER_FINALS' } } })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [{
+        match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1,
+        // no penalty pick
+      }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[]; missing_penalty: string[] }
+    expect(body.saved).toEqual([])
+    expect(body.missing_penalty).toEqual(['m1'])
+  })
+
+  it('puts a knockout draw with an invalid team in missing_penalty', async () => {
+    const db = createBulkDbMock({ matches: { m1: { start_time: future, phase: 'QUARTER_FINALS' } } })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [{
+        match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1,
+        predicted_penalty_winner_team_id: 'not-a-real-team',
+      }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[]; missing_penalty: string[] }
+    expect(body.saved).toEqual([])
+    expect(body.missing_penalty).toEqual(['m1'])
+  })
+
+  it('saves a knockout non-draw and silently drops a spurious penalty pick', async () => {
+    const db = createBulkDbMock({ matches: { m1: { start_time: future, phase: 'QUARTER_FINALS' } } })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [{
+        match_id: 'm1', predicted_home_score: 2, predicted_away_score: 1,
+        predicted_penalty_winner_team_id: 'm1-home', // irrelevant: not a draw
+      }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[]; missing_penalty: string[] }
+    expect(body.saved).toEqual(['m1'])
+    expect(body.missing_penalty).toEqual([])
+  })
+
+  it('saves the score and drops a stray penalty pick when the group has picks disabled', async () => {
+    const db = createBulkDbMock({
+      matches: { m1: { start_time: future, phase: 'QUARTER_FINALS' } },
+      penaltyPicksEnabled: 0,
+    })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [{
+        match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1,
+        predicted_penalty_winner_team_id: 'm1-home',
+      }],
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[]; missing_penalty: string[] }
+    // Stray pick dropped (group disabled), but the score is still saved — no data loss.
+    expect(body.saved).toEqual(['m1'])
+    expect(body.missing_penalty).toEqual([])
+  })
+})
+
+describe('predictions router – PUT / (single) — penalty pick validation', () => {
+  const future = '2999-01-01T00:00:00.000Z'
+
+  const knockoutDraw: SingleMatchConfig = {
+    id: 'm1', start_time: future, round: '1',
+    phase: 'QUARTER_FINALS',
+    home_team_id: 'team-home', away_team_id: 'team-away',
+  }
+
+  it('saves a knockout draw without a penalty pick and sets missing_penalty', async () => {
+    const db = createSingleDbMock(knockoutDraw)
+    const res = await requestSinglePut(db, {
+      group_id: 'g1', match_id: 'm1',
+      predicted_home_score: 1, predicted_away_score: 1,
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ok: boolean; missing_penalty?: boolean }
+    expect(body.ok).toBe(true)
+    expect(body.missing_penalty).toBe(true)
+    // Verify the UPSERT was actually executed with 9 bind params (matches UPSERT_PREDICTION_SQL)
+    const upsertRun = (db as unknown as { _runs: Array<{ sql: string; params: unknown[] }> })._runs
+      .find((r) => r.sql.includes('INSERT INTO predictions'))
+    expect(upsertRun).toBeDefined()
+    expect(upsertRun!.params).toHaveLength(9)
+  })
+
+  it('rejects a penalty pick for an invalid team', async () => {
+    const db = createSingleDbMock(knockoutDraw)
+    const res = await requestSinglePut(db, {
+      group_id: 'g1', match_id: 'm1',
+      predicted_home_score: 1, predicted_away_score: 1,
+      predicted_penalty_winner_team_id: 'not-a-valid-team',
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toContain('inválido')
+  })
+
+  it('accepts a knockout draw with a valid penalty pick', async () => {
+    const db = createSingleDbMock(knockoutDraw)
+    const res = await requestSinglePut(db, {
+      group_id: 'g1', match_id: 'm1',
+      predicted_home_score: 1, predicted_away_score: 1,
+      predicted_penalty_winner_team_id: 'team-home',
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it('accepts a knockout non-draw without a penalty pick', async () => {
+    const db = createSingleDbMock(knockoutDraw)
+    const res = await requestSinglePut(db, {
+      group_id: 'g1', match_id: 'm1',
+      predicted_home_score: 2, predicted_away_score: 1,
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it('rejects a penalty pick when the group has picks disabled', async () => {
+    const db = createSingleDbMock({ ...knockoutDraw, penalty_picks_enabled: 0 })
+    const res = await requestSinglePut(db, {
+      group_id: 'g1', match_id: 'm1',
+      predicted_home_score: 1, predicted_away_score: 1,
+      predicted_penalty_winner_team_id: 'team-home',
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toContain('pênaltis')
   })
 })
 

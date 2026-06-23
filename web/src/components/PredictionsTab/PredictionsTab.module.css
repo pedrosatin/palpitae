@@ -209,3 +209,8 @@
   font-size: var(--font-size-sm);
   margin: 0;
 }
+
+.penaltyHint {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}

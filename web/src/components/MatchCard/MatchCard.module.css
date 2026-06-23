@@ -349,6 +349,84 @@
   color: #1e7a0e;
 }
 
+/* ── Penalty-winner picker (knockout draw) ── */
+.penaltyPicker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+}
+
+.penaltyLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.penaltyBonus {
+  color: #1e7a0e;
+  font-weight: 600;
+}
+
+.penaltyOptions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+.penaltyBtn {
+  flex: 1;
+  min-width: 64px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-base);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.penaltyBtn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.penaltyBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.penaltyBtnActive {
+  border-color: var(--color-primary);
+  color: var(--color-text-on-primary, #ffffff);
+  background-color: var(--color-primary);
+}
+
+/* Shootout result under the final score, and the user's locked pick. */
+.finalScoreWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.penaltyResult {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.lockedPenalty {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
 /* ── Mobile adjustments ─────────────────── */
 @media (max-width: 420px) {
   .stepBtn {

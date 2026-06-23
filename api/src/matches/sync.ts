@@ -82,6 +82,9 @@ type ApiMatch = {
   awayTeam: ApiTeam
   score: {
     fullTime: { home: number | null; away: number | null }
+    // Present only when the match was decided on penalties (knockout draw at
+    // fullTime). The winner is whoever scored more shootout goals.
+    penalties?: { home: number | null; away: number | null } | null
   }
 }
 
@@ -250,24 +253,51 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     const round = m.matchday !== null ? String(m.matchday) : (m.group ?? '1')
     const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
 
+    // Penalty shootout: derive the winning team and store the shootout score.
+    // Only when both sides are present (a finished, fully-reported shootout).
+    const pens = m.score.penalties
+    let penaltyHome: number | null = null
+    let penaltyAway: number | null = null
+    let penaltyWinnerTeamId: string | null = null
+    if (pens && pens.home !== null && pens.away !== null) {
+      penaltyHome = pens.home
+      penaltyAway = pens.away
+      if (pens.home > pens.away) {
+        penaltyWinnerTeamId = homeTeamId
+      } else if (pens.away > pens.home) {
+        penaltyWinnerTeamId = awayTeamId
+      } else {
+        // Equal penalty scores: API data error or mid-shootout snapshot.
+        // Treated as "no result yet" — scoreUnprocessedMatches defers until
+        // penalty_winner_team_id is set or the grace window expires.
+        console.warn(`[sync] equal penalty scores (${pens.home}-${pens.away}) for match ${m.id} — treating as pending`)
+      }
+    }
+
     await db
       .prepare(
-        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, penalty_winner_team_id, penalty_home_score, penalty_away_score)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (external_id, provider) DO UPDATE SET
            status     = excluded.status,
            home_score = excluded.home_score,
            away_score = excluded.away_score,
            start_time = excluded.start_time,
            group_name = excluded.group_name,
+           penalty_winner_team_id = excluded.penalty_winner_team_id,
+           penalty_home_score     = excluded.penalty_home_score,
+           penalty_away_score     = excluded.penalty_away_score,
            -- If a provider score-correction lands after the match was already
            -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
            -- points/leaderboard recompute against the final score. Without this,
            -- the displayed score updates but points stay frozen on the stale one
            -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
+           -- The penalty winner is included: a knockout draw is only scored once
+           -- the shootout result arrives, and a later correction must re-score.
            scored_at  = CASE
              WHEN matches.home_score IS NOT excluded.home_score
                OR matches.away_score IS NOT excluded.away_score
+               OR matches.penalty_winner_team_id IS NOT excluded.penalty_winner_team_id
              THEN NULL ELSE matches.scored_at END`,
       )
       .bind(
@@ -284,6 +314,9 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         phase,
         round,
         groupName,
+        penaltyWinnerTeamId,
+        penaltyHome,
+        penaltyAway,
       )
       .run()
 

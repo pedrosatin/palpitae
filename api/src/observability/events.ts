@@ -21,6 +21,8 @@ export type EventType =
   | 'football_api_error'
   // Negócio (server-side, nos routers)
   | 'prediction_saved'
+  | 'prediction_penalty_pick_saved'
+  | 'penalty_bonus_awarded'
   | 'group_created'
   | 'group_joined'
   | 'member_removed'

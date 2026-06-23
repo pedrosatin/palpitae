@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { isKnockoutPhase } from '../../lib/phases'
 import styles from './MatchCard.module.css'
 
 export interface Match {
@@ -9,7 +10,7 @@ export interface Match {
   status: 'scheduled' | 'live' | 'finished'
   home_score: number | null
   away_score: number | null
-  phase: string
+  phase: string | null
   round: string
   group_name: string | null
   home_team_id: string
@@ -20,6 +21,9 @@ export interface Match {
   away_team_name: string
   away_team_short_name: string
   away_team_logo: string
+  penalty_winner_team_id?: string | null
+  penalty_home_score?: number | null
+  penalty_away_score?: number | null
 }
 
 export interface Prediction {
@@ -27,7 +31,9 @@ export interface Prediction {
   match_id: string
   predicted_home_score: number
   predicted_away_score: number
+  predicted_penalty_winner_team_id?: string | null
   points_awarded: number
+  penalty_bonus?: number
   locked: boolean | 1 | 0
   updated_at: string
 }
@@ -42,9 +48,41 @@ interface MatchCardProps {
    * The picks are still stored as scores: casa=(1,0), empate=(0,0), fora=(0,1).
    */
   outcomeOnly?: boolean
-  onSaved: (matchId: string, home: number, away: number) => void
+  /**
+   * Whether the group uses penalty-winner picks. When true, a knockout match
+   * predicted as a draw asks the user which team wins the shootout (+1 bonus).
+   * Always false in outcomeOnly groups (penalty picks need points_exact > 0).
+   */
+  penaltyPicksEnabled?: boolean
+  onSaved: (
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinnerTeamId: string | null,
+  ) => void
   /** Reports the current input draft up so a parent can offer "Salvar todos". */
-  onDraftChange?: (matchId: string, home: string, away: string) => void
+  onDraftChange?: (
+    matchId: string,
+    home: string,
+    away: string,
+    penaltyWinnerTeamId: string | null,
+  ) => void
+}
+
+function pointsLabel(pts: number, bonus: number): string {
+  const total = pts + bonus
+  if (bonus > 0) return `${pts} + ${bonus} pts`
+  return `${total} ${total === 1 ? 'ponto' : 'pontos'}`
+}
+
+/** Short name of whichever team a penalty-winner id refers to in this match. */
+export function penaltyWinnerShortName(
+  match: Pick<Match, 'home_team_id' | 'home_team_short_name' | 'away_team_id' | 'away_team_short_name'>,
+  winnerTeamId: string,
+): string {
+  if (winnerTeamId === match.home_team_id) return match.home_team_short_name
+  if (winnerTeamId === match.away_team_id) return match.away_team_short_name
+  return '?'
 }
 
 function formatDate(iso: string): string {
@@ -62,6 +100,7 @@ export default function MatchCard({
   prediction,
   groupId,
   outcomeOnly = false,
+  penaltyPicksEnabled = false,
   onSaved,
   onDraftChange,
 }: MatchCardProps) {
@@ -74,6 +113,9 @@ export default function MatchCard({
   const [away, setAway] = useState<string>(
     prediction !== undefined ? String(prediction.predicted_away_score) : '0',
   )
+  const [penaltyWinner, setPenaltyWinner] = useState<string | null>(
+    prediction?.predicted_penalty_winner_team_id ?? null,
+  )
   const [homeTouched, setHomeTouched] = useState(false)
   const [awayTouched, setAwayTouched] = useState(false)
 
@@ -81,6 +123,7 @@ export default function MatchCard({
     if (prediction !== undefined) {
       setHome(String(prediction.predicted_home_score))
       setAway(String(prediction.predicted_away_score))
+      setPenaltyWinner(prediction.predicted_penalty_winner_team_id ?? null)
     }
   }, [prediction])
   const [saving, setSaving] = useState(false)
@@ -91,13 +134,30 @@ export default function MatchCard({
   const isFinished = match.status === 'finished'
   const isLive = match.status === 'live'
   const hasPrediction = prediction !== undefined
+
+  // The penalty-winner picker shows for a knockout match predicted as a draw, in
+  // a group that uses penalty picks (never in the 1X2 outcomeOnly mode).
+  const isDraw = home !== '' && away !== '' && Number(home) === Number(away)
+  const showPenaltyPicker =
+    !outcomeOnly && penaltyPicksEnabled && isKnockoutPhase(match.phase) && isDraw
+  // What we actually persist: the pick only when the picker applies, else null.
+  const penaltyToSend = showPenaltyPicker ? penaltyWinner : null
+
   const hasChanged = hasPrediction
     ? Number(home) !== prediction.predicted_home_score ||
-      Number(away) !== prediction.predicted_away_score
-    : homeTouched || awayTouched
-  const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged
+      Number(away) !== prediction.predicted_away_score ||
+      (penaltyToSend ?? null) !== (prediction.predicted_penalty_winner_team_id ?? null)
+    : homeTouched || awayTouched || penaltyToSend !== null
+  // A visible picker is mandatory before saving.
+  const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
+  const canSave =
+    !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
 
-  async function persist(homeScore: number, awayScore: number) {
+  async function persist(
+    homeScore: number,
+    awayScore: number,
+    penaltyWinnerTeamId: string | null,
+  ) {
     setSaving(true)
     setError(null)
     setSaved(false)
@@ -111,6 +171,7 @@ export default function MatchCard({
         match_id: match.id,
         predicted_home_score: homeScore,
         predicted_away_score: awayScore,
+        predicted_penalty_winner_team_id: penaltyWinnerTeamId,
       }),
     })
 
@@ -123,14 +184,21 @@ export default function MatchCard({
     }
 
     setSaved(true)
-    onSaved(match.id, homeScore, awayScore)
+    onSaved(match.id, homeScore, awayScore, penaltyWinnerTeamId)
     setTimeout(() => setSaved(false), 2500)
   }
 
   async function handleSave() {
     if (!canSave) return
     trackEvent('click_matchcard_salvar', { match_id: match.id })
-    await persist(Number(home), Number(away))
+    await persist(Number(home), Number(away), penaltyToSend)
+  }
+
+  function selectPenaltyWinner(teamId: string) {
+    if (locked || saving) return
+    trackEvent('click_prediction_vencedor_penaltis', { match_id: match.id })
+    setPenaltyWinner(teamId)
+    onDraftChange?.(match.id, home, away, teamId)
   }
 
   // Outcome-only groups store the pick as a score: casa=(1,0), empate=(0,0), fora=(0,1).
@@ -157,20 +225,20 @@ export default function MatchCard({
     setHome(String(h))
     setAway(String(a))
     setPendingOutcome(outcome)
-    onDraftChange?.(match.id, String(h), String(a))
-    await persist(h, a)
+    onDraftChange?.(match.id, String(h), String(a), null)
+    await persist(h, a, null)
   }
 
   function updateHome(v: string) {
     setHomeTouched(true)
     setHome(v)
-    onDraftChange?.(match.id, v, away)
+    onDraftChange?.(match.id, v, away, penaltyWinner)
   }
 
   function updateAway(v: string) {
     setAwayTouched(true)
     setAway(v)
-    onDraftChange?.(match.id, home, v)
+    onDraftChange?.(match.id, home, v, penaltyWinner)
   }
 
   function handleScoreInput(value: string, update: (v: string) => void) {
@@ -207,10 +275,21 @@ export default function MatchCard({
         {/* Score area */}
         <div className={styles.scoreArea}>
           {isFinished || isLive ? (
-            <div className={styles.finalScore}>
-              <span>{match.home_score ?? '–'}</span>
-              <span className={styles.scoreSep}>×</span>
-              <span>{match.away_score ?? '–'}</span>
+            <div className={styles.finalScoreWrap}>
+              <div className={styles.finalScore}>
+                <span>{match.home_score ?? '–'}</span>
+                <span className={styles.scoreSep}>×</span>
+                <span>{match.away_score ?? '–'}</span>
+              </div>
+              {match.penalty_winner_team_id != null &&
+                match.penalty_home_score != null &&
+                match.penalty_away_score != null && (
+                  <span className={styles.penaltyResult}>
+                    pên. {match.penalty_home_score} × {match.penalty_away_score} (
+                    {penaltyWinnerShortName(match, match.penalty_winner_team_id)}
+                    )
+                  </span>
+                )}
             </div>
           ) : (
             <span className={styles.vs}>vs</span>
@@ -252,12 +331,17 @@ export default function MatchCard({
                   </span>
                 </div>
               )}
+              {prediction.predicted_penalty_winner_team_id != null && (
+                <span className={styles.lockedPenalty}>
+                  pênaltis:{' '}
+                  {penaltyWinnerShortName(match, prediction.predicted_penalty_winner_team_id)}
+                </span>
+              )}
               {isFinished && (
                 <span
-                  className={`${styles.points} ${prediction.points_awarded > 0 ? styles.pointsGreen : styles.pointsZero}`}
+                  className={`${styles.points} ${prediction.points_awarded + (prediction.penalty_bonus ?? 0) > 0 ? styles.pointsGreen : styles.pointsZero}`}
                 >
-                  {prediction.points_awarded}{' '}
-                  {prediction.points_awarded === 1 ? 'ponto' : 'pontos'}
+                  {pointsLabel(prediction.points_awarded, prediction.penalty_bonus ?? 0)}
                 </span>
               )}
             </div>
@@ -380,6 +464,32 @@ export default function MatchCard({
                     ? 'Atualizar'
                     : 'Salvar'}
             </button>
+          </div>
+        )}
+        {showPenaltyPicker && !locked && (
+          <div className={styles.penaltyPicker}>
+            <span className={styles.penaltyLabel}>
+              Empate no mata-mata — quem vence nos pênaltis? <span className={styles.penaltyBonus}>+1</span>
+            </span>
+            <div className={styles.penaltyOptions}>
+              {(
+                [
+                  { id: match.home_team_id, name: match.home_team_short_name },
+                  { id: match.away_team_id, name: match.away_team_short_name },
+                ] as const
+              ).map((team) => (
+                <button
+                  key={team.id}
+                  type="button"
+                  className={`${styles.penaltyBtn} ${penaltyWinner === team.id ? styles.penaltyBtnActive : ''}`}
+                  onClick={() => selectPenaltyWinner(team.id)}
+                  disabled={saving}
+                  aria-pressed={penaltyWinner === team.id}
+                >
+                  {team.name}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {error && <p className={styles.errorMsg}>{error}</p>}

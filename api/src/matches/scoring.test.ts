@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { calculatePoints, scoreUnprocessedMatches } from './scoring'
+import { calculatePoints, penaltyBonus, PENALTY_DEFER_GRACE_MS, scoreUnprocessedMatches } from './scoring'
+import { KNOCKOUT_PHASES } from './phases'
 
 // ---------------------------------------------------------------------------
 // calculatePoints — pure function, no mocks needed
@@ -59,6 +60,18 @@ describe('calculatePoints', () => {
 })
 
 // ---------------------------------------------------------------------------
+// penaltyBonus — pure function
+// ---------------------------------------------------------------------------
+
+describe('penaltyBonus', () => {
+  it('returns 1 when team ids match', () => expect(penaltyBonus('team-A', 'team-A')).toBe(1))
+  it('returns 0 when team ids differ', () => expect(penaltyBonus('team-A', 'team-B')).toBe(0))
+  it('returns 0 when actual winner is null', () => expect(penaltyBonus(null, 'team-A')).toBe(0))
+  it('returns 0 when predicted winner is null', () => expect(penaltyBonus('team-A', null)).toBe(0))
+  it('returns 0 when both are null', () => expect(penaltyBonus(null, null)).toBe(0))
+})
+
+// ---------------------------------------------------------------------------
 // scoreUnprocessedMatches — tests with a fake D1 database
 // ---------------------------------------------------------------------------
 
@@ -69,7 +82,9 @@ type FakePrediction = {
   match_id: string
   predicted_home_score: number
   predicted_away_score: number
+  predicted_penalty_winner_team_id?: string | null
   points_awarded: number
+  penalty_bonus?: number
 }
 
 type FakeMatch = {
@@ -79,18 +94,27 @@ type FakeMatch = {
   home_score: number | null
   away_score: number | null
   scored_at: string | null
+  phase?: string | null
+  penalty_winner_team_id?: string | null
+  start_time?: string | null
 }
 
-type FakeGroupConfig = { points_exact: number; points_winner: number }
+type FakeGroupConfig = { points_exact: number; points_winner: number; penalty_picks_enabled?: number }
 
 function buildFakeDb(
   matches: FakeMatch[],
   predictions: FakePrediction[],
   groups: Record<string, FakeGroupConfig> = {},
 ) {
-  // Any group not explicitly configured uses the classic 3/1 scoring.
-  const groupConfig = (groupId: string): FakeGroupConfig =>
-    groups[groupId] ?? { points_exact: 3, points_winner: 1 }
+  // Any group not explicitly configured uses the classic 3/1 scoring with picks enabled.
+  const groupConfig = (groupId: string) => {
+    const cfg = groups[groupId] ?? {}
+    return {
+      points_exact: cfg.points_exact ?? 3,
+      points_winner: cfg.points_winner ?? 1,
+      penalty_picks_enabled: cfg.penalty_picks_enabled ?? 1,
+    }
+  }
   const updatedMatches: Record<string, Partial<FakeMatch>> = {}
   const updatedPredictions: Record<string, Partial<FakePrediction>> = {}
   const leaderboardUpserts: Array<{ group_id: string; user_id: string; total_points: number; exact_hits: number }> = []
@@ -115,13 +139,23 @@ function buildFakeDb(
       async all<T>(): Promise<{ results: T[] }> {
         if (sql.includes('FROM matches') && sql.includes("status = 'finished'") && sql.includes('scored_at IS NULL')) {
           const compId = params[0] as string
+          const graceDeadline = params[1] as string | undefined
           const results = matches.filter(
             (m) =>
               m.competition_id === compId &&
               m.status === 'finished' &&
               m.scored_at === null &&
               m.home_score !== null &&
-              m.away_score !== null,
+              m.away_score !== null &&
+              // Mirror the SQL guard: defer knockout draws until the shootout
+              // result arrives — but only within the grace window.
+              (
+                m.home_score !== m.away_score ||
+                m.phase == null ||
+                !(KNOCKOUT_PHASES as readonly string[]).includes(m.phase) ||
+                m.penalty_winner_team_id != null ||
+                (m.start_time != null && graceDeadline != null && m.start_time <= graceDeadline)
+              ),
           ) as unknown as T[]
           return { results }
         }
@@ -138,13 +172,15 @@ function buildFakeDb(
           const grouped = new Map<string, { total_points: number; exact_hits: number }>()
           for (const p of predictions.filter((p) => p.group_id === groupId)) {
             const pts = updatedPredictions[p.id]?.points_awarded ?? p.points_awarded
+            const bonus = updatedPredictions[p.id]?.penalty_bonus ?? p.penalty_bonus ?? 0
             const cur = grouped.get(p.user_id) ?? { total_points: 0, exact_hits: 0 }
             // Mirror the SQL: exact_hits counts rows awarded points_exact, but only
             // when the exact bonus is distinguishable (points_exact > points_winner).
+            // total_points sums points_awarded + penalty_bonus.
             const isExact =
               cfg.points_exact > cfg.points_winner && pts === cfg.points_exact
             grouped.set(p.user_id, {
-              total_points: cur.total_points + (pts as number),
+              total_points: cur.total_points + (pts as number) + (bonus as number),
               exact_hits: cur.exact_hits + (isExact ? 1 : 0),
             })
           }
@@ -190,7 +226,12 @@ function buildFakeDb(
         async all<T>() {
           return makeStatement(sql, boundParams).all<T>()
         },
-        async run() {},
+        async run() {
+          if (sql.startsWith('UPDATE matches SET scored_at')) {
+            const [scoredAt, id] = boundParams as [string, string]
+            updatedMatches[id] = { scored_at: scoredAt }
+          }
+        },
         _sql: sql,
         _params: boundParams,
       }
@@ -201,12 +242,8 @@ function buildFakeDb(
         const sql = (s as unknown as { _sql: string })._sql
         const params = (s as unknown as { _params: unknown[] })._params
         if (sql.startsWith('UPDATE predictions SET points_awarded')) {
-          const [points, id] = params as [number, string]
-          updatedPredictions[id] = { points_awarded: points }
-        }
-        if (sql.startsWith('UPDATE matches SET scored_at')) {
-          const [scoredAt, id] = params as [string, string]
-          updatedMatches[id] = { scored_at: scoredAt }
+          const [points, bonus, id] = params as [number, number, string]
+          updatedPredictions[id] = { points_awarded: points, penalty_bonus: bonus }
         }
         if (sql.includes('INSERT INTO leaderboard')) {
           const [group_id, user_id, total_points, exact_hits] = params as [string, string, number, number]
@@ -398,6 +435,126 @@ describe('scoreUnprocessedMatches', () => {
     const u1 = db._leaderboardUpserts.find((r) => r.user_id === 'u1')
     expect(u1?.total_points).toBe(1)
     expect(u1?.exact_hits).toBe(0)
+  })
+
+  describe('penalty shootout scoring', () => {
+    const shootoutMatch: FakeMatch = {
+      id: 'm1', competition_id: 'c1', status: 'finished',
+      home_score: 1, away_score: 1, scored_at: null,
+      phase: 'QUARTER_FINALS', penalty_winner_team_id: 'team-A',
+    }
+
+    it('awards +1 bonus to the correct penalty-shootout pick', async () => {
+      const predictions: FakePrediction[] = [
+        { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: 'team-A', points_awarded: 0 }, // correct
+        { id: 'p2', group_id: 'g1', user_id: 'u2', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: 'team-B', points_awarded: 0 }, // wrong pick
+        { id: 'p3', group_id: 'g1', user_id: 'u3', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: null, points_awarded: 0 },     // no pick
+      ]
+      const db = buildFakeDb([shootoutMatch], predictions)
+      await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+      expect(db._updatedPredictions['p1']?.points_awarded).toBe(3)
+      expect(db._updatedPredictions['p1']?.penalty_bonus).toBe(1)
+      expect(db._updatedPredictions['p2']?.penalty_bonus).toBe(0)
+      expect(db._updatedPredictions['p3']?.penalty_bonus).toBe(0)
+    })
+
+    it('defers scoring a knockout draw until penalty_winner_team_id arrives', async () => {
+      const pendingMatch: FakeMatch = {
+        ...shootoutMatch, penalty_winner_team_id: null,
+      }
+      const db = buildFakeDb([pendingMatch], [])
+      const batchSpy = vi.spyOn(db, 'batch')
+      await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+      expect(batchSpy).not.toHaveBeenCalled()
+    })
+
+    it('scores a knockout draw as a plain draw once the defer grace window passes', async () => {
+      // Penalties never arrived (data gap, or a knockout leg that wasn't a
+      // shootout). Once start_time is older than the grace window it must score —
+      // base points for everyone, no bonus — instead of stalling forever.
+      const staleMatch: FakeMatch = {
+        ...shootoutMatch,
+        penalty_winner_team_id: null,
+        start_time: new Date(Date.now() - PENALTY_DEFER_GRACE_MS * 2).toISOString(),
+      }
+      const predictions: FakePrediction[] = [
+        { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: 'team-A', points_awarded: 0 },
+      ]
+      const db = buildFakeDb([staleMatch], predictions)
+      await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+      expect(db._updatedPredictions['p1']?.points_awarded).toBe(3) // exact draw
+      expect(db._updatedPredictions['p1']?.penalty_bonus).toBe(0)  // no winner → no bonus
+    })
+
+    it('awards 0 bonus when the group has penalty_picks_enabled = 0', async () => {
+      const predictions: FakePrediction[] = [
+        { id: 'p1', group_id: 'gOff', user_id: 'u1', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: 'team-A', points_awarded: 0 },
+      ]
+      const db = buildFakeDb([shootoutMatch], predictions, {
+        gOff: { points_exact: 3, points_winner: 1, penalty_picks_enabled: 0 },
+      })
+      await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+      expect(db._updatedPredictions['p1']?.penalty_bonus).toBe(0)
+    })
+
+    it('awards 0 bonus in 1X2 groups (points_exact = 0)', async () => {
+      const predictions: FakePrediction[] = [
+        { id: 'p1', group_id: 'g1X2', user_id: 'u1', match_id: 'm1',
+          predicted_home_score: 0, predicted_away_score: 0,
+          predicted_penalty_winner_team_id: null, points_awarded: 0 },
+      ]
+      const db = buildFakeDb([shootoutMatch], predictions, {
+        g1X2: { points_exact: 0, points_winner: 1, penalty_picks_enabled: 1 },
+      })
+      await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+      expect(db._updatedPredictions['p1']?.penalty_bonus).toBe(0)
+    })
+
+    it('awards 0 bonus for a group-stage draw (non-knockout phase)', async () => {
+      const groupMatch: FakeMatch = {
+        ...shootoutMatch, phase: null, penalty_winner_team_id: null,
+      }
+      const predictions: FakePrediction[] = [
+        { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: null, points_awarded: 0 },
+      ]
+      const db = buildFakeDb([groupMatch], predictions)
+      await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+      expect(db._updatedPredictions['p1']?.points_awarded).toBe(3)
+      expect(db._updatedPredictions['p1']?.penalty_bonus).toBe(0)
+    })
+
+    it('includes penalty bonus in the leaderboard total_points', async () => {
+      const predictions: FakePrediction[] = [
+        { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: 'team-A', points_awarded: 0 }, // 3 + 1 = 4
+        { id: 'p2', group_id: 'g1', user_id: 'u2', match_id: 'm1',
+          predicted_home_score: 1, predicted_away_score: 1,
+          predicted_penalty_winner_team_id: 'team-B', points_awarded: 0 }, // 3 + 0 = 3
+      ]
+      const db = buildFakeDb([shootoutMatch], predictions)
+      await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+      const u1 = db._leaderboardUpserts.find((r) => r.user_id === 'u1')
+      const u2 = db._leaderboardUpserts.find((r) => r.user_id === 'u2')
+      expect(u1?.total_points).toBe(4)
+      expect(u1?.exact_hits).toBe(1)
+      expect(u2?.total_points).toBe(3)
+      expect(u2?.exact_hits).toBe(1)
+    })
   })
 
   it('only scores matches from the requested competition', async () => {

@@ -295,7 +295,7 @@ describe('MatchCard – outcome-only (1X2) mode', () => {
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
     expect(body.predicted_home_score).toBe(1)
     expect(body.predicted_away_score).toBe(0)
-    expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0)
+    expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0, null)
   })
 
   it('marks the button matching the existing prediction as active', () => {

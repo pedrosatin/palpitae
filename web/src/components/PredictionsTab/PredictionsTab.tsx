@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
+import { isKnockoutPhase, penaltyPicksActive } from '../../lib/phases'
 import { applyDefaultRound } from '../../lib/rounds'
 import MatchCard, { type Match, type Prediction } from '../MatchCard'
 import styles from './PredictionsTab.module.css'
@@ -11,14 +12,18 @@ interface PredictionsTabProps {
   competitionId: string
   /** Group's points for an exact score. When 0, matches use the 1X2 button UI. */
   pointsExact?: number
+  /** Whether the group uses penalty-winner picks on knockout draws (+1 bonus). */
+  penaltyPicksEnabled?: boolean
 }
 
 type PredictionMap = Map<string, Prediction>
+type Draft = { home: string; away: string; penalty: string | null }
 
 export default function PredictionsTab({
   groupId,
   competitionId,
   pointsExact = 3,
+  penaltyPicksEnabled = false,
 }: PredictionsTabProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
@@ -26,9 +31,7 @@ export default function PredictionsTab({
   const [error, setError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
   // Current input drafts reported by each MatchCard, so we can "Salvar todos".
-  const [drafts, setDrafts] = useState<
-    Map<string, { home: string; away: string }>
-  >(new Map())
+  const [drafts, setDrafts] = useState<Map<string, Draft>>(new Map())
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
@@ -112,7 +115,12 @@ export default function PredictionsTab({
       .finally(() => setLoading(false))
   }, [groupId, competitionId])
 
-  function handleSaved(matchId: string, home: number, away: number) {
+  function handleSaved(
+    matchId: string,
+    home: number,
+    away: number,
+    penalty: string | null,
+  ) {
     setPredictions((prev) => {
       const next = new Map(prev)
       const existing = prev.get(matchId)
@@ -121,7 +129,9 @@ export default function PredictionsTab({
         match_id: matchId,
         predicted_home_score: home,
         predicted_away_score: away,
+        predicted_penalty_winner_team_id: penalty,
         points_awarded: existing?.points_awarded ?? 0,
+        penalty_bonus: existing?.penalty_bonus ?? 0,
         locked: 0,
         updated_at: new Date().toISOString(),
       })
@@ -129,10 +139,15 @@ export default function PredictionsTab({
     })
   }
 
-  function handleDraftChange(matchId: string, home: string, away: string) {
+  function handleDraftChange(
+    matchId: string,
+    home: string,
+    away: string,
+    penalty: string | null,
+  ) {
     setDrafts((prev) => {
       const next = new Map(prev)
-      next.set(matchId, { home, away })
+      next.set(matchId, { home, away, penalty })
       return next
     })
   }
@@ -182,11 +197,15 @@ export default function PredictionsTab({
   }
 
   // Editable, non-empty drafts of the visible round that differ from what's saved.
+  // A knockout draw in a penalty-pick group needs its winner chosen — until then
+  // it's omitted (so "Salvar todos" never sends an incomplete pick that the API
+  // would reject).
   function collectRoundDrafts() {
     const out: Array<{
       match_id: string
       predicted_home_score: number
       predicted_away_score: number
+      predicted_penalty_winner_team_id: string | null
     }> = []
     for (const m of roundMatches) {
       if (isLocked(m)) continue
@@ -195,13 +214,25 @@ export default function PredictionsTab({
       const home = Number(d.home)
       const away = Number(d.away)
       const p = predictions.get(m.id)
+
+      const needsPenalty =
+        penaltyPicksActive(penaltyPicksEnabled, pointsExact) &&
+        isKnockoutPhase(m.phase) &&
+        home === away
+      const penalty = needsPenalty ? d.penalty : null
+      if (needsPenalty && !penalty) continue
+
       const changed =
-        !p || home !== p.predicted_home_score || away !== p.predicted_away_score
+        !p ||
+        home !== p.predicted_home_score ||
+        away !== p.predicted_away_score ||
+        (penalty ?? null) !== (p.predicted_penalty_winner_team_id ?? null)
       if (changed) {
         out.push({
           match_id: m.id,
           predicted_home_score: home,
           predicted_away_score: away,
+          predicted_penalty_winner_team_id: penalty,
         })
       }
     }
@@ -230,7 +261,7 @@ export default function PredictionsTab({
         throw new Error(data.error ?? 'Erro ao salvar palpites')
       }
 
-      const data = (await res.json()) as { saved: string[] }
+      const data = (await res.json()) as { saved: string[]; missing_penalty?: string[] }
       const savedSet = new Set(data.saved)
       for (const p of toSave) {
         if (savedSet.has(p.match_id)) {
@@ -238,12 +269,17 @@ export default function PredictionsTab({
             p.match_id,
             p.predicted_home_score,
             p.predicted_away_score,
+            p.predicted_penalty_winner_team_id,
           )
         }
       }
 
-      setSavedAll(true)
-      setTimeout(() => setSavedAll(false), 2500)
+      if ((data.missing_penalty?.length ?? 0) > 0) {
+        setBulkError('Palpites salvos, mas alguns jogos de mata-mata ainda aguardam a escolha do vencedor nos pênaltis.')
+      } else {
+        setSavedAll(true)
+        setTimeout(() => setSavedAll(false), 2500)
+      }
     } catch (e) {
       setBulkError((e as Error).message)
     } finally {
@@ -252,6 +288,25 @@ export default function PredictionsTab({
   }
 
   const pendingCount = collectRoundDrafts().length
+
+  // Knockout draws in drafts that need a penalty pick but don't have one yet.
+  // These are excluded from "Salvar todos" — show a count so the user knows.
+  function countSkippedPenalties(): number {
+    let n = 0
+    for (const m of roundMatches) {
+      if (isLocked(m)) continue
+      const d = drafts.get(m.id)
+      if (!d || d.home === '' || d.away === '') continue
+      if (
+        penaltyPicksActive(penaltyPicksEnabled, pointsExact) &&
+        isKnockoutPhase(m.phase) &&
+        Number(d.home) === Number(d.away) &&
+        !d.penalty
+      ) n++
+    }
+    return n
+  }
+  const skippedPenaltyCount = countSkippedPenalties()
 
   async function handleImport() {
     if (!importSourceId) return
@@ -386,6 +441,13 @@ export default function PredictionsTab({
 
       <div className={styles.saveAllBar}>
         {bulkError && <span className={styles.error}>{bulkError}</span>}
+        {skippedPenaltyCount > 0 && !bulkError && (
+          <span className={styles.penaltyHint}>
+            {skippedPenaltyCount === 1
+              ? '1 empate no mata-mata precisa de um vencedor nos pênaltis'
+              : `${skippedPenaltyCount} empates no mata-mata precisam de um vencedor nos pênaltis`}
+          </span>
+        )}
         <button
           className={`${styles.saveAllBtn} ${savedAll ? styles.saveAllBtnSaved : ''}`}
           onClick={handleSaveAll}
@@ -414,6 +476,7 @@ export default function PredictionsTab({
                 prediction={predictions.get(match.id)}
                 groupId={groupId}
                 outcomeOnly={pointsExact === 0}
+                penaltyPicksEnabled={penaltyPicksActive(penaltyPicksEnabled, pointsExact)}
                 onSaved={handleSaved}
                 onDraftChange={handleDraftChange}
               />
