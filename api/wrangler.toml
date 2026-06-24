@@ -26,7 +26,7 @@ dataset = "palpitae_events"
 #  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
 #    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
 #  - "0 10 * * *"   → round reminder: e-mail de lembrete para rodadas que começam
-#    amanhã. 1x/dia às 10h UTC (07h BRT). Idempotente por design (ver roundReminder.ts).
+#    hoje. 1x/dia às 10h UTC (07h BRT). Idempotente por design (ver roundReminder.ts).
 [triggers]
 crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *"]
 
