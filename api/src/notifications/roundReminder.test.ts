@@ -72,7 +72,7 @@ describe('sendRoundReminders', () => {
     vi.unstubAllGlobals()
   })
 
-  it('does nothing when no round starts tomorrow', async () => {
+  it('does nothing when no round starts today', async () => {
     const db = buildFakeDb([])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
@@ -85,12 +85,12 @@ describe('sendRoundReminders', () => {
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
-    expect(userSql(db)).toContain("date(m.start_time, '-3 hours') = date('now', '-3 hours', '+1 day')")
+    expect(userSql(db)).toContain("date(m.start_time, '-3 hours') = date('now', '-3 hours')")
     expect(userSql(db)).toContain("MIN(date(m2.start_time, '-3 hours'))")
     expect(userSql(db)).toContain("m.status = 'scheduled'")
   })
 
-  it('fetches match details for rounds starting tomorrow', async () => {
+  it('fetches match details for rounds starting today', async () => {
     const db = buildFakeDb(
       [{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }],
       [],
@@ -395,16 +395,15 @@ describe('sendRoundReminders', () => {
     expect(html).toContain('utm_campaign=round_reminder')
   })
 
-  it('gates on default_round so the e-mail never precedes the app round switch', async () => {
+  it('fires on the first match day of the round only (min-date guard)', async () => {
     const db = buildFakeDb([])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
-    // The user query must require the round to be the competition's current
-    // default_round (earliest still-open round), matching matches/router.ts.
-    expect(userSql(db)).toContain('HAVING MAX(m3.start_time)')
-    expect(userSql(db)).toContain('ORDER BY MAX(m3.start_time) ASC')
-    expect(userSql(db)).toContain('m.round = (')
+    // The user query must only fire on the round's first match day (BRT-adjusted),
+    // preventing duplicate notifications mid-round.
+    expect(userSql(db)).toContain('MIN(date(m2.start_time')
+    expect(userSql(db)).toContain("date('now', '-3 hours')")
   })
 
   it('suppresses opted-out users via the email_unsubscribed_at gate', async () => {
