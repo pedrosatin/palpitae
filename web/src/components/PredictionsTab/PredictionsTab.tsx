@@ -200,13 +200,22 @@ export default function PredictionsTab({
   // A knockout draw in a penalty-pick group needs its winner chosen — until then
   // it's omitted (so "Salvar todos" never sends an incomplete pick that the API
   // would reject).
-  function collectRoundDrafts() {
-    const out: Array<{
+  function collectRoundDrafts(): {
+    toSave: Array<{
+      match_id: string
+      predicted_home_score: number
+      predicted_away_score: number
+      predicted_penalty_winner_team_id: string | null
+    }>
+    skippedPenalties: number
+  } {
+    const toSave: Array<{
       match_id: string
       predicted_home_score: number
       predicted_away_score: number
       predicted_penalty_winner_team_id: string | null
     }> = []
+    let skippedPenalties = 0
     for (const m of roundMatches) {
       if (isLocked(m)) continue
       const d = drafts.get(m.id)
@@ -220,7 +229,10 @@ export default function PredictionsTab({
         isKnockoutPhase(m.phase) &&
         home === away
       const penalty = needsPenalty ? d.penalty : null
-      if (needsPenalty && !penalty) continue
+      if (needsPenalty && !penalty) {
+        skippedPenalties++
+        continue
+      }
 
       const changed =
         !p ||
@@ -228,7 +240,7 @@ export default function PredictionsTab({
         away !== p.predicted_away_score ||
         (penalty ?? null) !== (p.predicted_penalty_winner_team_id ?? null)
       if (changed) {
-        out.push({
+        toSave.push({
           match_id: m.id,
           predicted_home_score: home,
           predicted_away_score: away,
@@ -236,11 +248,11 @@ export default function PredictionsTab({
         })
       }
     }
-    return out
+    return { toSave, skippedPenalties }
   }
 
   async function handleSaveAll() {
-    const toSave = collectRoundDrafts()
+    const { toSave } = collectRoundDrafts()
     if (toSave.length === 0) return
     trackEvent('click_predictions_salvar_todos', { count: toSave.length, round: selectedRound })
 
@@ -261,7 +273,7 @@ export default function PredictionsTab({
         throw new Error(data.error ?? 'Erro ao salvar palpites')
       }
 
-      const data = (await res.json()) as { saved: string[]; missing_penalty?: string[] }
+      const data = (await res.json()) as { saved: string[]; missing_penalty?: string[]; invalid_penalty_team?: string[] }
       const savedSet = new Set(data.saved)
       for (const p of toSave) {
         if (savedSet.has(p.match_id)) {
@@ -274,7 +286,9 @@ export default function PredictionsTab({
         }
       }
 
-      if ((data.missing_penalty?.length ?? 0) > 0) {
+      if ((data.invalid_penalty_team?.length ?? 0) > 0) {
+        setBulkError('Um ou mais times escolhidos nos pênaltis são inválidos para o jogo.')
+      } else if ((data.missing_penalty?.length ?? 0) > 0) {
         setBulkError('Palpites salvos, mas alguns jogos de mata-mata ainda aguardam a escolha do vencedor nos pênaltis.')
       } else {
         setSavedAll(true)
@@ -287,26 +301,8 @@ export default function PredictionsTab({
     }
   }
 
-  const pendingCount = collectRoundDrafts().length
-
-  // Knockout draws in drafts that need a penalty pick but don't have one yet.
-  // These are excluded from "Salvar todos" — show a count so the user knows.
-  function countSkippedPenalties(): number {
-    let n = 0
-    for (const m of roundMatches) {
-      if (isLocked(m)) continue
-      const d = drafts.get(m.id)
-      if (!d || d.home === '' || d.away === '') continue
-      if (
-        penaltyPicksActive(penaltyPicksEnabled, pointsExact) &&
-        isKnockoutPhase(m.phase) &&
-        Number(d.home) === Number(d.away) &&
-        !d.penalty
-      ) n++
-    }
-    return n
-  }
-  const skippedPenaltyCount = countSkippedPenalties()
+  const { toSave: pendingDrafts, skippedPenalties: skippedPenaltyCount } = collectRoundDrafts()
+  const pendingCount = pendingDrafts.length
 
   async function handleImport() {
     if (!importSourceId) return

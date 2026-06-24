@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { calculatePoints, penaltyBonus, PENALTY_DEFER_GRACE_MS, scoreUnprocessedMatches } from './scoring'
-import { KNOCKOUT_PHASES } from './phases'
+import { KNOCKOUT_PHASES, penaltyPicksActive } from './phases'
 
 // ---------------------------------------------------------------------------
 // calculatePoints — pure function, no mocks needed
@@ -69,6 +69,17 @@ describe('penaltyBonus', () => {
   it('returns 0 when actual winner is null', () => expect(penaltyBonus(null, 'team-A')).toBe(0))
   it('returns 0 when predicted winner is null', () => expect(penaltyBonus('team-A', null)).toBe(0))
   it('returns 0 when both are null', () => expect(penaltyBonus(null, null)).toBe(0))
+})
+
+// ---------------------------------------------------------------------------
+// penaltyPicksActive — pure function
+// ---------------------------------------------------------------------------
+
+describe('penaltyPicksActive', () => {
+  it('returns true when enabled=1 and points_exact>0', () => expect(penaltyPicksActive(1, 3)).toBe(true))
+  it('returns false when disabled (enabled=0)', () => expect(penaltyPicksActive(0, 3)).toBe(false))
+  it('returns false when points_exact=0 (1X2 group)', () => expect(penaltyPicksActive(1, 0)).toBe(false))
+  it('returns false when both disabled and 1X2', () => expect(penaltyPicksActive(0, 0)).toBe(false))
 })
 
 // ---------------------------------------------------------------------------
@@ -154,7 +165,8 @@ function buildFakeDb(
                 m.phase == null ||
                 !(KNOCKOUT_PHASES as readonly string[]).includes(m.phase) ||
                 m.penalty_winner_team_id != null ||
-                (m.start_time != null && graceDeadline != null && m.start_time <= graceDeadline)
+                m.start_time == null ||
+                (graceDeadline != null && m.start_time <= graceDeadline)
               ),
           ) as unknown as T[]
           return { results }
@@ -442,6 +454,7 @@ describe('scoreUnprocessedMatches', () => {
       id: 'm1', competition_id: 'c1', status: 'finished',
       home_score: 1, away_score: 1, scored_at: null,
       phase: 'QUARTER_FINALS', penalty_winner_team_id: 'team-A',
+      start_time: new Date().toISOString(),
     }
 
     it('awards +1 bonus to the correct penalty-shootout pick', async () => {

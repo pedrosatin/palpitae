@@ -228,11 +228,11 @@ export default function GroupPicksTab({
                         </span>
                         {isFinished && (
                           <span
-                            className={`${styles.pickPoints} ${p.points_awarded + (p.penalty_bonus ?? 0) > 0 ? styles.pointsGreen : styles.pointsZero}`}
+                            className={`${styles.pickPoints} ${p.points_awarded + p.penalty_bonus > 0 ? styles.pointsGreen : styles.pointsZero}`}
                           >
-                            {(p.penalty_bonus ?? 0) > 0
-                              ? `${p.points_awarded}+${p.penalty_bonus} pt`
-                              : `${p.points_awarded + (p.penalty_bonus ?? 0)} pt`}
+                            {p.penalty_bonus > 0
+                              ? `${p.points_awarded} + ${p.penalty_bonus} pts`
+                              : `${p.points_awarded} pt`}
                           </span>
                         )}
                       </li>

@@ -315,22 +315,22 @@ describe('predictions router – PUT /bulk — penalty picks', () => {
     expect(body.missing_penalty).toEqual([])
   })
 
-  it('puts a knockout draw without a penalty pick in missing_penalty', async () => {
+  it('saves the score and reports a knockout draw without a penalty pick in missing_penalty', async () => {
     const db = createBulkDbMock({ matches: { m1: { start_time: future, phase: 'QUARTER_FINALS' } } })
     const res = await requestBulk(db, {
       group_id: 'g1',
       predictions: [{
         match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1,
-        // no penalty pick
+        // no penalty pick — score is saved, pick can be added via single PUT later
       }],
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as { saved: string[]; missing_penalty: string[] }
-    expect(body.saved).toEqual([])
+    expect(body.saved).toEqual(['m1'])
     expect(body.missing_penalty).toEqual(['m1'])
   })
 
-  it('puts a knockout draw with an invalid team in missing_penalty', async () => {
+  it('puts a knockout draw with an invalid team in invalid_penalty_team (score not saved)', async () => {
     const db = createBulkDbMock({ matches: { m1: { start_time: future, phase: 'QUARTER_FINALS' } } })
     const res = await requestBulk(db, {
       group_id: 'g1',
@@ -340,9 +340,10 @@ describe('predictions router – PUT /bulk — penalty picks', () => {
       }],
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { saved: string[]; missing_penalty: string[] }
+    const body = (await res.json()) as { saved: string[]; missing_penalty: string[]; invalid_penalty_team: string[] }
     expect(body.saved).toEqual([])
-    expect(body.missing_penalty).toEqual(['m1'])
+    expect(body.missing_penalty).toEqual([])
+    expect(body.invalid_penalty_team).toEqual(['m1'])
   })
 
   it('saves a knockout non-draw and silently drops a spurious penalty pick', async () => {

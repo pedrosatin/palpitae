@@ -232,13 +232,19 @@ export default function MatchCard({
   function updateHome(v: string) {
     setHomeTouched(true)
     setHome(v)
-    onDraftChange?.(match.id, v, away, penaltyWinner)
+    // Use penaltyToSend (not penaltyWinner) so the draft reflects the actual
+    // value that would be submitted — null when score is no longer a draw.
+    const newIsDraw = v !== '' && away !== '' && Number(v) === Number(away)
+    const draftPenalty = !outcomeOnly && penaltyPicksEnabled && isKnockoutPhase(match.phase) && newIsDraw ? penaltyWinner : null
+    onDraftChange?.(match.id, v, away, draftPenalty)
   }
 
   function updateAway(v: string) {
     setAwayTouched(true)
     setAway(v)
-    onDraftChange?.(match.id, home, v, penaltyWinner)
+    const newIsDraw = home !== '' && v !== '' && Number(home) === Number(v)
+    const draftPenalty = !outcomeOnly && penaltyPicksEnabled && isKnockoutPhase(match.phase) && newIsDraw ? penaltyWinner : null
+    onDraftChange?.(match.id, home, v, draftPenalty)
   }
 
   function handleScoreInput(value: string, update: (v: string) => void) {

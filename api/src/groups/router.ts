@@ -458,7 +458,7 @@ router.patch('/:id', requireAuth, async (c) => {
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const body = await c.req.json<{ name?: string }>()
+  const body = await c.req.json<{ name?: string; penalty_picks_enabled?: boolean }>()
   const name = body.name?.trim()
 
   if (!name) {
@@ -469,10 +469,14 @@ router.patch('/:id', requireAuth, async (c) => {
     return c.json({ error: 'Nome deve ter entre 2 e 50 caracteres' }, 400)
   }
 
+  if (body.penalty_picks_enabled !== undefined && typeof body.penalty_picks_enabled !== 'boolean') {
+    return c.json({ error: 'penalty_picks_enabled deve ser booleano' }, 400)
+  }
+
   const group = await db
-    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
+    .prepare('SELECT owner_user_id, points_exact FROM groups WHERE id = ? AND deleted_at IS NULL')
     .bind(groupId)
-    .first<{ owner_user_id: string }>()
+    .first<{ owner_user_id: string; points_exact: number }>()
 
   if (!group) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
@@ -482,7 +486,15 @@ router.patch('/:id', requireAuth, async (c) => {
     return c.json({ error: 'Apenas o administrador pode editar o grupo' }, 403)
   }
 
-  await db.prepare('UPDATE groups SET name = ? WHERE id = ?').bind(name, groupId).run()
+  if (body.penalty_picks_enabled !== undefined) {
+    const penaltyPicksEnabled = group.points_exact > 0 && body.penalty_picks_enabled ? 1 : 0
+    await db
+      .prepare('UPDATE groups SET name = ?, penalty_picks_enabled = ? WHERE id = ?')
+      .bind(name, penaltyPicksEnabled, groupId)
+      .run()
+  } else {
+    await db.prepare('UPDATE groups SET name = ? WHERE id = ?').bind(name, groupId).run()
+  }
 
   logEvent(c.env.AE, 'group_renamed', {
     blobs: [groupId, await hashUserId(userId)],

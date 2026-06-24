@@ -150,13 +150,12 @@ async function scoreMatch(
   // Recalculate leaderboards before marking scored_at. Errors are logged but
   // scored_at is always stamped — preventing the stamp would cause the poller to
   // re-award points on every run, which is worse than a temporary leaderboard drift.
-  await Promise.allSettled(
+  const leaderboardResults = await Promise.allSettled(
     [...affectedGroups].map((groupId) => recalculateLeaderboard(groupId, db)),
-  ).then((results) => {
-    for (const r of results) {
-      if (r.status === 'rejected') console.error('[scoring] leaderboard recalc failed:', r.reason)
-    }
-  })
+  )
+  for (const r of leaderboardResults) {
+    if (r.status === 'rejected') console.error('[scoring] leaderboard recalc failed:', r.reason)
+  }
 
   await db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId).run()
 
@@ -188,9 +187,11 @@ export async function scoreUnprocessedMatches(
          AND away_score IS NOT NULL
          AND (
            home_score != away_score
-           -- hardcoded constant, not user input; D1 doesn't support array binding for IN
-           OR phase NOT IN (${KNOCKOUT_PHASES_SQL})
-           OR phase IS NULL
+           -- hardcoded constant, not user input; D1 doesn't support array binding for IN.
+           -- phase IS NOT NULL guard: NULL NOT IN (...) is NULL in SQLite, so without it
+           -- a null-phase draw would fall through to the grace-period arm below instead
+           -- of being scored as a non-knockout draw — which is the safe behaviour.
+           OR (phase IS NOT NULL AND phase NOT IN (${KNOCKOUT_PHASES_SQL}))
            OR penalty_winner_team_id IS NOT NULL
            OR start_time IS NULL
            OR start_time <= ?

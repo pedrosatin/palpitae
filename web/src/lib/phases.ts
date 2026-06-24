@@ -1,4 +1,6 @@
-// Mirror of api/src/matches/phases.ts — web app cannot import from the API package.
+// Parallel of api/src/matches/phases.ts — web app cannot import from the API package.
+// Difference: penaltyPicksEnabled is boolean here (API converts the DB integer before responding)
+// vs number in the API version (D1 stores 0/1).
 export const KNOCKOUT_PHASES = [
   'LAST_16',
   'QUARTER_FINALS',

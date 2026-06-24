@@ -297,8 +297,7 @@ async function maybeSyncResults(
            AND home_score IS NOT NULL AND away_score IS NOT NULL
            AND (
              home_score != away_score
-             OR phase NOT IN (${KNOCKOUT_PHASES_SQL})
-             OR phase IS NULL
+             OR (phase IS NOT NULL AND phase NOT IN (${KNOCKOUT_PHASES_SQL}))
              OR penalty_winner_team_id IS NOT NULL
              OR start_time IS NULL
              OR start_time <= ?

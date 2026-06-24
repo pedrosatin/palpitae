@@ -15,6 +15,16 @@ const UPSERT_PREDICTION_SQL = `
     predicted_penalty_winner_team_id   = excluded.predicted_penalty_winner_team_id,
     updated_at                         = excluded.updated_at`
 
+// Used when the penalty pick was not provided (code === 'missing'): preserves any
+// existing pick rather than overwriting it with null.
+const UPSERT_PREDICTION_PRESERVE_PICK_SQL = `
+  INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner_team_id, created_at, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+    predicted_home_score = excluded.predicted_home_score,
+    predicted_away_score = excluded.predicted_away_score,
+    updated_at           = excluded.updated_at`
+
 /**
  * Resolves a user's penalty-winner pick against the match + group rules.
  *
@@ -526,23 +536,29 @@ router.put('/', requireAuth, async (c) => {
   }
 
   const pickValue = pick.ok ? pick.value : null
+  // Use the preserve-pick variant when the pick was simply not provided — this
+  // keeps any existing pick rather than overwriting it with null.
+  const upsertSql = pick.ok === false && pick.code === 'missing'
+    ? UPSERT_PREDICTION_PRESERVE_PICK_SQL
+    : UPSERT_PREDICTION_SQL
 
-  await db
-    .prepare(UPSERT_PREDICTION_SQL)
-    .bind(
-      crypto.randomUUID(),
-      userId,
-      group_id,
-      match_id,
-      predicted_home_score,
-      predicted_away_score,
-      pickValue,
-      now,
-      now,
-    )
-    .run()
-
-  const userHash = await hashUserId(userId)
+  const [, userHash] = await Promise.all([
+    db
+      .prepare(upsertSql)
+      .bind(
+        crypto.randomUUID(),
+        userId,
+        group_id,
+        match_id,
+        predicted_home_score,
+        predicted_away_score,
+        pickValue,
+        now,
+        now,
+      )
+      .run(),
+    hashUserId(userId),
+  ])
   logEvent(c.env.AE, 'prediction_saved', {
     blobs: [group_id, match.round, userHash, 'single'],
     doubles: [1],
@@ -555,7 +571,7 @@ router.put('/', requireAuth, async (c) => {
     })
   }
 
-  return c.json({ ok: true, ...(pick.ok === false ? { missing_penalty: true } : {}) })
+  return c.json({ ok: true, missing_penalty: pick.ok === false ? true : undefined })
 })
 
 /**
@@ -676,9 +692,10 @@ router.put('/bulk', requireAuth, async (c) => {
   const saved: string[] = []
   const locked: string[] = []
   const notFound: string[] = []
-  // Knockout-draw items that need a (valid) penalty winner but lack one — skipped
-  // like locked/not_found rather than failing the whole batch.
+  // Score saved but penalty pick absent — user can add the pick via single PUT.
   const missingPenalty: string[] = []
+  // Score NOT saved — client sent a team id that belongs to neither team.
+  const invalidPenaltyTeam: string[] = []
   const statements: D1PreparedStatement[] = []
   let penaltyPicks = 0
 
@@ -705,20 +722,25 @@ router.put('/bulk', requireAuth, async (c) => {
       penaltyPicksEnabled: groupConfig.penalty_picks_enabled,
       pointsExact: groupConfig.points_exact,
     })
-    // A genuinely incomplete knockout draw (no pick / invalid team) is skipped
-    // and reported so the user can complete it. A stray pick that simply doesn't
-    // apply here (group disabled / not a knockout) must NOT cost the user their
-    // score — drop the pick and save the score with null, like the import path.
-    if (!pick.ok && (pick.code === 'missing' || pick.code === 'invalid_team')) {
-      missingPenalty.push(matchId)
+    // Invalid team id: score not saved — client must correct the pick.
+    // Missing pick on knockout draw: score saved, pick left as-is; reported so the
+    //   user can add it later. Uses preserve-pick SQL to keep any existing pick.
+    // Stray pick (group disabled / not knockout): dropped silently, score saved.
+    if (!pick.ok && pick.code === 'invalid_team') {
+      invalidPenaltyTeam.push(matchId)
       continue
     }
     const pickValue = pick.ok ? pick.value : null
+    if (!pick.ok && pick.code === 'missing') missingPenalty.push(matchId)
+
+    const upsertSql = pick.ok === false && pick.code === 'missing'
+      ? UPSERT_PREDICTION_PRESERVE_PICK_SQL
+      : UPSERT_PREDICTION_SQL
 
     if (pickValue) penaltyPicks++
     statements.push(
       db
-        .prepare(UPSERT_PREDICTION_SQL)
+        .prepare(upsertSql)
         .bind(crypto.randomUUID(), userId, group_id, matchId, home, away, pickValue, now, now),
     )
     saved.push(matchId)
@@ -739,7 +761,7 @@ router.put('/bulk', requireAuth, async (c) => {
     }
   }
 
-  return c.json({ ok: true, saved, locked, not_found: notFound, missing_penalty: missingPenalty })
+  return c.json({ ok: true, saved, locked, not_found: notFound, missing_penalty: missingPenalty, invalid_penalty_team: invalidPenaltyTeam })
 })
 
 /**
@@ -847,36 +869,28 @@ router.post('/import', requireAuth, async (c) => {
 
   const now = new Date().toISOString()
 
-  // Fetch user's predictions from source group for unlocked matches only.
-  // Include phase so we only copy penalty picks for knockout draws.
+  // Fetch all source-group predictions and split locked vs. unlocked in JS —
+  // one round-trip instead of two (avoids a separate COUNT(*) query).
   const sourcePredictions = await db
     .prepare(
       `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score,
-              p.predicted_penalty_winner_team_id, m.phase
+              p.predicted_penalty_winner_team_id, m.phase, m.start_time
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND m.start_time > ?`,
+       WHERE p.user_id = ? AND p.group_id = ?`,
     )
-    .bind(userId, source_group_id, now)
+    .bind(userId, source_group_id)
     .all<{
       match_id: string
       predicted_home_score: number
       predicted_away_score: number
       predicted_penalty_winner_team_id: string | null
       phase: string | null
+      start_time: string
     }>()
 
-  const toImport = sourcePredictions.results
-
-  // Count total source predictions to report how many were locked-skipped
-  const totalCount = await db
-    .prepare(
-      `SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`,
-    )
-    .bind(userId, source_group_id)
-    .first<{ total: number }>()
-
-  const lockedSkipped = (totalCount?.total ?? 0) - toImport.length
+  const toImport = sourcePredictions.results.filter((p) => p.start_time > now)
+  const lockedSkipped = sourcePredictions.results.length - toImport.length
 
   if (toImport.length === 0) {
     return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })
@@ -894,7 +908,9 @@ router.post('/import', requireAuth, async (c) => {
         p.predicted_home_score,
         p.predicted_away_score,
         // Copy the pick only when the target group uses picks AND this is a
-        // knockout draw — same nulling logic resolvePenaltyPick applies on PUT/.
+        // knockout draw. Mirrors resolvePenaltyPick's early-exit arm but skips the
+        // team-id validation — source picks were already validated when saved, and
+        // the source match's team ids aren't in scope here without an extra JOIN.
         targetPicksActive &&
         isKnockoutPhase(p.phase) &&
         p.predicted_home_score === p.predicted_away_score
