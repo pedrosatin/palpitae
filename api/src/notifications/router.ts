@@ -2,6 +2,7 @@ import { type Context, Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
+import { sendRoundReminders } from './roundReminder'
 import { verifyUnsubToken } from './unsubscribeToken'
 
 const router = new Hono<AppContext>()
@@ -155,6 +156,14 @@ router.patch('/preferences', requireAuth, async (c) => {
   }
 
   return c.json({ round_reminders: subscribe })
+})
+
+// TEMPORARY — remove after manual trigger
+router.post('/admin/trigger-reminders', async (c) => {
+  if (c.req.header('x-admin-secret') !== 'palpitae-trigger-2026') return c.text('', 401)
+  await sendRoundReminders(c.env.DB, c.env.RESEND_API_KEY ?? '', c.env.AE, c.env.FRONTEND_URL,
+    c.env.BASE_URL ? { secret: c.env.JWT_SECRET, apiBaseUrl: c.env.BASE_URL } : undefined)
+  return c.text('ok')
 })
 
 export { router as notificationsRouter }
