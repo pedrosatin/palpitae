@@ -86,10 +86,10 @@ type RoundGroup = {
 
 /**
  * Sends an e-mail reminder to every group member whose competition has a round
- * starting tomorrow AND who has not predicted any of that round's matches yet.
- * Designed to run once a day from a daily Cron Trigger.
+ * starting TODAY AND who has not predicted any of that round's matches yet.
+ * Designed to run once a day (07:00 BRT) from a daily Cron Trigger.
  *
- * Only fires on the round's FIRST match day: the WHERE clause requires tomorrow
+ * Only fires on the round's FIRST match day: the WHERE clause requires today
  * to equal the earliest scheduled match date of that (competition, round). This
  * prevents re-notifying mid-round when a round spans several days. Combined with
  * the once-a-day cron, no per-send dedupe table is needed.
@@ -97,8 +97,7 @@ type RoundGroup = {
  * start_time is stored as ISO 8601 with T/Z (e.g. "2026-06-16T22:00:00Z"), which
  * SQLite's date() parses correctly. Date math shifts by '-3 hours' to align day
  * boundaries with BRT (UTC-3, no DST since 2019) — without this, a match at
- * 21:00–23:59 BRT lands on the following UTC day, causing the e-mail to say
- * "começa amanhã" when the match is actually today for Brazilian users.
+ * 21:00–23:59 BRT lands on the following UTC day, causing the cron to miss it.
  */
 export async function sendRoundReminders(
   db: D1Database,
@@ -117,31 +116,8 @@ export async function sendRoundReminders(
     return
   }
 
-  // ISO 8601 with T/Z, same format the matches list endpoint uses (matches/router.ts)
-  // so the default_round subquery below resolves to EXACTLY the same round the app
-  // shows by default. start_time is stored in this format, so the `> ?` comparison
-  // is a correct lexicographic compare.
-  const nowIso = new Date().toISOString()
-
-  // Earliest round that still has ≥1 future match — matches the default_round logic
-  // in matches/router.ts. Extracted here so Q1 and Q2 always use identical logic;
-  // a change to one can't silently diverge from the other.
-  const DEFAULT_ROUND_SUBQ = `(
-    SELECT m3.round
-    FROM matches m3
-    WHERE m3.competition_id = m.competition_id
-    GROUP BY m3.round
-    HAVING MAX(m3.start_time) > ?1
-    ORDER BY MAX(m3.start_time) ASC
-    LIMIT 1
-  )`
-
   // Query 1: which users need to be notified?
-  //  - the round's first match is tomorrow (don't re-notify mid-round);
-  //  - the round is the competition's default_round — the earliest round still
-  //    open (MAX(start_time) in the future). This MUST match matches/router.ts so
-  //    the e-mail never goes out before the app has advanced to that round (e.g.
-  //    while the previous round still has an unfinished match);
+  //  - the round's first match is today (don't re-notify mid-round);
   //  - the user has no prediction yet for any match of that round in that group
   //    (NOT EXISTS).
   const userRows = await db
@@ -161,14 +137,13 @@ export async function sendRoundReminders(
        JOIN users u          ON u.id = gm.user_id
        WHERE m.status = 'scheduled'
          AND u.email_unsubscribed_at IS NULL
-         AND date(m.start_time, '-3 hours') = date('now', '-3 hours', '+1 day')
+         AND date(m.start_time, '-3 hours') = date('now', '-3 hours')
          AND date(m.start_time, '-3 hours') = (
            SELECT MIN(date(m2.start_time, '-3 hours'))
            FROM matches m2
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
          )
-         AND m.round = ${DEFAULT_ROUND_SUBQ}
          AND NOT EXISTS (
            SELECT 1
            FROM predictions p
@@ -179,11 +154,10 @@ export async function sendRoundReminders(
              AND pm.round = m.round
          )`,
     )
-    .bind(nowIso)
     .all<ReminderRow>()
 
   if (userRows.results.length === 0) {
-    console.info('[roundReminder] Nenhuma rodada começa amanhã.')
+    console.info('[roundReminder] Nenhuma rodada começa hoje.')
     logEvent(ae, 'cron_round_reminder', { doubles: [0, 0, 0] })
     return
   }
@@ -241,11 +215,9 @@ export async function sendRoundReminders(
            FROM matches m2
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
-         ) = date('now', '-3 hours', '+1 day')
-         AND m.round = ${DEFAULT_ROUND_SUBQ}
+         ) = date('now', '-3 hours')
        ORDER BY m.start_time ASC`,
     )
-    .bind(nowIso)
     .all<MatchRow>()
 
   // Attach match info to the corresponding round group.
@@ -271,7 +243,7 @@ export async function sendRoundReminders(
   let sent = 0
   let failed = 0
   for (const { competitionName, round, recipientMap, matches } of grouped.values()) {
-    const subject = `Não esqueça! Rodada ${round} começa amanhã`
+    const subject = `Não esqueça! Rodada ${round} começa hoje`
 
     // One e-mail per user (no shared BCC, so addresses never leak between users).
     // A single send failure is isolated so the rest of the batch still goes out.
@@ -416,7 +388,7 @@ function buildEmailHtml(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rodada ${safeRound} começa amanhã</title>
+  <title>Rodada ${safeRound} começa hoje</title>
 </head>
 <body style="margin: 0; padding: 0; background: #f3f4f6;">
   <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
@@ -424,7 +396,7 @@ function buildEmailHtml(
       <img src="${logoUrl}" alt="" width="48" height="48" style="border-radius: 10px; border: 0; display: block; margin: 0 auto 8px;">
       <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
     </div>
-    <h2 style="margin-bottom: 4px;">Não esqueca! Rodada ${safeRound} começa amanhã</h2>
+    <h2 style="margin-bottom: 4px;">Não esqueca! Rodada ${safeRound} começa hoje</h2>
     <p style="color: #6b7280; margin-top: 0;">${safeCompetition}</p>
     ${matchTable}
     <p style="margin-top: 16px;">Não esquece de registrar seus palpites antes do primeiro jogo!</p>
@@ -455,7 +427,7 @@ function buildEmailText(
   unsubUrl?: string,
 ): string {
   const lines = [
-    `A Rodada ${round} começa amanhã!`,
+    `A Rodada ${round} começa hoje!`,
     competitionName,
     '',
   ]
