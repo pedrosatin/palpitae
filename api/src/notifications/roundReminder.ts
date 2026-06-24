@@ -132,7 +132,7 @@ export async function sendRoundReminders(
          g.name  AS group_name
        FROM matches m
        JOIN competitions c   ON c.id = m.competition_id
-       JOIN groups g         ON g.competition_id = c.id
+       JOIN groups g         ON g.competition_id = c.id AND g.deleted_at IS NULL
        JOIN group_members gm ON gm.group_id = g.id
        JOIN users u          ON u.id = gm.user_id
        WHERE m.status = 'scheduled'
