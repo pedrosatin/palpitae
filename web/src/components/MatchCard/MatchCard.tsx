@@ -20,6 +20,12 @@ export interface Match {
   away_team_name: string
   away_team_short_name: string
   away_team_logo: string
+  /** Server-derived: this match decides on penalties in a single game. */
+  decides_on_penalties?: boolean
+  /** Actual shootout result (only set once a finished match went to penalties). */
+  penalty_winner?: 'home' | 'away' | null
+  home_penalty_goals?: number | null
+  away_penalty_goals?: number | null
 }
 
 export interface Prediction {
@@ -27,7 +33,9 @@ export interface Prediction {
   match_id: string
   predicted_home_score: number
   predicted_away_score: number
+  predicted_penalty_winner?: 'home' | 'away' | null
   points_awarded: number
+  penalty_points?: number
   locked: boolean | 1 | 0
   updated_at: string
 }
@@ -42,9 +50,16 @@ interface MatchCardProps {
    * The picks are still stored as scores: casa=(1,0), empate=(0,0), fora=(0,1).
    */
   outcomeOnly?: boolean
-  onSaved: (matchId: string, home: number, away: number) => void
+  onSaved: (
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) => void
   /** Reports the current input draft up so a parent can offer "Salvar todos". */
   onDraftChange?: (matchId: string, home: string, away: string) => void
+  /** Reports the current penalty-winner draft so "Salvar todos" can include it. */
+  onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
 }
 
 function formatDate(iso: string): string {
@@ -64,6 +79,7 @@ export default function MatchCard({
   outcomeOnly = false,
   onSaved,
   onDraftChange,
+  onPenaltyDraftChange,
 }: MatchCardProps) {
   const locked =
     Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)
@@ -74,10 +90,15 @@ export default function MatchCard({
   const [away, setAway] = useState<string>(
     prediction !== undefined ? String(prediction.predicted_away_score) : '0',
   )
+  const [penaltyWinner, setPenaltyWinner] = useState<'home' | 'away' | null>(
+    prediction?.predicted_penalty_winner ?? null,
+  )
+
   useEffect(() => {
     if (prediction !== undefined) {
       setHome(String(prediction.predicted_home_score))
       setAway(String(prediction.predicted_away_score))
+      setPenaltyWinner(prediction.predicted_penalty_winner ?? null)
     }
   }, [prediction])
   const [saving, setSaving] = useState(false)
@@ -87,47 +108,6 @@ export default function MatchCard({
 
   const isFinished = match.status === 'finished'
   const hasPrediction = prediction !== undefined
-  const hasChanged = hasPrediction
-    ? Number(home) !== prediction.predicted_home_score ||
-      Number(away) !== prediction.predicted_away_score
-    : true
-  const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged
-
-  async function persist(homeScore: number, awayScore: number) {
-    setSaving(true)
-    setError(null)
-    setSaved(false)
-
-    const res = await fetch(`${config.apiUrl}/predictions`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        group_id: groupId,
-        match_id: match.id,
-        predicted_home_score: homeScore,
-        predicted_away_score: awayScore,
-      }),
-    })
-
-    setSaving(false)
-
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
-      setError(data.error ?? 'Erro ao salvar palpite')
-      return
-    }
-
-    setSaved(true)
-    onSaved(match.id, homeScore, awayScore)
-    setTimeout(() => setSaved(false), 2500)
-  }
-
-  async function handleSave() {
-    if (!canSave) return
-    trackEvent('click_matchcard_salvar', { match_id: match.id })
-    await persist(Number(home), Number(away))
-  }
 
   // Outcome-only groups store the pick as a score: casa=(1,0), empate=(0,0), fora=(0,1).
   const OUTCOMES = {
@@ -145,6 +125,67 @@ export default function MatchCard({
         : 'draw'
     : pendingOutcome
 
+  // The penalty winner pick is required for a DRAW prediction in a match that
+  // decides on penalties. Shown whenever the current score is a draw.
+  const drawMarked = outcomeOnly
+    ? selectedOutcome === 'draw'
+    : home !== '' && away !== '' && Number(home) === Number(away)
+  const showPenaltyPicker = !locked && Boolean(match.decides_on_penalties) && drawMarked
+
+  const scoreChanged = hasPrediction
+    ? Number(home) !== prediction.predicted_home_score ||
+      Number(away) !== prediction.predicted_away_score
+    : true
+  const penaltyChanged =
+    (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
+  const hasChanged = scoreChanged || penaltyChanged
+  // A draw in a shootout match can't be saved until its winner is picked.
+  const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
+  const canSave =
+    !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
+
+  async function persist(
+    homeScore: number,
+    awayScore: number,
+    penWinner: 'home' | 'away' | null,
+  ) {
+    setSaving(true)
+    setError(null)
+    setSaved(false)
+
+    const res = await fetch(`${config.apiUrl}/predictions`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        group_id: groupId,
+        match_id: match.id,
+        predicted_home_score: homeScore,
+        predicted_away_score: awayScore,
+        predicted_penalty_winner: penWinner,
+      }),
+    })
+
+    setSaving(false)
+
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      setError(data.error ?? 'Erro ao salvar palpite')
+      return
+    }
+
+    setSaved(true)
+    onSaved(match.id, homeScore, awayScore, penWinner)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  async function handleSave() {
+    if (!canSave) return
+    trackEvent('click_matchcard_salvar', { match_id: match.id })
+    // A non-draw / non-eligible pick never carries a penalty winner.
+    await persist(Number(home), Number(away), showPenaltyPicker ? penaltyWinner : null)
+  }
+
   async function selectOutcome(outcome: Outcome) {
     if (locked || saving) return
     if (outcome === selectedOutcome) return
@@ -154,17 +195,51 @@ export default function MatchCard({
     setAway(String(a))
     setPendingOutcome(outcome)
     onDraftChange?.(match.id, String(h), String(a))
-    await persist(h, a)
+
+    if (outcome === 'draw' && match.decides_on_penalties) {
+      // Need a penalty winner first — show the picker and wait for the choice;
+      // selectPenaltyWinner persists once the user picks. Keep any prior winner.
+      return
+    }
+    // Decisive outcome (or a draw with no penalties) carries no winner.
+    if (penaltyWinner !== null) {
+      setPenaltyWinner(null)
+      onPenaltyDraftChange?.(match.id, null)
+    }
+    await persist(h, a, null)
+  }
+
+  async function selectPenaltyWinner(winner: 'home' | 'away') {
+    if (locked || saving) return
+    trackEvent('click_prediction_penalty_winner', { match_id: match.id, winner })
+    setPenaltyWinner(winner)
+    onPenaltyDraftChange?.(match.id, winner)
+    // Outcome mode persists immediately (mirrors selectOutcome); score mode waits
+    // for the explicit Save button so the user can still tweak the score.
+    if (outcomeOnly) {
+      await persist(0, 0, winner)
+    }
+  }
+
+  function clearPenaltyIfLeavingDraw(nextHome: string, nextAway: string) {
+    const stillDraw =
+      nextHome !== '' && nextAway !== '' && Number(nextHome) === Number(nextAway)
+    if (!stillDraw && penaltyWinner !== null) {
+      setPenaltyWinner(null)
+      onPenaltyDraftChange?.(match.id, null)
+    }
   }
 
   function updateHome(v: string) {
     setHome(v)
     onDraftChange?.(match.id, v, away)
+    clearPenaltyIfLeavingDraw(v, away)
   }
 
   function updateAway(v: string) {
     setAway(v)
     onDraftChange?.(match.id, home, v)
+    clearPenaltyIfLeavingDraw(home, v)
   }
 
   function handleScoreInput(value: string, update: (v: string) => void) {
@@ -200,11 +275,18 @@ export default function MatchCard({
         {/* Score area */}
         <div className={styles.scoreArea}>
           {isFinished ? (
-            <div className={styles.finalScore}>
-              <span>{match.home_score ?? '–'}</span>
-              <span className={styles.scoreSep}>×</span>
-              <span>{match.away_score ?? '–'}</span>
-            </div>
+            <>
+              <div className={styles.finalScore}>
+                <span>{match.home_score ?? '–'}</span>
+                <span className={styles.scoreSep}>×</span>
+                <span>{match.away_score ?? '–'}</span>
+              </div>
+              {match.penalty_winner && (
+                <span className={styles.penaltyResult}>
+                  ({match.home_penalty_goals}-{match.away_penalty_goals} pênaltis)
+                </span>
+              )}
+            </>
           ) : (
             <span className={styles.vs}>vs</span>
           )}
@@ -245,14 +327,32 @@ export default function MatchCard({
                   </span>
                 </div>
               )}
-              {isFinished && (
-                <span
-                  className={`${styles.points} ${prediction.points_awarded > 0 ? styles.pointsGreen : styles.pointsZero}`}
-                >
-                  {prediction.points_awarded}{' '}
-                  {prediction.points_awarded === 1 ? 'ponto' : 'pontos'}
+              {prediction.predicted_penalty_winner && (
+                <span className={styles.lockedPenalty}>
+                  pênalti:{' '}
+                  {prediction.predicted_penalty_winner === 'home'
+                    ? match.home_team_short_name
+                    : match.away_team_short_name}
                 </span>
               )}
+              {isFinished &&
+                (() => {
+                  // Total = base + penalty bonus; both are surfaced as one figure.
+                  const total = prediction.points_awarded + (prediction.penalty_points ?? 0)
+                  return (
+                    <span
+                      className={`${styles.points} ${total > 0 ? styles.pointsGreen : styles.pointsZero}`}
+                    >
+                      {total} {total === 1 ? 'ponto' : 'pontos'}
+                      {(prediction.penalty_points ?? 0) > 0 && (
+                        <span className={styles.penaltyBonus}>
+                          {' '}
+                          (+{prediction.penalty_points} pênalti)
+                        </span>
+                      )}
+                    </span>
+                  )
+                })()}
             </div>
           ) : (
             <p className={styles.noPrediction}>sem palpite registrado</p>
@@ -373,6 +473,31 @@ export default function MatchCard({
                     ? 'Atualizar'
                     : 'Salvar'}
             </button>
+          </div>
+        )}
+        {showPenaltyPicker && (
+          <div className={styles.penaltyPicker}>
+            <span className={styles.penaltyLabel}>Quem vence nos pênaltis?</span>
+            <div className={styles.penaltyOptions}>
+              <button
+                type="button"
+                className={`${styles.penaltyBtn} ${penaltyWinner === 'home' ? styles.penaltyBtnActive : ''}`}
+                onClick={() => selectPenaltyWinner('home')}
+                disabled={saving}
+                aria-pressed={penaltyWinner === 'home'}
+              >
+                {match.home_team_short_name}
+              </button>
+              <button
+                type="button"
+                className={`${styles.penaltyBtn} ${penaltyWinner === 'away' ? styles.penaltyBtnActive : ''}`}
+                onClick={() => selectPenaltyWinner('away')}
+                disabled={saving}
+                aria-pressed={penaltyWinner === 'away'}
+              >
+                {match.away_team_short_name}
+              </button>
+            </div>
           </div>
         )}
         {error && <p className={styles.errorMsg}>{error}</p>}
