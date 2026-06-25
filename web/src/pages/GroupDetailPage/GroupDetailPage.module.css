@@ -338,6 +338,7 @@
 .tab {
   background: none;
   border: none;
+  text-decoration: none;
   color: var(--color-text-muted);
   font-size: var(--font-size-md);
   font-family: var(--font-family-base);
@@ -355,6 +356,7 @@
 
 .tab:hover {
   color: var(--color-text-secondary);
+  text-decoration: none;
 }
 
 .tabActive {

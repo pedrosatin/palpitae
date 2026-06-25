@@ -202,7 +202,7 @@ describe('GroupDetailPage – tabs', () => {
     })
 
     await userEvent.click(
-      screen.getByRole('button', { name: /Ranking/i }),
+      screen.getByRole('link', { name: /Ranking/i }),
     )
 
     expect(screen.queryByTestId('predictions-tab')).not.toBeInTheDocument()
@@ -219,9 +219,9 @@ describe('GroupDetailPage – tabs', () => {
     })
 
     await userEvent.click(
-      screen.getByRole('button', { name: /Ranking/i }),
+      screen.getByRole('link', { name: /Ranking/i }),
     )
-    await userEvent.click(screen.getByRole('button', { name: /Palpitar/i }))
+    await userEvent.click(screen.getByRole('link', { name: /Palpitar/i }))
 
     expect(screen.getByTestId('predictions-tab')).toBeInTheDocument()
   })
@@ -404,7 +404,7 @@ describe('GroupDetailPage – analytics', () => {
     mockGroupFetch()
     renderPage()
     await waitFor(() => screen.getByTestId('predictions-tab'))
-    await userEvent.click(screen.getByRole('button', { name: /Ranking/i }))
+    await userEvent.click(screen.getByRole('link', { name: /Ranking/i }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_tab', { tab: 'leaderboard' })
   })
 
