@@ -265,7 +265,7 @@ router.post('/', requireAuth, async (c) => {
 
     logEvent(c.env.AE, 'group_created', {
       blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
-      doubles: [points_exact, points_winner],
+      doubles: [points_exact, points_winner, points_penalty],
     })
 
     return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
