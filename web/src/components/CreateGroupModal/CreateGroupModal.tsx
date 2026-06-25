@@ -422,7 +422,7 @@ export default function CreateGroupModal({
                 </div>
                 <p className={styles.penaltyHint}>
                   Pontos extras por acertar quem vence nos pênaltis num palpite de
-                  empate (mata-mata). 0 desliga.
+                  empate. 0 desliga.
                 </p>
               </div>
             )}
