@@ -141,46 +141,74 @@ router.get('/user', requireAuth, async (c) => {
 
   const now = new Date().toISOString()
 
-  // Only return predictions for matches that have already started (locked picks are public)
+  // Fetch all matches for the group's competition, left-joining predictions.
+  // The join condition restricts predictions to started matches (anti-copy: future
+  // picks are not revealed even if the target user has already submitted them).
   const queryStartedAt = Date.now()
-  const result = await db
-    .prepare(
-      `SELECT
-         p.match_id,
-         p.predicted_home_score,
-         p.predicted_away_score,
-         p.points_awarded,
-         m.status AS match_status,
-         m.start_time AS match_start_time,
-         m.home_score,
-         m.away_score,
-         m.round,
-         ht.name AS home_team_name,
-         ht.short_name AS home_team_short_name,
-         ht.logo_url AS home_team_logo,
-         at.name AS away_team_name,
-         at.short_name AS away_team_short_name,
-         at.logo_url AS away_team_logo
-       FROM predictions p
-       JOIN matches m ON m.id = p.match_id
-       JOIN teams ht ON ht.id = m.home_team_id
-       JOIN teams at ON at.id = m.away_team_id
-       WHERE p.group_id = ? AND p.user_id = ? AND m.start_time <= ?
-       ORDER BY CAST(m.round AS INTEGER) DESC, m.start_time ASC`,
-    )
-    .bind(groupId, targetUserId, now)
-    .all()
+  const batchResults = await db.batch([
+    db
+      .prepare(
+        `SELECT
+           m.id AS match_id,
+           p.predicted_home_score,
+           p.predicted_away_score,
+           p.points_awarded,
+           m.status AS match_status,
+           m.start_time AS match_start_time,
+           m.home_score,
+           m.away_score,
+           m.round,
+           m.group_name,
+           ht.name AS home_team_name,
+           ht.short_name AS home_team_short_name,
+           ht.logo_url AS home_team_logo,
+           at.name AS away_team_name,
+           at.short_name AS away_team_short_name,
+           at.logo_url AS away_team_logo
+         FROM matches m
+         JOIN groups g ON g.competition_id = m.competition_id AND g.id = ?
+         JOIN teams ht ON ht.id = m.home_team_id
+         JOIN teams at ON at.id = m.away_team_id
+         LEFT JOIN predictions p
+           ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND m.start_time <= ?
+         ORDER BY CAST(m.round AS INTEGER) ASC, m.group_name ASC NULLS LAST, m.start_time ASC`,
+      )
+      .bind(groupId, groupId, targetUserId, now),
+    db
+      .prepare(
+        `SELECT round FROM matches
+         WHERE competition_id = (SELECT competition_id FROM groups WHERE id = ?)
+         GROUP BY round
+         HAVING MAX(start_time) > ?
+         ORDER BY MAX(start_time) ASC
+         LIMIT 1`,
+      )
+      .bind(groupId, now),
+    db
+      .prepare(
+        `SELECT round FROM matches
+         WHERE competition_id = (SELECT competition_id FROM groups WHERE id = ?)
+         ORDER BY start_time DESC
+         LIMIT 1`,
+      )
+      .bind(groupId),
+  ])
   const queryMs = Date.now() - queryStartedAt
+
+  const predictions = batchResults[0].results
+  const activeRound = (batchResults[1].results as { round?: string }[])[0]?.round
+  const lastRound = (batchResults[2].results as { round?: string }[])[0]?.round
+  const defaultRound: string | null = activeRound ?? lastRound ?? null
 
   logRequestPerf('GET /predictions/user', {
     status: 200,
     totalMs: Date.now() - startedAt,
     dbMs: membershipMs + queryMs,
-    rows: result.results.length,
+    rows: predictions.length,
     extra: { group_id: groupId, target_user_id: targetUserId },
   })
 
-  return c.json({ predictions: result.results })
+  return c.json({ predictions, default_round: defaultRound })
 })
 
 /**

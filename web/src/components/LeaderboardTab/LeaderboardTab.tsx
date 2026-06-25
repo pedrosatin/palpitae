@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { applyDefaultRound } from '../../lib/rounds'
 import Modal from '../Modal'
 import styles from './LeaderboardTab.module.css'
 
@@ -21,14 +22,15 @@ interface Member {
 
 interface UserPrediction {
   match_id: string
-  predicted_home_score: number
-  predicted_away_score: number
-  points_awarded: number
+  predicted_home_score: number | null
+  predicted_away_score: number | null
+  points_awarded: number | null
   match_status: string
   match_start_time: string
   home_score: number | null
   away_score: number | null
   round: string
+  group_name: string | null
   home_team_name: string
   home_team_short_name: string
   home_team_logo: string
@@ -59,6 +61,7 @@ export default function LeaderboardTab({
   const [modalPredictions, setModalPredictions] = useState<UserPrediction[]>([])
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
+  const [modalRoundIndex, setModalRoundIndex] = useState(0)
 
   useEffect(() => {
     setLoading(true)
@@ -82,6 +85,7 @@ export default function LeaderboardTab({
       setModalPredictions([])
       setModalError(null)
       setModalLoading(true)
+      setModalRoundIndex(0)
 
       fetch(
         `${config.apiUrl}/predictions/user?group_id=${encodeURIComponent(groupId)}&user_id=${encodeURIComponent(member.user_id)}`,
@@ -89,9 +93,13 @@ export default function LeaderboardTab({
       )
         .then((r) => {
           if (!r.ok) throw new Error('Erro ao carregar palpites')
-          return r.json() as Promise<{ predictions: UserPrediction[] }>
+          return r.json() as Promise<{ predictions: UserPrediction[]; default_round: string | null }>
         })
-        .then((data) => setModalPredictions(data.predictions))
+        .then((data) => {
+          setModalPredictions(data.predictions)
+          const keys = [...new Set(data.predictions.map((p) => p.round))]
+          applyDefaultRound(data.default_round, keys, setModalRoundIndex)
+        })
         .catch((e: Error) => setModalError(e.message))
         .finally(() => setModalLoading(false))
     },
@@ -110,6 +118,22 @@ export default function LeaderboardTab({
     modalByRound.get(p.round)!.push(p)
   }
   const modalRoundKeys = Array.from(modalByRound.keys())
+  const safeModalIndex = Math.min(modalRoundIndex, Math.max(0, modalRoundKeys.length - 1))
+  const selectedModalRound = modalRoundKeys[safeModalIndex]
+
+  function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPrediction[]][] {
+    const result: [string | null, UserPrediction[]][] = []
+    for (const m of ms) {
+      const key = m.group_name ?? null
+      const last = result[result.length - 1]
+      if (last && last[0] === key) {
+        last[1].push(m)
+      } else {
+        result.push([key, [m]])
+      }
+    }
+    return result
+  }
 
   if (loading) {
     return <p className={styles.loading}>Carregando classificação...</p>
@@ -195,18 +219,59 @@ export default function LeaderboardTab({
             <p className={styles.modalError}>{modalError}</p>
           )}
           {!modalLoading && !modalError && modalPredictions.length === 0 && (
-            <p className={styles.modalEmpty}>
-              Nenhum palpite registrado ainda.
-            </p>
+            <p className={styles.modalEmpty}>Nenhum jogo encontrado.</p>
           )}
           {!modalLoading && !modalError && modalPredictions.length > 0 && (
-            <div className={styles.predRoundGroups}>
-              {modalRoundKeys.map((round) => (
-                <section key={round} className={styles.predRoundGroup}>
-                  <h3 className={styles.predRoundHeader}>Rodada {round}</h3>
+            <>
+              <div className={styles.modalRoundNav}>
+                <button
+                  className={styles.modalNavBtn}
+                  onClick={() => {
+                    trackEvent('click_leaderboard_rodada_anterior', { round: modalRoundKeys[Math.max(0, safeModalIndex - 1)] })
+                    setModalRoundIndex((i) => Math.max(0, i - 1))
+                  }}
+                  disabled={safeModalIndex === 0}
+                  aria-label="Rodada anterior"
+                >
+                  ‹ Anterior
+                </button>
+                <select
+                  className={styles.modalRoundSelect}
+                  value={selectedModalRound}
+                  onChange={(e) => {
+                    trackEvent('change_leaderboard_rodada', { round: e.target.value })
+                    setModalRoundIndex(modalRoundKeys.indexOf(e.target.value))
+                  }}
+                >
+                  {modalRoundKeys.map((r) => (
+                    <option key={r} value={r}>
+                      Rodada {r}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className={styles.modalNavBtn}
+                  onClick={() => {
+                    trackEvent('click_leaderboard_proxima_rodada', { round: modalRoundKeys[Math.min(modalRoundKeys.length - 1, safeModalIndex + 1)] })
+                    setModalRoundIndex((i) => Math.min(modalRoundKeys.length - 1, i + 1))
+                  }}
+                  disabled={safeModalIndex === modalRoundKeys.length - 1}
+                  aria-label="Próxima rodada"
+                >
+                  Próxima ›
+                </button>
+              </div>
+              <div className={styles.predGroups}>
+              {groupedByGroupName(modalByRound.get(selectedModalRound) ?? []).map(([groupName, matches]) => (
+                <div key={groupName ?? '__no_group'} className={styles.predGroup}>
+                  {groupName && (
+                    <h4 className={styles.predGroupHeader}>Grupo {groupName}</h4>
+                  )}
                   <ul className={styles.predList}>
-                    {modalByRound.get(round)!.map((p) => {
+                    {matches.map((p) => {
                       const isFinished = p.match_status === 'finished'
+                      const hasPrediction = p.predicted_home_score !== null
+                      const isScheduled = p.match_status === 'scheduled'
                       return (
                         <li key={p.match_id} className={styles.predItem}>
                           <div className={styles.predMatch}>
@@ -230,43 +295,52 @@ export default function LeaderboardTab({
                               />
                             </span>
                           </div>
-                          <div className={styles.predScores}>
-                            <span className={styles.predLabel}>Palpite</span>
-                            <span className={styles.predScore}>
-                              {p.predicted_home_score} × {p.predicted_away_score}
-                            </span>
-                            {isFinished && (
-                              <>
-                                <span className={styles.predLabel}>Resultado</span>
+                          {hasPrediction ? (
+                            <>
+                              <div className={styles.predScores}>
+                                <span className={styles.predLabel}>Palpite</span>
                                 <span className={styles.predScore}>
-                                  {p.home_score ?? '–'} × {p.away_score ?? '–'}
+                                  {p.predicted_home_score} × {p.predicted_away_score}
                                 </span>
-                              </>
-                            )}
-                          </div>
-                          <div className={styles.predMeta}>
-                            <span className={styles.predDate}>
-                              {formatDate(p.match_start_time)}
-                            </span>
-                            {isFinished && (
-                              <span
-                                className={
-                                  p.points_awarded > 0
-                                    ? styles.predPointsGreen
-                                    : styles.predPointsZero
-                                }
-                              >
-                                {p.points_awarded} pt
-                              </span>
-                            )}
-                          </div>
+                                {isFinished && (
+                                  <>
+                                    <span className={styles.predLabel}>Resultado</span>
+                                    <span className={styles.predScore}>
+                                      {p.home_score ?? '–'} × {p.away_score ?? '–'}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              <div className={styles.predMeta}>
+                                <span className={styles.predDate}>
+                                  {formatDate(p.match_start_time)}
+                                </span>
+                                {isFinished && (
+                                  <span
+                                    className={
+                                      (p.points_awarded ?? 0) > 0
+                                        ? styles.predPointsGreen
+                                        : styles.predPointsZero
+                                    }
+                                  >
+                                    {p.points_awarded} pt
+                                  </span>
+                                )}
+                              </div>
+                            </>
+                          ) : (
+                            <p className={styles.predNone}>
+                              {isScheduled ? formatDate(p.match_start_time) : 'Sem palpite'}
+                            </p>
+                          )}
                         </li>
                       )
                     })}
                   </ul>
-                </section>
+                </div>
               ))}
-            </div>
+              </div>
+            </>
           )}
         </Modal>
       )}
