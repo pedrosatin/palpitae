@@ -115,6 +115,24 @@ export default function GroupDetailPage({
       { replace: true },
     )
   }
+
+  function tabHref(tab: Tab): string {
+    const params = new URLSearchParams(searchParams)
+    if (tab === DEFAULT_TAB) {
+      params.delete('tab')
+    } else {
+      params.set('tab', tab)
+    }
+    const qs = params.toString()
+    return qs ? `?${qs}` : '.'
+  }
+
+  function handleTabClick(e: React.MouseEvent<HTMLAnchorElement>, tab: Tab) {
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+      e.preventDefault()
+      setActiveTab(tab)
+    }
+  }
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
@@ -524,37 +542,42 @@ export default function GroupDetailPage({
           style={{ '--tabs-offset': `${tabsOffset}px` } as CSSProperties}
           data-testid="group-tabs"
         >
-          <button
+          <a
+            href={tabHref('predictions')}
             className={`${styles.tab} ${activeTab === 'predictions' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('predictions')}
+            onClick={(e) => handleTabClick(e, 'predictions')}
           >
             Palpitar
-          </button>
-          <button
+          </a>
+          <a
+            href={tabHref('standings')}
             className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('standings')}
+            onClick={(e) => handleTabClick(e, 'standings')}
           >
             Tabela
-          </button>
-          <button
+          </a>
+          <a
+            href={tabHref('group-picks')}
             className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('group-picks')}
+            onClick={(e) => handleTabClick(e, 'group-picks')}
           >
             Grupo
-          </button>
-          <button
+          </a>
+          <a
+            href={tabHref('leaderboard')}
             className={`${styles.tab} ${activeTab === 'leaderboard' ? styles.tabActive : ''}`}
-            onClick={() => setActiveTab('leaderboard')}
+            onClick={(e) => handleTabClick(e, 'leaderboard')}
           >
             Ranking
-          </button>
+          </a>
           {isAdmin && (
-            <button
+            <a
+              href={tabHref('members')}
               className={`${styles.tab} ${activeTab === 'members' ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab('members')}
+              onClick={(e) => handleTabClick(e, 'members')}
             >
               Membros
-            </button>
+            </a>
           )}
         </div>
 
