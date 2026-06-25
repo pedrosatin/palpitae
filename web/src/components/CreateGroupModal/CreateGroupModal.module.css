@@ -182,7 +182,7 @@
 
 .penaltyHint {
   flex: 2;
-  align-self: center;
+  align-self: flex-end;
   margin: 0;
   font-size: var(--font-size-xs);
   line-height: 1.4;
