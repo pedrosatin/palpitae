@@ -455,13 +455,13 @@
     "mtime": 1781447381.3732784,
     "hash": "cfb81fce3016bebc4c29a8bedcd9a651"
   },
-  "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.test.tsx": {
-    "mtime": 1782100530.3456895,
-    "hash": "ea6e03388e358dd5bac495f177dc7e33"
-  },
   "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.tsx": {
-    "mtime": 1782297975.294322,
-    "hash": "8681b4b84bf0484158f2d5ddcd9427dc"
+    "mtime": 1782429251.108335,
+    "hash": "446ecf89d4f38b7e5156d74ea6e0826d"
+  },
+  "/home/satin/Work/personal/palpitae/web/src/pages/GroupDetailPage/GroupDetailPage.test.tsx": {
+    "mtime": 1782429266.9292314,
+    "hash": "9efcc1ca1518afefe80ea9558f3089ee"
   },
   "/home/satin/Work/personal/palpitae/web/src/pages/LandingPage/index.ts": {
     "mtime": 1781447381.3733914,
