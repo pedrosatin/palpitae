@@ -337,6 +337,80 @@
   color: #1e7a0e;
 }
 
+/* ── Penalty shootout ───────────────────── */
+.penaltyResult {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.penaltyPicker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+}
+
+.penaltyLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.penaltyOptions {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+  justify-content: center;
+}
+
+.penaltyBtn {
+  flex: 1;
+  min-width: 64px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-base);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.penaltyBtn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.penaltyBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.penaltyBtnActive {
+  border-color: var(--color-primary);
+  color: var(--color-text-on-primary, #ffffff);
+  background-color: var(--color-primary);
+}
+
+.lockedPenalty {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.penaltyBonus {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
 /* ── Mobile adjustments ─────────────────── */
 @media (max-width: 420px) {
   .stepBtn {

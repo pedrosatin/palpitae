@@ -11,6 +11,8 @@ interface Competition {
   slug: string
   season: string | null
   status: string
+  /** True when the competition has knockout phases that decide on penalties. */
+  has_penalty_phases?: boolean
 }
 
 interface CreatedGroup {
@@ -29,13 +31,14 @@ type ScoringPreset = 'classic' | 'exact_only' | 'winner_only' | 'custom'
 
 const PRESET_VALUES: Record<
   Exclude<ScoringPreset, 'custom'>,
-  { exact: number; winner: number }
+  { exact: number; winner: number; penalty: number }
 > = {
-  classic: { exact: 3, winner: 1 },
-  exact_only: { exact: 3, winner: 0 },
+  // penalty = 1 em todos os presets (bônus aditivo, independente do placar exato).
+  classic: { exact: 3, winner: 1, penalty: 1 },
+  exact_only: { exact: 3, winner: 0, penalty: 1 },
   // "Só vencedor": sem bônus por placar exato (points_exact = 0). Ativa a UI 1X2
   // (Casa / Empate / Fora) no palpite.
-  winner_only: { exact: 0, winner: 1 },
+  winner_only: { exact: 0, winner: 1, penalty: 1 },
 }
 
 const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
@@ -86,6 +89,7 @@ export default function CreateGroupModal({
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>('classic')
   const [pointsExact, setPointsExact] = useState(3)
   const [pointsWinner, setPointsWinner] = useState(1)
+  const [pointsPenalty, setPointsPenalty] = useState(1)
   const [predictionsVisibility, setPredictionsVisibility] = useState<
     'hidden' | 'public'
   >('hidden')
@@ -95,6 +99,11 @@ export default function CreateGroupModal({
 
   const [created, setCreated] = useState<CreatedGroup | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
+  // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
+  const showPenaltyField = competitions.find((c) => c.id === competitionId)
+    ?.has_penalty_phases === true
 
   useEffect(() => {
     if (!isOpen || competitions.length > 0) return
@@ -117,6 +126,7 @@ export default function CreateGroupModal({
     setScoringPreset('classic')
     setPointsExact(3)
     setPointsWinner(1)
+    setPointsPenalty(1)
     setPredictionsVisibility('hidden')
     setScoringHelp(null)
     setError(null)
@@ -136,6 +146,7 @@ export default function CreateGroupModal({
     if (preset !== 'custom') {
       setPointsExact(PRESET_VALUES[preset].exact)
       setPointsWinner(PRESET_VALUES[preset].winner)
+      setPointsPenalty(PRESET_VALUES[preset].penalty)
     }
   }
 
@@ -180,6 +191,7 @@ export default function CreateGroupModal({
           competition_id: competitionId,
           points_exact: pointsExact,
           points_winner: pointsWinner,
+          points_penalty: showPenaltyField ? pointsPenalty : 1,
           predictions_visibility: predictionsVisibility,
         }),
       })
@@ -389,6 +401,31 @@ export default function CreateGroupModal({
                 />
               </div>
             </div>
+            {showPenaltyField && (
+              <div className={styles.pointsRow}>
+                <div className={styles.pointsField}>
+                  <label className={styles.pointsLabel} htmlFor="points-penalty">
+                    Bônus pênalti
+                  </label>
+                  <input
+                    id="points-penalty"
+                    className={styles.pointsInput}
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={pointsPenalty}
+                    disabled={scoringPreset !== 'custom'}
+                    onChange={(e) =>
+                      setPointsPenalty(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+                    }
+                  />
+                </div>
+                <p className={styles.penaltyHint}>
+                  Pontos extras por acertar quem vence nos pênaltis num palpite de
+                  empate (mata-mata). 0 desliga.
+                </p>
+              </div>
+            )}
             {scoringHelp && (
               <p className={styles.scoringHelp} role="note">
                 {SCORING_HELP_TEXT[scoringHelp]}
