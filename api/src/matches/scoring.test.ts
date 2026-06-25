@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { calculatePoints, scoreUnprocessedMatches } from './scoring'
+import { calculatePenaltyBonus, calculatePoints, scoreUnprocessedMatches } from './scoring'
 
 // ---------------------------------------------------------------------------
 // calculatePoints — pure function, no mocks needed
@@ -59,6 +59,32 @@ describe('calculatePoints', () => {
 })
 
 // ---------------------------------------------------------------------------
+// calculatePenaltyBonus — pure function, no mocks needed
+// ---------------------------------------------------------------------------
+
+describe('calculatePenaltyBonus', () => {
+  // signature: (predHome, predAway, predPenWinner, penWinner, pointsPenalty, eligible)
+  it('awards the bonus on a correct draw + correct shootout winner', () =>
+    expect(calculatePenaltyBonus(1, 1, 'home', 'home', 1, true)).toBe(1))
+  it('uses the configured points_penalty value', () =>
+    expect(calculatePenaltyBonus(0, 0, 'away', 'away', 3, true)).toBe(3))
+  it('no bonus when the shootout winner is wrong', () =>
+    expect(calculatePenaltyBonus(1, 1, 'home', 'away', 1, true)).toBe(0))
+  it('no bonus when the prediction was not a draw', () =>
+    expect(calculatePenaltyBonus(2, 1, 'home', 'home', 1, true)).toBe(0))
+  it('no bonus when there was no shootout (penaltyWinner null)', () =>
+    expect(calculatePenaltyBonus(1, 1, 'home', null, 1, true)).toBe(0))
+  it('no bonus when no penalty winner was predicted', () =>
+    expect(calculatePenaltyBonus(1, 1, null, 'home', 1, true)).toBe(0))
+  it('no bonus when the match phase is not eligible', () =>
+    expect(calculatePenaltyBonus(1, 1, 'home', 'home', 1, false)).toBe(0))
+  it('no bonus when points_penalty is 0 (disabled)', () =>
+    expect(calculatePenaltyBonus(1, 1, 'home', 'home', 0, true)).toBe(0))
+  it('does not require an exact score — any correct draw counts', () =>
+    expect(calculatePenaltyBonus(3, 3, 'home', 'home', 1, true)).toBe(1))
+})
+
+// ---------------------------------------------------------------------------
 // scoreUnprocessedMatches — tests with a fake D1 database
 // ---------------------------------------------------------------------------
 
@@ -70,6 +96,8 @@ type FakePrediction = {
   predicted_home_score: number
   predicted_away_score: number
   points_awarded: number
+  penalty_points?: number
+  predicted_penalty_winner?: 'home' | 'away' | null
 }
 
 type FakeMatch = {
@@ -79,18 +107,26 @@ type FakeMatch = {
   home_score: number | null
   away_score: number | null
   scored_at: string | null
+  phase?: string | null
+  penalty_winner?: 'home' | 'away' | null
 }
 
-type FakeGroupConfig = { points_exact: number; points_winner: number }
+type FakeGroupConfig = { points_exact: number; points_winner: number; points_penalty?: number }
 
 function buildFakeDb(
   matches: FakeMatch[],
   predictions: FakePrediction[],
   groups: Record<string, FakeGroupConfig> = {},
+  // Penalty phases per competition (the competitions.penalty_phases gate).
+  penaltyPhases: Record<string, string[]> = {},
 ) {
-  // Any group not explicitly configured uses the classic 3/1 scoring.
-  const groupConfig = (groupId: string): FakeGroupConfig =>
-    groups[groupId] ?? { points_exact: 3, points_winner: 1 }
+  // Any group not explicitly configured uses the classic 3/1 scoring with the
+  // default 1-point penalty bonus.
+  const defaultConfig: Required<FakeGroupConfig> = { points_exact: 3, points_winner: 1, points_penalty: 1 }
+  const groupConfig = (groupId: string): Required<FakeGroupConfig> => ({
+    ...defaultConfig,
+    ...groups[groupId],
+  })
   const updatedMatches: Record<string, Partial<FakeMatch>> = {}
   const updatedPredictions: Record<string, Partial<FakePrediction>> = {}
   const leaderboardUpserts: Array<{ group_id: string; user_id: string; total_points: number; exact_hits: number }> = []
@@ -109,6 +145,17 @@ function buildFakeDb(
               m.away_score !== null,
           ).length
           return { count } as T
+        }
+        // Match-level penalty context (penalty_winner, phase, competition gate)
+        if (sql.includes('FROM matches m') && sql.includes('JOIN competitions')) {
+          const matchId = params[0] as string
+          const m = matches.find((x) => x.id === matchId)
+          if (!m) return null
+          return {
+            penalty_winner: m.penalty_winner ?? null,
+            phase: m.phase ?? null,
+            penalty_phases: JSON.stringify(penaltyPhases[m.competition_id] ?? []),
+          } as T
         }
         return null
       },
@@ -138,13 +185,15 @@ function buildFakeDb(
           const grouped = new Map<string, { total_points: number; exact_hits: number }>()
           for (const p of predictions.filter((p) => p.group_id === groupId)) {
             const pts = updatedPredictions[p.id]?.points_awarded ?? p.points_awarded
+            const penPts = updatedPredictions[p.id]?.penalty_points ?? 0
             const cur = grouped.get(p.user_id) ?? { total_points: 0, exact_hits: 0 }
             // Mirror the SQL: exact_hits counts rows awarded points_exact, but only
             // when the exact bonus is distinguishable (points_exact > points_winner).
+            // total_points sums base + penalty bonus.
             const isExact =
               cfg.points_exact > cfg.points_winner && pts === cfg.points_exact
             grouped.set(p.user_id, {
-              total_points: cur.total_points + (pts as number),
+              total_points: cur.total_points + (pts as number) + (penPts as number),
               exact_hits: cur.exact_hits + (isExact ? 1 : 0),
             })
           }
@@ -201,8 +250,8 @@ function buildFakeDb(
         const sql = (s as unknown as { _sql: string })._sql
         const params = (s as unknown as { _params: unknown[] })._params
         if (sql.startsWith('UPDATE predictions SET points_awarded')) {
-          const [points, id] = params as [number, string]
-          updatedPredictions[id] = { points_awarded: points }
+          const [points, penaltyPoints, id] = params as [number, number, string]
+          updatedPredictions[id] = { points_awarded: points, penalty_points: penaltyPoints }
         }
         if (sql.startsWith('UPDATE matches SET scored_at')) {
           const [scoredAt, id] = params as [string, string]
@@ -415,5 +464,96 @@ describe('scoreUnprocessedMatches', () => {
 
     expect(db._updatedPredictions['p1']?.points_awarded).toBe(3)
     expect(db._updatedPredictions['p2']).toBeUndefined()
+  })
+})
+
+describe('scoreUnprocessedMatches — penalty bonus', () => {
+  // Eligible single-game knockout that went to a shootout. home_score/away_score
+  // hold the canonical (reg+ET) draw; penalty_winner is the shootout result.
+  const shootout = (penaltyWinner: 'home' | 'away'): FakeMatch => ({
+    id: 'm1',
+    competition_id: 'c1',
+    status: 'finished',
+    home_score: 1,
+    away_score: 1,
+    scored_at: null,
+    phase: 'FINAL',
+    penalty_winner: penaltyWinner,
+  })
+  const eligible = { c1: ['FINAL'] }
+
+  it('eligible draw + correct shootout winner → base + points_penalty', async () => {
+    const predictions: FakePrediction[] = [
+      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'home' },
+    ]
+    const db = buildFakeDb([shootout('home')], predictions, {}, eligible)
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(3) // exact draw
+    expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
+    expect(db._leaderboardUpserts.find((r) => r.user_id === 'u1')?.total_points).toBe(4)
+  })
+
+  it('eligible draw + wrong shootout winner → base only, no bonus', async () => {
+    const predictions: FakePrediction[] = [
+      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'away' },
+    ]
+    const db = buildFakeDb([shootout('home')], predictions, {}, eligible)
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(3)
+    expect(db._updatedPredictions['p1']?.penalty_points).toBe(0)
+    expect(db._leaderboardUpserts.find((r) => r.user_id === 'u1')?.total_points).toBe(3)
+  })
+
+  it('partial draw (1-1 vs 2-2) + correct winner → winner base + bonus, no exact required', async () => {
+    const predictions: FakePrediction[] = [
+      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 2, points_awarded: 0, predicted_penalty_winner: 'home' },
+    ]
+    const db = buildFakeDb([shootout('home')], predictions, {}, eligible)
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1) // correct draw, wrong score
+    expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
+  })
+
+  it('phase not in penalty_phases → no bonus even with a shootout winner', async () => {
+    const predictions: FakePrediction[] = [
+      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'home' },
+    ]
+    // Gate lists only QUARTER_FINALS; the match is a FINAL → not eligible.
+    const db = buildFakeDb([shootout('home')], predictions, {}, { c1: ['QUARTER_FINALS'] })
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.penalty_points).toBe(0)
+  })
+
+  it('points_penalty = 0 disables the bonus even on a correct call', async () => {
+    const predictions: FakePrediction[] = [
+      { id: 'p1', group_id: 'gNoPen', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'home' },
+    ]
+    const db = buildFakeDb([shootout('home')], predictions, { gNoPen: { points_exact: 3, points_winner: 1, points_penalty: 0 } }, eligible)
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.penalty_points).toBe(0)
+  })
+
+  it('1X2 mode (points_exact = 0): bonus still applies on a correct draw pick', async () => {
+    const predictions: FakePrediction[] = [
+      // "Empate" pick is stored as (0,0); the real canonical score was 1-1.
+      { id: 'p1', group_id: 'g1X2', user_id: 'u1', match_id: 'm1', predicted_home_score: 0, predicted_away_score: 0, points_awarded: 0, predicted_penalty_winner: 'home' },
+    ]
+    const db = buildFakeDb([shootout('home')], predictions, { g1X2: { points_exact: 0, points_winner: 1 } }, eligible)
+
+    await scoreUnprocessedMatches('c1', db as unknown as D1Database)
+
+    expect(db._updatedPredictions['p1']?.points_awarded).toBe(1) // correct outcome (draw)
+    expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
+    expect(db._leaderboardUpserts.find((r) => r.user_id === 'u1')?.total_points).toBe(2)
   })
 })

@@ -180,6 +180,15 @@
   color: var(--color-text-secondary);
 }
 
+.penaltyHint {
+  flex: 2;
+  align-self: center;
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
 .pointsInput {
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
