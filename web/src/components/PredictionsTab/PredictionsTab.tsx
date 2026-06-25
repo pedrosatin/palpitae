@@ -29,6 +29,10 @@ export default function PredictionsTab({
   const [drafts, setDrafts] = useState<
     Map<string, { home: string; away: string }>
   >(new Map())
+  // Penalty-winner drafts (match_id -> 'home' | 'away' | null) for shootout draws.
+  const [penaltyDrafts, setPenaltyDrafts] = useState<
+    Map<string, 'home' | 'away' | null>
+  >(new Map())
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
@@ -112,7 +116,12 @@ export default function PredictionsTab({
       .finally(() => setLoading(false))
   }, [groupId, competitionId])
 
-  function handleSaved(matchId: string, home: number, away: number) {
+  function handleSaved(
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) {
     setPredictions((prev) => {
       const next = new Map(prev)
       const existing = prev.get(matchId)
@@ -121,7 +130,9 @@ export default function PredictionsTab({
         match_id: matchId,
         predicted_home_score: home,
         predicted_away_score: away,
+        predicted_penalty_winner: penaltyWinner,
         points_awarded: existing?.points_awarded ?? 0,
+        penalty_points: existing?.penalty_points ?? 0,
         locked: 0,
         updated_at: new Date().toISOString(),
       })
@@ -133,6 +144,17 @@ export default function PredictionsTab({
     setDrafts((prev) => {
       const next = new Map(prev)
       next.set(matchId, { home, away })
+      return next
+    })
+  }
+
+  function handlePenaltyDraftChange(
+    matchId: string,
+    winner: 'home' | 'away' | null,
+  ) {
+    setPenaltyDrafts((prev) => {
+      const next = new Map(prev)
+      next.set(matchId, winner)
       return next
     })
   }
@@ -187,6 +209,7 @@ export default function PredictionsTab({
       match_id: string
       predicted_home_score: number
       predicted_away_score: number
+      predicted_penalty_winner?: 'home' | 'away' | null
     }> = []
     for (const m of roundMatches) {
       if (isLocked(m)) continue
@@ -195,13 +218,29 @@ export default function PredictionsTab({
       const home = Number(d.home)
       const away = Number(d.away)
       const p = predictions.get(m.id)
-      const changed =
+
+      // A draw in a shootout match must carry a penalty winner. Resolve it from
+      // the live draft, falling back to the saved pick. If still missing, the
+      // pick isn't ready — skip it from bulk so the request can't 400 (the card
+      // requires the winner before its own save anyway).
+      const eligibleDraw = home === away && Boolean(m.decides_on_penalties)
+      const penaltyWinner: 'home' | 'away' | null = eligibleDraw
+        ? penaltyDrafts.has(m.id)
+          ? (penaltyDrafts.get(m.id) ?? null)
+          : (p?.predicted_penalty_winner ?? null)
+        : null
+      if (eligibleDraw && penaltyWinner === null) continue
+
+      const scoreChanged =
         !p || home !== p.predicted_home_score || away !== p.predicted_away_score
-      if (changed) {
+      const penaltyChanged =
+        penaltyWinner !== (p?.predicted_penalty_winner ?? null)
+      if (scoreChanged || penaltyChanged) {
         out.push({
           match_id: m.id,
           predicted_home_score: home,
           predicted_away_score: away,
+          predicted_penalty_winner: penaltyWinner,
         })
       }
     }
@@ -238,6 +277,7 @@ export default function PredictionsTab({
             p.match_id,
             p.predicted_home_score,
             p.predicted_away_score,
+            p.predicted_penalty_winner ?? null,
           )
         }
       }
@@ -416,6 +456,7 @@ export default function PredictionsTab({
                 outcomeOnly={pointsExact === 0}
                 onSaved={handleSaved}
                 onDraftChange={handleDraftChange}
+                onPenaltyDraftChange={handlePenaltyDraftChange}
               />
             ))}
           </div>

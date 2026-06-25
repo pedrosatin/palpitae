@@ -11,6 +11,7 @@ de leaderboard.
 |---|---|---|---|
 | `points_exact` | INTEGER 0–10 | 3 | Pontos por acertar o placar exato |
 | `points_winner` | INTEGER 0–10 | 1 | Pontos por acertar só o vencedor/empate |
+| `points_penalty` | INTEGER 0–10 | 1 | Bônus por acertar o vencedor dos pênaltis (`migration 0009`) |
 | `predictions_visibility` | `'hidden'` \| `'public'` | `'hidden'` | Visibilidade dos palpites alheios |
 
 ## Invariantes (validadas na API **e** no front)
@@ -59,6 +60,43 @@ em vez de acertar o vencedor. Com o ramo desativado, qualquer resultado correto 
 `points_awarded = points_exact` **e** `points_exact > points_winner` (bônus distinguível de
 um acerto só de vencedor). Configs onde `points_exact <= points_winner` (inclui o modo 1X2 e
 `(1,1)`) reportam `exact_hits = 0` — não há bônus de placar a detectar.
+
+## Bônus de pênalti (`points_penalty`)
+
+Em **jogo único de mata-mata** decidido nos pênaltis, um palpite de **empate** que também
+acerta o **vencedor da disputa de pênaltis** ganha `+points_penalty` além do base. É um
+bônus **aditivo e independente**:
+
+- **Não** entra na invariante `points_exact >= points_winner` — valida só `0..10`.
+- **Não** exige placar exato: basta acertar o resultado empate + o vencedor do pênalti
+  (`calculatePenaltyBonus`). Funciona inclusive no modo 1X2 (`points_exact = 0`).
+- `points_penalty = 0` desliga o bônus.
+- Errar o vencedor não penaliza — só não dá o bônus.
+
+### Gate por `(competição, fase)` — fonte de verdade `competitions.penalty_phases`
+
+Elegibilidade **não** é "todo mata-mata". Cada competição lista em
+`competitions.penalty_phases` (JSON de `stage`s) as fases que vão a pênalti em jogo único.
+Comp/fase fora da lista = **fail-closed** (nunca pede nem pontua pênalti — ligas, ida-e-volta).
+O parse é no Worker (`matchGoesToPenalties` / `parsePenaltyPhases`), nunca SQL `json_each`.
+A API de matches devolve `decides_on_penalties` por jogo; o front fica burro. MVP semeia só
+a Copa (`fifa-world-cup-2026`).
+
+### Placar canônico (regressão do bug do `fullTime`)
+
+O palpite compara contra `regularTime + extraTime` (sem os gols de pênalti). Em
+`PENALTY_SHOOTOUT` o `fullTime` da football-data **inclui** os pênaltis, então `sync.ts`
+grava o canônico (`home_score`/`away_score`) e guarda os gols de pênalti à parte
+(`home_penalty_goals`/`away_penalty_goals`) + `penalty_winner` para display "1-1 (5-4
+pênaltis)".
+
+### Por que `penalty_points` é coluna separada
+
+`recalculateLeaderboard` infere `exact_hits` por `points_awarded == points_exact`. Somar o
+bônus em `points_awarded` quebraria essa detecção. Logo: `points_awarded` = só base,
+`penalty_points` = bônus; o leaderboard soma `points_awarded + penalty_points` como
+`total_points`. Re-scorar reescreve `penalty_points` (0 quando não aplicável) — sem reset
+manual.
 
 ## Visibilidade
 
