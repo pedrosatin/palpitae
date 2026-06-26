@@ -9,11 +9,6 @@
   transition: border-color var(--transition-normal);
 }
 
-.live {
-  border-color: #f2851b;
-  box-shadow: 0 0 16px rgb(242 133 27 / 0.12);
-}
-
 .lockedCard {
   opacity: 0.85;
 }
@@ -30,19 +25,12 @@
   color: var(--color-text-secondary);
 }
 
-.badgeLive,
 .badgeFinished,
 .badgeLocked {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   padding: 2px 8px;
   border-radius: var(--radius-full);
-}
-
-.badgeLive {
-  background-color: #f2851b22;
-  color: #f2851b;
-  border: 1px solid #f2851b55;
 }
 
 .badgeFinished {

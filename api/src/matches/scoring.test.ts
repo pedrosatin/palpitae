@@ -75,7 +75,7 @@ type FakePrediction = {
 type FakeMatch = {
   id: string
   competition_id: string
-  status: 'scheduled' | 'live' | 'finished'
+  status: 'scheduled' | 'finished'
   home_score: number | null
   away_score: number | null
   scored_at: string | null

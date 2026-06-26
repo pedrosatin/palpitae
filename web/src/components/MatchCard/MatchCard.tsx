@@ -6,7 +6,7 @@ import styles from './MatchCard.module.css'
 export interface Match {
   id: string
   start_time: string
-  status: 'scheduled' | 'live' | 'finished'
+  status: 'scheduled' | 'finished'
   home_score: number | null
   away_score: number | null
   phase: string
@@ -89,7 +89,6 @@ export default function MatchCard({
   const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
 
   const isFinished = match.status === 'finished'
-  const isLive = match.status === 'live'
   const hasPrediction = prediction !== undefined
   const hasChanged = hasPrediction
     ? Number(home) !== prediction.predicted_home_score ||
@@ -179,14 +178,13 @@ export default function MatchCard({
 
   return (
     <div
-      className={`${styles.card} ${isLive ? styles.live : ''} ${locked && !isFinished ? styles.lockedCard : ''}`}
+      className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}
     >
       {/* Status badge */}
       <div className={styles.meta}>
         <span className={styles.date}>{formatDate(match.start_time)}</span>
-        {isLive && <span className={styles.badgeLive}>ao vivo</span>}
         {isFinished && <span className={styles.badgeFinished}>encerrado</span>}
-        {locked && !isFinished && !isLive && (
+        {locked && !isFinished && (
           <span className={styles.badgeLocked}>bloqueado</span>
         )}
       </div>
@@ -206,7 +204,7 @@ export default function MatchCard({
 
         {/* Score area */}
         <div className={styles.scoreArea}>
-          {isFinished || isLive ? (
+          {isFinished ? (
             <div className={styles.finalScore}>
               <span>{match.home_score ?? '–'}</span>
               <span className={styles.scoreSep}>×</span>

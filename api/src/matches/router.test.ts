@@ -166,12 +166,6 @@ describe('matches router – GET /', () => {
       )
     })
 
-    it('caches a list containing a live match for only 30s', async () => {
-      expect(await cacheHeaderFor([{ status: 'finished' }, { status: 'live' }])).toBe(
-        'public, max-age=30',
-      )
-    })
-
     it('uses a short TTL for a list with not-yet-finished scheduled matches', async () => {
       expect(await cacheHeaderFor([{ status: 'finished' }, { status: 'scheduled' }])).toBe(
         'public, max-age=60',

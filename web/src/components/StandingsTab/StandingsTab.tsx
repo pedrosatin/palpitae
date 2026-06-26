@@ -297,7 +297,7 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
                     {m.away_score ?? '–'} {m.away_team_short_name}
                   </span>
                   <span className={styles.matchInfo}>
-                    {m.status === 'live' ? 'ao vivo' : formatDay(m.start_time)}
+                    {formatDay(m.start_time)}
                   </span>
                 </>
               )}

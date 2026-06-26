@@ -166,7 +166,7 @@ export default function GroupPicksTab({
           const memberPicks = picksByMatch.get(match.id) ?? []
           const revealed = memberPicks.length > 0
           const isFinished = match.status === 'finished'
-          const isLocked = match.status !== 'scheduled'
+          const isLocked = isFinished || new Date() >= new Date(match.start_time)
 
           return (
             <div key={match.id} className={styles.matchCard}>
@@ -180,7 +180,7 @@ export default function GroupPicksTab({
                   />
                   {match.home_team_short_name}
                 </span>
-                {isFinished || match.status === 'live' ? (
+                {isFinished ? (
                   <span className={styles.finalScore}>
                     {match.home_score ?? '–'} × {match.away_score ?? '–'}
                   </span>
