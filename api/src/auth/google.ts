@@ -185,20 +185,29 @@ export async function upsertUser(
     avatarUrl?: string
   },
 ): Promise<{ id: string; email: string }> {
+  const now = new Date().toISOString()
+
   const existing = await db
     .prepare('SELECT id, email FROM users WHERE provider = ? AND provider_id = ?')
     .bind(data.provider, data.providerId)
     .first<{ id: string; email: string }>()
 
-  if (existing) return existing
+  if (existing) {
+    await db
+      .prepare('UPDATE users SET last_login = ?, user_name = COALESCE(user_name, ?) WHERE id = ?')
+      .bind(now, data.name ?? null, existing.id)
+      .run()
+    return existing
+  }
 
   const id = crypto.randomUUID()
-  const now = new Date().toISOString()
 
   await db.batch([
     db
-      .prepare('INSERT INTO users (id, email, provider, provider_id, created_at) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, data.email, data.provider, data.providerId, now),
+      .prepare(
+        'INSERT INTO users (id, email, provider, provider_id, created_at, user_name, last_login) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .bind(id, data.email, data.provider, data.providerId, now, data.name ?? null, now),
     db
       .prepare('INSERT INTO profiles (user_id, nickname, avatar_url) VALUES (?, ?, ?)')
       .bind(id, data.name ?? null, data.avatarUrl ?? null),
