@@ -115,9 +115,9 @@ describe('computeStandings', () => {
     }
   })
 
-  it('does not count live matches towards points', () => {
+  it('does not count in-progress (not yet finished) matches towards points', () => {
     const matches = [
-      makeMatch({ id: 'm1', status: 'live', home_score: 1, away_score: 0 }),
+      makeMatch({ id: 'm1', status: 'scheduled', home_score: 1, away_score: 0 }),
     ]
     const groupA = computeStandings(matches).get('A')!
     for (const t of groupA) {

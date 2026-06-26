@@ -3,9 +3,9 @@ import type { Match } from './MatchCard'
 export function makeMatch(overrides: Partial<Match> = {}): Match {
   const status = overrides.status ?? 'scheduled'
   const defaultStartTime =
-    status === 'scheduled'
-      ? new Date(Date.now() + 3_600_000).toISOString()
-      : new Date(Date.now() - 3_600_000).toISOString()
+    status === 'finished'
+      ? new Date(Date.now() - 3_600_000).toISOString()
+      : new Date(Date.now() + 3_600_000).toISOString()
   return {
     id: 'm1',
     start_time: defaultStartTime,
