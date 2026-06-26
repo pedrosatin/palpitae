@@ -117,9 +117,8 @@ export type SyncResult = {
  * Maps football-data.org status to internal status.
  * Ref: https://www.football-data.org/documentation/quickstart
  */
-function mapStatus(status: string): 'scheduled' | 'live' | 'finished' {
+function mapStatus(status: string): 'scheduled' | 'finished' {
   if (status === 'FINISHED' || status === 'AWARDED') return 'finished'
-  if (status === 'IN_PLAY' || status === 'LIVE' || status === 'PAUSED') return 'live'
   return 'scheduled'
 }
 
