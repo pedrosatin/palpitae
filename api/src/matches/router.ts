@@ -12,23 +12,18 @@ const router = new Hono<AppContext>()
  * Picks a Cache-Control header for a /matches response based on what it
  * actually contains:
  *   - all matches finished → 24h (terminal, scores never change)
- *   - any match live       → 30s (scores update during the game)
- *   - otherwise            → 60s (scheduled matches flip to live at kickoff;
- *                                 a short TTL keeps that transition fresh)
+ *   - otherwise            → 60s
  * An empty list also gets the short TTL so it repopulates quickly.
  */
 function matchesCacheControl(matches: { status: string }[]): string {
   if (matches.length > 0 && matches.every((m) => m.status === 'finished')) {
     return 'public, max-age=86400'
   }
-  if (matches.some((m) => m.status === 'live')) {
-    return 'public, max-age=30'
-  }
   return 'public, max-age=60'
 }
 
 /**
- * GET /matches?competition_id=xxx[&round=xxx][&status=scheduled|live|finished]
+ * GET /matches?competition_id=xxx[&round=xxx][&status=scheduled|finished]
  *
  * Returns matches for a competition with team info.
  * Optional filters: round (e.g. "1"), status.
@@ -54,7 +49,7 @@ router.get('/', async (c) => {
     return c.json({ error: 'competition_id é obrigatório' }, 400)
   }
 
-  const validStatuses = ['scheduled', 'live', 'finished']
+  const validStatuses = ['scheduled', 'finished']
   if (status && !validStatuses.includes(status)) {
     return c.json({ error: `status inválido. Use: ${validStatuses.join(', ')}` }, 400)
   }
@@ -169,9 +164,8 @@ router.get('/', async (c) => {
 
     // Cache strategy is derived from the RESPONSE CONTENTS, not the query param:
     // a list is only safe to cache long-term when every match is 'finished' (a
-    // terminal state). Any list with a live/not-yet-finished match uses a short
-    // TTL, so a match that goes live → finished doesn't keep serving its stale
-    // "ao vivo" snapshot for the whole window.
+    // terminal state). Any list with a not-yet-finished match uses a short
+    // TTL so the transition to finished doesn't serve a stale snapshot.
     //
     // The same Cache-Control drives two layers: the browser cache (per user)
     // and the edge Cache API below (shared per colo). Note: a Worker-generated

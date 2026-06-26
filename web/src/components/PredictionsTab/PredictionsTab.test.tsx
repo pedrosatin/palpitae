@@ -65,10 +65,10 @@ describe('PredictionsTab – defaultRoundIndex', () => {
     })
   })
 
-  it('skips the live round and selects the next open round', async () => {
+  it('skips a round where all matches have already started and selects the next open round', async () => {
     const matches: Match[] = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
-      makeMatch({ id: 'm2', round: '2', status: 'live' }),
+      makeMatch({ id: 'm2', round: '2', status: 'scheduled', start_time: new Date(Date.now() - 3_600_000).toISOString() }),
       makeMatch({ id: 'm3', round: '3', status: 'scheduled' }),
     ]
     mockFetch(matches)
@@ -310,7 +310,7 @@ describe('PredictionsTab – Initialisation', () => {
     ).toBeEnabled()
   })
 
-  it('selects the first round with a scheduled/live match on load', async () => {
+  it('selects the first round with a scheduled match on load', async () => {
     const matches: Match[] = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
