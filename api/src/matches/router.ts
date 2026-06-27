@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
+import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -83,6 +84,11 @@ router.get('/', async (c) => {
       m.phase,
       m.round,
       m.group_name,
+      m.duration,
+      m.penalty_winner,
+      m.home_penalty_goals,
+      m.away_penalty_goals,
+      c.penalty_phases,
       ht.id         AS home_team_id,
       ht.name       AS home_team_name,
       ht.short_name AS home_team_short_name,
@@ -94,6 +100,7 @@ router.get('/', async (c) => {
     FROM matches m
     JOIN teams ht ON ht.id = m.home_team_id
     JOIN teams at ON at.id = m.away_team_id
+    JOIN competitions c ON c.id = m.competition_id
     WHERE m.competition_id = ?
   `
 
@@ -172,8 +179,23 @@ router.get('/', async (c) => {
     // response is NOT edge-cached automatically by Cache-Control — only the
     // explicit caches.default.put() does that. The Worker still runs on every
     // request, but a cache hit (above) skips the D1 query.
+    // Derive decides_on_penalties per match from the competition's penalty_phases
+    // gate (parsed in TS — no SQL json_each) and strip the raw gate from the
+    // payload. The frontend stays dumb: it only reads the boolean to decide
+    // whether to show the penalty-winner pick.
+    const matchesOut = (result.results as Array<Record<string, unknown>>).map((row) => {
+      const { penalty_phases, ...rest } = row
+      return {
+        ...rest,
+        decides_on_penalties: matchGoesToPenalties(
+          parsePenaltyPhases(penalty_phases as string | null),
+          (rest.phase as string | null) ?? null,
+        ),
+      }
+    })
+
     const response = c.json({
-      matches: result.results,
+      matches: matchesOut,
       ...(hasFilters ? {} : { default_round: defaultRound }),
     })
     response.headers.set('Cache-Control', matchesCacheControl(result.results))

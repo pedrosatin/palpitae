@@ -154,6 +154,7 @@ router.post('/', requireAuth, async (c) => {
     competition_id?: string
     points_exact?: number
     points_winner?: number
+    points_penalty?: number
     predictions_visibility?: string
   }>()
 
@@ -171,6 +172,8 @@ router.post('/', requireAuth, async (c) => {
   // Scoring rules & visibility — set at creation, immutable afterwards.
   const points_exact = body.points_exact ?? 3
   const points_winner = body.points_winner ?? 1
+  // Penalty-shootout bonus — additive and independent of the exact>=winner rule.
+  const points_penalty = body.points_penalty ?? 1
   const predictions_visibility = body.predictions_visibility ?? 'hidden'
 
   if (
@@ -179,7 +182,10 @@ router.post('/', requireAuth, async (c) => {
     points_exact > 10 ||
     !Number.isInteger(points_winner) ||
     points_winner < 0 ||
-    points_winner > 10
+    points_winner > 10 ||
+    !Number.isInteger(points_penalty) ||
+    points_penalty < 0 ||
+    points_penalty > 10
   ) {
     return c.json({ error: 'Pontuação deve ser inteiro entre 0 e 10' }, 400)
   }
@@ -235,8 +241,8 @@ router.post('/', requireAuth, async (c) => {
     await db.batch([
       db
         .prepare(
-          `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, predictions_visibility)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, points_penalty, predictions_visibility)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           groupId,
@@ -246,6 +252,7 @@ router.post('/', requireAuth, async (c) => {
           invite_code,
           points_exact,
           points_winner,
+          points_penalty,
           predictions_visibility,
         ),
       db
@@ -258,7 +265,7 @@ router.post('/', requireAuth, async (c) => {
 
     logEvent(c.env.AE, 'group_created', {
       blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
-      doubles: [points_exact, points_winner],
+      doubles: [points_exact, points_winner, points_penalty],
     })
 
     return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
@@ -368,6 +375,7 @@ router.get('/:id', requireAuth, async (c) => {
          g.created_at,
          g.points_exact,
          g.points_winner,
+         g.points_penalty,
          g.predictions_visibility,
          COUNT(DISTINCT gm.user_id) AS member_count,
          COALESCE(l.total_points, 0) AS user_points,
@@ -390,6 +398,7 @@ router.get('/:id', requireAuth, async (c) => {
       created_at: string
       points_exact: number
       points_winner: number
+      points_penalty: number
       predictions_visibility: string
       member_count: number
       user_points: number
@@ -425,6 +434,7 @@ router.get('/:id', requireAuth, async (c) => {
       created_at: group.created_at,
       points_exact: group.points_exact,
       points_winner: group.points_winner,
+      points_penalty: group.points_penalty,
       predictions_visibility: group.predictions_visibility,
       member_count: group.member_count,
       user_points: group.user_points,
