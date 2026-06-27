@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import { authRouter } from './auth/router'
 import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
+import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
@@ -15,6 +16,9 @@ import type { AppContext, Env } from './types'
 const DAILY_EXPORT_CRON = '5 0 * * *'
 // Cron do lembrete de rodada (deve bater com wrangler.toml). 1x/dia.
 const ROUND_REMINDER_CRON = '0 10 * * *'
+// Cron de descoberta de jogos (deve bater com wrangler.toml). 1x/dia de madrugada
+// (06:00 UTC = 03:00 BRT — sem jogos), busca novos confrontos das competições ativas.
+const FIXTURE_DISCOVERY_CRON = '0 6 * * *'
 
 const app = new Hono<AppContext>()
 
@@ -53,6 +57,12 @@ export default {
     if (controller.cron === DAILY_EXPORT_CRON) {
       // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))
+      return
+    }
+
+    if (controller.cron === FIXTURE_DISCOVERY_CRON) {
+      // Descobre jogos novos (mata-mata, remarcações) das competições ativas.
+      ctx.waitUntil(discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
       return
     }
 

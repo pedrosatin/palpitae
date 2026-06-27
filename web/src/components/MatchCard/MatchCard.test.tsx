@@ -280,7 +280,7 @@ describe('MatchCard – outcome-only (1X2) mode', () => {
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
     expect(body.predicted_home_score).toBe(1)
     expect(body.predicted_away_score).toBe(0)
-    expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0)
+    expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0, null)
   })
 
   it('marks the button matching the existing prediction as active', () => {
@@ -356,5 +356,96 @@ describe('MatchCard – Locked state', () => {
       screen.queryByRole('button', { name: /Diminuir placar Brasil/i }),
     ).not.toBeInTheDocument()
     expect(screen.getByText('sem palpite registrado')).toBeInTheDocument()
+  })
+})
+
+describe('MatchCard – penalty shootout pick', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+  })
+
+  const penaltyMatch = () => makeMatch({ decides_on_penalties: true })
+
+  it('shows the penalty picker only after a draw is marked (score mode)', async () => {
+    renderCard(penaltyMatch(), undefined)
+
+    // Untouched default 0-0 must NOT surface the picker yet.
+    expect(screen.queryByText('Quem vence nos pênaltis?')).not.toBeInTheDocument()
+
+    // Bump both sides to 1-1 → a marked draw.
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+
+    expect(screen.getByText('Quem vence nos pênaltis?')).toBeInTheDocument()
+  })
+
+  it('blocks save on a draw until a penalty winner is chosen', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+
+    renderCard(penaltyMatch(), undefined)
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+
+    const saveBtn = screen.getByRole('button', { name: /Salvar/i })
+    expect(saveBtn).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'BRA' }))
+    expect(saveBtn).toBeEnabled()
+
+    await userEvent.click(saveBtn)
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.predicted_penalty_winner).toBe('home')
+  })
+
+  it('clears the penalty pick when the score is changed away from a draw', async () => {
+    renderCard(penaltyMatch(), undefined)
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    expect(screen.getByText('Quem vence nos pênaltis?')).toBeInTheDocument()
+
+    // 1-1 → 2-1 hides the picker.
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    expect(screen.queryByText('Quem vence nos pênaltis?')).not.toBeInTheDocument()
+  })
+
+  it('does not show the picker for a non-penalty match', async () => {
+    renderCard(makeMatch({ decides_on_penalties: false }), undefined)
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    expect(screen.queryByText('Quem vence nos pênaltis?')).not.toBeInTheDocument()
+  })
+
+  it('outcome mode: clicking Empate waits for the penalty winner before persisting', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response)
+    const onSaved = vi.fn()
+
+    render(
+      <MatchCard
+        match={penaltyMatch()}
+        prediction={undefined}
+        groupId="group-1"
+        outcomeOnly
+        onSaved={onSaved}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Empate' }))
+    // No persist yet — the picker is shown instead.
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(screen.getByText('Quem vence nos pênaltis?')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'ARG' }))
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.predicted_home_score).toBe(0)
+    expect(body.predicted_away_score).toBe(0)
+    expect(body.predicted_penalty_winner).toBe('away')
+    expect(onSaved).toHaveBeenCalledWith('match-1', 0, 0, 'away')
   })
 })

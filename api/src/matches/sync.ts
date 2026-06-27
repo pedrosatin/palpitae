@@ -81,7 +81,13 @@ type ApiMatch = {
   homeTeam: ApiTeam
   awayTeam: ApiTeam
   score: {
+    winner: 'HOME_TEAM' | 'AWAY_TEAM' | 'DRAW' | null
+    duration: 'REGULAR' | 'EXTRA_TIME' | 'PENALTY_SHOOTOUT' | null
     fullTime: { home: number | null; away: number | null }
+    halfTime: { home: number | null; away: number | null }
+    regularTime?: { home: number | null; away: number | null } // presente em ET e PENALTY_SHOOTOUT
+    extraTime?: { home: number | null; away: number | null } // idem
+    penalties?: { home: number | null; away: number | null } // só em PENALTY_SHOOTOUT
   }
 }
 
@@ -158,14 +164,24 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   const { competition: apiComp, matches } = data
 
-  const competitionName = apiComp ? (COMP_TRANSLATIONS[apiComp.name] ?? apiComp.name) : competitionCode
+  // Fuzzy lookup: a API manda "FIFA World Cup", o mapa tem a chave "World Cup".
+  // includes() casa sem precisar duplicar variações da chave no mapa.
+  const translationKey = apiComp
+    ? Object.keys(COMP_TRANSLATIONS).find((key) => apiComp.name.includes(key))
+    : undefined
+  const competitionName = apiComp
+    ? (translationKey ? COMP_TRANSLATIONS[translationKey] : apiComp.name)
+    : competitionCode
 
   if (matches.length === 0) {
     return { competition: competitionName, competitionId: '', matches: 0, teams: 0 }
   }
 
   const competitionExternalId = String(apiComp.id)
-  const competitionSlug = slugify(`${competitionName}-${season}`)
+  // Slug deriva do nome CRU da API (não do traduzido) p/ ficar estável: mudar a
+  // tradução de exibição não pode mudar a chave de conflito do upsert, senão um
+  // re-sync criaria uma competição duplicada (slug = 'fifa-world-cup-2026' em prod).
+  const competitionSlug = slugify(`${apiComp.name}-${season}`)
 
   // Upsert competition
   await db
@@ -246,27 +262,59 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
     const status = mapStatus(m.status)
     const phase = m.stage ?? null
-    const round = m.matchday !== null ? String(m.matchday) : (m.group ?? '1')
+    const round = m.matchday !== null ? String(m.matchday) : m.stage
     const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
+
+    // Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
+    // SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data INCLUI os gols
+    // de pênalti (confirmado empiricamente), então somamos reg+ET. Nos demais
+    // (REGULAR, EXTRA_TIME) o fullTime já é o canônico.
+    const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
+    const canonicalHome = isShootout
+      ? (m.score.regularTime?.home ?? 0) + (m.score.extraTime?.home ?? 0)
+      : (m.score.fullTime.home ?? null)
+    const canonicalAway = isShootout
+      ? (m.score.regularTime?.away ?? 0) + (m.score.extraTime?.away ?? 0)
+      : (m.score.fullTime.away ?? null)
+
+    const duration = m.score.duration ?? null
+    // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
+    // vem preenchido em jogos REGULAR, onde significa o vencedor no tempo normal).
+    const penaltyWinner = isShootout
+      ? m.score.winner === 'HOME_TEAM'
+        ? 'home'
+        : m.score.winner === 'AWAY_TEAM'
+          ? 'away'
+          : null
+      : null
+    const homePenaltyGoals = isShootout ? (m.score.penalties?.home ?? null) : null
+    const awayPenaltyGoals = isShootout ? (m.score.penalties?.away ?? null) : null
 
     await db
       .prepare(
-        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (external_id, provider) DO UPDATE SET
-           status     = excluded.status,
-           home_score = excluded.home_score,
-           away_score = excluded.away_score,
-           start_time = excluded.start_time,
-           group_name = excluded.group_name,
+           status             = excluded.status,
+           home_score         = excluded.home_score,
+           away_score         = excluded.away_score,
+           start_time         = excluded.start_time,
+           group_name         = excluded.group_name,
+           duration           = excluded.duration,
+           penalty_winner     = excluded.penalty_winner,
+           home_penalty_goals = excluded.home_penalty_goals,
+           away_penalty_goals = excluded.away_penalty_goals,
            -- If a provider score-correction lands after the match was already
            -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
            -- points/leaderboard recompute against the final score. Without this,
            -- the displayed score updates but points stay frozen on the stale one
            -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
+           -- penalty_winner também dispara o re-score: o provider pode corrigir só
+           -- o vencedor dos pênaltis sem mexer no placar canônico.
            scored_at  = CASE
              WHEN matches.home_score IS NOT excluded.home_score
                OR matches.away_score IS NOT excluded.away_score
+               OR matches.penalty_winner IS NOT excluded.penalty_winner
              THEN NULL ELSE matches.scored_at END`,
       )
       .bind(
@@ -278,11 +326,15 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         awayTeamId,
         m.utcDate,
         status,
-        m.score.fullTime.home ?? null,
-        m.score.fullTime.away ?? null,
+        canonicalHome,
+        canonicalAway,
         phase,
         round,
         groupName,
+        duration,
+        penaltyWinner,
+        homePenaltyGoals,
+        awayPenaltyGoals,
       )
       .run()
 
