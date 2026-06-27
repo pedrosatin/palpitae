@@ -138,48 +138,6 @@
   color: var(--color-text-secondary);
 }
 
-.infoIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin: -7px; /* enlarge tap target without shifting the label baseline */
-  background: none;
-  border: none;
-  border-radius: var(--radius-full, 999px);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition:
-    color 0.15s,
-    background-color 0.15s;
-}
-
-.infoSvg {
-  display: block;
-}
-
-.infoIcon:hover,
-.infoIcon:focus-visible {
-  color: var(--color-primary);
-  background-color: color-mix(in srgb, var(--color-primary) 12%, transparent);
-}
-
-.infoIcon[aria-expanded='true'] {
-  color: var(--color-primary);
-}
-
-.scoringHelp {
-  margin: var(--space-2) 0 0;
-  padding: var(--space-2) var(--space-3);
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-xs);
-  line-height: 1.4;
-  color: var(--color-text-secondary);
-}
-
 .penaltyHint {
   flex: 2;
   align-self: flex-end;
