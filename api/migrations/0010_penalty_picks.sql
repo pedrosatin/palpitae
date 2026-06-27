@@ -7,7 +7,7 @@ ALTER TABLE competitions ADD COLUMN penalty_phases TEXT NOT NULL DEFAULT '[]';
 
 -- Seed da Copa do Mundo 2026 (slug confirmado no prod DB).
 UPDATE competitions
-   SET penalty_phases = '["LAST_16","QUARTER_FINALS","SEMI_FINALS","THIRD_PLACE","FINAL"]'
+   SET penalty_phases = '["LAST_32","LAST_16","QUARTER_FINALS","SEMI_FINALS","THIRD_PLACE","FINAL"]'
  WHERE slug = 'fifa-world-cup-2026';
 
 -- matches: duração da partida + dados dos pênaltis (NULL quando não houve).
