@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 
 export function calculatePoints(
   actualHome: number,
@@ -19,6 +20,35 @@ export function calculatePoints(
   return actualWinner === predictedWinner ? pointsWinner : 0
 }
 
+/**
+ * Additive bonus for correctly calling the penalty-shootout winner. Independent
+ * of the exact-score rule — it only requires predicting the draw (the regular
+ * result) plus the right shootout winner. Returns pointsPenalty or 0.
+ *
+ * All conditions must hold:
+ *   - the match is in an eligible (competition, phase) — gated upstream;
+ *   - the match actually went to penalties (penaltyWinner != null);
+ *   - the prediction was a draw (predictedHome === predictedAway);
+ *   - the predicted shootout winner matches the actual one;
+ *   - pointsPenalty > 0 (0 disables the bonus).
+ *
+ * Missing the shootout winner costs nothing (no penalization), just no bonus.
+ */
+export function calculatePenaltyBonus(
+  predictedHome: number,
+  predictedAway: number,
+  predictedPenaltyWinner: 'home' | 'away' | null,
+  penaltyWinner: 'home' | 'away' | null,
+  pointsPenalty: number,
+  eligible: boolean,
+): number {
+  if (!eligible || pointsPenalty <= 0) return 0
+  if (penaltyWinner === null) return 0 // não foi a pênaltis
+  if (predictedHome !== predictedAway) return 0 // palpite não foi empate
+  if (predictedPenaltyWinner === null) return 0
+  return predictedPenaltyWinner === penaltyWinner ? pointsPenalty : 0
+}
+
 async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<void> {
   // exact_hits is inferred from the awarded points: a prediction is an exact hit
   // when it scored the group's points_exact. We only count it when the exact bonus
@@ -27,7 +57,7 @@ async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<
   const rows = await db
     .prepare(
       `SELECT p.user_id,
-              SUM(p.points_awarded) AS total_points,
+              SUM(p.points_awarded + p.penalty_points) AS total_points,
               SUM(
                 CASE WHEN g.points_exact > g.points_winner
                        AND p.points_awarded = g.points_exact
@@ -66,11 +96,30 @@ async function scoreMatch(
   awayScore: number,
   db: D1Database,
 ): Promise<void> {
+  // Match-level penalty context — same for every prediction of this match.
+  // eligible derives from the competition's penalty_phases gate (fail-closed);
+  // penalty_winner is non-null only when the match went to a shootout.
+  const matchCtx = await db
+    .prepare(
+      `SELECT m.penalty_winner, m.phase, c.penalty_phases
+       FROM matches m
+       JOIN competitions c ON c.id = m.competition_id
+       WHERE m.id = ?`,
+    )
+    .bind(matchId)
+    .first<{ penalty_winner: 'home' | 'away' | null; phase: string | null; penalty_phases: string }>()
+
+  const penaltyWinner = matchCtx?.penalty_winner ?? null
+  const eligible = matchGoesToPenalties(
+    parsePenaltyPhases(matchCtx?.penalty_phases),
+    matchCtx?.phase ?? null,
+  )
+
   const predictions = await db
     .prepare(
       `SELECT p.id, p.group_id, p.user_id,
-              p.predicted_home_score, p.predicted_away_score,
-              g.points_exact, g.points_winner
+              p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner,
+              g.points_exact, g.points_winner, g.points_penalty
        FROM predictions p
        JOIN groups g ON g.id = p.group_id
        WHERE p.match_id = ?`,
@@ -82,8 +131,10 @@ async function scoreMatch(
       user_id: string
       predicted_home_score: number
       predicted_away_score: number
+      predicted_penalty_winner: 'home' | 'away' | null
       points_exact: number
       points_winner: number
+      points_penalty: number
     }>()
 
   const now = new Date().toISOString()
@@ -99,8 +150,20 @@ async function scoreMatch(
       p.points_exact,
       p.points_winner,
     )
+    // penalty_points is always overwritten with the freshly computed value (0 when
+    // not applicable), so a re-score also resets a stale bonus — no separate reset.
+    const penaltyPoints = calculatePenaltyBonus(
+      p.predicted_home_score,
+      p.predicted_away_score,
+      p.predicted_penalty_winner,
+      penaltyWinner,
+      p.points_penalty,
+      eligible,
+    )
     statements.push(
-      db.prepare(`UPDATE predictions SET points_awarded = ? WHERE id = ?`).bind(points, p.id),
+      db
+        .prepare(`UPDATE predictions SET points_awarded = ?, penalty_points = ? WHERE id = ?`)
+        .bind(points, penaltyPoints, p.id),
     )
     affectedGroups.add(p.group_id)
   }

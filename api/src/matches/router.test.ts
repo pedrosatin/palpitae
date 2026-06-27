@@ -129,6 +129,27 @@ describe('matches router – GET /', () => {
     expect(body).not.toHaveProperty('default_round')
   })
 
+  it('derives decides_on_penalties from the competition gate and strips penalty_phases', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/matches', matchesRouter)
+
+    const rows = [
+      { status: 'scheduled', phase: 'FINAL', penalty_phases: '["LAST_16","FINAL"]' },
+      { status: 'scheduled', phase: 'GROUP_STAGE', penalty_phases: '["LAST_16","FINAL"]' },
+    ] as unknown as { status: string }[]
+
+    const response = await app.fetch(
+      new Request('http://localhost/matches?competition_id=comp-1&round=1'),
+      fakeEnv(createMatchesDbMock(rows)),
+      { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
+    )
+
+    const body = (await response.json()) as { matches: Array<Record<string, unknown>> }
+    expect(body.matches[0].decides_on_penalties).toBe(true) // FINAL ∈ gate
+    expect(body.matches[1].decides_on_penalties).toBe(false) // GROUP_STAGE ∉ gate
+    expect(body.matches[0]).not.toHaveProperty('penalty_phases') // raw gate stripped
+  })
+
   it('returns immediately and delegates first sync to waitUntil when no matches are cached locally', async () => {
     const app = new Hono<AppContext>()
     app.route('/matches', matchesRouter)
@@ -223,7 +244,10 @@ describe('matches router – GET /', () => {
       const second = makeCtx()
       const r2 = await app.fetch(newRequest(), env, second.ctx)
       expect(r2.status).toBe(200)
-      await expect(r2.json()).resolves.toEqual({ matches: [{ status: 'finished' }], default_round: null })
+      await expect(r2.json()).resolves.toEqual({
+        matches: [{ status: 'finished', decides_on_penalties: false }],
+        default_round: null,
+      })
 
       // Only the first request queried D1; the second came from the edge cache.
       expect(counter.mainQueries).toBe(1)
