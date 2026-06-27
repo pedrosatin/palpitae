@@ -9,8 +9,12 @@ vi.mock('./observability/export', () => ({
 vi.mock('./matches/poller', () => ({
   pollActiveMatches: vi.fn(async () => {}),
 }))
+vi.mock('./matches/fixtureDiscovery', () => ({
+  discoverFixtures: vi.fn(async () => {}),
+}))
 
 import worker from './index'
+import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
@@ -52,6 +56,7 @@ describe('scheduled handler routing', () => {
     })
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(pollActiveMatches).not.toHaveBeenCalled()
+    expect(discoverFixtures).not.toHaveBeenCalled()
   })
 
   it('routes the daily-export cron to exportRecentDays only', async () => {
@@ -60,6 +65,17 @@ describe('scheduled handler routing', () => {
     expect(exportRecentDays).toHaveBeenCalledTimes(1)
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(pollActiveMatches).not.toHaveBeenCalled()
+    expect(discoverFixtures).not.toHaveBeenCalled()
+  })
+
+  it('routes the fixture-discovery cron to discoverFixtures only', async () => {
+    await run('0 6 * * *')
+
+    expect(discoverFixtures).toHaveBeenCalledTimes(1)
+    expect(discoverFixtures).toHaveBeenCalledWith(env.DB, 'fk', env.AE)
+    expect(pollActiveMatches).not.toHaveBeenCalled()
+    expect(sendRoundReminders).not.toHaveBeenCalled()
+    expect(exportRecentDays).not.toHaveBeenCalled()
   })
 
   it('falls back to the result poller for any other cron', async () => {
@@ -68,5 +84,6 @@ describe('scheduled handler routing', () => {
     expect(pollActiveMatches).toHaveBeenCalledTimes(1)
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(exportRecentDays).not.toHaveBeenCalled()
+    expect(discoverFixtures).not.toHaveBeenCalled()
   })
 })

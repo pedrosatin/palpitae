@@ -49,3 +49,7 @@ Eventos da config de pontuação/visibilidade no grupo (CreateGroupModal + Match
 | `click_create_group_visibilidade_oculta` | seleção de visibilidade "Oculto até palpitar" | — |
 | `click_create_group_ajuda_pontuacao` | toque no (i) ao lado de Placar exato/Vencedor | `{ campo }` (`exact`/`winner`) |
 | `click_matchcard_resultado` | clique em Casa/Empate/Fora (grupos `points_exact = 0`) | `{ match_id, outcome }` (`home`/`draw`/`away`) |
+| `click_prediction_penalty_winner` | seleção do vencedor dos pênaltis num palpite de empate (jogo `decides_on_penalties`) | `{ match_id, winner }` (`home`/`away`) |
+
+> Steppers de placar e a troca de palpite empate→decisivo (que limpa o pick de pênalti)
+> seguem **não** rastreados — só o clique intencional no vencedor do pênalti gera evento.
