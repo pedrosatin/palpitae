@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import Button from '../Button'
+import InfoHint from '../InfoHint/InfoHint'
 import Modal from '../Modal'
 import styles from './CreateGroupModal.module.css'
 
@@ -47,27 +48,6 @@ const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
     'Vencedor: pontos para quem acerta só o resultado — mandante, visitante ou empate — sem cravar o placar.',
 }
 
-function InfoGlyph() {
-  return (
-    <svg
-      className={styles.infoSvg}
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.3" />
-      <circle cx="8" cy="5" r="0.9" fill="currentColor" />
-      <path
-        d="M8 7.4v3.9"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
 
 const PRESET_LABELS: Record<ScoringPreset, string> = {
   classic: 'Clássico',
@@ -93,7 +73,6 @@ export default function CreateGroupModal({
   const [predictionsVisibility, setPredictionsVisibility] = useState<
     'hidden' | 'public'
   >('hidden')
-  const [scoringHelp, setScoringHelp] = useState<'exact' | 'winner' | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -128,7 +107,6 @@ export default function CreateGroupModal({
     setPointsWinner(1)
     setPointsPenalty(1)
     setPredictionsVisibility('hidden')
-    setScoringHelp(null)
     setError(null)
     setCreated(null)
     setCopied(false)
@@ -148,11 +126,6 @@ export default function CreateGroupModal({
       setPointsWinner(PRESET_VALUES[preset].winner)
       setPointsPenalty(PRESET_VALUES[preset].penalty)
     }
-  }
-
-  function toggleScoringHelp(field: 'exact' | 'winner') {
-    trackEvent('click_create_group_ajuda_pontuacao', { campo: field })
-    setScoringHelp((cur) => (cur === field ? null : field))
   }
 
   function handleVisibility(visibility: 'hidden' | 'public') {
@@ -343,21 +316,13 @@ export default function CreateGroupModal({
             </div>
             <div className={styles.pointsRow}>
               <div className={styles.pointsField}>
-                <label className={styles.pointsLabel} htmlFor="points-exact">
-                  Placar exato
-                  <button
-                    type="button"
-                    className={styles.infoIcon}
-                    aria-label="O que é placar exato?"
-                    aria-expanded={scoringHelp === 'exact'}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      toggleScoringHelp('exact')
-                    }}
-                  >
-                    <InfoGlyph />
-                  </button>
-                </label>
+                <InfoHint
+                  label="Placar exato"
+                  labelSide="left"
+                  htmlFor="points-exact"
+                  text={SCORING_HELP_TEXT.exact}
+                  onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'exact' })}
+                />
                 <input
                   id="points-exact"
                   className={styles.pointsInput}
@@ -372,21 +337,13 @@ export default function CreateGroupModal({
                 />
               </div>
               <div className={styles.pointsField}>
-                <label className={styles.pointsLabel} htmlFor="points-winner">
-                  Vencedor
-                  <button
-                    type="button"
-                    className={styles.infoIcon}
-                    aria-label="O que é vencedor?"
-                    aria-expanded={scoringHelp === 'winner'}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      toggleScoringHelp('winner')
-                    }}
-                  >
-                    <InfoGlyph />
-                  </button>
-                </label>
+                <InfoHint
+                  label="Vencedor"
+                  labelSide="left"
+                  htmlFor="points-winner"
+                  text={SCORING_HELP_TEXT.winner}
+                  onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'winner' })}
+                />
                 <input
                   id="points-winner"
                   className={styles.pointsInput}
@@ -425,11 +382,6 @@ export default function CreateGroupModal({
                   empate. 0 desliga.
                 </p>
               </div>
-            )}
-            {scoringHelp && (
-              <p className={styles.scoringHelp} role="note">
-                {SCORING_HELP_TEXT[scoringHelp]}
-              </p>
             )}
           </div>
 

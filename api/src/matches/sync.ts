@@ -262,7 +262,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
     const status = mapStatus(m.status)
     const phase = m.stage ?? null
-    const round = m.matchday !== null ? String(m.matchday) : (m.group ?? '1')
+    const round = m.matchday !== null ? String(m.matchday) : m.stage
     const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
 
     // Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,

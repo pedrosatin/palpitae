@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
-import { applyDefaultRound } from '../../lib/rounds'
+import { applyDefaultRound, isGroupStageRound, roundLabel } from '../../lib/rounds'
 import MatchCard, { type Match, type Prediction } from '../MatchCard'
 import styles from './PredictionsTab.module.css'
 
@@ -408,11 +408,26 @@ export default function PredictionsTab({
             setRoundIndex(roundKeys.indexOf(e.target.value))
           }}
         >
-          {roundKeys.map((r) => (
-            <option key={r} value={r}>
-              Rodada {r}
-            </option>
-          ))}
+          {roundKeys.some((r) => !isGroupStageRound(r)) ? (
+            <>
+              {roundKeys.some(isGroupStageRound) && (
+                <optgroup label="Fase de grupos">
+                  {roundKeys.filter(isGroupStageRound).map((r) => (
+                    <option key={r} value={r}>{roundLabel(r)}</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Mata-mata">
+                {roundKeys.filter((r) => !isGroupStageRound(r)).map((r) => (
+                  <option key={r} value={r}>{roundLabel(r)}</option>
+                ))}
+              </optgroup>
+            </>
+          ) : (
+            roundKeys.map((r) => (
+              <option key={r} value={r}>{roundLabel(r)}</option>
+            ))
+          )}
         </select>
         <button
           className={styles.navBtn}

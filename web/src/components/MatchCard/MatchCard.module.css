@@ -328,7 +328,7 @@
 
 .outcomeBtnActive {
   border-color: var(--color-primary);
-  color: var(--color-text-on-primary, #ffffff);
+  color: var(--color-on-primary);
   background-color: var(--color-primary);
 }
 
@@ -354,6 +354,7 @@
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px dashed var(--color-border);
+  transition: opacity 0.2s;
 }
 
 .penaltyLabel {
@@ -396,8 +397,14 @@
 
 .penaltyBtnActive {
   border-color: var(--color-primary);
-  color: var(--color-text-on-primary, #ffffff);
+  color: var(--color-on-primary);
   background-color: var(--color-primary);
+}
+
+.penaltyPickerMuted {
+  opacity: 0.3;
+  pointer-events: none;
+  transition: opacity 0.2s;
 }
 
 .lockedPenalty {
