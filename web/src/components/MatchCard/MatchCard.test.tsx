@@ -64,7 +64,7 @@ function renderCard(
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('MatchCard – hasChanged / canSave', () => {
-  it('uses 0 as the default draft and enables save after changing only one field', async () => {
+  it('enables save immediately at 0x0 initial state when no prediction exists', () => {
     renderCard(makeMatch(), undefined)
 
     const homeInput = screen.getByRole('spinbutton', {
@@ -77,31 +77,17 @@ describe('MatchCard – hasChanged / canSave', () => {
 
     expect(homeInput.value).toBe('0')
     expect(awayInput.value).toBe('0')
-    expect(saveBtn).toBeDisabled()
-
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Argentina/i }),
-    )
-
     expect(saveBtn).toBeEnabled()
   })
 
-  it('enables save when there is no prediction and both fields are filled', async () => {
+  it('keeps save enabled after the user changes values when no prediction exists', async () => {
     renderCard(makeMatch(), undefined)
 
-    // Initial state: both fields are empty → button disabled
-    const saveBtn = screen.getByRole('button', { name: /Salvar/i })
-    expect(saveBtn).toBeDisabled()
-
-    // Fill both fields via the "+" steppers
     await userEvent.click(
       screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
     )
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Argentina/i }),
-    )
 
-    expect(saveBtn).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Salvar/i })).toBeEnabled()
   })
 
   it('disables save when prediction matches the current input (hasChanged = false)', () => {
@@ -236,7 +222,6 @@ describe('MatchCard – analytics', () => {
     const match = makeMatch()
     renderCard(match, undefined)
 
-    // make the save button active by changing a score
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
