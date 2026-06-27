@@ -18,6 +18,7 @@
 export type EventType =
   // Saúde do cron / API Football
   | 'poller_run'
+  | 'fixture_discovery_run'
   | 'football_api_error'
   // Negócio (server-side, nos routers)
   | 'prediction_saved'

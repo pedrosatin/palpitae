@@ -47,17 +47,17 @@
     "mtime": 1781448614.273173,
     "hash": "46d5da2356a7916edb90358626da0767"
   },
-  "/home/satin/Work/personal/palpitae/api/src/index.test.ts": {
-    "mtime": 1782093524.3071165,
-    "hash": "a4fd42e5aeebc2e11a9fab3b0065f210"
-  },
-  "/home/satin/Work/personal/palpitae/api/src/index.ts": {
-    "mtime": 1782093524.3071609,
-    "hash": "d23ac768507c5929de10f53f3e32ab45"
-  },
   "/home/satin/Work/personal/palpitae/api/src/types.ts": {
     "mtime": 1782093524.3079143,
     "hash": "1dcd2ac9a63b8dd9cfbbb350763860b7"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/index.ts": {
+    "mtime": 1782577395.128053,
+    "hash": "97afa882a9a2af9e0a810519f09c5bf1"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/index.test.ts": {
+    "mtime": 1782577433.1364288,
+    "hash": "9be104d85b55ca5e98c9121ef121b0b3"
   },
   "/home/satin/Work/personal/palpitae/api/src/auth/encoding.ts": {
     "mtime": 1777847034.184419,
@@ -123,10 +123,6 @@
     "mtime": 1782297975.2804117,
     "hash": "206fe6e5c3e58e03486e26e457d4774e"
   },
-  "/home/satin/Work/personal/palpitae/api/src/matches/poller.ts": {
-    "mtime": 1782297975.2807765,
-    "hash": "dcbd5e47ce69353be4619acb73d1f72f"
-  },
   "/home/satin/Work/personal/palpitae/api/src/matches/penalties.ts": {
     "mtime": 1782519088.1992962,
     "hash": "e0049ce257443262f505ecdf55124df0"
@@ -155,6 +151,14 @@
     "mtime": 1782521603.1797574,
     "hash": "8af065154682f1f01786d187cc2ee6ee"
   },
+  "/home/satin/Work/personal/palpitae/api/src/matches/poller.ts": {
+    "mtime": 1782576536.2645602,
+    "hash": "dcbd5e47ce69353be4619acb73d1f72f"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/matches/fixtureDiscovery.ts": {
+    "mtime": 1782577379.3668964,
+    "hash": "c0eb47cdb51aff61d6c487be0338ddee"
+  },
   "/home/satin/Work/personal/palpitae/api/src/predictions/router.test.ts": {
     "mtime": 1782519088.1998975,
     "hash": "44a80f9932b26ac8e4449618115dc938"
@@ -180,8 +184,8 @@
     "hash": "7c55b1c061d75c071c6c3b7a4729299a"
   },
   "/home/satin/Work/personal/palpitae/api/src/observability/events.ts": {
-    "mtime": 1782297975.2816932,
-    "hash": "6cba8e1efd516c373cb80bff37943a3e"
+    "mtime": 1782577358.5846894,
+    "hash": "0ffb005603aae80e700f30be95c3c798"
   },
   "/home/satin/Work/personal/palpitae/api/src/notifications/email.test.ts": {
     "mtime": 1782093524.307233,
