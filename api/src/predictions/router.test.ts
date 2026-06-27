@@ -85,10 +85,14 @@ interface BulkMockOptions {
   isMember?: boolean
   // match_id -> start_time (ISO). Absent matches are treated as "not found".
   matches?: Record<string, string>
+  // match_id -> phase (football-data stage). Drives the penalty gate alongside phases.
+  phases?: Record<string, string>
+  // Competition penalty_phases gate applied to every match in the mock.
+  penaltyPhases?: string[]
 }
 
 function createBulkDbMock(opts: BulkMockOptions = {}) {
-  const { isMember = true, matches = {} } = opts
+  const { isMember = true, matches = {}, phases = {}, penaltyPhases = [] } = opts
   const batched: unknown[] = []
 
   const db = {
@@ -109,7 +113,12 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
                 const matchIds = params.slice(1) as string[]
                 const results = matchIds
                   .filter((id) => matches[id] !== undefined)
-                  .map((id) => ({ id, start_time: matches[id] }))
+                  .map((id) => ({
+                    id,
+                    start_time: matches[id],
+                    phase: phases[id] ?? null,
+                    penalty_phases: JSON.stringify(penaltyPhases),
+                  }))
                 return { results }
               }
               return { results: [] }
@@ -202,6 +211,59 @@ describe('predictions router – PUT /bulk', () => {
     expect(body.not_found).toEqual(['m3'])
     // Only the one saveable match is batched.
     expect(db.batched).toHaveLength(1)
+  })
+
+  it('rejects an eligible draw with no penalty winner (same rule as PUT /)', async () => {
+    const db = createBulkDbMock({
+      matches: { m1: future },
+      phases: { m1: 'FINAL' },
+      penaltyPhases: ['FINAL'],
+    })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [{ match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1 }],
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { invalid_penalty: string[] }
+    expect(body.invalid_penalty).toEqual(['m1'])
+    expect(db.batched).toHaveLength(0)
+  })
+
+  it('accepts an eligible draw with a valid penalty winner', async () => {
+    const db = createBulkDbMock({
+      matches: { m1: future },
+      phases: { m1: 'FINAL' },
+      penaltyPhases: ['FINAL'],
+    })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [
+        { match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, predicted_penalty_winner: 'away' },
+      ],
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[] }
+    expect(body.saved).toEqual(['m1'])
+    expect(db.batched).toHaveLength(1)
+  })
+
+  it('ignores the penalty pick when the phase is not eligible', async () => {
+    const db = createBulkDbMock({
+      matches: { m1: future },
+      phases: { m1: 'GROUP_STAGE' },
+      penaltyPhases: ['FINAL'],
+    })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      // a draw, but GROUP_STAGE is not in the gate → no winner required, saved fine.
+      predictions: [{ match_id: 'm1', predicted_home_score: 0, predicted_away_score: 0 }],
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[] }
+    expect(body.saved).toEqual(['m1'])
   })
 })
 
