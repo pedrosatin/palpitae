@@ -74,9 +74,6 @@ export default function MatchCard({
   const [away, setAway] = useState<string>(
     prediction !== undefined ? String(prediction.predicted_away_score) : '0',
   )
-  const [homeTouched, setHomeTouched] = useState(false)
-  const [awayTouched, setAwayTouched] = useState(false)
-
   useEffect(() => {
     if (prediction !== undefined) {
       setHome(String(prediction.predicted_home_score))
@@ -93,7 +90,7 @@ export default function MatchCard({
   const hasChanged = hasPrediction
     ? Number(home) !== prediction.predicted_home_score ||
       Number(away) !== prediction.predicted_away_score
-    : homeTouched || awayTouched
+    : true
   const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged
 
   async function persist(homeScore: number, awayScore: number) {
@@ -161,13 +158,11 @@ export default function MatchCard({
   }
 
   function updateHome(v: string) {
-    setHomeTouched(true)
     setHome(v)
     onDraftChange?.(match.id, v, away)
   }
 
   function updateAway(v: string) {
-    setAwayTouched(true)
     setAway(v)
     onDraftChange?.(match.id, home, v)
   }
