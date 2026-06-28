@@ -162,6 +162,24 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[PEN_AWAY]).toBe(4)
   })
 
+  it('PENALTY_SHOOTOUT fallback: when regularTime/extraTime are null, uses fullTime - penalties', async () => {
+    mockFetch([
+      match(108, {
+        winner: 'HOME_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 4, away: 3 },
+        regularTime: { home: null, away: null },
+        extraTime: { home: null, away: null },
+        penalties: { home: 3, away: 2 },
+      }),
+    ])
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+    const row = captured.matches[0]
+    expect(row[HOME]).toBe(1)
+    expect(row[AWAY]).toBe(1)
+  })
+
   it('EXTRA_TIME (no shootout): canonical = fullTime, penalty fields null', async () => {
     mockFetch([
       match(103, {
