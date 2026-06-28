@@ -42,6 +42,9 @@ function buildFakeDb() {
       }
       return stmt
     },
+    async batch(statements: any[]) {
+      await Promise.all(statements.map((s) => s.run()))
+    },
   }
 
   return { db: db as never, captured, sqls }
