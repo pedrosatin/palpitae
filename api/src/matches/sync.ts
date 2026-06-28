@@ -270,12 +270,22 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     // de pênalti (confirmado empiricamente), então somamos reg+ET. Nos demais
     // (REGULAR, EXTRA_TIME) o fullTime já é o canônico.
     const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
-    const canonicalHome = isShootout
-      ? (m.score.regularTime?.home ?? 0) + (m.score.extraTime?.home ?? 0)
-      : (m.score.fullTime.home ?? null)
-    const canonicalAway = isShootout
-      ? (m.score.regularTime?.away ?? 0) + (m.score.extraTime?.away ?? 0)
-      : (m.score.fullTime.away ?? null)
+    let canonicalHome = m.score.fullTime.home ?? null
+    let canonicalAway = m.score.fullTime.away ?? null
+
+    if (isShootout) {
+      if (typeof m.score.regularTime?.home === 'number' && typeof m.score.extraTime?.home === 'number') {
+        canonicalHome = m.score.regularTime.home + m.score.extraTime.home
+      } else if (typeof canonicalHome === 'number' && typeof m.score.penalties?.home === 'number') {
+        canonicalHome = Math.max(0, canonicalHome - m.score.penalties.home)
+      }
+
+      if (typeof m.score.regularTime?.away === 'number' && typeof m.score.extraTime?.away === 'number') {
+        canonicalAway = m.score.regularTime.away + m.score.extraTime.away
+      } else if (typeof canonicalAway === 'number' && typeof m.score.penalties?.away === 'number') {
+        canonicalAway = Math.max(0, canonicalAway - m.score.penalties.away)
+      }
+    }
 
     const duration = m.score.duration ?? null
     // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
