@@ -33,7 +33,26 @@ declare global {
 export function getStoredConsent(): Consent | null {
   try {
     const value = localStorage.getItem(CONSENT_KEY)
-    return value === 'granted' || value === 'denied' ? value : null
+    if (value === 'granted') return 'granted'
+    if (value?.startsWith('denied')) {
+      const parts = value.split(':')
+      if (parts.length === 2) {
+        const timestamp = parseInt(parts[1], 10)
+        // O banner reaparece a cada 30 dias para quem recusou.
+        // Re-pedir com muita frequência (ex: 3 dias) é considerado "Consent Fatigue" e
+        // pode ir contra o princípio de "consentimento livre" da LGPD/GDPR.
+        const EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
+        if (Date.now() - timestamp < EXPIRY_MS) {
+          return 'denied'
+        }
+        // Expirou: limpa o storage para mostrar o banner de novo na próxima montagem
+        localStorage.removeItem(CONSENT_KEY)
+        return null
+      }
+      // Fallback para o valor antigo (apenas 'denied')
+      return 'denied'
+    }
+    return null
   } catch {
     return null
   }
@@ -42,7 +61,9 @@ export function getStoredConsent(): Consent | null {
 /** Registra a escolha do usuário, persiste e atualiza o Consent Mode do gtag. */
 export function setConsent(consent: Consent): void {
   try {
-    localStorage.setItem(CONSENT_KEY, consent)
+    // Quando o usuário nega, salvamos o timestamp para podermos pedir novamente no futuro
+    const valueToStore = consent === 'denied' ? `denied:${Date.now()}` : consent
+    localStorage.setItem(CONSENT_KEY, valueToStore)
   } catch {
     // localStorage indisponível (modo privado etc.) — segue sem persistir
   }
