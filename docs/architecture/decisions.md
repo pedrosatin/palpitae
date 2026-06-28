@@ -340,6 +340,46 @@ Resend was chosen for the modern DX (clean API, CLI, official MCP server) and li
 
 ---
 
+## ADR-010: Fixture Discovery — Daily Full-Competition Sync Cron
+
+**Status:** Accepted
+**Date:** 2026-06-28
+
+### Context
+
+The DB is seeded one round at a time. In short tournaments (World Cup, Euro) the next phase's fixtures don't exist when the group stage starts — knockout matchups are defined *gradually* as each group finishes, and football-data.org only exposes a fixture once the teams are known. Until now the only way to pull a new phase into the DB was to **manually** call `POST /matches/sync`. With the group stage ending and the round of 32 starting the next day, new fixtures need to land automatically.
+
+The result poller (ADR-007) doesn't cover this: it only fetches matches already in the DB that are inside their active result window. It scores existing fixtures — it never discovers fixtures that aren't there yet.
+
+### Decision
+
+Add a **third Cron Trigger** to the `palpitae-api` Worker, `"0 6 * * *"` (daily at 06:00 UTC / 03:00 BRT — a window with no live matches), differentiated by `controller.cron` in the `scheduled` handler. It runs `discoverFixtures` (`api/src/matches/fixtureDiscovery.ts`):
+
+1. Query competitions with `status != 'finished'`, `provider = 'football-data'`, `external_id IS NOT NULL`.
+2. For each, call `syncFixtures` **without a `matchday` filter** — fetches the whole tournament.
+3. Run `scoreUnprocessedMatches` for that competition (re-scores anything a score correction left unscored).
+
+Per-competition failures are isolated (one bad comp doesn't abort the rest) and logged as `football_api_error`. The run emits a `fixture_discovery_run` health event (`competitions`, `fixtures_updated`, `api_calls`, `duration_ms`).
+
+### Why a full sync (not "wait for the round to end")
+
+The first instinct — detect the last match of the current round, then fetch the next round — has two failure modes: (1) waiting for the **last** group to finish leaves the first-defined knockout matchups with almost no prediction window, since their first match can be the next day; (2) a postponed match would stall discovery indefinitely. An **unconditional** daily full sync sidesteps both: `syncFixtures` is idempotent (`ON CONFLICT` by `external_id`), so re-fetching the whole tournament only updates changed kickoff times and inserts newly-defined fixtures — no duplicates. New knockout matchups appear the morning after football-data publishes them, maximizing prediction lead time. Cost is **1 API call per active competition per day**.
+
+### Why not reuse the existing crons
+
+- The poller (`0,30 * * * *`) is scoped to the active result window and scoped by `matchday`; widening it to full-tournament fetches every 30 min would waste football-data quota for no benefit and mix two concerns (scoring vs discovery).
+- A separate daily cron keeps discovery cheap, off-peak, and independently observable.
+
+### Consequences
+
+- New phases (round of 32, 16, …) and kickoff-time changes land automatically each morning — no manual `POST /matches/sync`.
+- No new infra: reuses the Worker, its D1 binding, and `FOOTBALL_API_KEY`. One cron expression added (`crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "0 6 * * *"]`).
+- At 06:00 UTC the poller's `0,30 * * * *` also matches, but Cloudflare fires `scheduled` once **per** matching cron with its own `controller.cron`, so the two don't collide.
+- **Known limitation:** nothing currently promotes a competition's `status` to `'finished'`, so `status != 'finished'` never narrows — discovery fetches every football-data competition (including past seasons) daily. Harmless at current scale (≈1 competition, 1 call/day); revisit by flipping `status` once all matches are `finished`, or filtering by `season`, if multiple finished competitions accumulate.
+- `POST /matches/sync` (ADR predecessor, manual) is kept as an admin escape hatch.
+
+---
+
 ## ADR-006: Frontend Stack — Vite + React (Static Site)
 
 **Status:** Accepted

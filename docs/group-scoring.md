@@ -11,7 +11,7 @@ de leaderboard.
 |---|---|---|---|
 | `points_exact` | INTEGER 0–10 | 3 | Pontos por acertar o placar exato |
 | `points_winner` | INTEGER 0–10 | 1 | Pontos por acertar só o vencedor/empate |
-| `points_penalty` | INTEGER 0–10 | 1 | Bônus por acertar o vencedor dos pênaltis (`migration 0009`) |
+| `points_penalty` | INTEGER 0–10 | 1 | Bônus por acertar o vencedor dos pênaltis (`migration 0010`) |
 | `predictions_visibility` | `'hidden'` \| `'public'` | `'hidden'` | Visibilidade dos palpites alheios |
 
 ## Invariantes (validadas na API **e** no front)
@@ -108,6 +108,20 @@ manual.
 A visibilidade é sempre resolvida no servidor a partir do banco — o front nunca decide o que
 revelar. O `points_exact` enviado ao front é só para a UI; a pontuação real usa os valores do
 banco em `scoreMatch`.
+
+### Onde o pênalti aparece no front
+
+- **Aba Palpitar** (`MatchCard`): num jogo elegível, o seletor "Quem vence nos pênaltis?"
+  fica sempre renderizado, mas **mutado** (`penaltyPickerMuted`) enquanto o placar não é
+  empate — empate (inclusive o default `0×0`) ativa. Em empate elegível o vencedor é
+  obrigatório antes de salvar.
+- **"Salvar todos"** (`PredictionsTab.collectRoundDrafts`): inclui o jogo quando há draft de
+  placar **ou** só de pênalti. Sem isso, um empate `0×0` default — que nunca gera draft de
+  placar — seria descartado silenciosamente junto com o vencedor escolhido.
+- **Aba Grupo** (`GroupPicksTab`): para um palpite de empate em jogo elegível, mostra o
+  vencedor escolhido (`⚽ <time>`) ao lado do placar — é o que distingue dois `1 × 1` iguais.
+  Os pontos exibidos somam base + bônus (`points_awarded + penalty_points`), igual ao
+  leaderboard.
 
 ## Observabilidade
 

@@ -21,6 +21,13 @@ import { trackEvent } from '../../analytics/ga'
 
 **Helper:** `web/src/analytics/ga.ts` → `trackEvent(name, params?)`.
 
+## Consentimento e LGPD
+
+O GA4 opera através do Consent Mode v2 para respeitar a privacidade dos usuários.
+O status da permissão é salvo no `localStorage`:
+- **Aceitar:** Modo passa para `granted`, tags são disparadas e o consentimento é armazenado indefinidamente.
+- **Recusar:** Modo fica como `denied` e as tags respeitam a falta de cookies. A recusa é salva com um *timestamp* e **expira após 30 dias**. Quando expira, o banner reaparece na próxima visita. Isso garante que não pratiquemos *Consent Fatigue* (re-pedir insistentemente em poucos dias), respeitando a LGPD, mas permitindo re-converter usuários antigos.
+
 ## Convenções de nome
 
 - snake_case; prefixo `click_` para cliques, `submit_` para envios de formulário bem-sucedidos
