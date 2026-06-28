@@ -22,7 +22,9 @@ interface MemberPrediction {
   user_display: string
   predicted_home_score: number
   predicted_away_score: number
+  predicted_penalty_winner: 'home' | 'away' | null
   points_awarded: number
+  penalty_points: number
   locked: 0 | 1
 }
 
@@ -202,6 +204,17 @@ export default function GroupPicksTab({
                 <ul className={styles.pickList}>
                   {memberPicks.map((p) => {
                     const isSelf = p.user_id === picks.self_user_id
+                    // A draw pick is ambiguous on score alone in a knockout: the
+                    // penalty winner is what tells two equal scores apart.
+                    const showPenaltyPick =
+                      Boolean(match.decides_on_penalties) &&
+                      p.predicted_home_score === p.predicted_away_score &&
+                      p.predicted_penalty_winner != null
+                    const penaltyTeam =
+                      p.predicted_penalty_winner === 'home'
+                        ? match.home_team_short_name
+                        : match.away_team_short_name
+                    const total = p.points_awarded + (p.penalty_points ?? 0)
                     return (
                       <li
                         key={p.user_id}
@@ -215,12 +228,17 @@ export default function GroupPicksTab({
                         </span>
                         <span className={styles.pickScore}>
                           {p.predicted_home_score} × {p.predicted_away_score}
+                          {showPenaltyPick && (
+                            <span className={styles.penaltyPick}>
+                              ⚽ {penaltyTeam}
+                            </span>
+                          )}
                         </span>
                         {isFinished && (
                           <span
-                            className={`${styles.pickPoints} ${p.points_awarded > 0 ? styles.pointsGreen : styles.pointsZero}`}
+                            className={`${styles.pickPoints} ${total > 0 ? styles.pointsGreen : styles.pointsZero}`}
                           >
-                            {p.points_awarded} pt
+                            {total} pt
                           </span>
                         )}
                       </li>
