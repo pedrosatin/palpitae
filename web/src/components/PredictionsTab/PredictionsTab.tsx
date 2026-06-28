@@ -214,10 +214,18 @@ export default function PredictionsTab({
     for (const m of roundMatches) {
       if (isLocked(m)) continue
       const d = drafts.get(m.id)
-      if (!d || d.home === '' || d.away === '') continue
-      const home = Number(d.home)
-      const away = Number(d.away)
+      const hasPenaltyDraft = penaltyDrafts.has(m.id)
+      // Include a match if the user edited its score OR only its penalty winner.
+      // A default 0×0 knockout draw never produces a score draft, so gating on
+      // `drafts` alone would silently drop a penalty-only pick from "Salvar todos".
+      if (!d && !hasPenaltyDraft) continue
       const p = predictions.get(m.id)
+      // Score: live draft wins; otherwise fall back to the saved pick, else 0×0.
+      const homeStr = d?.home ?? (p ? String(p.predicted_home_score) : '0')
+      const awayStr = d?.away ?? (p ? String(p.predicted_away_score) : '0')
+      if (homeStr === '' || awayStr === '') continue
+      const home = Number(homeStr)
+      const away = Number(awayStr)
 
       // A draw in a shootout match must carry a penalty winner. Resolve it from
       // the live draft, falling back to the saved pick. If still missing, the
@@ -225,7 +233,7 @@ export default function PredictionsTab({
       // requires the winner before its own save anyway).
       const eligibleDraw = home === away && Boolean(m.decides_on_penalties)
       const penaltyWinner: 'home' | 'away' | null = eligibleDraw
-        ? penaltyDrafts.has(m.id)
+        ? hasPenaltyDraft
           ? (penaltyDrafts.get(m.id) ?? null)
           : (p?.predicted_penalty_winner ?? null)
         : null

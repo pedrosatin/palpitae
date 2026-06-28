@@ -110,6 +110,121 @@ describe('GroupPicksTab', () => {
     expect(screen.queryByText('(você)')).not.toBeInTheDocument()
   })
 
+  it('shows the penalty-winner pick for a draw in a knockout match', async () => {
+    const matches = [
+      makeMatch({
+        id: 'm1',
+        round: '1',
+        status: 'scheduled',
+        decides_on_penalties: true,
+      }),
+    ]
+    mockFetch(matches, {
+      self_user_id: 'user-1',
+      members: [
+        { user_id: 'user-1', display: 'Pedro' },
+        { user_id: 'user-2', display: 'Ana' },
+      ],
+      predictions: [
+        {
+          match_id: 'm1',
+          user_id: 'user-1',
+          user_display: 'Pedro',
+          predicted_home_score: 1,
+          predicted_away_score: 1,
+          predicted_penalty_winner: 'home',
+          points_awarded: 0,
+          penalty_points: 0,
+          locked: 0,
+        },
+        {
+          match_id: 'm1',
+          user_id: 'user-2',
+          user_display: 'Ana',
+          predicted_home_score: 1,
+          predicted_away_score: 1,
+          predicted_penalty_winner: 'away',
+          points_awarded: 0,
+          penalty_points: 0,
+          locked: 0,
+        },
+      ],
+    })
+
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Pedro')).toBeInTheDocument()
+    })
+    // Same 1×1 score, told apart only by who each backed in the shootout.
+    expect(screen.getByText('Pedro').closest('li')).toHaveTextContent('BRA')
+    expect(screen.getByText('Ana').closest('li')).toHaveTextContent('ARG')
+  })
+
+  it('omits the penalty pick when the draw is not in a knockout', async () => {
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    mockFetch(matches, {
+      self_user_id: 'user-1',
+      members: [{ user_id: 'user-1', display: 'Pedro' }],
+      predictions: [
+        {
+          match_id: 'm1',
+          user_id: 'user-1',
+          user_display: 'Pedro',
+          predicted_home_score: 1,
+          predicted_away_score: 1,
+          predicted_penalty_winner: null,
+          points_awarded: 0,
+          penalty_points: 0,
+          locked: 0,
+        },
+      ],
+    })
+
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Pedro')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Pedro').closest('li')).not.toHaveTextContent('⚽')
+  })
+
+  it('folds the penalty bonus into the displayed points total', async () => {
+    const matches = [
+      makeMatch({
+        id: 'm1',
+        round: '1',
+        status: 'finished',
+        home_score: 1,
+        away_score: 1,
+        decides_on_penalties: true,
+      }),
+    ]
+    mockFetch(matches, {
+      self_user_id: 'user-1',
+      members: [{ user_id: 'user-1', display: 'Pedro' }],
+      predictions: [
+        {
+          match_id: 'm1',
+          user_id: 'user-1',
+          user_display: 'Pedro',
+          predicted_home_score: 1,
+          predicted_away_score: 1,
+          predicted_penalty_winner: 'home',
+          points_awarded: 3,
+          penalty_points: 1,
+          locked: 1,
+        },
+      ],
+    })
+
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('4 pt')).toBeInTheDocument()
+    })
+  })
+
   it('shows awarded points for a finished match', async () => {
     const matches = [
       makeMatch({

@@ -310,6 +310,38 @@ describe('PredictionsTab – Initialisation', () => {
     ).toBeEnabled()
   })
 
+  it('includes a default 0×0 knockout draw in "Salvar todos" when only the penalty winner is set', async () => {
+    const matches: Match[] = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled', decides_on_penalties: true }),
+    ]
+    let bulkBody: { predictions: Array<Record<string, unknown>> } | null = null
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+      const u = url.toString()
+      if (u.includes('/matches')) return Promise.resolve({ ok: true, json: async () => ({ matches, default_round: '1' }) } as Response)
+      if (u.includes('/predictions/bulk')) {
+        bulkBody = JSON.parse((init!.body as string))
+        return Promise.resolve({ ok: true, json: async () => ({ saved: ['m1'] }) } as Response)
+      }
+      if (u.includes('/predictions')) return Promise.resolve({ ok: true, json: async () => ({ predictions: [] }) } as Response)
+      if (u.includes('/groups')) return Promise.resolve({ ok: true, json: async () => ({ groups: [] }) } as Response)
+      return Promise.reject(new Error(`Unexpected: ${u}`))
+    })
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+    await waitFor(() => screen.getByRole('button', { name: /^Salvar todos$/i }))
+
+    // Score stays at the 0×0 default; user only picks the shootout winner.
+    await userEvent.click(screen.getByRole('radio', { name: 'BRA' }))
+
+    const saveAll = await screen.findByRole('button', { name: /Salvar todos \(1\)/i })
+    await userEvent.click(saveAll)
+
+    await waitFor(() => expect(bulkBody).not.toBeNull())
+    expect(bulkBody!.predictions).toEqual([
+      { match_id: 'm1', predicted_home_score: 0, predicted_away_score: 0, predicted_penalty_winner: 'home' },
+    ])
+  })
+
   it('selects the first round with a scheduled match on load', async () => {
     const matches: Match[] = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
