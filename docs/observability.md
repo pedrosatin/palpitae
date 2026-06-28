@@ -80,6 +80,7 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
 **Eventos atuais:**
 
 - Saúde: `poller_run` (ok/error + matches_checked, fixtures_updated, api_calls, duration_ms),
+  `fixture_discovery_run` (ok/error + competitions, fixtures_updated, api_calls, duration_ms),
   `football_api_error`.
 - Negócio: `prediction_saved` (single/bulk/import), `group_created`, `group_joined`,
   `group_renamed`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
@@ -95,7 +96,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | event_type | blob2 | blob3 | blob4 | doubles |
 |---|---|---|---|---|
 | `poller_run` | `status` (`ok`/`error`) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
-| `football_api_error` | `context` (`matches_background`/`sync_endpoint`) **ou** `comp_id` (no poller) | `round` (só no poller) | `error_message` | — |
+| `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
+| `football_api_error` | `context` (`matches_background`/`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
 | `group_joined` | `group_id` | `user_hash` | — | — |
@@ -108,13 +110,16 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
 | `email_reminder_sent` | `user_hash` | `competition_name` | `round` | — |
 | `cron_round_reminder` | — | — | — | `double1`=rounds, `double2`=sent, `double3`=failed |
+| `cron_round_reminder_misconfig` | `reason` (`no_api_key`) | — | — | — |
 | `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app) | — | — |
 | `email_resubscribed` | `user_hash` | `source` (`settings`) | — | — |
 
-Observação sobre `football_api_error`: tem **duas formas** de chamada. No poller
+Observação sobre `football_api_error`: tem **três formas** de chamada. No poller
 (`matches/poller.ts`) é `[comp_id, round, error_message]`; nos endpoints de matches
-(`matches/router.ts`) é `[context, error_message]` — distinga pelo blob2 (`matches_background`
-/`sync_endpoint` ⇒ forma de endpoint).
+(`matches/router.ts`) é `[context, error_message]`; na descoberta de jogos
+(`matches/fixtureDiscovery.ts`) é `[context='fixture_discovery', comp_id, error_message]`.
+Distinga pelo blob2: `matches_background`/`sync_endpoint` ⇒ forma de endpoint;
+`fixture_discovery` ⇒ forma de descoberta (comp_id em blob3); senão ⇒ poller.
 
 Observação sobre `prediction_saved`: o `kind` (single/bulk/import) cai em **blob5** porque o
 `round` (blob3) é mantido na posição mesmo vazio, pra alinhar as três variantes na mesma coluna.
