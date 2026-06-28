@@ -228,18 +228,18 @@ describe('CreateGroupModal – scoring config', () => {
     render(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
-    const infoBtn = screen.getByRole('button', { name: 'O que é vencedor?' })
-    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    const infoBtn = screen.getByRole('button', { name: 'Vencedor' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
 
     await userEvent.click(infoBtn)
-    expect(screen.getByRole('note')).toHaveTextContent(/empate/i)
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/empate/i)
     expect(mockTrackEvent).toHaveBeenCalledWith('click_create_group_ajuda_pontuacao', {
       campo: 'winner',
     })
 
     // tapping again closes it
     await userEvent.click(infoBtn)
-    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
   it('keeps points inputs disabled unless "Personalizado" is selected', async () => {
