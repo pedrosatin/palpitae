@@ -16,6 +16,11 @@ function buildFakeDb() {
   const sqls = { match: '' as string }
 
   const db = {
+    async batch(statements: any[]) {
+      for (const stmt of statements) {
+        await stmt.run()
+      }
+    },
     prepare(sql: string) {
       let bound: unknown[] = []
       const stmt = {
