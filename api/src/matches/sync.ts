@@ -218,29 +218,35 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   }
 
   // Upsert teams
+  const teamStatements = []
   for (const team of teamMap.values()) {
     const translated = TEAM_TRANSLATIONS[team.name]
     const finalName = translated?.name ?? team.name
     const finalShortName =
       translated?.short_name ?? (team.tla ?? team.shortName ?? team.name.substring(0, 3).toUpperCase())
 
-    await db
-      .prepare(
-        `INSERT INTO teams (id, name, short_name, slug, logo_url, external_id, provider)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (external_id, provider) DO UPDATE SET
-           logo_url   = excluded.logo_url`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        finalName,
-        finalShortName,
-        slugify(team.name),
-        team.crest ?? null,
-        String(team.id),
-        PROVIDER,
-      )
-      .run()
+    teamStatements.push(
+      db
+        .prepare(
+          `INSERT INTO teams (id, name, short_name, slug, logo_url, external_id, provider)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (external_id, provider) DO UPDATE SET
+             logo_url   = excluded.logo_url`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          finalName,
+          finalShortName,
+          slugify(team.name),
+          team.crest ?? null,
+          String(team.id),
+          PROVIDER,
+        )
+    )
+  }
+
+  if (teamStatements.length > 0) {
+    await db.batch(teamStatements)
   }
 
   // Resolve internal team IDs
@@ -255,6 +261,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   // Upsert matches
   let matchCount = 0
+  const matchStatements = []
   for (const m of matches) {
     const homeTeamId = teamIds.get(m.homeTeam?.id)
     const awayTeamId = teamIds.get(m.awayTeam?.id)
@@ -290,55 +297,60 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     const homePenaltyGoals = isShootout ? (m.score.penalties?.home ?? null) : null
     const awayPenaltyGoals = isShootout ? (m.score.penalties?.away ?? null) : null
 
-    await db
-      .prepare(
-        `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (external_id, provider) DO UPDATE SET
-           status             = excluded.status,
-           home_score         = excluded.home_score,
-           away_score         = excluded.away_score,
-           start_time         = excluded.start_time,
-           group_name         = excluded.group_name,
-           duration           = excluded.duration,
-           penalty_winner     = excluded.penalty_winner,
-           home_penalty_goals = excluded.home_penalty_goals,
-           away_penalty_goals = excluded.away_penalty_goals,
-           -- If a provider score-correction lands after the match was already
-           -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
-           -- points/leaderboard recompute against the final score. Without this,
-           -- the displayed score updates but points stay frozen on the stale one
-           -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
-           -- penalty_winner também dispara o re-score: o provider pode corrigir só
-           -- o vencedor dos pênaltis sem mexer no placar canônico.
-           scored_at  = CASE
-             WHEN matches.home_score IS NOT excluded.home_score
-               OR matches.away_score IS NOT excluded.away_score
-               OR matches.penalty_winner IS NOT excluded.penalty_winner
-             THEN NULL ELSE matches.scored_at END`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        competition.id,
-        String(m.id),
-        PROVIDER,
-        homeTeamId,
-        awayTeamId,
-        m.utcDate,
-        status,
-        canonicalHome,
-        canonicalAway,
-        phase,
-        round,
-        groupName,
-        duration,
-        penaltyWinner,
-        homePenaltyGoals,
-        awayPenaltyGoals,
-      )
-      .run()
+    matchStatements.push(
+      db
+        .prepare(
+          `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (external_id, provider) DO UPDATE SET
+             status             = excluded.status,
+             home_score         = excluded.home_score,
+             away_score         = excluded.away_score,
+             start_time         = excluded.start_time,
+             group_name         = excluded.group_name,
+             duration           = excluded.duration,
+             penalty_winner     = excluded.penalty_winner,
+             home_penalty_goals = excluded.home_penalty_goals,
+             away_penalty_goals = excluded.away_penalty_goals,
+             -- If a provider score-correction lands after the match was already
+             -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
+             -- points/leaderboard recompute against the final score. Without this,
+             -- the displayed score updates but points stay frozen on the stale one
+             -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
+             -- penalty_winner também dispara o re-score: o provider pode corrigir só
+             -- o vencedor dos pênaltis sem mexer no placar canônico.
+             scored_at  = CASE
+               WHEN matches.home_score IS NOT excluded.home_score
+                 OR matches.away_score IS NOT excluded.away_score
+                 OR matches.penalty_winner IS NOT excluded.penalty_winner
+               THEN NULL ELSE matches.scored_at END`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          competition.id,
+          String(m.id),
+          PROVIDER,
+          homeTeamId,
+          awayTeamId,
+          m.utcDate,
+          status,
+          canonicalHome,
+          canonicalAway,
+          phase,
+          round,
+          groupName,
+          duration,
+          penaltyWinner,
+          homePenaltyGoals,
+          awayPenaltyGoals,
+        )
+    )
 
     matchCount++
+  }
+
+  if (matchStatements.length > 0) {
+    await db.batch(matchStatements)
   }
 
   return {
