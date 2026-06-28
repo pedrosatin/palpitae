@@ -1,4 +1,3 @@
-import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import app from '../index'
 import type { AppContext } from '../types'
