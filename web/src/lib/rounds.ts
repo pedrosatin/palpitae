@@ -1,16 +1,6 @@
-export const KNOCKOUT_LABELS: Record<string, string> = {
-  LAST_32: 'Rodada de 32',
-  LAST_16: 'Oitavas de final',
-  QUARTER_FINALS: 'Quartas de final',
-  SEMI_FINALS: 'Semifinais',
-  THIRD_PLACE: 'Terceiro lugar',
-  FINAL: 'Final',
-}
-
-export function roundLabel(round: string): string {
-  if (/^\d+$/.test(round)) return `Rodada ${round}`
-  return KNOCKOUT_LABELS[round] ?? round
-}
+// O rótulo de exibição (`round_label`) vem pronto da API (`GET /matches`) — a fonte
+// única é o back (`api/src/matches/rounds.ts`). Aqui fica só a lógica client-side
+// que deriva do `round` cru e não tem por que ir ao servidor.
 
 export function isGroupStageRound(round: string): boolean {
   return /^\d+$/.test(round)

@@ -172,6 +172,21 @@ describe('sendRoundReminders', () => {
     expect(body.html).toContain('Rodada 2')
   })
 
+  it('translates a knockout stage to its display label in subject and body', async () => {
+    const db = buildFakeDb([
+      { competition_name: 'Copa do Mundo', round: 'LAST_32', email: 'a@x.com' },
+    ])
+
+    await sendRoundReminders(db as unknown as D1Database, 'key')
+
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
+    expect(body.subject).toContain('Rodada de 32')
+    expect(body.subject).not.toContain('LAST_32')
+    expect(body.html).toContain('Rodada de 32')
+    expect(body.html).not.toContain('LAST_32')
+    expect(body.text).toContain('Rodada de 32')
+  })
+
   it('authenticates and posts to the Resend API with the round in the subject', async () => {
     const db = buildFakeDb([
       { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
