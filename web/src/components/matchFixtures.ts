@@ -6,6 +6,9 @@ export function makeMatch(overrides: Partial<Match> = {}): Match {
     status === 'finished'
       ? new Date(Date.now() - 3_600_000).toISOString()
       : new Date(Date.now() + 3_600_000).toISOString()
+  // Espelha o back: round_label deriva do round (numérico → "Rodada N"), salvo
+  // override explícito. Mantém os options do select coerentes nos testes.
+  const round = overrides.round ?? '1'
   return {
     id: 'm1',
     start_time: defaultStartTime,
@@ -13,7 +16,8 @@ export function makeMatch(overrides: Partial<Match> = {}): Match {
     home_score: null,
     away_score: null,
     phase: 'group',
-    round: '1',
+    round,
+    round_label: `Rodada ${round}`,
     group_name: null,
     home_team_id: 'ht-1',
     home_team_name: 'Brasil',

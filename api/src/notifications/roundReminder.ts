@@ -1,5 +1,6 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { hashUserId, logEvent } from '../observability/events'
+import { roundLabel } from '../matches/rounds'
 import { type EmailMessage, EmailError, sendEmail } from './email'
 import { signUnsubToken } from './unsubscribeToken'
 
@@ -243,7 +244,7 @@ export async function sendRoundReminders(
   let sent = 0
   let failed = 0
   for (const { competitionName, round, recipientMap, matches } of grouped.values()) {
-    const subject = `Não esqueça! Rodada ${round} começa hoje`
+    const subject = `Não esqueça! ${roundLabel(round)} começa hoje`
 
     // One e-mail per user (no shared BCC, so addresses never leak between users).
     // A single send failure is isolated so the rest of the batch still goes out.
@@ -379,7 +380,7 @@ function buildEmailHtml(
         )
         .join('')
 
-  const safeRound = escapeHtml(round)
+  const safeRound = escapeHtml(roundLabel(round))
   const safeCompetition = escapeHtml(competitionName)
   const logoUrl = escapeHtml('https://palpitae.com.br/apple-touch-icon.png')
 
@@ -388,7 +389,7 @@ function buildEmailHtml(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rodada ${safeRound} começa hoje</title>
+  <title>${safeRound} começa hoje</title>
 </head>
 <body style="margin: 0; padding: 0; background: #f3f4f6;">
   <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
@@ -396,7 +397,7 @@ function buildEmailHtml(
       <img src="${logoUrl}" alt="" width="48" height="48" style="border-radius: 10px; border: 0; display: block; margin: 0 auto 8px;">
       <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
     </div>
-    <h2 style="margin-bottom: 4px;">Não esqueca! Rodada ${safeRound} começa hoje</h2>
+    <h2 style="margin-bottom: 4px;">Não esqueca! ${safeRound} começa hoje</h2>
     <p style="color: #6b7280; margin-top: 0;">${safeCompetition}</p>
     ${matchTable}
     <p style="margin-top: 16px;">Não esquece de registrar seus palpites antes do primeiro jogo!</p>
@@ -427,7 +428,7 @@ function buildEmailText(
   unsubUrl?: string,
 ): string {
   const lines = [
-    `A Rodada ${round} começa hoje!`,
+    `${roundLabel(round)} começa hoje!`,
     competitionName,
     '',
   ]
