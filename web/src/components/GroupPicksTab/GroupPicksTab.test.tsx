@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
@@ -186,7 +186,8 @@ describe('GroupPicksTab', () => {
     await waitFor(() => {
       expect(screen.getByText('Pedro')).toBeInTheDocument()
     })
-    expect(screen.getByText('Pedro').closest('li')).not.toHaveTextContent('⚽')
+    const li = screen.getByText('Pedro').closest('li') as HTMLElement
+    expect(within(li).queryByLabelText(/pênaltis/i)).not.toBeInTheDocument()
   })
 
   it('folds the penalty bonus into the displayed points total', async () => {
