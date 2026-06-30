@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import InfoHint from '../InfoHint/InfoHint'
+import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
 import styles from './MatchCard.module.css'
 
 export interface Match {
@@ -107,6 +108,10 @@ export default function MatchCard({
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
+  // Once a penalty winner is picked the two team buttons collapse to a compact
+  // chip; clicking it re-opens the choice. Keeps the control row short enough to
+  // stay on one line beside the score and the save button.
+  const [reopenPenalty, setReopenPenalty] = useState(false)
   const isFinished = match.status === 'finished'
   const hasPrediction = prediction !== undefined
 
@@ -214,6 +219,7 @@ export default function MatchCard({
     if (locked || saving) return
     trackEvent('click_prediction_penalty_winner', { match_id: match.id, winner })
     setPenaltyWinner(winner)
+    setReopenPenalty(false)
     onPenaltyDraftChange?.(match.id, winner)
     // Outcome mode persists immediately (mirrors selectOutcome); score mode waits
     // for the explicit Save button so the user can still tweak the score.
@@ -227,6 +233,7 @@ export default function MatchCard({
       nextHome !== '' && nextAway !== '' && Number(nextHome) === Number(nextAway)
     if (!stillDraw && penaltyWinner !== null) {
       setPenaltyWinner(null)
+      setReopenPenalty(false)
       onPenaltyDraftChange?.(match.id, null)
     }
   }
@@ -246,6 +253,57 @@ export default function MatchCard({
   function handleScoreInput(value: string, update: (v: string) => void) {
     if (value === '' || /^\d{1,2}$/.test(value)) update(value)
   }
+
+  // Penalty winner pick — folded inline into the active control row, right
+  // aligned beside the save button, so a draw-marked card stays the same height
+  // as a locked/finished one. Once a winner is chosen the two team buttons
+  // collapse to a ball chip; clicking it re-opens the choice.
+  const winnerShortName =
+    penaltyWinner === 'home'
+      ? match.home_team_short_name
+      : penaltyWinner === 'away'
+        ? match.away_team_short_name
+        : null
+  const penaltyDecided = penaltyWinner !== null && !reopenPenalty
+
+  const penaltyInline = !showPenaltyPicker ? null : penaltyDecided ? (
+    <PenaltyBadge
+      team={winnerShortName ?? ''}
+      tooltip="Vencedor nos pênaltis. Toque para trocar"
+      variant="accent"
+      onActivate={() => setReopenPenalty(true)}
+      disabled={saving}
+      className={styles.penaltyChipSlot}
+    />
+  ) : (
+    <div
+      className={styles.penaltyInline}
+      role="radiogroup"
+      aria-label="Quem vence nos pênaltis?"
+    >
+      <BallIcon className={styles.penaltyBall} />
+      <button
+        type="button"
+        role="radio"
+        className={`${styles.penaltyBtn} ${penaltyWinner === 'home' ? styles.penaltyBtnActive : ''}`}
+        onClick={() => selectPenaltyWinner('home')}
+        disabled={saving}
+        aria-checked={penaltyWinner === 'home'}
+      >
+        {match.home_team_short_name}
+      </button>
+      <button
+        type="button"
+        role="radio"
+        className={`${styles.penaltyBtn} ${penaltyWinner === 'away' ? styles.penaltyBtnActive : ''}`}
+        onClick={() => selectPenaltyWinner('away')}
+        disabled={saving}
+        aria-checked={penaltyWinner === 'away'}
+      >
+        {match.away_team_short_name}
+      </button>
+    </div>
+  )
 
   return (
     <div
@@ -365,20 +423,30 @@ export default function MatchCard({
             <p className={styles.noPrediction}>sem palpite registrado</p>
           )
         ) : outcomeOnly ? (
-          <div className={styles.outcomeRow} role="radiogroup" aria-label="Resultado">
-            {(['home', 'draw', 'away'] as const).map((outcome) => (
-              <button
-                key={outcome}
-                type="button"
-                role="radio"
-                className={`${styles.outcomeBtn} ${selectedOutcome === outcome ? styles.outcomeBtnActive : ''}`}
-                onClick={() => selectOutcome(outcome)}
-                disabled={saving}
-                aria-checked={selectedOutcome === outcome}
-              >
-                {OUTCOMES[outcome].label}
-              </button>
-            ))}
+          <div className={styles.outcomeRow}>
+            {/* display:contents wrapper — keeps the three buttons as flex
+                children of .outcomeRow while giving them their own radiogroup,
+                so the penalty radiogroup below is a sibling, never nested. */}
+            <div
+              className={styles.outcomeButtons}
+              role="radiogroup"
+              aria-label="Resultado"
+            >
+              {(['home', 'draw', 'away'] as const).map((outcome) => (
+                <button
+                  key={outcome}
+                  type="button"
+                  role="radio"
+                  className={`${styles.outcomeBtn} ${selectedOutcome === outcome ? styles.outcomeBtnActive : ''}`}
+                  onClick={() => selectOutcome(outcome)}
+                  disabled={saving}
+                  aria-checked={selectedOutcome === outcome}
+                >
+                  {OUTCOMES[outcome].label}
+                </button>
+              ))}
+            </div>
+            {penaltyInline}
             {saved && <span className={styles.outcomeSaved}>Salvo!</span>}
           </div>
         ) : (
@@ -468,6 +536,7 @@ export default function MatchCard({
                 +
               </button>
             </div>
+            {penaltyInline}
             <button
               className={`${styles.saveBtn} ${saved ? styles.saveBtnSaved : ''}`}
               onClick={handleSave}
@@ -481,37 +550,6 @@ export default function MatchCard({
                     ? 'Atualizar'
                     : 'Salvar'}
             </button>
-          </div>
-        )}
-        {!locked && Boolean(match.decides_on_penalties) && (
-          <div className={`${styles.penaltyPicker} ${!showPenaltyPicker ? styles.penaltyPickerMuted : ''}`}>
-            <span id={`penalty-label-${match.id}`} className={styles.penaltyLabel}>Quem vence nos pênaltis?</span>
-            <div
-              className={styles.penaltyOptions}
-              role="radiogroup"
-              aria-labelledby={`penalty-label-${match.id}`}
-            >
-              <button
-                type="button"
-                role="radio"
-                className={`${styles.penaltyBtn} ${penaltyWinner === 'home' ? styles.penaltyBtnActive : ''}`}
-                onClick={() => selectPenaltyWinner('home')}
-                disabled={saving}
-                aria-checked={penaltyWinner === 'home'}
-              >
-                {match.home_team_short_name}
-              </button>
-              <button
-                type="button"
-                role="radio"
-                className={`${styles.penaltyBtn} ${penaltyWinner === 'away' ? styles.penaltyBtnActive : ''}`}
-                onClick={() => selectPenaltyWinner('away')}
-                disabled={saving}
-                aria-checked={penaltyWinner === 'away'}
-              >
-                {match.away_team_short_name}
-              </button>
-            </div>
           </div>
         )}
         {error && <p className={styles.errorMsg}>{error}</p>}
