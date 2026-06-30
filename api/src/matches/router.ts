@@ -376,6 +376,7 @@ router.post('/sync', requireAuth, async (c) => {
 
   try {
     const result = await syncFixtures({ competitionCode: competition, season, matchday, apiKey, db: c.env.DB })
+    await scoreUnprocessedMatches(result.competitionId, c.env.DB)
     return c.json({ ok: true, synced: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido'
