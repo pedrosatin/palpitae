@@ -16,6 +16,11 @@ function buildFakeDb() {
   const sqls = { match: '' as string }
 
   const db = {
+    async batch(statements: any[]) {
+      for (const stmt of statements) {
+        await stmt.run()
+      }
+    },
     prepare(sql: string) {
       let bound: unknown[] = []
       const stmt = {
@@ -160,6 +165,29 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[PEN_WINNER]).toBe('away')
     expect(row[PEN_HOME]).toBe(3)
     expect(row[PEN_AWAY]).toBe(4)
+  })
+
+  it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
+    // Regression (Holanda x Marrocos em prod): o provider mandou winner=null e
+    // fullTime = placar do tempo normal (empate). Derivar de fullTime devolvia null
+    // e zerava o bônus de quem acertou o vencedor. A fonte canônica é score.penalties.
+    mockFetch([
+      match(109, {
+        winner: null,
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 1, away: 1 },
+        regularTime: { home: 1, away: 1 },
+        extraTime: { home: 0, away: 0 },
+        penalties: { home: 2, away: 4 },
+      }),
+    ])
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+
+    const row = captured.matches[0]
+    expect(row[HOME]).toBe(1)
+    expect(row[AWAY]).toBe(1)
+    expect(row[PEN_WINNER]).toBe('away') // Derived away from penalties home=2 < away=4
   })
 
   it('EXTRA_TIME (no shootout): canonical = fullTime, penalty fields null', async () => {
