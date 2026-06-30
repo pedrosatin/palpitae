@@ -115,6 +115,17 @@
   gap: var(--space-2);
 }
 
+/*
+ * The control row keeps one shared height across states (locked line, score
+ * steppers, 1X2 buttons) so a locked card and an open card line up in the grid
+ * instead of differing by the stepper's extra height.
+ */
+.lockedPrediction,
+.inputRow,
+.outcomeRow {
+  min-height: 38px;
+}
+
 /* Locked state */
 .lockedPrediction {
   display: flex;
@@ -177,6 +188,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
 }
 
 /* Stepper (−/+) wrapper */
@@ -300,6 +313,11 @@
   justify-content: center;
 }
 
+/* No box of its own — the three buttons stay flex children of .outcomeRow. */
+.outcomeButtons {
+  display: contents;
+}
+
 .outcomeBtn {
   flex: 1;
   min-width: 64px;
@@ -346,40 +364,66 @@
   text-align: center;
 }
 
-.penaltyPicker {
+/*
+ * Inline penalty pick — sits at the right of the active control row, beside the
+ * save button, so a draw-marked card stays the same height as a locked/finished
+ * one. A ball icon flags it as a shootout. Once a winner is chosen it collapses
+ * to a PenaltyBadge chip (.penaltyChipSlot) to keep the row compact.
+ */
+.penaltyInline,
+.penaltyChipSlot {
+  margin-left: auto;
+  animation: penaltyReveal 0.2s ease;
+}
+
+.penaltyInline {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px dashed var(--color-border);
-  transition: opacity 0.2s;
+  gap: var(--space-1);
 }
 
-.penaltyLabel {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+.penaltyBall {
+  color: var(--color-text-muted);
+  margin-right: var(--space-1);
 }
 
-.penaltyOptions {
-  display: flex;
-  gap: var(--space-2);
-  width: 100%;
+/* In 1X2 mode the three outcome buttons fill the row, so the penalty pick
+   drops to its own centred line below them. */
+.outcomeRow .penaltyInline,
+.outcomeRow .penaltyChipSlot {
+  flex-basis: 100%;
+  margin-left: 0;
   justify-content: center;
 }
 
+@keyframes penaltyReveal {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .penaltyInline,
+  .penaltyChipSlot {
+    animation: none;
+  }
+}
+
 .penaltyBtn {
-  flex: 1;
-  min-width: 64px;
-  background-color: var(--color-surface);
+  min-width: 44px;
+  background-color: var(--color-surface-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
   font-family: var(--font-family-base);
   cursor: pointer;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   transition:
     border-color var(--transition-fast),
     color var(--transition-fast),
@@ -399,12 +443,6 @@
   border-color: var(--color-primary);
   color: var(--color-on-primary);
   background-color: var(--color-primary);
-}
-
-.penaltyPickerMuted {
-  opacity: 0.3;
-  pointer-events: none;
-  transition: opacity 0.2s;
 }
 
 .lockedPenalty {
