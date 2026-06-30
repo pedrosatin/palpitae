@@ -4,6 +4,7 @@ import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
 import { applyDefaultRound } from '../../lib/rounds'
 import type { Match } from '../MatchCard'
+import PenaltyBadge from '../PenaltyBadge'
 import styles from './GroupPicksTab.module.css'
 
 interface GroupPicksTabProps {
@@ -229,9 +230,10 @@ export default function GroupPicksTab({
                         <span className={styles.pickScore}>
                           {p.predicted_home_score} × {p.predicted_away_score}
                           {showPenaltyPick && (
-                            <span className={styles.penaltyPick}>
-                              ⚽ {penaltyTeam}
-                            </span>
+                            <PenaltyBadge
+                              team={penaltyTeam}
+                              tooltip="Vencedor previsto nos pênaltis"
+                            />
                           )}
                         </span>
                         {isFinished && (
