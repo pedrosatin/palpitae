@@ -14,6 +14,7 @@ import { signJwt } from './jwt'
 import { requireAuth } from './middleware'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
+import { rateLimiter } from 'hono-rate-limiter'
 
 const SESSION_COOKIE = 'session'
 const STATE_COOKIE = 'oauth_state'
@@ -55,6 +56,18 @@ function cookieOptions(baseUrl: string, maxAge?: number) {
 }
 
 export const authRouter = new Hono<AppContext>()
+
+const authLimiter = rateLimiter<AppContext>({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-6',
+  // keyGenerator fallback to 'local' for dev environment without cf-connecting-ip
+  // Note: rate limit relies on a per-isolate MemoryStore by default.
+  keyGenerator: (c) => c.req.header('cf-connecting-ip') ?? 'local',
+})
+
+authRouter.use('/google', authLimiter)
+authRouter.use('/callback', authLimiter)
 
 // GET /auth/google — initiate OAuth flow
 authRouter.get('/google', async (c) => {
