@@ -245,7 +245,7 @@ describe('matches router – GET /', () => {
       const r2 = await app.fetch(newRequest(), env, second.ctx)
       expect(r2.status).toBe(200)
       await expect(r2.json()).resolves.toEqual({
-        matches: [{ status: 'finished', decides_on_penalties: false }],
+        matches: [{ status: 'finished', round_label: '', decides_on_penalties: false }],
         default_round: null,
       })
 
