@@ -167,15 +167,18 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[PEN_AWAY]).toBe(4)
   })
 
-  it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from fullTime scores', async () => {
+  it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
+    // Regression (Holanda x Marrocos em prod): o provider mandou winner=null e
+    // fullTime = placar do tempo normal (empate). Derivar de fullTime devolvia null
+    // e zerava o bônus de quem acertou o vencedor. A fonte canônica é score.penalties.
     mockFetch([
       match(109, {
         winner: null,
         duration: 'PENALTY_SHOOTOUT',
-        fullTime: { home: 5, away: 6 },
+        fullTime: { home: 1, away: 1 },
         regularTime: { home: 1, away: 1 },
         extraTime: { home: 0, away: 0 },
-        penalties: { home: 5, away: 5 },
+        penalties: { home: 2, away: 4 },
       }),
     ])
     const { db, captured } = buildFakeDb()
@@ -184,7 +187,7 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     const row = captured.matches[0]
     expect(row[HOME]).toBe(1)
     expect(row[AWAY]).toBe(1)
-    expect(row[PEN_WINNER]).toBe('away') // Derived away from fullTime home=5 < away=6
+    expect(row[PEN_WINNER]).toBe('away') // Derived away from penalties home=2 < away=4
   })
 
   it('EXTRA_TIME (no shootout): canonical = fullTime, penalty fields null', async () => {
