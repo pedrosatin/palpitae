@@ -368,22 +368,22 @@ describe('MatchCard – penalty shootout pick', () => {
 
   const penaltyMatch = () => makeMatch({ decides_on_penalties: true })
 
-  it('mutes the penalty picker for a decisive score, active for a draw (score mode)', async () => {
+  it('shows the penalty picker only while the score is a draw (score mode)', async () => {
     renderCard(penaltyMatch(), undefined)
 
-    // The picker is always rendered for a shootout match; it's muted (disabled,
-    // opacity 0.3 / pointer-events none) unless the current score is a draw.
-    const picker = screen.getByText('Quem vence nos pênaltis?').parentElement!
-    // Default 0-0 is a draw → active.
-    expect(picker.className).not.toContain('penaltyPickerMuted')
+    // The picker is collapsed (not rendered) unless the current score is a draw,
+    // so a decisive prediction keeps the card the same height as a locked card.
+    const label = 'Quem vence nos pênaltis?'
+    // Default 0-0 is a draw → shown.
+    expect(screen.getByRole('radiogroup', { name: label })).toBeInTheDocument()
 
-    // 0-0 → 1-0 decisive → muted.
+    // 0-0 → 1-0 decisive → collapsed.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
-    expect(picker.className).toContain('penaltyPickerMuted')
+    expect(screen.queryByRole('radiogroup', { name: label })).not.toBeInTheDocument()
 
-    // 1-0 → 1-1 draw again → active.
+    // 1-0 → 1-1 draw again → shown.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
-    expect(picker.className).not.toContain('penaltyPickerMuted')
+    expect(screen.getByRole('radiogroup', { name: label })).toBeInTheDocument()
   })
 
   it('blocks save on a draw until a penalty winner is chosen', async () => {
@@ -407,25 +407,42 @@ describe('MatchCard – penalty shootout pick', () => {
     expect(body.predicted_penalty_winner).toBe('home')
   })
 
-  it('mutes the penalty picker when the score is changed away from a draw', async () => {
+  it('collapses to a chip once a winner is chosen and re-opens on click', async () => {
     renderCard(penaltyMatch(), undefined)
-    const picker = screen.getByText('Quem vence nos pênaltis?').parentElement!
-    // 0-0 → 1-1 draw, then pick a winner → active.
+    const label = 'Quem vence nos pênaltis?'
+    // 0-0 → 1-1 draw → the two team buttons are shown.
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    expect(screen.getByRole('radiogroup', { name: label })).toBeInTheDocument()
+
+    // Pick a winner → collapses to a compact chip.
+    await userEvent.click(screen.getByRole('radio', { name: 'BRA' }))
+    expect(screen.queryByRole('radiogroup', { name: label })).not.toBeInTheDocument()
+    const chip = screen.getByRole('button', { name: /trocar/i })
+    expect(chip).toBeInTheDocument()
+
+    // Clicking the chip re-opens the choice.
+    await userEvent.click(chip)
+    expect(screen.getByRole('radiogroup', { name: label })).toBeInTheDocument()
+  })
+
+  it('removes the penalty pick entirely when the score leaves a draw', async () => {
+    renderCard(penaltyMatch(), undefined)
+    const label = 'Quem vence nos pênaltis?'
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
     await userEvent.click(screen.getByRole('radio', { name: 'BRA' }))
-    expect(picker.className).not.toContain('penaltyPickerMuted')
-
-    // 1-1 → 2-1 decisive → muted.
+    // 1-1 → 2-1 decisive → both the picker and the chip are gone.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
-    expect(picker.className).toContain('penaltyPickerMuted')
+    expect(screen.queryByRole('radiogroup', { name: label })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /trocar/i })).not.toBeInTheDocument()
   })
 
   it('does not show the picker for a non-penalty match', async () => {
     renderCard(makeMatch({ decides_on_penalties: false }), undefined)
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
-    expect(screen.queryByText('Quem vence nos pênaltis?')).not.toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).not.toBeInTheDocument()
   })
 
   it('outcome mode: clicking Empate waits for the penalty winner before persisting', async () => {
@@ -448,7 +465,7 @@ describe('MatchCard – penalty shootout pick', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'Empate' }))
     // No persist yet — the picker is shown instead.
     expect(fetchSpy).not.toHaveBeenCalled()
-    expect(screen.getByText('Quem vence nos pênaltis?')).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('radio', { name: 'ARG' }))
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
