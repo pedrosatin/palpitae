@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
-import { applyDefaultRound, isGroupStageRound, roundLabel } from '../../lib/rounds'
+import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
 import MatchCard, { type Match, type Prediction } from '../MatchCard'
 import styles from './PredictionsTab.module.css'
 
@@ -189,6 +189,9 @@ export default function PredictionsTab({
   }
 
   const roundKeys = Array.from(rounds.keys())
+  // Rótulo de exibição vem pronto da API (round_label, fonte única no back). Cada
+  // round tem ≥1 jogo, então o primeiro carrega o label; fallback ao round cru.
+  const labelFor = (r: string) => rounds.get(r)?.[0]?.round_label ?? r
   const safeIndex = Math.min(roundIndex, roundKeys.length - 1)
   const selectedRound = roundKeys[safeIndex]
   const roundMatches = rounds.get(selectedRound) ?? []
@@ -421,19 +424,19 @@ export default function PredictionsTab({
               {roundKeys.some(isGroupStageRound) && (
                 <optgroup label="Fase de grupos">
                   {roundKeys.filter(isGroupStageRound).map((r) => (
-                    <option key={r} value={r}>{roundLabel(r)}</option>
+                    <option key={r} value={r}>{labelFor(r)}</option>
                   ))}
                 </optgroup>
               )}
               <optgroup label="Mata-mata">
                 {roundKeys.filter((r) => !isGroupStageRound(r)).map((r) => (
-                  <option key={r} value={r}>{roundLabel(r)}</option>
+                  <option key={r} value={r}>{labelFor(r)}</option>
                 ))}
               </optgroup>
             </>
           ) : (
             roundKeys.map((r) => (
-              <option key={r} value={r}>{roundLabel(r)}</option>
+              <option key={r} value={r}>{labelFor(r)}</option>
             ))
           )}
         </select>

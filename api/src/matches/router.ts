@@ -4,6 +4,7 @@ import { requireAuth } from '../auth/middleware'
 import { logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
+import { roundLabel } from './rounds'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -187,6 +188,8 @@ router.get('/', async (c) => {
       const { penalty_phases, ...rest } = row
       return {
         ...rest,
+        // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
+        round_label: roundLabel((rest.round as string | null) ?? ''),
         decides_on_penalties: matchGoesToPenalties(
           parsePenaltyPhases(penalty_phases as string | null),
           (rest.phase as string | null) ?? null,
@@ -373,6 +376,7 @@ router.post('/sync', requireAuth, async (c) => {
 
   try {
     const result = await syncFixtures({ competitionCode: competition, season, matchday, apiKey, db: c.env.DB })
+    await scoreUnprocessedMatches(result.competitionId, c.env.DB)
     return c.json({ ok: true, synced: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido'
