@@ -24,6 +24,7 @@ function makeMatch(overrides: Partial<Match> = {}): Match {
     away_score: null,
     phase: 'group',
     round: '1',
+    round_label: 'Rodada 1',
     group_name: 'A',
     home_team_id: 'bra',
     home_team_name: 'Brasil',
