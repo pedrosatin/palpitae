@@ -287,16 +287,19 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     const duration = m.score.duration ?? null
     // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
     // vem preenchido em jogos REGULAR, onde significa o vencedor no tempo normal).
-    // Se o provider mandar winner como null (comum em empates com disputa de pênaltis concluída),
-    // derivamos o vencedor comparando o placar de fullTime (que inclui os gols de pênalti na API).
+    // Se o provider mandar winner como null (comum em empates com disputa de pênaltis
+    // concluída), derivamos pelo placar da DISPUTA (score.penalties) — fonte canônica
+    // e que nunca empata. NÃO derivar de fullTime: quando o provider manda winner null
+    // ele também devolve fullTime = placar do tempo normal (empate), o que faria a
+    // derivação retornar null e zerar o bônus de pênalti de quem acertou.
     const penaltyWinner = isShootout
       ? m.score.winner === 'HOME_TEAM'
         ? 'home'
         : m.score.winner === 'AWAY_TEAM'
           ? 'away'
-          : (m.score.fullTime.home ?? 0) > (m.score.fullTime.away ?? 0)
+          : (m.score.penalties?.home ?? 0) > (m.score.penalties?.away ?? 0)
             ? 'home'
-            : (m.score.fullTime.home ?? 0) < (m.score.fullTime.away ?? 0)
+            : (m.score.penalties?.home ?? 0) < (m.score.penalties?.away ?? 0)
               ? 'away'
               : null
       : null
