@@ -123,7 +123,11 @@
   gap: var(--space-3);
 }
 
-@media (min-width: 1024px) {
+/* Switch to two columns as soon as two cards fit side by side at their minimum
+   no-wrap width (505px each), so cards never disagree in height. Math:
+   2×505 (cards) + 12 (grid gap, --space-3) + 48 (page padding, 2×--space-6)
+   = 1070, +~10px scrollbar buffer. Below this, single column always fits. */
+@media (min-width: 1080px) {
   .matchList {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
