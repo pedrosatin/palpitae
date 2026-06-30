@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import { setCookie } from 'hono/cookie'
 import { describe, expect, it } from 'vitest'
 import type { AppContext } from '../types'
 import { signJwt } from './jwt'
