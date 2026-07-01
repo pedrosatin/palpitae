@@ -273,16 +273,18 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
 
     // Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
-    // SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data INCLUI os gols
-    // de pênalti (confirmado empiricamente), então somamos reg+ET. Nos demais
-    // (REGULAR, EXTRA_TIME) o fullTime já é o canônico.
+    // SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data às vezes INCLUI os
+    // gols de pênalti, e outras vezes não (além de regularTime e extraTime ocasionalmente
+    // virem nulos). Como a disputa de pênaltis só ocorre em empates, se o fullTime for
+    // diferente deduzimos que os pênaltis foram embutidos nele e os subtraímos.
     const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
-    const canonicalHome = isShootout
-      ? (m.score.regularTime?.home ?? 0) + (m.score.extraTime?.home ?? 0)
-      : (m.score.fullTime.home ?? null)
-    const canonicalAway = isShootout
-      ? (m.score.regularTime?.away ?? 0) + (m.score.extraTime?.away ?? 0)
-      : (m.score.fullTime.away ?? null)
+    let canonicalHome = m.score.fullTime.home ?? null
+    let canonicalAway = m.score.fullTime.away ?? null
+
+    if (isShootout && canonicalHome !== null && canonicalAway !== null && canonicalHome !== canonicalAway) {
+      canonicalHome -= (m.score.penalties?.home ?? 0)
+      canonicalAway -= (m.score.penalties?.away ?? 0)
+    }
 
     const duration = m.score.duration ?? null
     // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
