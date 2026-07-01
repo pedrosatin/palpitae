@@ -277,12 +277,18 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     // de pênalti (confirmado empiricamente), então somamos reg+ET. Nos demais
     // (REGULAR, EXTRA_TIME) o fullTime já é o canônico.
     const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
-    const canonicalHome = isShootout
-      ? (m.score.regularTime?.home ?? 0) + (m.score.extraTime?.home ?? 0)
-      : (m.score.fullTime.home ?? null)
-    const canonicalAway = isShootout
-      ? (m.score.regularTime?.away ?? 0) + (m.score.extraTime?.away ?? 0)
-      : (m.score.fullTime.away ?? null)
+    let canonicalHome = m.score.fullTime.home ?? null
+    let canonicalAway = m.score.fullTime.away ?? null
+
+    if (isShootout) {
+      if (m.score.regularTime?.home != null && m.score.regularTime?.away != null) {
+        canonicalHome = (m.score.regularTime.home ?? 0) + (m.score.extraTime?.home ?? 0)
+        canonicalAway = (m.score.regularTime.away ?? 0) + (m.score.extraTime?.away ?? 0)
+      } else if (m.score.fullTime.home != null && m.score.fullTime.away != null && m.score.penalties?.home != null && m.score.penalties?.away != null) {
+        canonicalHome = m.score.fullTime.home - (m.score.penalties.home ?? 0)
+        canonicalAway = m.score.fullTime.away - (m.score.penalties.away ?? 0)
+      }
+    }
 
     const duration = m.score.duration ?? null
     // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
