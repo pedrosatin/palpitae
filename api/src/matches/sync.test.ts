@@ -167,6 +167,27 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[PEN_AWAY]).toBe(4)
   })
 
+  it('PENALTY_SHOOTOUT without extraTime/regularTime: derives canonical from fullTime - penalties', async () => {
+    // Regression for the football-data fullTime bug: in a shootout, fullTime
+    // (4-3) carries the penalty goals; the canonical draw is reg+ET = 1-1.
+    mockFetch([
+      match(108, {
+        winner: 'HOME_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 4, away: 3 }, // Includes penalties
+        regularTime: undefined,
+        extraTime: undefined,
+        penalties: { home: 3, away: 2 },
+      }),
+    ])
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+
+    const row = captured.matches[0]
+    expect(row[HOME]).toBe(1) // 4 - 3
+    expect(row[AWAY]).toBe(1) // 3 - 2
+  })
+
   it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
     // Regression (Holanda x Marrocos em prod): o provider mandou winner=null e
     // fullTime = placar do tempo normal (empate). Derivar de fullTime devolvia null
