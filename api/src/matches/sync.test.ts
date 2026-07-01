@@ -145,7 +145,7 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[PEN_AWAY]).toBe(2)
   })
 
-  it('PENALTY_SHOOTOUT with ET goals: canonical sums regular + extra time', async () => {
+  it('PENALTY_SHOOTOUT with ET goals: canonical derives from fullTime (which includes penalties here)', async () => {
     mockFetch([
       match(102, {
         winner: 'AWAY_TEAM',
@@ -160,11 +160,42 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
 
     const row = captured.matches[0]
-    expect(row[HOME]).toBe(2) // 1 + 1
-    expect(row[AWAY]).toBe(2) // 1 + 1
+    expect(row[HOME]).toBe(2) // 5 - 3
+    expect(row[AWAY]).toBe(2) // 6 - 4
     expect(row[PEN_WINNER]).toBe('away')
     expect(row[PEN_HOME]).toBe(3)
     expect(row[PEN_AWAY]).toBe(4)
+  })
+
+  it('PENALTY_SHOOTOUT without regularTime/extraTime: canonical score derives from fullTime correctly', async () => {
+    mockFetch([
+      match(110, {
+        winner: 'HOME_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 5, away: 4 }, // Includes penalties (2-2 + 3-2 penalties)
+        regularTime: { home: null, away: null }, // Missing from upstream
+        extraTime: { home: null, away: null },   // Missing from upstream
+        penalties: { home: 3, away: 2 },
+      }),
+      match(111, {
+        winner: 'HOME_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 2, away: 2 }, // Does NOT include penalties
+        regularTime: { home: null, away: null },
+        extraTime: { home: null, away: null },
+        penalties: { home: 3, away: 2 },
+      }),
+    ])
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+
+    // Match 110: fullTime includes penalties
+    expect(captured.matches[0][HOME]).toBe(2) // 5 - 3
+    expect(captured.matches[0][AWAY]).toBe(2) // 4 - 2
+
+    // Match 111: fullTime does NOT include penalties
+    expect(captured.matches[1][HOME]).toBe(2) // Kept as 2
+    expect(captured.matches[1][AWAY]).toBe(2) // Kept as 2
   })
 
   it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
