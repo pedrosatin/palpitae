@@ -198,6 +198,30 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(captured.matches[1][AWAY]).toBe(2) // Kept as 2
   })
 
+  it('PENALTY_SHOOTOUT: regularTime wins over fullTime heuristic when fullTime is inconsistent (AUS -1 / EGI 1 bug)', async () => {
+    // Regression: football-data sent fullTime={home:1,away:2} for an actual 1-1 draw
+    // that went to penalties (e.g. AUS vs EGY). The old heuristic subtracted the
+    // penalty goals from fullTime and produced canonicalHome=-1. The fix: when
+    // regularTime is available it is the authoritative canonical score.
+    mockFetch([
+      match(112, {
+        winner: 'AWAY_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 1, away: 2 }, // inconsistent from provider
+        regularTime: { home: 1, away: 1 }, // authoritative: the actual draw
+        extraTime: { home: null, away: null }, // no extra time
+        penalties: { home: 2, away: 1 }, // shootout (does not affect canonical)
+      }),
+    ])
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+
+    const row = captured.matches[0]
+    expect(row[HOME]).toBe(1) // must be 1, not -1
+    expect(row[AWAY]).toBe(1) // must be 1, not  2
+    expect(row[PEN_WINNER]).toBe('away')
+  })
+
   it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
     // Regression (Holanda x Marrocos em prod): o provider mandou winner=null e
     // fullTime = placar do tempo normal (empate). Derivar de fullTime devolvia null
