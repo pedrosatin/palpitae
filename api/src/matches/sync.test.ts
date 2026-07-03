@@ -209,7 +209,7 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
         duration: 'PENALTY_SHOOTOUT',
         fullTime: { home: 1, away: 2 }, // inconsistent from provider
         regularTime: { home: 1, away: 1 }, // authoritative: the actual draw
-        extraTime: { home: null, away: null }, // no extra time
+        extraTime: { home: 0, away: 0 }, // no extra time
         penalties: { home: 2, away: 1 }, // shootout (does not affect canonical)
       }),
     ])

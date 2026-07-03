@@ -291,7 +291,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     if (isShootout) {
       const rtHome = m.score.regularTime?.home
       const rtAway = m.score.regularTime?.away
-      if (rtHome != null && rtAway != null) {
+      if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
         // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
         canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
         canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
