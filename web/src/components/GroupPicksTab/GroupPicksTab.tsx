@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { fetchCachedJson } from '../../lib/api-cache'
-import { applyDefaultRound } from '../../lib/rounds'
+import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
 import type { Match } from '../MatchCard'
 import PenaltyBadge from '../PenaltyBadge'
 import styles from './GroupPicksTab.module.css'
@@ -117,6 +117,8 @@ export default function GroupPicksTab({
   const selectedRound = roundKeys[safeIndex]
   const roundMatches = rounds.get(selectedRound) ?? []
 
+  const labelFor = (r: string) => rounds.get(r)?.[0]?.round_label ?? r
+
   function prev() {
     trackEvent('click_group_picks_rodada_anterior', { round: roundKeys[Math.max(0, safeIndex - 1)] })
     setRoundIndex((i) => Math.max(0, i - 1))
@@ -148,11 +150,26 @@ export default function GroupPicksTab({
             setRoundIndex(roundKeys.indexOf(e.target.value))
           }}
         >
-          {roundKeys.map((r) => (
-            <option key={r} value={r}>
-              Rodada {r}
-            </option>
-          ))}
+          {roundKeys.some((r) => !isGroupStageRound(r)) ? (
+            <>
+              {roundKeys.some(isGroupStageRound) && (
+                <optgroup label="Fase de grupos">
+                  {roundKeys.filter(isGroupStageRound).map((r) => (
+                    <option key={r} value={r}>{labelFor(r)}</option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Mata-mata">
+                {roundKeys.filter((r) => !isGroupStageRound(r)).map((r) => (
+                  <option key={r} value={r}>{labelFor(r)}</option>
+                ))}
+              </optgroup>
+            </>
+          ) : (
+            roundKeys.map((r) => (
+              <option key={r} value={r}>{labelFor(r)}</option>
+            ))
+          )}
         </select>
         <button
           className={styles.navBtn}
