@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
+import { roundLabel } from '../matches/rounds'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 
@@ -208,6 +209,12 @@ router.get('/user', requireAuth, async (c) => {
   const lastRound = (batchResults[2].results as { round?: string }[])[0]?.round
   const defaultRound: string | null = activeRound ?? lastRound ?? null
 
+  type RawPrediction = Record<string, unknown> & { round: string }
+  const predictionsWithLabel = (predictions as RawPrediction[]).map((p) => ({
+    ...p,
+    round_label: roundLabel(p.round),
+  }))
+
   logRequestPerf('GET /predictions/user', {
     status: 200,
     totalMs: Date.now() - startedAt,
@@ -216,7 +223,7 @@ router.get('/user', requireAuth, async (c) => {
     extra: { group_id: groupId, target_user_id: targetUserId },
   })
 
-  return c.json({ predictions, default_round: defaultRound })
+  return c.json({ predictions: predictionsWithLabel, default_round: defaultRound })
 })
 
 /**
