@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
-import { applyDefaultRound } from '../../lib/rounds'
+import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
 import Modal from '../Modal'
 import styles from './LeaderboardTab.module.css'
 
@@ -30,6 +30,7 @@ interface UserPrediction {
   home_score: number | null
   away_score: number | null
   round: string
+  round_label: string
   group_name: string | null
   home_team_name: string
   home_team_short_name: string
@@ -120,6 +121,8 @@ export default function LeaderboardTab({
   const modalRoundKeys = Array.from(modalByRound.keys())
   const safeModalIndex = Math.min(modalRoundIndex, Math.max(0, modalRoundKeys.length - 1))
   const selectedModalRound = modalRoundKeys[safeModalIndex]
+
+  const labelFor = (r: string) => modalByRound.get(r)?.[0]?.round_label ?? r
 
   function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPrediction[]][] {
     const result: [string | null, UserPrediction[]][] = []
@@ -243,11 +246,26 @@ export default function LeaderboardTab({
                     setModalRoundIndex(modalRoundKeys.indexOf(e.target.value))
                   }}
                 >
-                  {modalRoundKeys.map((r) => (
-                    <option key={r} value={r}>
-                      Rodada {r}
-                    </option>
-                  ))}
+                  {modalRoundKeys.some((r) => !isGroupStageRound(r)) ? (
+                    <>
+                      {modalRoundKeys.some(isGroupStageRound) && (
+                        <optgroup label="Fase de grupos">
+                          {modalRoundKeys.filter(isGroupStageRound).map((r) => (
+                            <option key={r} value={r}>{labelFor(r)}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="Mata-mata">
+                        {modalRoundKeys.filter((r) => !isGroupStageRound(r)).map((r) => (
+                          <option key={r} value={r}>{labelFor(r)}</option>
+                        ))}
+                      </optgroup>
+                    </>
+                  ) : (
+                    modalRoundKeys.map((r) => (
+                      <option key={r} value={r}>{labelFor(r)}</option>
+                    ))
+                  )}
                 </select>
                 <button
                   className={styles.modalNavBtn}
