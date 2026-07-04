@@ -275,15 +275,32 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     // Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
     // SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data às vezes INCLUI os
     // gols de pênalti, e outras vezes não (além de regularTime e extraTime ocasionalmente
-    // virem nulos). Como a disputa de pênaltis só ocorre em empates, se o fullTime for
-    // diferente deduzimos que os pênaltis foram embutidos nele e os subtraímos.
+    // virem nulos).
+    //
+    // Estratégia (prioridade decrescente):
+    // 1. Se regularTime está disponível (não-null): canonicalScore = regularTime + extraTime.
+    //    Esses campos NUNCA incluem gols de pênalti e são a fonte mais confiável.
+    // 2. Se regularTime é null (provider omitiu) e fullTime é diferente: subtrai os gols
+    //    de pênalti de fullTime. Essa heurística assume que o provider embutiu os pênaltis
+    //    em fullTime — o que só acontece quando os valores são desiguais.
+    // 3. fullTime igual: já é o placar do empate, não faz nada.
     const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
     let canonicalHome = m.score.fullTime.home ?? null
     let canonicalAway = m.score.fullTime.away ?? null
 
-    if (isShootout && canonicalHome !== null && canonicalAway !== null && canonicalHome !== canonicalAway) {
-      canonicalHome -= (m.score.penalties?.home ?? 0)
-      canonicalAway -= (m.score.penalties?.away ?? 0)
+    if (isShootout) {
+      const rtHome = m.score.regularTime?.home
+      const rtAway = m.score.regularTime?.away
+      if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
+        // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
+        canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
+        canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
+      } else if (canonicalHome !== null && canonicalAway !== null && canonicalHome !== canonicalAway) {
+        // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
+        canonicalHome -= (m.score.penalties?.home ?? 0)
+        canonicalAway -= (m.score.penalties?.away ?? 0)
+      }
+      // else: fullTime já é o placar do empate.
     }
 
     const duration = m.score.duration ?? null
