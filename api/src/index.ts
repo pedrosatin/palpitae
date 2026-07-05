@@ -9,6 +9,7 @@ import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
 import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
+import { metricsRouter } from './observability/metricsRouter'
 import { predictionsRouter } from './predictions/router'
 import type { AppContext, Env } from './types'
 
@@ -46,6 +47,7 @@ app.route('/groups', groupsRouter)
 app.route('/matches', matchesRouter)
 app.route('/predictions', predictionsRouter)
 app.route('/notifications', notificationsRouter)
+app.route('/metrics', metricsRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
