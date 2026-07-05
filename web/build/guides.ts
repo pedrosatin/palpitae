@@ -28,13 +28,13 @@ function loginHref(from: string): string {
   return `${LOGIN_PATH}?from=${from}`
 }
 
-export interface GuideSection {
+interface GuideSection {
   heading: string
   /** Paragraphs, rendered as <p>. Plain text — authored by us. */
   body: string[]
 }
 
-export interface Guide {
+interface Guide {
   /** URL slug; page is served at /guias/<slug>/. */
   slug: string
   /** Used for <title>, OG title and the <h1>. */
@@ -55,7 +55,7 @@ export interface Guide {
  * the body) so they keep ranking across seasons and tournaments. Add new guides
  * here and they flow into the HTML output and the sitemap automatically.
  */
-export const guides: Guide[] = [
+const guides: Guide[] = [
   {
     slug: 'o-que-e-bolao-de-futebol',
     title: 'O que é bolão de futebol e como funciona',
@@ -182,7 +182,7 @@ export const guides: Guide[] = [
 ]
 
 /** Public path for a guide (with trailing slash, as served). */
-export function guidePath(slug: string): string {
+function guidePath(slug: string): string {
   return `/guias/${slug}/`
 }
 
@@ -276,7 +276,7 @@ const breadcrumb = (path: string, name: string) => ({
 })
 
 /** Render one guide to a complete static HTML document. */
-export function renderGuide(g: Guide): string {
+function renderGuide(g: Guide): string {
   const path = guidePath(g.slug)
   const article = {
     '@context': 'https://schema.org',
@@ -336,7 +336,7 @@ ${head(path, g.title, g.description, [breadcrumb(path, g.title), article])}
 }
 
 /** Render the /guias/ index that lists every guide. */
-export function renderIndex(): string {
+function renderIndex(): string {
   const path = '/guias/'
   const jsonLd = [
     {
@@ -380,7 +380,7 @@ ${head(path, 'Guias de bolão de futebol', 'Guias e dicas para organizar e dispu
  * status) for any URL not matched by a static asset or a _redirects rule. It's
  * `noindex` so a crawler that lands on a stale link doesn't index an error page.
  */
-export function render404(): string {
+function render404(): string {
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
@@ -483,7 +483,7 @@ function gitLastModified(paths: string[], fallback: string): string {
 }
 
 /** All indexable public URLs, with lastmod, for the sitemap. */
-export function sitemapUrls(): { loc: string; lastmod: string; priority: string }[] {
+function sitemapUrls(): { loc: string; lastmod: string; priority: string }[] {
   const fallback = new Date().toISOString().slice(0, 10)
   return [
     {

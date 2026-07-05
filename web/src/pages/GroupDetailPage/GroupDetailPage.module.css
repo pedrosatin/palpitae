@@ -370,18 +370,6 @@
   min-height: 200px;
 }
 
-.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-  background-color: var(--color-surface);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
-}
-
 /* ─── Mobile ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 600px) {
