@@ -8,7 +8,7 @@
  * `GET /matches` (`router.ts`, campo `round_label`, consumido pelo front). Por isso
  * o mapa vive aqui, no back, e não duplicado no front.
  */
-export const KNOCKOUT_LABELS: Record<string, string> = {
+const KNOCKOUT_LABELS: Record<string, string> = {
   LAST_32: 'Rodada de 32',
   LAST_16: 'Oitavas de final',
   QUARTER_FINALS: 'Quartas de final',

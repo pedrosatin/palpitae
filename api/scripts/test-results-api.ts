@@ -4,6 +4,7 @@
  *
  * Lê FOOTBALL_API_KEY do arquivo .dev.vars na raiz de /api.
  */
+// fallow-ignore-file unused-file -- script de desenvolvimento, executado diretamente com tsx
 
 import { readFileSync } from 'fs'
 import { resolve } from 'path'
