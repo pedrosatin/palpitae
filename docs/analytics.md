@@ -60,3 +60,9 @@ Eventos da config de pontuação/visibilidade no grupo (CreateGroupModal + Match
 
 > Steppers de placar e a troca de palpite empate→decisivo (que limpa o pick de pênalti)
 > seguem **não** rastreados — só o clique intencional no vencedor do pênalti gera evento.
+
+Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_admin_metrics_periodo` | troca do período dos gráficos (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
