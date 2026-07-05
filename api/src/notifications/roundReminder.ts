@@ -324,15 +324,6 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * Appends UTM params to the CTA link so GA4 (which auto-captures utm_*) attributes
- * site visits originating from this e-mail. See docs/analytics.md.
- */
-function withEmailUtm(url: string): string {
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}utm_source=email&utm_medium=email&utm_campaign=round_reminder`
-}
-
-/**
  * Renders a team crest as an inline <img>. Returns '' when there's no logo.
  *
  * NOTE: many crests from football-data.org are SVG, and Gmail/Outlook do not
@@ -370,19 +361,21 @@ function buildEmailHtml(
       ? `<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">${matchRows}</table>`
       : ''
 
+  // Link de texto simples (não botão colorido): e-mail transacional que parece
+  // uma mensagem pessoal tem menos chance de cair na aba Promotions do Gmail que
+  // um bloco de CTA estilizado. Sem UTM pelo mesmo motivo (perde atribuição GA4).
   const ctaButtons =
     groups.length === 1
-      ? `<a href="${escapeHtml(withEmailUtm(`${appUrl}/grupos/${groups[0].id}`))}" style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">Fazer meus palpites</a>`
+      ? `<p style="margin-top: 8px;"><a href="${escapeHtml(`${appUrl}/grupos/${groups[0].id}`)}" style="color: #16a34a; font-weight: bold;">Fazer meus palpites &rarr;</a></p>`
       : groups
         .map(
           (g) =>
-            `<a href="${escapeHtml(withEmailUtm(`${appUrl}/grupos/${g.id}`))}" style="display: inline-block; background: #16a34a; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: bold; margin: 4px 4px 0 0;">${escapeHtml(g.name)}</a>`,
+            `<p style="margin: 4px 0;"><a href="${escapeHtml(`${appUrl}/grupos/${g.id}`)}" style="color: #16a34a; font-weight: bold;">${escapeHtml(g.name)} &rarr;</a></p>`,
         )
         .join('')
 
   const safeRound = escapeHtml(roundLabel(round))
   const safeCompetition = escapeHtml(competitionName)
-  const logoUrl = escapeHtml('https://palpitae.com.br/apple-touch-icon.png')
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -393,8 +386,7 @@ function buildEmailHtml(
 </head>
 <body style="margin: 0; padding: 0; background: #f3f4f6;">
   <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
-    <div style="text-align: center; padding: 16px 0 24px;">
-      <img src="${logoUrl}" alt="" width="48" height="48" style="border-radius: 10px; border: 0; display: block; margin: 0 auto 8px;">
+    <div style="padding: 8px 0 16px;">
       <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
     </div>
     <h2 style="margin-bottom: 4px;">Não esqueca! ${safeRound} começa hoje</h2>
@@ -438,11 +430,11 @@ function buildEmailText(
   if (matches.length > 0) lines.push('')
   lines.push('Não esquece de registrar seus palpites antes do primeiro jogo!')
   if (groups.length === 1) {
-    lines.push(`Fazer meus palpites: ${withEmailUtm(`${appUrl}/grupos/${groups[0].id}`)}`)
+    lines.push(`Fazer meus palpites: ${appUrl}/grupos/${groups[0].id}`)
   } else {
     lines.push('Fazer meus palpites:')
     for (const g of groups) {
-      lines.push(`  ${g.name}: ${withEmailUtm(`${appUrl}/grupos/${g.id}`)}`)
+      lines.push(`  ${g.name}: ${appUrl}/grupos/${g.id}`)
     }
   }
   lines.push('')
