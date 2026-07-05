@@ -38,11 +38,16 @@ function buildFakeDb() {
         },
         async first<T>(): Promise<T | null> {
           if (sql.includes('SELECT id FROM competitions')) return { id: 'comp-1' } as T
-          if (sql.includes('SELECT id FROM teams')) {
-            // bound = [String(extId), PROVIDER]
-            return { id: `team-${bound[0]}` } as T
-          }
           return null
+        },
+        async all<T>(): Promise<{ results: T[] }> {
+          if (sql.includes('SELECT external_id, id FROM teams')) {
+            // bound = [...extIds, PROVIDER]
+            const ids = bound.slice(0, bound.length - 1) as string[]
+            const results = ids.map(extId => ({ external_id: extId, id: `team-${extId}` }))
+            return { results } as { results: T[] }
+          }
+          return { results: [] }
         },
       }
       return stmt
