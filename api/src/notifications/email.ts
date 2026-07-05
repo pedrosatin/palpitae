@@ -5,7 +5,10 @@
  */
 
 const RESEND_API = 'https://api.resend.com/emails'
-const FROM = 'Palpitae <naoresponda@palpitae.com.br>'
+// Endereço respondível (não "noreply"): um From ao qual dá pra responder melhora
+// engajamento e reduz a chance do Gmail classificar como bulk/Promotions. Requer
+// que lembretes@ exista e roteie no Cloudflare Email Routing, senão respostas quicam.
+const FROM = 'Palpitae <lembretes@palpitae.com.br>'
 
 export type EmailMessage = {
   to: string

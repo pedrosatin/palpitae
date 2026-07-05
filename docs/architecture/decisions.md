@@ -283,7 +283,7 @@ Channels evaluated:
 Send a **transactional e-mail** one day before a round's first match, via **[Resend](https://resend.com)**.
 
 - **Sending domain:** `palpitae.com.br` (root domain). Verified in Resend via DNS records (MX, SPF, DKIM) hosted on Cloudflare; DKIM must be set to **DNS Only** (no orange-cloud proxy).
-- **Sender:** `naoresponda@palpitae.com.br`.
+- **Sender:** `lembretes@palpitae.com.br` — endereço respondível (não "noreply"), que melhora engajamento e evita sinais de bulk/Promotions no Gmail. Requer rota no Cloudflare Email Routing. Links **sem** parâmetros UTM e HTML enxuto (link de texto, sem botão/logo) pelo mesmo motivo — abriu-se mão da atribuição GA4 do e-mail em troca de inbox placement.
 - **Trigger:** a second **Cron Trigger** on the existing `palpitae-api` Worker, `"0 10 * * *"` (daily at 10:00 UTC / 07:00 BRT). Differentiated from the result poller (ADR-007) by `controller.cron` in the `scheduled` handler.
 - **Provider seam:** the Resend-specific HTTP call is isolated in `api/src/notifications/email.ts` (`sendEmail({ to, subject, html })`). The reminder logic knows nothing about Resend. Swapping providers means rewriting only that one file.
 

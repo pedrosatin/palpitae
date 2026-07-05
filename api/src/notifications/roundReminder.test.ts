@@ -377,9 +377,10 @@ describe('sendRoundReminders', () => {
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
     const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    // Logo <img> still present; no crest <img> since both logo_url are null.
+    // No <img> at all: header logo dropped for deliverability, and no crest <img>
+    // since both logo_url are null. Fewer images = less "Promotions" signal.
     const imgTags = [...html.matchAll(/<img[^>]+>/g)].map((m: RegExpMatchArray) => m[0])
-    expect(imgTags.every((t: string) => t.includes('apple-touch-icon'))).toBe(true)
+    expect(imgTags.length).toBe(0)
     expect(html).toContain('Brasil')
   })
 
@@ -392,22 +393,19 @@ describe('sendRoundReminders', () => {
 
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
     expect(body.html).toContain('http://localhost:5173/grupos/')
-    expect(body.html).toContain('utm_source=email')
     expect(body.text).toContain('http://localhost:5173/grupos/')
-    expect(body.text).toContain('utm_source=email')
   })
 
-  it('adds email UTM params to the CTA so GA4 attributes the visit', async () => {
+  it('does not append UTM params to links (they flag the mail as Promotions)', async () => {
     const db = buildFakeDb([
       { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
     ])
 
     await sendRoundReminders(db as unknown as D1Database, 'key', undefined, 'https://palpitae.com.br')
 
-    const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    expect(html).toContain('utm_source=email')
-    expect(html).toContain('utm_medium=email')
-    expect(html).toContain('utm_campaign=round_reminder')
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
+    expect(body.html).not.toContain('utm_')
+    expect(body.text).not.toContain('utm_')
   })
 
   it('fires on the first match day of the round only (min-date guard)', async () => {
