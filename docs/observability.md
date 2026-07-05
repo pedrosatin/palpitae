@@ -148,6 +148,35 @@ logEvent(c.env.AE, '<event_type>', {
 - ❌ Ignorar: navegação/cliques — isso é o GA no cliente (`trackEvent`); não duplicar.
 - ❌ Ignorar: ações mecânicas de alto volume sem valor analítico.
 
+## Dashboard de métricas
+
+**Escolhido: o dashboard nativo** — página `/admin/metricas` no web app consome
+`GET /metrics/overview` e `GET /metrics/archive` da API
+(`api/src/observability/metricsRouter.ts`). A API é proxy da SQL API do Analytics
+Engine — o token de conta (`AE_SQL_TOKEN`) fica em secret do Worker, nunca no
+cliente. Acesso restrito ao e-mail em `ADMIN_EMAIL` (secret; sem ele, `/metrics`
+responde 403 pra todo mundo — fechado por padrão). Gráficos em SVG puro (sem lib
+de chart no bundle). Também audita o cold path: lista os NDJSON no R2 (dia
+faltando = export falhou).
+
+O que o dashboard mostra: KPIs (usuários palpitando, palpites — via
+`SUM(double1 * _sample_interval)` —, grupos criados, entradas por grupo criado,
+logins, cache hit rate), eventos/dia empilhado por tipo, saúde do poller +
+chamadas/dia à API Football (quota), concentração de palpites (fatia do top
+1/top 5 palpiteiros — só distribuição, nunca o hash), falhas de login por
+motivo, últimos erros, e integridade do cold path: os últimos 14 dias no R2 com
+dia sem arquivo marcado como **faltando**. Há ainda um vigia de sampling:
+se `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os
+números viraram estimativa. Backlog de ideias:
+[`docs/dashboard-native.md`](dashboard-native.md).
+
+Alternativa avaliada e **não adotada**: Grafana Cloud (Infinity → SQL API).
+Guia mantido em [`docs/dashboard-grafana.md`](dashboard-grafana.md) caso um dia
+precisemos de alertas (o único diferencial real). Contras: não enxerga R2 e
+exige token de conta guardado num serviço externo.
+
+Os endpoints `/metrics` são leitura — **sem** `logEvent` (regra de instrumentação).
+
 ## LGPD / privacidade
 
 Log server-side de dado operacional legítimo não exige banner de consentimento (diferente do
@@ -165,6 +194,8 @@ reversível por dicionário.
 
 - `api/src/observability/events.ts` — `logEvent`, `EventType`, `hashUserId`.
 - `api/src/observability/export.ts` — `exportEventsToR2` / `dayBounds` (cold path).
+- `api/src/observability/metricsRouter.ts` — endpoints `/metrics/*` do dashboard admin.
+- `web/src/pages/AdminMetricsPage/` — página `/admin/metricas` (sem link de navegação).
 - `api/src/observability/index.ts` — barrel (re-exporta `events` + `logRequestPerf`).
 - `api/wrangler.toml` — `[observability]`, binding `AE` (dataset `palpitae_events`), binding
   R2 `EVENTS`, e os dois crons (poller a cada 30 min + export diário `5 0 * * *`).

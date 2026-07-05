@@ -4,6 +4,9 @@ dist/
 .env.local
 \*.log
 
+# graphify roda na raiz — saída acidental dentro de api/ não entra no repo
+api/graphify-out/
+
 # wrangler files
 .wrangler
 .dev.vars*
