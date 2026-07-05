@@ -14,6 +14,9 @@ import LoginPage from './pages/LoginPage'
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const GroupDetailPage = lazy(() => import('./pages/GroupDetailPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+// Dashboard admin de métricas server-side — sem link de navegação (URL direta);
+// a API restringe ao ADMIN_EMAIL, aqui é só rota.
+const AdminMetricsPage = lazy(() => import('./pages/AdminMetricsPage'))
 
 /**
  * Represents an authenticated user's basic profile.
@@ -92,6 +95,7 @@ export default function App() {
           path="/configuracoes"
           element={<SettingsPage user={user!} onLogout={handleLogout} />}
         />
+        <Route path="/admin/metricas" element={<AdminMetricsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

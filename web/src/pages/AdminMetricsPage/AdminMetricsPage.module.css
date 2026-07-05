@@ -1,0 +1,228 @@
+/**
+ * AdminMetricsPage styles
+ *
+ * Admin-only server-side metrics dashboard (Analytics Engine + R2).
+ * Follows the Palpitae design system (CSS custom properties).
+ */
+
+.root {
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  padding: var(--space-8) var(--space-6);
+}
+
+.content {
+  max-width: 840px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.title {
+  margin: 0;
+}
+
+.periods {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.period,
+.periodActive {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  transition: var(--transition-fast);
+}
+
+.periodActive {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.section {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+
+.sectionTitle {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-4);
+}
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.kpi {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.kpiValue {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiLabel {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.kpiHint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.bar {
+  opacity: 0.85;
+}
+
+.bar:hover {
+  opacity: 1;
+}
+
+.barPrimary {
+  fill: var(--color-primary);
+  opacity: 0.85;
+}
+
+.barPrimary:hover {
+  opacity: 1;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.subTitle {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  margin: var(--space-6) 0 var(--space-3);
+  font-weight: var(--font-weight-medium);
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.detail {
+  word-break: break-word;
+  color: var(--color-text-secondary);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table td,
+.table th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.table th {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.statusOk {
+  color: var(--color-primary);
+}
+
+.statusError {
+  color: #ff4d4f;
+}
+
+.hint {
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.errorMessage {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid #ff4d4f;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  color: #ff4d4f;
+  margin: 0;
+}
+
+.samplingWarning {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid #ffd43b;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  color: #ffd43b;
+  font-size: var(--font-size-sm);
+  margin: 0;
+}

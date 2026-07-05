@@ -49,4 +49,5 @@ FRONTEND_URL = "https://palpitae.com.br"
 #   wrangler secret put CF_ACCOUNT_ID    # cold path: conta da SQL API do Analytics Engine
 #   wrangler secret put AE_SQL_TOKEN     # cold path: token Account Analytics:Read
 #   wrangler secret put RESEND_API_KEY   # round reminder: API key do Resend
+#   wrangler secret put ADMIN_EMAIL      # dashboard /metrics: e-mail do admin (403 sem ele)
 # Local overrides go in .dev.vars (already has localhost values)
