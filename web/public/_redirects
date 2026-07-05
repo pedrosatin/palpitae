@@ -8,6 +8,8 @@
 # these rules, so they always win.
 /entrar / 200
 /grupos/* / 200
+/configuracoes / 200
+/admin/metricas / 200
 
 # Unmatched paths: Cloudflare Pages automatically serves /404.html with a
 # real 404 status when the file exists in the build output — no rule needed.
