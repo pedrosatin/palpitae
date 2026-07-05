@@ -8,6 +8,9 @@ export type Env = {
   EVENTS?: R2Bucket // bucket R2 onde o NDJSON diário é gravado
   CF_ACCOUNT_ID?: string // conta Cloudflare (URL da SQL API do Analytics Engine)
   AE_SQL_TOKEN?: string // token com permissão Account Analytics:Read
+  // Dashboard de métricas (/metrics) — e-mail do único usuário autorizado.
+  // Opcional: sem ele, /metrics responde 403 pra todo mundo (fechado por padrão).
+  ADMIN_EMAIL?: string
   JWT_SECRET: string
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
