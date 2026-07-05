@@ -251,12 +251,24 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   // Resolve internal team IDs
   const teamIds = new Map<number, string>()
-  for (const extId of teamMap.keys()) {
-    const row = await db
-      .prepare(`SELECT id FROM teams WHERE external_id = ? AND provider = ?`)
-      .bind(String(extId), PROVIDER)
-      .first<{ id: string }>()
-    if (row) teamIds.set(extId, row.id)
+  const extIds = Array.from(teamMap.keys())
+  const chunkSize = 99 // Leave room for PROVIDER parameter
+
+  for (let i = 0; i < extIds.length; i += chunkSize) {
+    const chunk = extIds.slice(i, i + chunkSize)
+    if (chunk.length === 0) continue
+
+    const placeholders = chunk.map(() => '?').join(', ')
+    const { results } = await db
+      .prepare(
+        `SELECT external_id, id FROM teams WHERE external_id IN (${placeholders}) AND provider = ?`,
+      )
+      .bind(...chunk.map(String), PROVIDER)
+      .all<{ external_id: string; id: string }>()
+
+    for (const row of results) {
+      teamIds.set(Number(row.external_id), row.id)
+    }
   }
 
   // Upsert matches
