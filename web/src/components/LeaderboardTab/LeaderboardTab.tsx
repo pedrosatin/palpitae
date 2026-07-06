@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
+import Button from '../Button'
+import Select from '../Select'
 import Modal from '../Modal'
 import styles from './LeaderboardTab.module.css'
+import shared from '../tab-shared.module.css'
 
 interface LeaderboardTabProps {
   groupId: string
@@ -226,9 +229,10 @@ export default function LeaderboardTab({
           )}
           {!modalLoading && !modalError && modalPredictions.length > 0 && (
             <>
-              <div className={styles.modalRoundNav}>
-                <button
-                  className={styles.modalNavBtn}
+              <div className={shared.roundNav} style={{ marginBottom: 'var(--space-4)' }}>
+                <Button
+                  variant="outline"
+                  className={shared.navBtn}
                   onClick={() => {
                     trackEvent('click_leaderboard_rodada_anterior', { round: modalRoundKeys[Math.max(0, safeModalIndex - 1)] })
                     setModalRoundIndex((i) => Math.max(0, i - 1))
@@ -237,9 +241,9 @@ export default function LeaderboardTab({
                   aria-label="Rodada anterior"
                 >
                   ‹ Anterior
-                </button>
-                <select
-                  className={styles.modalRoundSelect}
+                </Button>
+                <Select
+                  className={shared.roundSelect}
                   value={selectedModalRound}
                   onChange={(e) => {
                     trackEvent('change_leaderboard_rodada', { round: e.target.value })
@@ -266,9 +270,10 @@ export default function LeaderboardTab({
                       <option key={r} value={r}>{labelFor(r)}</option>
                     ))
                   )}
-                </select>
-                <button
-                  className={styles.modalNavBtn}
+                </Select>
+                <Button
+                  variant="outline"
+                  className={shared.navBtn}
                   onClick={() => {
                     trackEvent('click_leaderboard_proxima_rodada', { round: modalRoundKeys[Math.min(modalRoundKeys.length - 1, safeModalIndex + 1)] })
                     setModalRoundIndex((i) => Math.min(modalRoundKeys.length - 1, i + 1))
@@ -277,7 +282,7 @@ export default function LeaderboardTab({
                   aria-label="Próxima rodada"
                 >
                   Próxima ›
-                </button>
+                </Button>
               </div>
               <div className={styles.predGroups}>
               {groupedByGroupName(modalByRound.get(selectedModalRound) ?? []).map(([groupName, matches]) => (
