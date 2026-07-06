@@ -4,6 +4,7 @@ import { trackEvent } from '../../analytics/ga'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './JoinGroupModal.module.css'
+import shared from '../modal-shared.module.css'
 
 interface JoinedGroup {
   id: string
@@ -88,10 +89,10 @@ export default function JoinGroupModal({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Entrar em grupo">
       {joined ? (
-        <div className={styles.success}>
-          <div className={styles.successIcon}>🏆</div>
-          <h3 className={styles.successTitle}>Você entrou no grupo!</h3>
-          <p className={styles.successName}>{joined.name}</p>
+        <div className={shared.success}>
+          <div className={shared.successIcon}>🏆</div>
+          <h3 className={shared.successTitle}>Você entrou no grupo!</h3>
+          <p className={shared.successName}>{joined.name}</p>
           <Button
             variant="primary"
             className={styles.doneBtn}
@@ -101,21 +102,21 @@ export default function JoinGroupModal({
           </Button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className={styles.form}>
+        <form onSubmit={handleSubmit} className={shared.form}>
           <p className={styles.hint}>
             Cole o código de convite ou o link compartilhado pelo administrador
             do grupo.
           </p>
 
-          {error && <p className={styles.error}>{error}</p>}
+          {error && <p className={shared.error}>{error}</p>}
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="invite-code">
+          <div className={shared.field}>
+            <label className={shared.label} htmlFor="invite-code">
               Código ou link de convite
             </label>
             <input
               id="invite-code"
-              className={styles.input}
+              className={`${shared.input} ${styles.inputCode}`}
               type="text"
               placeholder="Ex: ABCD-1234"
               value={code}
@@ -129,7 +130,7 @@ export default function JoinGroupModal({
             />
           </div>
 
-          <div className={styles.actions}>
+          <div className={shared.actions}>
             <Button
               type="button"
               variant="secondary"

@@ -5,6 +5,7 @@ import { fetchCachedJson } from '../../lib/api-cache'
 import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
 import type { Match } from '../MatchCard'
 import PenaltyBadge from '../PenaltyBadge'
+import RoundHeader from '../RoundHeader/RoundHeader'
 import styles from './GroupPicksTab.module.css'
 
 interface GroupPicksTabProps {
@@ -131,55 +132,19 @@ export default function GroupPicksTab({
 
   return (
     <div className={styles.root}>
-      <div className={styles.roundNav}>
-        <button
-          className={styles.navBtn}
-          onClick={prev}
-          disabled={safeIndex === 0}
-          aria-label="Rodada anterior"
-        >
-          ‹ Anterior
-        </button>
-        <select
-          id="picks-round-select"
-          name="picks-round-select"
-          className={styles.roundSelect}
-          value={selectedRound}
-          onChange={(e) => {
-            trackEvent('change_group_picks_rodada', { round: e.target.value })
-            setRoundIndex(roundKeys.indexOf(e.target.value))
-          }}
-        >
-          {roundKeys.some((r) => !isGroupStageRound(r)) ? (
-            <>
-              {roundKeys.some(isGroupStageRound) && (
-                <optgroup label="Fase de grupos">
-                  {roundKeys.filter(isGroupStageRound).map((r) => (
-                    <option key={r} value={r}>{labelFor(r)}</option>
-                  ))}
-                </optgroup>
-              )}
-              <optgroup label="Mata-mata">
-                {roundKeys.filter((r) => !isGroupStageRound(r)).map((r) => (
-                  <option key={r} value={r}>{labelFor(r)}</option>
-                ))}
-              </optgroup>
-            </>
-          ) : (
-            roundKeys.map((r) => (
-              <option key={r} value={r}>{labelFor(r)}</option>
-            ))
-          )}
-        </select>
-        <button
-          className={styles.navBtn}
-          onClick={next}
-          disabled={safeIndex === roundKeys.length - 1}
-          aria-label="Próxima rodada"
-        >
-          Próxima ›
-        </button>
-      </div>
+      <RoundHeader
+        id="picks-round-select"
+        roundKeys={roundKeys}
+        safeIndex={safeIndex}
+        selectedRound={selectedRound}
+        labelFor={labelFor}
+        onPrev={prev}
+        onNext={next}
+        onSelect={(round) => {
+          trackEvent('change_group_picks_rodada', { round })
+          setRoundIndex(roundKeys.indexOf(round))
+        }}
+      />
 
       <div className={styles.matchList}>
         {roundMatches.map((match) => {

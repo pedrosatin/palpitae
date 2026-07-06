@@ -86,37 +86,11 @@ type RoundGroup = {
 }
 
 /**
- * Sends an e-mail reminder to every group member whose competition has a round
- * starting TODAY AND who has not predicted any of that round's matches yet.
- * Designed to run once a day (07:00 BRT) from a daily Cron Trigger.
- *
- * Only fires on the round's FIRST match day: the WHERE clause requires today
- * to equal the earliest scheduled match date of that (competition, round). This
- * prevents re-notifying mid-round when a round spans several days. Combined with
- * the once-a-day cron, no per-send dedupe table is needed.
- *
- * start_time is stored as ISO 8601 with T/Z (e.g. "2026-06-16T22:00:00Z"), which
- * SQLite's date() parses correctly. Date math shifts by '-3 hours' to align day
- * boundaries with BRT (UTC-3, no DST since 2019) — without this, a match at
- * 21:00–23:59 BRT lands on the following UTC day, causing the cron to miss it.
+ * Fetches all (competition, round, user, group) rows that need reminders today,
+ * groups them by competition+round, and attaches match info for each round.
+ * Returns an empty map when no round starts today.
  */
-export async function sendRoundReminders(
-  db: D1Database,
-  resendApiKey: string,
-  ae?: AnalyticsEngineDataset,
-  appUrl: string = APP_URL,
-  unsub?: UnsubConfig,
-): Promise<void> {
-  const startedAt = Date.now()
-
-  // Fail loud, not silent: with no key every send would 401 and be counted as a
-  // dropped reminder. Skip the run and surface the misconfiguration instead.
-  if (!resendApiKey.trim()) {
-    console.error('[roundReminder] RESEND_API_KEY ausente — nenhum lembrete enviado.')
-    logEvent(ae, 'cron_round_reminder_misconfig', { blobs: ['no_api_key'] })
-    return
-  }
-
+async function buildRecipientGroups(db: D1Database): Promise<Map<string, RoundGroup>> {
   // Query 1: which users need to be notified?
   //  - the round's first match is today (don't re-notify mid-round);
   //  - the user has no prediction yet for any match of that round in that group
@@ -157,16 +131,12 @@ export async function sendRoundReminders(
     )
     .all<ReminderRow>()
 
-  if (userRows.results.length === 0) {
-    console.info('[roundReminder] Nenhuma rodada começa hoje.')
-    logEvent(ae, 'cron_round_reminder', { doubles: [0, 0, 0] })
-    return
-  }
+  const grouped = new Map<string, RoundGroup>()
+  if (userRows.results.length === 0) return grouped
 
   // Group by competition + round. Keyed by user_id (not email): two accounts that
   // happen to share an email are distinct users with distinct unsubscribe tokens.
   // Map lookup is O(1) vs the O(n) array scan it replaces.
-  const grouped = new Map<string, RoundGroup>()
   for (const row of userRows.results) {
     const key = `${row.competition_id}::${row.round}`
     const entry = grouped.get(key)
@@ -236,11 +206,24 @@ export async function sendRoundReminders(
     }
   }
 
-  // Guard an empty/undefined apiBaseUrl: `.replace` on undefined would throw and
-  // abort the whole batch inside waitUntil. Without a base URL we simply render
-  // no unsubscribe link (the `unsub && apiBaseUrl` check below).
-  const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
+  return grouped
+}
 
+type SendResult = { sent: number; failed: number }
+
+/**
+ * Loops over every recipient in a round group and sends one e-mail each.
+ * A single send failure is isolated — the rest of the batch still goes out.
+ * Returns total sent/failed counts for the caller to aggregate and log.
+ */
+async function dispatchBatch(
+  grouped: Map<string, RoundGroup>,
+  resendApiKey: string,
+  appUrl: string,
+  apiBaseUrl: string | undefined,
+  unsub: UnsubConfig | undefined,
+  ae: AnalyticsEngineDataset | undefined,
+): Promise<SendResult> {
   let sent = 0
   let failed = 0
   for (const { competitionName, round, recipientMap, matches } of grouped.values()) {
@@ -281,6 +264,55 @@ export async function sendRoundReminders(
       }
     }
   }
+  return { sent, failed }
+}
+
+/**
+ * Sends an e-mail reminder to every group member whose competition has a round
+ * starting TODAY AND who has not predicted any of that round's matches yet.
+ * Designed to run once a day (07:00 BRT) from a daily Cron Trigger.
+ *
+ * Only fires on the round's FIRST match day: the WHERE clause requires today
+ * to equal the earliest scheduled match date of that (competition, round). This
+ * prevents re-notifying mid-round when a round spans several days. Combined with
+ * the once-a-day cron, no per-send dedupe table is needed.
+ *
+ * start_time is stored as ISO 8601 with T/Z (e.g. "2026-06-16T22:00:00Z"), which
+ * SQLite's date() parses correctly. Date math shifts by '-3 hours' to align day
+ * boundaries with BRT (UTC-3, no DST since 2019) — without this, a match at
+ * 21:00–23:59 BRT lands on the following UTC day, causing the cron to miss it.
+ */
+export async function sendRoundReminders(
+  db: D1Database,
+  resendApiKey: string,
+  ae?: AnalyticsEngineDataset,
+  appUrl: string = APP_URL,
+  unsub?: UnsubConfig,
+): Promise<void> {
+  const startedAt = Date.now()
+
+  // Fail loud, not silent: with no key every send would 401 and be counted as a
+  // dropped reminder. Skip the run and surface the misconfiguration instead.
+  if (!resendApiKey.trim()) {
+    console.error('[roundReminder] RESEND_API_KEY ausente — nenhum lembrete enviado.')
+    logEvent(ae, 'cron_round_reminder_misconfig', { blobs: ['no_api_key'] })
+    return
+  }
+
+  const grouped = await buildRecipientGroups(db)
+
+  if (grouped.size === 0) {
+    console.info('[roundReminder] Nenhuma rodada começa hoje.')
+    logEvent(ae, 'cron_round_reminder', { doubles: [0, 0, 0] })
+    return
+  }
+
+  // Guard an empty/undefined apiBaseUrl: `.replace` on undefined would throw and
+  // abort the whole batch inside waitUntil. Without a base URL we simply render
+  // no unsubscribe link (the `unsub && apiBaseUrl` check below).
+  const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
+
+  const { sent, failed } = await dispatchBatch(grouped, resendApiKey, appUrl, apiBaseUrl, unsub, ae)
 
   logEvent(ae, 'cron_round_reminder', { doubles: [grouped.size, sent, failed] })
 
