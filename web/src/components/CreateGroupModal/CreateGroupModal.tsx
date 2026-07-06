@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import Button from '../Button'
+import Select from '../Select'
 import InfoHint from '../InfoHint/InfoHint'
 import Modal from '../Modal'
 import styles from './CreateGroupModal.module.css'
+import shared from '../modal-shared.module.css'
 
 interface Competition {
   id: string
@@ -54,6 +56,157 @@ const PRESET_LABELS: Record<ScoringPreset, string> = {
   exact_only: 'Só placar exato',
   winner_only: 'Só vencedor',
   custom: 'Personalizado',
+}
+
+function ScoringRulesField({
+  scoringPreset,
+  handlePreset,
+  pointsExact,
+  setPointsExact,
+  pointsWinner,
+  setPointsWinner,
+  showPenaltyField,
+  pointsPenalty,
+  setPointsPenalty,
+}: {
+  scoringPreset: ScoringPreset
+  handlePreset: (preset: ScoringPreset) => void
+  pointsExact: number
+  setPointsExact: (v: number) => void
+  pointsWinner: number
+  setPointsWinner: (v: number) => void
+  showPenaltyField: boolean
+  pointsPenalty: number
+  setPointsPenalty: (v: number) => void
+}) {
+  return (
+    <div className={shared.field}>
+      <span className={shared.label}>Pontos por palpite</span>
+      <div className={styles.presetGrid}>
+        {(
+          ['classic', 'exact_only', 'winner_only', 'custom'] as ScoringPreset[]
+        ).map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            className={`${styles.presetBtn} ${scoringPreset === preset ? styles.presetBtnActive : ''}`}
+            onClick={() => handlePreset(preset)}
+            aria-pressed={scoringPreset === preset}
+          >
+            {PRESET_LABELS[preset]}
+          </button>
+        ))}
+      </div>
+      <div className={styles.pointsRow}>
+        <div className={styles.pointsField}>
+          <InfoHint
+            label="Placar exato"
+            labelSide="left"
+            htmlFor="points-exact"
+            text={SCORING_HELP_TEXT.exact}
+            onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'exact' })}
+          />
+          <input
+            id="points-exact"
+            className={styles.pointsInput}
+            type="number"
+            min={0}
+            max={10}
+            value={pointsExact}
+            disabled={scoringPreset !== 'custom'}
+            onChange={(e) =>
+              setPointsExact(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+            }
+          />
+        </div>
+        <div className={styles.pointsField}>
+          <InfoHint
+            label="Vencedor"
+            labelSide="left"
+            htmlFor="points-winner"
+            text={SCORING_HELP_TEXT.winner}
+            onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'winner' })}
+          />
+          <input
+            id="points-winner"
+            className={styles.pointsInput}
+            type="number"
+            min={0}
+            max={10}
+            value={pointsWinner}
+            disabled={scoringPreset !== 'custom'}
+            onChange={(e) =>
+              setPointsWinner(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+            }
+          />
+        </div>
+      </div>
+      {showPenaltyField && (
+        <div className={styles.pointsRow}>
+          <div className={styles.pointsField}>
+            <label className={styles.pointsLabel} htmlFor="points-penalty">
+              Bônus pênalti
+            </label>
+            <input
+              id="points-penalty"
+              className={styles.pointsInput}
+              type="number"
+              min={0}
+              max={10}
+              value={pointsPenalty}
+              disabled={scoringPreset !== 'custom'}
+              onChange={(e) =>
+                setPointsPenalty(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+              }
+            />
+          </div>
+          <p className={styles.penaltyHint}>
+            Pontos extras por acertar quem vence nos pênaltis num palpite de
+            empate. 0 desliga.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VisibilityField({
+  predictionsVisibility,
+  handleVisibility,
+}: {
+  predictionsVisibility: 'hidden' | 'public'
+  handleVisibility: (v: 'hidden' | 'public') => void
+}) {
+  return (
+    <div className={shared.field}>
+      <span className={shared.label}>Visibilidade dos palpites</span>
+      <div className={styles.visibilityGroup}>
+        <button
+          type="button"
+          className={`${styles.visibilityOption} ${predictionsVisibility === 'hidden' ? styles.visibilityOptionActive : ''}`}
+          onClick={() => handleVisibility('hidden')}
+          aria-pressed={predictionsVisibility === 'hidden'}
+        >
+          <span className={styles.visibilityTitle}>Oculto até palpitar</span>
+          <span className={styles.visibilityDesc}>
+            Outros palpites só aparecem depois que você palpitar ou o jogo
+            começar
+          </span>
+        </button>
+        <button
+          type="button"
+          className={`${styles.visibilityOption} ${predictionsVisibility === 'public' ? styles.visibilityOptionActive : ''}`}
+          onClick={() => handleVisibility('public')}
+          aria-pressed={predictionsVisibility === 'public'}
+        >
+          <span className={styles.visibilityTitle}>Sempre visível</span>
+          <span className={styles.visibilityDesc}>
+            Todos veem os palpites em tempo real
+          </span>
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function CreateGroupModal({
@@ -210,34 +363,36 @@ export default function CreateGroupModal({
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Criar grupo">
       {created ? (
-        <div className={styles.success}>
-          <div className={styles.successIcon}>🎉</div>
-          <h3 className={styles.successTitle}>Grupo criado!</h3>
-          <p className={styles.successName}>{created.name}</p>
+        <div className={shared.success}>
+          <div className={shared.successIcon}>🎉</div>
+          <h3 className={shared.successTitle}>Grupo criado!</h3>
+          <p className={shared.successName}>{created.name}</p>
           <p className={styles.inviteLabel}>
             Compartilhe o código com seus amigos:
           </p>
 
           <div className={styles.codeBox}>
             <span className={styles.code}>{created.invite_code}</span>
-            <button
-              className={styles.copyBtn}
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => handleCopyCode(created.invite_code)}
             >
               {copied ? 'Copiado!' : 'Copiar'}
-            </button>
+            </Button>
           </div>
 
           <div className={styles.linkRow}>
-            <span className={styles.linkText}>
+            <span className={shared.linkText}>
               {getShareLink(created.invite_code)}
             </span>
-            <button
-              className={styles.copyBtn}
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => handleCopyLink(created.invite_code)}
             >
               {copied ? 'Copiado!' : 'Copiar link'}
-            </button>
+            </Button>
           </div>
 
           <Button
@@ -249,16 +404,16 @@ export default function CreateGroupModal({
           </Button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className={styles.form}>
-          {error && <p className={styles.error}>{error}</p>}
+        <form onSubmit={handleSubmit} className={shared.form}>
+          {error && <p className={shared.error}>{error}</p>}
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="group-name">
+          <div className={shared.field}>
+            <label className={shared.label} htmlFor="group-name">
               Nome do grupo
             </label>
             <input
               id="group-name"
-              className={styles.input}
+              className={shared.input}
               type="text"
               placeholder="Ex: Os Craques do Bairro"
               value={name}
@@ -269,8 +424,8 @@ export default function CreateGroupModal({
             />
           </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="group-competition">
+          <div className={shared.field}>
+            <label className={shared.label} htmlFor="group-competition">
               Competição
             </label>
             {loadingCompetitions ? (
@@ -280,9 +435,8 @@ export default function CreateGroupModal({
                 Nenhuma competição disponível no momento.
               </p>
             ) : (
-              <select
+              <Select
                 id="group-competition"
-                className={styles.select}
                 value={competitionId}
                 onChange={(e) => setCompetitionId(e.target.value)}
                 required
@@ -293,128 +447,28 @@ export default function CreateGroupModal({
                     {c.season ? ` ${c.season}` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </div>
 
-          <div className={styles.field}>
-            <span className={styles.label}>Regras de pontuação</span>
-            <div className={styles.presetGrid}>
-              {(
-                ['classic', 'exact_only', 'winner_only', 'custom'] as ScoringPreset[]
-              ).map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  className={`${styles.presetBtn} ${scoringPreset === preset ? styles.presetBtnActive : ''}`}
-                  onClick={() => handlePreset(preset)}
-                  aria-pressed={scoringPreset === preset}
-                >
-                  {PRESET_LABELS[preset]}
-                </button>
-              ))}
-            </div>
-            <div className={styles.pointsRow}>
-              <div className={styles.pointsField}>
-                <InfoHint
-                  label="Placar exato"
-                  labelSide="left"
-                  htmlFor="points-exact"
-                  text={SCORING_HELP_TEXT.exact}
-                  onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'exact' })}
-                />
-                <input
-                  id="points-exact"
-                  className={styles.pointsInput}
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={pointsExact}
-                  disabled={scoringPreset !== 'custom'}
-                  onChange={(e) =>
-                    setPointsExact(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
-                  }
-                />
-              </div>
-              <div className={styles.pointsField}>
-                <InfoHint
-                  label="Vencedor"
-                  labelSide="left"
-                  htmlFor="points-winner"
-                  text={SCORING_HELP_TEXT.winner}
-                  onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'winner' })}
-                />
-                <input
-                  id="points-winner"
-                  className={styles.pointsInput}
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={pointsWinner}
-                  disabled={scoringPreset !== 'custom'}
-                  onChange={(e) =>
-                    setPointsWinner(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
-                  }
-                />
-              </div>
-            </div>
-            {showPenaltyField && (
-              <div className={styles.pointsRow}>
-                <div className={styles.pointsField}>
-                  <label className={styles.pointsLabel} htmlFor="points-penalty">
-                    Bônus pênalti
-                  </label>
-                  <input
-                    id="points-penalty"
-                    className={styles.pointsInput}
-                    type="number"
-                    min={0}
-                    max={10}
-                    value={pointsPenalty}
-                    disabled={scoringPreset !== 'custom'}
-                    onChange={(e) =>
-                      setPointsPenalty(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
-                    }
-                  />
-                </div>
-                <p className={styles.penaltyHint}>
-                  Pontos extras por acertar quem vence nos pênaltis num palpite de
-                  empate. 0 desliga.
-                </p>
-              </div>
-            )}
-          </div>
+          <ScoringRulesField
+            scoringPreset={scoringPreset}
+            handlePreset={handlePreset}
+            pointsExact={pointsExact}
+            setPointsExact={setPointsExact}
+            pointsWinner={pointsWinner}
+            setPointsWinner={setPointsWinner}
+            showPenaltyField={showPenaltyField}
+            pointsPenalty={pointsPenalty}
+            setPointsPenalty={setPointsPenalty}
+          />
 
-          <div className={styles.field}>
-            <span className={styles.label}>Visibilidade dos palpites</span>
-            <div className={styles.visibilityGroup}>
-              <button
-                type="button"
-                className={`${styles.visibilityOption} ${predictionsVisibility === 'hidden' ? styles.visibilityOptionActive : ''}`}
-                onClick={() => handleVisibility('hidden')}
-                aria-pressed={predictionsVisibility === 'hidden'}
-              >
-                <span className={styles.visibilityTitle}>Oculto até palpitar</span>
-                <span className={styles.visibilityDesc}>
-                  Outros palpites só aparecem depois que você palpitar ou o jogo
-                  começar
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`${styles.visibilityOption} ${predictionsVisibility === 'public' ? styles.visibilityOptionActive : ''}`}
-                onClick={() => handleVisibility('public')}
-                aria-pressed={predictionsVisibility === 'public'}
-              >
-                <span className={styles.visibilityTitle}>Sempre visível</span>
-                <span className={styles.visibilityDesc}>
-                  Todos veem os palpites em tempo real
-                </span>
-              </button>
-            </div>
-          </div>
+          <VisibilityField
+            predictionsVisibility={predictionsVisibility}
+            handleVisibility={handleVisibility}
+          />
 
-          <div className={styles.actions}>
+          <div className={shared.actions}>
             <Button
               type="button"
               variant="secondary"

@@ -1,19 +1,12 @@
 /**
  * Button component styles
- *
- * Two variants only:
- *   primary   — filled green, for main actions
- *   secondary — outlined, for secondary actions
  */
 
 .button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-3) var(--space-6);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
   font-family: var(--font-family-base);
   line-height: var(--line-height-tight);
   border: 1px solid transparent;
@@ -25,6 +18,26 @@
 .button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ─── Sizes ────────────────────────────────────────────────────────────── */
+
+.size-md {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.size-sm {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+}
+
+.size-icon {
+  padding: var(--space-2);
+  border-radius: 50%;
+  aspect-ratio: 1;
 }
 
 /* ─── Primary ──────────────────────────────────────────────────────────── */
@@ -51,4 +64,30 @@
 .secondary:hover:not(:disabled) {
   border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+/* ─── Outline (used for copyBtn etc) ───────────────────────────────────── */
+
+.outline {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.outline:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* ─── Ghost (used for closeBtn etc) ────────────────────────────────────── */
+
+.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  background-color: rgba(0, 0, 0, 0.04);
+  color: var(--color-text-primary);
 }

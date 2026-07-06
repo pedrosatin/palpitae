@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useConfirm } from '../ConfirmModal'
+import Button from '../Button'
 import styles from './MembersTab.module.css'
 
 interface MembersTabProps {
@@ -111,7 +112,9 @@ export default function MembersTab({
             </div>
 
             {member.user_id !== currentUserId && member.role !== 'owner' && (
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 className={styles.removeBtn}
                 onClick={() =>
                   removeMember(member.user_id, member.display_name)
@@ -119,7 +122,7 @@ export default function MembersTab({
                 disabled={removing === member.user_id}
               >
                 {removing === member.user_id ? 'Removendo…' : 'Remover'}
-              </button>
+              </Button>
             )}
           </li>
         ))}
