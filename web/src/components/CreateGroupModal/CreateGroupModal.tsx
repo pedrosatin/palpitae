@@ -43,11 +43,11 @@ const PRESET_VALUES: Record<
 }
 
 const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
-  exact: 'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
+  exact:
+    'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
   winner:
     'Vencedor: pontos para quem acerta só o resultado — mandante, visitante ou empate — sem cravar o placar.',
 }
-
 
 const PRESET_LABELS: Record<ScoringPreset, string> = {
   classic: 'Clássico',
@@ -81,8 +81,9 @@ export default function CreateGroupModal({
 
   // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
   // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
-  const showPenaltyField = competitions.find((c) => c.id === competitionId)
-    ?.has_penalty_phases === true
+  const showPenaltyField =
+    competitions.find((c) => c.id === competitionId)?.has_penalty_phases ===
+    true
 
   useEffect(() => {
     if (!isOpen || competitions.length > 0) return
@@ -182,7 +183,8 @@ export default function CreateGroupModal({
       trackEvent('submit_criar_grupo')
       setCreated(data.group!)
       onCreated(data.group!)
-    } catch {
+    } catch (err) {
+      console.error('Fetch caught error:', err)
       setError('Erro de conexão. Tente novamente.')
     } finally {
       setSubmitting(false)
@@ -301,7 +303,12 @@ export default function CreateGroupModal({
             <span className={styles.label}>Regras de pontuação</span>
             <div className={styles.presetGrid}>
               {(
-                ['classic', 'exact_only', 'winner_only', 'custom'] as ScoringPreset[]
+                [
+                  'classic',
+                  'exact_only',
+                  'winner_only',
+                  'custom',
+                ] as ScoringPreset[]
               ).map((preset) => (
                 <button
                   key={preset}
@@ -321,7 +328,11 @@ export default function CreateGroupModal({
                   labelSide="left"
                   htmlFor="points-exact"
                   text={SCORING_HELP_TEXT.exact}
-                  onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'exact' })}
+                  onOpen={() =>
+                    trackEvent('click_create_group_ajuda_pontuacao', {
+                      campo: 'exact',
+                    })
+                  }
                 />
                 <input
                   id="points-exact"
@@ -332,7 +343,12 @@ export default function CreateGroupModal({
                   value={pointsExact}
                   disabled={scoringPreset !== 'custom'}
                   onChange={(e) =>
-                    setPointsExact(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+                    setPointsExact(
+                      Math.max(
+                        0,
+                        Math.min(10, Math.floor(Number(e.target.value))),
+                      ),
+                    )
                   }
                 />
               </div>
@@ -342,7 +358,11 @@ export default function CreateGroupModal({
                   labelSide="left"
                   htmlFor="points-winner"
                   text={SCORING_HELP_TEXT.winner}
-                  onOpen={() => trackEvent('click_create_group_ajuda_pontuacao', { campo: 'winner' })}
+                  onOpen={() =>
+                    trackEvent('click_create_group_ajuda_pontuacao', {
+                      campo: 'winner',
+                    })
+                  }
                 />
                 <input
                   id="points-winner"
@@ -353,7 +373,12 @@ export default function CreateGroupModal({
                   value={pointsWinner}
                   disabled={scoringPreset !== 'custom'}
                   onChange={(e) =>
-                    setPointsWinner(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+                    setPointsWinner(
+                      Math.max(
+                        0,
+                        Math.min(10, Math.floor(Number(e.target.value))),
+                      ),
+                    )
                   }
                 />
               </div>
@@ -361,7 +386,10 @@ export default function CreateGroupModal({
             {showPenaltyField && (
               <div className={styles.pointsRow}>
                 <div className={styles.pointsField}>
-                  <label className={styles.pointsLabel} htmlFor="points-penalty">
+                  <label
+                    className={styles.pointsLabel}
+                    htmlFor="points-penalty"
+                  >
                     Bônus pênalti
                   </label>
                   <input
@@ -373,13 +401,18 @@ export default function CreateGroupModal({
                     value={pointsPenalty}
                     disabled={scoringPreset !== 'custom'}
                     onChange={(e) =>
-                      setPointsPenalty(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
+                      setPointsPenalty(
+                        Math.max(
+                          0,
+                          Math.min(10, Math.floor(Number(e.target.value))),
+                        ),
+                      )
                     }
                   />
                 </div>
                 <p className={styles.penaltyHint}>
-                  Pontos extras por acertar quem vence nos pênaltis num palpite de
-                  empate. 0 desliga.
+                  Pontos extras por acertar quem vence nos pênaltis num palpite
+                  de empate. 0 desliga.
                 </p>
               </div>
             )}
@@ -394,7 +427,9 @@ export default function CreateGroupModal({
                 onClick={() => handleVisibility('hidden')}
                 aria-pressed={predictionsVisibility === 'hidden'}
               >
-                <span className={styles.visibilityTitle}>Oculto até palpitar</span>
+                <span className={styles.visibilityTitle}>
+                  Oculto até palpitar
+                </span>
                 <span className={styles.visibilityDesc}>
                   Outros palpites só aparecem depois que você palpitar ou o jogo
                   começar
