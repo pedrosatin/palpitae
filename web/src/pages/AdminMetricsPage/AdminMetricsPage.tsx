@@ -45,6 +45,18 @@ interface ArchiveResponse {
   files: { key: string; size: number; uploaded: string }[]
 }
 
+interface HistoryDay {
+  day: string
+  events: Record<string, number>
+  predictions: number
+}
+
+/** `pending > 0` = API ainda digerindo NDJSON antigos — série incompleta. */
+interface HistoryResponse {
+  days: HistoryDay[]
+  pending: number
+}
+
 const PERIODS = [7, 30, 90] as const
 
 // Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
@@ -104,6 +116,63 @@ function buildStackedSeries(
 
   const legend = order.map((type) => ({ type, color: colorFor.get(type) ?? OTHER_COLOR }))
   return { series, legend }
+}
+
+/**
+ * Série do histórico completo (arquivo frio): barras empilhadas por tipo, uma
+ * barra por dia — ou por mês quando o span passa de MONTHLY_AFTER_DAYS (barra
+ * diária vira ruído ilegível com anos de dados).
+ */
+const MONTHLY_AFTER_DAYS = 120
+
+function buildHistorySeries(days: HistoryDay[]): {
+  series: StackedDay[]
+  legend: { type: string; color: string }[]
+  totalPredictions: number
+  totalEvents: number
+} {
+  const totalsByType = new Map<string, number>()
+  let totalPredictions = 0
+  for (const d of days) {
+    totalPredictions += d.predictions
+    for (const [type, count] of Object.entries(d.events)) {
+      totalsByType.set(type, (totalsByType.get(type) ?? 0) + count)
+    }
+  }
+  const totalEvents = [...totalsByType.values()].reduce((a, b) => a + b, 0)
+
+  const ranked = [...totalsByType.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t)
+  const top = ranked.slice(0, MAX_CHART_TYPES)
+  const colorFor = new Map(top.map((type, i) => [type, SERIES_COLORS[i]]))
+  const order = ranked.length > top.length ? [...top, 'outros'] : top
+
+  const monthly = days.length > MONTHLY_AFTER_DAYS
+  const byBucket = new Map<string, Map<string, number>>()
+  for (const d of days) {
+    const label = monthly ? d.day.slice(0, 7) : d.day
+    const perType = byBucket.get(label) ?? new Map<string, number>()
+    for (const [type, count] of Object.entries(d.events)) {
+      const t = colorFor.has(type) ? type : 'outros'
+      perType.set(t, (perType.get(t) ?? 0) + count)
+    }
+    byBucket.set(label, perType)
+  }
+
+  const series = [...byBucket.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([label, perType]) => ({
+      label,
+      segments: order
+        .map((type) => ({
+          type,
+          value: perType.get(type) ?? 0,
+          color: colorFor.get(type) ?? OTHER_COLOR,
+        }))
+        .filter((s) => s.value > 0),
+    }))
+
+  const legend = order.map((type) => ({ type, color: colorFor.get(type) ?? OTHER_COLOR }))
+  return { series, legend, totalPredictions, totalEvents }
 }
 
 function buildApiCallsSeries(
@@ -178,8 +247,23 @@ export default function AdminMetricsPage() {
   const [days, setDays] = useState<number>(30)
   const [overview, setOverview] = useState<OverviewResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
+  const [history, setHistory] = useState<HistoryResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Histórico independe do seletor de período (é sempre "desde o início") e
+  // pode ser lento no primeiro load (API digere NDJSON) — busca uma vez, à parte.
+  useEffect(() => {
+    let cancelled = false
+    fetch(buildApiUrl('/metrics/history'), { credentials: 'include' })
+      .then(async (res) => {
+        if (!cancelled && res.ok) setHistory((await res.json()) as HistoryResponse)
+      })
+      .catch(() => {}) // seção secundária — sem ela a página continua útil
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -285,6 +369,11 @@ export default function AdminMetricsPage() {
         return { day, file, beforeFirstExport: !file && day < oldest }
       })
   }, [archive])
+
+  const historyView = useMemo(
+    () => (history && history.days.length > 0 ? buildHistorySeries(history.days) : null),
+    [history],
+  )
 
   if (error === 'forbidden') {
     return (
@@ -523,38 +612,68 @@ export default function AdminMetricsPage() {
           </>
         )}
 
+        {historyView && !loading && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>
+              Histórico completo · desde {history!.days[0].day}
+            </h2>
+            <p className={styles.hint}>
+              Fonte: arquivo frio no R2 (retenção ilimitada) — cobre além da janela de ~3
+              meses do Analytics Engine.
+            </p>
+            {history!.pending > 0 && (
+              <p className={styles.samplingWarning}>
+                ⚠️ Ainda processando {history!.pending} dia(s) do arquivo — série incompleta,
+                recarregue em instantes.
+              </p>
+            )}
+            <div className={styles.kpiRow}>
+              <KpiCard label="palpites desde o início" value={String(Math.round(historyView.totalPredictions))} />
+              <KpiCard label="eventos desde o início" value={String(Math.round(historyView.totalEvents))} />
+              <KpiCard label="dias arquivados" value={String(history!.days.length)} />
+            </div>
+            <StackedBarChart
+              days={historyView.series}
+              ariaLabel="Histórico de eventos desde o início, por tipo"
+            />
+            <div className={styles.legend}>
+              {historyView.legend.map((l) => (
+                <span key={l.type} className={styles.legendItem}>
+                  <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
+                  {l.type}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
         {archive && !loading && (
           <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Arquivo frio (R2) · últimos 14 dias</h2>
+            <h2 className={styles.sectionTitle}>Export diário (R2) · últimos 14 dias</h2>
             {archiveDays.length === 0 ? (
               <p className={styles.hint}>
                 Nenhum arquivo no bucket — em dev local o R2 é simulado e começa vazio; em
                 produção, ver se o cron de export (00:05 UTC) está rodando.
               </p>
             ) : (
-              <>
-                <table className={styles.table}>
-                  <tbody>
-                    {archiveDays.map(({ day, file, beforeFirstExport }) => (
-                      <tr key={day}>
-                        <td>{day}</td>
-                        {file ? (
-                          <td className={styles.num}>{formatBytes(file.size)}</td>
-                        ) : beforeFirstExport ? (
-                          <td className={styles.num}>—</td>
-                        ) : (
-                          <td className={`${styles.num} ${styles.statusError}`}>faltando</td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p className={styles.hint}>
-                  <strong>faltando</strong> = o export diário não gravou o NDJSON desse dia
-                  (cron falhou; o backfill re-tenta sozinho enquanto o dia estiver na janela de
-                  ~3 meses do Analytics Engine). "—" = dia anterior ao primeiro export.
-                </p>
-              </>
+              (() => {
+                const expected = archiveDays.filter((d) => !d.beforeFirstExport)
+                const missing = expected.filter((d) => !d.file)
+                const totalBytes = expected.reduce((sum, d) => sum + (d.file?.size ?? 0), 0)
+                return missing.length === 0 ? (
+                  <p className={styles.hint}>
+                    ✅ {expected.length}/{expected.length} dias exportados ·{' '}
+                    {formatBytes(totalBytes)} no total
+                  </p>
+                ) : (
+                  <p className={`${styles.hint} ${styles.statusError}`}>
+                    ⚠️ faltando {missing.length} dia(s):{' '}
+                    {missing.map((d) => d.day).join(', ')} — o export diário não gravou o
+                    NDJSON (o backfill re-tenta sozinho enquanto o dia estiver na janela de
+                    ~3 meses do Analytics Engine).
+                  </p>
+                )
+              })()
             )}
           </section>
         )}

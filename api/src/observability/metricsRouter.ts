@@ -233,3 +233,99 @@ metricsRouter.get('/archive', async (c) => {
 
   return c.json({ files })
 })
+
+/**
+ * Histórico de longo prazo a partir do arquivo frio. O Analytics Engine só
+ * retém ~3 meses; os NDJSON no R2 são a única fonte além disso — este endpoint
+ * transforma esses arquivos em série diária (contagem por tipo + palpites).
+ *
+ * Cada NDJSON é parseado UMA vez na vida: o agregado por dia fica cacheado em
+ * `SUMMARY_KEY` no R2 e requests seguintes só digerem dias novos. No máximo
+ * MAX_PARSE_PER_REQUEST dias por request (bound de CPU/subrequest do Worker);
+ * sobrando backlog, `pending > 0` avisa o front que a série ainda está
+ * incompleta (o próximo request continua de onde parou).
+ *
+ * Contagens respeitam o sampling do AE preservado no export: cada linha vale
+ * `_sample_interval` linhas reais; palpites somam double1 * _sample_interval.
+ */
+
+const SUMMARY_KEY = 'summaries/daily-v1.json'
+
+const MAX_PARSE_PER_REQUEST = 30
+
+type DaySummary = { events: Record<string, number>; predictions: number }
+
+type SummaryFile = { days: Record<string, DaySummary> }
+
+/** `events/2026/06/21.ndjson` → `2026-06-21` (null p/ chave fora do padrão). */
+function dayFromKey(key: string): string | null {
+  const m = key.match(/^events\/(\d{4})\/(\d{2})\/(\d{2})\.ndjson$/)
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
+
+/** Agrega um NDJSON de export (linhas cruas do AE) num resumo do dia. */
+function summarizeNdjson(text: string): DaySummary {
+  const summary: DaySummary = { events: {}, predictions: 0 }
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    let row: Record<string, unknown>
+    try {
+      row = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue // linha corrompida não derruba o dia inteiro
+    }
+    const type = typeof row.blob1 === 'string' && row.blob1 ? row.blob1 : 'desconhecido'
+    const weight = Number(row._sample_interval) || 1
+    summary.events[type] = (summary.events[type] ?? 0) + weight
+    if (type === 'prediction_saved') {
+      summary.predictions += (Number(row.double1) || 0) * weight
+    }
+  }
+  return summary
+}
+
+metricsRouter.get('/history', async (c) => {
+  const bucket = c.env.EVENTS
+  if (!bucket) {
+    return c.json({ error: 'Bucket R2 não configurado' }, 503)
+  }
+
+  // Lista TODO o arquivo (paginado por cursor — aqui a história inteira importa,
+  // diferente do /archive que só audita a janela recente).
+  const keys: string[] = []
+  let cursor: string | undefined
+  do {
+    const page = await bucket.list({ prefix: 'events/', limit: 1000, cursor })
+    keys.push(...page.objects.map((o) => o.key))
+    cursor = page.truncated ? page.cursor : undefined
+  } while (cursor)
+
+  const summary = ((await (await bucket.get(SUMMARY_KEY))?.json()) ?? {
+    days: {},
+  }) as SummaryFile
+
+  const pendingDays = keys
+    .map(dayFromKey)
+    .filter((day): day is string => day !== null && !(day in summary.days))
+    .sort()
+
+  const toParse = pendingDays.slice(0, MAX_PARSE_PER_REQUEST)
+  for (const day of toParse) {
+    const [y, m, d] = day.split('-')
+    const obj = await bucket.get(`events/${y}/${m}/${d}.ndjson`)
+    if (!obj) continue // sumiu entre o list e o get — pega no próximo request
+    summary.days[day] = summarizeNdjson(await obj.text())
+  }
+
+  if (toParse.length > 0) {
+    await bucket.put(SUMMARY_KEY, JSON.stringify(summary), {
+      httpMetadata: { contentType: 'application/json' },
+    })
+  }
+
+  const days = Object.entries(summary.days)
+    .map(([day, s]) => ({ day, ...s }))
+    .sort((a, b) => (a.day < b.day ? -1 : 1))
+
+  return c.json({ days, pending: pendingDays.length - toParse.length })
+})

@@ -151,7 +151,7 @@ logEvent(c.env.AE, '<event_type>', {
 ## Dashboard de métricas
 
 **Escolhido: o dashboard nativo** — página `/admin/metricas` no web app consome
-`GET /metrics/overview` e `GET /metrics/archive` da API
+`GET /metrics/overview`, `GET /metrics/archive` e `GET /metrics/history` da API
 (`api/src/observability/metricsRouter.ts`). A API é proxy da SQL API do Analytics
 Engine — o token de conta (`AE_SQL_TOKEN`) fica em secret do Worker, nunca no
 cliente. Acesso restrito ao e-mail em `ADMIN_EMAIL` (secret; sem ele, `/metrics`
@@ -159,13 +159,24 @@ responde 403 pra todo mundo — fechado por padrão). Gráficos em SVG puro (sem
 de chart no bundle). Também audita o cold path: lista os NDJSON no R2 (dia
 faltando = export falhou).
 
+`/metrics/history` é o que dá USO aos NDJSON do cold path (não só auditoria):
+agrega cada arquivo numa série diária (contagem por tipo, ponderada por
+`_sample_interval`, + palpites via `double1`) e cacheia o resultado em
+`summaries/daily-v1.json` no R2 — cada NDJSON é parseado uma única vez na vida.
+Máx. 30 dias digeridos por request; sobrando backlog o response traz
+`pending > 0` e o front avisa que a série ainda está incompleta. É a única
+visão além da janela de ~3 meses do AE (retenção do R2 é ilimitada); acima de
+120 dias o front agrega o gráfico por mês.
+
 O que o dashboard mostra: KPIs (usuários palpitando, palpites — via
 `SUM(double1 * _sample_interval)` —, grupos criados, entradas por grupo criado,
 logins, cache hit rate), eventos/dia empilhado por tipo, saúde do poller +
 chamadas/dia à API Football (quota), concentração de palpites (fatia do top
 1/top 5 palpiteiros — só distribuição, nunca o hash), falhas de login por
-motivo, últimos erros, e integridade do cold path: os últimos 14 dias no R2 com
-dia sem arquivo marcado como **faltando**. Há ainda um vigia de sampling:
+motivo, últimos erros, o histórico completo desde o primeiro export (KPIs
+acumulados + série por tipo, fonte R2), e integridade do cold path: linha
+compacta dos últimos 14 dias com dia sem arquivo marcado como **faltando**.
+Há ainda um vigia de sampling:
 se `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os
 números viraram estimativa. Backlog de ideias:
 [`docs/dashboard-native.md`](dashboard-native.md).
