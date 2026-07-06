@@ -53,7 +53,19 @@ const archive = {
   ],
 }
 
-function mockFetch(overviewStatus = 200, overviewBody: unknown = overview) {
+const history = {
+  days: [
+    { day: '2026-06-21', events: { login_success: 4, prediction_saved: 2 }, predictions: 5 },
+    { day: '2026-06-22', events: { login_success: 6, prediction_saved: 3 }, predictions: 8 },
+  ],
+  pending: 0,
+}
+
+function mockFetch(
+  overviewStatus = 200,
+  overviewBody: unknown = overview,
+  historyBody: unknown = history,
+) {
   return vi.fn(async (url: string) => {
     if (url.includes('/metrics/overview')) {
       return {
@@ -61,6 +73,9 @@ function mockFetch(overviewStatus = 200, overviewBody: unknown = overview) {
         status: overviewStatus,
         json: async () => overviewBody,
       }
+    }
+    if (url.includes('/metrics/history')) {
+      return { ok: true, status: 200, json: async () => historyBody }
     }
     return { ok: true, status: 200, json: async () => archive }
   })
@@ -101,18 +116,22 @@ describe('AdminMetricsPage', () => {
     expect(screen.getByText('access_denied')).toBeInTheDocument()
     expect(screen.getByText('29/06 14:30')).toBeInTheDocument()
 
-    // Arquivo R2: ontem presente; dias anteriores ao primeiro export = "—"
-    // (não "faltando" — export ainda não existia). "faltando" só na legenda.
-    expect(screen.getByText(yesterday)).toBeInTheDocument()
-    expect(screen.getByText('2.0 KB')).toBeInTheDocument()
-    expect(screen.getAllByText('—')).toHaveLength(13)
-    expect(screen.getAllByText('faltando')).toHaveLength(1)
+    // Export R2 íntegro: linha compacta com contagem e tamanho total (só o
+    // dia de ontem conta — dias anteriores ao primeiro export ficam de fora).
+    expect(screen.getByText(/1\/1 dias exportados/)).toBeInTheDocument()
+    expect(screen.getByText(/2\.0 KB no total/)).toBeInTheDocument()
+
+    // Histórico completo (arquivo frio): KPIs agregados + desde o 1º dia
+    expect(screen.getByText(/Histórico completo · desde 2026-06-21/)).toBeInTheDocument()
+    expect(screen.getByText('palpites desde o início')).toBeInTheDocument()
+    expect(screen.getByText('13')).toBeInTheDocument() // 5 + 8 palpites
+    expect(screen.getByText('dias arquivados')).toBeInTheDocument()
 
     // Sem amostragem (média 1) o aviso não aparece
     expect(screen.queryByText(/amostrando/)).not.toBeInTheDocument()
   })
 
-  it('marca como faltando um dia com buraco ENTRE exports', async () => {
+  it('acusa dia faltando entre exports e avisa processamento pendente do histórico', async () => {
     // Arquivos de ontem e de 3 dias atrás: o dia entre eles (2 atrás) falhou.
     const dayKey = (back: number) =>
       new Date(Date.now() - back * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -128,15 +147,21 @@ describe('AdminMetricsPage', () => {
       vi.fn(async (url: string) => ({
         ok: true,
         status: 200,
-        json: async () => (url.includes('/metrics/overview') ? overview : gappyArchive),
+        json: async () =>
+          url.includes('/metrics/overview')
+            ? overview
+            : url.includes('/metrics/history')
+              ? { ...history, pending: 2 }
+              : gappyArchive,
       })),
     )
     render(<AdminMetricsPage />)
 
-    await screen.findByText(dayKey(2))
-    // 1 célula "faltando" (o buraco) + 1 na legenda; dias antes do 1º export = "—".
-    expect(screen.getAllByText('faltando')).toHaveLength(2)
-    expect(screen.getAllByText('—')).toHaveLength(11)
+    // Só o buraco conta como faltando (dias antes do 1º export ficam de fora)
+    const warning = await screen.findByText(/faltando 1 dia\(s\)/)
+    expect(warning.textContent).toContain(dayKey(2))
+    // Backlog do histórico ainda sendo digerido pela API
+    expect(screen.getByText(/Ainda processando 2 dia\(s\)/)).toBeInTheDocument()
   })
 
   it('avisa quando o Analytics Engine está amostrando', async () => {

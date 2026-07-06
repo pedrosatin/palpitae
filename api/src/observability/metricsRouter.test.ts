@@ -213,3 +213,109 @@ describe('GET /metrics/archive', () => {
     expect(res.status).toBe(503)
   })
 })
+
+describe('GET /metrics/history', () => {
+  const SUMMARY_KEY = 'summaries/daily-v1.json'
+
+  /** Bucket fake: NDJSON por chave + resumo opcional; grava puts em memória. */
+  function fakeBucket(files: Record<string, string>, summaryJson?: unknown) {
+    const puts: Record<string, string> = {}
+    return {
+      puts,
+      bucket: {
+        list: vi.fn(async () => ({
+          objects: Object.keys(files).map((key) => ({ key, size: 1, uploaded: new Date() })),
+          truncated: false,
+        })),
+        get: vi.fn(async (key: string) => {
+          if (key === SUMMARY_KEY) {
+            return summaryJson === undefined ? null : { json: async () => summaryJson }
+          }
+          return key in files ? { text: async () => files[key] } : null
+        }),
+        put: vi.fn(async (key: string, value: string) => {
+          puts[key] = value
+        }),
+      } as unknown as R2Bucket,
+    }
+  }
+
+  const ndjsonLine = (blob1: string, sample = 1, double1 = 0) =>
+    JSON.stringify({ blob1, _sample_interval: sample, double1 })
+
+  it('503 sem bucket configurado', async () => {
+    const res = await makeApp().request(
+      '/metrics/history',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: undefined }),
+    )
+    expect(res.status).toBe(503)
+  })
+
+  it('parseia NDJSON com peso de sampling, cacheia o resumo e ordena os dias', async () => {
+    const { bucket, puts } = fakeBucket({
+      // Dia com sampling (peso 2) + palpite em lote (double1 = 3)
+      'events/2026/06/22.ndjson': [
+        ndjsonLine('login_success', 2),
+        ndjsonLine('prediction_saved', 2, 3),
+        'linha corrompida{{{',
+      ].join('\n'),
+      'events/2026/06/21.ndjson': ndjsonLine('group_created'),
+    })
+
+    const res = await makeApp().request(
+      '/metrics/history',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      days: { day: string; events: Record<string, number>; predictions: number }[]
+      pending: number
+    }
+    expect(body.pending).toBe(0)
+    expect(body.days.map((d) => d.day)).toEqual(['2026-06-21', '2026-06-22'])
+    expect(body.days[1].events).toEqual({ login_success: 2, prediction_saved: 2 })
+    expect(body.days[1].predictions).toBe(6) // 3 palpites × peso 2
+    // Resumo persistido pro próximo request não re-parsear
+    expect(JSON.parse(puts[SUMMARY_KEY]).days['2026-06-21']).toBeTruthy()
+  })
+
+  it('dia já resumido não é re-parseado nem re-gravado', async () => {
+    const cached = {
+      days: { '2026-06-21': { events: { group_created: 1 }, predictions: 0 } },
+    }
+    const { bucket } = fakeBucket({ 'events/2026/06/21.ndjson': ndjsonLine('group_created') }, cached)
+
+    const res = await makeApp().request(
+      '/metrics/history',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const get = (bucket as unknown as { get: ReturnType<typeof vi.fn> }).get
+    const put = (bucket as unknown as { put: ReturnType<typeof vi.fn> }).put
+    expect(get).toHaveBeenCalledTimes(1) // só o resumo — nunca o NDJSON
+    expect(put).not.toHaveBeenCalled()
+  })
+
+  it('limita o parse por request e reporta o backlog em pending', async () => {
+    const files: Record<string, string> = {}
+    for (let d = 1; d <= 35; d++) {
+      files[`events/2026/05/${String(d).padStart(2, '0')}.ndjson`] = ndjsonLine('login_success')
+    }
+    const { bucket } = fakeBucket(files)
+
+    const res = await makeApp().request(
+      '/metrics/history',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    const body = (await res.json()) as { days: unknown[]; pending: number }
+    expect(body.days).toHaveLength(30)
+    expect(body.pending).toBe(5)
+  })
+})
