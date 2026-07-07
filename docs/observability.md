@@ -47,6 +47,15 @@ e S3-compatible. Um arquivo/dia ⇒ ~365 escritas/ano, irrisório. O Analytics E
 **staging** (query rápida, ~3 meses); o cron "congela" tudo em R2 pra sempre. Reaproveita o
 cron que já existe — sem Queues (pago) nem Durable Object.
 
+**Contagem em customMetadata.** Cada NDJSON leva `customMetadata: { events: '<n>' }` — a
+contagem REAL de eventos do dia (`SUM(_sample_interval)` das linhas, não o nº de linhas; ver
+sampling acima). Serve pro dashboard montar a série histórica de eventos além da janela do AE
+**sem ler arquivo nenhum**: o `list()` do R2 já devolve o customMetadata de cada objeto.
+Arquivo de antes dessa contagem existir é migrado pelo próprio cron: no loop do backfill, dia
+com arquivo mas **sem** a metadata tem o corpo lido do R2, contado e re-gravado com a metadata
+(nunca re-consulta o AE — se o dia já saiu da retenção, o re-export gravaria um marcador vazio
+por cima do arquivo bom). Conta no teto de exports/run.
+
 **Backfill (dias faltantes).** O export não cobre só "ontem": `exportRecentDays` varre de
 `today-1` até `today-lookbackDays` (90 por padrão, dentro da janela de ~3 meses do AE), e para
 cada dia **sem** arquivo no R2 (`HEAD` na chave) dispara o export. Idempotente — re-`put` na
@@ -164,10 +173,20 @@ O que o dashboard mostra: KPIs (usuários palpitando, palpites — via
 logins, cache hit rate), eventos/dia empilhado por tipo, saúde do poller +
 chamadas/dia à API Football (quota), concentração de palpites (fatia do top
 1/top 5 palpiteiros — só distribuição, nunca o hash), falhas de login por
-motivo, últimos erros, e integridade do cold path: os últimos 14 dias no R2 com
-dia sem arquivo marcado como **faltando**. Há ainda um vigia de sampling:
-se `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os
-números viraram estimativa. Backlog de ideias:
+motivo, e últimos erros. Os gráficos têm eixo X com datas (dd/mm, rótulos
+esparsos; dia mais recente sempre rotulado) e os `event_type` aparecem
+traduzidos pra linguagem de negócio (`EVENT_LABELS` em
+`web/src/pages/AdminMetricsPage/labels.ts` — o nome cru fica no tooltip, já que
+é a chave do esquema posicional acima). Há ainda um vigia de sampling: se
+`AVG(_sample_interval)` do período passar de 1, um aviso alerta que os números
+viraram estimativa.
+
+Do cold path o dashboard mostra: KPIs do acervo (dias arquivados, eventos
+arquivados via customMetadata, tamanho total, dia mais antigo), **eventos/mês
+do histórico completo** — a única visão que enxerga além da janela de ~3 meses
+do AE (`/metrics/archive` lista `events/` inteiro paginando por cursor) — e a
+integridade dos últimos 14 dias (contagem + tamanho por dia; dia sem arquivo
+marcado como **faltando**). Backlog de ideias:
 [`docs/dashboard-native.md`](dashboard-native.md).
 
 Alternativa avaliada e **não adotada**: Grafana Cloud (Infinity → SQL API).
