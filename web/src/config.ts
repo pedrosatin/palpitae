@@ -25,7 +25,7 @@ export function buildApiUrl(
   path: string,
   searchParams?: URLSearchParams,
 ): string {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path
   const trimmedBase = config.apiUrl.trim().replace(/\/+$/, '')
 
   if (isAbsoluteUrl(trimmedBase)) {
@@ -45,8 +45,10 @@ export function buildApiUrl(
         ? trimmedBase
         : `/${trimmedBase}`
   const query = searchParams?.toString()
+  
+  const pathPart = `/${normalizedPath}`
 
   return query
-    ? `${normalizedBase}${normalizedPath}?${query}`
-    : `${normalizedBase}${normalizedPath}`
+    ? `${normalizedBase}${pathPart}?${query}`
+    : `${normalizedBase}${pathPart}`
 }
