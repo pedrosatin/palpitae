@@ -90,7 +90,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     fetchGroups(needsRefresh)
   }, [fetchGroups, location.state])
 
-  function handleGroupCreated(nextGroup: { id: string }) {
+  function handleGroupCreated() {
     fetchGroups(true)
     // Deixamos o modal aberto com a tela de sucesso ("Pronto"). O `CreateGroupModal`
     // cuida do próprio estado de finalização.
