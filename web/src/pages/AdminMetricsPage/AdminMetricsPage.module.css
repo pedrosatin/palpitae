@@ -109,6 +109,11 @@
   display: block;
 }
 
+.axisLabel {
+  fill: var(--color-text-secondary);
+  font-size: 10px;
+}
+
 .bar {
   opacity: 0.85;
 }

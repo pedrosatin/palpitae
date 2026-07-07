@@ -205,12 +205,14 @@ metricsRouter.get('/overview', async (c) => {
 
 /**
  * Arquivo frio — lista os NDJSON diários no R2 (events/YYYY/MM/DD.ndjson).
- * Serve pra auditar o cold path no dashboard: dia faltando = export falhou.
+ * Serve pra auditar o cold path (dia faltando = export falhou) e pra série
+ * histórica do dashboard: `events` vem do customMetadata gravado pelo export
+ * (contagem real, SUM(_sample_interval)) — `null` em arquivo antigo que o
+ * backfill de metadata ainda não alcançou.
  *
- * Lista só o mês corrente e o anterior: cobre com folga a janela de 14 dias
- * do dashboard e nunca esbarra no limite de 1000 chaves do list() — listar
- * `events/` inteiro devolveria os dias mais ANTIGOS primeiro (ordem
- * lexicográfica) e, com anos de arquivo, os dias recentes cairiam fora.
+ * Lista `events/` inteiro paginando por cursor: ~365 chaves/ano, poucas
+ * páginas de 1000 — é o que permite enxergar além da janela de ~3 meses do
+ * Analytics Engine.
  */
 metricsRouter.get('/archive', async (c) => {
   const bucket = c.env.EVENTS
@@ -218,18 +220,23 @@ metricsRouter.get('/archive', async (c) => {
     return c.json({ error: 'Bucket R2 não configurado' }, 503)
   }
 
-  const now = new Date()
-  const monthPrefixes = [0, 1].map((back) => {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1))
-    return `events/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/`
-  })
-
-  const listed = await Promise.all(
-    monthPrefixes.map((prefix) => bucket.list({ prefix, limit: 1000 })),
-  )
-  const files = listed
-    .flatMap((l) => l.objects)
-    .map((o) => ({ key: o.key, size: o.size, uploaded: o.uploaded }))
+  const files: { key: string; size: number; uploaded: Date; events: number | null }[] = []
+  let cursor: string | undefined
+  do {
+    // customMetadata vem por padrão no list() (compatibility_date ≥ 2022-08-04
+    // — a opção `include` nem existe mais no runtime atual).
+    const listed = await bucket.list({ prefix: 'events/', limit: 1000, cursor })
+    for (const o of listed.objects) {
+      const raw = o.customMetadata?.events
+      files.push({
+        key: o.key,
+        size: o.size,
+        uploaded: o.uploaded,
+        events: raw !== undefined ? Number(raw) : null,
+      })
+    }
+    cursor = listed.truncated ? listed.cursor : undefined
+  } while (cursor)
 
   return c.json({ files })
 })
