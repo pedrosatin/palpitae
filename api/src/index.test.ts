@@ -87,3 +87,42 @@ describe('scheduled handler routing', () => {
     expect(discoverFixtures).not.toHaveBeenCalled()
   })
 })
+
+describe('CORS configuration', () => {
+  it('allows valid origins', async () => {
+    const validOrigins = [
+      'https://palpitae.com.br',
+      'https://app.palpitae.com.br',
+      'https://admin.palpitae.com.br',
+      'http://localhost:5173',
+    ]
+
+    for (const origin of validOrigins) {
+      const request = new Request('http://localhost/health', {
+        headers: { Origin: origin },
+      })
+      const response = await worker.fetch(request, env, ctx)
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin)
+    }
+  })
+
+  it('rejects invalid origins', async () => {
+    const invalidOrigins = [
+      'http://palpitae.com.br',
+      'http://app.palpitae.com.br',
+      'https://evilpalpitae.com.br',
+      'http://evilpalpitae.com.br',
+      'https://evil.com/palpitae.com.br',
+      'https://notpalpitae.com.br',
+      'https://palpitae.com.br.evil.com',
+    ]
+
+    for (const origin of invalidOrigins) {
+      const request = new Request('http://localhost/health', {
+        headers: { Origin: origin },
+      })
+      const response = await worker.fetch(request, env, ctx)
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull()
+    }
+  })
+})
