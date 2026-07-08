@@ -199,7 +199,7 @@ export async function scoreUnprocessedMatches(
     .bind(competitionId)
     .all<{ id: string; home_score: number; away_score: number }>()
 
-  for (const match of unscored.results) {
-    await scoreMatch(match.id, match.home_score, match.away_score, db)
-  }
+  await Promise.all(
+    unscored.results.map((match) => scoreMatch(match.id, match.home_score, match.away_score, db)),
+  )
 }
