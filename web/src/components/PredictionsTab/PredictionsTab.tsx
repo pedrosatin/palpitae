@@ -15,6 +15,36 @@ interface PredictionsTabProps {
 
 type PredictionMap = Map<string, Prediction>
 
+async function fetchGroupsApi() {
+  const r = await fetch(`${config.apiUrl}/groups`, { credentials: 'include' })
+  if (!r.ok) throw new Error('Erro ao carregar grupos')
+  return r.json() as Promise<{
+    groups: Array<{
+      id: string
+      name: string
+      competition_id: string
+    }>
+  }>
+}
+
+async function fetchMatchesApi(competitionId: string) {
+  const r = await fetch(
+    `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
+    { credentials: 'include' }
+  )
+  if (!r.ok) throw new Error('Erro ao carregar jogos')
+  return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
+}
+
+async function fetchPredictionsApi(groupId: string) {
+  const r = await fetch(
+    `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
+    { credentials: 'include' }
+  )
+  if (!r.ok) throw new Error('Erro ao carregar palpites')
+  return r.json() as Promise<{ predictions: Prediction[] }>
+}
+
 export default function PredictionsTab({
   groupId,
   competitionId,
@@ -47,23 +77,7 @@ export default function PredictionsTab({
   } | null>(null)
 
   useEffect(() => {
-    fetchCachedJson(
-      'groups:list',
-      () =>
-        fetch(`${config.apiUrl}/groups`, { credentials: 'include' }).then(
-          (r) => {
-            if (!r.ok) throw new Error('Erro ao carregar grupos')
-            return r.json() as Promise<{
-              groups: Array<{
-                id: string
-                name: string
-                competition_id: string
-              }>
-            }>
-          },
-        ),
-      30_000,
-    )
+    fetchCachedJson('groups:list', fetchGroupsApi, 30_000)
       .then((data) => {
         const siblings = data.groups.filter(
           (g) => g.competition_id === competitionId && g.id !== groupId,
@@ -81,27 +95,10 @@ export default function PredictionsTab({
     Promise.all([
       fetchCachedJson(
         `matches:${competitionId}`,
-        () =>
-          fetch(
-            `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-            {
-              credentials: 'include',
-            },
-          ).then((r) => {
-            if (!r.ok) throw new Error('Erro ao carregar jogos')
-            return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
-          }),
+        () => fetchMatchesApi(competitionId),
         30_000,
       ),
-      fetch(
-        `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
-        {
-          credentials: 'include',
-        },
-      ).then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar palpites')
-        return r.json() as Promise<{ predictions: Prediction[] }>
-      }),
+      fetchPredictionsApi(groupId),
     ])
       .then(([matchesData, predictionsData]) => {
         setMatches(matchesData.matches)
