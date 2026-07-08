@@ -35,6 +35,29 @@ interface GroupPicksResponse {
   predictions: MemberPrediction[]
 }
 
+async function fetchMatches(competitionId: string) {
+  return fetchCachedJson(
+    `matches:${competitionId}`,
+    async () => {
+      const r = await fetch(
+        `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
+        { credentials: 'include' },
+      )
+      if (!r.ok) throw new Error('Erro ao carregar jogos')
+      return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
+    },
+    30_000,
+  )
+}
+
+async function fetchGroupPicks(groupId: string) {
+  const r = await fetch(
+    `${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`,
+    { credentials: 'include' },
+  )
+  if (!r.ok) throw new Error('Erro ao carregar palpites do grupo')
+  return r.json() as Promise<GroupPicksResponse>
+}
 
 export default function GroupPicksTab({
   groupId,
@@ -47,39 +70,28 @@ export default function GroupPicksTab({
   const [roundIndex, setRoundIndex] = useState(0)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
+    async function loadData() {
+      setLoading(true)
+      setError(null)
+      try {
+        const [matchesData, picksData] = await Promise.all([
+          fetchMatches(competitionId),
+          fetchGroupPicks(groupId),
+        ])
 
-    Promise.all([
-      fetchCachedJson(
-        `matches:${competitionId}`,
-        () =>
-          fetch(
-            `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-            { credentials: 'include' },
-          ).then((r) => {
-            if (!r.ok) throw new Error('Erro ao carregar jogos')
-            return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
-          }),
-        30_000,
-      ),
-      fetch(
-        `${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`,
-        { credentials: 'include' },
-      ).then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar palpites do grupo')
-        return r.json() as Promise<GroupPicksResponse>
-      }),
-    ])
-      .then(([matchesData, picksData]) => {
         setMatches(matchesData.matches)
         setPicks(picksData)
 
         const keys = [...new Set(matchesData.matches.map((m) => m.round))]
         applyDefaultRound(matchesData.default_round, keys, setRoundIndex)
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Unknown error')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
   }, [groupId, competitionId])
 
   if (loading) {
