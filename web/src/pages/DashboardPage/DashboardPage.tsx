@@ -42,45 +42,45 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const [joinOpen, setJoinOpen] = useState(false)
 
   const fetchGroups = useCallback(
-    (forceRefresh = false) => {
+    async (forceRefresh = false) => {
       setLoading(true)
       if (forceRefresh) {
         invalidateApiCache('groups:')
       }
 
-      fetchCachedJson(
-        `groups:list:${normalizedPendingInvite ?? 'default'}`,
-        () => {
-          const searchParams = new URLSearchParams()
+      try {
+        const data = await fetchCachedJson(
+          `groups:list:${normalizedPendingInvite ?? 'default'}`,
+          async () => {
+            const searchParams = new URLSearchParams()
 
-          if (normalizedPendingInvite) {
-            searchParams.set('invite_code', normalizedPendingInvite)
-          }
+            if (normalizedPendingInvite) {
+              searchParams.set('invite_code', normalizedPendingInvite)
+            }
 
-          return fetch(buildApiUrl('/groups', searchParams), {
-            credentials: 'include',
-            ...(forceRefresh ? { cache: 'no-store' } : {}),
-          }).then((res) => {
+            const res = await fetch(buildApiUrl('/groups', searchParams), {
+              credentials: 'include',
+              ...(forceRefresh ? { cache: 'no-store' } : {}),
+            })
+
             if (!res.ok) throw new Error('Falha ao carregar grupos')
             return res.json() as Promise<{
               groups: GroupWithStats[]
               matched_invite_group_id: string | null
             }>
-          })
-        },
-        30_000,
-      )
-        .then((data) => {
-          setGroups(data.groups)
-          if (normalizedPendingInvite) {
-            setJoinOpen(!data.matched_invite_group_id)
-          }
-          setLoading(false)
-        })
-        .catch((err) => {
-          setError(err.message)
-          setLoading(false)
-        })
+          },
+          30_000,
+        )
+
+        setGroups(data.groups)
+        if (normalizedPendingInvite) {
+          setJoinOpen(!data.matched_invite_group_id)
+        }
+      } catch (err: any) {
+        setError(err.message)
+      } finally {
+        setLoading(false)
+      }
     },
     [normalizedPendingInvite],
   )
