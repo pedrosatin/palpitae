@@ -83,10 +83,10 @@ export async function pollActiveMatches(
   let fixturesUpdated = 0
   let hadError = false
 
-  for (const { comp, rounds } of byComp.values()) {
+  const compPromises = Array.from(byComp.values()).map(async ({ comp, rounds }) => {
     let synced = false
 
-    for (const round of rounds) {
+    const roundPromises = Array.from(rounds).map(async (round) => {
       const matchday = parseInt(round, 10)
       // Non-numeric round = knockout stage — no matchday filter
       const matchdayParam = Number.isNaN(matchday) ? undefined : matchday
@@ -109,12 +109,16 @@ export async function pollActiveMatches(
           blobs: [comp.comp_id, round, err instanceof Error ? err.message : String(err)],
         })
       }
-    }
+    })
+
+    await Promise.all(roundPromises)
 
     if (synced) {
       await scoreUnprocessedMatches(comp.comp_id, db)
     }
-  }
+  })
+
+  await Promise.all(compPromises)
 
   // matches_checked = nº de (comp, round) na janela ativa — proxy de quantos jogos
   // o run avaliou. Ver convenção de doubles em observability/events.ts.
