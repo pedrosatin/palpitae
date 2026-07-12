@@ -18,7 +18,7 @@ const BASE_TITLE = 'Palpitae'
 export function useDocumentTitle(title: string | null | undefined) {
   useEffect(() => {
     const previous = document.title
-    document.title = title ? `${title} · ${BASE_TITLE}` : BASE_TITLE
+    document.title = title ? `${title} | ${BASE_TITLE}` : BASE_TITLE
     return () => {
       document.title = previous
     }
