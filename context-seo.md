@@ -32,7 +32,9 @@ que já foi rejeitado nem reabrir trabalho gated antes do gatilho.
 
 ### B. Keyword research *(depende de tráfego acumular no Search Console)*
 - Keywords a validar: "bolão copa 2026", "bolão copa do mundo online",
-  "palpites copa 2026", "bolão online futebol".
+  "palpites copa 2026", "bolão online futebol", e (desde 2026-07-12, com o
+  Brasileirão no produto) "bolão brasileirão", "bolão brasileirão 2026",
+  "palpites brasileirão", "como fazer bolão do brasileirão".
 - Quando o GSC tiver dados: **Search Console → Desempenho → Consultas** mostra o
   que as pessoas realmente buscam. Ajustar `meta description` (`index.html`) e a
   copy da `LandingPage` com base nisso. *(É código; pode me delegar.)*
@@ -43,6 +45,15 @@ que já foi rejeitado nem reabrir trabalho gated antes do gatilho.
   evergreen "bolões de futebol" + o sazonal. Tirar "Copa 2026" no meio do torneio
   joga fora tráfego de pico. Pós-Copa: generalizar (`Brasileirão, Libertadores e
   todos os campeonatos`) no `title`/`description`/JSON-LD do `index.html`.
+- **Feito em 2026-07-12 (fase aditiva, pré-pivot):** com o Brasileirão Série A no
+  produto (ADR-011), title/description/OG/JSON-LD e o eyebrow da landing viraram
+  híbridos "Copa 2026 + Brasileirão" — soma o termo evergreen SEM tirar "Copa"
+  antes da final (19/jul). FAQ ganhou "Quais campeonatos tem no Palpitae?"
+  (landing + JSON-LD) e há guia nova `/guias/bolao-do-brasileirao/`. O pivot
+  evergreen completo do title continua agendado para pós-final.
+- **Dívida notada (não corrigida):** a resposta de "Como funciona a pontuação?"
+  DIVERGE entre o FAQ JSON-LD do `index.html` (fala de mata-mata 1→16 pts) e a
+  landing (fala 3/1) — sincronizar na próxima passada de copy.
 
 ### C. Bing Webmaster Tools *(ação do dono — sem código)*
 - Submeter o mesmo `sitemap.xml` (cobre Bing + DuckDuckGo). Pode importar direto
