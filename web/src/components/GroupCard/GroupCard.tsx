@@ -6,6 +6,7 @@ export interface GroupWithStats {
   name: string
   is_admin: boolean
   competition_id: string
+  competition_name: string | null
   created_at: string
   member_count: number
   user_position: number
@@ -31,7 +32,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
           <h3 className={styles.name}>{group.name}</h3>
           <div className={styles.badges}>
             {isOwner && <span className={styles.ownerBadge}>Admin</span>}
-            <span className={styles.badge}>Copa 2026</span>
+            <span className={styles.badge}>{group.competition_name ?? group.competition_id}</span>
           </div>
         </div>
 
