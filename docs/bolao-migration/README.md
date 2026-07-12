@@ -1,8 +1,31 @@
-# Migração bolao-brasileirao → Palpitae — Análise de Viabilidade
+# Migração bolao-brasileirao → Palpitae
 
-> Data: 2026-07-12 · Status: **análise aprovada, execução pendente**
-> Fontes: código dos dois repositórios + consultas read-only aos D1 de produção
-> (`bolao-brasileirao` `28b1c613…`, `palpitae` `ffd7a7ed…`). Nada foi escrito em produção.
+> Data: 2026-07-12 · Status: **executada e validada em produção** (ver [Execução](#execução-2026-07-12))
+> Decisão registrada em [ADR-011](../architecture/decisions.md).
+> Fontes: código dos dois repositórios + consultas aos D1 de produção
+> (`bolao-brasileirao` `28b1c613…`, `palpitae` `ffd7a7ed…`).
+
+## Execução (2026-07-12)
+
+Todas as fases de dados aplicadas em prod via `wrangler d1 execute --remote` com os SQLs
+de [`sql/`](sql/) (idempotentes; ordem 01 → 01b → 02 → 03 → 04; validação: 05):
+
+| Fase | Resultado |
+|---|---|
+| 01 — competição | `06baa1de-01c3-4e71-ac6e-a850fa690ec1`, slug `campeonato-brasileiro-serie-a-2026` |
+| 01b — times/jogos | 20 times, 380 jogos (seed manual; cron de discovery reconcilia por cima) |
+| 02 — grupo | "Bolão Brasileirão" `d79438a7-a324-48d0-a245-950aff4d5849`, 6 membros, 3/1/0/`hidden`, invite `69TL-RH2U` |
+| 03 — palpites | 773/773 importados (todo `api_match_id` resolveu) |
+| 04/05 — leaderboard | Idêntico ao bolão: WEEGEE 106 · Chu 98 · satin 88 · Isa 61 · PDR 54 · FABRE 42; 0 inconsistências |
+
+Nota pós-execução: ~21 jogos terminaram depois do último sync do bolão; o cron pontua
+esses palpites (`scored_at IS NULL`) e os totais sobem — comportamento correto.
+Pendente (fora do banco): comunicar o grupo (trava agora é por jogo, não por rodada) e
+aposentar o bolao-brasileirao.
+
+---
+
+O restante deste documento é a análise de viabilidade que fundamentou a execução.
 
 ## Veredicto
 
