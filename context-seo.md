@@ -45,15 +45,20 @@ que já foi rejeitado nem reabrir trabalho gated antes do gatilho.
   evergreen "bolões de futebol" + o sazonal. Tirar "Copa 2026" no meio do torneio
   joga fora tráfego de pico. Pós-Copa: generalizar (`Brasileirão, Libertadores e
   todos os campeonatos`) no `title`/`description`/JSON-LD do `index.html`.
+- **Pivot evergreen FEITO em 2026-07-12** — antecipado por decisão do dono (antes
+  da final de 19/jul, ciente do trade-off de pico): title/description/OG/JSON-LD
+  agora são `Bolão de futebol online — Brasileirão, Copa e mais`, sem ano no
+  title. FAQ de pontuação do JSON-LD sincronizada com a landing (3/1; a versão
+  antiga falava de mata-mata 1→16, copy de um modelo de pontuação que não existe
+  mais). Este item está CONCLUÍDO — não re-propor pivot.
 - **Feito em 2026-07-12 (fase aditiva, pré-pivot):** com o Brasileirão Série A no
   produto (ADR-011), title/description/OG/JSON-LD e o eyebrow da landing viraram
   híbridos "Copa 2026 + Brasileirão" — soma o termo evergreen SEM tirar "Copa"
   antes da final (19/jul). FAQ ganhou "Quais campeonatos tem no Palpitae?"
   (landing + JSON-LD) e há guia nova `/guias/bolao-do-brasileirao/`. O pivot
   evergreen completo do title continua agendado para pós-final.
-- **Dívida notada (não corrigida):** a resposta de "Como funciona a pontuação?"
-  DIVERGE entre o FAQ JSON-LD do `index.html` (fala de mata-mata 1→16 pts) e a
-  landing (fala 3/1) — sincronizar na próxima passada de copy.
+- ~~Dívida: FAQ de pontuação divergente (JSON-LD vs landing)~~ — corrigida no
+  pivot de 2026-07-12 (JSON-LD agora espelha a landing: 3/1).
 
 ### C. Bing Webmaster Tools *(ação do dono — sem código)*
 - Submeter o mesmo `sitemap.xml` (cobre Bing + DuckDuckGo). Pode importar direto
