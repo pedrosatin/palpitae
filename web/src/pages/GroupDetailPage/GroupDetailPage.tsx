@@ -16,7 +16,6 @@ import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
-import StandingsTab from '../../components/StandingsTab'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
@@ -51,7 +50,6 @@ interface GroupDetail {
 
 const TABS = [
   'predictions',
-  'standings',
   'group-picks',
   'leaderboard',
   'members',
@@ -61,7 +59,6 @@ const DEFAULT_TAB: Tab = 'predictions'
 
 const TAB_LABELS: Record<Tab, string> = {
   predictions: 'Palpitar',
-  standings: 'Tabela',
   'group-picks': 'Grupo',
   leaderboard: 'Ranking',
   members: 'Membros',
@@ -550,13 +547,6 @@ export default function GroupDetailPage({
             Palpitar
           </a>
           <a
-            href={tabHref('standings')}
-            className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
-            onClick={(e) => handleTabClick(e, 'standings')}
-          >
-            Tabela
-          </a>
-          <a
             href={tabHref('group-picks')}
             className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
             onClick={(e) => handleTabClick(e, 'group-picks')}
@@ -588,9 +578,6 @@ export default function GroupDetailPage({
               competitionId={group.competition_id}
               pointsExact={group.points_exact}
             />
-          )}
-          {activeTab === 'standings' && (
-            <StandingsTab competitionId={group.competition_id} />
           )}
           {activeTab === 'group-picks' && (
             <GroupPicksTab
