@@ -55,10 +55,11 @@ router.get('/', requireAuth, async (c) => {
     const groups = await db
       .prepare(
         `
-        SELECT 
+        SELECT
           g.id,
           g.name,
           g.competition_id,
+          c.name AS competition_name,
           g.owner_user_id AS admin_id,
           g.invite_code,
           g.created_at,
@@ -79,6 +80,7 @@ router.get('/', requireAuth, async (c) => {
           ) AS user_position
         FROM groups g
         INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
+        LEFT JOIN competitions c ON g.competition_id = c.id
         LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
         WHERE g.deleted_at IS NULL
         GROUP BY g.id
@@ -90,6 +92,7 @@ router.get('/', requireAuth, async (c) => {
         id: string
         name: string
         competition_id: string
+        competition_name: string | null
         admin_id: string
         invite_code: string
         created_at: string
@@ -108,6 +111,7 @@ router.get('/', requireAuth, async (c) => {
         id: group.id,
         name: group.name,
         competition_id: group.competition_id,
+        competition_name: group.competition_name ?? null,
         is_admin: group.admin_id === userId,
         created_at: group.created_at,
         member_count: group.member_count,
