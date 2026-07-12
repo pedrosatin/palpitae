@@ -58,7 +58,7 @@ const TEAM_TRANSLATIONS: Record<string, { name: string; short_name: string }> = 
 }
 
 const COMP_TRANSLATIONS: Record<string, string> = {
-  'World Cup': 'Copa do Mundo',
+  'World Cup': 'Copa do Mundo FIFA',
   'European Championship': 'Eurocopa',
   'Copa América': 'Copa América',
 }
