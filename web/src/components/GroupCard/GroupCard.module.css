@@ -42,6 +42,36 @@
   flex-shrink: 0;
 }
 
+.badgeWrapper {
+  position: relative;
+  display: inline-flex;
+  max-width: 7.5rem;
+}
+
+.badgeWrapper::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  padding: var(--space-2) var(--space-3);
+  background-color: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.badgeWrapper:hover::after {
+  opacity: 1;
+}
+
 .badge {
   background-color: var(--color-primary);
   color: var(--color-on-primary);
@@ -50,6 +80,9 @@
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
 }
 
 .ownerBadge {
