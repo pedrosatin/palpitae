@@ -46,7 +46,7 @@ export default function LandingPage() {
         {/* ─── Hero ─────────────────────────────────────────────────────── */}
         <section className={styles.hero}>
           <div className={styles.heroCopy}>
-            <span className={styles.eyebrow}>Copa do Mundo FIFA 2026</span>
+            <span className={styles.eyebrow}>Brasileirão Série A · Copa do Mundo 2026</span>
             <h1 className={styles.heroTitle}>
               Bolões de futebol <span className={styles.accent}>com seus amigos</span>
             </h1>
@@ -115,6 +115,10 @@ export default function LandingPage() {
             <FaqItem
               q="Preciso instalar algum aplicativo?"
               a="Não. O Palpitae funciona direto no navegador, no celular ou no computador."
+            />
+            <FaqItem
+              q="Quais campeonatos tem no Palpitae?"
+              a="Copa do Mundo 2026 e Brasileirão Série A 2026. Você pode criar um grupo para cada campeonato, e novos torneios serão adicionados."
             />
           </dl>
         </section>
