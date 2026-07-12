@@ -14,10 +14,13 @@ produção e os pontos de atenção.
 - [x] Fase 1 — Competição seedada em prod (`06baa1de-…`, slug `campeonato-brasileiro-serie-a-2026`).
       Times/jogos virão do cron de discovery (06h UTC diário) — conferir com `sql/05-validate.sql`.
 - [x] Fase 2 — Grupo "Bolão Brasileirão" + 6 membros criados em prod (verificado: 6 membros, 3/1/0/hidden)
-- [ ] Fase 3 — Import das 773 predictions → `sql/03-import-predictions.sql` (gerado por
-      `generate-import.mjs`; **só aplicar depois dos jogos sincronizados**)
-- [ ] Fase 4 — Leaderboard → `sql/04-recalc-leaderboard.sql`; validação → `sql/05-validate.sql`
-      (esperado: WEEGEE 106, Chu 98, satin 88, Isa 61, PDR 54, FABRE 42)
+- [x] Fase 1b — Seed manual de 20 times + 380 jogos (`sql/01b-seed-teams-matches.sql`,
+      aprovado pelo dono; upsert compatível com o cron, que reconcilia diariamente)
+- [x] Fase 3 — 773/773 predictions importadas (todo api_match_id resolveu)
+- [x] Fase 4 — Leaderboard recalculado e VALIDADO em prod: WEEGEE 106, Chu 98, satin 88,
+      Isa 61, PDR 54, FABRE 42 — todos exatos; 0 inconsistências leaderboard×predictions.
+      Nota: 21 jogos terminaram depois do último sync do bolão; o cron de discovery vai
+      pontuá-los (scored_at NULL) e os totais vão subir — comportamento correto.
 - [ ] Fase 5 — Cutover: grupo assume rodadas futuras; bolão antigo aposentado
 
 IDs fixos: competição `06baa1de-01c3-4e71-ac6e-a850fa690ec1` · grupo `d79438a7-a324-48d0-a245-950aff4d5849` · invite `69TL-RH2U`
