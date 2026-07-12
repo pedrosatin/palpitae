@@ -423,3 +423,36 @@ All visual values (colors, spacing, typography, shadows, radii) are declared as 
 - No framework router lock-in; client routing added only when needed (e.g., React Router)
 - CSS Modules keep styles scoped to components with zero runtime overhead
 - `vite preview` or Cloudflare Pages serves the static dist for production
+
+---
+
+## ADR-011: Brasileirão Série A 2026 — Data Migration from bolao-brasileirao
+
+**Status:** Accepted (executed in prod on 2026-07-12)
+**Date:** 2026-07-12
+
+### Context
+
+Before Palpitae, the same friend group ran the season on **bolao-brasileirao** — a separate app (own repo, own D1) that was Palpitae's MVP. Goal: consolidate into Palpitae, preserving 18 rounds of history (773 predictions, 6 players) in a shared group, and let Palpitae take over the remaining season with the same sync/scoring pipeline used for the World Cup.
+
+Both apps use football-data.org and competition 2013 (BSA), so `bolao.matches.api_match_id` ≡ `palpitae.matches.external_id` — match mapping is a direct join. Scoring rules are identical (3 exact / 1 outcome / 0); a SQL recompute of all 773 stored points against the rule found **0 divergences**, so "preserve old points" and "recompute under Palpitae rules" are the same numbers.
+
+### Decision
+
+Migrate via **idempotent one-off SQL applied with `wrangler d1 execute --remote`** — no application code changes, no schema changes, no migration files. Palpitae was already competition-generic; the only missing piece was data. Artifacts live in [`docs/bolao-migration/`](../bolao-migration/README.md):
+
+1. Seed the competition row (slug must equal what `syncFixtures` derives — it's the upsert conflict key).
+2. Seed teams + 380 matches with the **same conflict keys** as `syncFixtures` (`(external_id, provider)`), so the daily discovery cron reconciles over the manual seed with no duplicates. (Manual seed instead of waiting for the cron: the competition row was created after that day's 06:00 UTC run.)
+3. Create the group (3/1/0, `predictions_visibility='hidden'` ≈ the old app's cutoff behavior) + 6 members.
+4. Import predictions with `points_awarded` copied from the source and `ON CONFLICT DO NOTHING`; match resolved at apply time via subselect on `external_id`.
+5. Recalculate the leaderboard with the same aggregation as `recalculateLeaderboard`.
+
+Old-app identities (`participant_name` strings) were mapped to Palpitae users by an owner-provided name→email table; two spelling variants (WEEGEE/WEEGGE) were the same person (0 overlapping matches) and merged.
+
+### Consequences
+
+- Leaderboard verified identical to the source app (106/98/88/61/54/42; 773/773 rows imported).
+- Matches seeded with `scored_at = NULL`: the next `scoreUnprocessedMatches` run re-scores them — a no-op for already-correct imported points, and it awards the ~21 matches that finished after the old app's last sync (totals rise; correct behavior).
+- Prediction locking semantics change for the group: old app locked the whole round at a cutoff; Palpitae locks per match at kickoff.
+- Per-round ranking (old app feature) has no Palpitae view; imported data allows deriving it later if missed.
+- bolao-brasileirao becomes read-only and is retired separately.
