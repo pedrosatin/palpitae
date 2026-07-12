@@ -12,3 +12,7 @@ api/graphify-out/
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# context.md da raiz é scratch por tarefa (muda a cada atividade) — não versionar.
+# Docs duráveis: docs/ (decisões em docs/architecture/decisions.md).
+/context.md
