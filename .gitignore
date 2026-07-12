@@ -13,9 +13,10 @@ api/graphify-out/
 !.dev.vars.example
 !.env.example
 
-# context.md da raiz é scratch por tarefa (muda a cada atividade) — não versionar.
+# context*.md da raiz são arquivos de trabalho locais por tarefa — não versionar.
 # Docs duráveis: docs/ (decisões em docs/architecture/decisions.md).
 /context.md
+/context-seo.md
 
 # Local workflow and generated artifacts
 graphify-out/
