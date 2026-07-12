@@ -46,7 +46,7 @@ export default function LandingPage() {
         {/* ─── Hero ─────────────────────────────────────────────────────── */}
         <section className={styles.hero}>
           <div className={styles.heroCopy}>
-            <span className={styles.eyebrow}>Copa do Mundo 2026 · Brasileirão Série A</span>
+            <span className={styles.eyebrow}>Brasileirão Série A · Copa do Mundo 2026</span>
             <h1 className={styles.heroTitle}>
               Bolões de futebol <span className={styles.accent}>com seus amigos</span>
             </h1>
