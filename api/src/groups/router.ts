@@ -60,6 +60,7 @@ router.get('/', requireAuth, async (c) => {
           g.name,
           g.competition_id,
           c.name AS competition_name,
+          c.type AS competition_type,
           g.owner_user_id AS admin_id,
           g.invite_code,
           g.created_at,
@@ -93,6 +94,7 @@ router.get('/', requireAuth, async (c) => {
         name: string
         competition_id: string
         competition_name: string | null
+        competition_type: string | null
         admin_id: string
         invite_code: string
         created_at: string
@@ -112,6 +114,7 @@ router.get('/', requireAuth, async (c) => {
         name: group.name,
         competition_id: group.competition_id,
         competition_name: group.competition_name ?? null,
+        competition_type: group.competition_type ?? null,
         is_admin: group.admin_id === userId,
         created_at: group.created_at,
         member_count: group.member_count,
@@ -374,6 +377,7 @@ router.get('/:id', requireAuth, async (c) => {
          g.name,
          g.competition_id,
          c.name AS competition_name,
+         c.type AS competition_type,
          g.owner_user_id AS admin_id,
          g.invite_code,
          g.created_at,
@@ -397,6 +401,7 @@ router.get('/:id', requireAuth, async (c) => {
       name: string
       competition_id: string
       competition_name: string | null
+      competition_type: string | null
       admin_id: string
       invite_code: string
       created_at: string
@@ -433,6 +438,7 @@ router.get('/:id', requireAuth, async (c) => {
       name: group.name,
       competition_id: group.competition_id,
       competition_name: group.competition_name,
+      competition_type: group.competition_type ?? null,
       is_admin: group.admin_id === userId,
       invite_code: group.invite_code,
       created_at: group.created_at,
