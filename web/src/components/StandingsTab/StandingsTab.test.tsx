@@ -240,3 +240,54 @@ describe('StandingsTab – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_standings_ver_grupo', { group: 'A' })
   })
 })
+
+describe('StandingsTab — liga (pontos corridos)', () => {
+  function leagueMatch(overrides: Partial<Match> = {}): Match {
+    return makeMatch({ group_name: null, phase: 'REGULAR_SEASON', ...overrides })
+  }
+
+  it('renders a single Classificação table from REGULAR_SEASON matches', async () => {
+    mockFetch([
+      leagueMatch({ id: 'l1', status: 'finished', home_score: 2, away_score: 0 }),
+    ])
+    render(<StandingsTab competitionId="comp-1" />)
+    expect(await screen.findByText('Classificação')).toBeInTheDocument()
+    expect(screen.queryByText(/Grupo /)).not.toBeInTheDocument()
+    expect(screen.queryByText('ver jogos')).not.toBeInTheDocument()
+  })
+
+  it('ignores knockout matches (group_name null fora de REGULAR_SEASON)', async () => {
+    mockFetch([
+      leagueMatch({ id: 'k1', phase: 'LAST_16', status: 'finished', home_score: 1, away_score: 0 }),
+    ])
+    render(<StandingsTab competitionId="comp-1" />)
+    expect(
+      await screen.findByText('Esta competição não tem fase de grupos.'),
+    ).toBeInTheDocument()
+  })
+
+  it('uses wins as the 2nd tiebreaker (CBF), before goal difference', () => {
+    // A: 1 vitória e 1 derrota feia → 3 pts, 1 v, sg -4
+    // B: 3 empates → 3 pts, 0 v, sg 0. CBF: A acima de B (FIFA seria o oposto).
+    const mk = (id: string, h: [string, string], a: [string, string], hs: number, as_: number) =>
+      leagueMatch({
+        id, status: 'finished', home_score: hs, away_score: as_,
+        home_team_id: h[0], home_team_name: h[1], home_team_short_name: h[1].slice(0, 3).toUpperCase(),
+        away_team_id: a[0], away_team_name: a[1], away_team_short_name: a[1].slice(0, 3).toUpperCase(),
+      })
+    const matches = [
+      mk('1', ['aaa', 'Alfa'], ['ccc', 'Gama'], 1, 0),
+      mk('2', ['aaa', 'Alfa'], ['ddd', 'Delta'], 0, 5),
+      mk('3', ['bbb', 'Beta'], ['ccc', 'Gama'], 0, 0),
+      mk('4', ['bbb', 'Beta'], ['ddd', 'Delta'], 0, 0),
+      mk('5', ['eee', 'Eco'], ['bbb', 'Beta'], 0, 0),
+    ]
+    const standings = computeStandings(matches)
+    const league = standings.get('')!
+    const alfa = league.findIndex((t) => t.team_id === 'aaa')
+    const beta = league.findIndex((t) => t.team_id === 'bbb')
+    expect(league[alfa].p).toBe(3)
+    expect(league[beta].p).toBe(3)
+    expect(alfa).toBeLessThan(beta)
+  })
+})
