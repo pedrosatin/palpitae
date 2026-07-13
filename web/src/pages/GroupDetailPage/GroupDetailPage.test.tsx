@@ -49,6 +49,12 @@ vi.mock('../../components/JoinGroupModal', () => ({
     ) : null,
 }))
 
+vi.mock('../../components/StandingsTab', () => ({
+  default: ({ competitionId }: { competitionId: string }) => (
+    <div data-testid="standings-tab">StandingsTab:{competitionId}</div>
+  ),
+}))
+
 vi.mock('../../components/LeaderboardTab', () => ({
   default: ({ groupId }: { groupId: string }) => (
     <div data-testid="leaderboard-tab">LeaderboardTab:{groupId}</div>
@@ -468,5 +474,36 @@ describe('GroupDetailPage – analytics', () => {
     await waitFor(() => {
       expect(mockTrackEvent).toHaveBeenCalledWith('submit_renomear_grupo')
     })
+  })
+})
+
+describe('GroupDetailPage – standings tab gate (competition_type)', () => {
+  it('shows the Tabela tab for league competitions', async () => {
+    mockGroupFetch({ ...baseGroup, competition_type: 'league' })
+    renderPage()
+    expect(await screen.findByRole('link', { name: /Tabela/i })).toBeInTheDocument()
+  })
+
+  it('renders StandingsTab when Tabela is clicked in a league group', async () => {
+    mockGroupFetch({ ...baseGroup, competition_type: 'league' })
+    renderPage()
+    await userEvent.click(await screen.findByRole('link', { name: /Tabela/i }))
+    expect(screen.getByTestId('standings-tab')).toHaveTextContent('StandingsTab:comp-1')
+  })
+
+  it('hides the Tabela tab for cup competitions', async () => {
+    mockGroupFetch({ ...baseGroup, competition_type: 'cup' })
+    renderPage()
+    await screen.findByRole('link', { name: /Ranking/i })
+    expect(screen.queryByRole('link', { name: /Tabela/i })).not.toBeInTheDocument()
+  })
+
+  it('falls back to the default tab when ?tab=standings is forced on a cup group', async () => {
+    mockGroupFetch({ ...baseGroup, competition_type: 'cup' })
+    renderPage('/groups/abc?tab=standings')
+    await screen.findByRole('link', { name: /Ranking/i })
+    expect(screen.queryByTestId('standings-tab')).not.toBeInTheDocument()
+    // painel default (Palpitar) ativo no lugar de um painel vazio
+    expect(screen.getByRole('link', { name: /Palpitar/i })).toHaveClass(/tabActive/i)
   })
 })
