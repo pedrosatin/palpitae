@@ -27,7 +27,7 @@ router.get('/', async (c) => {
   try {
     const result = await db
       .prepare(
-        `SELECT id, name, slug, season, status, penalty_phases
+        `SELECT id, name, slug, season, status, type, penalty_phases
          FROM competitions
          ORDER BY name ASC`,
       )
