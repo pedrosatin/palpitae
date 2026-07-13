@@ -70,19 +70,24 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
     return team
   }
 
+  // Chave '' = tabela única de liga (pontos corridos). Copa: agrupa por group_name
+  // (fase de grupos) e ignora mata-mata (group_name null fora de REGULAR_SEASON).
+  const LEAGUE = ''
+
   for (const m of matches) {
-    if (m.group_name === null) continue
+    const groupKey = m.group_name ?? (m.phase === 'REGULAR_SEASON' ? LEAGUE : null)
+    if (groupKey === null) continue
 
     // Ensure both teams appear in the table even before any match is played.
     const home = teamFor(
-      m.group_name,
+      groupKey,
       m.home_team_id,
       m.home_team_name,
       m.home_team_short_name,
       m.home_team_logo,
     )
     const away = teamFor(
-      m.group_name,
+      groupKey,
       m.away_team_id,
       m.away_team_name,
       m.away_team_short_name,
@@ -124,9 +129,12 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
 
   const result = new Map<string, TeamStanding[]>()
   for (const [group, teams] of byGroup) {
+    // Liga (CBF): pontos, VITÓRIAS, saldo, gols pró. Copa (FIFA): pontos, saldo, gols pró.
+    const isLeague = group === LEAGUE
     const sorted = [...teams.values()].sort(
       (a, b) =>
         b.p - a.p ||
+        (isLeague ? b.v - a.v : 0) ||
         b.sg - a.sg ||
         b.gf - a.gf ||
         a.team_name.localeCompare(b.team_name),
@@ -204,13 +212,19 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
     <div className={styles.root}>
       {groups.map((group) => (
         <div key={group} className={styles.group}>
-          <button
-            className={styles.groupHeader}
-            onClick={() => { trackEvent('click_standings_ver_grupo', { group }); setSelectedGroup(group) }}
-          >
-            <span>Grupo {group}</span>
-            <span className={styles.groupHint}>ver jogos</span>
-          </button>
+          {group === '' ? (
+            <div className={`${styles.groupHeader} ${styles.groupHeaderStatic}`}>
+              <span>Classificação</span>
+            </div>
+          ) : (
+            <button
+              className={styles.groupHeader}
+              onClick={() => { trackEvent('click_standings_ver_grupo', { group }); setSelectedGroup(group) }}
+            >
+              <span>Grupo {group}</span>
+              <span className={styles.groupHint}>ver jogos</span>
+            </button>
+          )}
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
