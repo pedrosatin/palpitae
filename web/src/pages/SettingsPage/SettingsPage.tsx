@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { trackEvent } from '../../analytics/ga'
 import Button from '../../components/Button'
+import ErrorState from '../../components/ErrorState'
 import Header from '../../components/Header'
 import Modal from '../../components/Modal'
 import { buildApiUrl } from '../../config'
+import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import type { User } from '../../types'
 import styles from './SettingsPage.module.css'
@@ -32,7 +34,7 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
 
   function loadPreferences() {
     setError(null)
-    fetch(buildApiUrl('/notifications/preferences'), { credentials: 'include' })
+    apiFetch(buildApiUrl('/notifications/preferences'))
       .then((res) => {
         if (!res.ok) throw new Error('Falha ao carregar preferências')
         return res.json() as Promise<{ round_reminders: boolean }>
@@ -67,9 +69,8 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
     setError(null)
     setSuccess(false)
 
-    fetch(buildApiUrl('/notifications/preferences'), {
+    apiFetch(buildApiUrl('/notifications/preferences'), {
       method: 'PATCH',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ round_reminders: next }),
     })
@@ -98,7 +99,7 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
           <h1 className={styles.title}>Configurações</h1>
 
           {error && (
-            <div className={styles.errorMessage}>
+            <ErrorState>
               {error}
               {roundReminders === null && (
                 <button
@@ -112,7 +113,7 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
                   Tentar novamente
                 </button>
               )}
-            </div>
+            </ErrorState>
           )}
 
           <section className={styles.section}>
