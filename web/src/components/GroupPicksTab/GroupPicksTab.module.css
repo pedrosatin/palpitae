@@ -193,9 +193,3 @@
   padding: var(--space-8) 0;
   text-align: center;
 }
-
-.error {
-  color: #f25b1b;
-  font-size: var(--font-size-sm);
-  margin: 0;
-}
