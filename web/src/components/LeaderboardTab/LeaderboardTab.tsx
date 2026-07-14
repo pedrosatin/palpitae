@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
 import Button from '../Button'
+import ErrorState from '../ErrorState'
 import Select from '../Select'
 import Modal from '../Modal'
 import styles from './LeaderboardTab.module.css'
@@ -70,9 +72,7 @@ export default function LeaderboardTab({
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetch(`${config.apiUrl}/groups/${groupId}/members`, {
-      credentials: 'include',
-    })
+    apiFetch(`${config.apiUrl}/groups/${groupId}/members`)
       .then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar membros')
         return r.json() as Promise<{ members: Member[] }>
@@ -91,9 +91,8 @@ export default function LeaderboardTab({
       setModalLoading(true)
       setModalRoundIndex(0)
 
-      fetch(
+      apiFetch(
         `${config.apiUrl}/predictions/user?group_id=${encodeURIComponent(groupId)}&user_id=${encodeURIComponent(member.user_id)}`,
-        { credentials: 'include' },
       )
         .then((r) => {
           if (!r.ok) throw new Error('Erro ao carregar palpites')
@@ -146,7 +145,7 @@ export default function LeaderboardTab({
   }
 
   if (error) {
-    return <div className={styles.error}>{error}</div>
+    return <ErrorState message={error} />
   }
 
   if (members.length === 0) {

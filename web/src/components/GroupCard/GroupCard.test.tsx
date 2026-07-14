@@ -8,6 +8,7 @@ const baseGroup = {
   name: 'Meu Grupo',
   is_admin: false,
   competition_id: 'comp-1',
+  competition_name: 'Brasileirão 2026',
   created_at: '2026-01-01T00:00:00Z',
   member_count: 5,
   user_position: 2,

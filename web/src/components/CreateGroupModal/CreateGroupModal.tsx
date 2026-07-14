@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import Button from '../Button'
 import Select from '../Select'
 import InfoHint from '../InfoHint/InfoHint'
@@ -45,11 +46,11 @@ const PRESET_VALUES: Record<
 }
 
 const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
-  exact: 'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
+  exact:
+    'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
   winner:
     'Vencedor: pontos para quem acerta só o resultado — mandante, visitante ou empate — sem cravar o placar.',
 }
-
 
 const PRESET_LABELS: Record<ScoringPreset, string> = {
   classic: 'Clássico',
@@ -234,8 +235,9 @@ export default function CreateGroupModal({
 
   // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
   // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
-  const showPenaltyField = competitions.find((c) => c.id === competitionId)
-    ?.has_penalty_phases === true
+  const showPenaltyField =
+    competitions.find((c) => c.id === competitionId)?.has_penalty_phases ===
+    true
 
   useEffect(() => {
     if (!isOpen || competitions.length > 0) return
@@ -308,9 +310,8 @@ export default function CreateGroupModal({
     setSubmitting(true)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups`, {
+      const res = await apiFetch(`${config.apiUrl}/groups`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
@@ -335,7 +336,8 @@ export default function CreateGroupModal({
       trackEvent('submit_criar_grupo')
       setCreated(data.group!)
       onCreated(data.group!)
-    } catch {
+    } catch (err) {
+      console.error('Fetch caught error:', err)
       setError('Erro de conexão. Tente novamente.')
     } finally {
       setSubmitting(false)

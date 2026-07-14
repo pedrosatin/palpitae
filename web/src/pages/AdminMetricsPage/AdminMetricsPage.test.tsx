@@ -49,7 +49,7 @@ const overview = {
 const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const archive = {
   files: [
-    { key: `events/${yesterday.replaceAll('-', '/')}.ndjson`, size: 2048, uploaded: '' },
+    { key: `events/${yesterday.replaceAll('-', '/')}.ndjson`, size: 2048, uploaded: '', events: 42 },
   ],
 }
 
@@ -78,8 +78,9 @@ describe('AdminMetricsPage', () => {
     expect(screen.getByText('90%')).toBeInTheDocument() // 90 hits / 100
     expect(screen.getByText('2.5')).toBeInTheDocument() // 5 joined / 2 created
 
-    // Totais + legenda do gráfico usam o mesmo tipo
-    expect(screen.getAllByText('login_success').length).toBeGreaterThanOrEqual(1)
+    // Totais + legenda do gráfico usam o rótulo de negócio (cru fica no title)
+    expect(screen.getAllByText('Login').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('login_success')).not.toBeInTheDocument()
     expect(screen.getByText('ok')).toBeInTheDocument()
     expect(screen.getByText('850 ms')).toBeInTheDocument()
     expect(screen.getByText('2.1 s')).toBeInTheDocument() // 2100 ms humanizado
@@ -95,16 +96,26 @@ describe('AdminMetricsPage', () => {
     // Concentração de palpites: top1 = top5 = round(20/37) = 54% (1 whale só)
     expect(screen.getAllByText('54%')).toHaveLength(2)
 
-    // Falhas de login e erros recentes
+    // Falhas de login e erros recentes (evento com rótulo de negócio)
     expect(screen.getByText('session_expired')).toBeInTheDocument()
-    expect(screen.getByText('oauth_error')).toBeInTheDocument()
+    expect(screen.getByText('Erro de OAuth')).toBeInTheDocument()
     expect(screen.getByText('access_denied')).toBeInTheDocument()
     expect(screen.getByText('29/06 14:30')).toBeInTheDocument()
 
-    // Arquivo R2: ontem presente; dias anteriores ao primeiro export = "—"
-    // (não "faltando" — export ainda não existia). "faltando" só na legenda.
-    expect(screen.getByText(yesterday)).toBeInTheDocument()
-    expect(screen.getByText('2.0 KB')).toBeInTheDocument()
+    // Eixo X dos gráficos diários: o dia mais recente sempre rotulado (dd/mm)
+    const today = new Date().toISOString().slice(0, 10)
+    const todayTick = `${today.slice(8, 10)}/${today.slice(5, 7)}`
+    expect(screen.getAllByText(todayTick).length).toBeGreaterThanOrEqual(2) // stacked + API calls
+
+    // Arquivo R2: KPIs do acervo + histórico mensal + integridade.
+    expect(screen.getByText('dias arquivados')).toBeInTheDocument()
+    // eventos: KPI do acervo (sem "≥": metadata completa) + linha de integridade
+    expect(screen.getAllByText('42')).toHaveLength(2)
+    expect(screen.getByRole('img', { name: 'Eventos arquivados por mês' })).toBeInTheDocument()
+    // ontem presente (data na tabela + KPI "desde"); dias anteriores ao primeiro
+    // export = "—" (não "faltando" — export ainda não existia).
+    expect(screen.getAllByText(yesterday)).toHaveLength(2)
+    expect(screen.getAllByText('2.0 KB')).toHaveLength(2) // linha de ontem + KPI de tamanho total
     expect(screen.getAllByText('—')).toHaveLength(13)
     expect(screen.getAllByText('faltando')).toHaveLength(1)
 
@@ -121,6 +132,7 @@ describe('AdminMetricsPage', () => {
         key: `events/${dayKey(back).replaceAll('-', '/')}.ndjson`,
         size: 100,
         uploaded: '',
+        events: 10,
       })),
     }
     vi.stubGlobal(
@@ -163,7 +175,7 @@ describe('AdminMetricsPage', () => {
     const user = userEvent.setup()
     render(<AdminMetricsPage />)
 
-    await screen.findAllByText('login_success')
+    await screen.findAllByText('Login')
     await user.click(screen.getByRole('button', { name: '7d' }))
 
     await waitFor(() => {

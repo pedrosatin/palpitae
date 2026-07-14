@@ -176,12 +176,34 @@ describe('GET /metrics/overview', () => {
 })
 
 describe('GET /metrics/archive', () => {
-  it('lista os NDJSON do mês corrente e do anterior (não events/ inteiro)', async () => {
-    // Um arquivo por prefixo pedido — independe da data em que o teste roda.
-    const list = vi.fn(async ({ prefix }: { prefix: string }) => ({
-      objects: [{ key: `${prefix}15.ndjson`, size: 123, uploaded: new Date('2026-06-30T00:05:00Z') }],
-      truncated: false,
-    }))
+  it('lista events/ inteiro paginando por cursor, com a contagem do customMetadata', async () => {
+    // 1ª página truncada + 2ª final — o handler precisa seguir o cursor.
+    const pages = [
+      {
+        objects: [
+          {
+            key: 'events/2026/05/01.ndjson',
+            size: 123,
+            uploaded: new Date('2026-05-02T00:05:00Z'),
+            customMetadata: { events: '42' },
+          },
+        ],
+        truncated: true,
+        cursor: 'cur-1',
+      },
+      {
+        objects: [
+          {
+            // Export antigo, sem metadata — events deve virar null.
+            key: 'events/2026/05/02.ndjson',
+            size: 456,
+            uploaded: new Date('2026-05-03T00:05:00Z'),
+          },
+        ],
+        truncated: false,
+      },
+    ]
+    const list = vi.fn(async () => pages.shift())
     const res = await makeApp().request(
       '/metrics/archive',
       { headers: await authHeaders(ADMIN) },
@@ -189,19 +211,16 @@ describe('GET /metrics/archive', () => {
     )
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { files: { key: string; size: number }[] }
-
-    // Prefixos relativos à data real: mês corrente + anterior (UTC).
-    const monthPrefix = (back: number) => {
-      const now = new Date()
-      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1))
-      return `events/${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/`
+    const body = (await res.json()) as {
+      files: { key: string; size: number; events: number | null }[]
     }
+
     expect(list).toHaveBeenCalledTimes(2)
-    expect(list).toHaveBeenCalledWith({ prefix: monthPrefix(0), limit: 1000 })
-    expect(list).toHaveBeenCalledWith({ prefix: monthPrefix(1), limit: 1000 })
+    expect(list).toHaveBeenNthCalledWith(1, { prefix: 'events/', limit: 1000, cursor: undefined })
+    expect(list).toHaveBeenNthCalledWith(2, { prefix: 'events/', limit: 1000, cursor: 'cur-1' })
     expect(body.files).toHaveLength(2)
-    expect(body.files[0]).toMatchObject({ size: 123 })
+    expect(body.files[0]).toMatchObject({ key: 'events/2026/05/01.ndjson', size: 123, events: 42 })
+    expect(body.files[1]).toMatchObject({ key: 'events/2026/05/02.ndjson', size: 456, events: null })
   })
 
   it('503 sem bucket configurado', async () => {
