@@ -57,7 +57,7 @@
 
 .table {
   width: 100%;
-  min-width: 32rem;
+  min-width: 38.5rem;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
@@ -164,6 +164,9 @@
    Vitória usa o verde da marca (✓ preto, como todo conteúdo sobre primary);
    derrota precisa de um vermelho que o sistema não tem — local por enquanto. */
 .colForm {
+  /* FORM_SIZE badges (4 × 18px) + gaps (3 × 4px) + padding do td: sem width
+     explícita, table-layout: fixed espreme a coluna e os badges vazam. */
+  width: 6.5rem;
   text-align: right;
   white-space: nowrap;
 }
