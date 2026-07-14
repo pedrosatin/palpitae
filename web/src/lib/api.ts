@@ -54,7 +54,7 @@ export async function apiFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  const res = await fetch(input, { credentials: 'include', ...init })
+  const res = await fetch(input, { ...(init ?? {}), credentials: 'include' })
   if (res.status === 401) notifySessionExpired()
   return res
 }
