@@ -350,6 +350,13 @@
   text-decoration: none;
 }
 
+/* .tabs clips vertically (overflow-x: auto forces overflow-y to auto/hidden),
+   so an outline drawn outside the box loses its top edge. Draw it inset. */
+.tab:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
 .tabActive {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
