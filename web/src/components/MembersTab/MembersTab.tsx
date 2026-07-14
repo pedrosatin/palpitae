@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import { useConfirm } from '../ConfirmModal'
+import ErrorState from '../ErrorState'
 import styles from './MembersTab.module.css'
 
 interface MembersTabProps {
@@ -34,9 +36,7 @@ export default function MembersTab({
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetch(`${config.apiUrl}/groups/${groupId}/members`, {
-      credentials: 'include',
-    })
+    apiFetch(`${config.apiUrl}/groups/${groupId}/members`)
       .then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar membros')
         return r.json() as Promise<{ members: Member[] }>
@@ -57,9 +57,9 @@ export default function MembersTab({
     if (!ok) return
     setRemoving(targetUserId)
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `${config.apiUrl}/groups/${groupId}/members/${targetUserId}`,
-        { method: 'DELETE', credentials: 'include' },
+        { method: 'DELETE' },
       )
       if (!res.ok) {
         const body = (await res.json()) as { error?: string }
@@ -79,7 +79,7 @@ export default function MembersTab({
   }
 
   if (error) {
-    return <div className={styles.error}>{error}</div>
+    return <ErrorState message={error} />
   }
 
   return (
