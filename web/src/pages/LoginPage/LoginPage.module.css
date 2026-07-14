@@ -27,6 +27,14 @@
   width: auto;
 }
 
+/* Layered over ErrorState's base card look — only the deltas live here. */
+.sessionNotice {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
 .text {
   display: flex;
   flex-direction: column;
