@@ -16,15 +16,6 @@
   font-size: var(--font-size-md);
 }
 
-.errorBox {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid #ff4d4f;
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  color: #ff4d4f;
-}
-
 /* ─── Group Header ───────────────────────────────────────────────────── */
 
 .groupHeader {
@@ -328,6 +319,13 @@
 .tab:hover {
   color: var(--color-text-secondary);
   text-decoration: none;
+}
+
+/* .tabs clips vertically (overflow-x: auto forces overflow-y to auto/hidden),
+   so an outline drawn outside the box loses its top edge. Draw it inset. */
+.tab:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .tabActive {

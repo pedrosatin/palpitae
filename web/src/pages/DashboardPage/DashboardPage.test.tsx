@@ -95,7 +95,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('closes the create group modal after a successful creation', async () => {
+  it('shows the success screen after creation and closes on "Pronto"', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(mockResponse({ groups: [] }))
@@ -147,11 +147,17 @@ describe('DashboardPage', () => {
       within(dialog).getByRole('button', { name: 'Criar grupo' }),
     )
 
+    // Modal fica aberto na tela de sucesso (código de convite compartilhável).
+    await waitFor(() => {
+      expect(screen.getByText('Grupo criado!')).toBeInTheDocument()
+    })
+    expect(screen.getByText('INV123')).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledTimes(4) // grupos, competições, create, refetch
+
+    await userEvent.click(screen.getByRole('button', { name: 'Pronto' }))
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
-
-    expect(fetchSpy).toHaveBeenCalledTimes(4)
   })
 })
 

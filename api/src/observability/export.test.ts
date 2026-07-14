@@ -55,8 +55,9 @@ describe('exportEventsToR2', () => {
     expect(put).not.toHaveBeenCalled()
   })
 
-  it('happy path: grava NDJSON na chave correta', async () => {
-    const events = [{ a: 1 }, { b: 2 }]
+  it('happy path: grava NDJSON na chave correta com a contagem em customMetadata', async () => {
+    // Sob sampling cada linha vale _sample_interval eventos: 3 + 1 (default) = 4.
+    const events = [{ a: 1, _sample_interval: 3 }, { b: 2 }]
     const fetchFake = fetchOk(events)
     vi.stubGlobal('fetch', fetchFake)
     const env = makeEnv()
@@ -65,9 +66,10 @@ describe('exportEventsToR2', () => {
 
     expect(fetchFake).toHaveBeenCalledTimes(1)
     expect(env.EVENTS!.put).toHaveBeenCalledTimes(1)
-    const [key, body] = (env.EVENTS!.put as FetchFake).mock.calls[0]
+    const [key, body, opts] = (env.EVENTS!.put as FetchFake).mock.calls[0]
     expect(key).toBe('events/2026/06/20.ndjson')
     expect(body).toBe(`${JSON.stringify(events[0])}\n${JSON.stringify(events[1])}\n`)
+    expect(opts.customMetadata).toEqual({ events: '4' })
   })
 
   it('dia vazio ({ data: [] }) grava um marcador vazio (para o backfill não re-consultar)', async () => {
@@ -77,9 +79,10 @@ describe('exportEventsToR2', () => {
     await exportEventsToR2(env, new Date('2026-06-20T00:00:00Z'))
 
     expect(env.EVENTS!.put).toHaveBeenCalledTimes(1)
-    const [key, body] = (env.EVENTS!.put as FetchFake).mock.calls[0]
+    const [key, body, opts] = (env.EVENTS!.put as FetchFake).mock.calls[0]
     expect(key).toBe('events/2026/06/20.ndjson')
     expect(body).toBe('')
+    expect(opts.customMetadata).toEqual({ events: '0' })
   })
 })
 
@@ -88,10 +91,10 @@ describe('exportRecentDays', () => {
     const events = [{ a: 1 }]
     vi.stubGlobal('fetch', fetchOk(events))
 
-    // head: dias pares já existem, ímpares faltam.
+    // head: dias pares já existem (com contagem em metadata), ímpares faltam.
     const head = vi.fn(async (key: string) => {
       const dd = Number(key.slice(-9, -7)) // "DD" antes de ".ndjson"
-      return dd % 2 === 0 ? {} : null
+      return dd % 2 === 0 ? { customMetadata: { events: '1' } } : null
     })
     const put = vi.fn()
     const env = makeEnv({ EVENTS: { head, put } as unknown as R2Bucket })
@@ -108,6 +111,32 @@ describe('exportRecentDays', () => {
       const dd = Number(key.slice(-9, -7))
       expect(dd % 2).toBe(1)
     }
+  })
+
+  it('arquivo existente SEM metadata: conta do próprio NDJSON e regrava com a contagem', async () => {
+    const fetchFake = vi.fn()
+    vi.stubGlobal('fetch', fetchFake)
+
+    // Dia 29 existe sem metadata (export antigo); demais dias existem com metadata.
+    const ndjson = `${JSON.stringify({ a: 1, _sample_interval: 2 })}\n${JSON.stringify({ b: 2 })}\n`
+    const head = vi.fn(async (key: string) =>
+      key.endsWith('/29.ndjson') ? {} : { customMetadata: { events: '1' } },
+    )
+    const get = vi.fn(async () => ({ text: async () => ndjson }))
+    const put = vi.fn()
+    const env = makeEnv({ EVENTS: { head, get, put } as unknown as R2Bucket })
+
+    await exportRecentDays(env, new Date('2026-06-30T00:00:00Z'), 5)
+
+    // Não re-consulta o AE (dia pode já ter saído da retenção — o re-export
+    // gravaria um marcador vazio por cima do arquivo bom).
+    expect(fetchFake).not.toHaveBeenCalled()
+    expect(get).toHaveBeenCalledWith('events/2026/06/29.ndjson')
+    expect(put).toHaveBeenCalledTimes(1)
+    const [key, body, opts] = put.mock.calls[0]
+    expect(key).toBe('events/2026/06/29.ndjson')
+    expect(body).toBe(ndjson) // mesmo corpo — só ganha a metadata
+    expect(opts.customMetadata).toEqual({ events: '3' }) // 2 + 1 (default)
   })
 
   it('é no-op sem credenciais', async () => {
