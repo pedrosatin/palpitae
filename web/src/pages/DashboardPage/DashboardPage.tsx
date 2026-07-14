@@ -6,6 +6,8 @@ import CreateGroupModal from '../../components/CreateGroupModal'
 import GroupCard, { type GroupWithStats } from '../../components/GroupCard'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
+import ErrorState from '../../components/ErrorState'
+import { apiFetch } from '../../lib/api'
 import { fetchCachedJson, invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
@@ -57,10 +59,10 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
             searchParams.set('invite_code', normalizedPendingInvite)
           }
 
-          return fetch(buildApiUrl('/groups', searchParams), {
-            credentials: 'include',
-            ...(forceRefresh ? { cache: 'no-store' } : {}),
-          }).then((res) => {
+          return apiFetch(
+            buildApiUrl('/groups', searchParams),
+            forceRefresh ? { cache: 'no-store' } : undefined,
+          ).then((res) => {
             if (!res.ok) throw new Error('Falha ao carregar grupos')
             return res.json() as Promise<{
               groups: GroupWithStats[]
@@ -120,7 +122,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
           </div>
         ) : (
           <div className={styles.content}>
-            {error && <div className={styles.errorMessage}>{error}</div>}
+            {error && <ErrorState message={error} />}
 
             {groups.length === 0 ? (
               <div className={styles.emptyState}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import InfoHint from '../InfoHint/InfoHint'
 import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
 import styles from './MatchCard.module.css'
@@ -161,9 +162,8 @@ export default function MatchCard({
     setError(null)
     setSaved(false)
 
-    const res = await fetch(`${config.apiUrl}/predictions`, {
+    const res = await apiFetch(`${config.apiUrl}/predictions`, {
       method: 'PUT',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         group_id: groupId,
