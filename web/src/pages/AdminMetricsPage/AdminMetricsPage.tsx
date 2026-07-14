@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
+import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
+import ErrorState from '../../components/ErrorState'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
 import { eventLabel } from './labels'
@@ -191,8 +193,8 @@ export default function AdminMetricsPage() {
 
     const params = new URLSearchParams({ days: String(days) })
     Promise.all([
-      fetch(buildApiUrl('/metrics/overview', params), { credentials: 'include' }),
-      fetch(buildApiUrl('/metrics/archive'), { credentials: 'include' }),
+      apiFetch(buildApiUrl('/metrics/overview', params)),
+      apiFetch(buildApiUrl('/metrics/archive')),
     ])
       .then(async ([ovRes, arRes]) => {
         if (cancelled) return
@@ -316,7 +318,7 @@ export default function AdminMetricsPage() {
     return (
       <div className={styles.root}>
         <div className={styles.content}>
-          <p className={styles.errorMessage}>Acesso restrito ao administrador.</p>
+          <ErrorState message="Acesso restrito ao administrador." />
         </div>
       </div>
     )
@@ -345,7 +347,7 @@ export default function AdminMetricsPage() {
         </div>
 
         {error === 'failed' && (
-          <p className={styles.errorMessage}>Falha ao carregar as métricas. Tente de novo.</p>
+          <ErrorState message="Falha ao carregar as métricas. Tente de novo." />
         )}
 
         {loading && <p className={styles.hint}>Carregando…</p>}
