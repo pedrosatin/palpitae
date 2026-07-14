@@ -165,3 +165,49 @@
   font-size: var(--font-size-sm);
   margin: 0;
 }
+
+/* ── Forma recente ("Últimas 4") ─────────────────────────────────────────
+   Vitória usa o verde da marca (✓ preto, como todo conteúdo sobre primary);
+   derrota precisa de um vermelho que o sistema não tem — local por enquanto. */
+.colForm {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.form {
+  display: inline-flex;
+  gap: 4px;
+  vertical-align: middle;
+}
+
+.formBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+}
+
+.formWin {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.formDraw {
+  background: var(--color-surface-elevated);
+  color: var(--color-text-secondary);
+}
+
+.formLoss {
+  background: #e5484d;
+  color: #ffffff;
+}
+
+/* Jogo mais recente ganha um anel discreto — recência sem depender de posição */
+.formLatest {
+  box-shadow: 0 0 0 1px var(--color-bg), 0 0 0 2px var(--color-text-secondary);
+}
