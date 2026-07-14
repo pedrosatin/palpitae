@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import StandingsTab, { computeStandings } from './StandingsTab'
-import { LEAGUE } from './StandingsTab'
+import { LEAGUE, FORM_SIZE } from './StandingsTab'
 import { type Match } from '../MatchCard'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -301,5 +301,44 @@ describe('StandingsTab — liga (pontos corridos)', () => {
     expect(league[alfa].p).toBe(3)
     expect(league[beta].p).toBe(3)
     expect(alfa).toBeLessThan(beta)
+  })
+})
+
+describe('StandingsTab — forma recente (Últimas 4)', () => {
+  const day = (n: number) => new Date(2026, 0, n).toISOString()
+
+  function finished(id: string, n: number, hs: number, as_: number, overrides: Partial<Match> = {}): Match {
+    return makeMatch({
+      id, status: 'finished', home_score: hs, away_score: as_,
+      group_name: null, phase: 'REGULAR_SEASON', start_time: day(n),
+      ...overrides,
+    })
+  }
+
+  it('keeps only the last FORM_SIZE results, most recent last, in chronological order', () => {
+    // 5 jogos do mesmo mandante (bra): v, v, e, d, v — janela de 4 descarta o 1º
+    const matches = [
+      finished('f1', 1, 2, 0),
+      finished('f2', 2, 1, 0),
+      finished('f3', 3, 1, 1),
+      finished('f4', 4, 0, 3),
+      finished('f5', 5, 4, 2),
+    ].reverse() // payload fora de ordem de propósito
+    const bra = computeStandings(matches).get(LEAGUE)!.find((t) => t.team_id === 'bra')!
+    expect(bra.form).toHaveLength(FORM_SIZE)
+    expect(bra.form.map((f) => f.result)).toEqual(['v', 'e', 'd', 'v'])
+  })
+
+  it('mirrors the result for the away team and labels with score and opponent', () => {
+    const arg = computeStandings([finished('f1', 1, 2, 0)]).get(LEAGUE)!.find((t) => t.team_id === 'arg')!
+    expect(arg.form).toEqual([{ result: 'd', label: 'Derrota 2x0 contra BRA' }])
+  })
+
+  it('renders one accessible badge per recent match', async () => {
+    mockFetch([finished('f1', 1, 2, 0), finished('f2', 2, 1, 1)])
+    render(<StandingsTab competitionId="comp-1" competitionType="league" />)
+    await screen.findByText('Classificação')
+    expect(screen.getByRole('img', { name: 'Vitória 2x0 contra ARG' })).toBeInTheDocument()
+    expect(screen.getAllByRole('img', { name: /Empate 1x1/ })).toHaveLength(2)
   })
 })
