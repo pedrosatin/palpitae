@@ -8,8 +8,41 @@ import { type Match } from '../MatchCard'
 import Modal from '../Modal'
 import styles from './StandingsTab.module.css'
 
+export type CompetitionType = 'league' | 'cup'
+
+/** Chave do bucket único de liga em computeStandings ('' nunca colide com nome de grupo). */
+export const LEAGUE = ''
+
+export function isLeagueTable(group: string): boolean {
+  return group === LEAGUE
+}
+
+/** Quantos jogos recentes a coluna "Últimas" mostra. */
+export const FORM_SIZE = 4
+
+const RESULT_LABELS: Record<'v' | 'e' | 'd', string> = {
+  v: 'Vitória',
+  e: 'Empate',
+  d: 'Derrota',
+}
+
+const FORM_GLYPHS: Record<'v' | 'e' | 'd', string> = {
+  v: '✓',
+  e: '–',
+  d: '✕',
+}
+
 interface StandingsTabProps {
   competitionId: string
+  /** Gate vem do grupo (competitions.type); decide o texto do empty state. */
+  competitionType?: CompetitionType | null
+}
+
+/** Resultado de um jogo na forma recente do time, mais antigo → mais recente. */
+export interface FormEntry {
+  result: 'v' | 'e' | 'd'
+  /** Descrição acessível, ex.: "Vitória 2x1 contra FLA". */
+  label: string
 }
 
 export interface TeamStanding {
@@ -17,6 +50,8 @@ export interface TeamStanding {
   team_name: string
   team_short_name: string
   team_logo: string
+  /** Últimos 4 jogos (FORM_SIZE), mais recente por último. */
+  form: FormEntry[]
   p: number
   j: number
   v: number
@@ -38,6 +73,7 @@ function emptyStanding(
     team_name,
     team_short_name,
     team_logo,
+    form: [],
     p: 0,
     j: 0,
     v: 0,
@@ -72,19 +108,29 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
     return team
   }
 
-  for (const m of matches) {
-    if (m.group_name === null) continue
+  // LEAGUE ('') = tabela única de liga (pontos corridos). Copa: agrupa por
+  // group_name (fase de grupos) e ignora mata-mata (group_name null fora de
+  // REGULAR_SEASON).
+  // Ordem cronológica: a coluna de forma depende de "mais recente por último";
+  // a ordem do payload de /matches não é garantida.
+  const chronological = [...matches].sort((a, b) =>
+    a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : 0,
+  )
+
+  for (const m of chronological) {
+    const groupKey = m.group_name ?? (m.phase === 'REGULAR_SEASON' ? LEAGUE : null)
+    if (groupKey === null) continue
 
     // Ensure both teams appear in the table even before any match is played.
     const home = teamFor(
-      m.group_name,
+      groupKey,
       m.home_team_id,
       m.home_team_name,
       m.home_team_short_name,
       m.home_team_logo,
     )
     const away = teamFor(
-      m.group_name,
+      groupKey,
       m.away_team_id,
       m.away_team_name,
       m.away_team_short_name,
@@ -122,13 +168,36 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
       home.p += 1
       away.p += 1
     }
+
+    const score = `${m.home_score}x${m.away_score}`
+    const homeResult: FormEntry['result'] =
+      m.home_score > m.away_score ? 'v' : m.home_score < m.away_score ? 'd' : 'e'
+    const awayResult: FormEntry['result'] =
+      homeResult === 'v' ? 'd' : homeResult === 'd' ? 'v' : 'e'
+    home.form.push({
+      result: homeResult,
+      label: `${RESULT_LABELS[homeResult]} ${score} contra ${m.away_team_short_name}`,
+    })
+    away.form.push({
+      result: awayResult,
+      label: `${RESULT_LABELS[awayResult]} ${score} contra ${m.home_team_short_name}`,
+    })
   }
 
   const result = new Map<string, TeamStanding[]>()
   for (const [group, teams] of byGroup) {
+    for (const team of teams.values()) {
+      team.form = team.form.slice(-FORM_SIZE)
+    }
+    // Liga (CBF, aproximado): pontos, VITÓRIAS, saldo, gols pró. Critérios
+    // seguintes do regulamento (confronto direto, cartões) não se aplicam —
+    // cartões não são sincronizados; empate residual cai em ordem alfabética.
+    // Copa (FIFA): pontos, saldo, gols pró.
+    const isLeague = isLeagueTable(group)
     const sorted = [...teams.values()].sort(
       (a, b) =>
         b.p - a.p ||
+        (isLeague ? b.v - a.v : 0) ||
         b.sg - a.sg ||
         b.gf - a.gf ||
         a.team_name.localeCompare(b.team_name),
@@ -146,7 +215,7 @@ function formatDay(iso: string): string {
   })
 }
 
-export default function StandingsTab({ competitionId }: StandingsTabProps) {
+export default function StandingsTab({ competitionId, competitionType }: StandingsTabProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -185,9 +254,13 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
   const standings = computeStandings(matches)
 
   if (standings.size === 0) {
+    // Liga sem jogos sincronizados ainda não tem tabela — mas dizer "não tem
+    // fase de grupos" seria falso; a mensagem certa depende do tipo.
     return (
       <p className={styles.empty}>
-        Esta competição não tem fase de grupos.
+        {competitionType === 'league'
+          ? 'Ainda não há jogos sincronizados para montar a classificação.'
+          : 'Esta competição não tem fase de grupos.'}
       </p>
     )
   }
@@ -205,13 +278,19 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
     <div className={styles.root}>
       {groups.map((group) => (
         <div key={group} className={styles.group}>
-          <button
-            className={styles.groupHeader}
-            onClick={() => { trackEvent('click_standings_ver_grupo', { group }); setSelectedGroup(group) }}
-          >
-            <span>Grupo {group}</span>
-            <span className={styles.groupHint}>ver jogos</span>
-          </button>
+          {isLeagueTable(group) ? (
+            <div className={`${styles.groupHeader} ${styles.groupHeaderStatic}`}>
+              <span>Classificação</span>
+            </div>
+          ) : (
+            <button
+              className={styles.groupHeader}
+              onClick={() => { trackEvent('click_standings_ver_grupo', { group }); setSelectedGroup(group) }}
+            >
+              <span>Grupo {group}</span>
+              <span className={styles.groupHint}>ver jogos</span>
+            </button>
+          )}
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -243,6 +322,9 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
                   <th className={styles.num} title="Saldo de gols">
                     SG
                   </th>
+                  <th className={styles.colForm} title="Resultados dos últimos 4 jogos">
+                    Últimas 4
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -266,6 +348,29 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
                     <td>{t.gf}</td>
                     <td>{t.ga}</td>
                     <td>{t.sg}</td>
+                    <td className={styles.colForm}>
+                      <span className={styles.form}>
+                        {t.form.map((f, fi) => (
+                          <span
+                            key={fi}
+                            role="img"
+                            aria-label={f.label}
+                            title={f.label}
+                            className={[
+                              styles.formBadge,
+                              f.result === 'v'
+                                ? styles.formWin
+                                : f.result === 'd'
+                                  ? styles.formLoss
+                                  : styles.formDraw,
+                              fi === t.form.length - 1 ? styles.formLatest : '',
+                            ].join(' ')}
+                          >
+                            <span aria-hidden="true">{FORM_GLYPHS[f.result]}</span>
+                          </span>
+                        ))}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

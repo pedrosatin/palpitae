@@ -6,6 +6,20 @@ import type { AppContext } from '../types'
 
 const router = new Hono<AppContext>()
 
+// Campos comuns às linhas de grupo dos dois GETs (lista e detalhe). Um campo novo
+// vindo do JOIN entra aqui uma vez, em vez de em dois tipos inline.
+type GroupRow = {
+  id: string
+  name: string
+  competition_id: string
+  competition_name: string | null
+  competition_type: 'league' | 'cup' | null
+  admin_id: string
+  invite_code: string
+  created_at: string
+  member_count: number
+}
+
 /**
  * Generates a readable invite code in the format XXXX-XXXX (uppercase alphanumeric).
  */
@@ -60,6 +74,7 @@ router.get('/', requireAuth, async (c) => {
           g.name,
           g.competition_id,
           c.name AS competition_name,
+          c.type AS competition_type,
           g.owner_user_id AS admin_id,
           g.invite_code,
           g.created_at,
@@ -88,18 +103,7 @@ router.get('/', requireAuth, async (c) => {
         `
       )
       .bind(userId, userId)
-      .all<{
-        id: string
-        name: string
-        competition_id: string
-        competition_name: string | null
-        admin_id: string
-        invite_code: string
-        created_at: string
-        member_count: number
-        user_position: number
-        user_points: number
-      }>()
+      .all<GroupRow & { user_position: number; user_points: number }>()
 
     const matchedInviteGroup = inviteCode
       ? groups.results.find((group) => group.invite_code === inviteCode) ?? null
@@ -112,6 +116,7 @@ router.get('/', requireAuth, async (c) => {
         name: group.name,
         competition_id: group.competition_id,
         competition_name: group.competition_name ?? null,
+        competition_type: group.competition_type ?? null,
         is_admin: group.admin_id === userId,
         created_at: group.created_at,
         member_count: group.member_count,
@@ -374,6 +379,7 @@ router.get('/:id', requireAuth, async (c) => {
          g.name,
          g.competition_id,
          c.name AS competition_name,
+         c.type AS competition_type,
          g.owner_user_id AS admin_id,
          g.invite_code,
          g.created_at,
@@ -392,22 +398,16 @@ router.get('/:id', requireAuth, async (c) => {
        GROUP BY g.id`,
     )
     .bind(userId, groupId)
-    .first<{
-      id: string
-      name: string
-      competition_id: string
-      competition_name: string | null
-      admin_id: string
-      invite_code: string
-      created_at: string
-      points_exact: number
-      points_winner: number
-      points_penalty: number
-      predictions_visibility: string
-      member_count: number
-      user_points: number
-      exact_hits: number
-    }>()
+    .first<
+      GroupRow & {
+        points_exact: number
+        points_winner: number
+        points_penalty: number
+        predictions_visibility: string
+        user_points: number
+        exact_hits: number
+      }
+    >()
 
   if (!group) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
@@ -433,6 +433,7 @@ router.get('/:id', requireAuth, async (c) => {
       name: group.name,
       competition_id: group.competition_id,
       competition_name: group.competition_name,
+      competition_type: group.competition_type ?? null,
       is_admin: group.admin_id === userId,
       invite_code: group.invite_code,
       created_at: group.created_at,
