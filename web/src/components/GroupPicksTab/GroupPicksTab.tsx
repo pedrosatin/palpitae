@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import { fetchCachedJson } from '../../lib/api-cache'
 import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
+import ErrorState from '../ErrorState'
 import type { Match } from '../MatchCard'
 import PenaltyBadge from '../PenaltyBadge'
 import styles from './GroupPicksTab.module.css'
@@ -54,18 +56,16 @@ export default function GroupPicksTab({
       fetchCachedJson(
         `matches:${competitionId}`,
         () =>
-          fetch(
+          apiFetch(
             `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-            { credentials: 'include' },
           ).then((r) => {
             if (!r.ok) throw new Error('Erro ao carregar jogos')
             return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
           }),
         30_000,
       ),
-      fetch(
+      apiFetch(
         `${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`,
-        { credentials: 'include' },
       ).then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar palpites do grupo')
         return r.json() as Promise<GroupPicksResponse>
@@ -87,7 +87,7 @@ export default function GroupPicksTab({
   }
 
   if (error) {
-    return <p className={styles.error}>{error}</p>
+    return <ErrorState message={error} />
   }
 
   if (matches.length === 0 || !picks) {

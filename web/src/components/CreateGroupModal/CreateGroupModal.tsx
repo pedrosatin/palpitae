@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import Button from '../Button'
 import InfoHint from '../InfoHint/InfoHint'
 import Modal from '../Modal'
@@ -156,9 +157,8 @@ export default function CreateGroupModal({
     setSubmitting(true)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups`, {
+      const res = await apiFetch(`${config.apiUrl}/groups`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
