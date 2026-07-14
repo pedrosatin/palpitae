@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import { fetchCachedJson } from '../../lib/api-cache'
-import { applyDefaultRound, isGroupStageRound } from '../../lib/rounds'
+import { applyDefaultRound } from '../../lib/rounds'
+import ErrorState from '../ErrorState'
 import MatchCard, { type Match, type Prediction } from '../MatchCard'
-import PenaltyBadge from '../PenaltyBadge'
 import Select from '../Select'
 import Button from '../Button'
 import RoundHeader from '../RoundHeader/RoundHeader'
@@ -138,9 +139,8 @@ function usePredictionsActions(
     setBulkError(null)
 
     try {
-      const res = await fetch(`${config.apiUrl}/predictions/bulk`, {
+      const res = await apiFetch(`${config.apiUrl}/predictions/bulk`, {
         method: 'PUT',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId, predictions: toSave }),
       })
@@ -178,9 +178,8 @@ function usePredictionsActions(
     setImporting(true)
     setImportFeedback(null)
     try {
-      const res = await fetch(`${config.apiUrl}/predictions/import`, {
+      const res = await apiFetch(`${config.apiUrl}/predictions/import`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           source_group_id: importSourceId,
@@ -196,9 +195,8 @@ function usePredictionsActions(
       if (!res.ok) throw new Error(data.error ?? 'Erro ao importar palpites')
 
       // Refresh predictions after import
-      const predsRes = await fetch(
+      const predsRes = await apiFetch(
         `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
-        { credentials: 'include' },
       )
       const predsData = (await predsRes.json()) as { predictions: Prediction[] }
       const map = new Map<string, Prediction>()
@@ -323,7 +321,7 @@ export default function PredictionsTab({
     fetchCachedJson(
       'groups:list',
       () =>
-        fetch(`${config.apiUrl}/groups`, { credentials: 'include' }).then(
+        apiFetch(`${config.apiUrl}/groups`).then(
           (r) => {
             if (!r.ok) throw new Error('Erro ao carregar grupos')
             return r.json() as Promise<{
@@ -355,22 +353,16 @@ export default function PredictionsTab({
       fetchCachedJson(
         `matches:${competitionId}`,
         () =>
-          fetch(
+          apiFetch(
             `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-            {
-              credentials: 'include',
-            },
           ).then((r) => {
             if (!r.ok) throw new Error('Erro ao carregar jogos')
             return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
           }),
         30_000,
       ),
-      fetch(
+      apiFetch(
         `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
-        {
-          credentials: 'include',
-        },
       ).then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar palpites')
         return r.json() as Promise<{ predictions: Prediction[] }>
@@ -388,30 +380,6 @@ export default function PredictionsTab({
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [groupId, competitionId])
-
-  function handleSaved(
-    matchId: string,
-    home: number,
-    away: number,
-    penaltyWinner: 'home' | 'away' | null,
-  ) {
-    setPredictions((prev) => {
-      const next = new Map(prev)
-      const existing = prev.get(matchId)
-      next.set(matchId, {
-        id: existing?.id ?? '',
-        match_id: matchId,
-        predicted_home_score: home,
-        predicted_away_score: away,
-        predicted_penalty_winner: penaltyWinner,
-        points_awarded: existing?.points_awarded ?? 0,
-        penalty_points: existing?.penalty_points ?? 0,
-        locked: 0,
-        updated_at: new Date().toISOString(),
-      })
-      return next
-    })
-  }
 
   function handleDraftChange(matchId: string, home: string, away: string) {
     setDrafts((prev) => {
@@ -437,7 +405,7 @@ export default function PredictionsTab({
   }
 
   if (error) {
-    return <p className={styles.error}>{error}</p>
+    return <ErrorState message={error} />
   }
 
   if (matches.length === 0) {

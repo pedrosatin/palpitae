@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './JoinGroupModal.module.css'
@@ -62,9 +63,8 @@ export default function JoinGroupModal({
     const invite_code = normaliseCode(code)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups/join`, {
+      const res = await apiFetch(`${config.apiUrl}/groups/join`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invite_code }),
       })

@@ -16,7 +16,9 @@ import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
-import StandingsTab from '../../components/StandingsTab'
+import StandingsTab, { type CompetitionType } from '../../components/StandingsTab'
+import ErrorState from '../../components/ErrorState'
+import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
@@ -38,6 +40,7 @@ interface GroupDetail {
   name: string
   competition_id: string
   competition_name: string | null
+  competition_type: CompetitionType | null
   is_admin: boolean
   invite_code: string
   created_at: string
@@ -161,9 +164,8 @@ function RenameGroupModal({
     setError(null)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups/${groupId}`, {
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}`, {
         method: 'PATCH',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
       })
@@ -218,7 +220,7 @@ function useGroupData(groupId: string | undefined) {
     if (!groupId) return
     setLoading(true)
     setError(null)
-    fetch(`${config.apiUrl}/groups/${groupId}`, { credentials: 'include' })
+    apiFetch(`${config.apiUrl}/groups/${groupId}`)
       .then((r) => {
         if (!r.ok) throw new Error('Grupo não encontrado')
         return r.json() as Promise<{ group: GroupDetail }>
@@ -286,9 +288,8 @@ function useGroupActions(groupId: string | undefined, userId: string, onCloseMen
     setLeaving(true)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups/${groupId}/members/${userId}`, {
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/members/${userId}`, {
         method: 'DELETE',
-        credentials: 'include',
       })
 
       if (!res.ok) {
@@ -322,9 +323,8 @@ function useGroupActions(groupId: string | undefined, userId: string, onCloseMen
     setDeleting(true)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups/${groupId}`, {
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}`, {
         method: 'DELETE',
-        credentials: 'include',
       })
 
       if (!res.ok) {
@@ -444,12 +444,14 @@ function GroupTabs({
   tabsOffset,
   activeTab,
   isAdmin,
+  showStandings,
   handleTabClick,
   tabHref,
 }: {
   tabsOffset: number
   activeTab: Tab
   isAdmin: boolean
+  showStandings: boolean
   handleTabClick: (e: React.MouseEvent<HTMLAnchorElement>, tab: Tab) => void
   tabHref: (tab: Tab) => string
 }) {
@@ -466,13 +468,15 @@ function GroupTabs({
       >
         Palpitar
       </a>
-      <a
-        href={tabHref('standings')}
-        className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
-        onClick={(e) => handleTabClick(e, 'standings')}
-      >
-        Tabela
-      </a>
+      {showStandings && (
+        <a
+          href={tabHref('standings')}
+          className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
+          onClick={(e) => handleTabClick(e, 'standings')}
+        >
+          Tabela
+        </a>
+      )}
       <a
         href={tabHref('group-picks')}
         className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
@@ -517,7 +521,11 @@ export default function GroupDetailPage({
   )
   const [renameOpen, setRenameOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const activeTab = parseTab(searchParams.get('tab'))
+  const rawTab = parseTab(searchParams.get('tab'))
+  // Tabela do campeonato só em pontos corridos (competitions.type = 'league');
+  // em copas a URL ?tab=standings cai no tab default em vez de painel vazio.
+  const showStandings = group?.competition_type === 'league'
+  const activeTab = rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
 
   useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
 
@@ -656,9 +664,7 @@ export default function GroupDetailPage({
           onLogout={onLogout}
         />
         <main className={styles.root}>
-          <div className={styles.errorBox}>
-            {error ?? 'Grupo não encontrado'}
-          </div>
+          <ErrorState message={error ?? 'Grupo não encontrado'} />
         </main>
         {modals}
       </>
@@ -696,6 +702,7 @@ export default function GroupDetailPage({
           tabsOffset={tabsOffset}
           activeTab={activeTab}
           isAdmin={isAdmin}
+          showStandings={showStandings}
           handleTabClick={handleTabClick}
           tabHref={tabHref}
         />
@@ -708,8 +715,11 @@ export default function GroupDetailPage({
               pointsExact={group.points_exact}
             />
           )}
-          {activeTab === 'standings' && (
-            <StandingsTab competitionId={group.competition_id} />
+          {activeTab === 'standings' && showStandings && (
+            <StandingsTab
+              competitionId={group.competition_id}
+              competitionType={group.competition_type}
+            />
           )}
           {activeTab === 'group-picks' && (
             <GroupPicksTab
