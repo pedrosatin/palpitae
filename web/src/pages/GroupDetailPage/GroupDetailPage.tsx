@@ -16,6 +16,8 @@ import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
+import ErrorState from '../../components/ErrorState'
+import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
@@ -140,7 +142,7 @@ export default function GroupDetailPage({
     if (!groupId) return
     setLoading(true)
     setError(null)
-    fetch(`${config.apiUrl}/groups/${groupId}`, { credentials: 'include' })
+    apiFetch(`${config.apiUrl}/groups/${groupId}`)
       .then((r) => {
         if (!r.ok) throw new Error('Grupo não encontrado')
         return r.json() as Promise<{ group: GroupDetail }>
@@ -243,9 +245,8 @@ export default function GroupDetailPage({
     setLeaving(true)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups/${groupId}/members/${user.id}`, {
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/members/${user.id}`, {
         method: 'DELETE',
-        credentials: 'include',
       })
 
       if (!res.ok) {
@@ -285,9 +286,8 @@ export default function GroupDetailPage({
     setRenameError(null)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups/${groupId}`, {
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}`, {
         method: 'PATCH',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       })
@@ -325,9 +325,8 @@ export default function GroupDetailPage({
     setDeleting(true)
 
     try {
-      const res = await fetch(`${config.apiUrl}/groups/${groupId}`, {
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}`, {
         method: 'DELETE',
-        credentials: 'include',
       })
 
       if (!res.ok) {
@@ -417,9 +416,7 @@ export default function GroupDetailPage({
           onLogout={onLogout}
         />
         <main className={styles.root}>
-          <div className={styles.errorBox}>
-            {error ?? 'Grupo não encontrado'}
-          </div>
+          <ErrorState message={error ?? 'Grupo não encontrado'} />
         </main>
         {modals}
       </>
