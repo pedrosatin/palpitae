@@ -16,6 +16,7 @@ import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
+import StandingsTab, { type CompetitionType } from '../../components/StandingsTab'
 import ErrorState from '../../components/ErrorState'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
@@ -38,6 +39,7 @@ interface GroupDetail {
   name: string
   competition_id: string
   competition_name: string | null
+  competition_type: CompetitionType | null
   is_admin: boolean
   invite_code: string
   created_at: string
@@ -52,6 +54,7 @@ interface GroupDetail {
 
 const TABS = [
   'predictions',
+  'standings',
   'group-picks',
   'leaderboard',
   'members',
@@ -61,6 +64,7 @@ const DEFAULT_TAB: Tab = 'predictions'
 
 const TAB_LABELS: Record<Tab, string> = {
   predictions: 'Palpitar',
+  standings: 'Tabela',
   'group-picks': 'Grupo',
   leaderboard: 'Ranking',
   members: 'Membros',
@@ -95,7 +99,11 @@ export default function GroupDetailPage({
   const [renameError, setRenameError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
   const menuRef = useRef<HTMLDivElement>(null)
-  const activeTab = parseTab(searchParams.get('tab'))
+  const rawTab = parseTab(searchParams.get('tab'))
+  // Tabela do campeonato só em pontos corridos (competitions.type = 'league');
+  // em copas a URL ?tab=standings cai no tab default em vez de painel vazio.
+  const showStandings = group?.competition_type === 'league'
+  const activeTab = rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
 
   useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
 
@@ -543,6 +551,15 @@ export default function GroupDetailPage({
           >
             Palpitar
           </a>
+          {showStandings && (
+            <a
+              href={tabHref('standings')}
+              className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
+              onClick={(e) => handleTabClick(e, 'standings')}
+            >
+              Tabela
+            </a>
+          )}
           <a
             href={tabHref('group-picks')}
             className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
@@ -574,6 +591,12 @@ export default function GroupDetailPage({
               groupId={groupId}
               competitionId={group.competition_id}
               pointsExact={group.points_exact}
+            />
+          )}
+          {activeTab === 'standings' && showStandings && (
+            <StandingsTab
+              competitionId={group.competition_id}
+              competitionType={group.competition_type}
             />
           )}
           {activeTab === 'group-picks' && (
