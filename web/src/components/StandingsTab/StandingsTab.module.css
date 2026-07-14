@@ -160,12 +160,6 @@
   text-align: center;
 }
 
-.error {
-  color: #f25b1b;
-  font-size: var(--font-size-sm);
-  margin: 0;
-}
-
 /* ── Forma recente ("Últimas 4") ─────────────────────────────────────────
    Vitória usa o verde da marca (✓ preto, como todo conteúdo sobre primary);
    derrota precisa de um vermelho que o sistema não tem — local por enquanto. */

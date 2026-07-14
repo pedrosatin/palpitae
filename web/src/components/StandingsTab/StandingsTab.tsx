@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import { fetchCachedJson } from '../../lib/api-cache'
+import ErrorState from '../ErrorState'
 import { type Match } from '../MatchCard'
 import Modal from '../Modal'
 import styles from './StandingsTab.module.css'
@@ -225,9 +227,8 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
     fetchCachedJson(
       `matches:${competitionId}`,
       () =>
-        fetch(
+        apiFetch(
           `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-          { credentials: 'include' },
         ).then((r) => {
           if (!r.ok) throw new Error('Erro ao carregar jogos')
           return r.json() as Promise<{
@@ -247,7 +248,7 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
   }
 
   if (error) {
-    return <p className={styles.error}>{error}</p>
+    return <ErrorState message={error} />
   }
 
   const standings = computeStandings(matches)
