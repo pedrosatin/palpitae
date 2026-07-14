@@ -80,7 +80,7 @@ const baseGroup = {
   name: 'Grupo Teste',
   competition_id: 'comp-1',
   competition_name: 'Copa do Mundo',
-  competition_type: null as string | null,
+  competition_type: null as 'league' | 'cup' | null,
   is_admin: false,
   invite_code: 'INV001',
   created_at: '2026-01-01T00:00:00Z',

@@ -16,7 +16,7 @@ import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
-import StandingsTab from '../../components/StandingsTab'
+import StandingsTab, { type CompetitionType } from '../../components/StandingsTab'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
@@ -37,7 +37,7 @@ interface GroupDetail {
   name: string
   competition_id: string
   competition_name: string | null
-  competition_type: string | null
+  competition_type: CompetitionType | null
   is_admin: boolean
   invite_code: string
   created_at: string
@@ -597,7 +597,10 @@ export default function GroupDetailPage({
             />
           )}
           {activeTab === 'standings' && showStandings && (
-            <StandingsTab competitionId={group.competition_id} />
+            <StandingsTab
+              competitionId={group.competition_id}
+              competitionType={group.competition_type}
+            />
           )}
           {activeTab === 'group-picks' && (
             <GroupPicksTab

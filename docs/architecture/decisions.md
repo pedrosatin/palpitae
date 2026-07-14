@@ -456,3 +456,26 @@ Old-app identities (`participant_name` strings) were mapped to Palpitae users by
 - Prediction locking semantics change for the group: old app locked the whole round at a cutoff; Palpitae locks per match at kickoff.
 - Per-round ranking (old app feature) has no Palpitae view; imported data allows deriving it later if missed.
 - bolao-brasileirao becomes read-only and is retired separately.
+
+---
+
+## ADR-012: Standings Tab — Data-Driven Competition-Type Gate
+
+**Status:** Accepted
+**Date:** 2026-07-13
+
+### Context
+
+The Tabela (standings) tab was removed from the group page because it only served the World Cup group stage. With the Brasileirão Série A in the product (ADR-011), a round-robin league where the standings are the core view, the tab needs to come back — but only for leagues.
+
+### Decision
+
+Gate by a new `competitions.type` column (`'league' | 'cup'`, migration 0012), the same per-competition data-driven pattern as `penalty_phases` (ADR pattern: fail-closed). Default `'cup'` = no standings; leagues are marked explicitly. The API exposes `competition_type` on the group endpoints; the frontend renders the tab only for league groups and falls back to the default tab when `?tab=standings` is forced on a cup group.
+
+`computeStandings` buckets league matches (`phase === 'REGULAR_SEASON'`, no `group_name`) into a single table keyed by the exported `LEAGUE` sentinel; cup knockout matches stay excluded. League sorting approximates CBF criteria (points, wins, goal difference, goals for — head-to-head and cards are not synced); cup groups keep FIFA (points, GD, GF).
+
+### Consequences
+
+- New leagues need one `UPDATE competitions SET type='league'` — no code change.
+- Deploy coupling: the group endpoints select `c.type`, so migration 0012 must be applied before the API deploy (done for prod on 2026-07-13).
+- football-data.org already classifies competitions (`type: LEAGUE|CUP`); if competition creation is ever automated, the column can be filled from the provider.

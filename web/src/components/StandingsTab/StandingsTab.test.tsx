@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import StandingsTab, { computeStandings } from './StandingsTab'
+import { LEAGUE } from './StandingsTab'
 import { type Match } from '../MatchCard'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -260,18 +261,29 @@ describe('StandingsTab — liga (pontos corridos)', () => {
     mockFetch([
       leagueMatch({ id: 'k1', phase: 'LAST_16', status: 'finished', home_score: 1, away_score: 0 }),
     ])
-    render(<StandingsTab competitionId="comp-1" />)
+    render(<StandingsTab competitionId="comp-1" competitionType="cup" />)
     expect(
       await screen.findByText('Esta competição não tem fase de grupos.'),
     ).toBeInTheDocument()
   })
 
+  it('shows a league-appropriate empty state, not the cup message', async () => {
+    mockFetch([])
+    render(<StandingsTab competitionId="comp-1" competitionType="league" />)
+    expect(
+      await screen.findByText('Ainda não há jogos sincronizados para montar a classificação.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Esta competição não tem fase de grupos.'),
+    ).not.toBeInTheDocument()
+  })
+
   it('uses wins as the 2nd tiebreaker (CBF), before goal difference', () => {
     // A: 1 vitória e 1 derrota feia → 3 pts, 1 v, sg -4
     // B: 3 empates → 3 pts, 0 v, sg 0. CBF: A acima de B (FIFA seria o oposto).
-    const mk = (id: string, h: [string, string], a: [string, string], hs: number, as_: number) =>
+    const mk = (id: string, h: [string, string], a: [string, string], homeScore: number, awayScore: number) =>
       leagueMatch({
-        id, status: 'finished', home_score: hs, away_score: as_,
+        id, status: 'finished', home_score: homeScore, away_score: awayScore,
         home_team_id: h[0], home_team_name: h[1], home_team_short_name: h[1].slice(0, 3).toUpperCase(),
         away_team_id: a[0], away_team_name: a[1], away_team_short_name: a[1].slice(0, 3).toUpperCase(),
       })
@@ -283,7 +295,7 @@ describe('StandingsTab — liga (pontos corridos)', () => {
       mk('5', ['eee', 'Eco'], ['bbb', 'Beta'], 0, 0),
     ]
     const standings = computeStandings(matches)
-    const league = standings.get('')!
+    const league = standings.get(LEAGUE)!
     const alfa = league.findIndex((t) => t.team_id === 'aaa')
     const beta = league.findIndex((t) => t.team_id === 'bbb')
     expect(league[alfa].p).toBe(3)
