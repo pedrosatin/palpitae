@@ -6,6 +6,8 @@ import CreateGroupModal from '../../components/CreateGroupModal'
 import GroupCard, { type GroupWithStats } from '../../components/GroupCard'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
+import ErrorState from '../../components/ErrorState'
+import { apiFetch } from '../../lib/api'
 import { fetchCachedJson, invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
@@ -57,10 +59,10 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
             searchParams.set('invite_code', normalizedPendingInvite)
           }
 
-          return fetch(buildApiUrl('/groups', searchParams), {
-            credentials: 'include',
-            ...(forceRefresh ? { cache: 'no-store' } : {}),
-          }).then((res) => {
+          return apiFetch(
+            buildApiUrl('/groups', searchParams),
+            forceRefresh ? { cache: 'no-store' } : undefined,
+          ).then((res) => {
             if (!res.ok) throw new Error('Falha ao carregar grupos')
             return res.json() as Promise<{
               groups: GroupWithStats[]
@@ -92,7 +94,8 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   function handleGroupCreated() {
     fetchGroups(true)
-    setCreateOpen(false)
+    // Deixamos o modal aberto com a tela de sucesso ("Pronto"). O `CreateGroupModal`
+    // cuida do próprio estado de finalização.
   }
 
   function handleGroupJoined(group: { id: string; name: string }) {
@@ -100,24 +103,6 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     navigate(
       `/grupos/${group.id}`,
       pendingInvite ? { replace: true } : undefined,
-    )
-  }
-
-  if (loading) {
-    return (
-      <>
-        <Header
-          user={user}
-          onCreateGroup={() => setCreateOpen(true)}
-          onJoinGroup={() => setJoinOpen(true)}
-          onLogout={onLogout}
-        />
-        <main className={styles.root}>
-          <div className={styles.loadingContainer}>
-            <p>Carregando...</p>
-          </div>
-        </main>
-      </>
     )
   }
 
@@ -131,43 +116,49 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
       />
 
       <main className={styles.root}>
-        <div className={styles.content}>
-          {error && <div className={styles.errorMessage}>{error}</div>}
+        {loading ? (
+          <div className={styles.loadingContainer}>
+            <p>Carregando...</p>
+          </div>
+        ) : (
+          <div className={styles.content}>
+            {error && <ErrorState message={error} />}
 
-          {groups.length === 0 ? (
-            <div className={styles.emptyState}>
-              <h2>Nenhum grupo ainda</h2>
-              <p>
-                {canCreateGroup
-                  ? 'Comece a competir criando ou se juntando a um grupo'
-                  : 'Comece a competir entrando em um grupo com convite'}
-              </p>
-              <div className={styles.ctaButtons}>
-                {canCreateGroup && (
-                  <Button variant="primary" onClick={() => { trackEvent('click_dashboard_criar_grupo_empty'); setCreateOpen(true) }}>
-                    Criar grupo
+            {groups.length === 0 ? (
+              <div className={styles.emptyState}>
+                <h2>Nenhum grupo ainda</h2>
+                <p>
+                  {canCreateGroup
+                    ? 'Comece a competir criando ou se juntando a um grupo'
+                    : 'Comece a competir entrando em um grupo com convite'}
+                </p>
+                <div className={styles.ctaButtons}>
+                  {canCreateGroup && (
+                    <Button variant="primary" onClick={() => { trackEvent('click_dashboard_criar_grupo_empty'); setCreateOpen(true) }}>
+                      Criar grupo
+                    </Button>
+                  )}
+                  <Button variant="secondary" onClick={() => { trackEvent('click_dashboard_entrar_convite_empty'); setJoinOpen(true) }}>
+                    Entrar com convite
                   </Button>
-                )}
-                <Button variant="secondary" onClick={() => { trackEvent('click_dashboard_entrar_convite_empty'); setJoinOpen(true) }}>
-                  Entrar com convite
-                </Button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className={styles.groupsContainer}>
-              <h2 className={styles.sectionTitle}>Seus grupos</h2>
-              <div className={styles.groupsGrid}>
-                {groups.map((group) => (
-                  <GroupCard
-                    key={group.id}
-                    group={group}
-                    onClick={() => { trackEvent('click_dashboard_grupo', { group_id: group.id }); navigate(`/grupos/${group.id}`) }}
-                  />
-                ))}
+            ) : (
+              <div className={styles.groupsContainer}>
+                <h2 className={styles.sectionTitle}>Seus grupos</h2>
+                <div className={styles.groupsGrid}>
+                  {groups.map((group) => (
+                    <GroupCard
+                      key={group.id}
+                      group={group}
+                      onClick={() => { trackEvent('click_dashboard_grupo', { group_id: group.id }); navigate(`/grupos/${group.id}`) }}
+                    />
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </main>
 
       <CreateGroupModal

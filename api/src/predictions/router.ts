@@ -437,7 +437,7 @@ router.put('/', requireAuth, async (c) => {
     predicted_penalty_winner?: 'home' | 'away' | null
   }
   const parsed = await parseJsonBody<PutBody>(c)
-  if (!parsed.ok) return parsed.response as ReturnType<typeof c.json>
+  if (!parsed.ok) return parsed.response
   const body = parsed.body
 
   const { group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner } = body
@@ -571,7 +571,7 @@ async function handleBulkPut(c: Context<AppContext>) {
     }>
   }
   const parsed = await parseJsonBody<BulkBody>(c)
-  if (!parsed.ok) return parsed.response as ReturnType<typeof c.json>
+  if (!parsed.ok) return parsed.response
   const body = parsed.body
 
   const { group_id, predictions } = body
@@ -737,7 +737,7 @@ async function handleImportPost(c: Context<AppContext>) {
 
   type ImportBody = { source_group_id?: string; target_group_id?: string }
   const parsed = await parseJsonBody<ImportBody>(c)
-  if (!parsed.ok) return parsed.response as ReturnType<typeof c.json>
+  if (!parsed.ok) return parsed.response
   const body = parsed.body
 
   const { source_group_id, target_group_id } = body

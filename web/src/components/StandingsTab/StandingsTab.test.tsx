@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import StandingsTab, { computeStandings } from './StandingsTab'
+import { LEAGUE, FORM_SIZE } from './StandingsTab'
 import { type Match } from '../MatchCard'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -238,5 +239,106 @@ describe('StandingsTab – analytics', () => {
     await userEvent.click(screen.getByRole('button', { name: /Grupo A/i }))
 
     expect(mockTrackEvent).toHaveBeenCalledWith('click_standings_ver_grupo', { group: 'A' })
+  })
+})
+
+describe('StandingsTab — liga (pontos corridos)', () => {
+  function leagueMatch(overrides: Partial<Match> = {}): Match {
+    return makeMatch({ group_name: null, phase: 'REGULAR_SEASON', ...overrides })
+  }
+
+  it('renders a single Classificação table from REGULAR_SEASON matches', async () => {
+    mockFetch([
+      leagueMatch({ id: 'l1', status: 'finished', home_score: 2, away_score: 0 }),
+    ])
+    render(<StandingsTab competitionId="comp-1" />)
+    expect(await screen.findByText('Classificação')).toBeInTheDocument()
+    expect(screen.queryByText(/Grupo /)).not.toBeInTheDocument()
+    expect(screen.queryByText('ver jogos')).not.toBeInTheDocument()
+  })
+
+  it('ignores knockout matches (group_name null fora de REGULAR_SEASON)', async () => {
+    mockFetch([
+      leagueMatch({ id: 'k1', phase: 'LAST_16', status: 'finished', home_score: 1, away_score: 0 }),
+    ])
+    render(<StandingsTab competitionId="comp-1" competitionType="cup" />)
+    expect(
+      await screen.findByText('Esta competição não tem fase de grupos.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a league-appropriate empty state, not the cup message', async () => {
+    mockFetch([])
+    render(<StandingsTab competitionId="comp-1" competitionType="league" />)
+    expect(
+      await screen.findByText('Ainda não há jogos sincronizados para montar a classificação.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Esta competição não tem fase de grupos.'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('uses wins as the 2nd tiebreaker (CBF), before goal difference', () => {
+    // A: 1 vitória e 1 derrota feia → 3 pts, 1 v, sg -4
+    // B: 3 empates → 3 pts, 0 v, sg 0. CBF: A acima de B (FIFA seria o oposto).
+    const mk = (id: string, h: [string, string], a: [string, string], homeScore: number, awayScore: number) =>
+      leagueMatch({
+        id, status: 'finished', home_score: homeScore, away_score: awayScore,
+        home_team_id: h[0], home_team_name: h[1], home_team_short_name: h[1].slice(0, 3).toUpperCase(),
+        away_team_id: a[0], away_team_name: a[1], away_team_short_name: a[1].slice(0, 3).toUpperCase(),
+      })
+    const matches = [
+      mk('1', ['aaa', 'Alfa'], ['ccc', 'Gama'], 1, 0),
+      mk('2', ['aaa', 'Alfa'], ['ddd', 'Delta'], 0, 5),
+      mk('3', ['bbb', 'Beta'], ['ccc', 'Gama'], 0, 0),
+      mk('4', ['bbb', 'Beta'], ['ddd', 'Delta'], 0, 0),
+      mk('5', ['eee', 'Eco'], ['bbb', 'Beta'], 0, 0),
+    ]
+    const standings = computeStandings(matches)
+    const league = standings.get(LEAGUE)!
+    const alfa = league.findIndex((t) => t.team_id === 'aaa')
+    const beta = league.findIndex((t) => t.team_id === 'bbb')
+    expect(league[alfa].p).toBe(3)
+    expect(league[beta].p).toBe(3)
+    expect(alfa).toBeLessThan(beta)
+  })
+})
+
+describe('StandingsTab — forma recente (Últimas 4)', () => {
+  const day = (n: number) => new Date(2026, 0, n).toISOString()
+
+  function finished(id: string, n: number, hs: number, as_: number, overrides: Partial<Match> = {}): Match {
+    return makeMatch({
+      id, status: 'finished', home_score: hs, away_score: as_,
+      group_name: null, phase: 'REGULAR_SEASON', start_time: day(n),
+      ...overrides,
+    })
+  }
+
+  it('keeps only the last FORM_SIZE results, most recent last, in chronological order', () => {
+    // 5 jogos do mesmo mandante (bra): v, v, e, d, v — janela de 4 descarta o 1º
+    const matches = [
+      finished('f1', 1, 2, 0),
+      finished('f2', 2, 1, 0),
+      finished('f3', 3, 1, 1),
+      finished('f4', 4, 0, 3),
+      finished('f5', 5, 4, 2),
+    ].reverse() // payload fora de ordem de propósito
+    const bra = computeStandings(matches).get(LEAGUE)!.find((t) => t.team_id === 'bra')!
+    expect(bra.form).toHaveLength(FORM_SIZE)
+    expect(bra.form.map((f) => f.result)).toEqual(['v', 'e', 'd', 'v'])
+  })
+
+  it('mirrors the result for the away team and labels with score and opponent', () => {
+    const arg = computeStandings([finished('f1', 1, 2, 0)]).get(LEAGUE)!.find((t) => t.team_id === 'arg')!
+    expect(arg.form).toEqual([{ result: 'd', label: 'Derrota 2x0 contra BRA' }])
+  })
+
+  it('renders one accessible badge per recent match', async () => {
+    mockFetch([finished('f1', 1, 2, 0), finished('f2', 2, 1, 1)])
+    render(<StandingsTab competitionId="comp-1" competitionType="league" />)
+    await screen.findByText('Classificação')
+    expect(screen.getByRole('img', { name: 'Vitória 2x0 contra ARG' })).toBeInTheDocument()
+    expect(screen.getAllByRole('img', { name: /Empate 1x1/ })).toHaveLength(2)
   })
 })

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { apiFetch } from '../../lib/api'
 import InfoHint from '../InfoHint/InfoHint'
 import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
 import styles from './MatchCard.module.css'
@@ -380,9 +381,8 @@ async function persistPrediction(
   penWinner: 'home' | 'away' | null,
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${config.apiUrl}/predictions`, {
+    const res = await apiFetch(`${config.apiUrl}/predictions`, {
       method: 'PUT',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         group_id: groupId,
@@ -728,7 +728,7 @@ export default function MatchCard({
           />
         )}
         {locked ? (
-          hasPrediction ? (
+          prediction !== undefined ? (
             <LockedPrediction
               prediction={prediction}
               outcomeOnly={outcomeOnly}

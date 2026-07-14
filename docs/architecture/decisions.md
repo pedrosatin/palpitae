@@ -423,3 +423,59 @@ All visual values (colors, spacing, typography, shadows, radii) are declared as 
 - No framework router lock-in; client routing added only when needed (e.g., React Router)
 - CSS Modules keep styles scoped to components with zero runtime overhead
 - `vite preview` or Cloudflare Pages serves the static dist for production
+
+---
+
+## ADR-011: Brasileirão Série A 2026 — Data Migration from bolao-brasileirao
+
+**Status:** Accepted (executed in prod on 2026-07-12)
+**Date:** 2026-07-12
+
+### Context
+
+Before Palpitae, the same friend group ran the season on **bolao-brasileirao** — a separate app (own repo, own D1) that was Palpitae's MVP. Goal: consolidate into Palpitae, preserving 18 rounds of history (773 predictions, 6 players) in a shared group, and let Palpitae take over the remaining season with the same sync/scoring pipeline used for the World Cup.
+
+Both apps use football-data.org and competition 2013 (BSA), so `bolao.matches.api_match_id` ≡ `palpitae.matches.external_id` — match mapping is a direct join. Scoring rules are identical (3 exact / 1 outcome / 0); a SQL recompute of all 773 stored points against the rule found **0 divergences**, so "preserve old points" and "recompute under Palpitae rules" are the same numbers.
+
+### Decision
+
+Migrate via **idempotent one-off SQL applied with `wrangler d1 execute --remote`** — no application code changes, no schema changes, no migration files. Palpitae was already competition-generic; the only missing piece was data. Artifacts live in [`docs/bolao-migration/`](../bolao-migration/README.md):
+
+1. Seed the competition row (slug must equal what `syncFixtures` derives — it's the upsert conflict key).
+2. Seed teams + 380 matches with the **same conflict keys** as `syncFixtures` (`(external_id, provider)`), so the daily discovery cron reconciles over the manual seed with no duplicates. (Manual seed instead of waiting for the cron: the competition row was created after that day's 06:00 UTC run.)
+3. Create the group (3/1/0, `predictions_visibility='hidden'` ≈ the old app's cutoff behavior) + 6 members.
+4. Import predictions with `points_awarded` copied from the source and `ON CONFLICT DO NOTHING`; match resolved at apply time via subselect on `external_id`.
+5. Recalculate the leaderboard with the same aggregation as `recalculateLeaderboard`.
+
+Old-app identities (`participant_name` strings) were mapped to Palpitae users by an owner-provided name→email table; two spelling variants (WEEGEE/WEEGGE) were the same person (0 overlapping matches) and merged.
+
+### Consequences
+
+- Leaderboard verified identical to the source app (106/98/88/61/54/42; 773/773 rows imported).
+- Matches seeded with `scored_at = NULL`: the next `scoreUnprocessedMatches` run re-scores them — a no-op for already-correct imported points, and it awards the ~21 matches that finished after the old app's last sync (totals rise; correct behavior).
+- Prediction locking semantics change for the group: old app locked the whole round at a cutoff; Palpitae locks per match at kickoff.
+- Per-round ranking (old app feature) has no Palpitae view; imported data allows deriving it later if missed.
+- bolao-brasileirao becomes read-only and is retired separately.
+
+---
+
+## ADR-012: Standings Tab — Data-Driven Competition-Type Gate
+
+**Status:** Accepted
+**Date:** 2026-07-13
+
+### Context
+
+The Tabela (standings) tab was removed from the group page because it only served the World Cup group stage. With the Brasileirão Série A in the product (ADR-011), a round-robin league where the standings are the core view, the tab needs to come back — but only for leagues.
+
+### Decision
+
+Gate by a new `competitions.type` column (`'league' | 'cup'`, migration 0012), the same per-competition data-driven pattern as `penalty_phases` (ADR pattern: fail-closed). Default `'cup'` = no standings; leagues are marked explicitly. The API exposes `competition_type` on the group endpoints; the frontend renders the tab only for league groups and falls back to the default tab when `?tab=standings` is forced on a cup group.
+
+`computeStandings` buckets league matches (`phase === 'REGULAR_SEASON'`, no `group_name`) into a single table keyed by the exported `LEAGUE` sentinel; cup knockout matches stay excluded. League sorting approximates CBF criteria (points, wins, goal difference, goals for — head-to-head and cards are not synced); cup groups keep FIFA (points, GD, GF).
+
+### Consequences
+
+- New leagues need one `UPDATE competitions SET type='league'` — no code change.
+- Deploy coupling: the group endpoints select `c.type`, so migration 0012 must be applied before the API deploy (done for prod on 2026-07-13).
+- football-data.org already classifies competitions (`type: LEAGUE|CUP`); if competition creation is ever automated, the column can be filled from the provider.

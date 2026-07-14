@@ -75,7 +75,10 @@ export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
     // backfill (head()) não re-consultar este dia em toda execução — senão um dia
     // ocioso ficaria sendo re-queriado pra sempre, gastando o teto de exports/run.
     // Um .ndjson vazio é um arquivo NDJSON válido (zero registros).
-    await env.EVENTS.put(key, '', { httpMetadata: { contentType: 'application/x-ndjson' } })
+    await env.EVENTS.put(key, '', {
+      httpMetadata: { contentType: 'application/x-ndjson' },
+      customMetadata: { events: '0' },
+    })
     console.info(`[export] ${key}: 0 eventos — marcador vazio gravado.`)
     return
   }
@@ -89,12 +92,43 @@ export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
     )
   }
 
+  // Contagem REAL de eventos do dia: sob sampling cada linha vale
+  // _sample_interval linhas, então soma-se o intervalo, não rows.length.
+  // Vai em customMetadata pra `list()` devolver a contagem sem ler o arquivo —
+  // é o que alimenta a série histórica do dashboard além da janela do AE.
+  const events = rows.reduce((sum, r) => sum + Number(r._sample_interval ?? 1), 0)
+
   const ndjson = `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`
   await env.EVENTS.put(key, ndjson, {
     httpMetadata: { contentType: 'application/x-ndjson' },
+    customMetadata: { events: String(events) },
   })
 
-  console.info(`[export] ${key}: ${rows.length} eventos arquivados.`)
+  console.info(`[export] ${key}: ${rows.length} linhas (${events} eventos) arquivadas.`)
+}
+
+/**
+ * Adiciona `customMetadata.events` a um NDJSON arquivado antes da contagem
+ * existir. Lê o arquivo, soma `_sample_interval` de cada linha (contagem real
+ * sob sampling) e regrava o mesmo corpo com a metadata — R2 não atualiza
+ * metadata sem re-put.
+ */
+async function backfillEventsMetadata(bucket: R2Bucket, key: string): Promise<void> {
+  const obj = await bucket.get(key)
+  if (!obj) return
+
+  const body = await obj.text()
+  const lines = body.split('\n').filter((l) => l.trim() !== '')
+  const events = lines.reduce((sum, line) => {
+    const row = JSON.parse(line) as Record<string, unknown>
+    return sum + Number(row._sample_interval ?? 1)
+  }, 0)
+
+  await bucket.put(key, body, {
+    httpMetadata: { contentType: 'application/x-ndjson' },
+    customMetadata: { events: String(events) },
+  })
+  console.info(`[export] ${key}: metadata backfill — ${events} eventos.`)
 }
 
 /**
@@ -132,7 +166,21 @@ export async function exportRecentDays(
     const { key } = dayBounds(day)
 
     const existing = await env.EVENTS.head(key)
-    if (existing) continue
+    if (existing) {
+      // Arquivo sem `events` no customMetadata é de antes da contagem existir.
+      // Conta a partir do PRÓPRIO NDJSON (não re-consulta o AE: se o dia já saiu
+      // da retenção, o re-export gravaria um marcador vazio por cima do arquivo
+      // bom). Re-put do mesmo corpo + metadata; conta no teto de exports/run.
+      if (existing.customMetadata?.events === undefined) {
+        try {
+          await backfillEventsMetadata(env.EVENTS, key)
+          exported++
+        } catch (err) {
+          console.error(`[export] falha no backfill de metadata de ${key} — pulando:`, err)
+        }
+      }
+      continue
+    }
 
     try {
       await exportEventsToR2(env, day)
