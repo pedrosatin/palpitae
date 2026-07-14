@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { config } from './config'
+import { SESSION_EXPIRED_EVENT } from './lib/api'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 
@@ -45,6 +46,8 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
+    // Raw fetch on purpose: a 401 here is the normal logged-out state, not an
+    // expired session — apiFetch would flag "sessão expirou" for every visitor.
     fetch(`${config.apiUrl}/auth/me`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error('unauthenticated')
@@ -57,7 +60,21 @@ export default function App() {
       .catch(() => setStatus('unauthenticated'))
   }, [])
 
+  // Any apiFetch call that hits a 401 broadcasts this event. Drop auth state so the
+  // router swaps to the login screen instead of leaving tabs stuck on their own
+  // "erro ao carregar" with no data. LoginPage reads the flag to explain why.
+  useEffect(() => {
+    const onExpired = () => {
+      setUser(null)
+      setStatus('unauthenticated')
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
+  }, [])
+
   function handleLogout() {
+    // Raw fetch on purpose: the user is leaving deliberately — a 401 from an
+    // already-dead session must not trigger the "sessão expirou" notice.
     fetch(`${config.apiUrl}/auth/logout`, {
       method: 'POST',
       credentials: 'include',
