@@ -330,7 +330,7 @@ describe('syncFixtures — competition translation & stable slug (Decision 7/8)'
 
     // competition INSERT bind order: [id, name, slug, external_id, provider, season]
     const comp = captured.competition[0]
-    expect(comp[1]).toBe('Copa do Mundo') // fuzzy-translated display name
+    expect(comp[1]).toBe('Copa do Mundo FIFA') // fuzzy-translated display name
     expect(comp[2]).toBe('fifa-world-cup-2026') // slug from raw name, stays stable
   })
 })

@@ -179,6 +179,47 @@ const guides: Guide[] = [
     ],
     updated: '2026-06-20',
   },
+  {
+    slug: 'bolao-do-brasileirao',
+    title: 'Como fazer um bolão do Brasileirão Série A',
+    teaser:
+      'Clique aqui e veja como montar um bolão do Brasileirão com os amigos: 38 rodadas de palpites, pontuação automática e classificação atualizada o ano inteiro.',
+    description:
+      'Monte um bolão do Brasileirão Série A com seus amigos: como funciona um bolão de pontos corridos, quais regras usar nas 38 rodadas e como manter o grupo engajado a temporada inteira.',
+    intro:
+      'O Brasileirão é o campeonato perfeito para bolão: são 38 rodadas de maio a dezembro, jogo importante quase toda semana e reviravolta até a última rodada. Veja como montar o seu, que regras usar e como manter a disputa viva a temporada inteira.',
+    sections: [
+      {
+        heading: 'Por que o Brasileirão dá um ótimo bolão',
+        body: [
+          'Diferente de uma Copa do Mundo, que dura um mês, o Brasileirão é um campeonato de pontos corridos com 20 times e 380 jogos. Isso significa palpites toda semana durante mais de seis meses — a disputa do bolão acompanha a temporada inteira, e quem começa mal tem tempo de sobra para se recuperar.',
+          'Pontos corridos também premiam consistência: acertar palpites de jogos "fáceis" toda rodada vale tanto quanto cravar um placar improvável de vez em quando. É um teste real de quem acompanha o campeonato de verdade.',
+        ],
+      },
+      {
+        heading: 'Regras que funcionam bem em pontos corridos',
+        body: [
+          'O sistema clássico funciona muito bem no Brasileirão: 3 pontos para quem crava o placar exato e 1 ponto para quem acerta só o resultado (vitória, empate ou derrota). Em 38 rodadas, essa diferença entre cravar e só acertar o vencedor separa bem os primeiros colocados.',
+          'Uma decisão importante é a trava dos palpites: o mais justo é travar cada palpite no horário de início daquele jogo, e não a rodada inteira de uma vez — no Brasileirão os jogos de uma mesma rodada se espalham entre sexta e segunda, e ninguém deveria ser impedido de palpitar no jogo de segunda por causa do jogo de sexta.',
+        ],
+      },
+      {
+        heading: 'Como manter o grupo engajado por 38 rodadas',
+        body: [
+          'A temporada é longa, e o segredo é reduzir o atrito: se registrar palpite der trabalho, o grupo esvazia em um mês. Palpites pelo celular, lembrete antes da rodada e classificação atualizada automaticamente fazem mais diferença do que qualquer prêmio.',
+          'Também ajuda ter marcos no caminho: quem lidera no primeiro turno, quem foi o melhor do returno, quem acertou mais placares exatos. São títulos paralelos que renovam o interesse de quem já não briga pelo topo.',
+        ],
+      },
+      {
+        heading: 'Monte seu bolão do Brasileirão no Palpitae',
+        body: [
+          'No Palpitae o Brasileirão Série A 2026 já está disponível: você cria um grupo privado gratuito, convida os amigos por link e cada um dá seus palpites rodada a rodada. Os resultados sincronizam sozinhos, a pontuação é automática e cada palpite trava no início do próprio jogo.',
+          'A classificação do grupo e a tabela real do campeonato ficam lado a lado no app — dá para ver quem manja de futebol e quem só tem sorte, a temporada inteira.',
+        ],
+      },
+    ],
+    updated: '2026-07-12',
+  },
 ]
 
 /** Public path for a guide (with trailing slash, as served). */

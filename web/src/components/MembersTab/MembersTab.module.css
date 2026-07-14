@@ -108,13 +108,3 @@
   font-size: var(--font-size-sm);
   padding: var(--space-6) 0;
 }
-
-.error {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-left: 3px solid #ff4d4f;
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  color: #ff4d4f;
-  font-size: var(--font-size-sm);
-}

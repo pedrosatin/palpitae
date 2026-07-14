@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
+import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
+import ErrorState from '../../components/ErrorState'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
+import { eventLabel } from './labels'
 
 /**
  * Dashboard admin de métricas server-side (Analytics Engine + R2).
@@ -42,7 +45,9 @@ interface OverviewResponse {
 }
 
 interface ArchiveResponse {
-  files: { key: string; size: number; uploaded: string }[]
+  // `events` = contagem real do dia (customMetadata do export); null em
+  // arquivo antigo que o backfill de metadata ainda não alcançou.
+  files: { key: string; size: number; uploaded: string; events: number | null }[]
 }
 
 const PERIODS = [7, 30, 90] as const
@@ -188,8 +193,8 @@ export default function AdminMetricsPage() {
 
     const params = new URLSearchParams({ days: String(days) })
     Promise.all([
-      fetch(buildApiUrl('/metrics/overview', params), { credentials: 'include' }),
-      fetch(buildApiUrl('/metrics/archive'), { credentials: 'include' }),
+      apiFetch(buildApiUrl('/metrics/overview', params)),
+      apiFetch(buildApiUrl('/metrics/archive')),
     ])
       .then(async ([ovRes, arRes]) => {
         if (cancelled) return
@@ -286,11 +291,34 @@ export default function AdminMetricsPage() {
       })
   }, [archive])
 
+  // Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
+  // enxerga além da janela de ~3 meses do Analytics Engine.
+  const archiveStats = useMemo(() => {
+    if (!archive || archive.files.length === 0) return null
+    const totalBytes = archive.files.reduce((sum, f) => sum + f.size, 0)
+    const totalEvents = archive.files.reduce((sum, f) => sum + (f.events ?? 0), 0)
+    const missingMeta = archive.files.filter((f) => f.events === null).length
+    const oldestDay = archive.files
+      .map((f) => f.key.replace('events/', '').replace('.ndjson', '').replaceAll('/', '-'))
+      .sort()[0]
+
+    const byMonth = new Map<string, number>()
+    for (const f of archive.files) {
+      const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-') // YYYY-MM
+      byMonth.set(month, (byMonth.get(month) ?? 0) + (f.events ?? 0))
+    }
+    const monthly = [...byMonth.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([label, total]) => ({ label, total }))
+
+    return { totalDays: archive.files.length, totalBytes, totalEvents, missingMeta, oldestDay, monthly }
+  }, [archive])
+
   if (error === 'forbidden') {
     return (
       <div className={styles.root}>
         <div className={styles.content}>
-          <p className={styles.errorMessage}>Acesso restrito ao administrador.</p>
+          <ErrorState message="Acesso restrito ao administrador." />
         </div>
       </div>
     )
@@ -319,7 +347,7 @@ export default function AdminMetricsPage() {
         </div>
 
         {error === 'failed' && (
-          <p className={styles.errorMessage}>Falha ao carregar as métricas. Tente de novo.</p>
+          <ErrorState message="Falha ao carregar as métricas. Tente de novo." />
         )}
 
         {loading && <p className={styles.hint}>Carregando…</p>}
@@ -350,9 +378,9 @@ export default function AdminMetricsPage() {
               <StackedBarChart days={stacked.series} ariaLabel="Eventos por dia, por tipo" />
               <div className={styles.legend}>
                 {stacked.legend.map((l) => (
-                  <span key={l.type} className={styles.legendItem}>
+                  <span key={l.type} className={styles.legendItem} title={l.type}>
                     <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
-                    {l.type}
+                    {eventLabel(l.type)}
                   </span>
                 ))}
               </div>
@@ -367,7 +395,9 @@ export default function AdminMetricsPage() {
                   <tbody>
                     {overview.totals.map((t) => (
                       <tr key={t.event_type}>
-                        <td>{t.event_type}</td>
+                        {/* title mantém o event_type cru — é a chave do esquema
+                            posicional em docs/observability.md */}
+                        <td title={t.event_type}>{eventLabel(t.event_type)}</td>
                         <td className={styles.num}>{Number(t.count)}</td>
                       </tr>
                     ))}
@@ -509,7 +539,9 @@ export default function AdminMetricsPage() {
                     {overview.recentErrors.map((e, i) => (
                       <tr key={`${e.timestamp}-${i}`}>
                         <td className={styles.nowrap}>{formatTimestamp(e.timestamp)}</td>
-                        <td className={styles.nowrap}>{e.event_type}</td>
+                        <td className={styles.nowrap} title={e.event_type}>
+                          {eventLabel(e.event_type)}
+                        </td>
                         {/* blobs posicionais variam por tipo de evento — mostra cru */}
                         <td className={styles.detail}>
                           {[e.blob2, e.blob3, e.blob4].filter(Boolean).join(' · ')}
@@ -525,25 +557,66 @@ export default function AdminMetricsPage() {
 
         {archive && !loading && (
           <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Arquivo frio (R2) · últimos 14 dias</h2>
-            {archiveDays.length === 0 ? (
+            <h2 className={styles.sectionTitle}>Arquivo frio (R2)</h2>
+            {!archiveStats ? (
               <p className={styles.hint}>
                 Nenhum arquivo no bucket — em dev local o R2 é simulado e começa vazio; em
                 produção, ver se o cron de export (00:05 UTC) está rodando.
               </p>
             ) : (
               <>
+                <div className={styles.kpiRow}>
+                  <KpiCard label="dias arquivados" value={String(archiveStats.totalDays)} />
+                  <KpiCard
+                    label="eventos arquivados"
+                    value={`${archiveStats.missingMeta > 0 ? '≥ ' : ''}${archiveStats.totalEvents}`}
+                  />
+                  <KpiCard label="tamanho total" value={formatBytes(archiveStats.totalBytes)} />
+                  <KpiCard label="desde" value={archiveStats.oldestDay} />
+                </div>
+
+                <h3 className={styles.subTitle}>Eventos por mês · histórico completo</h3>
+                <BarChart
+                  series={archiveStats.monthly}
+                  ariaLabel="Eventos arquivados por mês"
+                  unit=" eventos"
+                  tickLabel={(l) => `${l.slice(5, 7)}/${l.slice(2, 4)}`}
+                />
+                {archiveStats.missingMeta > 0 && (
+                  <p className={styles.hint}>
+                    {archiveStats.missingMeta}{' '}
+                    {archiveStats.missingMeta === 1 ? 'arquivo ainda sem' : 'arquivos ainda sem'}{' '}
+                    contagem de eventos (export antigo) — o cron re-grava a metadata aos poucos;
+                    até lá os totais acima são piso ("≥").
+                  </p>
+                )}
+
+                <h3 className={styles.subTitle}>Integridade · últimos 14 dias</h3>
                 <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>dia</th>
+                      <th className={styles.num}>eventos</th>
+                      <th className={styles.num}>tamanho</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {archiveDays.map(({ day, file, beforeFirstExport }) => (
                       <tr key={day}>
                         <td>{day}</td>
                         {file ? (
-                          <td className={styles.num}>{formatBytes(file.size)}</td>
+                          <>
+                            <td className={styles.num}>{file.events ?? '—'}</td>
+                            <td className={styles.num}>{formatBytes(file.size)}</td>
+                          </>
                         ) : beforeFirstExport ? (
-                          <td className={styles.num}>—</td>
+                          <td className={styles.num} colSpan={2}>
+                            —
+                          </td>
                         ) : (
-                          <td className={`${styles.num} ${styles.statusError}`}>faltando</td>
+                          <td className={`${styles.num} ${styles.statusError}`} colSpan={2}>
+                            faltando
+                          </td>
                         )}
                       </tr>
                     ))}
