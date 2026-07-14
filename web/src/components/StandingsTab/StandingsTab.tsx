@@ -6,8 +6,19 @@ import { type Match } from '../MatchCard'
 import Modal from '../Modal'
 import styles from './StandingsTab.module.css'
 
+export type CompetitionType = 'league' | 'cup'
+
+/** Chave do bucket único de liga em computeStandings ('' nunca colide com nome de grupo). */
+export const LEAGUE = ''
+
+export function isLeagueTable(group: string): boolean {
+  return group === LEAGUE
+}
+
 interface StandingsTabProps {
   competitionId: string
+  /** Gate vem do grupo (competitions.type); decide o texto do empty state. */
+  competitionType?: CompetitionType | null
 }
 
 export interface TeamStanding {
@@ -70,10 +81,9 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
     return team
   }
 
-  // Chave '' = tabela única de liga (pontos corridos). Copa: agrupa por group_name
-  // (fase de grupos) e ignora mata-mata (group_name null fora de REGULAR_SEASON).
-  const LEAGUE = ''
-
+  // LEAGUE ('') = tabela única de liga (pontos corridos). Copa: agrupa por
+  // group_name (fase de grupos) e ignora mata-mata (group_name null fora de
+  // REGULAR_SEASON).
   for (const m of matches) {
     const groupKey = m.group_name ?? (m.phase === 'REGULAR_SEASON' ? LEAGUE : null)
     if (groupKey === null) continue
@@ -129,8 +139,11 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
 
   const result = new Map<string, TeamStanding[]>()
   for (const [group, teams] of byGroup) {
-    // Liga (CBF): pontos, VITÓRIAS, saldo, gols pró. Copa (FIFA): pontos, saldo, gols pró.
-    const isLeague = group === LEAGUE
+    // Liga (CBF, aproximado): pontos, VITÓRIAS, saldo, gols pró. Critérios
+    // seguintes do regulamento (confronto direto, cartões) não se aplicam —
+    // cartões não são sincronizados; empate residual cai em ordem alfabética.
+    // Copa (FIFA): pontos, saldo, gols pró.
+    const isLeague = isLeagueTable(group)
     const sorted = [...teams.values()].sort(
       (a, b) =>
         b.p - a.p ||
@@ -152,7 +165,7 @@ function formatDay(iso: string): string {
   })
 }
 
-export default function StandingsTab({ competitionId }: StandingsTabProps) {
+export default function StandingsTab({ competitionId, competitionType }: StandingsTabProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -192,9 +205,13 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
   const standings = computeStandings(matches)
 
   if (standings.size === 0) {
+    // Liga sem jogos sincronizados ainda não tem tabela — mas dizer "não tem
+    // fase de grupos" seria falso; a mensagem certa depende do tipo.
     return (
       <p className={styles.empty}>
-        Esta competição não tem fase de grupos.
+        {competitionType === 'league'
+          ? 'Ainda não há jogos sincronizados para montar a classificação.'
+          : 'Esta competição não tem fase de grupos.'}
       </p>
     )
   }
@@ -212,7 +229,7 @@ export default function StandingsTab({ competitionId }: StandingsTabProps) {
     <div className={styles.root}>
       {groups.map((group) => (
         <div key={group} className={styles.group}>
-          {group === '' ? (
+          {isLeagueTable(group) ? (
             <div className={`${styles.groupHeader} ${styles.groupHeaderStatic}`}>
               <span>Classificação</span>
             </div>
