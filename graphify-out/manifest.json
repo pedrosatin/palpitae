@@ -171,10 +171,6 @@
     "mtime": 1784072190.8467078,
     "hash": "9e0828af58146424b6f75d905e715d6d"
   },
-  "/home/satin/Work/personal/palpitae-pr63/api/src/matches/router.ts": {
-    "mtime": 1784072190.8467078,
-    "hash": "158de4b72b8f9835159161938b186618"
-  },
   "/home/satin/Work/personal/palpitae-pr63/api/src/matches/scoring.test.ts": {
     "mtime": 1784072190.8467078,
     "hash": "f0aaf37f3fa9c8dd6b41d7a572e87ead"
@@ -190,6 +186,10 @@
   "/home/satin/Work/personal/palpitae-pr63/api/src/matches/sync.ts": {
     "mtime": 1784072202.061794,
     "hash": "29fc4d8b6cb7feed313ea147cfcb00f1"
+  },
+  "/home/satin/Work/personal/palpitae-pr63/api/src/matches/router.ts": {
+    "mtime": 1784074359.2464862,
+    "hash": "60ba5177964000cb85ea07439ee377d0"
   },
   "/home/satin/Work/personal/palpitae-pr63/api/src/notifications/email.test.ts": {
     "mtime": 1784072190.8467336,
