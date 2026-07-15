@@ -3,21 +3,7 @@ import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
-
-/**
- * Fetches the calling user's membership record for a group.
- * Returns null when the user is not a member (caller should 404).
- */
-async function requireMembership(
-  db: D1Database,
-  groupId: string,
-  userId: string,
-): Promise<{ role: string } | null> {
-  return db
-    .prepare('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?')
-    .bind(groupId, userId)
-    .first<{ role: string }>()
-}
+import { getGroupMembership } from './membership'
 
 const router = new Hono<AppContext>()
 
@@ -357,7 +343,7 @@ router.get('/:id', requireAuth, async (c) => {
   const db = c.env.DB
 
   // Must be a member
-  const membership = await requireMembership(db, groupId, userId)
+  const membership = await getGroupMembership(db, groupId, userId)
   if (!membership) return c.json({ error: 'Grupo não encontrado' }, 404)
 
   const group = await db
@@ -533,7 +519,7 @@ router.get('/:id/members', requireAuth, async (c) => {
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const membership = await requireMembership(db, groupId, userId)
+  const membership = await getGroupMembership(db, groupId, userId)
   if (!membership) return c.json({ error: 'Grupo não encontrado' }, 404)
 
   const members = await db
