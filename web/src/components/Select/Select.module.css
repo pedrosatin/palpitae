@@ -22,10 +22,6 @@
   border-color: var(--color-primary);
 }
 
-.select.error {
-  border-color: #ff4d4f;
-}
-
 .select option {
   background-color: var(--color-surface-elevated);
   color: var(--color-text-primary);

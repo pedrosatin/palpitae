@@ -113,9 +113,8 @@ export default function MembersTab({
 
             {member.user_id !== currentUserId && member.role !== 'owner' && (
               <Button
-                variant="outline"
+                variant="danger"
                 size="sm"
-                className={styles.removeBtn}
                 onClick={() =>
                   removeMember(member.user_id, member.display_name)
                 }
