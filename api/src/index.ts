@@ -30,7 +30,7 @@ app.use(
       if (!origin) return null
       if (
         origin === 'https://palpitae.com.br' ||
-        origin.endsWith('.palpitae.com.br') ||
+        /^https:\/\/[a-z0-9-]+\.palpitae\.com\.br$/.test(origin) ||
         origin === 'http://localhost:5173'
       ) {
         return origin
