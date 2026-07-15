@@ -4,29 +4,11 @@ import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { roundLabel } from '../matches/rounds'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
+import { getGroupMembershipTimed } from '../groups/membership'
 
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Checks whether `userId` is a member of `groupId`.
- * Returns the membership row and the DB query duration so callers can include
- * it in their `logRequestPerf` call.
- */
-async function checkGroupMembership(
-  db: D1Database,
-  groupId: string,
-  userId: string,
-): Promise<{ membership: Record<string, unknown> | null; membershipMs: number }> {
-  const membershipStartedAt = Date.now()
-  const membership = await db
-    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-    .bind(groupId, userId)
-    .first<Record<string, unknown>>()
-  const membershipMs = Date.now() - membershipStartedAt
-  return { membership, membershipMs }
-}
 
 /**
  * Parses the request JSON body. Returns `{ ok: true, body }` on success or
@@ -39,7 +21,7 @@ async function parseJsonBody<T>(
     const body = await c.req.json<T>()
     return { ok: true, body }
   } catch {
-    return { ok: false, response: c.json({ error: 'Body JSON inválido' }, 400) as unknown as Response }
+    return { ok: false, response: c.json({ error: 'Body JSON inválido' }, 400) }
   }
 }
 
@@ -76,7 +58,7 @@ router.get('/', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  const { membership, membershipMs } = await checkGroupMembership(db, groupId, userId)
+  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -165,7 +147,7 @@ router.get('/user', requireAuth, async (c) => {
   const db = c.env.DB
 
   // Requester must be a member of the group
-  const { membership, membershipMs } = await checkGroupMembership(db, groupId, requesterId)
+  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, requesterId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -292,7 +274,7 @@ router.get('/group', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  const { membership, membershipMs } = await checkGroupMembership(db, groupId, userId)
+  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -461,7 +443,7 @@ router.put('/', requireAuth, async (c) => {
   const db = c.env.DB
 
   // Verify user is a member of the group
-  const { membership } = await checkGroupMembership(db, group_id, userId)
+  const { membership } = await getGroupMembershipTimed(db, group_id, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -603,7 +585,7 @@ async function handleBulkPut(c: Context<AppContext>) {
   const db = c.env.DB
 
   // Verify user is a member of the group
-  const { membership } = await checkGroupMembership(db, group_id, userId)
+  const { membership } = await getGroupMembershipTimed(db, group_id, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)

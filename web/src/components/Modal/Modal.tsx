@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { trackEvent } from '../../analytics/ga'
 import styles from './Modal.module.css'
 import Button from '../Button'
 
@@ -40,7 +41,10 @@ export default function Modal({
           <Button
             variant="ghost"
             size="icon"
-            onClick={onClose}
+            onClick={() => {
+              trackEvent('click_modal_fechar', { modal: title })
+              onClose()
+            }}
             aria-label="Fechar"
           >
             ✕

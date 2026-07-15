@@ -97,12 +97,6 @@
   color: var(--color-text-muted);
 }
 
-.removeBtn:hover:not(:disabled) {
-  border-color: #ff4d4f !important;
-  color: #ff4d4f !important;
-  background-color: color-mix(in srgb, #ff4d4f 8%, transparent) !important;
-}
-
 .loading {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
