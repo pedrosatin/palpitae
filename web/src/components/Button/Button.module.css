@@ -88,6 +88,20 @@
 }
 
 .ghost:hover:not(:disabled) {
-  background-color: rgba(0, 0, 0, 0.04);
+  background-color: var(--color-surface-elevated);
   color: var(--color-text-primary);
+}
+
+/* ─── Danger (outline that turns red on hover — destructive actions) ────── */
+
+.danger {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.danger:hover:not(:disabled) {
+  border-color: #ff4d4f;
+  color: #ff4d4f;
+  background-color: color-mix(in srgb, #ff4d4f 8%, transparent);
 }
