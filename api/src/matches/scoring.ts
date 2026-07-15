@@ -90,95 +90,6 @@ async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<
   await db.batch(statements)
 }
 
-async function scoreMatch(
-  matchId: string,
-  homeScore: number,
-  awayScore: number,
-  db: D1Database,
-): Promise<void> {
-  // Match-level penalty context — same for every prediction of this match.
-  // eligible derives from the competition's penalty_phases gate (fail-closed);
-  // penalty_winner is non-null only when the match went to a shootout.
-  const matchCtx = await db
-    .prepare(
-      `SELECT m.penalty_winner, m.phase, c.penalty_phases
-       FROM matches m
-       JOIN competitions c ON c.id = m.competition_id
-       WHERE m.id = ?`,
-    )
-    .bind(matchId)
-    .first<{ penalty_winner: 'home' | 'away' | null; phase: string | null; penalty_phases: string }>()
-
-  const penaltyWinner = matchCtx?.penalty_winner ?? null
-  const eligible = matchGoesToPenalties(
-    parsePenaltyPhases(matchCtx?.penalty_phases),
-    matchCtx?.phase ?? null,
-  )
-
-  const predictions = await db
-    .prepare(
-      `SELECT p.id, p.group_id, p.user_id,
-              p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner,
-              g.points_exact, g.points_winner, g.points_penalty
-       FROM predictions p
-       JOIN groups g ON g.id = p.group_id
-       WHERE p.match_id = ?`,
-    )
-    .bind(matchId)
-    .all<{
-      id: string
-      group_id: string
-      user_id: string
-      predicted_home_score: number
-      predicted_away_score: number
-      predicted_penalty_winner: 'home' | 'away' | null
-      points_exact: number
-      points_winner: number
-      points_penalty: number
-    }>()
-
-  const now = new Date().toISOString()
-  const statements: ReturnType<D1Database['prepare']>[] = []
-
-  const affectedGroups = new Set<string>()
-  for (const p of predictions.results) {
-    const points = calculatePoints(
-      homeScore,
-      awayScore,
-      p.predicted_home_score,
-      p.predicted_away_score,
-      p.points_exact,
-      p.points_winner,
-    )
-    // penalty_points is always overwritten with the freshly computed value (0 when
-    // not applicable), so a re-score also resets a stale bonus — no separate reset.
-    const penaltyPoints = calculatePenaltyBonus(
-      p.predicted_home_score,
-      p.predicted_away_score,
-      p.predicted_penalty_winner,
-      penaltyWinner,
-      p.points_penalty,
-      eligible,
-    )
-    statements.push(
-      db
-        .prepare(`UPDATE predictions SET points_awarded = ?, penalty_points = ? WHERE id = ?`)
-        .bind(points, penaltyPoints, p.id),
-    )
-    affectedGroups.add(p.group_id)
-  }
-
-  statements.push(
-    db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId),
-  )
-
-  await db.batch(statements)
-
-  for (const groupId of affectedGroups) {
-    await recalculateLeaderboard(groupId, db)
-  }
-}
-
 /**
  * Finds finished matches with no scored_at in the given competition and scores them.
  * Safe to call multiple times — matches already scored are skipped.
@@ -187,19 +98,133 @@ export async function scoreUnprocessedMatches(
   competitionId: string,
   db: D1Database,
 ): Promise<void> {
+  // 1. Fetch all unscored matches along with penalty context and scores
   const unscored = await db
     .prepare(
-      `SELECT id, home_score, away_score FROM matches
-       WHERE competition_id = ?
-         AND status = 'finished'
-         AND scored_at IS NULL
-         AND home_score IS NOT NULL
-         AND away_score IS NOT NULL`,
+      `SELECT m.id, m.home_score, m.away_score, m.penalty_winner, m.phase, c.penalty_phases
+       FROM matches m
+       JOIN competitions c ON c.id = m.competition_id
+       WHERE m.competition_id = ?
+         AND m.status = 'finished'
+         AND m.scored_at IS NULL
+         AND m.home_score IS NOT NULL
+         AND m.away_score IS NOT NULL`,
     )
     .bind(competitionId)
-    .all<{ id: string; home_score: number; away_score: number }>()
+    .all<{
+      id: string
+      home_score: number
+      away_score: number
+      penalty_winner: 'home' | 'away' | null
+      phase: string | null
+      penalty_phases: string
+    }>()
 
-  for (const match of unscored.results) {
-    await scoreMatch(match.id, match.home_score, match.away_score, db)
+  if (unscored.results.length === 0) return
+
+  // 2. Fetch predictions for all unscored matches in chunks (D1 bind limit ~100)
+  const allPredictions: {
+    id: string
+    match_id: string
+    group_id: string
+    user_id: string
+    predicted_home_score: number
+    predicted_away_score: number
+    predicted_penalty_winner: 'home' | 'away' | null
+    points_exact: number
+    points_winner: number
+    points_penalty: number
+  }[] = []
+
+  const matchIds = unscored.results.map((m) => m.id)
+  const CHUNK_SIZE = 90 // Safe limit under 100 for D1 IN clauses
+
+  for (let i = 0; i < matchIds.length; i += CHUNK_SIZE) {
+    const chunkIds = matchIds.slice(i, i + CHUNK_SIZE)
+    const placeholders = chunkIds.map(() => '?').join(',')
+
+    const chunkPredictions = await db
+      .prepare(
+        `SELECT p.id, p.match_id, p.group_id, p.user_id,
+                p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner,
+                g.points_exact, g.points_winner, g.points_penalty
+         FROM predictions p
+         JOIN groups g ON g.id = p.group_id
+         WHERE p.match_id IN (${placeholders})`,
+      )
+      .bind(...chunkIds)
+      .all<typeof allPredictions[number]>()
+
+    allPredictions.push(...chunkPredictions.results)
+  }
+
+  // 3. Process matches and map them by id for quick lookup
+  const matchMap = new Map<string, typeof unscored.results[number]>()
+  for (const m of unscored.results) {
+    matchMap.set(m.id, m)
+  }
+
+  const eligibleCache = new Map<string, boolean>() // match_id -> eligible
+
+  const now = new Date().toISOString()
+  const statements: ReturnType<D1Database['prepare']>[] = []
+  const affectedGroups = new Set<string>()
+
+  // 4. Evaluate all predictions
+  for (const p of allPredictions) {
+    const matchCtx = matchMap.get(p.match_id)!
+
+    // Cache eligibility check per match
+    let eligible = eligibleCache.get(p.match_id)
+    if (eligible === undefined) {
+      eligible = matchGoesToPenalties(
+        parsePenaltyPhases(matchCtx.penalty_phases),
+        matchCtx.phase,
+      )
+      eligibleCache.set(p.match_id, eligible)
+    }
+
+    const points = calculatePoints(
+      matchCtx.home_score,
+      matchCtx.away_score,
+      p.predicted_home_score,
+      p.predicted_away_score,
+      p.points_exact,
+      p.points_winner,
+    )
+
+    const penaltyPoints = calculatePenaltyBonus(
+      p.predicted_home_score,
+      p.predicted_away_score,
+      p.predicted_penalty_winner,
+      matchCtx.penalty_winner,
+      p.points_penalty,
+      eligible,
+    )
+
+    statements.push(
+      db
+        .prepare(`UPDATE predictions SET points_awarded = ?, penalty_points = ? WHERE id = ?`)
+        .bind(points, penaltyPoints, p.id),
+    )
+    affectedGroups.add(p.group_id)
+  }
+
+  // 5. Update matches as scored
+  for (const matchId of matchIds) {
+    statements.push(
+      db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId),
+    )
+  }
+
+  // 6. Execute updates in chunks of 100 to avoid D1 limits
+  for (let i = 0; i < statements.length; i += 100) {
+    const chunk = statements.slice(i, i + 100)
+    await db.batch(chunk)
+  }
+
+  // 7. Deduplicated recalculate leaderboard
+  for (const groupId of affectedGroups) {
+    await recalculateLeaderboard(groupId, db)
   }
 }

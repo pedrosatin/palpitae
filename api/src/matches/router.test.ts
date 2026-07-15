@@ -31,7 +31,11 @@ function createMatchesDbMock(
 ) {
   function resultsFor(sql: string): { results: unknown[] } {
     if (sql.includes('FROM matches m')) {
-      if (counter) counter.mainQueries++
+      if (sql.includes('JOIN competitions') && sql.includes('SELECT m.id, m.home_score')) {
+         // This is from scoring logic we shouldn't increment router main query
+      } else {
+        if (counter) counter.mainQueries++
+      }
       return { results: matchRows }
     }
     if (sql.includes('GROUP BY round') && defaultRoundRows?.active) {
@@ -61,6 +65,18 @@ function createMatchesDbMock(
               }
 
               if (sql.includes('COUNT(*) AS count')) {
+                if (sql.includes('status = \'finished\'') && sql.includes('scored_at IS NULL')) {
+                  const compId = params[0] as string
+                  const count = matchRows.filter(
+                    (m: any) =>
+                      m.competition_id === compId &&
+                      m.status === 'finished' &&
+                      m.scored_at === null &&
+                      m.home_score !== null &&
+                      m.away_score !== null,
+                  ).length
+                  return { count }
+                }
                 return { count: 0 }
               }
 
