@@ -1,5 +1,5 @@
-import type { D1Database } from '@cloudflare/workers-types'
-import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
+import type { D1Database } from "@cloudflare/workers-types";
+import { matchGoesToPenalties, parsePenaltyPhases } from "./penalties";
 
 export function calculatePoints(
   actualHome: number,
@@ -12,12 +12,25 @@ export function calculatePoints(
   // pointsExact === 0 is the "winner only" / 1X2 mode: there is no exact-score bonus,
   // so we never short-circuit here — otherwise a 1X2 pick stored as (1,0)/(0,0)/(0,1)
   // would accidentally score the exact value when the real score happens to match.
-  if (pointsExact > 0 && predictedHome === actualHome && predictedAway === actualAway)
-    return pointsExact
-  const actualWinner = actualHome > actualAway ? 'home' : actualHome < actualAway ? 'away' : 'draw'
+  if (
+    pointsExact > 0 &&
+    predictedHome === actualHome &&
+    predictedAway === actualAway
+  )
+    return pointsExact;
+  const actualWinner =
+    actualHome > actualAway
+      ? "home"
+      : actualHome < actualAway
+        ? "away"
+        : "draw";
   const predictedWinner =
-    predictedHome > predictedAway ? 'home' : predictedHome < predictedAway ? 'away' : 'draw'
-  return actualWinner === predictedWinner ? pointsWinner : 0
+    predictedHome > predictedAway
+      ? "home"
+      : predictedHome < predictedAway
+        ? "away"
+        : "draw";
+  return actualWinner === predictedWinner ? pointsWinner : 0;
 }
 
 /**
@@ -37,57 +50,85 @@ export function calculatePoints(
 export function calculatePenaltyBonus(
   predictedHome: number,
   predictedAway: number,
-  predictedPenaltyWinner: 'home' | 'away' | null,
-  penaltyWinner: 'home' | 'away' | null,
+  predictedPenaltyWinner: "home" | "away" | null,
+  penaltyWinner: "home" | "away" | null,
   pointsPenalty: number,
   eligible: boolean,
 ): number {
-  if (!eligible || pointsPenalty <= 0) return 0
-  if (penaltyWinner === null) return 0 // não foi a pênaltis
-  if (predictedHome !== predictedAway) return 0 // palpite não foi empate
-  if (predictedPenaltyWinner === null) return 0
-  return predictedPenaltyWinner === penaltyWinner ? pointsPenalty : 0
+  if (!eligible || pointsPenalty <= 0) return 0;
+  if (penaltyWinner === null) return 0; // não foi a pênaltis
+  if (predictedHome !== predictedAway) return 0; // palpite não foi empate
+  if (predictedPenaltyWinner === null) return 0;
+  return predictedPenaltyWinner === penaltyWinner ? pointsPenalty : 0;
 }
 
-async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<void> {
+async function recalculateLeaderboard(
+  groupIds: Iterable<string>,
+  db: D1Database,
+): Promise<void> {
+  const groups = Array.from(groupIds);
+  if (groups.length === 0) return;
+
   // exact_hits is inferred from the awarded points: a prediction is an exact hit
   // when it scored the group's points_exact. We only count it when the exact bonus
   // is distinguishable from a plain winner hit (points_exact > points_winner) — when
   // they're equal there's no exact bonus to detect, so exact_hits stays 0.
-  const rows = await db
-    .prepare(
-      `SELECT p.user_id,
-              SUM(p.points_awarded + p.penalty_points) AS total_points,
-              SUM(
-                CASE WHEN g.points_exact > g.points_winner
-                       AND p.points_awarded = g.points_exact
-                     THEN 1 ELSE 0 END
-              ) AS exact_hits
-       FROM predictions p
-       JOIN groups g ON g.id = p.group_id
-       WHERE p.group_id = ?
-       GROUP BY p.user_id`,
-    )
-    .bind(groupId)
-    .all<{ user_id: string; total_points: number; exact_hits: number }>()
+  const now = new Date().toISOString();
+  const statements: ReturnType<D1Database["prepare"]>[] = [];
 
-  if (rows.results.length === 0) return
+  const CHUNK_SIZE = 50;
+  for (let i = 0; i < groups.length; i += CHUNK_SIZE) {
+    const chunk = groups.slice(i, i + CHUNK_SIZE);
+    const placeholders = chunk.map(() => "?").join(", ");
 
-  const now = new Date().toISOString()
-  const statements = rows.results.map((row) =>
-    db
+    const rows = await db
       .prepare(
-        `INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (group_id, user_id) DO UPDATE SET
-           total_points = excluded.total_points,
-           exact_hits   = excluded.exact_hits,
-           last_updated = excluded.last_updated`,
+        `SELECT p.group_id, p.user_id,
+                SUM(p.points_awarded + p.penalty_points) AS total_points,
+                SUM(
+                  CASE WHEN g.points_exact > g.points_winner
+                         AND p.points_awarded = g.points_exact
+                       THEN 1 ELSE 0 END
+                ) AS exact_hits
+         FROM predictions p
+         JOIN groups g ON g.id = p.group_id
+         WHERE p.group_id IN (${placeholders})
+         GROUP BY p.group_id, p.user_id`,
       )
-      .bind(groupId, row.user_id, row.total_points, row.exact_hits, now),
-  )
+      .bind(...chunk)
+      .all<{
+        group_id: string;
+        user_id: string;
+        total_points: number;
+        exact_hits: number;
+      }>();
 
-  await db.batch(statements)
+    for (const row of rows.results) {
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (group_id, user_id) DO UPDATE SET
+               total_points = excluded.total_points,
+               exact_hits   = excluded.exact_hits,
+               last_updated = excluded.last_updated`,
+          )
+          .bind(
+            row.group_id,
+            row.user_id,
+            row.total_points,
+            row.exact_hits,
+            now,
+          ),
+      );
+    }
+  }
+
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < statements.length; i += BATCH_SIZE) {
+    await db.batch(statements.slice(i, i + BATCH_SIZE));
+  }
 }
 
 async function scoreMatch(
@@ -107,13 +148,17 @@ async function scoreMatch(
        WHERE m.id = ?`,
     )
     .bind(matchId)
-    .first<{ penalty_winner: 'home' | 'away' | null; phase: string | null; penalty_phases: string }>()
+    .first<{
+      penalty_winner: "home" | "away" | null;
+      phase: string | null;
+      penalty_phases: string;
+    }>();
 
-  const penaltyWinner = matchCtx?.penalty_winner ?? null
+  const penaltyWinner = matchCtx?.penalty_winner ?? null;
   const eligible = matchGoesToPenalties(
     parsePenaltyPhases(matchCtx?.penalty_phases),
     matchCtx?.phase ?? null,
-  )
+  );
 
   const predictions = await db
     .prepare(
@@ -126,21 +171,21 @@ async function scoreMatch(
     )
     .bind(matchId)
     .all<{
-      id: string
-      group_id: string
-      user_id: string
-      predicted_home_score: number
-      predicted_away_score: number
-      predicted_penalty_winner: 'home' | 'away' | null
-      points_exact: number
-      points_winner: number
-      points_penalty: number
-    }>()
+      id: string;
+      group_id: string;
+      user_id: string;
+      predicted_home_score: number;
+      predicted_away_score: number;
+      predicted_penalty_winner: "home" | "away" | null;
+      points_exact: number;
+      points_winner: number;
+      points_penalty: number;
+    }>();
 
-  const now = new Date().toISOString()
-  const statements: ReturnType<D1Database['prepare']>[] = []
+  const now = new Date().toISOString();
+  const statements: ReturnType<D1Database["prepare"]>[] = [];
 
-  const affectedGroups = new Set<string>()
+  const affectedGroups = new Set<string>();
   for (const p of predictions.results) {
     const points = calculatePoints(
       homeScore,
@@ -149,7 +194,7 @@ async function scoreMatch(
       p.predicted_away_score,
       p.points_exact,
       p.points_winner,
-    )
+    );
     // penalty_points is always overwritten with the freshly computed value (0 when
     // not applicable), so a re-score also resets a stale bonus — no separate reset.
     const penaltyPoints = calculatePenaltyBonus(
@@ -159,24 +204,26 @@ async function scoreMatch(
       penaltyWinner,
       p.points_penalty,
       eligible,
-    )
+    );
     statements.push(
       db
-        .prepare(`UPDATE predictions SET points_awarded = ?, penalty_points = ? WHERE id = ?`)
+        .prepare(
+          `UPDATE predictions SET points_awarded = ?, penalty_points = ? WHERE id = ?`,
+        )
         .bind(points, penaltyPoints, p.id),
-    )
-    affectedGroups.add(p.group_id)
+    );
+    affectedGroups.add(p.group_id);
   }
 
   statements.push(
-    db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId),
-  )
+    db
+      .prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`)
+      .bind(now, matchId),
+  );
 
-  await db.batch(statements)
+  await db.batch(statements);
 
-  for (const groupId of affectedGroups) {
-    await recalculateLeaderboard(groupId, db)
-  }
+  await recalculateLeaderboard(affectedGroups, db);
 }
 
 /**
@@ -197,9 +244,9 @@ export async function scoreUnprocessedMatches(
          AND away_score IS NOT NULL`,
     )
     .bind(competitionId)
-    .all<{ id: string; home_score: number; away_score: number }>()
+    .all<{ id: string; home_score: number; away_score: number }>();
 
   for (const match of unscored.results) {
-    await scoreMatch(match.id, match.home_score, match.away_score, db)
+    await scoreMatch(match.id, match.home_score, match.away_score, db);
   }
 }
