@@ -18,6 +18,9 @@ api/graphify-out/
 /context.md
 /context-seo.md
 
+# TypeScript incremental build artifact
+web/tsconfig.tsbuildinfo
+
 # Local workflow and generated artifacts
 graphify-out/
 .fallowrc.json
