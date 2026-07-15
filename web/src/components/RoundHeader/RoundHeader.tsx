@@ -12,6 +12,7 @@ interface RoundHeaderProps {
   onNext: () => void
   onSelect: (round: string) => void
   id?: string
+  className?: string
 }
 
 export default function RoundHeader({
@@ -23,9 +24,10 @@ export default function RoundHeader({
   onNext,
   onSelect,
   id = 'round-select',
+  className,
 }: RoundHeaderProps) {
   return (
-    <div className={styles.roundNav}>
+    <div className={[styles.roundNav, className].filter(Boolean).join(' ')}>
       <Button
         variant="outline"
         className={styles.navBtn}
