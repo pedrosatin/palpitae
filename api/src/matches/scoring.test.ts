@@ -179,29 +179,40 @@ function buildFakeDb(
             .map((p) => ({ ...p, ...groupConfig(p.group_id) })) as unknown as T[]
           return { results }
         }
-        if (sql.includes('FROM predictions') && sql.includes('GROUP BY p.user_id')) {
-          const groupId = params[0] as string
-          const cfg = groupConfig(groupId)
-          const grouped = new Map<string, { total_points: number; exact_hits: number }>()
-          for (const p of predictions.filter((p) => p.group_id === groupId)) {
-            const pts = updatedPredictions[p.id]?.points_awarded ?? p.points_awarded
-            const penPts = updatedPredictions[p.id]?.penalty_points ?? 0
-            const cur = grouped.get(p.user_id) ?? { total_points: 0, exact_hits: 0 }
-            // Mirror the SQL: exact_hits counts rows awarded points_exact, but only
-            // when the exact bonus is distinguishable (points_exact > points_winner).
-            // total_points sums base + penalty bonus.
-            const isExact =
-              cfg.points_exact > cfg.points_winner && pts === cfg.points_exact
-            grouped.set(p.user_id, {
-              total_points: cur.total_points + (pts as number) + (penPts as number),
-              exact_hits: cur.exact_hits + (isExact ? 1 : 0),
-            })
-          }
-          return {
-            results: [...grouped.entries()].map(([user_id, v]) => ({
+        if (sql.includes('FROM predictions') && sql.includes('GROUP BY p.group_id, p.user_id')) {
+          // The query now chunks groups and uses IN (..., ...)
+          // params contains the chunk of groupIds
+          const groupIds = params as string[]
+
+          let allResults: any[] = []
+
+          for (const groupId of groupIds) {
+            const cfg = groupConfig(groupId)
+            const grouped = new Map<string, { total_points: number; exact_hits: number }>()
+            for (const p of predictions.filter((p) => p.group_id === groupId)) {
+              const pts = updatedPredictions[p.id]?.points_awarded ?? p.points_awarded
+              const penPts = updatedPredictions[p.id]?.penalty_points ?? 0
+              const cur = grouped.get(p.user_id) ?? { total_points: 0, exact_hits: 0 }
+              // Mirror the SQL: exact_hits counts rows awarded points_exact, but only
+              // when the exact bonus is distinguishable (points_exact > points_winner).
+              // total_points sums base + penalty bonus.
+              const isExact =
+                cfg.points_exact > cfg.points_winner && pts === cfg.points_exact
+              grouped.set(p.user_id, {
+                total_points: cur.total_points + (pts as number) + (penPts as number),
+                exact_hits: cur.exact_hits + (isExact ? 1 : 0),
+              })
+            }
+            const groupResults = [...grouped.entries()].map(([user_id, v]) => ({
+              group_id: groupId,
               user_id,
               ...v,
-            })) as unknown as T[],
+            }))
+            allResults = allResults.concat(groupResults)
+          }
+
+          return {
+            results: allResults as unknown as T[],
           }
         }
         return { results: [] }
