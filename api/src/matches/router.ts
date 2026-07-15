@@ -114,8 +114,6 @@ async function runSyncIfNeeded(
   }
 }
 
-
-
 async function maybeSyncResults(
   competitionId: string,
   db: D1Database,
