@@ -169,13 +169,16 @@ function buildFakeDb(
               m.scored_at === null &&
               m.home_score !== null &&
               m.away_score !== null,
-          ) as unknown as T[]
+          ).map((m) => ({
+             ...m,
+             penalty_phases: JSON.stringify(penaltyPhases[m.competition_id] ?? []),
+          })) as unknown as T[]
           return { results }
         }
-        if (sql.includes('FROM predictions') && sql.includes('WHERE p.match_id = ?')) {
-          const matchId = params[0] as string
+        if (sql.includes('FROM predictions') && sql.includes('WHERE p.match_id IN')) {
+          const matchIds = params as string[]
           const results = predictions
-            .filter((p) => p.match_id === matchId)
+            .filter((p) => matchIds.includes(p.match_id))
             .map((p) => ({ ...p, ...groupConfig(p.group_id) })) as unknown as T[]
           return { results }
         }
