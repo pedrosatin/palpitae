@@ -22,6 +22,10 @@ const MAX_EXPORTS_PER_RUN = 10
 
 /** Limites UTC do dia e a chave R2 correspondente. Exportado para testes. */
 export function dayBounds(day: Date): { from: string; to: string; key: string } {
+  if (isNaN(day.getTime())) {
+    throw new TypeError('Invalid Date')
+  }
+
   const y = day.getUTCFullYear()
   const m = String(day.getUTCMonth() + 1).padStart(2, '0')
   const d = String(day.getUTCDate()).padStart(2, '0')
