@@ -15,15 +15,16 @@ describe('permissions', () => {
   describe('getFeatureFlags', () => {
     it('should return feature flags with create_group set to true', () => {
       const flags = getFeatureFlags('test@example.com')
-      expect(flags).toEqual({ create_group: true })
+      expect(flags).toEqual({ create_group: true, sync_matches: true })
       expect(flags.create_group).toBe(true)
+      expect(flags.sync_matches).toBe(true)
     })
 
     it('should return the same flags regardless of email', () => {
       const flags1 = getFeatureFlags('user1@example.com')
       const flags2 = getFeatureFlags('user2@example.com')
-      expect(flags1).toEqual({ create_group: true })
-      expect(flags2).toEqual({ create_group: true })
+      expect(flags1).toEqual({ create_group: true, sync_matches: true })
+      expect(flags2).toEqual({ create_group: true, sync_matches: true })
     })
   })
 })
