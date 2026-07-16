@@ -40,6 +40,32 @@ describe('dayBounds', () => {
     })
     expect(dayBounds(new Date('2026-01-05T00:00:00Z')).key).toBe('events/2026/01/05.ndjson')
   })
+
+  it('handles leap years correctly', () => {
+    expect(dayBounds(new Date('2024-02-28T12:00:00Z'))).toMatchObject({
+      from: '2024-02-28 00:00:00',
+      to: '2024-02-29 00:00:00',
+      key: 'events/2024/02/28.ndjson',
+    })
+    expect(dayBounds(new Date('2024-02-29T12:00:00Z'))).toMatchObject({
+      from: '2024-02-29 00:00:00',
+      to: '2024-03-01 00:00:00',
+      key: 'events/2024/02/29.ndjson',
+    })
+  })
+
+  it('handles non-leap year February correctly', () => {
+    expect(dayBounds(new Date('2023-02-28T12:00:00Z'))).toMatchObject({
+      from: '2023-02-28 00:00:00',
+      to: '2023-03-01 00:00:00',
+      key: 'events/2023/02/28.ndjson',
+    })
+  })
+
+  it('throws TypeError for invalid dates', () => {
+    expect(() => dayBounds(new Date('invalid-date-string'))).toThrow(TypeError)
+    expect(() => dayBounds(new Date(NaN))).toThrow('Invalid Date')
+  })
 })
 
 describe('exportEventsToR2', () => {
