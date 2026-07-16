@@ -476,6 +476,30 @@ describe('formatBRT', () => {
   it('renders a UTC instant in São Paulo time (UTC-3)', () => {
     // 22:00Z → 19:00 BRT.
     const out = formatBRT('2026-06-20T22:00:00Z')
-    expect(out).toContain('19:00')
+    // Node < 20 often uses '.' instead of ',' or omits the comma depending on ICU data.
+    // The main thing is verifying we got the correct components, like the time and date.
+    expect(out).toMatch(/sáb.*20\/06.*19:00/)
+  })
+
+  it('correctly shifts backwards across day boundaries', () => {
+    // 01:00Z on Jun 21st → 22:00 BRT on Jun 20th.
+    const out = formatBRT('2026-06-21T01:00:00Z')
+    expect(out).toMatch(/sáb.*20\/06.*22:00/)
+  })
+
+  it('uses two digits for days, months, hours, and minutes', () => {
+    // 06:05Z → 03:05 BRT.
+    const out = formatBRT('2026-01-05T06:05:00Z')
+    expect(out).toMatch(/seg.*05\/01.*03:05/)
+  })
+
+  it('handles leap years correctly', () => {
+    // 15:30Z → 12:30 BRT.
+    const out = formatBRT('2024-02-29T15:30:00Z')
+    expect(out).toMatch(/qui.*29\/02.*12:30/)
+  })
+
+  it('throws an error for an invalid date string', () => {
+    expect(() => formatBRT('not-a-date')).toThrow(RangeError)
   })
 })
