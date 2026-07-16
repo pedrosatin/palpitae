@@ -252,18 +252,13 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   // Resolve internal team IDs
   const teamIds = new Map<number, string>()
   const extIds = Array.from(teamMap.keys())
-  const chunkSize = 99 // Leave room for PROVIDER parameter
 
-  for (let i = 0; i < extIds.length; i += chunkSize) {
-    const chunk = extIds.slice(i, i + chunkSize)
-    if (chunk.length === 0) continue
-
-    const placeholders = chunk.map(() => '?').join(', ')
+  if (extIds.length > 0) {
     const { results } = await db
       .prepare(
-        `SELECT external_id, id FROM teams WHERE external_id IN (${placeholders}) AND provider = ?`,
+        `SELECT external_id, id FROM teams WHERE external_id IN (SELECT value FROM json_each(?)) AND provider = ?`,
       )
-      .bind(...chunk.map(String), PROVIDER)
+      .bind(JSON.stringify(extIds.map(String)), PROVIDER)
       .all<{ external_id: string; id: string }>()
 
     for (const row of results) {
