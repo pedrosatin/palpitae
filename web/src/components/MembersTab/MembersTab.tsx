@@ -22,11 +22,10 @@ interface Member {
   exact_hits: number
 }
 
-export default function MembersTab({
-  groupId,
-  currentUserId,
-  onMemberRemoved,
-}: MembersTabProps) {
+function useMembers(
+  groupId: string,
+  onMemberRemoved?: (userId: string) => void,
+) {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -74,6 +73,64 @@ export default function MembersTab({
     }
   }
 
+  return { members, loading, error, removing, confirmDialog, removeMember }
+}
+
+interface MemberItemProps {
+  member: Member
+  currentUserId: string
+  removing: string | null
+  onRemove: (userId: string, displayName: string) => void
+}
+
+function MemberItem({
+  member,
+  currentUserId,
+  removing,
+  onRemove,
+}: MemberItemProps) {
+  return (
+    <li className={styles.item}>
+      <div className={styles.identity}>
+        {member.avatar_url ? (
+          <img src={member.avatar_url} alt="" className={styles.avatar} />
+        ) : (
+          <span className={styles.avatarFallback}>
+            {member.display_name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <div className={styles.info}>
+          <span className={styles.name}>{member.display_name}</span>
+          {member.role === 'owner' && (
+            <span className={styles.badge}>admin</span>
+          )}
+          {member.user_id === currentUserId && (
+            <span className={styles.badgeYou}>você</span>
+          )}
+        </div>
+      </div>
+
+      {member.user_id !== currentUserId && member.role !== 'owner' && (
+        <button
+          className={styles.removeBtn}
+          onClick={() => onRemove(member.user_id, member.display_name)}
+          disabled={removing === member.user_id}
+        >
+          {removing === member.user_id ? 'Removendo…' : 'Remover'}
+        </button>
+      )}
+    </li>
+  )
+}
+
+export default function MembersTab({
+  groupId,
+  currentUserId,
+  onMemberRemoved,
+}: MembersTabProps) {
+  const { members, loading, error, removing, confirmDialog, removeMember } =
+    useMembers(groupId, onMemberRemoved)
+
   if (loading) {
     return <p className={styles.loading}>Carregando membros...</p>
   }
@@ -90,38 +147,13 @@ export default function MembersTab({
       </p>
       <ul className={styles.list}>
         {members.map((member) => (
-          <li key={member.user_id} className={styles.item}>
-            <div className={styles.identity}>
-              {member.avatar_url ? (
-                <img src={member.avatar_url} alt="" className={styles.avatar} />
-              ) : (
-                <span className={styles.avatarFallback}>
-                  {member.display_name.charAt(0).toUpperCase()}
-                </span>
-              )}
-              <div className={styles.info}>
-                <span className={styles.name}>{member.display_name}</span>
-                {member.role === 'owner' && (
-                  <span className={styles.badge}>admin</span>
-                )}
-                {member.user_id === currentUserId && (
-                  <span className={styles.badgeYou}>você</span>
-                )}
-              </div>
-            </div>
-
-            {member.user_id !== currentUserId && member.role !== 'owner' && (
-              <button
-                className={styles.removeBtn}
-                onClick={() =>
-                  removeMember(member.user_id, member.display_name)
-                }
-                disabled={removing === member.user_id}
-              >
-                {removing === member.user_id ? 'Removendo…' : 'Remover'}
-              </button>
-            )}
-          </li>
+          <MemberItem
+            key={member.user_id}
+            member={member}
+            currentUserId={currentUserId}
+            removing={removing}
+            onRemove={removeMember}
+          />
         ))}
       </ul>
       {confirmDialog}
