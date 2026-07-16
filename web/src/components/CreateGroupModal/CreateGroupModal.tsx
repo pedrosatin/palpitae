@@ -3,9 +3,12 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import Button from '../Button'
-import InfoHint from '../InfoHint/InfoHint'
 import Modal from '../Modal'
 import styles from './CreateGroupModal.module.css'
+import CreateGroupSuccessView from './components/CreateGroupSuccessView'
+import ScoringRulesField from './components/ScoringRulesField'
+import VisibilityField from './components/VisibilityField'
+import { ScoringPreset } from './constants'
 
 interface Competition {
   id: string
@@ -17,7 +20,7 @@ interface Competition {
   has_penalty_phases?: boolean
 }
 
-interface CreatedGroup {
+export interface CreatedGroup {
   id: string
   name: string
   invite_code: string
@@ -27,34 +30,6 @@ interface CreateGroupModalProps {
   isOpen: boolean
   onClose: () => void
   onCreated: (group: CreatedGroup) => void
-}
-
-type ScoringPreset = 'classic' | 'exact_only' | 'winner_only' | 'custom'
-
-const PRESET_VALUES: Record<
-  Exclude<ScoringPreset, 'custom'>,
-  { exact: number; winner: number; penalty: number }
-> = {
-  // penalty = 1 em todos os presets (bônus aditivo, independente do placar exato).
-  classic: { exact: 3, winner: 1, penalty: 1 },
-  exact_only: { exact: 3, winner: 0, penalty: 1 },
-  // "Só vencedor": sem bônus por placar exato (points_exact = 0). Ativa a UI 1X2
-  // (Casa / Empate / Fora) no palpite.
-  winner_only: { exact: 0, winner: 1, penalty: 1 },
-}
-
-const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
-  exact:
-    'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
-  winner:
-    'Vencedor: pontos para quem acerta só o resultado — mandante, visitante ou empate — sem cravar o placar.',
-}
-
-const PRESET_LABELS: Record<ScoringPreset, string> = {
-  classic: 'Clássico',
-  exact_only: 'Só placar exato',
-  winner_only: 'Só vencedor',
-  custom: 'Personalizado',
 }
 
 export default function CreateGroupModal({
@@ -78,7 +53,6 @@ export default function CreateGroupModal({
   const [error, setError] = useState<string | null>(null)
 
   const [created, setCreated] = useState<CreatedGroup | null>(null)
-  const [copied, setCopied] = useState(false)
 
   // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
   // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
@@ -111,32 +85,12 @@ export default function CreateGroupModal({
     setPredictionsVisibility('hidden')
     setError(null)
     setCreated(null)
-    setCopied(false)
     setSubmitting(false)
   }
 
   function handleClose() {
     reset()
     onClose()
-  }
-
-  function handlePreset(preset: ScoringPreset) {
-    trackEvent('click_create_group_preset_selecionado', { preset })
-    setScoringPreset(preset)
-    if (preset !== 'custom') {
-      setPointsExact(PRESET_VALUES[preset].exact)
-      setPointsWinner(PRESET_VALUES[preset].winner)
-      setPointsPenalty(PRESET_VALUES[preset].penalty)
-    }
-  }
-
-  function handleVisibility(visibility: 'hidden' | 'public') {
-    trackEvent(
-      visibility === 'public'
-        ? 'click_create_group_visibilidade_publica'
-        : 'click_create_group_visibilidade_oculta',
-    )
-    setPredictionsVisibility(visibility)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -191,65 +145,10 @@ export default function CreateGroupModal({
     }
   }
 
-  function getShareLink(invite_code: string) {
-    return `${window.location.origin}?convite=${invite_code}`
-  }
-
-  async function handleCopyCode(invite_code: string) {
-    await navigator.clipboard.writeText(invite_code)
-    trackEvent('click_create_group_copiar_codigo')
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function handleCopyLink(invite_code: string) {
-    await navigator.clipboard.writeText(getShareLink(invite_code))
-    trackEvent('click_create_group_copiar_link')
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Criar grupo">
       {created ? (
-        <div className={styles.success}>
-          <div className={styles.successIcon}>🎉</div>
-          <h3 className={styles.successTitle}>Grupo criado!</h3>
-          <p className={styles.successName}>{created.name}</p>
-          <p className={styles.inviteLabel}>
-            Compartilhe o código com seus amigos:
-          </p>
-
-          <div className={styles.codeBox}>
-            <span className={styles.code}>{created.invite_code}</span>
-            <button
-              className={styles.copyBtn}
-              onClick={() => handleCopyCode(created.invite_code)}
-            >
-              {copied ? 'Copiado!' : 'Copiar'}
-            </button>
-          </div>
-
-          <div className={styles.linkRow}>
-            <span className={styles.linkText}>
-              {getShareLink(created.invite_code)}
-            </span>
-            <button
-              className={styles.copyBtn}
-              onClick={() => handleCopyLink(created.invite_code)}
-            >
-              {copied ? 'Copiado!' : 'Copiar link'}
-            </button>
-          </div>
-
-          <Button
-            variant="primary"
-            className={styles.doneBtn}
-            onClick={handleClose}
-          >
-            Pronto
-          </Button>
-        </div>
+        <CreateGroupSuccessView created={created} onClose={handleClose} />
       ) : (
         <form onSubmit={handleSubmit} className={styles.form}>
           {error && <p className={styles.error}>{error}</p>}
@@ -299,155 +198,22 @@ export default function CreateGroupModal({
             )}
           </div>
 
-          <div className={styles.field}>
-            <span className={styles.label}>Regras de pontuação</span>
-            <div className={styles.presetGrid}>
-              {(
-                [
-                  'classic',
-                  'exact_only',
-                  'winner_only',
-                  'custom',
-                ] as ScoringPreset[]
-              ).map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  className={`${styles.presetBtn} ${scoringPreset === preset ? styles.presetBtnActive : ''}`}
-                  onClick={() => handlePreset(preset)}
-                  aria-pressed={scoringPreset === preset}
-                >
-                  {PRESET_LABELS[preset]}
-                </button>
-              ))}
-            </div>
-            <div className={styles.pointsRow}>
-              <div className={styles.pointsField}>
-                <InfoHint
-                  label="Placar exato"
-                  labelSide="left"
-                  htmlFor="points-exact"
-                  text={SCORING_HELP_TEXT.exact}
-                  onOpen={() =>
-                    trackEvent('click_create_group_ajuda_pontuacao', {
-                      campo: 'exact',
-                    })
-                  }
-                />
-                <input
-                  id="points-exact"
-                  className={styles.pointsInput}
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={pointsExact}
-                  disabled={scoringPreset !== 'custom'}
-                  onChange={(e) =>
-                    setPointsExact(
-                      Math.max(
-                        0,
-                        Math.min(10, Math.floor(Number(e.target.value))),
-                      ),
-                    )
-                  }
-                />
-              </div>
-              <div className={styles.pointsField}>
-                <InfoHint
-                  label="Vencedor"
-                  labelSide="left"
-                  htmlFor="points-winner"
-                  text={SCORING_HELP_TEXT.winner}
-                  onOpen={() =>
-                    trackEvent('click_create_group_ajuda_pontuacao', {
-                      campo: 'winner',
-                    })
-                  }
-                />
-                <input
-                  id="points-winner"
-                  className={styles.pointsInput}
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={pointsWinner}
-                  disabled={scoringPreset !== 'custom'}
-                  onChange={(e) =>
-                    setPointsWinner(
-                      Math.max(
-                        0,
-                        Math.min(10, Math.floor(Number(e.target.value))),
-                      ),
-                    )
-                  }
-                />
-              </div>
-            </div>
-            {showPenaltyField && (
-              <div className={styles.pointsRow}>
-                <div className={styles.pointsField}>
-                  <label
-                    className={styles.pointsLabel}
-                    htmlFor="points-penalty"
-                  >
-                    Bônus pênalti
-                  </label>
-                  <input
-                    id="points-penalty"
-                    className={styles.pointsInput}
-                    type="number"
-                    min={0}
-                    max={10}
-                    value={pointsPenalty}
-                    disabled={scoringPreset !== 'custom'}
-                    onChange={(e) =>
-                      setPointsPenalty(
-                        Math.max(
-                          0,
-                          Math.min(10, Math.floor(Number(e.target.value))),
-                        ),
-                      )
-                    }
-                  />
-                </div>
-                <p className={styles.penaltyHint}>
-                  Pontos extras por acertar quem vence nos pênaltis num palpite
-                  de empate. 0 desliga.
-                </p>
-              </div>
-            )}
-          </div>
+          <ScoringRulesField
+            scoringPreset={scoringPreset}
+            setScoringPreset={setScoringPreset}
+            pointsExact={pointsExact}
+            setPointsExact={setPointsExact}
+            pointsWinner={pointsWinner}
+            setPointsWinner={setPointsWinner}
+            pointsPenalty={pointsPenalty}
+            setPointsPenalty={setPointsPenalty}
+            showPenaltyField={showPenaltyField}
+          />
 
-          <div className={styles.field}>
-            <span className={styles.label}>Visibilidade dos palpites</span>
-            <div className={styles.visibilityGroup}>
-              <button
-                type="button"
-                className={`${styles.visibilityOption} ${predictionsVisibility === 'hidden' ? styles.visibilityOptionActive : ''}`}
-                onClick={() => handleVisibility('hidden')}
-                aria-pressed={predictionsVisibility === 'hidden'}
-              >
-                <span className={styles.visibilityTitle}>
-                  Oculto até palpitar
-                </span>
-                <span className={styles.visibilityDesc}>
-                  Outros palpites só aparecem depois que você palpitar ou o jogo
-                  começar
-                </span>
-              </button>
-              <button
-                type="button"
-                className={`${styles.visibilityOption} ${predictionsVisibility === 'public' ? styles.visibilityOptionActive : ''}`}
-                onClick={() => handleVisibility('public')}
-                aria-pressed={predictionsVisibility === 'public'}
-              >
-                <span className={styles.visibilityTitle}>Sempre visível</span>
-                <span className={styles.visibilityDesc}>
-                  Todos veem os palpites em tempo real
-                </span>
-              </button>
-            </div>
-          </div>
+          <VisibilityField
+            predictionsVisibility={predictionsVisibility}
+            setPredictionsVisibility={setPredictionsVisibility}
+          />
 
           <div className={styles.actions}>
             <Button
