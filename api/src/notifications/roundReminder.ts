@@ -298,14 +298,15 @@ export async function sendRoundReminders(
 
 // BRT = UTC-3, no DST since 2019.
 export function formatBRT(isoUtc: string): string {
-  return new Date(isoUtc).toLocaleString('pt-BR', {
+  const d = new Date(isoUtc)
+  return new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     weekday: 'short',
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  }).format(d)
 }
 
 /**
