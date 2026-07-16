@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import {
   useNavigate,
   useParams,
@@ -7,12 +7,13 @@ import {
 } from 'react-router-dom'
 import { config } from '../../config'
 import { useConfirm } from '../../components/ConfirmModal'
-import Button from '../../components/Button'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
-import Modal from '../../components/Modal'
 import GroupPicksTab from '../../components/GroupPicksTab'
+import GroupHeader from './GroupHeader'
+import GroupInviteSection from './GroupInviteSection'
+import RenameGroupModal from './RenameGroupModal'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
 import PredictionsTab from '../../components/PredictionsTab'
@@ -92,13 +93,8 @@ export default function GroupDetailPage({
   const [tabsOffset, setTabsOffset] = useState(0)
   const [leaving, setLeaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
-  const [renameValue, setRenameValue] = useState('')
-  const [renaming, setRenaming] = useState(false)
-  const [renameError, setRenameError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
-  const menuRef = useRef<HTMLDivElement>(null)
   const rawTab = parseTab(searchParams.get('tab'))
   // Tabela do campeonato só em pontos corridos (competitions.type = 'league');
   // em copas a URL ?tab=standings cai no tab default em vez de painel vazio.
@@ -140,7 +136,6 @@ export default function GroupDetailPage({
       setActiveTab(tab)
     }
   }
-  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
 
@@ -187,46 +182,7 @@ export default function GroupDetailPage({
     }
   }, [])
 
-  useEffect(() => {
-    if (!menuOpen) return
-
-    const handlePointer = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
-    }
-
-    document.addEventListener('mousedown', handlePointer)
-    document.addEventListener('keydown', handleKey)
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointer)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [menuOpen])
-
   if (!groupId) return <Navigate to="/" replace />
-
-  function getShareLink() {
-    return `${window.location.origin}?convite=${group!.invite_code}`
-  }
-
-  async function copyCode() {
-    await navigator.clipboard.writeText(group!.invite_code)
-    trackEvent('click_group_detail_copiar_codigo')
-    setCopied('code')
-    setTimeout(() => setCopied(null), 2000)
-  }
-
-  async function copyLink() {
-    await navigator.clipboard.writeText(getShareLink())
-    trackEvent('click_group_detail_copiar_link')
-    setCopied('link')
-    setTimeout(() => setCopied(null), 2000)
-  }
 
   function handleGroupCreated(nextGroup: { id: string }) {
     invalidateApiCache('groups:')
@@ -274,52 +230,12 @@ export default function GroupDetailPage({
   function openRename() {
     if (!group) return
     trackEvent('click_group_detail_menu_editar_nome')
-    setMenuOpen(false)
-    setRenameValue(group.name)
-    setRenameError(null)
     setRenameOpen(true)
-  }
-
-  async function submitRename(event: React.FormEvent) {
-    event.preventDefault()
-    if (!groupId) return
-
-    const name = renameValue.trim()
-    if (name.length < 2 || name.length > 50) {
-      setRenameError('Nome deve ter entre 2 e 50 caracteres')
-      return
-    }
-
-    setRenaming(true)
-    setRenameError(null)
-
-    try {
-      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
-
-      if (!res.ok) {
-        const body = (await res.json()) as { error?: string }
-        throw new Error(body.error ?? 'Erro ao renomear grupo')
-      }
-
-      trackEvent('submit_renomear_grupo')
-      setGroup((prev) => (prev ? { ...prev, name } : prev))
-      invalidateApiCache('groups:')
-      setRenameOpen(false)
-    } catch (e: unknown) {
-      setRenameError(e instanceof Error ? e.message : 'Erro ao renomear grupo')
-    } finally {
-      setRenaming(false)
-    }
   }
 
   async function deleteGroup() {
     if (!groupId) return
     trackEvent('click_group_detail_menu_excluir')
-    setMenuOpen(false)
 
     const ok = await confirm({
       title: 'Excluir grupo',
@@ -363,36 +279,15 @@ export default function GroupDetailPage({
         onClose={() => setJoinOpen(false)}
         onJoined={handleGroupJoined}
       />
-      <Modal
+      <RenameGroupModal
         isOpen={renameOpen}
         onClose={() => setRenameOpen(false)}
-        title="Editar nome do grupo"
-      >
-        <form onSubmit={submitRename} className={styles.renameForm}>
-          <input
-            className={styles.renameInput}
-            type="text"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            maxLength={50}
-            placeholder="Nome do grupo"
-            autoFocus
-          />
-          {renameError && <p className={styles.renameError}>{renameError}</p>}
-          <div className={styles.renameActions}>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setRenameOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={renaming}>
-              {renaming ? 'Salvando...' : 'Salvar'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        groupId={groupId!}
+        currentName={group?.name ?? ''}
+        onRenamed={(name) =>
+          setGroup((prev) => (prev ? { ...prev, name } : prev))
+        }
+      />
       {confirmDialog}
     </>
   )
@@ -441,102 +336,18 @@ export default function GroupDetailPage({
       />
       <main className={styles.root}>
         {/* Group header */}
-        <div className={styles.groupHeader}>
-          <div className={styles.groupMeta}>
-            <span className={styles.competition}>
-              {group.competition_name ?? group.competition_id}
-            </span>
-            <div className={styles.groupNameRow}>
-              <h1 className={styles.groupName}>{group.name}</h1>
-              <div className={styles.menuWrap} ref={menuRef}>
-                <button
-                  className={styles.kebabBtn}
-                  onClick={() => setMenuOpen((o) => !o)}
-                  aria-label="Opções do grupo"
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                >
-                  ⋯
-                </button>
-                {menuOpen && (
-                  <div className={styles.menu} role="menu">
-                    {isAdmin ? (
-                      <>
-                        <button
-                          className={styles.menuItemNeutral}
-                          role="menuitem"
-                          onClick={openRename}
-                        >
-                          Editar nome
-                        </button>
-                        <button
-                          className={styles.menuItem}
-                          role="menuitem"
-                          onClick={deleteGroup}
-                          disabled={deleting}
-                        >
-                          {deleting ? 'Excluindo...' : 'Excluir grupo'}
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className={styles.menuItem}
-                        role="menuitem"
-                        onClick={leaveGroup}
-                        disabled={leaving}
-                      >
-                        {leaving ? 'Saindo...' : 'Sair do grupo'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className={styles.groupActions}>
-            <div className={styles.stats}>
-              <div className={styles.statItem}>
-                <span className={styles.statValue}>{group.member_count}</span>
-                <span className={styles.statLabel}>membros</span>
-              </div>
-              <div className={styles.statItem}>
-                <span className={styles.statValue}>#{group.user_position}</span>
-                <span className={styles.statLabel}>sua posição</span>
-              </div>
-              <div className={styles.statItem}>
-                <span className={styles.statValue}>{group.user_points}</span>
-                <span className={styles.statLabel}>pontos</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <GroupHeader
+          group={group}
+          isAdmin={isAdmin}
+          onOpenRename={openRename}
+          onDeleteGroup={deleteGroup}
+          deleting={deleting}
+          onLeaveGroup={leaveGroup}
+          leaving={leaving}
+        />
 
         {/* Admin: invite section */}
-        {isAdmin && (
-          <div className={styles.inviteSection}>
-            <h2 className={styles.inviteTitle}>Convidar membros</h2>
-            <div className={styles.inviteRow}>
-              <div className={styles.codeBox}>
-                <span className={styles.codeLabel}>Código</span>
-                <div className={styles.codeValueRow}>
-                  <span className={styles.code}>{group.invite_code}</span>
-                  <button className={styles.copyBtn} onClick={copyCode}>
-                    {copied === 'code' ? 'Copiado!' : 'Copiar'}
-                  </button>
-                </div>
-              </div>
-              <div className={styles.linkBox}>
-                <span className={styles.codeLabel}>Link direto</span>
-                <div className={styles.linkValueRow}>
-                  <span className={styles.linkText}>{getShareLink()}</span>
-                  <button className={styles.copyBtn} onClick={copyLink}>
-                    {copied === 'link' ? 'Copiado!' : 'Copiar link'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {isAdmin && <GroupInviteSection inviteCode={group.invite_code} />}
 
         {/* Tabs */}
         <div
