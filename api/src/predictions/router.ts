@@ -1,9 +1,29 @@
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { roundLabel } from '../matches/rounds'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
+import { getGroupMembershipTimed } from '../groups/membership'
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses the request JSON body. Returns `{ ok: true, body }` on success or
+ * `{ ok: false, response }` when parsing fails so the caller can return early.
+ */
+async function parseJsonBody<T>(
+  c: Context<AppContext>,
+): Promise<{ ok: true; body: T } | { ok: false; response: Response }> {
+  try {
+    const body = await c.req.json<T>()
+    return { ok: true, body }
+  } catch {
+    return { ok: false, response: c.json({ error: 'Body JSON inválido' }, 400) }
+  }
+}
 
 const router = new Hono<AppContext>()
 
@@ -38,12 +58,7 @@ router.get('/', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  const membershipStartedAt = Date.now()
-  const membership = await db
-    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-    .bind(groupId, userId)
-    .first()
-  const membershipMs = Date.now() - membershipStartedAt
+  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -132,12 +147,7 @@ router.get('/user', requireAuth, async (c) => {
   const db = c.env.DB
 
   // Requester must be a member of the group
-  const membershipStartedAt = Date.now()
-  const membership = await db
-    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-    .bind(groupId, requesterId)
-    .first()
-  const membershipMs = Date.now() - membershipStartedAt
+  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, requesterId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -264,12 +274,7 @@ router.get('/group', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  const membershipStartedAt = Date.now()
-  const membership = await db
-    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-    .bind(groupId, userId)
-    .first()
-  const membershipMs = Date.now() - membershipStartedAt
+  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -406,18 +411,16 @@ router.get('/group', requireAuth, async (c) => {
 router.put('/', requireAuth, async (c) => {
   const userId = c.get('userId')
 
-  let body: {
+  type PutBody = {
     group_id?: string
     match_id?: string
     predicted_home_score?: number
     predicted_away_score?: number
     predicted_penalty_winner?: 'home' | 'away' | null
   }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Body JSON inválido' }, 400)
-  }
+  const parsed = await parseJsonBody<PutBody>(c)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
   const { group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner } = body
 
@@ -440,10 +443,7 @@ router.put('/', requireAuth, async (c) => {
   const db = c.env.DB
 
   // Verify user is a member of the group
-  const membership = await db
-    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-    .bind(group_id, userId)
-    .first()
+  const { membership } = await getGroupMembershipTimed(db, group_id, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -540,10 +540,10 @@ router.put('/', requireAuth, async (c) => {
  *   400 — missing/invalid fields
  *   403 — user not in group
  */
-router.put('/bulk', requireAuth, async (c) => {
+async function handleBulkPut(c: Context<AppContext>) {
   const userId = c.get('userId')
 
-  let body: {
+  type BulkBody = {
     group_id?: string
     predictions?: Array<{
       match_id?: string
@@ -552,11 +552,9 @@ router.put('/bulk', requireAuth, async (c) => {
       predicted_penalty_winner?: 'home' | 'away' | null
     }>
   }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Body JSON inválido' }, 400)
-  }
+  const parsed = await parseJsonBody<BulkBody>(c)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
   const { group_id, predictions } = body
 
@@ -587,10 +585,7 @@ router.put('/bulk', requireAuth, async (c) => {
   const db = c.env.DB
 
   // Verify user is a member of the group
-  const membership = await db
-    .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-    .bind(group_id, userId)
-    .first()
+  const { membership } = await getGroupMembershipTimed(db, group_id, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -694,7 +689,9 @@ router.put('/bulk', requireAuth, async (c) => {
   }
 
   return c.json({ ok: true, saved, locked, not_found: notFound })
-})
+}
+
+router.put('/bulk', requireAuth, handleBulkPut)
 
 /**
  * POST /predictions/import
@@ -717,15 +714,13 @@ router.put('/bulk', requireAuth, async (c) => {
  *   404 — group not found
  *   422 — groups belong to different competitions
  */
-router.post('/import', requireAuth, async (c) => {
+async function handleImportPost(c: Context<AppContext>) {
   const userId = c.get('userId')
 
-  let body: { source_group_id?: string; target_group_id?: string }
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Body JSON inválido' }, 400)
-  }
+  type ImportBody = { source_group_id?: string; target_group_id?: string }
+  const parsed = await parseJsonBody<ImportBody>(c)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
 
   const { source_group_id, target_group_id } = body
 
@@ -852,6 +847,8 @@ router.post('/import', requireAuth, async (c) => {
   })
 
   return c.json({ ok: true, imported: toImport.length, locked_skipped: lockedSkipped })
-})
+}
+
+router.post('/import', requireAuth, handleImportPost)
 
 export { router as predictionsRouter }
