@@ -20,12 +20,18 @@
   z-index: 100;
 }
 
-.saveAllBtn {
+/* Compostos com .saveAllBar para vencer a base do Button (2 classes > 1)
+   sem depender da ordem de injeção dos CSS Modules. */
+.saveAllBar .saveAllBtn {
   margin-left: auto;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
-.saveAllBtnSaved {
+.saveAllBar .saveAllBtnSaved {
   background-color: #1e7a0e;
+  border-color: #1e7a0e;
   color: #ffffff;
 }
 
@@ -80,13 +86,23 @@
   white-space: nowrap;
 }
 
-.importSelect {
+/* Compostos com .importBar para vencer as bases de Select/Button
+   (2 classes > 1) sem depender da ordem de injeção dos CSS Modules. */
+.importBar .importSelect {
   flex: 1;
   min-width: 0;
+  width: auto;
+  height: 2rem;
+  padding: 0 var(--space-8) 0 var(--space-3);
+  font-size: var(--font-size-sm);
 }
 
-.importBtn {
+.importBar .importBtn {
   margin-left: 0;
+  height: 2rem;
+  padding: 0 var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
 }
 
 .importSuccess {

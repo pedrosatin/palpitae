@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { trackEvent } from '../../../analytics/ga'
 import Button from '../../Button'
 import styles from '../CreateGroupModal.module.css'
+import shared from '../../modal-shared.module.css'
 
 interface CreatedGroup {
   id: string
@@ -39,34 +40,36 @@ export default function CreateGroupSuccessView({
   }
 
   return (
-    <div className={styles.success}>
-      <div className={styles.successIcon}>🎉</div>
-      <h3 className={styles.successTitle}>Grupo criado!</h3>
-      <p className={styles.successName}>{created.name}</p>
+    <div className={shared.success}>
+      <div className={shared.successIcon}>🎉</div>
+      <h3 className={shared.successTitle}>Grupo criado!</h3>
+      <p className={shared.successName}>{created.name}</p>
       <p className={styles.inviteLabel}>
         Compartilhe o código com seus amigos:
       </p>
 
       <div className={styles.codeBox}>
         <span className={styles.code}>{created.invite_code}</span>
-        <button
-          className={styles.copyBtn}
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => handleCopyCode(created.invite_code)}
         >
           {copied ? 'Copiado!' : 'Copiar'}
-        </button>
+        </Button>
       </div>
 
       <div className={styles.linkRow}>
-        <span className={styles.linkText}>
+        <span className={shared.linkText}>
           {getShareLink(created.invite_code)}
         </span>
-        <button
-          className={styles.copyBtn}
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => handleCopyLink(created.invite_code)}
         >
           {copied ? 'Copiado!' : 'Copiar link'}
-        </button>
+        </Button>
       </div>
 
       <Button
