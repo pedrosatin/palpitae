@@ -1,6 +1,7 @@
 import { trackEvent } from '../../../analytics/ga'
 import InfoHint from '../../InfoHint/InfoHint'
 import styles from '../CreateGroupModal.module.css'
+import shared from '../../modal-shared.module.css'
 import {
   PRESET_LABELS,
   PRESET_VALUES,
@@ -42,8 +43,8 @@ export default function ScoringRulesField({
   }
 
   return (
-    <div className={styles.field}>
-      <span className={styles.label}>Regras de pontuação</span>
+    <div className={shared.field}>
+      <span className={shared.label}>Regras de pontuação</span>
       <div className={styles.presetGrid}>
         {(
           ['classic', 'exact_only', 'winner_only', 'custom'] as ScoringPreset[]

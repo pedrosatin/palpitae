@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
+import Button from '../../components/Button'
 import styles from './GroupDetailPage.module.css'
+import shared from '../../components/modal-shared.module.css'
 
 interface GroupInviteSectionProps {
   inviteCode: string
@@ -35,18 +37,18 @@ export function GroupInviteSection({ inviteCode }: GroupInviteSectionProps) {
           <span className={styles.codeLabel}>Código</span>
           <div className={styles.codeValueRow}>
             <span className={styles.code}>{inviteCode}</span>
-            <button className={styles.copyBtn} onClick={copyCode}>
+            <Button variant="outline" size="sm" onClick={copyCode}>
               {copied === 'code' ? 'Copiado!' : 'Copiar'}
-            </button>
+            </Button>
           </div>
         </div>
         <div className={styles.linkBox}>
           <span className={styles.codeLabel}>Link direto</span>
           <div className={styles.linkValueRow}>
-            <span className={styles.linkText}>{getShareLink()}</span>
-            <button className={styles.copyBtn} onClick={copyLink}>
+            <span className={shared.linkText}>{getShareLink()}</span>
+            <Button variant="outline" size="sm" onClick={copyLink}>
               {copied === 'link' ? 'Copiado!' : 'Copiar link'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

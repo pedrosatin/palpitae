@@ -1,7 +1,9 @@
 import { trackEvent } from "../../analytics/ga";
+import Button from "../Button";
 import ErrorState from "../ErrorState";
 import MatchCard, { type Match } from "../MatchCard";
 import RoundHeader from "../RoundHeader/RoundHeader";
+import Select from "../Select";
 import { usePredictionsTab } from "./usePredictionsTab";
 import styles from "./PredictionsTab.module.css";
 
@@ -81,7 +83,7 @@ export default function PredictionsTab({
       {otherGroups.length > 0 && (
         <div className={styles.importBar}>
           <span className={styles.importLabel}>Importar palpites de:</span>
-          <select
+          <Select
             className={styles.importSelect}
             value={importSourceId}
             onChange={(e) => setImportSourceId(e.target.value)}
@@ -91,14 +93,15 @@ export default function PredictionsTab({
                 {g.name}
               </option>
             ))}
-          </select>
-          <button
+          </Select>
+          <Button
+            size="sm"
             className={styles.importBtn}
             onClick={handleImport}
             disabled={importing || !importSourceId}
           >
             {importing ? "Importando..." : "Importar"}
-          </button>
+          </Button>
           {importFeedback && (
             <span
               className={
@@ -126,7 +129,8 @@ export default function PredictionsTab({
 
       <div className={styles.saveAllBar}>
         {bulkError && <span className={styles.error}>{bulkError}</span>}
-        <button
+        <Button
+          size="sm"
           className={`${styles.saveAllBtn} ${savedAll ? styles.saveAllBtnSaved : ""}`}
           onClick={handleSaveAll}
           disabled={pendingCount === 0 || savingAll}
@@ -138,7 +142,7 @@ export default function PredictionsTab({
               : pendingCount > 0
                 ? `Salvar todos (${pendingCount})`
                 : "Salvar todos"}
-        </button>
+        </Button>
       </div>
 
       {groupedRoundMatches(roundMatches).map(([groupName, groupMatches]) => (

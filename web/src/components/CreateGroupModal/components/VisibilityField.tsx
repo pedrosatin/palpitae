@@ -1,5 +1,6 @@
 import { trackEvent } from '../../../analytics/ga'
 import styles from '../CreateGroupModal.module.css'
+import shared from '../../modal-shared.module.css'
 
 interface VisibilityFieldProps {
   predictionsVisibility: 'hidden' | 'public'
@@ -20,8 +21,8 @@ export default function VisibilityField({
   }
 
   return (
-    <div className={styles.field}>
-      <span className={styles.label}>Visibilidade dos palpites</span>
+    <div className={shared.field}>
+      <span className={shared.label}>Visibilidade dos palpites</span>
       <div className={styles.visibilityGroup}>
         <button
           type="button"

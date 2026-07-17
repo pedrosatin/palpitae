@@ -6,6 +6,7 @@ import Button from '../Button'
 import Modal from '../Modal'
 import Select from '../Select'
 import styles from './CreateGroupModal.module.css'
+import shared from '../modal-shared.module.css'
 import CreateGroupSuccessView from './components/CreateGroupSuccessView'
 import ScoringRulesField from './components/ScoringRulesField'
 import VisibilityField from './components/VisibilityField'
@@ -151,16 +152,16 @@ export default function CreateGroupModal({
       {created ? (
         <CreateGroupSuccessView created={created} onClose={handleClose} />
       ) : (
-        <form onSubmit={handleSubmit} className={styles.form}>
-          {error && <p className={styles.error}>{error}</p>}
+        <form onSubmit={handleSubmit} className={shared.form}>
+          {error && <p className={shared.error}>{error}</p>}
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="group-name">
+          <div className={shared.field}>
+            <label className={shared.label} htmlFor="group-name">
               Nome do grupo
             </label>
             <input
               id="group-name"
-              className={styles.input}
+              className={shared.input}
               type="text"
               placeholder="Ex: Os Craques do Bairro"
               value={name}
@@ -171,8 +172,8 @@ export default function CreateGroupModal({
             />
           </div>
 
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="group-competition">
+          <div className={shared.field}>
+            <label className={shared.label} htmlFor="group-competition">
               Competição
             </label>
             {loadingCompetitions ? (
@@ -215,7 +216,7 @@ export default function CreateGroupModal({
             setPredictionsVisibility={setPredictionsVisibility}
           />
 
-          <div className={styles.actions}>
+          <div className={shared.actions}>
             <Button
               type="button"
               variant="secondary"
