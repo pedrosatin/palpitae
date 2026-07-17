@@ -4,6 +4,7 @@ import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import Button from '../Button'
 import Modal from '../Modal'
+import Select from '../Select'
 import styles from './CreateGroupModal.module.css'
 import CreateGroupSuccessView from './components/CreateGroupSuccessView'
 import ScoringRulesField from './components/ScoringRulesField'
@@ -181,9 +182,8 @@ export default function CreateGroupModal({
                 Nenhuma competição disponível no momento.
               </p>
             ) : (
-              <select
+              <Select
                 id="group-competition"
-                className={styles.select}
                 value={competitionId}
                 onChange={(e) => setCompetitionId(e.target.value)}
                 required
@@ -194,7 +194,7 @@ export default function CreateGroupModal({
                     {c.season ? ` ${c.season}` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             )}
           </div>
 
