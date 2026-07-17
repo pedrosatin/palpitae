@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { hasFeatureAccess } from '../auth/permissions'
 import { logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
@@ -397,6 +398,10 @@ router.get('/', handleGetMatches)
  * Requires authentication.
  */
 router.post('/sync', requireAuth, async (c) => {
+  if (!hasFeatureAccess(c.get('userEmail'), 'sync_matches')) {
+    return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
+  }
+
   let body: { competition?: string; season?: number; matchday?: number }
   try {
     body = await c.req.json()

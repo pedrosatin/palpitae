@@ -19,6 +19,14 @@ describe('generateNonce', () => {
   it('returns a URL-safe base64 string', () => {
     expect(generateNonce()).toMatch(/^[A-Za-z0-9_-]+$/)
   })
+
+  it('is at least 20 characters long', () => {
+    expect(generateNonce().length).toBeGreaterThanOrEqual(20)
+  })
+
+  it('generates unique values on each call', () => {
+    expect(generateNonce()).not.toBe(generateNonce())
+  })
 })
 
 describe('generatePkce', () => {

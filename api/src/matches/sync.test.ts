@@ -42,10 +42,16 @@ function buildFakeDb() {
         },
         async all<T>(): Promise<{ results: T[] }> {
           if (sql.includes('SELECT external_id, id FROM teams')) {
-            // bound = [...extIds, PROVIDER]
-            const ids = bound.slice(0, bound.length - 1) as string[]
-            const results = ids.map(extId => ({ external_id: extId, id: `team-${extId}` }))
-            return { results } as { results: T[] }
+            if (sql.includes('json_each')) {
+              const ids = JSON.parse(bound[0] as string)
+              const results = ids.map((extId: string) => ({ external_id: extId, id: `team-${extId}` }))
+              return { results } as { results: T[] }
+            } else {
+              // bound = [...extIds, PROVIDER]
+              const ids = bound.slice(0, bound.length - 1) as string[]
+              const results = ids.map(extId => ({ external_id: extId, id: `team-${extId}` }))
+              return { results } as { results: T[] }
+            }
           }
           return { results: [] }
         },

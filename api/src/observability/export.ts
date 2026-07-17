@@ -22,6 +22,10 @@ const MAX_EXPORTS_PER_RUN = 10
 
 /** Limites UTC do dia e a chave R2 correspondente. Exportado para testes. */
 export function dayBounds(day: Date): { from: string; to: string; key: string } {
+  if (isNaN(day.getTime())) {
+    throw new TypeError('Invalid Date')
+  }
+
   const y = day.getUTCFullYear()
   const m = String(day.getUTCMonth() + 1).padStart(2, '0')
   const d = String(day.getUTCDate()).padStart(2, '0')
@@ -50,8 +54,15 @@ export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
 
   const { from, to, key } = dayBounds(day)
 
+  // Validate limits to prevent SQL injection since Cloudflare AE API does not support bind parameters.
+  // Although `from` and `to` come from `dayBounds`, this ensures strict safety.
+  const dateTimeRegex = /^\d{4}-\d{2}-\d{2} 00:00:00$/
+  if (!dateTimeRegex.test(from) || !dateTimeRegex.test(to)) {
+    throw new Error('Invalid date format for export bounds')
+  }
+
   // A SQL API do Analytics Engine é ClickHouse-like e não aceita bind params —
-  // os limites vêm de dayBounds (não de input externo), então a interpolação é segura.
+  // os limites foram estritamente validados acima.
   const sql =
     `SELECT * FROM ${DATASET} ` +
     `WHERE timestamp >= toDateTime('${from}') AND timestamp < toDateTime('${to}') ` +

@@ -1,96 +1,122 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { trackEvent } from '../../analytics/ga'
-import Button from '../../components/Button'
-import ErrorState from '../../components/ErrorState'
-import Header from '../../components/Header'
-import Modal from '../../components/Modal'
-import { buildApiUrl } from '../../config'
-import { apiFetch } from '../../lib/api'
-import { useDocumentTitle } from '../../hooks/useDocumentTitle'
-import type { User } from '../../types'
-import styles from './SettingsPage.module.css'
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { trackEvent } from "../../analytics/ga";
+import Button from "../../components/Button";
+import ErrorState from "../../components/ErrorState";
+import Header from "../../components/Header";
+import Modal from "../../components/Modal";
+import { buildApiUrl } from "../../config";
+import { apiFetch } from "../../lib/api";
+import { useDocumentTitle } from "../../hooks/useDocumentTitle";
+import type { User } from "../../types";
+import styles from "./SettingsPage.module.css";
 
-interface SettingsPageProps {
-  user: User
-  onLogout: () => void
-}
-
-export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
-  useDocumentTitle('Configurações')
-  const navigate = useNavigate()
-
-  const [roundReminders, setRoundReminders] = useState<boolean | null>(null)
-  const [pending, setPending] = useState<boolean | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+function useNotificationPreferences() {
+  const [roundReminders, setRoundReminders] = useState<boolean | null>(null);
+  const [pending, setPending] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (!success) return
-    const id = setTimeout(() => setSuccess(false), 3000)
-    return () => clearTimeout(id)
-  }, [success])
+    if (!success) return;
+    const id = setTimeout(() => setSuccess(false), 3000);
+    return () => clearTimeout(id);
+  }, [success]);
 
   function loadPreferences() {
-    setError(null)
-    apiFetch(buildApiUrl('/notifications/preferences'))
+    setError(null);
+    apiFetch(buildApiUrl("/notifications/preferences"))
       .then((res) => {
-        if (!res.ok) throw new Error('Falha ao carregar preferências')
-        return res.json() as Promise<{ round_reminders: boolean }>
+        if (!res.ok) throw new Error("Falha ao carregar preferências");
+        return res.json() as Promise<{ round_reminders: boolean }>;
       })
       .then((data) => setRoundReminders(data.round_reminders))
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(err.message));
   }
 
   useEffect(() => {
-    loadPreferences()
-  }, [])
+    loadPreferences();
+  }, []);
 
   function handleOpenModal(next: boolean) {
-    trackEvent('click_settings_toggle_lembretes', { enabled: next })
-    setPending(next)
+    trackEvent("click_settings_toggle_lembretes", { enabled: next });
+    setPending(next);
   }
 
   function handleCancel() {
-    trackEvent('click_settings_cancelar_lembretes')
-    setPending(null)
+    trackEvent("click_settings_cancelar_lembretes");
+    setPending(null);
   }
 
   function handleConfirm() {
-    if (pending === null || saving) return
-    const next = pending
-    setPending(null)
-    trackEvent('click_settings_confirmar_lembretes', { enabled: next })
+    if (pending === null || saving) return;
+    const next = pending;
+    setPending(null);
+    trackEvent("click_settings_confirmar_lembretes", { enabled: next });
 
-    const previous = roundReminders
-    setRoundReminders(next)
-    setSaving(true)
-    setError(null)
-    setSuccess(false)
+    const previous = roundReminders;
+    setRoundReminders(next);
+    setSaving(true);
+    setError(null);
+    setSuccess(false);
 
-    apiFetch(buildApiUrl('/notifications/preferences'), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+    apiFetch(buildApiUrl("/notifications/preferences"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ round_reminders: next }),
     })
       .then((res) => {
-        if (!res.ok) throw new Error('Falha ao salvar preferência')
-        setSuccess(true)
+        if (!res.ok) throw new Error("Falha ao salvar preferência");
+        setSuccess(true);
       })
       .catch((err) => {
-        setRoundReminders(previous)
-        setError(err.message)
+        setRoundReminders(previous);
+        setError(err.message);
       })
-      .finally(() => setSaving(false))
+      .finally(() => setSaving(false));
   }
+
+  return {
+    roundReminders,
+    pending,
+    saving,
+    error,
+    success,
+    loadPreferences,
+    handleOpenModal,
+    handleCancel,
+    handleConfirm,
+  };
+}
+
+interface SettingsPageProps {
+  user: User;
+  onLogout: () => void;
+}
+
+export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
+  useDocumentTitle("Configurações");
+  const navigate = useNavigate();
+
+  const {
+    roundReminders,
+    pending,
+    saving,
+    error,
+    success,
+    loadPreferences,
+    handleOpenModal,
+    handleCancel,
+    handleConfirm,
+  } = useNotificationPreferences();
 
   return (
     <>
       <Header
         user={user}
-        onCreateGroup={() => navigate('/')}
-        onJoinGroup={() => navigate('/')}
+        onCreateGroup={() => navigate("/")}
+        onJoinGroup={() => navigate("/")}
         onLogout={onLogout}
       />
 
@@ -105,8 +131,8 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    trackEvent('click_settings_retry_preferencias')
-                    loadPreferences()
+                    trackEvent("click_settings_retry_preferencias");
+                    loadPreferences();
                   }}
                   className={styles.retryButton}
                 >
@@ -123,7 +149,8 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
               <span className={styles.rowText}>
                 <span className={styles.rowLabel}>Lembretes de rodada</span>
                 <span className={styles.rowHint}>
-                  Receba um e-mail no dia anterior ao primeiro jogo de cada rodada.
+                  Receba um e-mail no dia anterior ao primeiro jogo de cada
+                  rodada.
                 </span>
               </span>
               <input
@@ -137,7 +164,9 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
           </section>
 
           {success && (
-            <div className={styles.successMessage}>Configuração salva com sucesso.</div>
+            <div className={styles.successMessage}>
+              Configuração salva com sucesso.
+            </div>
           )}
         </div>
       </main>
@@ -145,12 +174,16 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
       <Modal
         isOpen={pending !== null}
         onClose={handleCancel}
-        title={pending ? 'Ativar lembretes de rodada' : 'Desativar lembretes de rodada'}
+        title={
+          pending
+            ? "Ativar lembretes de rodada"
+            : "Desativar lembretes de rodada"
+        }
       >
         <p className={styles.modalText}>
           {pending
-            ? 'Você receberá um e-mail no dia anterior ao primeiro jogo de cada rodada.'
-            : 'Você não receberá mais e-mails de lembrete de rodada.'}
+            ? "Você receberá um e-mail no dia anterior ao primeiro jogo de cada rodada."
+            : "Você não receberá mais e-mails de lembrete de rodada."}
         </p>
         <div className={styles.modalActions}>
           <Button variant="secondary" type="button" onClick={handleCancel}>
@@ -162,5 +195,5 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
         </div>
       </Modal>
     </>
-  )
+  );
 }
