@@ -1,8 +1,9 @@
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
+import { getGroupMembership } from './membership'
 
 const router = new Hono<AppContext>()
 
@@ -33,30 +34,7 @@ function generateInviteCode(): string {
   return `${raw.slice(0, 4)}-${raw.slice(4)}`
 }
 
-/**
- * GET /groups
- * 
- * Returns all groups the authenticated user is a member of,
- * including member count, user's position, and accumulated points.
- *
- * Response:
- * {
- *   groups: [
- *     {
- *       id: string
- *       name: string
- *       competition_id: string
- *       is_admin: boolean
- *       created_at: string
- *       member_count: number
- *       user_position: number
- *       user_points: number
- *     }
- *   ],
- *   matched_invite_group_id: string | null
- * }
- */
-router.get('/', requireAuth, async (c) => {
+async function handleGetGroups(c: Context<AppContext>) {
   const userId = c.get('userId')
   const startedAt = Date.now()
   const inviteCode = c.req.query('invite_code')?.trim().toUpperCase()
@@ -138,7 +116,9 @@ router.get('/', requireAuth, async (c) => {
     console.error('Error fetching groups:', error)
     return c.json({ error: 'Erro ao carregar grupos' }, 500)
   }
-})
+}
+
+router.get('/', requireAuth, handleGetGroups)
 
 /**
  * POST /groups
@@ -362,14 +342,8 @@ router.get('/:id', requireAuth, async (c) => {
   const db = c.env.DB
 
   // Must be a member
-  const membership = await db
-    .prepare('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?')
-    .bind(groupId, userId)
-    .first<{ role: string }>()
-
-  if (!membership) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
+  const membership = await getGroupMembership(db, groupId, userId)
+  if (!membership) return c.json({ error: 'Grupo não encontrado' }, 404)
 
   const group = await db
     .prepare(
@@ -544,14 +518,8 @@ router.get('/:id/members', requireAuth, async (c) => {
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const membership = await db
-    .prepare('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?')
-    .bind(groupId, userId)
-    .first<{ role: string }>()
-
-  if (!membership) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
+  const membership = await getGroupMembership(db, groupId, userId)
+  if (!membership) return c.json({ error: 'Grupo não encontrado' }, 404)
 
   const members = await db
     .prepare(

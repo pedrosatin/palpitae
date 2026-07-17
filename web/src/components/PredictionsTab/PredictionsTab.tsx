@@ -1,7 +1,7 @@
 import { trackEvent } from "../../analytics/ga";
-import { isGroupStageRound } from "../../lib/rounds";
 import ErrorState from "../ErrorState";
 import MatchCard, { type Match } from "../MatchCard";
+import RoundHeader from "../RoundHeader/RoundHeader";
 import { usePredictionsTab } from "./usePredictionsTab";
 import styles from "./PredictionsTab.module.css";
 
@@ -110,63 +110,19 @@ export default function PredictionsTab({
           )}
         </div>
       )}
-      <div className={styles.roundNav}>
-        <button
-          className={styles.navBtn}
-          onClick={prev}
-          disabled={safeIndex === 0}
-          aria-label="Rodada anterior"
-        >
-          ‹ Anterior
-        </button>
-        <select
-          id="predictions-round-select"
-          name="predictions-round-select"
-          className={styles.roundSelect}
-          value={selectedRound}
-          onChange={(e) => {
-            trackEvent("change_predictions_rodada", { round: e.target.value });
-            setRoundIndex(roundKeys.indexOf(e.target.value));
-          }}
-        >
-          {roundKeys.some((r) => !isGroupStageRound(r)) ? (
-            <>
-              {roundKeys.some(isGroupStageRound) && (
-                <optgroup label="Fase de grupos">
-                  {roundKeys.filter(isGroupStageRound).map((r) => (
-                    <option key={r} value={r}>
-                      {labelFor(r)}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              <optgroup label="Mata-mata">
-                {roundKeys
-                  .filter((r) => !isGroupStageRound(r))
-                  .map((r) => (
-                    <option key={r} value={r}>
-                      {labelFor(r)}
-                    </option>
-                  ))}
-              </optgroup>
-            </>
-          ) : (
-            roundKeys.map((r) => (
-              <option key={r} value={r}>
-                {labelFor(r)}
-              </option>
-            ))
-          )}
-        </select>
-        <button
-          className={styles.navBtn}
-          onClick={next}
-          disabled={safeIndex === roundKeys.length - 1}
-          aria-label="Próxima rodada"
-        >
-          Próxima ›
-        </button>
-      </div>
+      <RoundHeader
+        id="predictions-round-select"
+        roundKeys={roundKeys}
+        safeIndex={safeIndex}
+        selectedRound={selectedRound}
+        labelFor={labelFor}
+        onPrev={prev}
+        onNext={next}
+        onSelect={(round) => {
+          trackEvent("change_predictions_rodada", { round });
+          setRoundIndex(roundKeys.indexOf(round));
+        }}
+      />
 
       <div className={styles.saveAllBar}>
         {bulkError && <span className={styles.error}>{bulkError}</span>}

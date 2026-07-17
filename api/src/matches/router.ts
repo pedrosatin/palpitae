@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hasFeatureAccess } from '../auth/permissions'
 import { logEvent, logRequestPerf } from '../observability'
@@ -25,6 +26,134 @@ function matchesCacheControl(matches: { status: string }[]): string {
   return 'public, max-age=60'
 }
 
+// ---------------------------------------------------------------------------
+// Helpers for maybeSyncResults
+// ---------------------------------------------------------------------------
+
+interface SyncNeeds {
+  needsInitialSync: boolean
+  needsSync: boolean
+  needsScoring: boolean
+}
+
+/**
+ * Runs the three cheap COUNT queries that decide whether background sync /
+ * scoring work is required. Kept separate so maybeSyncResults stays linear.
+ */
+async function fetchSyncNeeds(competitionId: string, db: D1Database): Promise<SyncNeeds> {
+  const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+
+  const localMatches = await db
+    .prepare(`SELECT COUNT(*) AS count FROM matches WHERE competition_id = ?`)
+    .bind(competitionId)
+    .first<{ count: number }>()
+
+  const needsInitialSync = (localMatches?.count ?? 0) === 0
+
+  const pending = await db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM matches
+       WHERE competition_id = ? AND start_time <= ? AND status != 'finished'`,
+    )
+    .bind(competitionId, threeHoursAgo)
+    .first<{ count: number }>()
+
+  const needsSync = (pending?.count ?? 0) > 0
+
+  // Also check for finished matches not yet scored (e.g. from a previous sync)
+  const unscoredCheck = await db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM matches
+       WHERE competition_id = ? AND status = 'finished' AND scored_at IS NULL
+         AND home_score IS NOT NULL AND away_score IS NOT NULL`,
+    )
+    .bind(competitionId)
+    .first<{ count: number }>()
+
+  const needsScoring = (unscoredCheck?.count ?? 0) > 0
+
+  return { needsInitialSync, needsSync, needsScoring }
+}
+
+/**
+ * Calls syncFixtures when needsInitialSync or needsSync is true.
+ * Returns false if the sync step failed (caller should skip scoring).
+ * Returns true when no sync was needed or sync succeeded.
+ */
+async function runSyncIfNeeded(
+  needsInitialSync: boolean,
+  needsSync: boolean,
+  competitionId: string,
+  db: D1Database,
+  apiKey: string,
+  ae?: AnalyticsEngineDataset,
+): Promise<boolean> {
+  if (!needsInitialSync && !needsSync) return true
+
+  const competition = await db
+    .prepare(`SELECT external_id, provider, season FROM competitions WHERE id = ?`)
+    .bind(competitionId)
+    .first<{ external_id: string; provider: string; season: string }>()
+
+  if (!competition || competition.provider !== 'football-data') return false
+
+  try {
+    await syncFixtures({
+      competitionCode: competition.external_id,
+      season: Number(competition.season),
+      apiKey,
+      db,
+    })
+    return true
+  } catch (err) {
+    // football_api_error é só pra falha da API externa — não para erros de D1/
+    // scoring (esses caem no catch externo, sem virar "erro de API").
+    const message = err instanceof Error ? err.message : 'Erro desconhecido'
+    logEvent(ae, 'football_api_error', { blobs: ['matches_background', message] })
+    console.error('Background result sync (API Football) falhou:', err)
+    return false // não pontua se o sync falhou
+  }
+}
+
+async function maybeSyncResults(
+  competitionId: string,
+  db: D1Database,
+  apiKey: string,
+  ae?: AnalyticsEngineDataset,
+): Promise<void> {
+  const startedAt = Date.now()
+  try {
+    const { needsInitialSync, needsSync, needsScoring } = await fetchSyncNeeds(competitionId, db)
+
+    if (!needsInitialSync && !needsSync && !needsScoring) return
+
+    const syncOk = await runSyncIfNeeded(needsInitialSync, needsSync, competitionId, db, apiKey, ae)
+    if (!syncOk) return // não pontua se o sync falhou
+
+    await scoreUnprocessedMatches(competitionId, db)
+
+    console.info(
+      '[perf]',
+      JSON.stringify({
+        route: 'waitUntil maybeSyncResults',
+        competition_id: competitionId,
+        total_ms: Date.now() - startedAt,
+        initial_sync: needsInitialSync,
+        result_sync: needsSync,
+        scoring: needsScoring,
+      }),
+    )
+  } catch (err) {
+    // Erro inesperado (D1/scoring) — não é falha da API Football, então não emite
+    // football_api_error; só registra nos Workers Logs.
+    console.error('Background result sync falhou:', err)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /matches handler
+// ---------------------------------------------------------------------------
+
 /**
  * GET /matches?competition_id=xxx[&round=xxx][&status=scheduled|finished]
  *
@@ -42,7 +171,7 @@ function matchesCacheControl(matches: { status: string }[]): string {
  *   ]
  * }
  */
-router.get('/', async (c) => {
+async function handleGetMatches(c: Context<AppContext>) {
   const startedAt = Date.now()
   const competitionId = c.req.query('competition_id')
   const round = c.req.query('round')
@@ -248,93 +377,9 @@ router.get('/', async (c) => {
     console.error('Erro ao buscar jogos:', error)
     return c.json({ error: 'Erro ao carregar jogos' }, 500)
   }
-})
-
-async function maybeSyncResults(
-  competitionId: string,
-  db: D1Database,
-  apiKey: string,
-  ae?: AnalyticsEngineDataset,
-): Promise<void> {
-  const startedAt = Date.now()
-  try {
-    const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-
-    const localMatches = await db
-      .prepare(`SELECT COUNT(*) AS count FROM matches WHERE competition_id = ?`)
-      .bind(competitionId)
-      .first<{ count: number }>()
-
-    const needsInitialSync = (localMatches?.count ?? 0) === 0
-
-    const pending = await db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM matches
-         WHERE competition_id = ? AND start_time <= ? AND status != 'finished'`,
-      )
-      .bind(competitionId, threeHoursAgo)
-      .first<{ count: number }>()
-
-    const needsSync = (pending?.count ?? 0) > 0
-
-    // Also check for finished matches not yet scored (e.g. from a previous sync)
-    const unscoredCheck = await db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM matches
-         WHERE competition_id = ? AND status = 'finished' AND scored_at IS NULL
-           AND home_score IS NOT NULL AND away_score IS NOT NULL`,
-      )
-      .bind(competitionId)
-      .first<{ count: number }>()
-
-    const needsScoring = (unscoredCheck?.count ?? 0) > 0
-
-    if (!needsInitialSync && !needsSync && !needsScoring) return
-
-    if (needsInitialSync || needsSync) {
-      const competition = await db
-        .prepare(`SELECT external_id, provider, season FROM competitions WHERE id = ?`)
-        .bind(competitionId)
-        .first<{ external_id: string; provider: string; season: string }>()
-
-      if (!competition || competition.provider !== 'football-data') return
-
-      try {
-        await syncFixtures({
-          competitionCode: competition.external_id,
-          season: Number(competition.season),
-          apiKey,
-          db,
-        })
-      } catch (err) {
-        // football_api_error é só pra falha da API externa — não para erros de D1/
-        // scoring (esses caem no catch externo, sem virar "erro de API").
-        const message = err instanceof Error ? err.message : 'Erro desconhecido'
-        logEvent(ae, 'football_api_error', { blobs: ['matches_background', message] })
-        console.error('Background result sync (API Football) falhou:', err)
-        return // não pontua se o sync falhou
-      }
-    }
-
-    await scoreUnprocessedMatches(competitionId, db)
-
-    console.info(
-      '[perf]',
-      JSON.stringify({
-        route: 'waitUntil maybeSyncResults',
-        competition_id: competitionId,
-        total_ms: Date.now() - startedAt,
-        initial_sync: needsInitialSync,
-        result_sync: needsSync,
-        scoring: needsScoring,
-      }),
-    )
-  } catch (err) {
-    // Erro inesperado (D1/scoring) — não é falha da API Football, então não emite
-    // football_api_error; só registra nos Workers Logs.
-    console.error('Background result sync falhou:', err)
-  }
 }
+
+router.get('/', handleGetMatches)
 
 /**
  * POST /matches/sync
