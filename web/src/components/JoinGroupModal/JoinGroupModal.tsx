@@ -5,6 +5,7 @@ import { apiFetch } from '../../lib/api'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './JoinGroupModal.module.css'
+import shared from '../modal-shared.module.css'
 
 interface JoinedGroup {
   id: string
@@ -111,10 +112,10 @@ function SuccessView({
   onClose: () => void
 }) {
   return (
-    <div className={styles.success}>
-      <div className={styles.successIcon}>🏆</div>
-      <h3 className={styles.successTitle}>Você entrou no grupo!</h3>
-      <p className={styles.successName}>{joined.name}</p>
+    <div className={shared.success}>
+      <div className={shared.successIcon}>🏆</div>
+      <h3 className={shared.successTitle}>Você entrou no grupo!</h3>
+      <p className={shared.successName}>{joined.name}</p>
       <Button variant="primary" className={styles.doneBtn} onClick={onClose}>
         Ir para o grupo
       </Button>
@@ -140,21 +141,21 @@ function FormView({
   onCancel,
 }: FormViewProps) {
   return (
-    <form onSubmit={onSubmit} className={styles.form}>
+    <form onSubmit={onSubmit} className={shared.form}>
       <p className={styles.hint}>
         Cole o código de convite ou o link compartilhado pelo administrador do
         grupo.
       </p>
 
-      {error && <p className={styles.error}>{error}</p>}
+      {error && <p className={shared.error}>{error}</p>}
 
-      <div className={styles.field}>
-        <label className={styles.label} htmlFor="invite-code">
+      <div className={shared.field}>
+        <label className={shared.label} htmlFor="invite-code">
           Código ou link de convite
         </label>
         <input
           id="invite-code"
-          className={styles.input}
+          className={shared.input}
           type="text"
           placeholder="Ex: ABCD-1234"
           value={code}
@@ -168,7 +169,7 @@ function FormView({
         />
       </div>
 
-      <div className={styles.actions}>
+      <div className={shared.actions}>
         <Button
           type="button"
           variant="secondary"
