@@ -161,57 +161,6 @@
   padding: var(--space-4) 0;
 }
 
-.modalRoundNav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.modalNavBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 2rem;
-  padding: 0 var(--space-3);
-  flex-shrink: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.modalNavBtn:hover:not(:disabled) {
-  background: var(--color-surface-hover, var(--color-border));
-}
-
-.modalNavBtn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.modalRoundSelect {
-  flex: 1;
-  height: 2rem;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  appearance: none;
-  text-align: center;
-}
-
 .predGroups {
   display: flex;
   flex-direction: column;
@@ -333,4 +282,8 @@
   margin: 0;
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+}
+
+.modalRoundNav {
+  margin-bottom: var(--space-4);
 }

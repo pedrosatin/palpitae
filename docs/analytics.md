@@ -66,3 +66,9 @@ Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_admin_metrics_periodo` | troca do período dos gráficos (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
+
+Modal genérico (componente `Modal`):
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_modal_fechar` | clique no botão ✕ de qualquer modal (backdrop/ESC seguem não rastreados) | `{ modal }` (título do modal) |

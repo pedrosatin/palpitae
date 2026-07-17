@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { config } from "../../config";
 import { trackEvent } from "../../analytics/ga";
 import { apiFetch } from "../../lib/api";
-import { applyDefaultRound, isGroupStageRound } from "../../lib/rounds";
+import { applyDefaultRound } from "../../lib/rounds";
 import Modal from "../Modal";
+import RoundHeader from "../RoundHeader/RoundHeader";
 import styles from "./LeaderboardTab.module.css";
 import type { Member, UserPrediction } from "./types";
 
@@ -115,78 +116,35 @@ export default function PredictionsModal({
       )}
       {!modalLoading && !modalError && modalPredictions.length > 0 && (
         <>
-          <div className={styles.modalRoundNav}>
-            <button
-              className={styles.modalNavBtn}
-              onClick={() => {
-                trackEvent("click_leaderboard_rodada_anterior", {
-                  round: modalRoundKeys[Math.max(0, safeModalIndex - 1)],
-                });
-                setModalRoundIndex((i) => Math.max(0, i - 1));
-              }}
-              disabled={safeModalIndex === 0}
-              aria-label="Rodada anterior"
-            >
-              ‹ Anterior
-            </button>
-            <select
-              className={styles.modalRoundSelect}
-              value={selectedModalRound}
-              onChange={(e) => {
-                trackEvent("change_leaderboard_rodada", {
-                  round: e.target.value,
-                });
-                setModalRoundIndex(modalRoundKeys.indexOf(e.target.value));
-              }}
-            >
-              {modalRoundKeys.some((r) => !isGroupStageRound(r)) ? (
-                <>
-                  {modalRoundKeys.some(isGroupStageRound) && (
-                    <optgroup label="Fase de grupos">
-                      {modalRoundKeys.filter(isGroupStageRound).map((r) => (
-                        <option key={r} value={r}>
-                          {labelFor(r)}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  <optgroup label="Mata-mata">
-                    {modalRoundKeys
-                      .filter((r) => !isGroupStageRound(r))
-                      .map((r) => (
-                        <option key={r} value={r}>
-                          {labelFor(r)}
-                        </option>
-                      ))}
-                  </optgroup>
-                </>
-              ) : (
-                modalRoundKeys.map((r) => (
-                  <option key={r} value={r}>
-                    {labelFor(r)}
-                  </option>
-                ))
-              )}
-            </select>
-            <button
-              className={styles.modalNavBtn}
-              onClick={() => {
-                trackEvent("click_leaderboard_proxima_rodada", {
-                  round:
-                    modalRoundKeys[
-                      Math.min(modalRoundKeys.length - 1, safeModalIndex + 1)
-                    ],
-                });
-                setModalRoundIndex((i) =>
-                  Math.min(modalRoundKeys.length - 1, i + 1),
-                );
-              }}
-              disabled={safeModalIndex === modalRoundKeys.length - 1}
-              aria-label="Próxima rodada"
-            >
-              Próxima ›
-            </button>
-          </div>
+          <RoundHeader
+            id="leaderboard-round-select"
+            className={styles.modalRoundNav}
+            roundKeys={modalRoundKeys}
+            safeIndex={safeModalIndex}
+            selectedRound={selectedModalRound}
+            labelFor={labelFor}
+            onPrev={() => {
+              trackEvent("click_leaderboard_rodada_anterior", {
+                round: modalRoundKeys[Math.max(0, safeModalIndex - 1)],
+              });
+              setModalRoundIndex((i) => Math.max(0, i - 1));
+            }}
+            onNext={() => {
+              trackEvent("click_leaderboard_proxima_rodada", {
+                round:
+                  modalRoundKeys[
+                    Math.min(modalRoundKeys.length - 1, safeModalIndex + 1)
+                  ],
+              });
+              setModalRoundIndex((i) =>
+                Math.min(modalRoundKeys.length - 1, i + 1),
+              );
+            }}
+            onSelect={(round) => {
+              trackEvent("change_leaderboard_rodada", { round });
+              setModalRoundIndex(modalRoundKeys.indexOf(round));
+            }}
+          />
           <div className={styles.predGroups}>
             {groupedByGroupName(modalByRound.get(selectedModalRound) ?? []).map(
               ([groupName, matches]) => (

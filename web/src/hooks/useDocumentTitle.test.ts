@@ -17,7 +17,7 @@ describe('useDocumentTitle', () => {
 
   it('should append the base title when a string is provided', () => {
     renderHook(() => useDocumentTitle('My Page'))
-    expect(document.title).toBe('My Page · Palpitae')
+    expect(document.title).toBe('My Page | Palpitae')
   })
 
   it('should set only the base title when null is provided', () => {
@@ -43,11 +43,11 @@ describe('useDocumentTitle', () => {
       }
     )
 
-    expect(document.title).toBe('First Page · Palpitae')
+    expect(document.title).toBe('First Page | Palpitae')
 
     rerender({ title: 'Second Page' })
 
-    expect(document.title).toBe('Second Page · Palpitae')
+    expect(document.title).toBe('Second Page | Palpitae')
   })
 
   it('should restore the previous document title on unmount', () => {
@@ -55,7 +55,7 @@ describe('useDocumentTitle', () => {
 
     const { unmount } = renderHook(() => useDocumentTitle('Current View'))
 
-    expect(document.title).toBe('Current View · Palpitae')
+    expect(document.title).toBe('Current View | Palpitae')
 
     unmount()
 

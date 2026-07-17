@@ -3,6 +3,7 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { useConfirm } from '../ConfirmModal'
+import Button from '../Button'
 import ErrorState from '../ErrorState'
 import styles from './MembersTab.module.css'
 
@@ -111,13 +112,14 @@ function MemberItem({
       </div>
 
       {member.user_id !== currentUserId && member.role !== 'owner' && (
-        <button
-          className={styles.removeBtn}
+        <Button
+          variant="danger"
+          size="sm"
           onClick={() => onRemove(member.user_id, member.display_name)}
           disabled={removing === member.user_id}
         >
           {removing === member.user_id ? 'Removendo…' : 'Remover'}
-        </button>
+        </Button>
       )}
     </li>
   )
