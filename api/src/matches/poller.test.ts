@@ -247,4 +247,22 @@ describe('pollActiveMatches', () => {
     expect(runs).toHaveLength(1)
     expect(runs[0].blobs?.[1]).toBe('error')
   })
+
+  it('emits football_api_error handling a non-Error rejection correctly', async () => {
+    syncFixturesMock.mockRejectedValue('String error')
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ae = buildFakeAe()
+    const db = buildFakeDb([
+      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' },
+    ])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+
+    const errors = pointsOfType(ae, 'football_api_error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].blobs?.[3]).toBe('String error')
+
+    expect(consoleSpy).toHaveBeenCalledWith('[poller] Sync falhou comp=c1 round=1:', 'String error')
+    consoleSpy.mockRestore()
+  })
 })

@@ -244,8 +244,16 @@ async function dispatchBatch(
             ? `${apiBaseUrl}/notifications/unsubscribe?token=${await signUnsubToken(id, unsub.secret)}`
             : undefined
 
-        const html = buildEmailHtml(competitionName, round, matches, appUrl, recipientGroups, unsubUrl)
-        const text = buildEmailText(competitionName, round, matches, appUrl, recipientGroups, unsubUrl)
+        const options: EmailTemplateOptions = {
+          competitionName,
+          round,
+          matches,
+          appUrl,
+          groups: recipientGroups,
+          unsubUrl,
+        }
+        const html = buildEmailHtml(options)
+        const text = buildEmailText(options)
         // RFC 8058 one-click unsubscribe — Gmail/Apple show a native button.
         const headers = unsubUrl
           ? {
@@ -330,14 +338,15 @@ export async function sendRoundReminders(
 
 // BRT = UTC-3, no DST since 2019.
 export function formatBRT(isoUtc: string): string {
-  return new Date(isoUtc).toLocaleString('pt-BR', {
+  const d = new Date(isoUtc)
+  return new Intl.DateTimeFormat('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     weekday: 'short',
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  }).format(d)
 }
 
 /**
@@ -368,14 +377,23 @@ function crestImg(url: string | null, alt: string): string {
   return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" width="20" height="20" style="vertical-align: middle; border: 0;">`
 }
 
-function buildEmailHtml(
-  competitionName: string,
-  round: string,
-  matches: MatchInfo[],
-  appUrl: string,
-  groups: { id: string; name: string }[],
-  unsubUrl?: string,
-): string {
+export interface EmailTemplateOptions {
+  competitionName: string
+  round: string
+  matches: MatchInfo[]
+  appUrl: string
+  groups: { id: string; name: string }[]
+  unsubUrl?: string
+}
+
+function buildEmailHtml({
+  competitionName,
+  round,
+  matches,
+  appUrl,
+  groups,
+  unsubUrl,
+}: EmailTemplateOptions): string {
   const matchRows = matches
     .map(
       (m) => `
@@ -443,14 +461,14 @@ function buildEmailHtml(
  * whichever the recipient's client picks; without this, text-only clients show
  * raw HTML.
  */
-function buildEmailText(
-  competitionName: string,
-  round: string,
-  matches: MatchInfo[],
-  appUrl: string,
-  groups: { id: string; name: string }[],
-  unsubUrl?: string,
-): string {
+function buildEmailText({
+  competitionName,
+  round,
+  matches,
+  appUrl,
+  groups,
+  unsubUrl,
+}: EmailTemplateOptions): string {
   const lines = [
     `${roundLabel(round)} começa hoje!`,
     competitionName,
