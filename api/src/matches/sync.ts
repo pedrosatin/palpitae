@@ -137,169 +137,6 @@ function slugify(str: string): string {
     .replace(/^-|-$/g, '')
 }
 
-function resolveCanonicalScore(
-  m: ApiMatch,
-  isShootout: boolean,
-): { canonicalHome: number | null; canonicalAway: number | null } {
-  let canonicalHome = m.score.fullTime.home ?? null
-  let canonicalAway = m.score.fullTime.away ?? null
-
-  if (isShootout) {
-    const rtHome = m.score.regularTime?.home
-    const rtAway = m.score.regularTime?.away
-    if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
-      canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
-      canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
-    } else if (canonicalHome !== null && canonicalAway !== null && canonicalHome !== canonicalAway) {
-      canonicalHome -= m.score.penalties?.home ?? 0
-      canonicalAway -= m.score.penalties?.away ?? 0
-    }
-  }
-  return { canonicalHome, canonicalAway }
-}
-
-function resolvePenaltyWinner(m: ApiMatch, isShootout: boolean): 'home' | 'away' | null {
-  if (!isShootout) return null
-  if (m.score.winner === 'HOME_TEAM') return 'home'
-  if (m.score.winner === 'AWAY_TEAM') return 'away'
-  const penHome = m.score.penalties?.home ?? 0
-  const penAway = m.score.penalties?.away ?? 0
-  if (penHome > penAway) return 'home'
-  if (penHome < penAway) return 'away'
-  return null
-}
-
-/** Batch-upserts all teams into D1. Only logo_url is updated on conflict. */
-async function upsertTeams(db: D1Database, teamMap: Map<number, ApiTeam>): Promise<void> {
-  const stmts = []
-  for (const team of teamMap.values()) {
-    const translated = TEAM_TRANSLATIONS[team.name]
-    const finalName = translated?.name ?? team.name
-    const finalShortName =
-      translated?.short_name ?? (team.tla ?? team.shortName ?? team.name.substring(0, 3).toUpperCase())
-
-    stmts.push(
-      db
-        .prepare(
-          `INSERT INTO teams (id, name, short_name, slug, logo_url, external_id, provider)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (external_id, provider) DO UPDATE SET
-             logo_url   = excluded.logo_url`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          finalName,
-          finalShortName,
-          slugify(team.name),
-          team.crest ?? null,
-          String(team.id),
-          PROVIDER,
-        )
-    )
-  }
-  if (stmts.length > 0) {
-    await db.batch(stmts)
-  }
-}
-
-/**
- * Resolves external team IDs → internal UUIDs, chunking queries to stay within
- * D1's parameter limit. Returns a map of externalId → internalId.
- */
-async function resolveTeamIds(db: D1Database, extIds: number[]): Promise<Map<number, string>> {
-  const teamIds = new Map<number, string>()
-  const chunkSize = 99 // Leave room for PROVIDER parameter
-  for (let i = 0; i < extIds.length; i += chunkSize) {
-    const chunk = extIds.slice(i, i + chunkSize)
-    if (chunk.length === 0) continue
-    const placeholders = chunk.map(() => '?').join(', ')
-    const { results } = await db
-      .prepare(
-        `SELECT external_id, id FROM teams WHERE external_id IN (${placeholders}) AND provider = ?`,
-      )
-      .bind(...chunk.map(String), PROVIDER)
-      .all<{ external_id: string; id: string }>()
-    for (const row of results) {
-      teamIds.set(Number(row.external_id), row.id)
-    }
-  }
-  return teamIds
-}
-
-/**
- * Builds a single D1 prepared statement for upserting a match. Returns null
- * when either team is missing from the teamIds map (TBD / placeholder teams).
- */
-function buildMatchStatement(
-  db: D1Database,
-  m: ApiMatch,
-  competitionId: string,
-  teamIds: Map<number, string>,
-) {
-  const homeTeamId = teamIds.get(m.homeTeam?.id)
-  const awayTeamId = teamIds.get(m.awayTeam?.id)
-  if (!homeTeamId || !awayTeamId) return null
-
-  const status = mapStatus(m.status)
-  const phase = m.stage ?? null
-  const round = m.matchday !== null ? String(m.matchday) : m.stage
-  const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
-
-  const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
-  const { canonicalHome, canonicalAway } = resolveCanonicalScore(m, isShootout)
-  const duration = m.score.duration ?? null
-  const penaltyWinner = resolvePenaltyWinner(m, isShootout)
-  const homePenaltyGoals = isShootout ? (m.score.penalties?.home ?? null) : null
-  const awayPenaltyGoals = isShootout ? (m.score.penalties?.away ?? null) : null
-
-  return db
-    .prepare(
-      `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (external_id, provider) DO UPDATE SET
-         status             = excluded.status,
-         home_score         = excluded.home_score,
-         away_score         = excluded.away_score,
-         start_time         = excluded.start_time,
-         group_name         = excluded.group_name,
-         duration           = excluded.duration,
-         penalty_winner     = excluded.penalty_winner,
-         home_penalty_goals = excluded.home_penalty_goals,
-         away_penalty_goals = excluded.away_penalty_goals,
-         -- If a provider score-correction lands after the match was already
-         -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
-         -- points/leaderboard recompute against the final score. Without this,
-         -- the displayed score updates but points stay frozen on the stale one
-         -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
-         -- penalty_winner também dispara o re-score: o provider pode corrigir só
-         -- o vencedor dos pênaltis sem mexer no placar canônico.
-         scored_at  = CASE
-           WHEN matches.home_score IS NOT excluded.home_score
-             OR matches.away_score IS NOT excluded.away_score
-             OR matches.penalty_winner IS NOT excluded.penalty_winner
-           THEN NULL ELSE matches.scored_at END`,
-    )
-    .bind(
-      crypto.randomUUID(),
-      competitionId,
-      String(m.id),
-      PROVIDER,
-      homeTeamId,
-      awayTeamId,
-      m.utcDate,
-      status,
-      canonicalHome,
-      canonicalAway,
-      phase,
-      round,
-      groupName,
-      duration,
-      penaltyWinner,
-      homePenaltyGoals,
-      awayPenaltyGoals,
-    )
-}
-
 /**
  * Syncs fixtures from football-data.org into D1.
  * Upserts: competition, teams, and matches.
@@ -380,17 +217,170 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     if (m.awayTeam?.id) teamMap.set(m.awayTeam.id, m.awayTeam)
   }
 
-  await upsertTeams(db, teamMap)
+  // Upsert teams
+  const teamStatements = []
+  for (const team of teamMap.values()) {
+    const translated = TEAM_TRANSLATIONS[team.name]
+    const finalName = translated?.name ?? team.name
+    const finalShortName =
+      translated?.short_name ?? (team.tla ?? team.shortName ?? team.name.substring(0, 3).toUpperCase())
 
-  const teamIds = await resolveTeamIds(db, Array.from(teamMap.keys()))
+    teamStatements.push(
+      db
+        .prepare(
+          `INSERT INTO teams (id, name, short_name, slug, logo_url, external_id, provider)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (external_id, provider) DO UPDATE SET
+             logo_url   = excluded.logo_url`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          finalName,
+          finalShortName,
+          slugify(team.name),
+          team.crest ?? null,
+          String(team.id),
+          PROVIDER,
+        )
+    )
+  }
+
+  if (teamStatements.length > 0) {
+    await db.batch(teamStatements)
+  }
+
+  // Resolve internal team IDs
+  const teamIds = new Map<number, string>()
+  const extIds = Array.from(teamMap.keys())
+
+  if (extIds.length > 0) {
+    const { results } = await db
+      .prepare(
+        `SELECT external_id, id FROM teams WHERE external_id IN (SELECT value FROM json_each(?)) AND provider = ?`,
+      )
+      .bind(JSON.stringify(extIds.map(String)), PROVIDER)
+      .all<{ external_id: string; id: string }>()
+
+    for (const row of results) {
+      teamIds.set(Number(row.external_id), row.id)
+    }
+  }
 
   // Upsert matches
   let matchCount = 0
   const matchStatements = []
   for (const m of matches) {
-    const stmt = buildMatchStatement(db, m, competition.id, teamIds)
-    if (!stmt) continue
-    matchStatements.push(stmt)
+    const homeTeamId = teamIds.get(m.homeTeam?.id)
+    const awayTeamId = teamIds.get(m.awayTeam?.id)
+    if (!homeTeamId || !awayTeamId) continue
+
+    const status = mapStatus(m.status)
+    const phase = m.stage ?? null
+    const round = m.matchday !== null ? String(m.matchday) : m.stage
+    const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
+
+    // Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
+    // SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data às vezes INCLUI os
+    // gols de pênalti, e outras vezes não (além de regularTime e extraTime ocasionalmente
+    // virem nulos).
+    //
+    // Estratégia (prioridade decrescente):
+    // 1. Se regularTime está disponível (não-null): canonicalScore = regularTime + extraTime.
+    //    Esses campos NUNCA incluem gols de pênalti e são a fonte mais confiável.
+    // 2. Se regularTime é null (provider omitiu) e fullTime é diferente: subtrai os gols
+    //    de pênalti de fullTime. Essa heurística assume que o provider embutiu os pênaltis
+    //    em fullTime — o que só acontece quando os valores são desiguais.
+    // 3. fullTime igual: já é o placar do empate, não faz nada.
+    const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
+    let canonicalHome = m.score.fullTime.home ?? null
+    let canonicalAway = m.score.fullTime.away ?? null
+
+    if (isShootout) {
+      const rtHome = m.score.regularTime?.home
+      const rtAway = m.score.regularTime?.away
+      if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
+        // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
+        canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
+        canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
+      } else if (canonicalHome !== null && canonicalAway !== null && canonicalHome !== canonicalAway) {
+        // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
+        canonicalHome -= (m.score.penalties?.home ?? 0)
+        canonicalAway -= (m.score.penalties?.away ?? 0)
+      }
+      // else: fullTime já é o placar do empate.
+    }
+
+    const duration = m.score.duration ?? null
+    // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
+    // vem preenchido em jogos REGULAR, onde significa o vencedor no tempo normal).
+    // Se o provider mandar winner como null (comum em empates com disputa de pênaltis
+    // concluída), derivamos pelo placar da DISPUTA (score.penalties) — fonte canônica
+    // e que nunca empata. NÃO derivar de fullTime: quando o provider manda winner null
+    // ele também devolve fullTime = placar do tempo normal (empate), o que faria a
+    // derivação retornar null e zerar o bônus de pênalti de quem acertou.
+    const penaltyWinner = isShootout
+      ? m.score.winner === 'HOME_TEAM'
+        ? 'home'
+        : m.score.winner === 'AWAY_TEAM'
+          ? 'away'
+          : (m.score.penalties?.home ?? 0) > (m.score.penalties?.away ?? 0)
+            ? 'home'
+            : (m.score.penalties?.home ?? 0) < (m.score.penalties?.away ?? 0)
+              ? 'away'
+              : null
+      : null
+    const homePenaltyGoals = isShootout ? (m.score.penalties?.home ?? null) : null
+    const awayPenaltyGoals = isShootout ? (m.score.penalties?.away ?? null) : null
+
+    matchStatements.push(
+      db
+        .prepare(
+          `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (external_id, provider) DO UPDATE SET
+             status             = excluded.status,
+             home_score         = excluded.home_score,
+             away_score         = excluded.away_score,
+             start_time         = excluded.start_time,
+             group_name         = excluded.group_name,
+             duration           = excluded.duration,
+             penalty_winner     = excluded.penalty_winner,
+             home_penalty_goals = excluded.home_penalty_goals,
+             away_penalty_goals = excluded.away_penalty_goals,
+             -- If a provider score-correction lands after the match was already
+             -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
+             -- points/leaderboard recompute against the final score. Without this,
+             -- the displayed score updates but points stay frozen on the stale one
+             -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
+             -- penalty_winner também dispara o re-score: o provider pode corrigir só
+             -- o vencedor dos pênaltis sem mexer no placar canônico.
+             scored_at  = CASE
+               WHEN matches.home_score IS NOT excluded.home_score
+                 OR matches.away_score IS NOT excluded.away_score
+                 OR matches.penalty_winner IS NOT excluded.penalty_winner
+               THEN NULL ELSE matches.scored_at END`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          competition.id,
+          String(m.id),
+          PROVIDER,
+          homeTeamId,
+          awayTeamId,
+          m.utcDate,
+          status,
+          canonicalHome,
+          canonicalAway,
+          phase,
+          round,
+          groupName,
+          duration,
+          penaltyWinner,
+          homePenaltyGoals,
+          awayPenaltyGoals,
+        )
+    )
+
     matchCount++
   }
 

@@ -741,16 +741,13 @@ async function handleImportPost(c: Context<AppContext>) {
   const db = c.env.DB
 
   // Verify user is a member of both groups
-  const [sourceMembership, targetMembership] = await Promise.all([
-    db
-      .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-      .bind(source_group_id, userId)
-      .first(),
-    db
-      .prepare(`SELECT id FROM group_members WHERE group_id = ? AND user_id = ?`)
-      .bind(target_group_id, userId)
-      .first(),
-  ])
+  const memberships = await db
+    .prepare(`SELECT group_id FROM group_members WHERE group_id IN (?, ?) AND user_id = ?`)
+    .bind(source_group_id, target_group_id, userId)
+    .all<{ group_id: string }>()
+
+  const sourceMembership = memberships.results.find((m) => m.group_id === source_group_id)
+  const targetMembership = memberships.results.find((m) => m.group_id === target_group_id)
 
   if (!sourceMembership) {
     return c.json({ error: 'Acesso negado ao grupo de origem' }, 403)

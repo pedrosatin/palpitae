@@ -207,17 +207,16 @@ router.post('/', requireAuth, async (c) => {
 
   // Generate a unique invite code (retry up to 5 times on collision)
   let invite_code: string = ''
-  for (let i = 0; i < 5; i++) {
-    const candidate = generateInviteCode()
-    const existing = await db
-      .prepare('SELECT id FROM groups WHERE invite_code = ?')
-      .bind(candidate)
-      .first()
-    if (!existing) {
-      invite_code = candidate
-      break
-    }
-  }
+  const candidates = Array.from({ length: 5 }, () => generateInviteCode())
+  const placeholders = candidates.map(() => '?').join(',')
+
+  const existing = await db
+    .prepare(`SELECT invite_code FROM groups WHERE invite_code IN (${placeholders})`)
+    .bind(...candidates)
+    .all<{ invite_code: string }>()
+
+  const existingSet = new Set(existing.results.map((r) => r.invite_code))
+  invite_code = candidates.find((c) => !existingSet.has(c)) || ''
 
   if (!invite_code) {
     return c.json({ error: 'Erro interno ao gerar convite' }, 500)

@@ -16,11 +16,23 @@ describe('parsePenaltyPhases', () => {
     expect(parsePenaltyPhases('{"phase": "FINAL"}')).toEqual([])
     expect(parsePenaltyPhases('"FINAL"')).toEqual([])
     expect(parsePenaltyPhases('123')).toEqual([])
+    expect(parsePenaltyPhases('null')).toEqual([])
   })
 
   it('should return empty array for malformed JSON, caught by catch block', () => {
     expect(parsePenaltyPhases('["LAST_16", "FINAL"')).toEqual([]) // missing closing bracket
     expect(parsePenaltyPhases('invalid-json')).toEqual([])
+    expect(parsePenaltyPhases('   ')).toEqual([])
+  })
+
+  it('should return empty array for an empty JSON array', () => {
+    expect(parsePenaltyPhases('[]')).toEqual([])
+  })
+
+  it('should handle mixed elements in array', () => {
+    // Note: The current implementation typecasts the array to string[],
+    // so it doesn't filter out non-strings. It just returns the parsed array.
+    expect(parsePenaltyPhases('["LAST_16", 123, null]')).toEqual(['LAST_16', 123, null])
   })
 })
 
