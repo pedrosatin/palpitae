@@ -20,15 +20,17 @@ function createDbMock(email: string) {
                 return { id: 'comp-1' }
               }
 
-              if (sql.includes('FROM groups WHERE invite_code = ?')) {
-                return null
-              }
-
               if (sql.includes('FROM users WHERE id = ?')) {
                 return { email }
               }
 
               return null
+            },
+            async all() {
+              if (sql.includes('FROM groups WHERE invite_code IN')) {
+                return { results: [] }
+              }
+              return { results: [] }
             },
             async run() {
               return { success: true }
