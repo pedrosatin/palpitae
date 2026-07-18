@@ -51,7 +51,11 @@ export default function LoginPage() {
 
         <GoogleLoginButton />
 
-        <Link to="/" className={styles.previewLink} onClick={() => trackEvent('click_login_conheca')}>
+        <Link
+          to="/"
+          className={styles.previewLink}
+          onClick={() => trackEvent('click_login_conheca')}
+        >
           ← Conheça o Palpitae
         </Link>
       </Card>

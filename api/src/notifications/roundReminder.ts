@@ -81,7 +81,7 @@ type RoundGroup = {
   competitionId: string
   competitionName: string
   round: string
-  recipientMap: Map<string, Recipient>  // keyed by user_id — O(1) dedup, correct token per user
+  recipientMap: Map<string, Recipient> // keyed by user_id — O(1) dedup, correct token per user
   matches: MatchInfo[]
 }
 
@@ -148,11 +148,19 @@ async function buildRecipientGroups(db: D1Database): Promise<Map<string, RoundGr
           existing.groups.push({ id: row.group_id, name: row.group_name })
         }
       } else {
-        entry.recipientMap.set(row.user_id, { id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] })
+        entry.recipientMap.set(row.user_id, {
+          id: row.user_id,
+          email: row.email,
+          groups: [{ id: row.group_id, name: row.group_name }],
+        })
       }
     } else {
       const recipientMap = new Map<string, Recipient>()
-      recipientMap.set(row.user_id, { id: row.user_id, email: row.email, groups: [{ id: row.group_id, name: row.group_name }] })
+      recipientMap.set(row.user_id, {
+        id: row.user_id,
+        email: row.email,
+        groups: [{ id: row.group_id, name: row.group_name }],
+      })
       grouped.set(key, {
         competitionId: row.competition_id,
         competitionName: row.competition_name,
@@ -257,15 +265,23 @@ async function dispatchBatch(
         // RFC 8058 one-click unsubscribe — Gmail/Apple show a native button.
         const headers = unsubUrl
           ? {
-            'List-Unsubscribe': `<${unsubUrl}>`,
-            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
-          }
+              'List-Unsubscribe': `<${unsubUrl}>`,
+              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+            }
           : undefined
 
-        await sendWithRetry(resendApiKey, { to: email, subject, html, text, headers })
+        await sendWithRetry(resendApiKey, {
+          to: email,
+          subject,
+          html,
+          text,
+          headers,
+        })
         sent++
         // user_hash do id (não o e-mail cru — PII, regra LGPD).
-        logEvent(ae, 'email_reminder_sent', { blobs: [hashedId, competitionName, round] })
+        logEvent(ae, 'email_reminder_sent', {
+          blobs: [hashedId, competitionName, round],
+        })
       } catch (err) {
         failed++
         console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
@@ -418,11 +434,11 @@ function buildEmailHtml({
     groups.length === 1
       ? `<p style="margin-top: 8px;"><a href="${escapeHtml(`${appUrl}/grupos/${groups[0].id}`)}" style="color: #16a34a; font-weight: bold;">Fazer meus palpites &rarr;</a></p>`
       : groups
-        .map(
-          (g) =>
-            `<p style="margin: 4px 0;"><a href="${escapeHtml(`${appUrl}/grupos/${g.id}`)}" style="color: #16a34a; font-weight: bold;">${escapeHtml(g.name)} &rarr;</a></p>`,
-        )
-        .join('')
+          .map(
+            (g) =>
+              `<p style="margin: 4px 0;"><a href="${escapeHtml(`${appUrl}/grupos/${g.id}`)}" style="color: #16a34a; font-weight: bold;">${escapeHtml(g.name)} &rarr;</a></p>`,
+          )
+          .join('')
 
   const safeRound = escapeHtml(roundLabel(round))
   const safeCompetition = escapeHtml(competitionName)
@@ -446,10 +462,11 @@ function buildEmailHtml({
     ${groups.length > 1 ? '<p style="margin-bottom: 4px; font-weight: bold;">Fazer meus palpites:</p>' : ''}
     ${ctaButtons}
     <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
-      Você está recebendo este e-mail porque participa de um grupo no Palpitae.${unsubUrl
-      ? `<br>Não quer mais estes lembretes? <a href="${escapeHtml(unsubUrl)}" style="color: #6b7280;">Cancelar inscrição</a>.`
-      : ''
-    }
+      Você está recebendo este e-mail porque participa de um grupo no Palpitae.${
+        unsubUrl
+          ? `<br>Não quer mais estes lembretes? <a href="${escapeHtml(unsubUrl)}" style="color: #6b7280;">Cancelar inscrição</a>.`
+          : ''
+      }
     </p>
   </div>
 </body>
@@ -469,11 +486,7 @@ function buildEmailText({
   groups,
   unsubUrl,
 }: EmailTemplateOptions): string {
-  const lines = [
-    `${roundLabel(round)} começa hoje!`,
-    competitionName,
-    '',
-  ]
+  const lines = [`${roundLabel(round)} começa hoje!`, competitionName, '']
   for (const m of matches) {
     lines.push(`${m.home} vs ${m.away} — ${m.time}`)
   }

@@ -170,11 +170,18 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     ? Object.keys(COMP_TRANSLATIONS).find((key) => apiComp.name.includes(key))
     : undefined
   const competitionName = apiComp
-    ? (translationKey ? COMP_TRANSLATIONS[translationKey] : apiComp.name)
+    ? translationKey
+      ? COMP_TRANSLATIONS[translationKey]
+      : apiComp.name
     : competitionCode
 
   if (matches.length === 0) {
-    return { competition: competitionName, competitionId: '', matches: 0, teams: 0 }
+    return {
+      competition: competitionName,
+      competitionId: '',
+      matches: 0,
+      teams: 0,
+    }
   }
 
   const competitionExternalId = String(apiComp.id)
@@ -223,7 +230,10 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     const translated = TEAM_TRANSLATIONS[team.name]
     const finalName = translated?.name ?? team.name
     const finalShortName =
-      translated?.short_name ?? (team.tla ?? team.shortName ?? team.name.substring(0, 3).toUpperCase())
+      translated?.short_name ??
+      team.tla ??
+      team.shortName ??
+      team.name.substring(0, 3).toUpperCase()
 
     teamStatements.push(
       db
@@ -241,7 +251,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
           team.crest ?? null,
           String(team.id),
           PROVIDER,
-        )
+        ),
     )
   }
 
@@ -302,10 +312,14 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
         canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
         canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
-      } else if (canonicalHome !== null && canonicalAway !== null && canonicalHome !== canonicalAway) {
+      } else if (
+        canonicalHome !== null &&
+        canonicalAway !== null &&
+        canonicalHome !== canonicalAway
+      ) {
         // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
-        canonicalHome -= (m.score.penalties?.home ?? 0)
-        canonicalAway -= (m.score.penalties?.away ?? 0)
+        canonicalHome -= m.score.penalties?.home ?? 0
+        canonicalAway -= m.score.penalties?.away ?? 0
       }
       // else: fullTime já é o placar do empate.
     }
@@ -378,7 +392,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
           penaltyWinner,
           homePenaltyGoals,
           awayPenaltyGoals,
-        )
+        ),
     )
 
     matchCount++
