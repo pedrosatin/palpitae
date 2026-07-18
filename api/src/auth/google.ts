@@ -21,7 +21,10 @@ export function generateNonce(): string {
   return base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)).buffer as ArrayBuffer)
 }
 
-export async function generatePkce(): Promise<{ verifier: string; challenge: string }> {
+export async function generatePkce(): Promise<{
+  verifier: string
+  challenge: string
+}> {
   const verifier = base64UrlEncode(crypto.getRandomValues(new Uint8Array(64)).buffer as ArrayBuffer)
   const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
   const challenge = base64UrlEncode(hash)
@@ -119,8 +122,12 @@ export async function verifyGoogleIdToken(
   if (parts.length !== 3) throw new Error('Invalid ID token format')
   const [rawHeader, rawPayload, rawSig] = parts as [string, string, string]
 
-  const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(rawHeader))) as { kid: string }
-  const claims = JSON.parse(new TextDecoder().decode(base64UrlDecode(rawPayload))) as GoogleIdTokenClaims
+  const header = JSON.parse(new TextDecoder().decode(base64UrlDecode(rawHeader))) as {
+    kid: string
+  }
+  const claims = JSON.parse(
+    new TextDecoder().decode(base64UrlDecode(rawPayload)),
+  ) as GoogleIdTokenClaims
 
   // Validate standard claims
   const now = Math.floor(Date.now() / 1000)

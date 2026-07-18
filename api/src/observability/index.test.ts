@@ -25,7 +25,7 @@ describe('logRequestPerf', () => {
         route: '/api/test',
         status: 200,
         total_ms: 123.5, // Check rounding
-      })
+      }),
     )
   })
 
@@ -44,7 +44,7 @@ describe('logRequestPerf', () => {
         status: 200,
         total_ms: 123.5,
         db_ms: 45.7, // Check rounding
-      })
+      }),
     )
   })
 
@@ -63,7 +63,7 @@ describe('logRequestPerf', () => {
         status: 200,
         total_ms: 123.5,
         rows: 42,
-      })
+      }),
     )
   })
 
@@ -88,7 +88,7 @@ describe('logRequestPerf', () => {
         cache_hit: true,
         user_id: '12345',
         region: null,
-      })
+      }),
     )
   })
 
@@ -113,7 +113,7 @@ describe('logRequestPerf', () => {
         db_ms: 0,
         rows: 0,
         reason: 'not found',
-      })
+      }),
     )
   })
 })

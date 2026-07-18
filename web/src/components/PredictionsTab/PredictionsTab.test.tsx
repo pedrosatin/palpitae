@@ -23,7 +23,7 @@ function mockFetch(matches: Match[]) {
         .filter(([, max]) => max > nowIso)
         .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
       const chronologicalLast = matches.reduce<Match | undefined>(
-        (acc, m) => !acc || m.start_time >= acc.start_time ? m : acc,
+        (acc, m) => (!acc || m.start_time >= acc.start_time ? m : acc),
         undefined,
       )
       const default_round = activeRound?.[0] ?? chronologicalLast?.round ?? null
@@ -68,7 +68,12 @@ describe('PredictionsTab – defaultRoundIndex', () => {
   it('skips a round where all matches have already started and selects the next open round', async () => {
     const matches: Match[] = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
-      makeMatch({ id: 'm2', round: '2', status: 'scheduled', start_time: new Date(Date.now() - 3_600_000).toISOString() }),
+      makeMatch({
+        id: 'm2',
+        round: '2',
+        status: 'scheduled',
+        start_time: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
       makeMatch({ id: 'm3', round: '3', status: 'scheduled' }),
     ]
     mockFetch(matches)
@@ -201,9 +206,7 @@ describe('PredictionsTab – Round navigation', () => {
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /Rodada anterior/i }),
-      ).toBeDisabled()
+      expect(screen.getByRole('button', { name: /Rodada anterior/i })).toBeDisabled()
     })
   })
 
@@ -215,9 +218,7 @@ describe('PredictionsTab – Round navigation', () => {
 
     // Default index will be 1 (round '2' is scheduled) — that is the last one
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /Próxima rodada/i }),
-      ).toBeDisabled()
+      expect(screen.getByRole('button', { name: /Próxima rodada/i })).toBeDisabled()
     })
   })
 
@@ -252,9 +253,7 @@ describe('PredictionsTab – Round navigation', () => {
       expect(select.value).toBe('1')
     })
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Próxima rodada/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Próxima rodada/i }))
 
     await waitFor(() => {
       const select = screen.getByRole('combobox') as HTMLSelectElement
@@ -288,42 +287,54 @@ describe('PredictionsTab – Initialisation', () => {
   })
 
   it('counts a new draft after changing only one score from the 0 default', async () => {
-    const matches: Match[] = [
-      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
-    ]
+    const matches: Match[] = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches)
 
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /^Salvar todos$/i }),
-      ).toBeDisabled()
+      expect(screen.getByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
     })
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Argentina/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
 
-    expect(
-      screen.getByRole('button', { name: /Salvar todos \(1\)/i }),
-    ).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
   })
 
   it('includes a default 0×0 knockout draw in "Salvar todos" when only the penalty winner is set', async () => {
     const matches: Match[] = [
-      makeMatch({ id: 'm1', round: '1', status: 'scheduled', decides_on_penalties: true }),
+      makeMatch({
+        id: 'm1',
+        round: '1',
+        status: 'scheduled',
+        decides_on_penalties: true,
+      }),
     ]
     let bulkBody: { predictions: Array<Record<string, unknown>> } | null = null
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
       const u = url.toString()
-      if (u.includes('/matches')) return Promise.resolve({ ok: true, json: async () => ({ matches, default_round: '1' }) } as Response)
+      if (u.includes('/matches'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ matches, default_round: '1' }),
+        } as Response)
       if (u.includes('/predictions/bulk')) {
-        bulkBody = JSON.parse((init!.body as string))
-        return Promise.resolve({ ok: true, json: async () => ({ saved: ['m1'] }) } as Response)
+        bulkBody = JSON.parse(init!.body as string)
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ saved: ['m1'] }),
+        } as Response)
       }
-      if (u.includes('/predictions')) return Promise.resolve({ ok: true, json: async () => ({ predictions: [] }) } as Response)
-      if (u.includes('/groups')) return Promise.resolve({ ok: true, json: async () => ({ groups: [] }) } as Response)
+      if (u.includes('/predictions'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ predictions: [] }),
+        } as Response)
+      if (u.includes('/groups'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ groups: [] }),
+        } as Response)
       return Promise.reject(new Error(`Unexpected: ${u}`))
     })
 
@@ -333,12 +344,19 @@ describe('PredictionsTab – Initialisation', () => {
     // Score stays at the 0×0 default; user only picks the shootout winner.
     await userEvent.click(screen.getByRole('radio', { name: 'BRA' }))
 
-    const saveAll = await screen.findByRole('button', { name: /Salvar todos \(1\)/i })
+    const saveAll = await screen.findByRole('button', {
+      name: /Salvar todos \(1\)/i,
+    })
     await userEvent.click(saveAll)
 
     await waitFor(() => expect(bulkBody).not.toBeNull())
     expect(bulkBody!.predictions).toEqual([
-      { match_id: 'm1', predicted_home_score: 0, predicted_away_score: 0, predicted_penalty_winner: 'home' },
+      {
+        match_id: 'm1',
+        predicted_home_score: 0,
+        predicted_away_score: 0,
+        predicted_penalty_winner: 'home',
+      },
     ])
   })
 
@@ -369,8 +387,24 @@ describe('PredictionsTab – analytics', () => {
 
   function twoRounds() {
     return [
-      makeMatch({ id: 'm1', round: '1', status: 'scheduled', home_team_name: 'Itália', home_team_short_name: 'ITA', away_team_name: 'França', away_team_short_name: 'FRA' }),
-      makeMatch({ id: 'm2', round: '2', status: 'scheduled', home_team_name: 'Japão', home_team_short_name: 'JPN', away_team_name: 'Coreia', away_team_short_name: 'KOR' }),
+      makeMatch({
+        id: 'm1',
+        round: '1',
+        status: 'scheduled',
+        home_team_name: 'Itália',
+        home_team_short_name: 'ITA',
+        away_team_name: 'França',
+        away_team_short_name: 'FRA',
+      }),
+      makeMatch({
+        id: 'm2',
+        round: '2',
+        status: 'scheduled',
+        home_team_name: 'Japão',
+        home_team_short_name: 'JPN',
+        away_team_name: 'Coreia',
+        away_team_short_name: 'KOR',
+      }),
     ]
   }
 
@@ -394,17 +428,35 @@ describe('PredictionsTab – analytics', () => {
     await userEvent.click(screen.getByRole('button', { name: /Próxima rodada/i }))
     mockTrackEvent.mockClear()
     await userEvent.click(screen.getByRole('button', { name: /Rodada anterior/i }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_anterior', { round: '1' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_anterior', {
+      round: '1',
+    })
   })
 
   it('fires click_predictions_salvar_todos with count and round when Salvar todos is clicked', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
       const u = url.toString()
-      if (u.includes('/matches')) return Promise.resolve({ ok: true, json: async () => ({ matches, default_round: '1' }) } as Response)
-      if (u.includes('/predictions/bulk')) return Promise.resolve({ ok: true, json: async () => ({ saved: ['m1'] }) } as Response)
-      if (u.includes('/predictions')) return Promise.resolve({ ok: true, json: async () => ({ predictions: [] }) } as Response)
-      if (u.includes('/groups')) return Promise.resolve({ ok: true, json: async () => ({ groups: [] }) } as Response)
+      if (u.includes('/matches'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ matches, default_round: '1' }),
+        } as Response)
+      if (u.includes('/predictions/bulk'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ saved: ['m1'] }),
+        } as Response)
+      if (u.includes('/predictions'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ predictions: [] }),
+        } as Response)
+      if (u.includes('/groups'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ groups: [] }),
+        } as Response)
       return Promise.reject(new Error(`Unexpected: ${u}`))
     })
 
@@ -414,7 +466,10 @@ describe('PredictionsTab – analytics', () => {
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar todos \(1\)/i }))
 
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_salvar_todos', { count: 1, round: '1' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_salvar_todos', {
+      count: 1,
+      round: '1',
+    })
   })
 
   it('fires change_predictions_rodada when the round select is changed', async () => {
@@ -428,17 +483,37 @@ describe('PredictionsTab – analytics', () => {
       expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('1')
     })
     await userEvent.selectOptions(screen.getByRole('combobox'), 'Rodada 2')
-    expect(mockTrackEvent).toHaveBeenCalledWith('change_predictions_rodada', { round: '2' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('change_predictions_rodada', {
+      round: '2',
+    })
   })
 
   it('fires click_predictions_importar when Importar is clicked', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
       const u = url.toString()
-      if (u.includes('/groups')) return Promise.resolve({ ok: true, json: async () => ({ groups: [{ id: 'g-other', name: 'Outro', competition_id: 'c1' }] }) } as Response)
-      if (u.includes('/matches')) return Promise.resolve({ ok: true, json: async () => ({ matches, default_round: '1' }) } as Response)
-      if (u.includes('/predictions/import')) return Promise.resolve({ ok: true, json: async () => ({ ok: true, imported: 3, locked_skipped: 0 }) } as Response)
-      if (u.includes('/predictions')) return Promise.resolve({ ok: true, json: async () => ({ predictions: [] }) } as Response)
+      if (u.includes('/groups'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            groups: [{ id: 'g-other', name: 'Outro', competition_id: 'c1' }],
+          }),
+        } as Response)
+      if (u.includes('/matches'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ matches, default_round: '1' }),
+        } as Response)
+      if (u.includes('/predictions/import'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ ok: true, imported: 3, locked_skipped: 0 }),
+        } as Response)
+      if (u.includes('/predictions'))
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ predictions: [] }),
+        } as Response)
       return Promise.reject(new Error(`Unexpected: ${u}`))
     })
 

@@ -286,7 +286,9 @@ describe('groups router', () => {
     const res = await requestGroupsList('user@example.com', 'INV123')
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { matched_invite_group_id: string | null }
+    const body = (await res.json()) as {
+      matched_invite_group_id: string | null
+    }
 
     expect(body.matched_invite_group_id).toBe('group-1')
   })
@@ -298,7 +300,9 @@ describe('groups router', () => {
     })
 
     expect(res.status).toBe(201)
-    const body = await res.json() as { group: { name: string; competition_id: string } }
+    const body = (await res.json()) as {
+      group: { name: string; competition_id: string }
+    }
     expect(body.group.name).toBe('Os Craques')
     expect(body.group.competition_id).toBe('comp-1')
   })
@@ -393,49 +397,64 @@ describe('groups router', () => {
 
   describe('DELETE /groups/:id/members/:memberId', () => {
     it('removes a member when called by the group admin', async () => {
-      const { db, deleteRun } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: true })
+      const { db, deleteRun } = createRemoveMemberDbMock({
+        isAdmin: true,
+        targetIsMember: true,
+      })
       const res = await requestRemoveMember('user-1', 'admin@example.com', 'group-1', 'user-2', db)
 
       expect(res.status).toBe(200)
-      const body = await res.json() as { success: boolean }
+      const body = (await res.json()) as { success: boolean }
       expect(body.success).toBe(true)
       expect(deleteRun).toHaveBeenCalled()
     })
 
     it('returns 403 when caller is not the group admin', async () => {
-      const { db } = createRemoveMemberDbMock({ isAdmin: false, targetIsMember: true })
+      const { db } = createRemoveMemberDbMock({
+        isAdmin: false,
+        targetIsMember: true,
+      })
       const res = await requestRemoveMember('user-1', 'user@example.com', 'group-1', 'user-2', db)
 
       expect(res.status).toBe(403)
-      const body = await res.json() as { error: string }
+      const body = (await res.json()) as { error: string }
       expect(body.error).toBe('Apenas o administrador pode remover membros')
     })
 
     it('allows a non-admin member to leave the group themselves', async () => {
-      const { db, deleteRun } = createRemoveMemberDbMock({ isAdmin: false, targetIsMember: true })
+      const { db, deleteRun } = createRemoveMemberDbMock({
+        isAdmin: false,
+        targetIsMember: true,
+      })
       const res = await requestRemoveMember('user-2', 'user@example.com', 'group-1', 'user-2', db)
 
       expect(res.status).toBe(200)
-      const body = await res.json() as { success: boolean }
+      const body = (await res.json()) as { success: boolean }
       expect(body.success).toBe(true)
       expect(deleteRun).toHaveBeenCalled()
     })
 
     it('returns 400 when admin tries to remove themselves', async () => {
-      const { db } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: true })
+      const { db } = createRemoveMemberDbMock({
+        isAdmin: true,
+        targetIsMember: true,
+      })
       const res = await requestRemoveMember('user-1', 'admin@example.com', 'group-1', 'user-1', db)
 
       expect(res.status).toBe(400)
-      const body = await res.json() as { error: string }
+      const body = (await res.json()) as { error: string }
       expect(body.error).toBe('Você não pode remover a si mesmo do grupo')
     })
 
     it('returns 404 when target is not a member of the group', async () => {
-      const { db } = createRemoveMemberDbMock({ isAdmin: true, targetIsMember: false })
+      const { db } = createRemoveMemberDbMock({
+        isAdmin: true,
+        targetIsMember: false,
+      })
       const res = await requestRemoveMember('user-1', 'admin@example.com', 'group-1', 'user-99', db)
 
       expect(res.status).toBe(404)
-      const body = await res.json() as { error: string }
+      const body = (await res.json()) as { error: string }
       expect(body.error).toBe('Membro não encontrado no grupo')
     })
   })
@@ -443,12 +462,19 @@ describe('groups router', () => {
   describe('PATCH /groups/:id', () => {
     it('renames the group when called by the owner', async () => {
       const { db, updateRun } = createGroupByIdDbMock('user-1')
-      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
-        name: 'Novo Nome',
-      })
+      const res = await requestGroupMutation(
+        'PATCH',
+        'user-1',
+        'admin@example.com',
+        'group-1',
+        db,
+        {
+          name: 'Novo Nome',
+        },
+      )
 
       expect(res.status).toBe(200)
-      const body = await res.json() as { group: { id: string; name: string } }
+      const body = (await res.json()) as { group: { id: string; name: string } }
       expect(body.group.name).toBe('Novo Nome')
       expect(updateRun).toHaveBeenCalled()
     })
@@ -465,9 +491,16 @@ describe('groups router', () => {
 
     it('returns 400 for an invalid name length', async () => {
       const { db, updateRun } = createGroupByIdDbMock('user-1')
-      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
-        name: 'x',
-      })
+      const res = await requestGroupMutation(
+        'PATCH',
+        'user-1',
+        'admin@example.com',
+        'group-1',
+        db,
+        {
+          name: 'x',
+        },
+      )
 
       expect(res.status).toBe(400)
       expect(updateRun).not.toHaveBeenCalled()
@@ -475,9 +508,16 @@ describe('groups router', () => {
 
     it('returns 404 when the group does not exist or is already deleted', async () => {
       const { db } = createGroupByIdDbMock(null)
-      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
-        name: 'Novo Nome',
-      })
+      const res = await requestGroupMutation(
+        'PATCH',
+        'user-1',
+        'admin@example.com',
+        'group-1',
+        db,
+        {
+          name: 'Novo Nome',
+        },
+      )
 
       expect(res.status).toBe(404)
     })
@@ -489,7 +529,7 @@ describe('groups router', () => {
       const res = await requestGroupMutation('DELETE', 'user-1', 'admin@example.com', 'group-1', db)
 
       expect(res.status).toBe(200)
-      const body = await res.json() as { success: boolean }
+      const body = (await res.json()) as { success: boolean }
       expect(body.success).toBe(true)
       expect(updateRun).toHaveBeenCalled()
     })

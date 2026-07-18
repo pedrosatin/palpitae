@@ -16,24 +16,26 @@ describe('makeMatch', () => {
   it('returns default match properties when no overrides provided', () => {
     const match = makeMatch()
 
-    expect(match).toEqual(expect.objectContaining({
-      id: 'm1',
-      status: 'scheduled',
-      home_score: null,
-      away_score: null,
-      phase: 'group',
-      round: '1',
-      round_label: 'Rodada 1',
-      group_name: null,
-      home_team_id: 'ht-1',
-      home_team_name: 'Brasil',
-      home_team_short_name: 'BRA',
-      home_team_logo: '/bra.png',
-      away_team_id: 'at-1',
-      away_team_name: 'Argentina',
-      away_team_short_name: 'ARG',
-      away_team_logo: '/arg.png',
-    }))
+    expect(match).toEqual(
+      expect.objectContaining({
+        id: 'm1',
+        status: 'scheduled',
+        home_score: null,
+        away_score: null,
+        phase: 'group',
+        round: '1',
+        round_label: 'Rodada 1',
+        group_name: null,
+        home_team_id: 'ht-1',
+        home_team_name: 'Brasil',
+        home_team_short_name: 'BRA',
+        home_team_logo: '/bra.png',
+        away_team_id: 'at-1',
+        away_team_name: 'Argentina',
+        away_team_short_name: 'ARG',
+        away_team_logo: '/arg.png',
+      }),
+    )
   })
 
   it('calculates default start_time as 1 hour in the future when scheduled', () => {
@@ -58,7 +60,7 @@ describe('makeMatch', () => {
     const match = makeMatch({
       id: 'custom-id',
       home_team_name: 'Custom Home',
-      away_team_short_name: 'CUS'
+      away_team_short_name: 'CUS',
     })
 
     expect(match.id).toBe('custom-id')

@@ -153,13 +153,13 @@ export async function scoreUnprocessedMatches(
          WHERE p.match_id IN (${placeholders})`,
       )
       .bind(...chunkIds)
-      .all<typeof allPredictions[number]>()
+      .all<(typeof allPredictions)[number]>()
 
     allPredictions.push(...chunkPredictions.results)
   }
 
   // 3. Process matches and map them by id for quick lookup
-  const matchMap = new Map<string, typeof unscored.results[number]>()
+  const matchMap = new Map<string, (typeof unscored.results)[number]>()
   for (const m of unscored.results) {
     matchMap.set(m.id, m)
   }
@@ -177,10 +177,7 @@ export async function scoreUnprocessedMatches(
     // Cache eligibility check per match
     let eligible = eligibleCache.get(p.match_id)
     if (eligible === undefined) {
-      eligible = matchGoesToPenalties(
-        parsePenaltyPhases(matchCtx.penalty_phases),
-        matchCtx.phase,
-      )
+      eligible = matchGoesToPenalties(parsePenaltyPhases(matchCtx.penalty_phases), matchCtx.phase)
       eligibleCache.set(p.match_id, eligible)
     }
 
@@ -212,9 +209,7 @@ export async function scoreUnprocessedMatches(
 
   // 5. Update matches as scored
   for (const matchId of matchIds) {
-    statements.push(
-      db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId),
-    )
+    statements.push(db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId))
   }
 
   // 6. Execute updates in chunks of 100 to avoid D1 limits
