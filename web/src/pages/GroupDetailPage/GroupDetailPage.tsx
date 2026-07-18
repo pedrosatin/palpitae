@@ -1,10 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import {
-  useNavigate,
-  useParams,
-  useSearchParams,
-  Navigate,
-} from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, Navigate } from 'react-router-dom'
 import { config } from '../../config'
 import { useConfirm } from '../../components/ConfirmModal'
 import CreateGroupModal from '../../components/CreateGroupModal'
@@ -53,13 +48,7 @@ interface GroupDetail {
   exact_hits: number
 }
 
-const TABS = [
-  'predictions',
-  'standings',
-  'group-picks',
-  'leaderboard',
-  'members',
-] as const
+const TABS = ['predictions', 'standings', 'group-picks', 'leaderboard', 'members'] as const
 type Tab = (typeof TABS)[number]
 const DEFAULT_TAB: Tab = 'predictions'
 
@@ -80,10 +69,7 @@ interface GroupDetailPageProps {
   onLogout: () => void
 }
 
-export default function GroupDetailPage({
-  user,
-  onLogout,
-}: GroupDetailPageProps) {
+export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps) {
   const navigate = useNavigate()
   const { groupId } = useParams<{ groupId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -99,7 +85,8 @@ export default function GroupDetailPage({
   // Tabela do campeonato só em pontos corridos (competitions.type = 'league');
   // em copas a URL ?tab=standings cai no tab default em vez de painel vazio.
   const showStandings = group?.competition_type === 'league'
-  const activeTab = rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
+  const activeTab =
+    rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
 
   useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
 
@@ -163,10 +150,7 @@ export default function GroupDetailPage({
 
     updateOffset()
 
-    const observer =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(updateOffset)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateOffset)
 
     if (observer) {
       observer.observe(header)
@@ -284,9 +268,7 @@ export default function GroupDetailPage({
         onClose={() => setRenameOpen(false)}
         groupId={groupId!}
         currentName={group?.name ?? ''}
-        onRenamed={(name) =>
-          setGroup((prev) => (prev ? { ...prev, name } : prev))
-        }
+        onRenamed={(name) => setGroup((prev) => (prev ? { ...prev, name } : prev))}
       />
       {confirmDialog}
     </>
@@ -411,10 +393,7 @@ export default function GroupDetailPage({
             />
           )}
           {activeTab === 'group-picks' && (
-            <GroupPicksTab
-              groupId={groupId}
-              competitionId={group.competition_id}
-            />
+            <GroupPicksTab groupId={groupId} competitionId={group.competition_id} />
           )}
           {activeTab === 'leaderboard' && (
             <LeaderboardTab groupId={groupId} currentUserId={user.id} />

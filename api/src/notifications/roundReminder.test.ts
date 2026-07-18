@@ -2,7 +2,15 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatBRT, sendRoundReminders } from './roundReminder'
 
-type ReminderRow = { competition_id?: string; competition_name: string; round: string; email: string; user_id?: string; group_id?: string; group_name?: string }
+type ReminderRow = {
+  competition_id?: string
+  competition_name: string
+  round: string
+  email: string
+  user_id?: string
+  group_id?: string
+  group_name?: string
+}
 type MatchRow = {
   competition_id?: string
   competition_name: string
@@ -65,7 +73,10 @@ function matchSql(db: ReturnType<typeof buildFakeDb>): string {
 
 describe('sendRoundReminders', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    )
   })
 
   afterEach(() => {
@@ -80,7 +91,7 @@ describe('sendRoundReminders', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it('only selects the round\'s first match day in the user query', async () => {
+  it("only selects the round's first match day in the user query", async () => {
     const db = buildFakeDb([])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
@@ -116,16 +127,26 @@ describe('sendRoundReminders', () => {
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
     expect(fetch).toHaveBeenCalledTimes(2)
-    const recipients = vi
-      .mocked(fetch)
-      .mock.calls.map((c) => JSON.parse(c[1]!.body as string).to)
+    const recipients = vi.mocked(fetch).mock.calls.map((c) => JSON.parse(c[1]!.body as string).to)
     expect(recipients.sort()).toEqual(['a@x.com', 'b@x.com'])
   })
 
   it('sends one e-mail with per-group CTAs when a member is in multiple groups of the same round', async () => {
     const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com', group_id: 'g1', group_name: 'Grupo A' },
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com', group_id: 'g2', group_name: 'Grupo B' },
+      {
+        competition_name: 'Copa do Mundo',
+        round: '2',
+        email: 'a@x.com',
+        group_id: 'g1',
+        group_name: 'Grupo A',
+      },
+      {
+        competition_name: 'Copa do Mundo',
+        round: '2',
+        email: 'a@x.com',
+        group_id: 'g2',
+        group_name: 'Grupo B',
+      },
     ])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
@@ -188,9 +209,7 @@ describe('sendRoundReminders', () => {
   })
 
   it('authenticates and posts to the Resend API with the round in the subject', async () => {
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-    ])
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
 
     await sendRoundReminders(db as unknown as D1Database, 'secret-key')
 
@@ -277,7 +296,13 @@ describe('sendRoundReminders', () => {
 
   it('escapes HTML-significant characters from the database', async () => {
     const db = buildFakeDb(
-      [{ competition_name: 'Copa & Cia', round: 'Quartas "A"', email: 'a@x.com' }],
+      [
+        {
+          competition_name: 'Copa & Cia',
+          round: 'Quartas "A"',
+          email: 'a@x.com',
+        },
+      ],
       [
         {
           competition_name: 'Copa & Cia',
@@ -322,9 +347,7 @@ describe('sendRoundReminders', () => {
   })
 
   it('produces a full HTML document (DOCTYPE/head/body)', async () => {
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-    ])
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
@@ -385,9 +408,7 @@ describe('sendRoundReminders', () => {
   })
 
   it('uses the provided appUrl in the CTA link and text body', async () => {
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-    ])
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
 
     await sendRoundReminders(db as unknown as D1Database, 'key', undefined, 'http://localhost:5173')
 
@@ -397,11 +418,14 @@ describe('sendRoundReminders', () => {
   })
 
   it('does not append UTM params to links (they flag the mail as Promotions)', async () => {
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-    ])
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
 
-    await sendRoundReminders(db as unknown as D1Database, 'key', undefined, 'https://palpitae.com.br')
+    await sendRoundReminders(
+      db as unknown as D1Database,
+      'key',
+      undefined,
+      'https://palpitae.com.br',
+    )
 
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
     expect(body.html).not.toContain('utm_')
@@ -429,13 +453,24 @@ describe('sendRoundReminders', () => {
 
   it('adds a per-user unsubscribe link, headers and one-click POST when configured', async () => {
     const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com', user_id: 'user-99' },
+      {
+        competition_name: 'Copa do Mundo',
+        round: '2',
+        email: 'a@x.com',
+        user_id: 'user-99',
+      },
     ])
 
-    await sendRoundReminders(db as unknown as D1Database, 'key', undefined, 'https://palpitae.com.br', {
-      secret: 'unsub-secret',
-      apiBaseUrl: 'https://api.palpitae.com.br/',
-    })
+    await sendRoundReminders(
+      db as unknown as D1Database,
+      'key',
+      undefined,
+      'https://palpitae.com.br',
+      {
+        secret: 'unsub-secret',
+        apiBaseUrl: 'https://api.palpitae.com.br/',
+      },
+    )
 
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
     const unsubBase = 'https://api.palpitae.com.br/notifications/unsubscribe?token='
@@ -447,9 +482,7 @@ describe('sendRoundReminders', () => {
   })
 
   it('omits the unsubscribe link and headers when no unsub config is given', async () => {
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-    ])
+    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')
 
@@ -462,8 +495,18 @@ describe('sendRoundReminders', () => {
     // Same competition name, different IDs — old string key would collapse them into
     // one group, so the same user would only get one e-mail instead of two.
     const db = buildFakeDb([
-      { competition_id: 'comp-1', competition_name: 'Liga', round: '3', email: 'a@x.com' },
-      { competition_id: 'comp-2', competition_name: 'Liga', round: '3', email: 'a@x.com' },
+      {
+        competition_id: 'comp-1',
+        competition_name: 'Liga',
+        round: '3',
+        email: 'a@x.com',
+      },
+      {
+        competition_id: 'comp-2',
+        competition_name: 'Liga',
+        round: '3',
+        email: 'a@x.com',
+      },
     ])
 
     await sendRoundReminders(db as unknown as D1Database, 'key')

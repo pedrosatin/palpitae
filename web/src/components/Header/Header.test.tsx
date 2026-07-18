@@ -34,12 +34,8 @@ function renderHeader(props?: Partial<Parameters<typeof Header>[0]>) {
 describe('Header', () => {
   it('renders action buttons', () => {
     renderHeader()
-    expect(
-      screen.getByRole('button', { name: 'Criar grupo' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Entrar em grupo' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Criar grupo' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Entrar em grupo' })).toBeInTheDocument()
   })
 
   it('calls onCreateGroup when Criar grupo is clicked', async () => {
@@ -52,9 +48,7 @@ describe('Header', () => {
   it('calls onJoinGroup when Entrar em grupo is clicked', async () => {
     const onJoinGroup = vi.fn()
     renderHeader({ onJoinGroup })
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Entrar em grupo' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar em grupo' }))
     expect(onJoinGroup).toHaveBeenCalledOnce()
   })
 
@@ -65,9 +59,7 @@ describe('Header', () => {
         feature_flags: { create_group: false },
       },
     })
-    expect(
-      screen.queryByRole('button', { name: 'Criar grupo' }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Criar grupo' })).not.toBeInTheDocument()
   })
 
   it('shows user nickname in menu trigger', () => {

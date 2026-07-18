@@ -156,10 +156,7 @@ describe('GroupDetailPage – routing & fetch', () => {
       <MemoryRouter initialEntries={['/groups/']}>
         <Routes>
           {/* This route has no :groupId param */}
-          <Route
-            path="/groups/"
-            element={<GroupDetailPage user={baseUser} onLogout={vi.fn()} />}
-          />
+          <Route path="/groups/" element={<GroupDetailPage user={baseUser} onLogout={vi.fn()} />} />
           <Route path="/" element={<div>Home</div>} />
         </Routes>
       </MemoryRouter>,
@@ -208,9 +205,7 @@ describe('GroupDetailPage – tabs', () => {
       expect(screen.getByTestId('predictions-tab')).toBeInTheDocument()
     })
 
-    await userEvent.click(
-      screen.getByRole('link', { name: /Ranking/i }),
-    )
+    await userEvent.click(screen.getByRole('link', { name: /Ranking/i }))
 
     expect(screen.queryByTestId('predictions-tab')).not.toBeInTheDocument()
     expect(screen.getByTestId('leaderboard-tab')).toBeInTheDocument()
@@ -225,9 +220,7 @@ describe('GroupDetailPage – tabs', () => {
       expect(screen.getByTestId('predictions-tab')).toBeInTheDocument()
     })
 
-    await userEvent.click(
-      screen.getByRole('link', { name: /Ranking/i }),
-    )
+    await userEvent.click(screen.getByRole('link', { name: /Ranking/i }))
     await userEvent.click(screen.getByRole('link', { name: /Palpitar/i }))
 
     expect(screen.getByTestId('predictions-tab')).toBeInTheDocument()
@@ -250,9 +243,7 @@ describe('GroupDetailPage – Header modals', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
 
-    expect(
-      screen.getByRole('dialog', { name: /criar grupo/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: /criar grupo/i })).toBeInTheDocument()
   })
 
   it('opens the join group modal when the Header emits onJoinGroup', async () => {
@@ -264,13 +255,9 @@ describe('GroupDetailPage – Header modals', () => {
       expect(screen.getByTestId('header')).toBeInTheDocument()
     })
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Entrar em grupo' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar em grupo' }))
 
-    expect(
-      screen.getByRole('dialog', { name: /entrar em grupo/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: /entrar em grupo/i })).toBeInTheDocument()
   })
 })
 
@@ -285,17 +272,11 @@ describe('GroupDetailPage – leave group', () => {
     renderPage()
 
     // The leave action lives inside the kebab menu and is hidden until opened.
-    expect(
-      screen.queryByRole('menuitem', { name: /sair do grupo/i }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /sair do grupo/i })).not.toBeInTheDocument()
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /opções do grupo/i }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
 
-    expect(
-      screen.getByRole('menuitem', { name: /sair do grupo/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /sair do grupo/i })).toBeInTheDocument()
   })
 
   it('shows edit/delete actions (not leave) in the options menu for admins', async () => {
@@ -303,40 +284,23 @@ describe('GroupDetailPage – leave group', () => {
 
     renderPage()
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /opções do grupo/i }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
 
-    expect(
-      screen.getByRole('menuitem', { name: /editar nome/i }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('menuitem', { name: /excluir grupo/i }),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('menuitem', { name: /sair do grupo/i }),
-    ).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /editar nome/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /excluir grupo/i })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /sair do grupo/i })).not.toBeInTheDocument()
   })
 
   it('removes the current user from the group after confirmation', async () => {
-    mockGroupFetchSequence(
-      { body: { group: baseGroup } },
-      { body: { success: true } },
-    )
+    mockGroupFetchSequence({ body: { group: baseGroup } }, { body: { success: true } })
 
     renderPage()
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /opções do grupo/i }),
-    )
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /sair do grupo/i }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /sair do grupo/i }))
 
     // Confirmation dialog appears instead of window.confirm.
-    expect(
-      await screen.findByText('Tem certeza que deseja sair deste grupo?'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Tem certeza que deseja sair deste grupo?')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Sair' }))
 
     await waitFor(() => {
@@ -358,9 +322,7 @@ describe('GroupDetailPage – admin: rename & delete', () => {
 
     renderPage()
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /opções do grupo/i }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
     await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
 
     const input = screen.getByPlaceholderText('Nome do grupo')
@@ -369,9 +331,7 @@ describe('GroupDetailPage – admin: rename & delete', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('heading', { name: 'Novo Nome' }),
-      ).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Novo Nome' })).toBeInTheDocument()
     })
   })
 
@@ -383,12 +343,8 @@ describe('GroupDetailPage – admin: rename & delete', () => {
 
     renderPage()
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: /opções do grupo/i }),
-    )
-    await userEvent.click(
-      screen.getByRole('menuitem', { name: /excluir grupo/i }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /excluir grupo/i }))
 
     expect(
       await screen.findByText(/deixará de aparecer para todos os membros/i),
@@ -412,7 +368,9 @@ describe('GroupDetailPage – analytics', () => {
     renderPage()
     await waitFor(() => screen.getByTestId('predictions-tab'))
     await userEvent.click(screen.getByRole('link', { name: /Ranking/i }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_tab', { tab: 'leaderboard' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_tab', {
+      tab: 'leaderboard',
+    })
   })
 
   it('fires click_group_detail_menu_sair when Sair do grupo is clicked', async () => {
@@ -440,7 +398,9 @@ describe('GroupDetailPage – analytics', () => {
   })
 
   it('fires click_group_detail_copiar_codigo when the copy code button is clicked', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
     mockGroupFetch({ ...baseGroup, is_admin: true })
     renderPage()
     const copyBtn = await screen.findByRole('button', { name: /^Copiar$/ })
@@ -449,10 +409,14 @@ describe('GroupDetailPage – analytics', () => {
   })
 
   it('fires click_group_detail_copiar_link when the copy link button is clicked', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
     mockGroupFetch({ ...baseGroup, is_admin: true })
     renderPage()
-    const copyLinkBtn = await screen.findByRole('button', { name: /Copiar link/ })
+    const copyLinkBtn = await screen.findByRole('button', {
+      name: /Copiar link/,
+    })
     await userEvent.click(copyLinkBtn)
     expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_copiar_link')
   })
