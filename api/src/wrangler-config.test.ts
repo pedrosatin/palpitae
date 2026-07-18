@@ -48,6 +48,8 @@ describe('wrangler api config', () => {
   })
 
   it('pins the api wrangler config for remote migrations in ci', () => {
-    expect(deployWorkflow).toContain('npx wrangler d1 migrations apply palpitae --remote --config ./wrangler.toml')
+    expect(deployWorkflow).toContain(
+      'npx wrangler d1 migrations apply palpitae --remote --config ./wrangler.toml',
+    )
   })
 })

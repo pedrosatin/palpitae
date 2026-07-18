@@ -22,10 +22,18 @@ export async function signJwt(
   expiresInSeconds: number,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
-  const fullPayload: JwtPayload = { ...payload, iat: now, exp: now + expiresInSeconds }
+  const fullPayload: JwtPayload = {
+    ...payload,
+    iat: now,
+    exp: now + expiresInSeconds,
+  }
 
-  const header = base64UrlEncode(new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).buffer as ArrayBuffer)
-  const body = base64UrlEncode(new TextEncoder().encode(JSON.stringify(fullPayload)).buffer as ArrayBuffer)
+  const header = base64UrlEncode(
+    new TextEncoder().encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).buffer as ArrayBuffer,
+  )
+  const body = base64UrlEncode(
+    new TextEncoder().encode(JSON.stringify(fullPayload)).buffer as ArrayBuffer,
+  )
   const signingInput = `${header}.${body}`
 
   const key = await importKey(secret)
@@ -51,9 +59,7 @@ export async function verifyJwt(token: string, secret: string): Promise<JwtPaylo
 
   if (!valid) throw new Error('Invalid JWT signature')
 
-  const payload = JSON.parse(
-    new TextDecoder().decode(base64UrlDecode(body)),
-  ) as JwtPayload
+  const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(body))) as JwtPayload
 
   const now = Math.floor(Date.now() / 1000)
   if (payload.exp < now) throw new Error('JWT expired')

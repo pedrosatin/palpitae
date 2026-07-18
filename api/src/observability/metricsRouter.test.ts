@@ -216,11 +216,27 @@ describe('GET /metrics/archive', () => {
     }
 
     expect(list).toHaveBeenCalledTimes(2)
-    expect(list).toHaveBeenNthCalledWith(1, { prefix: 'events/', limit: 1000, cursor: undefined })
-    expect(list).toHaveBeenNthCalledWith(2, { prefix: 'events/', limit: 1000, cursor: 'cur-1' })
+    expect(list).toHaveBeenNthCalledWith(1, {
+      prefix: 'events/',
+      limit: 1000,
+      cursor: undefined,
+    })
+    expect(list).toHaveBeenNthCalledWith(2, {
+      prefix: 'events/',
+      limit: 1000,
+      cursor: 'cur-1',
+    })
     expect(body.files).toHaveLength(2)
-    expect(body.files[0]).toMatchObject({ key: 'events/2026/05/01.ndjson', size: 123, events: 42 })
-    expect(body.files[1]).toMatchObject({ key: 'events/2026/05/02.ndjson', size: 456, events: null })
+    expect(body.files[0]).toMatchObject({
+      key: 'events/2026/05/01.ndjson',
+      size: 123,
+      events: 42,
+    })
+    expect(body.files[1]).toMatchObject({
+      key: 'events/2026/05/02.ndjson',
+      size: 456,
+      events: null,
+    })
   })
 
   it('503 sem bucket configurado', async () => {

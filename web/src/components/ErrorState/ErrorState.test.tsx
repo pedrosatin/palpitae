@@ -26,9 +26,7 @@ describe('ErrorState', () => {
       </ErrorState>,
     )
     expect(screen.queryByText('ignored')).not.toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Tentar novamente' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tentar novamente' })).toBeInTheDocument()
   })
 
   it('appends custom className', () => {

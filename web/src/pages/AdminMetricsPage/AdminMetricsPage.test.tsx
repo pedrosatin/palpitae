@@ -14,7 +14,12 @@ const overview = {
   ],
   daily: [{ day: '2026-06-29 00:00:00', event_type: 'login_success', count: '12' }],
   poller: [
-    { status: 'ok', runs: '48', avg_duration_ms: '850', max_duration_ms: '2100' },
+    {
+      status: 'ok',
+      runs: '48',
+      avg_duration_ms: '850',
+      max_duration_ms: '2100',
+    },
   ],
   predictions: { active_users: '7', total: '37' },
   cache: [
@@ -49,7 +54,12 @@ const overview = {
 const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const archive = {
   files: [
-    { key: `events/${yesterday.replaceAll('-', '/')}.ndjson`, size: 2048, uploaded: '', events: 42 },
+    {
+      key: `events/${yesterday.replaceAll('-', '/')}.ndjson`,
+      size: 2048,
+      uploaded: '',
+      events: 42,
+    },
   ],
 }
 

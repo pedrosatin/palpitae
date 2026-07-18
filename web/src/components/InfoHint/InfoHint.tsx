@@ -14,7 +14,14 @@ interface InfoHintProps {
 
 function InfoSvg() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{ display: 'block' }}>
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+      style={{ display: 'block' }}
+    >
       <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.3" />
       <circle cx="8" cy="5" r="0.9" fill="currentColor" />
       <path d="M8 7.4v3.9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

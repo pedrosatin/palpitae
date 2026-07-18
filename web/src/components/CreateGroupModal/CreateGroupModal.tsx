@@ -34,11 +34,7 @@ interface CreateGroupModalProps {
   onCreated: (group: CreatedGroup) => void
 }
 
-export default function CreateGroupModal({
-  isOpen,
-  onClose,
-  onCreated,
-}: CreateGroupModalProps) {
+export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateGroupModalProps) {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [loadingCompetitions, setLoadingCompetitions] = useState(false)
 
@@ -48,9 +44,7 @@ export default function CreateGroupModal({
   const [pointsExact, setPointsExact] = useState(3)
   const [pointsWinner, setPointsWinner] = useState(1)
   const [pointsPenalty, setPointsPenalty] = useState(1)
-  const [predictionsVisibility, setPredictionsVisibility] = useState<
-    'hidden' | 'public'
-  >('hidden')
+  const [predictionsVisibility, setPredictionsVisibility] = useState<'hidden' | 'public'>('hidden')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -59,8 +53,7 @@ export default function CreateGroupModal({
   // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
   // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
   const showPenaltyField =
-    competitions.find((c) => c.id === competitionId)?.has_penalty_phases ===
-    true
+    competitions.find((c) => c.id === competitionId)?.has_penalty_phases === true
 
   useEffect(() => {
     if (!isOpen || competitions.length > 0) return
@@ -99,9 +92,7 @@ export default function CreateGroupModal({
     e.preventDefault()
 
     if (pointsExact > 0 && pointsExact < pointsWinner) {
-      setError(
-        'Pontos por placar exato deve ser maior ou igual a pontos por vencedor',
-      )
+      setError('Pontos por placar exato deve ser maior ou igual a pontos por vencedor')
       return
     }
     if (pointsExact + pointsWinner === 0) {
@@ -179,9 +170,7 @@ export default function CreateGroupModal({
             {loadingCompetitions ? (
               <p className={styles.loadingText}>Carregando competições...</p>
             ) : competitions.length === 0 ? (
-              <p className={styles.emptyText}>
-                Nenhuma competição disponível no momento.
-              </p>
+              <p className={styles.emptyText}>Nenhuma competição disponível no momento.</p>
             ) : (
               <Select
                 id="group-competition"
@@ -217,12 +206,7 @@ export default function CreateGroupModal({
           />
 
           <div className={shared.actions}>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={handleClose}
-              disabled={submitting}
-            >
+            <Button type="button" variant="secondary" onClick={handleClose} disabled={submitting}>
               Cancelar
             </Button>
             <Button

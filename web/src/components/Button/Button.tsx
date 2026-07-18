@@ -5,10 +5,18 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md' | 'icon'
 }
 
-export default function Button({ variant = 'primary', size = 'md', className, children, ...props }: ButtonProps) {
+export default function Button({
+  variant = 'primary',
+  size = 'md',
+  className,
+  children,
+  ...props
+}: ButtonProps) {
   return (
     <button
-      className={[styles.button, styles[variant], styles[`size-${size}`], className].filter(Boolean).join(' ')}
+      className={[styles.button, styles[variant], styles[`size-${size}`], className]
+        .filter(Boolean)
+        .join(' ')}
       {...props}
     >
       {children}

@@ -21,10 +21,7 @@ function isAbsoluteUrl(value: string): boolean {
   return /^[a-z][a-z\d+.-]*:\/\//i.test(value)
 }
 
-export function buildApiUrl(
-  path: string,
-  searchParams?: URLSearchParams,
-): string {
+export function buildApiUrl(path: string, searchParams?: URLSearchParams): string {
   const normalizedPath = path.startsWith('/') ? path.slice(1) : path
   const trimmedBase = config.apiUrl.trim().replace(/\/+$/, '')
 
@@ -39,16 +36,10 @@ export function buildApiUrl(
   }
 
   const normalizedBase =
-    trimmedBase.length === 0
-      ? ''
-      : trimmedBase.startsWith('/')
-        ? trimmedBase
-        : `/${trimmedBase}`
+    trimmedBase.length === 0 ? '' : trimmedBase.startsWith('/') ? trimmedBase : `/${trimmedBase}`
   const query = searchParams?.toString()
-  
+
   const pathPart = `/${normalizedPath}`
 
-  return query
-    ? `${normalizedBase}${pathPart}?${query}`
-    : `${normalizedBase}${pathPart}`
+  return query ? `${normalizedBase}${pathPart}?${query}` : `${normalizedBase}${pathPart}`
 }

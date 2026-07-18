@@ -91,16 +91,11 @@ describe('JoinGroupModal', () => {
     } as Response)
 
     render(<JoinGroupModal {...defaultProps} />)
-    await userEvent.type(
-      screen.getByRole('textbox'),
-      'https://example.com?convite=abc123',
-    )
+    await userEvent.type(screen.getByRole('textbox'), 'https://example.com?convite=abc123')
     await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
 
     await waitFor(() => {
-      const body = JSON.parse(
-        (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
-      )
+      const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
       expect(body.invite_code).toBe('ABC123')
     })
   })

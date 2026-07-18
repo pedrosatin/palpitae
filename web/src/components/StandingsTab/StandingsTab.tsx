@@ -137,11 +137,7 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
       m.away_team_logo,
     )
 
-    if (
-      m.status !== 'finished' ||
-      m.home_score === null ||
-      m.away_score === null
-    ) {
+    if (m.status !== 'finished' || m.home_score === null || m.away_score === null) {
       continue
     }
 
@@ -232,11 +228,7 @@ function GroupMatchesModal({
           .sort((a, b) => (a.start_time < b.start_time ? -1 : 1))
 
   return (
-    <Modal
-      isOpen={selectedGroup !== null}
-      onClose={onClose}
-      title={`Grupo ${selectedGroup}`}
-    >
+    <Modal isOpen={selectedGroup !== null} onClose={onClose} title={`Grupo ${selectedGroup}`}>
       <ul className={styles.matchList}>
         {selectedMatches.map((m) => (
           <li key={m.id} className={styles.matchItem}>
@@ -245,19 +237,15 @@ function GroupMatchesModal({
                 <span className={styles.matchTeams}>
                   {m.home_team_short_name} vs {m.away_team_short_name}
                 </span>
-                <span className={styles.matchInfo}>
-                  {formatDay(m.start_time)}
-                </span>
+                <span className={styles.matchInfo}>{formatDay(m.start_time)}</span>
               </>
             ) : (
               <>
                 <span className={styles.matchTeams}>
-                  {m.home_team_short_name} {m.home_score ?? '–'} ×{' '}
-                  {m.away_score ?? '–'} {m.away_team_short_name}
+                  {m.home_team_short_name} {m.home_score ?? '–'} × {m.away_score ?? '–'}{' '}
+                  {m.away_team_short_name}
                 </span>
-                <span className={styles.matchInfo}>
-                  {formatDay(m.start_time)}
-                </span>
+                <span className={styles.matchInfo}>{formatDay(m.start_time)}</span>
               </>
             )}
           </li>
@@ -420,7 +408,10 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
           ) : (
             <button
               className={styles.groupHeader}
-              onClick={() => { trackEvent('click_standings_ver_grupo', { group }); setSelectedGroup(group) }}
+              onClick={() => {
+                trackEvent('click_standings_ver_grupo', { group })
+                setSelectedGroup(group)
+              }}
             >
               <span>Grupo {group}</span>
               <span className={styles.groupHint}>ver jogos</span>

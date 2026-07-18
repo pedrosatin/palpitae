@@ -9,7 +9,9 @@ type Point = {
 
 function fakeAe() {
   const calls: Point[] = []
-  const ae = { writeDataPoint: (p: Point) => calls.push(p) } as unknown as AnalyticsEngineDataset
+  const ae = {
+    writeDataPoint: (p: Point) => calls.push(p),
+  } as unknown as AnalyticsEngineDataset
   return { ae, calls }
 }
 

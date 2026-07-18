@@ -77,7 +77,9 @@ async function unsubscribeByToken(c: Context<AppContext>): Promise<boolean> {
   // Only log when the row actually changed — a repeated one-click POST (some mail
   // clients retry) is a no-op and must not inflate the unsubscribe metric.
   if (result.meta.changes > 0) {
-    logEvent(c.env.AE, 'email_unsubscribed', { blobs: [await hashUserId(userId), 'link'] })
+    logEvent(c.env.AE, 'email_unsubscribed', {
+      blobs: [await hashUserId(userId), 'link'],
+    })
   }
   return true
 }
@@ -133,7 +135,9 @@ router.get('/preferences', requireAuth, async (c) => {
  */
 router.patch('/preferences', requireAuth, async (c) => {
   const userId = c.get('userId')
-  const body = (await c.req.json().catch(() => ({}))) as { round_reminders?: unknown }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    round_reminders?: unknown
+  }
 
   if (typeof body.round_reminders !== 'boolean') {
     return c.json({ error: 'round_reminders (boolean) é obrigatório' }, 400)

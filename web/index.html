@@ -7,7 +7,9 @@
     <!-- Fundo escuro no primeiro paint, antes do CSS externo carregar, pra
          nunca haver flash branco enquanto JS/CSS e o auth resolvem -->
     <style>
-      html { background-color: #0d0d0d; }
+      html {
+        background-color: #0d0d0d;
+      }
     </style>
 
     <!-- Aquece a conexão com a API (auth/me roda no boot, em outro domínio) -->
@@ -16,7 +18,10 @@
 
     <!-- SEO básico -->
     <title>Palpitae | Bolão de futebol online — Brasileirão, Copa e mais</title>
-    <meta name="description" content="Crie grupos privados com amigos, dê seus palpites rodada a rodada e dispute a classificação. Bolão online do Brasileirão Série A, da Copa do Mundo e de outros campeonatos." />
+    <meta
+      name="description"
+      content="Crie grupos privados com amigos, dê seus palpites rodada a rodada e dispute a classificação. Bolão online do Brasileirão Série A, da Copa do Mundo e de outros campeonatos."
+    />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://palpitae.com.br/" />
 
@@ -28,21 +33,39 @@
     <!-- Open Graph (WhatsApp, LinkedIn, Facebook, Telegram) -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Palpitae" />
-    <meta property="og:title" content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais" />
-    <meta property="og:description" content="Crie grupos privados, dê seus palpites e dispute com amigos quem manja mais de futebol." />
+    <meta
+      property="og:title"
+      content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais"
+    />
+    <meta
+      property="og:description"
+      content="Crie grupos privados, dê seus palpites e dispute com amigos quem manja mais de futebol."
+    />
     <meta property="og:url" content="https://palpitae.com.br/" />
     <meta property="og:locale" content="pt_BR" />
     <meta property="og:image" content="https://palpitae.com.br/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais" />
+    <meta
+      property="og:image:alt"
+      content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais"
+    />
 
     <!-- Twitter / X Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais" />
-    <meta name="twitter:description" content="Crie grupos privados, dê seus palpites e dispute com amigos quem manja mais de futebol." />
+    <meta
+      name="twitter:title"
+      content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais"
+    />
+    <meta
+      name="twitter:description"
+      content="Crie grupos privados, dê seus palpites e dispute com amigos quem manja mais de futebol."
+    />
     <meta name="twitter:image" content="https://palpitae.com.br/og-image.png" />
-    <meta name="twitter:image:alt" content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais" />
+    <meta
+      name="twitter:image:alt"
+      content="Palpitae | Bolão de futebol online — Brasileirão, Copa e mais"
+    />
 
     <!-- Cor do browser (mobile) -->
     <meta name="theme-color" content="#0d0d0d" />
@@ -53,82 +76,82 @@
 
     <!-- JSON-LD: dados estruturados para o Google -->
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Palpitae",
-      "url": "https://palpitae.com.br",
-      "description": "Bolão de futebol online para o Brasileirão Série A, a Copa do Mundo e outros campeonatos. Crie grupos privados, dê palpites rodada a rodada e dispute a classificação.",
-      "applicationCategory": "SportsApplication",
-      "operatingSystem": "Web",
-      "inLanguage": "pt-BR",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "BRL"
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Palpitae",
+        "url": "https://palpitae.com.br",
+        "description": "Bolão de futebol online para o Brasileirão Série A, a Copa do Mundo e outros campeonatos. Crie grupos privados, dê palpites rodada a rodada e dispute a classificação.",
+        "applicationCategory": "SportsApplication",
+        "operatingSystem": "Web",
+        "inLanguage": "pt-BR",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "BRL"
+        }
       }
-    }
     </script>
 
     <!-- JSON-LD: organização (ajuda em sitelinks/knowledge panel) -->
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "Palpitae",
-      "url": "https://palpitae.com.br",
-      "logo": "https://palpitae.com.br/apple-touch-icon.png"
-    }
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Palpitae",
+        "url": "https://palpitae.com.br",
+        "logo": "https://palpitae.com.br/apple-touch-icon.png"
+      }
     </script>
 
     <!-- JSON-LD: FAQ (espelha a seção de perguntas frequentes da landing) -->
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "O Palpitae é gratuito?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Sim. Você entra com sua conta Google e cria bolões sem pagar nada."
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "O Palpitae é gratuito?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Sim. Você entra com sua conta Google e cria bolões sem pagar nada."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Como funciona a pontuação?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Você ganha 3 pontos por acertar o placar exato e 1 ponto por acertar apenas o resultado (vitória, empate ou derrota)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Como entro em um grupo?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Peça o código ou o link de convite ao admin do grupo e use a opção \"Entrar em grupo\"."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Preciso instalar algum aplicativo?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Não. O Palpitae funciona direto no navegador, no celular ou no computador."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Quais campeonatos tem no Palpitae?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Copa do Mundo 2026 e Brasileirão Série A 2026. Você pode criar um grupo para cada campeonato, e novos torneios serão adicionados."
+            }
           }
-        },
-        {
-          "@type": "Question",
-          "name": "Como funciona a pontuação?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Você ganha 3 pontos por acertar o placar exato e 1 ponto por acertar apenas o resultado (vitória, empate ou derrota)."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Como entro em um grupo?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Peça o código ou o link de convite ao admin do grupo e use a opção \"Entrar em grupo\"."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Preciso instalar algum aplicativo?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Não. O Palpitae funciona direto no navegador, no celular ou no computador."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Quais campeonatos tem no Palpitae?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Copa do Mundo 2026 e Brasileirão Série A 2026. Você pode criar um grupo para cada campeonato, e novos torneios serão adicionados."
-          }
-        }
-      ]
-    }
+        ]
+      }
     </script>
   </head>
   <body>
