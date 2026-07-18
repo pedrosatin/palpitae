@@ -100,8 +100,9 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
   const canCreateGroup = user.feature_flags?.create_group ?? false
 
-  const { groups, loading, error, joinOpen, setJoinOpen, fetchGroups } =
-    useDashboardGroups({ normalizedPendingInvite })
+  const { groups, loading, error, joinOpen, setJoinOpen, fetchGroups } = useDashboardGroups({
+    normalizedPendingInvite,
+  })
 
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -113,10 +114,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   function handleGroupJoined(group: { id: string; name: string }) {
     invalidateApiCache('groups:')
-    navigate(
-      `/grupos/${group.id}`,
-      pendingInvite ? { replace: true } : undefined,
-    )
+    navigate(`/grupos/${group.id}`, pendingInvite ? { replace: true } : undefined)
   }
 
   return (

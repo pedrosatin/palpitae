@@ -75,7 +75,7 @@ describe('PenaltyBadge', () => {
       <div>
         <PenaltyBadge team="BRA" tooltip="Brazil won" />
         <div data-testid="outside">Outside</div>
-      </div>
+      </div>,
     )
 
     const button = screen.getByRole('button')

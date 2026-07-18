@@ -42,9 +42,7 @@ export default function VisibilityField({
           aria-pressed={predictionsVisibility === 'public'}
         >
           <span className={styles.visibilityTitle}>Sempre visível</span>
-          <span className={styles.visibilityDesc}>
-            Todos veem os palpites em tempo real
-          </span>
+          <span className={styles.visibilityDesc}>Todos veem os palpites em tempo real</span>
         </button>
       </div>
     </div>

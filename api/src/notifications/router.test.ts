@@ -7,7 +7,11 @@ import { signUnsubToken } from './unsubscribeToken'
 
 const JWT_SECRET = 'test-secret-notifications'
 
-type Captured = { sqls: string[]; binds: unknown[][]; row?: { email_unsubscribed_at: string | null } }
+type Captured = {
+  sqls: string[]
+  binds: unknown[][]
+  row?: { email_unsubscribed_at: string | null }
+}
 
 function fakeDb(captured: Captured) {
   return {
@@ -96,7 +100,9 @@ describe('notifications router — unsubscribe', () => {
     const token = await signUnsubToken('user-7', JWT_SECRET)
 
     const res = await app().fetch(
-      new Request(`http://localhost/notifications/unsubscribe?token=${token}`, { method: 'POST' }),
+      new Request(`http://localhost/notifications/unsubscribe?token=${token}`, {
+        method: 'POST',
+      }),
       fakeEnv(fakeDb(captured)),
     )
 
@@ -117,7 +123,9 @@ describe('notifications router — preferences', () => {
 
   it('GET /preferences returns round_reminders=true when not unsubscribed', async () => {
     const res = await app().fetch(
-      new Request('http://localhost/notifications/preferences', { headers: await authHeaders() }),
+      new Request('http://localhost/notifications/preferences', {
+        headers: await authHeaders(),
+      }),
       fakeEnv(fakeDb({ sqls: [], binds: [], row: { email_unsubscribed_at: null } })),
     )
     expect(res.status).toBe(200)
@@ -126,8 +134,16 @@ describe('notifications router — preferences', () => {
 
   it('GET /preferences returns round_reminders=false when unsubscribed', async () => {
     const res = await app().fetch(
-      new Request('http://localhost/notifications/preferences', { headers: await authHeaders() }),
-      fakeEnv(fakeDb({ sqls: [], binds: [], row: { email_unsubscribed_at: '2026-06-21T10:00:00Z' } })),
+      new Request('http://localhost/notifications/preferences', {
+        headers: await authHeaders(),
+      }),
+      fakeEnv(
+        fakeDb({
+          sqls: [],
+          binds: [],
+          row: { email_unsubscribed_at: '2026-06-21T10:00:00Z' },
+        }),
+      ),
     )
     await expect(res.json()).resolves.toEqual({ round_reminders: false })
   })
@@ -158,7 +174,9 @@ describe('notifications router — preferences', () => {
       fakeEnv(fakeDb(captured)),
     )
     await expect(res.json()).resolves.toEqual({ round_reminders: false })
-    expect(captured.sqls.some((s) => s.includes("email_unsubscribed_at = datetime('now')"))).toBe(true)
+    expect(captured.sqls.some((s) => s.includes("email_unsubscribed_at = datetime('now')"))).toBe(
+      true,
+    )
   })
 
   it('PATCH /preferences rejects a non-boolean body', async () => {

@@ -34,7 +34,7 @@ describe('InfoHint', () => {
       <div>
         <div data-testid="outside">Outside</div>
         <InfoHint label="Help" text="This is a tooltip" />
-      </div>
+      </div>,
     )
 
     await user.click(screen.getByText('Help'))

@@ -100,10 +100,7 @@ export default function App() {
   return (
     <Suspense fallback={null}>
       <Routes>
-        <Route
-          path="/"
-          element={<DashboardPage user={user!} onLogout={handleLogout} />}
-        />
+        <Route path="/" element={<DashboardPage user={user!} onLogout={handleLogout} />} />
         <Route
           path="/grupos/:groupId"
           element={<GroupDetailPage user={user!} onLogout={handleLogout} />}

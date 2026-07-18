@@ -172,10 +172,16 @@ authRouter.post('/logout', (c) => {
 authRouter.get('/me', requireAuth, async (c) => {
   const userId = c.get('userId')
 
-  const user = await c.env.DB
-    .prepare('SELECT u.id, u.email, p.nickname, p.avatar_url FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?')
+  const user = await c.env.DB.prepare(
+    'SELECT u.id, u.email, p.nickname, p.avatar_url FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?',
+  )
     .bind(userId)
-    .first<{ id: string; email: string; nickname: string | null; avatar_url: string | null }>()
+    .first<{
+      id: string
+      email: string
+      nickname: string | null
+      avatar_url: string | null
+    }>()
 
   if (!user) return c.json({ error: 'User not found' }, 404)
 

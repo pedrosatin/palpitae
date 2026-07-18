@@ -20,12 +20,7 @@ interface HeaderProps {
   onLogout: () => void
 }
 
-export default function Header({
-  user,
-  onCreateGroup,
-  onJoinGroup,
-  onLogout,
-}: HeaderProps) {
+export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: HeaderProps) {
   const canCreateGroup = user.feature_flags?.create_group ?? false
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -44,17 +39,34 @@ export default function Header({
   return (
     <header className={styles.header}>
       <div className={styles.inner}>
-        <a href="/" className={styles.logoLink} aria-label="Ir para a home" onClick={() => trackEvent('click_header_logo')}>
+        <a
+          href="/"
+          className={styles.logoLink}
+          aria-label="Ir para a home"
+          onClick={() => trackEvent('click_header_logo')}
+        >
           <img src="/logo-text.svg" alt="Palpitae" className={styles.logo} />
         </a>
 
         <div className={styles.actions}>
           <>
-            <Button variant="secondary" onClick={() => { trackEvent('click_header_entrar_grupo'); onJoinGroup() }}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                trackEvent('click_header_entrar_grupo')
+                onJoinGroup()
+              }}
+            >
               Entrar em grupo
             </Button>
             {canCreateGroup && (
-              <Button variant="primary" onClick={() => { trackEvent('click_header_criar_grupo'); onCreateGroup() }}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  trackEvent('click_header_criar_grupo')
+                  onCreateGroup()
+                }}
+              >
                 Criar grupo
               </Button>
             )}
@@ -63,7 +75,10 @@ export default function Header({
           <div className={styles.userMenu} ref={menuRef}>
             <button
               className={styles.userMenuTrigger}
-              onClick={() => { if (!menuOpen) trackEvent('click_header_user_menu'); setMenuOpen((o) => !o) }}
+              onClick={() => {
+                if (!menuOpen) trackEvent('click_header_user_menu')
+                setMenuOpen((o) => !o)
+              }}
               aria-expanded={menuOpen}
               aria-haspopup="true"
             >
@@ -74,9 +89,7 @@ export default function Header({
                   className={styles.avatar}
                 />
               )}
-              <span className={styles.nickname}>
-                {user.nickname ?? user.email}
-              </span>
+              <span className={styles.nickname}>{user.nickname ?? user.email}</span>
               <span className={styles.chevron} aria-hidden="true">
                 ▾
               </span>

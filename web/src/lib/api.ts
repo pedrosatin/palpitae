@@ -50,11 +50,8 @@ export function consumeSessionExpired(): boolean {
  * `fetch` for API calls: always sends credentials and traps 401 centrally.
  * Drop-in for existing `fetch(...)` call sites — same arguments, same Response.
  */
-export async function apiFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  const res = await fetch(input, { ...(init ?? {}), credentials: 'include' })
+export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, { ...init, credentials: 'include' })
   if (res.status === 401) notifySessionExpired()
   return res
 }

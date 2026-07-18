@@ -48,7 +48,7 @@ describe('auth router', () => {
   it('returns create_group true for any authenticated user', async () => {
     const res = await requestWithCookie('user@example.com')
     expect(res.status).toBe(200)
-    const body = await res.json() as {
+    const body = (await res.json()) as {
       user: { email: string; feature_flags: { create_group: boolean } }
     }
     expect(body.user.email).toBe('user@example.com')

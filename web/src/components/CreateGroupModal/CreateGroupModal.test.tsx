@@ -53,9 +53,7 @@ describe('CreateGroupModal', () => {
     mockFetchCompetitions()
     render(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => {
-      expect(
-        screen.getByRole('option', { name: /Copa 2026/ }),
-      ).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: /Copa 2026/ })).toBeInTheDocument()
     })
   })
 
@@ -100,9 +98,7 @@ describe('CreateGroupModal', () => {
 
   it('shows connection error on fetch failure', async () => {
     mockFetchCompetitions()
-    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
-      new Error('Network error'),
-    )
+    vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network error'))
 
     render(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
@@ -111,9 +107,7 @@ describe('CreateGroupModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /criar/i }))
 
     await waitFor(() => {
-      expect(
-        screen.getByText('Erro de conexão. Tente novamente.'),
-      ).toBeInTheDocument()
+      expect(screen.getByText('Erro de conexão. Tente novamente.')).toBeInTheDocument()
     })
   })
 })
@@ -130,7 +124,9 @@ describe('CreateGroupModal – analytics', () => {
     mockFetchCompetitions()
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' } }),
+      json: async () => ({
+        group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' },
+      }),
     } as Response)
 
     render(<CreateGroupModal {...defaultProps} />)
@@ -143,11 +139,15 @@ describe('CreateGroupModal – analytics', () => {
   })
 
   it('fires click_create_group_copiar_codigo when Copiar is clicked after creation', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
     mockFetchCompetitions()
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' } }),
+      json: async () => ({
+        group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' },
+      }),
     } as Response)
 
     render(<CreateGroupModal {...defaultProps} />)
@@ -161,11 +161,15 @@ describe('CreateGroupModal – analytics', () => {
   })
 
   it('fires click_create_group_copiar_link when Copiar link is clicked after creation', async () => {
-    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } })
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    })
     mockFetchCompetitions()
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' } }),
+      json: async () => ({
+        group: { id: 'g1', name: 'Os Craques', invite_code: 'INV123' },
+      }),
     } as Response)
 
     render(<CreateGroupModal {...defaultProps} />)
@@ -208,7 +212,9 @@ describe('CreateGroupModal – scoring config', () => {
     mockFetchCompetitions()
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ group: { id: 'g1', name: 'X', invite_code: 'INV' } }),
+      json: async () => ({
+        group: { id: 'g1', name: 'X', invite_code: 'INV' },
+      }),
     } as Response)
 
     render(<CreateGroupModal {...defaultProps} />)
@@ -247,21 +253,19 @@ describe('CreateGroupModal – scoring config', () => {
     render(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
-    expect(
-      screen.getByLabelText(/placar exato/i, { selector: 'input' }),
-    ).toBeDisabled()
+    expect(screen.getByLabelText(/placar exato/i, { selector: 'input' })).toBeDisabled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Personalizado' }))
-    expect(
-      screen.getByLabelText(/placar exato/i, { selector: 'input' }),
-    ).toBeEnabled()
+    expect(screen.getByLabelText(/placar exato/i, { selector: 'input' })).toBeEnabled()
   })
 
   it('"Só vencedor" preset sets points to 0/1 (1X2 mode)', async () => {
     mockFetchCompetitions()
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ group: { id: 'g1', name: 'X', invite_code: 'INV' } }),
+      json: async () => ({
+        group: { id: 'g1', name: 'X', invite_code: 'INV' },
+      }),
     } as Response)
 
     render(<CreateGroupModal {...defaultProps} />)
@@ -294,9 +298,7 @@ describe('CreateGroupModal – scoring config', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /criar/i }))
 
-    expect(
-      screen.getByText(/maior ou igual a pontos por vencedor/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/maior ou igual a pontos por vencedor/)).toBeInTheDocument()
     // only the competitions fetch ran — no POST
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })

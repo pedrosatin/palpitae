@@ -2,12 +2,7 @@ import { trackEvent } from '../../../analytics/ga'
 import InfoHint from '../../InfoHint/InfoHint'
 import styles from '../CreateGroupModal.module.css'
 import shared from '../../modal-shared.module.css'
-import {
-  PRESET_LABELS,
-  PRESET_VALUES,
-  SCORING_HELP_TEXT,
-  ScoringPreset,
-} from '../constants'
+import { PRESET_LABELS, PRESET_VALUES, SCORING_HELP_TEXT, ScoringPreset } from '../constants'
 
 interface ScoringRulesFieldProps {
   scoringPreset: ScoringPreset
@@ -46,9 +41,7 @@ export default function ScoringRulesField({
     <div className={shared.field}>
       <span className={shared.label}>Regras de pontuação</span>
       <div className={styles.presetGrid}>
-        {(
-          ['classic', 'exact_only', 'winner_only', 'custom'] as ScoringPreset[]
-        ).map((preset) => (
+        {(['classic', 'exact_only', 'winner_only', 'custom'] as ScoringPreset[]).map((preset) => (
           <button
             key={preset}
             type="button"
@@ -82,9 +75,7 @@ export default function ScoringRulesField({
             value={pointsExact}
             disabled={scoringPreset !== 'custom'}
             onChange={(e) =>
-              setPointsExact(
-                Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))),
-              )
+              setPointsExact(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
             }
           />
         </div>
@@ -109,9 +100,7 @@ export default function ScoringRulesField({
             value={pointsWinner}
             disabled={scoringPreset !== 'custom'}
             onChange={(e) =>
-              setPointsWinner(
-                Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))),
-              )
+              setPointsWinner(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
             }
           />
         </div>
@@ -131,15 +120,12 @@ export default function ScoringRulesField({
               value={pointsPenalty}
               disabled={scoringPreset !== 'custom'}
               onChange={(e) =>
-                setPointsPenalty(
-                  Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))),
-                )
+                setPointsPenalty(Math.max(0, Math.min(10, Math.floor(Number(e.target.value)))))
               }
             />
           </div>
           <p className={styles.penaltyHint}>
-            Pontos extras por acertar quem vence nos pênaltis num palpite de
-            empate. 0 desliga.
+            Pontos extras por acertar quem vence nos pênaltis num palpite de empate. 0 desliga.
           </p>
         </div>
       )}

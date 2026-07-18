@@ -9,7 +9,11 @@ import { syncFixtures } from './sync'
 // (canonical score, penalty mapping, translation/slug) IS exercised end to end.
 // ---------------------------------------------------------------------------
 
-type Captured = { competition: unknown[][]; teams: unknown[][]; matches: unknown[][] }
+type Captured = {
+  competition: unknown[][]
+  teams: unknown[][]
+  matches: unknown[][]
+}
 
 function buildFakeDb() {
   const captured: Captured = { competition: [], teams: [], matches: [] }
@@ -44,12 +48,18 @@ function buildFakeDb() {
           if (sql.includes('SELECT external_id, id FROM teams')) {
             if (sql.includes('json_each')) {
               const ids = JSON.parse(bound[0] as string)
-              const results = ids.map((extId: string) => ({ external_id: extId, id: `team-${extId}` }))
+              const results = ids.map((extId: string) => ({
+                external_id: extId,
+                id: `team-${extId}`,
+              }))
               return { results } as { results: T[] }
             } else {
               // bound = [...extIds, PROVIDER]
               const ids = bound.slice(0, bound.length - 1) as string[]
-              const results = ids.map(extId => ({ external_id: extId, id: `team-${extId}` }))
+              const results = ids.map((extId) => ({
+                external_id: extId,
+                id: `team-${extId}`,
+              }))
               return { results } as { results: T[] }
             }
           }
@@ -185,7 +195,7 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
         duration: 'PENALTY_SHOOTOUT',
         fullTime: { home: 5, away: 4 }, // Includes penalties (2-2 + 3-2 penalties)
         regularTime: { home: null, away: null }, // Missing from upstream
-        extraTime: { home: null, away: null },   // Missing from upstream
+        extraTime: { home: null, away: null }, // Missing from upstream
         penalties: { home: 3, away: 2 },
       }),
       match(111, {
@@ -301,7 +311,11 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
   })
 
   it('scheduled match (no scores yet): canonical home/away null, penalty fields null', async () => {
-    const m = match(105, { winner: null, duration: null, fullTime: { home: null, away: null } })
+    const m = match(105, {
+      winner: null,
+      duration: null,
+      fullTime: { home: null, away: null },
+    })
     m.status = 'SCHEDULED'
     mockFetch([m])
     const { db, captured } = buildFakeDb()
@@ -316,7 +330,15 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
 
 describe('syncFixtures — upsert preserves scored_at reset on penalty_winner change', () => {
   it('matches upsert clears scored_at when penalty_winner changes (re-score guard)', async () => {
-    mockFetch([match(106, { winner: 'HOME_TEAM', duration: 'PENALTY_SHOOTOUT', regularTime: { home: 0, away: 0 }, extraTime: { home: 0, away: 0 }, penalties: { home: 4, away: 2 } })])
+    mockFetch([
+      match(106, {
+        winner: 'HOME_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        regularTime: { home: 0, away: 0 },
+        extraTime: { home: 0, away: 0 },
+        penalties: { home: 4, away: 2 },
+      }),
+    ])
     const { db, sqls } = buildFakeDb()
     await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
 
@@ -330,7 +352,16 @@ describe('syncFixtures — upsert preserves scored_at reset on penalty_winner ch
 
 describe('syncFixtures — competition translation & stable slug (Decision 7/8)', () => {
   it('translates the display name but derives the slug from the RAW api name', async () => {
-    mockFetch([match(107, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 0, away: 0 } })], 'FIFA World Cup')
+    mockFetch(
+      [
+        match(107, {
+          winner: 'DRAW',
+          duration: 'REGULAR',
+          fullTime: { home: 0, away: 0 },
+        }),
+      ],
+      'FIFA World Cup',
+    )
     const { db, captured } = buildFakeDb()
     await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
 

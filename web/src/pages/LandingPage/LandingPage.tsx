@@ -43,10 +43,18 @@ function Header() {
         />
       </Link>
       <nav className={styles.navLinks}>
-        <a href="#recursos" className={styles.navLink} onClick={() => trackEvent('click_nav_recursos')}>
+        <a
+          href="#recursos"
+          className={styles.navLink}
+          onClick={() => trackEvent('click_nav_recursos')}
+        >
           Recursos
         </a>
-        <a href="#pontuacao" className={styles.navLink} onClick={() => trackEvent('click_nav_pontuacao')}>
+        <a
+          href="#pontuacao"
+          className={styles.navLink}
+          onClick={() => trackEvent('click_nav_pontuacao')}
+        >
           Pontuação
         </a>
         <a href="#faq" className={styles.navLink} onClick={() => trackEvent('click_nav_faq')}>
@@ -69,12 +77,16 @@ function Hero() {
           Bolões de futebol <span className={styles.accent}>com seus amigos</span>
         </h1>
         <p className={styles.heroSubtitle}>
-          Crie grupos privados, dê seus palpites rodada a rodada e dispute
-          o topo da classificação. Tudo em um só lugar.
+          Crie grupos privados, dê seus palpites rodada a rodada e dispute o topo da classificação.
+          Tudo em um só lugar.
         </p>
         <div className={styles.heroActions}>
           <GoogleLoginButton />
-          <a href="#recursos" className={styles.secondaryAction} onClick={() => trackEvent('click_hero_ver_como_funciona')}>
+          <a
+            href="#recursos"
+            className={styles.secondaryAction}
+            onClick={() => trackEvent('click_hero_ver_como_funciona')}
+          >
             Ver como funciona ↓
           </a>
         </div>
@@ -134,7 +146,9 @@ function Faq() {
         />
         <FaqItem
           q="Como entro em um grupo?"
-          a={'Peça o código ou o link de convite ao admin do grupo e use a opção "Entrar em grupo".'}
+          a={
+            'Peça o código ou o link de convite ao admin do grupo e use a opção "Entrar em grupo".'
+          }
         />
         <FaqItem
           q="Preciso instalar algum aplicativo?"
@@ -173,9 +187,7 @@ function Footer() {
         height={22}
         className={styles.footerLogo}
       />
-      <span className={styles.footerNote}>
-        Palpitae — Bolões de futebol com seus amigos
-      </span>
+      <span className={styles.footerNote}>Palpitae — Bolões de futebol com seus amigos</span>
       {/* Static content pages live outside the SPA (built to /guias/*), so use
           a native <a> for a full navigation — react-router has no such route. */}
       <a
@@ -266,13 +278,7 @@ function Shot({
  * Decorative browser-window chrome wrapped around a screenshot, so the preview
  * reads as a real product shot rather than a bare image.
  */
-function BrowserFrame({
-  children,
-  className,
-}: {
-  children: React.ReactNode
-  className?: string
-}) {
+function BrowserFrame({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`${styles.frame} ${className ?? ''}`}>
       <div className={styles.frameBar}>

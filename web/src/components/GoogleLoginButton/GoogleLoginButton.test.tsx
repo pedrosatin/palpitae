@@ -17,16 +17,12 @@ describe('GoogleLoginButton', () => {
 
   it('renders the sign-in button', () => {
     render(<GoogleLoginButton />)
-    expect(
-      screen.getByRole('button', { name: 'Entrar com Google' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Entrar com Google' })).toBeInTheDocument()
   })
 
   it('navigates to the Google auth URL on click', async () => {
     render(<GoogleLoginButton />)
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Entrar com Google' }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
     expect(window.location.href).toContain('/auth/google')
   })
 })

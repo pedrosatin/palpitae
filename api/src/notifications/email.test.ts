@@ -3,7 +3,10 @@ import { sendEmail } from './email'
 
 describe('sendEmail', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(null, { status: 200 })),
+    )
   })
 
   afterEach(() => {

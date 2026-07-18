@@ -2,7 +2,9 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
-vi.mock('./scoring', () => ({ scoreUnprocessedMatches: vi.fn(async () => undefined) }))
+vi.mock('./scoring', () => ({
+  scoreUnprocessedMatches: vi.fn(async () => undefined),
+}))
 
 import { discoverFixtures } from './fixtureDiscovery'
 import { scoreUnprocessedMatches } from './scoring'
@@ -44,7 +46,10 @@ function buildFakeAe() {
 
 type WrittenPoint = { indexes?: string[]; blobs?: string[]; doubles?: number[] }
 
-function pointsOfType(ae: { writeDataPoint: ReturnType<typeof vi.fn> }, type: string): WrittenPoint[] {
+function pointsOfType(
+  ae: { writeDataPoint: ReturnType<typeof vi.fn> },
+  type: string,
+): WrittenPoint[] {
   return ae.writeDataPoint.mock.calls
     .map((c) => c[0] as WrittenPoint)
     .filter((p) => p.blobs?.[0] === type)
@@ -62,7 +67,11 @@ describe('discoverFixtures', () => {
     const db = buildFakeDb([])
     const ae = buildFakeAe()
 
-    await discoverFixtures(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+    await discoverFixtures(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
 
     expect(syncFixturesMock).not.toHaveBeenCalled()
     expect(scoreMock).not.toHaveBeenCalled()
@@ -80,7 +89,7 @@ describe('discoverFixtures', () => {
 
     expect(db._captured.sql).toContain("status != 'finished'")
     expect(db._captured.sql).toContain("provider = 'football-data'")
-    expect(db._captured.sql).toContain("external_id IS NOT NULL")
+    expect(db._captured.sql).toContain('external_id IS NOT NULL')
   })
 
   it('calls syncFixtures and scoreUnprocessedMatches for each active competition', async () => {
@@ -93,10 +102,18 @@ describe('discoverFixtures', () => {
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(2)
     expect(syncFixturesMock).toHaveBeenCalledWith(
-      expect.objectContaining({ competitionCode: 'WC', season: 2026, apiKey: 'key' })
+      expect.objectContaining({
+        competitionCode: 'WC',
+        season: 2026,
+        apiKey: 'key',
+      }),
     )
     expect(syncFixturesMock).toHaveBeenCalledWith(
-      expect.objectContaining({ competitionCode: 'CL', season: 2026, apiKey: 'key' })
+      expect.objectContaining({
+        competitionCode: 'CL',
+        season: 2026,
+        apiKey: 'key',
+      }),
     )
     // Should NOT have matchday
     const calls = syncFixturesMock.mock.calls
@@ -116,7 +133,11 @@ describe('discoverFixtures', () => {
     ])
     const ae = buildFakeAe()
 
-    await discoverFixtures(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+    await discoverFixtures(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
 
     const runs = pointsOfType(ae, 'fixture_discovery_run')
     expect(runs).toHaveLength(1)
@@ -141,7 +162,11 @@ describe('discoverFixtures', () => {
     ])
     const ae = buildFakeAe()
 
-    await discoverFixtures(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+    await discoverFixtures(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(2)
 
