@@ -104,13 +104,7 @@ export default function JoinGroupModal({
   )
 }
 
-function SuccessView({
-  joined,
-  onClose,
-}: {
-  joined: JoinedGroup
-  onClose: () => void
-}) {
+function SuccessView({ joined, onClose }: { joined: JoinedGroup; onClose: () => void }) {
   return (
     <div className={shared.success}>
       <div className={shared.successIcon}>🏆</div>
@@ -132,19 +126,11 @@ interface FormViewProps {
   onCancel: () => void
 }
 
-function FormView({
-  code,
-  setCode,
-  submitting,
-  error,
-  onSubmit,
-  onCancel,
-}: FormViewProps) {
+function FormView({ code, setCode, submitting, error, onSubmit, onCancel }: FormViewProps) {
   return (
     <form onSubmit={onSubmit} className={shared.form}>
       <p className={styles.hint}>
-        Cole o código de convite ou o link compartilhado pelo administrador do
-        grupo.
+        Cole o código de convite ou o link compartilhado pelo administrador do grupo.
       </p>
 
       {error && <p className={shared.error}>{error}</p>}
@@ -170,19 +156,10 @@ function FormView({
       </div>
 
       <div className={shared.actions}>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={onCancel}
-          disabled={submitting}
-        >
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={submitting}>
           Cancelar
         </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={submitting || !code.trim()}
-        >
+        <Button type="submit" variant="primary" disabled={submitting || !code.trim()}>
           {submitting ? 'Entrando...' : 'Entrar'}
         </Button>
       </div>

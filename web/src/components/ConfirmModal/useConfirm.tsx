@@ -18,9 +18,7 @@ interface ConfirmOptions {
  */
 export function useConfirm() {
   const [options, setOptions] = useState<ConfirmOptions | null>(null)
-  const [resolver, setResolver] = useState<((value: boolean) => void) | null>(
-    null,
-  )
+  const [resolver, setResolver] = useState<((value: boolean) => void) | null>(null)
 
   const confirm = useCallback((opts: ConfirmOptions) => {
     setOptions(opts)

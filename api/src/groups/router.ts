@@ -78,13 +78,13 @@ async function handleGetGroups(c: Context<AppContext>) {
         WHERE g.deleted_at IS NULL
         GROUP BY g.id
         ORDER BY g.created_at DESC
-        `
+        `,
       )
       .bind(userId, userId)
       .all<GroupRow & { user_position: number; user_points: number }>()
 
     const matchedInviteGroup = inviteCode
-      ? groups.results.find((group) => group.invite_code === inviteCode) ?? null
+      ? (groups.results.find((group) => group.invite_code === inviteCode) ?? null)
       : null
 
     const dbMs = Date.now() - dbStartedAt
@@ -182,7 +182,9 @@ router.post('/', requireAuth, async (c) => {
   // Otherwise an exact hit must be worth at least as much as a plain winner hit.
   if (points_exact > 0 && points_exact < points_winner) {
     return c.json(
-      { error: 'Pontos por placar exato deve ser maior ou igual a pontos por vencedor' },
+      {
+        error: 'Pontos por placar exato deve ser maior ou igual a pontos por vencedor',
+      },
       400,
     )
   }
@@ -286,7 +288,9 @@ router.post('/join', requireAuth, async (c) => {
   const db = c.env.DB
 
   const group = await db
-    .prepare('SELECT id, name, max_members FROM groups WHERE invite_code = ? AND deleted_at IS NULL')
+    .prepare(
+      'SELECT id, name, max_members FROM groups WHERE invite_code = ? AND deleted_at IS NULL',
+    )
     .bind(invite_code)
     .first<{ id: string; name: string; max_members: number }>()
 

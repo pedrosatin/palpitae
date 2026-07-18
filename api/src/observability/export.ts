@@ -21,7 +21,11 @@ const ROW_LIMIT = 10000
 const MAX_EXPORTS_PER_RUN = 10
 
 /** Limites UTC do dia e a chave R2 correspondente. Exportado para testes. */
-export function dayBounds(day: Date): { from: string; to: string; key: string } {
+export function dayBounds(day: Date): {
+  from: string
+  to: string
+  key: string
+} {
   if (isNaN(day.getTime())) {
     throw new TypeError('Invalid Date')
   }
@@ -71,7 +75,11 @@ export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
 
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-    { method: 'POST', headers: { Authorization: `Bearer ${env.AE_SQL_TOKEN}` }, body: sql },
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.AE_SQL_TOKEN}` },
+      body: sql,
+    },
   )
 
   if (!res.ok) {
@@ -151,11 +159,7 @@ async function backfillEventsMetadata(bucket: R2Bucket, key: string): Promise<vo
  *
  * No-op se R2/credenciais não estiverem configurados (dev local/testes).
  */
-export async function exportRecentDays(
-  env: Env,
-  today: Date,
-  lookbackDays = 90,
-): Promise<void> {
+export async function exportRecentDays(env: Env, today: Date, lookbackDays = 90): Promise<void> {
   if (!env.EVENTS || !env.CF_ACCOUNT_ID || !env.AE_SQL_TOKEN) {
     console.warn('[export] R2/SQL API não configurado — backfill ignorado.')
     return

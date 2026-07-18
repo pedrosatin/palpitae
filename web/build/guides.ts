@@ -311,7 +311,12 @@ const breadcrumb = (path: string, name: string) => ({
   '@type': 'BreadcrumbList',
   itemListElement: [
     { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/` },
-    { '@type': 'ListItem', position: 2, name: 'Guias', item: `${SITE_URL}/guias/` },
+    {
+      '@type': 'ListItem',
+      position: 2,
+      name: 'Guias',
+      item: `${SITE_URL}/guias/`,
+    },
     { '@type': 'ListItem', position: 3, name, item: `${SITE_URL}${path}` },
   ],
 })
@@ -384,8 +389,18 @@ function renderIndex(): string {
       '@context': 'https://schema.org',
       '@type': 'BreadcrumbList',
       itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/` },
-        { '@type': 'ListItem', position: 2, name: 'Guias', item: `${SITE_URL}/guias/` },
+        {
+          '@type': 'ListItem',
+          position: 1,
+          name: 'Início',
+          item: `${SITE_URL}/`,
+        },
+        {
+          '@type': 'ListItem',
+          position: 2,
+          name: 'Guias',
+          item: `${SITE_URL}/guias/`,
+        },
       ],
     },
   ]
@@ -495,7 +510,11 @@ export function guidesPlugin(): Plugin {
         })
       }
       // Static 404 page served by Cloudflare Pages for unmatched URLs.
-      this.emitFile({ type: 'asset', fileName: '404.html', source: render404() })
+      this.emitFile({
+        type: 'asset',
+        fileName: '404.html',
+        source: render404(),
+      })
     },
   }
 }

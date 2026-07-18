@@ -17,7 +17,8 @@ describe('calculatePoints', () => {
     it('predicted home win, different margin', () => expect(calculatePoints(2, 0, 3, 1)).toBe(1))
     it('predicted away win, different margin', () => expect(calculatePoints(0, 1, 0, 2)).toBe(1))
     it('predicted draw, different score', () => expect(calculatePoints(0, 0, 2, 2)).toBe(1))
-    it('predicted draw, different score (1-1 vs 2-2)', () => expect(calculatePoints(1, 1, 2, 2)).toBe(1))
+    it('predicted draw, different score (1-1 vs 2-2)', () =>
+      expect(calculatePoints(1, 1, 2, 2)).toBe(1))
   })
 
   describe('wrong outcome → 0 points', () => {
@@ -53,8 +54,7 @@ describe('calculatePoints', () => {
       expect(calculatePoints(1, 0, 1, 0, 0, 1)).toBe(1))
     it('correct draw scores the winner value', () =>
       expect(calculatePoints(2, 2, 0, 0, 0, 1)).toBe(1))
-    it('wrong outcome scores 0', () =>
-      expect(calculatePoints(0, 1, 1, 0, 0, 1)).toBe(0))
+    it('wrong outcome scores 0', () => expect(calculatePoints(0, 1, 1, 0, 0, 1)).toBe(0))
   })
 })
 
@@ -111,7 +111,11 @@ type FakeMatch = {
   penalty_winner?: 'home' | 'away' | null
 }
 
-type FakeGroupConfig = { points_exact: number; points_winner: number; points_penalty?: number }
+type FakeGroupConfig = {
+  points_exact: number
+  points_winner: number
+  points_penalty?: number
+}
 
 function buildFakeDb(
   matches: FakeMatch[],
@@ -122,19 +126,32 @@ function buildFakeDb(
 ) {
   // Any group not explicitly configured uses the classic 3/1 scoring with the
   // default 1-point penalty bonus.
-  const defaultConfig: Required<FakeGroupConfig> = { points_exact: 3, points_winner: 1, points_penalty: 1 }
+  const defaultConfig: Required<FakeGroupConfig> = {
+    points_exact: 3,
+    points_winner: 1,
+    points_penalty: 1,
+  }
   const groupConfig = (groupId: string): Required<FakeGroupConfig> => ({
     ...defaultConfig,
     ...groups[groupId],
   })
   const updatedMatches: Record<string, Partial<FakeMatch>> = {}
   const updatedPredictions: Record<string, Partial<FakePrediction>> = {}
-  const leaderboardUpserts: Array<{ group_id: string; user_id: string; total_points: number; exact_hits: number }> = []
+  const leaderboardUpserts: Array<{
+    group_id: string
+    user_id: string
+    total_points: number
+    exact_hits: number
+  }> = []
 
   function makeStatement(sql: string, params: unknown[]) {
     return {
       async first<T>(): Promise<T | null> {
-        if (sql.includes('COUNT(*) AS count') && sql.includes("status = 'finished'") && sql.includes('scored_at IS NULL')) {
+        if (
+          sql.includes('COUNT(*) AS count') &&
+          sql.includes("status = 'finished'") &&
+          sql.includes('scored_at IS NULL')
+        ) {
           const compId = params[0] as string
           const count = matches.filter(
             (m) =>
@@ -160,26 +177,35 @@ function buildFakeDb(
         return null
       },
       async all<T>(): Promise<{ results: T[] }> {
-        if (sql.includes('FROM matches') && sql.includes("status = 'finished'") && sql.includes('scored_at IS NULL')) {
+        if (
+          sql.includes('FROM matches') &&
+          sql.includes("status = 'finished'") &&
+          sql.includes('scored_at IS NULL')
+        ) {
           const compId = params[0] as string
-          const results = matches.filter(
-            (m) =>
-              m.competition_id === compId &&
-              m.status === 'finished' &&
-              m.scored_at === null &&
-              m.home_score !== null &&
-              m.away_score !== null,
-          ).map((m) => ({
-             ...m,
-             penalty_phases: JSON.stringify(penaltyPhases[m.competition_id] ?? []),
-          })) as unknown as T[]
+          const results = matches
+            .filter(
+              (m) =>
+                m.competition_id === compId &&
+                m.status === 'finished' &&
+                m.scored_at === null &&
+                m.home_score !== null &&
+                m.away_score !== null,
+            )
+            .map((m) => ({
+              ...m,
+              penalty_phases: JSON.stringify(penaltyPhases[m.competition_id] ?? []),
+            })) as unknown as T[]
           return { results }
         }
         if (sql.includes('FROM predictions') && sql.includes('WHERE p.match_id IN')) {
           const matchIds = params as string[]
           const results = predictions
             .filter((p) => matchIds.includes(p.match_id))
-            .map((p) => ({ ...p, ...groupConfig(p.group_id) })) as unknown as T[]
+            .map((p) => ({
+              ...p,
+              ...groupConfig(p.group_id),
+            })) as unknown as T[]
           return { results }
         }
         if (sql.includes('FROM predictions') && sql.includes('GROUP BY p.user_id')) {
@@ -189,12 +215,14 @@ function buildFakeDb(
           for (const p of predictions.filter((p) => p.group_id === groupId)) {
             const pts = updatedPredictions[p.id]?.points_awarded ?? p.points_awarded
             const penPts = updatedPredictions[p.id]?.penalty_points ?? 0
-            const cur = grouped.get(p.user_id) ?? { total_points: 0, exact_hits: 0 }
+            const cur = grouped.get(p.user_id) ?? {
+              total_points: 0,
+              exact_hits: 0,
+            }
             // Mirror the SQL: exact_hits counts rows awarded points_exact, but only
             // when the exact bonus is distinguishable (points_exact > points_winner).
             // total_points sums base + penalty bonus.
-            const isExact =
-              cfg.points_exact > cfg.points_winner && pts === cfg.points_exact
+            const isExact = cfg.points_exact > cfg.points_winner && pts === cfg.points_exact
             grouped.set(p.user_id, {
               total_points: cur.total_points + (pts as number) + (penPts as number),
               exact_hits: cur.exact_hits + (isExact ? 1 : 0),
@@ -227,7 +255,12 @@ function buildFakeDb(
     batch(statements: FakeStatement[]): Promise<void>
     _updatedMatches: Record<string, Partial<FakeMatch>>
     _updatedPredictions: Record<string, Partial<FakePrediction>>
-    _leaderboardUpserts: Array<{ group_id: string; user_id: string; total_points: number; exact_hits: number }>
+    _leaderboardUpserts: Array<{
+      group_id: string
+      user_id: string
+      total_points: number
+      exact_hits: number
+    }>
   } = {
     prepare(sql: string) {
       const boundParams: unknown[] = []
@@ -254,15 +287,28 @@ function buildFakeDb(
         const params = (s as unknown as { _params: unknown[] })._params
         if (sql.startsWith('UPDATE predictions SET points_awarded')) {
           const [points, penaltyPoints, id] = params as [number, number, string]
-          updatedPredictions[id] = { points_awarded: points, penalty_points: penaltyPoints }
+          updatedPredictions[id] = {
+            points_awarded: points,
+            penalty_points: penaltyPoints,
+          }
         }
         if (sql.startsWith('UPDATE matches SET scored_at')) {
           const [scoredAt, id] = params as [string, string]
           updatedMatches[id] = { scored_at: scoredAt }
         }
         if (sql.includes('INSERT INTO leaderboard')) {
-          const [group_id, user_id, total_points, exact_hits] = params as [string, string, number, number]
-          leaderboardUpserts.push({ group_id, user_id, total_points, exact_hits })
+          const [group_id, user_id, total_points, exact_hits] = params as [
+            string,
+            string,
+            number,
+            number,
+          ]
+          leaderboardUpserts.push({
+            group_id,
+            user_id,
+            total_points,
+            exact_hits,
+          })
         }
       }
     },
@@ -277,7 +323,14 @@ function buildFakeDb(
 describe('scoreUnprocessedMatches', () => {
   it('skips when no finished unscored matches', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'scheduled', home_score: null, away_score: null, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'scheduled',
+        home_score: null,
+        away_score: null,
+        scored_at: null,
+      },
     ]
     const db = buildFakeDb(matches, [])
     const batchSpy = vi.spyOn(db, 'batch')
@@ -289,7 +342,14 @@ describe('scoreUnprocessedMatches', () => {
 
   it('skips already scored matches', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: '2026-06-11T22:00:00Z' },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: '2026-06-11T22:00:00Z',
+      },
     ]
     const db = buildFakeDb(matches, [])
     const batchSpy = vi.spyOn(db, 'batch')
@@ -301,10 +361,25 @@ describe('scoreUnprocessedMatches', () => {
 
   it('awards 3 points for exact score', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      },
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -316,10 +391,25 @@ describe('scoreUnprocessedMatches', () => {
 
   it('awards 1 point for correct outcome', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 3, predicted_away_score: 1, points_awarded: 0 },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 3,
+        predicted_away_score: 1,
+        points_awarded: 0,
+      },
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -330,10 +420,25 @@ describe('scoreUnprocessedMatches', () => {
 
   it('awards 0 points for wrong outcome', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 0, predicted_away_score: 1, points_awarded: 0 },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 0,
+        predicted_away_score: 1,
+        points_awarded: 0,
+      },
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -344,12 +449,43 @@ describe('scoreUnprocessedMatches', () => {
 
   it('scores multiple predictions for the same match correctly', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 1, away_score: 1, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 1,
+        away_score: 1,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0 }, // exact
-      { id: 'p2', group_id: 'g1', user_id: 'u2', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 2, points_awarded: 0 }, // correct outcome
-      { id: 'p3', group_id: 'g1', user_id: 'u3', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 }, // wrong
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 1,
+        points_awarded: 0,
+      }, // exact
+      {
+        id: 'p2',
+        group_id: 'g1',
+        user_id: 'u2',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 2,
+        points_awarded: 0,
+      }, // correct outcome
+      {
+        id: 'p3',
+        group_id: 'g1',
+        user_id: 'u3',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      }, // wrong
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -362,11 +498,34 @@ describe('scoreUnprocessedMatches', () => {
 
   it('updates the leaderboard after scoring', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 }, // exact → 3pts
-      { id: 'p2', group_id: 'g1', user_id: 'u2', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0, points_awarded: 0 }, // correct → 1pt
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      }, // exact → 3pts
+      {
+        id: 'p2',
+        group_id: 'g1',
+        user_id: 'u2',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      }, // correct → 1pt
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -383,15 +542,46 @@ describe('scoreUnprocessedMatches', () => {
 
   it('applies per-group scoring config when scoring a shared match', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
       // exact hit in a custom-scored group (5/2) → 5 points
-      { id: 'p1', group_id: 'gCustom', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
+      {
+        id: 'p1',
+        group_id: 'gCustom',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      },
       // correct outcome (wrong score) in the same group → 2 points
-      { id: 'p2', group_id: 'gCustom', user_id: 'u2', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0, points_awarded: 0 },
+      {
+        id: 'p2',
+        group_id: 'gCustom',
+        user_id: 'u2',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      },
       // exact hit in a default group (3/1) → 3 points
-      { id: 'p3', group_id: 'gDefault', user_id: 'u3', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
+      {
+        id: 'p3',
+        group_id: 'gDefault',
+        user_id: 'u3',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      },
     ]
     const db = buildFakeDb(matches, predictions, {
       gCustom: { points_exact: 5, points_winner: 2 },
@@ -410,13 +600,36 @@ describe('scoreUnprocessedMatches', () => {
 
   it('scores a 1X2 group (points_exact = 0) by winner only, with 0 exact_hits', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 1, away_score: 0, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 1,
+        away_score: 0,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
       // "Casa" pick (1,0) coincides exactly with the 1-0 result — must still score the winner value, not 0.
-      { id: 'p1', group_id: 'g1X2', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0, points_awarded: 0 },
+      {
+        id: 'p1',
+        group_id: 'g1X2',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      },
       // "Fora" pick (0,1) — wrong outcome → 0.
-      { id: 'p2', group_id: 'g1X2', user_id: 'u2', match_id: 'm1', predicted_home_score: 0, predicted_away_score: 1, points_awarded: 0 },
+      {
+        id: 'p2',
+        group_id: 'g1X2',
+        user_id: 'u2',
+        match_id: 'm1',
+        predicted_home_score: 0,
+        predicted_away_score: 1,
+        points_awarded: 0,
+      },
     ]
     const db = buildFakeDb(matches, predictions, {
       g1X2: { points_exact: 0, points_winner: 1 },
@@ -434,11 +647,26 @@ describe('scoreUnprocessedMatches', () => {
 
   it('reports 0 exact_hits when points_exact equals points_winner (indistinguishable)', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
       // exact hit in a "só vencedor" group (1/1) → 1 point, but not counted as exact
-      { id: 'p1', group_id: 'gWinner', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
+      {
+        id: 'p1',
+        group_id: 'gWinner',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      },
     ]
     const db = buildFakeDb(matches, predictions, {
       gWinner: { points_exact: 1, points_winner: 1 },
@@ -454,12 +682,42 @@ describe('scoreUnprocessedMatches', () => {
 
   it('only scores matches from the requested competition', async () => {
     const matches: FakeMatch[] = [
-      { id: 'm1', competition_id: 'c1', status: 'finished', home_score: 2, away_score: 0, scored_at: null },
-      { id: 'm2', competition_id: 'c2', status: 'finished', home_score: 1, away_score: 1, scored_at: null },
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 0,
+        scored_at: null,
+      },
+      {
+        id: 'm2',
+        competition_id: 'c2',
+        status: 'finished',
+        home_score: 1,
+        away_score: 1,
+        scored_at: null,
+      },
     ]
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 0, points_awarded: 0 },
-      { id: 'p2', group_id: 'g2', user_id: 'u1', match_id: 'm2', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0 },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        points_awarded: 0,
+      },
+      {
+        id: 'p2',
+        group_id: 'g2',
+        user_id: 'u1',
+        match_id: 'm2',
+        predicted_home_score: 1,
+        predicted_away_score: 1,
+        points_awarded: 0,
+      },
     ]
     const db = buildFakeDb(matches, predictions)
 
@@ -487,7 +745,16 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
   it('eligible draw + correct shootout winner → base + points_penalty', async () => {
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'home' },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 1,
+        points_awarded: 0,
+        predicted_penalty_winner: 'home',
+      },
     ]
     const db = buildFakeDb([shootout('home')], predictions, {}, eligible)
 
@@ -500,7 +767,16 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
   it('eligible draw + wrong shootout winner → base only, no bonus', async () => {
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'away' },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 1,
+        points_awarded: 0,
+        predicted_penalty_winner: 'away',
+      },
     ]
     const db = buildFakeDb([shootout('home')], predictions, {}, eligible)
 
@@ -513,7 +789,16 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
   it('partial draw (1-1 vs 2-2) + correct winner → winner base + bonus, no exact required', async () => {
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 2, predicted_away_score: 2, points_awarded: 0, predicted_penalty_winner: 'home' },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 2,
+        predicted_away_score: 2,
+        points_awarded: 0,
+        predicted_penalty_winner: 'home',
+      },
     ]
     const db = buildFakeDb([shootout('home')], predictions, {}, eligible)
 
@@ -525,7 +810,16 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
   it('phase not in penalty_phases → no bonus even with a shootout winner', async () => {
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'g1', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'home' },
+      {
+        id: 'p1',
+        group_id: 'g1',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 1,
+        points_awarded: 0,
+        predicted_penalty_winner: 'home',
+      },
     ]
     // Gate lists only QUARTER_FINALS; the match is a FINAL → not eligible.
     const db = buildFakeDb([shootout('home')], predictions, {}, { c1: ['QUARTER_FINALS'] })
@@ -537,9 +831,23 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
 
   it('points_penalty = 0 disables the bonus even on a correct call', async () => {
     const predictions: FakePrediction[] = [
-      { id: 'p1', group_id: 'gNoPen', user_id: 'u1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, points_awarded: 0, predicted_penalty_winner: 'home' },
+      {
+        id: 'p1',
+        group_id: 'gNoPen',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 1,
+        points_awarded: 0,
+        predicted_penalty_winner: 'home',
+      },
     ]
-    const db = buildFakeDb([shootout('home')], predictions, { gNoPen: { points_exact: 3, points_winner: 1, points_penalty: 0 } }, eligible)
+    const db = buildFakeDb(
+      [shootout('home')],
+      predictions,
+      { gNoPen: { points_exact: 3, points_winner: 1, points_penalty: 0 } },
+      eligible,
+    )
 
     await scoreUnprocessedMatches('c1', db as unknown as D1Database)
 
@@ -549,9 +857,23 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
   it('1X2 mode (points_exact = 0): bonus still applies on a correct draw pick', async () => {
     const predictions: FakePrediction[] = [
       // "Empate" pick is stored as (0,0); the real canonical score was 1-1.
-      { id: 'p1', group_id: 'g1X2', user_id: 'u1', match_id: 'm1', predicted_home_score: 0, predicted_away_score: 0, points_awarded: 0, predicted_penalty_winner: 'home' },
+      {
+        id: 'p1',
+        group_id: 'g1X2',
+        user_id: 'u1',
+        match_id: 'm1',
+        predicted_home_score: 0,
+        predicted_away_score: 0,
+        points_awarded: 0,
+        predicted_penalty_winner: 'home',
+      },
     ]
-    const db = buildFakeDb([shootout('home')], predictions, { g1X2: { points_exact: 0, points_winner: 1 } }, eligible)
+    const db = buildFakeDb(
+      [shootout('home')],
+      predictions,
+      { g1X2: { points_exact: 0, points_winner: 1 } },
+      eligible,
+    )
 
     await scoreUnprocessedMatches('c1', db as unknown as D1Database)
 

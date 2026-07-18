@@ -93,7 +93,10 @@ router.get('/', requireAuth, async (c) => {
   query += ` ORDER BY m.start_time ASC`
 
   const queryStartedAt = Date.now()
-  const result = await db.prepare(query).bind(...params).all()
+  const result = await db
+    .prepare(query)
+    .bind(...params)
+    .all()
   const queryMs = Date.now() - queryStartedAt
 
   logRequestPerf('GET /predictions', {
@@ -233,7 +236,10 @@ router.get('/user', requireAuth, async (c) => {
     extra: { group_id: groupId, target_user_id: targetUserId },
   })
 
-  return c.json({ predictions: predictionsWithLabel, default_round: defaultRound })
+  return c.json({
+    predictions: predictionsWithLabel,
+    default_round: defaultRound,
+  })
 })
 
 /**
@@ -422,11 +428,24 @@ router.put('/', requireAuth, async (c) => {
   if (!parsed.ok) return parsed.response
   const body = parsed.body
 
-  const { group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner } = body
+  const {
+    group_id,
+    match_id,
+    predicted_home_score,
+    predicted_away_score,
+    predicted_penalty_winner,
+  } = body
 
-  if (!group_id || !match_id || predicted_home_score === undefined || predicted_away_score === undefined) {
+  if (
+    !group_id ||
+    !match_id ||
+    predicted_home_score === undefined ||
+    predicted_away_score === undefined
+  ) {
     return c.json(
-      { error: 'group_id, match_id, predicted_home_score e predicted_away_score são obrigatórios' },
+      {
+        error: 'group_id, match_id, predicted_home_score e predicted_away_score são obrigatórios',
+      },
       400,
     )
   }
@@ -460,7 +479,13 @@ router.put('/', requireAuth, async (c) => {
        WHERE m.id = ? AND g.id = ?`,
     )
     .bind(match_id, group_id)
-    .first<{ id: string; start_time: string; round: string; phase: string | null; penalty_phases: string }>()
+    .first<{
+      id: string
+      start_time: string
+      round: string
+      phase: string | null
+      penalty_phases: string
+    }>()
 
   if (!match) {
     return c.json({ error: 'Jogo não encontrado nesta competição' }, 404)
@@ -481,7 +506,10 @@ router.put('/', requireAuth, async (c) => {
   if (isDraw && eligible) {
     if (predicted_penalty_winner !== 'home' && predicted_penalty_winner !== 'away') {
       return c.json(
-        { error: 'predicted_penalty_winner é obrigatório (home ou away) num palpite de empate decidido nos pênaltis' },
+        {
+          error:
+            'predicted_penalty_winner é obrigatório (home ou away) num palpite de empate decidido nos pênaltis',
+        },
         400,
       )
     }
@@ -576,7 +604,9 @@ async function handleBulkPut(c: Context<AppContext>) {
       (p.predicted_away_score as number) < 0
     ) {
       return c.json(
-        { error: 'Cada palpite precisa de match_id e placares inteiros não-negativos' },
+        {
+          error: 'Cada palpite precisa de match_id e placares inteiros não-negativos',
+        },
         400,
       )
     }
@@ -592,7 +622,10 @@ async function handleBulkPut(c: Context<AppContext>) {
   }
 
   // Dedupe by match_id (last value wins) so the IN-clause and batch stay 1:1
-  const byMatch = new Map<string, { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }>()
+  const byMatch = new Map<
+    string,
+    { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }
+  >()
   for (const p of predictions) {
     byMatch.set(p.match_id as string, {
       home: p.predicted_home_score as number,
@@ -614,7 +647,12 @@ async function handleBulkPut(c: Context<AppContext>) {
        WHERE g.id = ? AND m.id IN (${placeholders})`,
     )
     .bind(group_id, ...matchIds)
-    .all<{ id: string; start_time: string; phase: string | null; penalty_phases: string }>()
+    .all<{
+      id: string
+      start_time: string
+      phase: string | null
+      penalty_phases: string
+    }>()
 
   const matchInfo = new Map(matchRows.results.map((m) => [m.id, m]))
   const now = new Date().toISOString()
@@ -673,7 +711,8 @@ async function handleBulkPut(c: Context<AppContext>) {
   if (invalidPenalty.length > 0) {
     return c.json(
       {
-        error: 'predicted_penalty_winner é obrigatório (home ou away) para palpites de empate decididos nos pênaltis',
+        error:
+          'predicted_penalty_winner é obrigatório (home ou away) para palpites de empate decididos nos pênaltis',
         invalid_penalty: invalidPenalty,
       },
       400,
@@ -725,17 +764,11 @@ async function handleImportPost(c: Context<AppContext>) {
   const { source_group_id, target_group_id } = body
 
   if (!source_group_id || !target_group_id) {
-    return c.json(
-      { error: 'source_group_id e target_group_id são obrigatórios' },
-      400,
-    )
+    return c.json({ error: 'source_group_id e target_group_id são obrigatórios' }, 400)
   }
 
   if (source_group_id === target_group_id) {
-    return c.json(
-      { error: 'source_group_id e target_group_id devem ser diferentes' },
-      400,
-    )
+    return c.json({ error: 'source_group_id e target_group_id devem ser diferentes' }, 400)
   }
 
   const db = c.env.DB
@@ -774,10 +807,7 @@ async function handleImportPost(c: Context<AppContext>) {
   }
 
   if (sourceGroup.competition_id !== targetGroup.competition_id) {
-    return c.json(
-      { error: 'Os grupos pertencem a campeonatos diferentes' },
-      422,
-    )
+    return c.json({ error: 'Os grupos pertencem a campeonatos diferentes' }, 422)
   }
 
   const now = new Date().toISOString()
@@ -802,9 +832,7 @@ async function handleImportPost(c: Context<AppContext>) {
 
   // Count total source predictions to report how many were locked-skipped
   const totalCount = await db
-    .prepare(
-      `SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`,
-    )
+    .prepare(`SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`)
     .bind(userId, source_group_id)
     .first<{ total: number }>()
 
@@ -846,7 +874,11 @@ async function handleImportPost(c: Context<AppContext>) {
     doubles: [toImport.length],
   })
 
-  return c.json({ ok: true, imported: toImport.length, locked_skipped: lockedSkipped })
+  return c.json({
+    ok: true,
+    imported: toImport.length,
+    locked_skipped: lockedSkipped,
+  })
 }
 
 router.post('/import', requireAuth, handleImportPost)

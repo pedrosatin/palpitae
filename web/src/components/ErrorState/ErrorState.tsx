@@ -23,10 +23,7 @@ export default function ErrorState({
   className,
 }: ErrorStateProps) {
   return (
-    <div
-      role="alert"
-      className={className ? `${styles.error} ${className}` : styles.error}
-    >
+    <div role="alert" className={className ? `${styles.error} ${className}` : styles.error}>
       {children ?? message}
     </div>
   )
