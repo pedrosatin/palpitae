@@ -50,7 +50,11 @@ export type EventDims = {
  * ao request. Sem binding (dev local / testes) vira no-op, então é seguro chamar de
  * qualquer lugar sem guardar o binding.
  */
-export function logEvent(ae: AnalyticsEngineDataset | undefined, type: EventType, dims: EventDims = {}): void {
+export function logEvent(
+  ae: AnalyticsEngineDataset | undefined,
+  type: EventType,
+  dims: EventDims = {},
+): void {
   if (!ae) return
   ae.writeDataPoint({
     indexes: [type],

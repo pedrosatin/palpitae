@@ -56,11 +56,13 @@ export default function RoundHeader({
               </optgroup>
             )}
             <optgroup label="Mata-mata">
-              {roundKeys.filter((r) => !isGroupStageRound(r)).map((r) => (
-                <option key={r} value={r}>
-                  {labelFor(r)}
-                </option>
-              ))}
+              {roundKeys
+                .filter((r) => !isGroupStageRound(r))
+                .map((r) => (
+                  <option key={r} value={r}>
+                    {labelFor(r)}
+                  </option>
+                ))}
             </optgroup>
           </>
         ) : (

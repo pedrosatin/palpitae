@@ -54,9 +54,7 @@ export function GroupHeader({
   return (
     <div className={styles.groupHeader}>
       <div className={styles.groupMeta}>
-        <span className={styles.competition}>
-          {group.competition_name ?? group.competition_id}
-        </span>
+        <span className={styles.competition}>{group.competition_name ?? group.competition_id}</span>
         <div className={styles.groupNameRow}>
           <h1 className={styles.groupName}>{group.name}</h1>
           <div className={styles.menuWrap} ref={menuRef}>
