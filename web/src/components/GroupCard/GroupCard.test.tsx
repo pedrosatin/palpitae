@@ -35,9 +35,7 @@ describe('GroupCard', () => {
   })
 
   it('shows Admin badge when currentUser is the admin', () => {
-    render(
-      <GroupCard group={{ ...baseGroup, is_admin: true }} onClick={onClick} />,
-    )
+    render(<GroupCard group={{ ...baseGroup, is_admin: true }} onClick={onClick} />)
     expect(screen.getByText('Admin')).toBeInTheDocument()
   })
 

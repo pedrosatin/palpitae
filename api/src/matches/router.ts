@@ -109,7 +109,9 @@ async function runSyncIfNeeded(
     // football_api_error é só pra falha da API externa — não para erros de D1/
     // scoring (esses caem no catch externo, sem virar "erro de API").
     const message = err instanceof Error ? err.message : 'Erro desconhecido'
-    logEvent(ae, 'football_api_error', { blobs: ['matches_background', message] })
+    logEvent(ae, 'football_api_error', {
+      blobs: ['matches_background', message],
+    })
     console.error('Background result sync (API Football) falhou:', err)
     return false // não pontua se o sync falhou
   }
@@ -261,7 +263,10 @@ async function handleGetMatches(c: Context<AppContext>) {
     let defaultRound: string | null = null
 
     if (hasFilters) {
-      result = await db.prepare(query).bind(...(params as string[])).all<{ status: string }>()
+      result = await db
+        .prepare(query)
+        .bind(...(params as string[]))
+        .all<{ status: string }>()
     } else {
       const nowIso = new Date().toISOString()
       // One D1 round-trip for the full list plus the two queries that pick the
@@ -425,12 +430,20 @@ router.post('/sync', requireAuth, async (c) => {
   }
 
   try {
-    const result = await syncFixtures({ competitionCode: competition, season, matchday, apiKey, db: c.env.DB })
+    const result = await syncFixtures({
+      competitionCode: competition,
+      season,
+      matchday,
+      apiKey,
+      db: c.env.DB,
+    })
     await scoreUnprocessedMatches(result.competitionId, c.env.DB)
     return c.json({ ok: true, synced: result })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido'
-    logEvent(c.env.AE, 'football_api_error', { blobs: ['sync_endpoint', message] })
+    logEvent(c.env.AE, 'football_api_error', {
+      blobs: ['sync_endpoint', message],
+    })
     console.error('Erro no sync:', error)
     return c.json({ error: `Erro ao sincronizar: ${message}` }, 500)
   }

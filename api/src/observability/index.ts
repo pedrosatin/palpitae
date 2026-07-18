@@ -19,7 +19,7 @@ export function logRequestPerf(route: string, metrics: RequestPerfMetrics) {
     total_ms: roundMs(metrics.totalMs),
     ...(metrics.dbMs !== undefined ? { db_ms: roundMs(metrics.dbMs) } : {}),
     ...(metrics.rows !== undefined ? { rows: metrics.rows } : {}),
-    ...(metrics.extra ?? {}),
+    ...metrics.extra,
   }
 
   console.info('[perf]', JSON.stringify(payload))

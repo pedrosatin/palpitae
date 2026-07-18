@@ -34,7 +34,7 @@ function createMatchesDbMock(
   function resultsFor(sql: string): { results: unknown[] } {
     if (sql.includes('FROM matches m')) {
       if (sql.includes('JOIN competitions') && sql.includes('SELECT m.id, m.home_score')) {
-         // This is from scoring logic we shouldn't increment router main query
+        // This is from scoring logic we shouldn't increment router main query
       } else {
         if (counter) counter.mainQueries++
       }
@@ -67,7 +67,7 @@ function createMatchesDbMock(
               }
 
               if (sql.includes('COUNT(*) AS count')) {
-                if (sql.includes('status = \'finished\'') && sql.includes('scored_at IS NULL')) {
+                if (sql.includes("status = 'finished'") && sql.includes('scored_at IS NULL')) {
                   const compId = params[0] as string
                   const count = matchRows.filter(
                     (m: any) =>
@@ -113,7 +113,11 @@ describe('matches router – GET /', () => {
 
     const response = await app.fetch(
       new Request('http://localhost/matches?competition_id=comp-1'),
-      fakeEnv(createMatchesDbMock([{ status: 'scheduled' }], undefined, { active: '3' })),
+      fakeEnv(
+        createMatchesDbMock([{ status: 'scheduled' }], undefined, {
+          active: '3',
+        }),
+      ),
       { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
     )
 
@@ -143,7 +147,7 @@ describe('matches router – GET /', () => {
       { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
     )
 
-    const body = await response.json() as Record<string, unknown>
+    const body = (await response.json()) as Record<string, unknown>
     expect(body).not.toHaveProperty('default_round')
   })
 
@@ -152,8 +156,16 @@ describe('matches router – GET /', () => {
     app.route('/matches', matchesRouter)
 
     const rows = [
-      { status: 'scheduled', phase: 'FINAL', penalty_phases: '["LAST_16","FINAL"]' },
-      { status: 'scheduled', phase: 'GROUP_STAGE', penalty_phases: '["LAST_16","FINAL"]' },
+      {
+        status: 'scheduled',
+        phase: 'FINAL',
+        penalty_phases: '["LAST_16","FINAL"]',
+      },
+      {
+        status: 'scheduled',
+        phase: 'GROUP_STAGE',
+        penalty_phases: '["LAST_16","FINAL"]',
+      },
     ] as unknown as { status: string }[]
 
     const response = await app.fetch(
@@ -162,7 +174,9 @@ describe('matches router – GET /', () => {
       { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
     )
 
-    const body = (await response.json()) as { matches: Array<Record<string, unknown>> }
+    const body = (await response.json()) as {
+      matches: Array<Record<string, unknown>>
+    }
     expect(body.matches[0].decides_on_penalties).toBe(true) // FINAL ∈ gate
     expect(body.matches[1].decides_on_penalties).toBe(false) // GROUP_STAGE ∉ gate
     expect(body.matches[0]).not.toHaveProperty('penalty_phases') // raw gate stripped
@@ -180,7 +194,10 @@ describe('matches router – GET /', () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({ matches: [], default_round: null })
+    await expect(response.json()).resolves.toEqual({
+      matches: [],
+      default_round: null,
+    })
     expect(waitUntil).toHaveBeenCalledTimes(1)
     expect(syncFixturesSpy).toHaveBeenCalledTimes(1)
   })
@@ -282,7 +299,10 @@ describe('matches router – GET /', () => {
 
       const req = new Request('http://localhost/matches/sync', {
         method: 'POST',
-        headers: { Cookie: `session=${token}`, 'Content-Type': 'application/json' },
+        headers: {
+          Cookie: `session=${token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ competition: 'WC', season: 2026 }),
       })
 
@@ -307,7 +327,10 @@ describe('matches router – GET /', () => {
 
       const req = new Request('http://localhost/matches/sync', {
         method: 'POST',
-        headers: { Cookie: `session=${token}`, 'Content-Type': 'application/json' },
+        headers: {
+          Cookie: `session=${token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ competition: 'WC', season: 2026 }),
       })
 

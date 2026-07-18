@@ -40,7 +40,7 @@ describe('useDocumentTitle', () => {
       ({ title }: { title: string | null | undefined }) => useDocumentTitle(title),
       {
         initialProps: { title: 'First Page' as string | null | undefined },
-      }
+      },
     )
 
     expect(document.title).toBe('First Page | Palpitae')

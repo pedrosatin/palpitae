@@ -109,9 +109,6 @@ export function initGa(): void {
 }
 
 /** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */
-export function trackEvent(
-  name: string,
-  params?: Record<string, string | number | boolean>,
-): void {
+export function trackEvent(name: string, params?: Record<string, string | number | boolean>): void {
   window.gtag?.('event', name, params)
 }

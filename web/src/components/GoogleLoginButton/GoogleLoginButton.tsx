@@ -16,9 +16,7 @@ export default function GoogleLoginButton() {
   function handleClick() {
     trackEvent('click_login_google')
     const redirect =
-      window.location.search || window.location.pathname !== '/'
-        ? window.location.search
-        : ''
+      window.location.search || window.location.pathname !== '/' ? window.location.search : ''
     const url = new URL(`${config.authUrl}/auth/google`)
     if (redirect) url.searchParams.set('redirect', redirect)
     window.location.href = url.toString()
