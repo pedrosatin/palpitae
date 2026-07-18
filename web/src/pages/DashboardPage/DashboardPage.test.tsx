@@ -57,9 +57,7 @@ describe('DashboardPage', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1)
     })
 
-    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
-      '/api/groups?invite_code=INV123',
-    )
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe('/api/groups?invite_code=INV123')
   })
 
   it('does not open the join modal from convite query when the user already belongs to that group', async () => {
@@ -133,9 +131,7 @@ describe('DashboardPage', () => {
       expect(screen.getByText('Nenhum grupo ainda')).toBeInTheDocument()
     })
 
-    await userEvent.click(
-      screen.getAllByRole('button', { name: 'Criar grupo' })[0],
-    )
+    await userEvent.click(screen.getAllByRole('button', { name: 'Criar grupo' })[0])
 
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
@@ -143,9 +139,7 @@ describe('DashboardPage', () => {
 
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
     const dialog = screen.getByRole('dialog')
-    await userEvent.click(
-      within(dialog).getByRole('button', { name: 'Criar grupo' }),
-    )
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Criar grupo' }))
 
     // Modal fica aberto na tela de sucesso (código de convite compartilhável).
     await waitFor(() => {
@@ -195,7 +189,11 @@ describe('DashboardPage – analytics', () => {
       </MemoryRouter>,
     )
     await waitFor(() => screen.getByText('Nenhum grupo ainda'))
-    await userEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Criar grupo' }))
+    await userEvent.click(
+      within(screen.getByRole('main')).getByRole('button', {
+        name: 'Criar grupo',
+      }),
+    )
     expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_criar_grupo_empty')
   })
 
@@ -226,6 +224,8 @@ describe('DashboardPage – analytics', () => {
     )
     await waitFor(() => screen.getByText('Os Craques'))
     await userEvent.click(screen.getByText('Os Craques'))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_grupo', { group_id: 'g1' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_grupo', {
+      group_id: 'g1',
+    })
   })
 })

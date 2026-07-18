@@ -15,7 +15,13 @@ interface GroupMockOptions {
 }
 
 function createGroupPicksDbMock(opts: GroupMockOptions = {}) {
-  const { isMember = true, members = [], predictions = [], visibility = 'hidden', capturedSql } = opts
+  const {
+    isMember = true,
+    members = [],
+    predictions = [],
+    visibility = 'hidden',
+    capturedSql,
+  } = opts
 
   const db = {
     prepare(sql: string) {
@@ -168,7 +174,10 @@ describe('predictions router – PUT /bulk', () => {
   })
 
   it('rejects an empty predictions list', async () => {
-    const res = await requestBulk(createBulkDbMock(), { group_id: 'g1', predictions: [] })
+    const res = await requestBulk(createBulkDbMock(), {
+      group_id: 'g1',
+      predictions: [],
+    })
     expect(res.status).toBe(400)
   })
 
@@ -239,7 +248,12 @@ describe('predictions router – PUT /bulk', () => {
     const res = await requestBulk(db, {
       group_id: 'g1',
       predictions: [
-        { match_id: 'm1', predicted_home_score: 1, predicted_away_score: 1, predicted_penalty_winner: 'away' },
+        {
+          match_id: 'm1',
+          predicted_home_score: 1,
+          predicted_away_score: 1,
+          predicted_penalty_winner: 'away',
+        },
       ],
     })
 
@@ -274,10 +288,7 @@ describe('predictions router – GET /group', () => {
   })
 
   it('denies access to non-members', async () => {
-    const res = await requestGroupPicks(
-      createGroupPicksDbMock({ isMember: false }),
-      '?group_id=g1',
-    )
+    const res = await requestGroupPicks(createGroupPicksDbMock({ isMember: false }), '?group_id=g1')
     expect(res.status).toBe(403)
   })
 
@@ -374,7 +385,11 @@ describe('predictions router – GET /group', () => {
     ]
 
     const res = await requestGroupPicks(
-      createGroupPicksDbMock({ predictions, visibility: 'public', capturedSql }),
+      createGroupPicksDbMock({
+        predictions,
+        visibility: 'public',
+        capturedSql,
+      }),
       '?group_id=g1',
     )
 
@@ -387,7 +402,8 @@ describe('predictions router – GET /group', () => {
 
     const predSql = capturedSql.find((s) => s.includes('FROM predictions pr'))
     expect(predSql).toBeDefined()
-    expect(predSql).not.toContain('SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?')
+    expect(predSql).not.toContain(
+      'SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?',
+    )
   })
 })
-

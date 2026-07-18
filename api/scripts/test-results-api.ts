@@ -44,7 +44,9 @@ async function fetchMatches(params: Record<string, string> = {}) {
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
 
   console.log(`\n→ GET ${url.toString()}`)
-  const res = await fetch(url.toString(), { headers: { 'X-Auth-Token': API_KEY } })
+  const res = await fetch(url.toString(), {
+    headers: { 'X-Auth-Token': API_KEY },
+  })
   console.log(`← HTTP ${res.status} ${res.statusText}`)
 
   const text = await res.text()
@@ -83,12 +85,16 @@ function summarizeMatches(data: unknown) {
     for (const m of finished.slice(0, 5)) {
       const match = m as Record<string, unknown>
       const score = (match.score as Record<string, unknown>)?.fullTime as Record<string, unknown>
-      const home = (match.homeTeam as Record<string, unknown>)?.shortName ?? (match.homeTeam as Record<string, unknown>)?.tla
-      const away = (match.awayTeam as Record<string, unknown>)?.shortName ?? (match.awayTeam as Record<string, unknown>)?.tla
+      const home =
+        (match.homeTeam as Record<string, unknown>)?.shortName ??
+        (match.homeTeam as Record<string, unknown>)?.tla
+      const away =
+        (match.awayTeam as Record<string, unknown>)?.shortName ??
+        (match.awayTeam as Record<string, unknown>)?.tla
       console.log(
         `  [${match.id}] ${home} ${score?.home ?? '?'} x ${score?.away ?? '?'} ${away}` +
-        `  | stage: ${match.stage} | matchday: ${match.matchday}` +
-        `  | date: ${match.utcDate}`,
+          `  | stage: ${match.stage} | matchday: ${match.matchday}` +
+          `  | date: ${match.utcDate}`,
       )
     }
     if (finished.length > 5) console.log(`  ... e mais ${finished.length - 5}`)

@@ -28,17 +28,13 @@ describe('buildApiUrl', () => {
     it('handles search params', () => {
       ;(config as any).apiUrl = 'https://api.example.com'
       const params = new URLSearchParams({ page: '1', limit: '10' })
-      expect(buildApiUrl('users', params)).toBe(
-        'https://api.example.com/users?page=1&limit=10',
-      )
+      expect(buildApiUrl('users', params)).toBe('https://api.example.com/users?page=1&limit=10')
     })
 
     it('handles empty search params', () => {
       ;(config as any).apiUrl = 'https://api.example.com'
       const params = new URLSearchParams()
-      expect(buildApiUrl('users', params)).toBe(
-        'https://api.example.com/users',
-      )
+      expect(buildApiUrl('users', params)).toBe('https://api.example.com/users')
     })
   })
 
@@ -71,17 +67,13 @@ describe('buildApiUrl', () => {
     it('handles search params', () => {
       ;(config as any).apiUrl = '/api/v1'
       const params = new URLSearchParams({ q: 'search query', sort: 'desc' })
-      expect(buildApiUrl('users', params)).toBe(
-        '/api/v1/users?q=search+query&sort=desc',
-      )
+      expect(buildApiUrl('users', params)).toBe('/api/v1/users?q=search+query&sort=desc')
     })
 
     it('handles empty search params', () => {
       ;(config as any).apiUrl = '/api/v1'
       const params = new URLSearchParams()
-      expect(buildApiUrl('users', params)).toBe(
-        '/api/v1/users',
-      )
+      expect(buildApiUrl('users', params)).toBe('/api/v1/users')
     })
   })
 })

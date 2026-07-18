@@ -10,8 +10,8 @@ const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
     away_score: 1,
     penalty_winner: null,
     phase: null,
-    penalty_phases: 'FINAL'
-  }));
+    penalty_phases: 'FINAL',
+  }))
 
   const predictions = Array.from({ length: numPredictionsPerMatch * numMatches }, (_, i) => ({
     id: `p${i}`,
@@ -23,42 +23,44 @@ const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
     predicted_penalty_winner: null,
     points_exact: 3,
     points_winner: 1,
-    points_penalty: 0
-  }));
+    points_penalty: 0,
+  }))
 
   const mockPrepare = vi.fn().mockImplementation((query: string) => {
     return {
       bind: vi.fn().mockImplementation(() => ({
         all: vi.fn().mockImplementation(async () => {
           if (query.includes('FROM matches')) {
-            return { results: matches };
+            return { results: matches }
           }
           if (query.includes('FROM predictions')) {
-            return { results: predictions };
+            return { results: predictions }
           }
           if (query.includes('FROM leaderboard')) {
-            return { results: [{ user_id: 'u1', total_points: 10, exact_hits: 2 }] };
+            return {
+              results: [{ user_id: 'u1', total_points: 10, exact_hits: 2 }],
+            }
           }
-          return { results: [] };
+          return { results: [] }
         }),
         first: vi.fn().mockImplementation(async () => {
-          return { penalty_winner: null, phase: null, penalty_phases: 'FINAL' };
+          return { penalty_winner: null, phase: null, penalty_phases: 'FINAL' }
         }),
-      }))
-    };
-  });
+      })),
+    }
+  })
 
   return {
     prepare: mockPrepare,
-    batch: vi.fn().mockResolvedValue(true)
-  } as unknown as D1Database;
-};
+    batch: vi.fn().mockResolvedValue(true),
+  } as unknown as D1Database
+}
 
 describe('scoreUnprocessedMatches N+1 issue fixed', () => {
   // Use a smaller number of matches for benchmark to prevent out-of-memory error
-  const db = createMockDb(10, 5);
+  const db = createMockDb(10, 5)
 
   bench('fixed implementation with bulk queries', async () => {
-    await scoreUnprocessedMatches('c1', db);
-  });
-});
+    await scoreUnprocessedMatches('c1', db)
+  })
+})

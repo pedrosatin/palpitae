@@ -187,7 +187,9 @@ describe('exportRecentDays', () => {
     })
     vi.stubGlobal('fetch', fetchFake)
     const put = vi.fn()
-    const env = makeEnv({ EVENTS: { head: vi.fn(async () => null), put } as unknown as R2Bucket })
+    const env = makeEnv({
+      EVENTS: { head: vi.fn(async () => null), put } as unknown as R2Bucket,
+    })
 
     await exportRecentDays(env, new Date('2026-06-30T00:00:00Z'), 3)
 

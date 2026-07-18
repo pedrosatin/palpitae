@@ -23,10 +23,7 @@ interface Member {
   exact_hits: number
 }
 
-function useMembers(
-  groupId: string,
-  onMemberRemoved?: (userId: string) => void,
-) {
+function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void) {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -57,10 +54,9 @@ function useMembers(
     if (!ok) return
     setRemoving(targetUserId)
     try {
-      const res = await apiFetch(
-        `${config.apiUrl}/groups/${groupId}/members/${targetUserId}`,
-        { method: 'DELETE' },
-      )
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/members/${targetUserId}`, {
+        method: 'DELETE',
+      })
       if (!res.ok) {
         const body = (await res.json()) as { error?: string }
         throw new Error(body.error ?? 'Erro ao remover membro')
@@ -84,12 +80,7 @@ interface MemberItemProps {
   onRemove: (userId: string, displayName: string) => void
 }
 
-function MemberItem({
-  member,
-  currentUserId,
-  removing,
-  onRemove,
-}: MemberItemProps) {
+function MemberItem({ member, currentUserId, removing, onRemove }: MemberItemProps) {
   return (
     <li className={styles.item}>
       <div className={styles.identity}>
@@ -102,12 +93,8 @@ function MemberItem({
         )}
         <div className={styles.info}>
           <span className={styles.name}>{member.display_name}</span>
-          {member.role === 'owner' && (
-            <span className={styles.badge}>admin</span>
-          )}
-          {member.user_id === currentUserId && (
-            <span className={styles.badgeYou}>você</span>
-          )}
+          {member.role === 'owner' && <span className={styles.badge}>admin</span>}
+          {member.user_id === currentUserId && <span className={styles.badgeYou}>você</span>}
         </div>
       </div>
 
@@ -125,13 +112,11 @@ function MemberItem({
   )
 }
 
-export default function MembersTab({
-  groupId,
-  currentUserId,
-  onMemberRemoved,
-}: MembersTabProps) {
-  const { members, loading, error, removing, confirmDialog, removeMember } =
-    useMembers(groupId, onMemberRemoved)
+export default function MembersTab({ groupId, currentUserId, onMemberRemoved }: MembersTabProps) {
+  const { members, loading, error, removing, confirmDialog, removeMember } = useMembers(
+    groupId,
+    onMemberRemoved,
+  )
 
   if (loading) {
     return <p className={styles.loading}>Carregando membros...</p>
@@ -144,8 +129,7 @@ export default function MembersTab({
   return (
     <div className={styles.root}>
       <p className={styles.hint}>
-        {members.length} {members.length === 1 ? 'membro' : 'membros'} neste
-        grupo
+        {members.length} {members.length === 1 ? 'membro' : 'membros'} neste grupo
       </p>
       <ul className={styles.list}>
         {members.map((member) => (

@@ -1,5 +1,13 @@
 {
+  "scripts": {
+    "lint": "oxlint api web",
+    "lint:fix": "oxlint --fix api web",
+    "format": "oxfmt api web",
+    "format:check": "oxfmt --check api web"
+  },
   "devDependencies": {
-    "@types/node": "^26.0.0"
+    "@types/node": "^26.0.0",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0"
   }
 }

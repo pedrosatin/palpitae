@@ -7,16 +7,8 @@ interface CardProps {
   className?: string
 }
 
-export default function Card({
-  children,
-  hoverable = false,
-  className,
-}: CardProps) {
-  const classes = [
-    styles.card,
-    hoverable ? styles.hoverable : '',
-    className ?? '',
-  ]
+export default function Card({ children, hoverable = false, className }: CardProps) {
+  const classes = [styles.card, hoverable ? styles.hoverable : '', className ?? '']
     .filter(Boolean)
     .join(' ')
 
