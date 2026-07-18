@@ -185,6 +185,18 @@ function Footer() {
       >
         Guias de bolão
       </a>
+      <span className={styles.footerNote}>
+        Criado por{' '}
+        <a
+          href="https://github.com/pedrosatin"
+          target="_blank"
+          rel="noreferrer"
+          className={styles.footerLink}
+          onClick={() => trackEvent('click_footer_autor')}
+        >
+          @pedrosatin
+        </a>
+      </span>
     </footer>
   )
 }
