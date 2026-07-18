@@ -68,7 +68,9 @@ describe('ga', () => {
       setConsent('granted')
 
       expect(setItemMock).toHaveBeenCalledWith('palpitae:analytics-consent', 'granted')
-      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', { analytics_storage: 'granted' })
+      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', {
+        analytics_storage: 'granted',
+      })
     })
 
     it('should catch localStorage errors silently and still call gtag update', () => {
@@ -83,7 +85,9 @@ describe('ga', () => {
         'palpitae:analytics-consent',
         expect.stringMatching(/^denied:\d+$/),
       )
-      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', { analytics_storage: 'denied' })
+      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', {
+        analytics_storage: 'denied',
+      })
     })
   })
 })

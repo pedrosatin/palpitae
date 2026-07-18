@@ -23,11 +23,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
 
   return (
     <Card hoverable className={styles.card}>
-      <button
-        className={styles.cardBtn}
-        onClick={onClick}
-        aria-label={`Abrir grupo ${group.name}`}
-      >
+      <button className={styles.cardBtn} onClick={onClick} aria-label={`Abrir grupo ${group.name}`}>
         <div className={styles.header}>
           <h3 className={styles.name}>{group.name}</h3>
           <div className={styles.badges}>

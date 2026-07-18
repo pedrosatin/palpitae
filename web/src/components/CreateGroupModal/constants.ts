@@ -13,8 +13,7 @@ export const PRESET_VALUES: Record<
 }
 
 export const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
-  exact:
-    'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
+  exact: 'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
   winner:
     'Vencedor: pontos para quem acerta só o resultado — mandante, visitante ou empate — sem cravar o placar.',
 }

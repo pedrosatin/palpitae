@@ -38,7 +38,6 @@ interface GroupPicksResponse {
   predictions: MemberPrediction[]
 }
 
-
 function MatchPicksCard({
   match,
   memberPicks,
@@ -109,10 +108,7 @@ function MatchPicksCard({
                 <span className={styles.pickScore}>
                   {p.predicted_home_score} × {p.predicted_away_score}
                   {showPenaltyPick && (
-                    <PenaltyBadge
-                      team={penaltyTeam}
-                      tooltip="Vencedor previsto nos pênaltis"
-                    />
+                    <PenaltyBadge team={penaltyTeam} tooltip="Vencedor previsto nos pênaltis" />
                   )}
                 </span>
                 {isFinished && (
@@ -137,10 +133,7 @@ function MatchPicksCard({
   )
 }
 
-export default function GroupPicksTab({
-  groupId,
-  competitionId,
-}: GroupPicksTabProps) {
+export default function GroupPicksTab({ groupId, competitionId }: GroupPicksTabProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [picks, setPicks] = useState<GroupPicksResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -159,16 +152,19 @@ export default function GroupPicksTab({
             `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
           ).then((r) => {
             if (!r.ok) throw new Error('Erro ao carregar jogos')
-            return r.json() as Promise<{ matches: Match[]; default_round: string | null }>
+            return r.json() as Promise<{
+              matches: Match[]
+              default_round: string | null
+            }>
           }),
         30_000,
       ),
-      apiFetch(
-        `${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`,
-      ).then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar palpites do grupo')
-        return r.json() as Promise<GroupPicksResponse>
-      }),
+      apiFetch(`${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`).then(
+        (r) => {
+          if (!r.ok) throw new Error('Erro ao carregar palpites do grupo')
+          return r.json() as Promise<GroupPicksResponse>
+        },
+      ),
     ])
       .then(([matchesData, picksData]) => {
         setMatches(matchesData.matches)
@@ -190,11 +186,7 @@ export default function GroupPicksTab({
   }
 
   if (matches.length === 0 || !picks) {
-    return (
-      <p className={styles.empty}>
-        Nenhum jogo encontrado para esta competição.
-      </p>
-    )
+    return <p className={styles.empty}>Nenhum jogo encontrado para esta competição.</p>
   }
 
   // match_id → members' predictions (already filtered by the reveal rule on the API)
@@ -219,12 +211,16 @@ export default function GroupPicksTab({
   const labelFor = (r: string) => rounds.get(r)?.[0]?.round_label ?? r
 
   function prev() {
-    trackEvent('click_group_picks_rodada_anterior', { round: roundKeys[Math.max(0, safeIndex - 1)] })
+    trackEvent('click_group_picks_rodada_anterior', {
+      round: roundKeys[Math.max(0, safeIndex - 1)],
+    })
     setRoundIndex((i) => Math.max(0, i - 1))
   }
 
   function next() {
-    trackEvent('click_group_picks_proxima_rodada', { round: roundKeys[Math.min(roundKeys.length - 1, safeIndex + 1)] })
+    trackEvent('click_group_picks_proxima_rodada', {
+      round: roundKeys[Math.min(roundKeys.length - 1, safeIndex + 1)],
+    })
     setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
   }
 

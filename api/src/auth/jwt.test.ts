@@ -34,8 +34,17 @@ describe('verifyJwt', () => {
   it('throws for a tampered payload', async () => {
     const token = await signJwt({ sub: 'user-1', email: 'a@b.com' }, SECRET, 3600)
     const [h, , s] = token.split('.')
-    const tamperedBody = btoa(JSON.stringify({ sub: 'attacker', email: 'evil@x.com', iat: 0, exp: 9999999999 }))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+    const tamperedBody = btoa(
+      JSON.stringify({
+        sub: 'attacker',
+        email: 'evil@x.com',
+        iat: 0,
+        exp: 9999999999,
+      }),
+    )
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '')
     await expect(verifyJwt(`${h}.${tamperedBody}.${s}`, SECRET)).rejects.toThrow()
   })
 

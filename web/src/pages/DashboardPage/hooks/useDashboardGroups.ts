@@ -61,7 +61,8 @@ export function useDashboardGroups({ normalizedPendingInvite }: UseDashboardGrou
   )
 
   useEffect(() => {
-    const needsRefresh = (location.state as { refreshGroups?: boolean } | null)?.refreshGroups === true
+    const needsRefresh =
+      (location.state as { refreshGroups?: boolean } | null)?.refreshGroups === true
     fetchGroups(needsRefresh)
   }, [fetchGroups, location.state])
 

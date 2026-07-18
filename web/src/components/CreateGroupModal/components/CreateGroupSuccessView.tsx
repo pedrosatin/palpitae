@@ -15,10 +15,7 @@ interface CreateGroupSuccessViewProps {
   onClose: () => void
 }
 
-export default function CreateGroupSuccessView({
-  created,
-  onClose,
-}: CreateGroupSuccessViewProps) {
+export default function CreateGroupSuccessView({ created, onClose }: CreateGroupSuccessViewProps) {
   const [copied, setCopied] = useState(false)
 
   function getShareLink(invite_code: string) {
@@ -44,39 +41,23 @@ export default function CreateGroupSuccessView({
       <div className={shared.successIcon}>🎉</div>
       <h3 className={shared.successTitle}>Grupo criado!</h3>
       <p className={shared.successName}>{created.name}</p>
-      <p className={styles.inviteLabel}>
-        Compartilhe o código com seus amigos:
-      </p>
+      <p className={styles.inviteLabel}>Compartilhe o código com seus amigos:</p>
 
       <div className={styles.codeBox}>
         <span className={styles.code}>{created.invite_code}</span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleCopyCode(created.invite_code)}
-        >
+        <Button variant="outline" size="sm" onClick={() => handleCopyCode(created.invite_code)}>
           {copied ? 'Copiado!' : 'Copiar'}
         </Button>
       </div>
 
       <div className={styles.linkRow}>
-        <span className={shared.linkText}>
-          {getShareLink(created.invite_code)}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => handleCopyLink(created.invite_code)}
-        >
+        <span className={shared.linkText}>{getShareLink(created.invite_code)}</span>
+        <Button variant="outline" size="sm" onClick={() => handleCopyLink(created.invite_code)}>
           {copied ? 'Copiado!' : 'Copiar link'}
         </Button>
       </div>
 
-      <Button
-        variant="primary"
-        className={styles.doneBtn}
-        onClick={onClose}
-      >
+      <Button variant="primary" className={styles.doneBtn} onClick={onClose}>
         Pronto
       </Button>
     </div>

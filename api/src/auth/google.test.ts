@@ -75,12 +75,20 @@ describe('upsertUser', () => {
           },
         }
       },
-      async batch(stmts: Array<{ bind: (...a: unknown[]) => { run: () => Promise<void> } }>) {
-        for (const stmt of stmts) inserts.push(stmt as unknown as { sql: string; bindings: unknown[] })
+      async batch(
+        stmts: Array<{
+          bind: (...a: unknown[]) => { run: () => Promise<void> }
+        }>,
+      ) {
+        for (const stmt of stmts)
+          inserts.push(stmt as unknown as { sql: string; bindings: unknown[] })
       },
       _updates: updates,
       _inserts: inserts,
-    } as unknown as D1Database & { _updates: typeof updates; _inserts: typeof inserts }
+    } as unknown as D1Database & {
+      _updates: typeof updates
+      _inserts: typeof inserts
+    }
 
     return db
   }
