@@ -96,6 +96,16 @@
   white-space: nowrap;
 }
 
+.pendingBadge {
+  background-color: #f59e0b;
+  color: #000;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
 /* ─── Stats ─────────────────────────────────────────────────────────────── */
 
 .stats {

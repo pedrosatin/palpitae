@@ -70,7 +70,20 @@ async function handleGetGroups(c: Context<AppContext>) {
                 AND l2.total_points > COALESCE(l.total_points, 0)
             ),
             1
-          ) AS user_position
+          ) AS user_position,
+          (
+            SELECT COUNT(*)
+            FROM matches m
+            WHERE m.competition_id = g.competition_id
+              AND m.status = 'scheduled'
+              AND m.start_time > datetime('now')
+              AND NOT EXISTS (
+                SELECT 1 FROM predictions p
+                WHERE p.match_id = m.id
+                  AND p.group_id = g.id
+                  AND p.user_id = ?
+              )
+          ) AS pending_predictions
         FROM groups g
         INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
         LEFT JOIN competitions c ON g.competition_id = c.id
@@ -80,8 +93,8 @@ async function handleGetGroups(c: Context<AppContext>) {
         ORDER BY g.created_at DESC
         `,
       )
-      .bind(userId, userId)
-      .all<GroupRow & { user_position: number; user_points: number }>()
+      .bind(userId, userId, userId)
+      .all<GroupRow & { user_position: number; user_points: number; pending_predictions: number }>()
 
     const matchedInviteGroup = inviteCode
       ? (groups.results.find((group) => group.invite_code === inviteCode) ?? null)
@@ -100,6 +113,7 @@ async function handleGetGroups(c: Context<AppContext>) {
         member_count: group.member_count,
         user_position: group.user_position,
         user_points: group.user_points,
+        pending_predictions: group.pending_predictions,
       })),
       matched_invite_group_id: matchedInviteGroup?.id ?? null,
     }

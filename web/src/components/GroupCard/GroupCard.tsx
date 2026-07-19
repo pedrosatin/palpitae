@@ -11,6 +11,7 @@ export interface GroupWithStats {
   member_count: number
   user_position: number
   user_points: number
+  pending_predictions: number
 }
 
 interface GroupCardProps {
@@ -20,6 +21,7 @@ interface GroupCardProps {
 
 export default function GroupCard({ group, onClick }: GroupCardProps) {
   const isOwner = group.is_admin
+  const hasPending = group.pending_predictions > 0
 
   return (
     <Card hoverable className={styles.card}>
@@ -27,6 +29,11 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
         <div className={styles.header}>
           <h3 className={styles.name}>{group.name}</h3>
           <div className={styles.badges}>
+            {hasPending && (
+              <span className={styles.pendingBadge}>
+                {group.pending_predictions} palpite{group.pending_predictions !== 1 ? 's' : ''} pendente{group.pending_predictions !== 1 ? 's' : ''}
+              </span>
+            )}
             {isOwner && <span className={styles.ownerBadge}>Admin</span>}
             <span
               className={styles.badgeWrapper}
