@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
@@ -7,6 +7,8 @@ import { applyDefaultRound } from '../../lib/rounds'
 import type { Match, Prediction } from '../MatchCard'
 
 type PredictionMap = Map<string, Prediction>
+
+const SAVED_FEEDBACK_DURATION_MS = 2500
 
 export function usePredictionsTab(groupId: string, competitionId: string) {
   const [matches, setMatches] = useState<Match[]>([])
@@ -21,6 +23,14 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  const savedAllTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function clearSavedAllTimer() {
+    if (savedAllTimerRef.current) {
+      clearTimeout(savedAllTimerRef.current)
+      savedAllTimerRef.current = null
+    }
+  }
 
   const [otherGroups, setOtherGroups] = useState<{ id: string; name: string }[]>([])
   const [importSourceId, setImportSourceId] = useState<string>('')
@@ -152,6 +162,17 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
   const selectedRound = roundKeys[safeIndex]
   const roundMatches = rounds.get(selectedRound) ?? []
 
+  // Cancel the savedAll feedback timer and reset savedAll when the round changes.
+  useEffect(() => {
+    clearSavedAllTimer()
+    setSavedAll(false)
+  }, [selectedRound])
+
+  // Clean up the savedAll timer on unmount.
+  useEffect(() => {
+    return () => clearSavedAllTimer()
+  }, [])
+
   function prev() {
     trackEvent('click_predictions_rodada_anterior', {
       round: roundKeys[Math.max(0, safeIndex - 1)],
@@ -215,6 +236,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
       round: selectedRound,
     })
 
+    clearSavedAllTimer()
     setSavingAll(true)
     setSavedAll(false)
     setBulkError(null)
@@ -245,7 +267,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
       }
 
       setSavedAll(true)
-      setTimeout(() => setSavedAll(false), 2500)
+      savedAllTimerRef.current = setTimeout(() => setSavedAll(false), SAVED_FEEDBACK_DURATION_MS)
     } catch (e) {
       setBulkError((e as Error).message)
     } finally {
