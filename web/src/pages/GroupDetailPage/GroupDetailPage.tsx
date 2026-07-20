@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams, Navigate } from 'react-router-dom'
 import { config } from '../../config'
 import { useConfirm } from '../../components/ConfirmModal'
@@ -334,7 +334,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         {/* Tabs */}
         <div
           className={styles.tabs}
-          style={{ '--tabs-offset': `${tabsOffset}px` } as CSSProperties}
+          style={{ '--tabs-offset': `${tabsOffset}px` } as React.CSSProperties}
           data-testid="group-tabs"
         >
           <a
