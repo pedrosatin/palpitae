@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hasFeatureAccess } from '../auth/permissions'
-import { logEvent, logRequestPerf } from '../observability'
+import { logError, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 import { roundLabel } from './rounds'
@@ -108,11 +108,9 @@ async function runSyncIfNeeded(
   } catch (err) {
     // football_api_error é só pra falha da API externa — não para erros de D1/
     // scoring (esses caem no catch externo, sem virar "erro de API").
-    const message = err instanceof Error ? err.message : 'Erro desconhecido'
-    logEvent(ae, 'football_api_error', {
-      blobs: ['matches_background', message],
+    logError(ae, 'football_api_error', 'Background result sync (API Football) falhou:', err, {
+      blobs: ['matches_background'],
     })
-    console.error('Background result sync (API Football) falhou:', err)
     return false // não pontua se o sync falhou
   }
 }
@@ -440,11 +438,10 @@ router.post('/sync', requireAuth, async (c) => {
     await scoreUnprocessedMatches(result.competitionId, c.env.DB)
     return c.json({ ok: true, synced: result })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Erro desconhecido'
-    logEvent(c.env.AE, 'football_api_error', {
-      blobs: ['sync_endpoint', message],
+    const message = error instanceof Error ? error.message : String(error)
+    logError(c.env.AE, 'football_api_error', 'Erro no sync:', error, {
+      blobs: ['sync_endpoint'],
     })
-    console.error('Erro no sync:', error)
     return c.json({ error: `Erro ao sincronizar: ${message}` }, 500)
   }
 })
