@@ -144,8 +144,8 @@ function slugify(str: string): string {
  * Copa do Mundo 2026: competitionCode="WC", season=2026
  * First matchday only: matchday=1
  */
-export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
-  const { competitionCode, season, matchday, apiKey, db } = opts
+async function fetchFixtures(opts: SyncOptions): Promise<ApiMatchesResponse> {
+  const { competitionCode, season, matchday, apiKey } = opts
 
   const url = new URL(`${API_BASE}/competitions/${competitionCode}/matches`)
   url.searchParams.set('season', String(season))
@@ -160,37 +160,30 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     throw new Error(`football-data.org respondeu ${res.status}: ${text}`)
   }
 
-  const data = (await res.json()) as ApiMatchesResponse
+  return (await res.json()) as ApiMatchesResponse
+}
 
-  const { competition: apiComp, matches } = data
+function getCompetitionName(apiComp: ApiCompetition | undefined, competitionCode: string): string {
+  if (!apiComp) return competitionCode
 
   // Fuzzy lookup: a API manda "FIFA World Cup", o mapa tem a chave "World Cup".
   // includes() casa sem precisar duplicar variações da chave no mapa.
-  const translationKey = apiComp
-    ? Object.keys(COMP_TRANSLATIONS).find((key) => apiComp.name.includes(key))
-    : undefined
-  const competitionName = apiComp
-    ? translationKey
-      ? COMP_TRANSLATIONS[translationKey]
-      : apiComp.name
-    : competitionCode
+  const translationKey = Object.keys(COMP_TRANSLATIONS).find((key) => apiComp.name.includes(key))
+  return translationKey ? COMP_TRANSLATIONS[translationKey] : apiComp.name
+}
 
-  if (matches.length === 0) {
-    return {
-      competition: competitionName,
-      competitionId: '',
-      matches: 0,
-      teams: 0,
-    }
-  }
-
+async function upsertCompetition(
+  db: D1Database,
+  apiComp: ApiCompetition,
+  competitionName: string,
+  season: number,
+): Promise<{ id: string }> {
   const competitionExternalId = String(apiComp.id)
   // Slug deriva do nome CRU da API (não do traduzido) p/ ficar estável: mudar a
   // tradução de exibição não pode mudar a chave de conflito do upsert, senão um
   // re-sync criaria uma competição duplicada (slug = 'fifa-world-cup-2026' em prod).
   const competitionSlug = slugify(`${apiComp.name}-${season}`)
 
-  // Upsert competition
   await db
     .prepare(
       `INSERT INTO competitions (id, name, slug, external_id, provider, season, status)
@@ -216,15 +209,16 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     .first<{ id: string }>()
 
   if (!competition) throw new Error('Competição não encontrada após upsert')
+  return competition
+}
 
-  // Collect unique teams
+async function upsertTeams(db: D1Database, matches: ApiMatch[]): Promise<Map<number, string>> {
   const teamMap = new Map<number, ApiTeam>()
   for (const m of matches) {
     if (m.homeTeam?.id) teamMap.set(m.homeTeam.id, m.homeTeam)
     if (m.awayTeam?.id) teamMap.set(m.awayTeam.id, m.awayTeam)
   }
 
-  // Upsert teams
   const teamStatements = []
   for (const team of teamMap.values()) {
     const translated = TEAM_TRANSLATIONS[team.name]
@@ -259,7 +253,6 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     await db.batch(teamStatements)
   }
 
-  // Resolve internal team IDs
   const teamIds = new Map<number, string>()
   const extIds = Array.from(teamMap.keys())
 
@@ -276,7 +269,15 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // Upsert matches
+  return teamIds
+}
+
+async function upsertMatches(
+  db: D1Database,
+  matches: ApiMatch[],
+  competitionId: string,
+  teamIds: Map<number, string>,
+): Promise<number> {
   let matchCount = 0
   const matchStatements = []
   for (const m of matches) {
@@ -376,7 +377,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         )
         .bind(
           crypto.randomUUID(),
-          competition.id,
+          competitionId,
           String(m.id),
           PROVIDER,
           homeTeamId,
@@ -401,11 +402,41 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   if (matchStatements.length > 0) {
     await db.batch(matchStatements)
   }
+  return matchCount
+}
+
+/**
+ * Syncs fixtures from football-data.org into D1.
+ * Upserts: competition, teams, and matches.
+ *
+ * Copa do Mundo 2026: competitionCode="WC", season=2026
+ * First matchday only: matchday=1
+ */
+export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
+  const { competitionCode, season, db } = opts
+
+  const data = await fetchFixtures(opts)
+  const { competition: apiComp, matches } = data
+
+  const competitionName = getCompetitionName(apiComp, competitionCode)
+
+  if (matches.length === 0) {
+    return {
+      competition: competitionName,
+      competitionId: '',
+      matches: 0,
+      teams: 0,
+    }
+  }
+
+  const competition = await upsertCompetition(db, apiComp, competitionName, season)
+  const teamIds = await upsertTeams(db, matches)
+  const matchCount = await upsertMatches(db, matches, competition.id, teamIds)
 
   return {
     competition: competitionName,
     competitionId: competition.id,
     matches: matchCount,
-    teams: teamMap.size,
+    teams: teamIds.size,
   }
 }
