@@ -197,6 +197,83 @@ describe('DashboardPage – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_criar_grupo_empty')
   })
 
+  it('splits ongoing and finished groups into separate sections', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({
+        groups: [
+          {
+            id: 'g1',
+            name: 'Bolão Ativo',
+            competition_id: 'c1',
+            competition_status: 'ongoing',
+            invite_code: 'INV001',
+            is_admin: false,
+            created_at: '2026-06-01T00:00:00Z',
+            member_count: 5,
+            user_position: 2,
+            user_points: 10,
+          },
+          {
+            id: 'g2',
+            name: 'Bolão Copa',
+            competition_id: 'c2',
+            competition_status: 'finished',
+            invite_code: 'INV002',
+            is_admin: false,
+            created_at: '2026-01-01T00:00:00Z',
+            member_count: 8,
+            user_position: 1,
+            user_points: 152,
+            podium: [{ position: 1, display: 'Você', points: 152, is_you: true }],
+          },
+        ],
+        matched_invite_group_id: null,
+      }),
+    )
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getByText('Em andamento'))
+    expect(screen.getByText('Encerrados')).toBeInTheDocument()
+    expect(screen.getByText('Bolão Ativo')).toBeInTheDocument()
+    expect(screen.getByText('Bolão Copa')).toBeInTheDocument()
+  })
+
+  it('fires click_dashboard_encerrados_toggle when the finished section is collapsed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse({
+        groups: [
+          {
+            id: 'g2',
+            name: 'Bolão Copa',
+            competition_id: 'c2',
+            competition_status: 'finished',
+            invite_code: 'INV002',
+            is_admin: false,
+            created_at: '2026-01-01T00:00:00Z',
+            member_count: 8,
+            user_position: 1,
+            user_points: 152,
+            podium: [{ position: 1, display: 'Você', points: 152, is_you: true }],
+          },
+        ],
+        matched_invite_group_id: null,
+      }),
+    )
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getByText('Encerrados'))
+    await userEvent.click(screen.getByRole('button', { name: /Encerrados/i }))
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_encerrados_toggle', {
+      open: false,
+    })
+  })
+
   it('fires click_dashboard_grupo with group_id when a group card is clicked', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockResponse({
