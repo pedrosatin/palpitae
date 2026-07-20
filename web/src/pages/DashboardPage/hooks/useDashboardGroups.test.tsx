@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter } from 'react-router-dom'
 import { useDashboardGroups } from './useDashboardGroups'
 import { apiFetch } from '../../../lib/api'
 import { invalidateApiCache } from '../../../lib/api-cache'
