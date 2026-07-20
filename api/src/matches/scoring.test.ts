@@ -263,21 +263,28 @@ function buildFakeDb(
     }>
   } = {
     prepare(sql: string) {
-      const boundParams: unknown[] = []
       const stmt: FakeStatement = {
         bind(...args: unknown[]) {
-          boundParams.push(...args)
-          return stmt
+          return {
+            ...stmt,
+            _params: args,
+            async first<T>() {
+              return makeStatement(sql, args).first<T>()
+            },
+            async all<T>() {
+              return makeStatement(sql, args).all<T>()
+            },
+          }
         },
         async first<T>() {
-          return makeStatement(sql, boundParams).first<T>()
+          return makeStatement(sql, []).first<T>()
         },
         async all<T>() {
-          return makeStatement(sql, boundParams).all<T>()
+          return makeStatement(sql, []).all<T>()
         },
         async run() {},
         _sql: sql,
-        _params: boundParams,
+        _params: [],
       }
       return stmt
     },
