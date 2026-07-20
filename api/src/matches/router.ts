@@ -156,6 +156,130 @@ async function maybeSyncResults(
 // GET /matches handler
 // ---------------------------------------------------------------------------
 
+function buildMatchesQuery(competitionId: string, round?: string, status?: string) {
+  let query = `
+    SELECT
+      m.id,
+      m.start_time,
+      m.status,
+      m.home_score,
+      m.away_score,
+      m.phase,
+      m.round,
+      m.group_name,
+      m.duration,
+      m.penalty_winner,
+      m.home_penalty_goals,
+      m.away_penalty_goals,
+      c.penalty_phases,
+      ht.id         AS home_team_id,
+      ht.name       AS home_team_name,
+      ht.short_name AS home_team_short_name,
+      ht.logo_url   AS home_team_logo,
+      at.id         AS away_team_id,
+      at.name       AS away_team_name,
+      at.short_name AS away_team_short_name,
+      at.logo_url   AS away_team_logo
+    FROM matches m
+    JOIN teams ht ON ht.id = m.home_team_id
+    JOIN teams at ON at.id = m.away_team_id
+    JOIN competitions c ON c.id = m.competition_id
+    WHERE m.competition_id = ?
+  `
+
+  const params: (string | number)[] = [competitionId]
+
+  if (round) {
+    query += ` AND m.round = ?`
+    params.push(round)
+  }
+
+  if (status) {
+    query += ` AND m.status = ?`
+    params.push(status)
+  }
+
+  query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC`
+
+  return { query, params }
+}
+
+async function fetchMatches(
+  db: D1Database,
+  competitionId: string,
+  round?: string,
+  status?: string,
+) {
+  const { query, params } = buildMatchesQuery(competitionId, round, status)
+
+  // default_round only makes sense for the unfiltered full list. With ?round or
+  // ?status active the response is a subset, so a global default_round would be
+  // unrelated to the matches actually returned — we skip computing/returning it.
+  const hasFilters = Boolean(round) || Boolean(status)
+
+  let results: { status: string }[]
+  let defaultRound: string | null = null
+
+  if (hasFilters) {
+    const result = await db
+      .prepare(query)
+      .bind(...(params as string[]))
+      .all<{ status: string }>()
+    results = result.results
+  } else {
+    const nowIso = new Date().toISOString()
+    // One D1 round-trip for the full list plus the two queries that pick the
+    // default round: the first round still open (earliest with a match in the
+    // future), falling back to the most recent match chronologically. The
+    // fallback is its own query rather than result.results.at(-1) because the
+    // main list is ordered by group_name first — knockout matches (NULL group)
+    // sort last and would otherwise hijack the fallback.
+    const batchResults = await db.batch([
+      db.prepare(query).bind(...(params as string[])),
+      db
+        .prepare(
+          `SELECT round FROM matches
+           WHERE competition_id = ?
+           GROUP BY round
+           HAVING MAX(start_time) > ?
+           ORDER BY MAX(start_time) ASC
+           LIMIT 1`,
+        )
+        .bind(competitionId, nowIso),
+      db
+        .prepare(
+          `SELECT round FROM matches
+           WHERE competition_id = ?
+           ORDER BY start_time DESC
+           LIMIT 1`,
+        )
+        .bind(competitionId),
+    ])
+
+    results = batchResults[0].results as { status: string }[]
+    const activeRound = (batchResults[1].results as { round?: string }[])[0]?.round
+    const lastRound = (batchResults[2].results as { round?: string }[])[0]?.round
+    defaultRound = activeRound ?? lastRound ?? null
+  }
+
+  return { results, defaultRound, hasFilters }
+}
+
+function mapMatchesResponse(rows: Array<Record<string, unknown>>) {
+  return rows.map((row) => {
+    const { penalty_phases, ...rest } = row
+    return {
+      ...rest,
+      // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
+      round_label: roundLabel((rest.round as string | null) ?? ''),
+      decides_on_penalties: matchGoesToPenalties(
+        parsePenaltyPhases(penalty_phases as string | null),
+        (rest.phase as string | null) ?? null,
+      ),
+    }
+  })
+}
+
 /**
  * GET /matches?competition_id=xxx[&round=xxx][&status=scheduled|finished]
  *
@@ -207,102 +331,14 @@ async function handleGetMatches(c: Context<AppContext>) {
     }
   }
 
-  let query = `
-    SELECT
-      m.id,
-      m.start_time,
-      m.status,
-      m.home_score,
-      m.away_score,
-      m.phase,
-      m.round,
-      m.group_name,
-      m.duration,
-      m.penalty_winner,
-      m.home_penalty_goals,
-      m.away_penalty_goals,
-      c.penalty_phases,
-      ht.id         AS home_team_id,
-      ht.name       AS home_team_name,
-      ht.short_name AS home_team_short_name,
-      ht.logo_url   AS home_team_logo,
-      at.id         AS away_team_id,
-      at.name       AS away_team_name,
-      at.short_name AS away_team_short_name,
-      at.logo_url   AS away_team_logo
-    FROM matches m
-    JOIN teams ht ON ht.id = m.home_team_id
-    JOIN teams at ON at.id = m.away_team_id
-    JOIN competitions c ON c.id = m.competition_id
-    WHERE m.competition_id = ?
-  `
-
-  const params: (string | number)[] = [competitionId]
-
-  if (round) {
-    query += ` AND m.round = ?`
-    params.push(round)
-  }
-
-  if (status) {
-    query += ` AND m.status = ?`
-    params.push(status)
-  }
-
-  query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC`
-
-  // default_round only makes sense for the unfiltered full list. With ?round or
-  // ?status active the response is a subset, so a global default_round would be
-  // unrelated to the matches actually returned — we skip computing/returning it.
-  const hasFilters = Boolean(round) || Boolean(status)
-
   try {
     const dbStartedAt = Date.now()
-
-    let result: { results: { status: string }[] }
-    let defaultRound: string | null = null
-
-    if (hasFilters) {
-      result = await db
-        .prepare(query)
-        .bind(...(params as string[]))
-        .all<{ status: string }>()
-    } else {
-      const nowIso = new Date().toISOString()
-      // One D1 round-trip for the full list plus the two queries that pick the
-      // default round: the first round still open (earliest with a match in the
-      // future), falling back to the most recent match chronologically. The
-      // fallback is its own query rather than result.results.at(-1) because the
-      // main list is ordered by group_name first — knockout matches (NULL group)
-      // sort last and would otherwise hijack the fallback.
-      const batchResults = await db.batch([
-        db.prepare(query).bind(...(params as string[])),
-        db
-          .prepare(
-            `SELECT round FROM matches
-             WHERE competition_id = ?
-             GROUP BY round
-             HAVING MAX(start_time) > ?
-             ORDER BY MAX(start_time) ASC
-             LIMIT 1`,
-          )
-          .bind(competitionId, nowIso),
-        db
-          .prepare(
-            `SELECT round FROM matches
-             WHERE competition_id = ?
-             ORDER BY start_time DESC
-             LIMIT 1`,
-          )
-          .bind(competitionId),
-      ])
-
-      result = batchResults[0] as { results: { status: string }[] }
-      const activeRound = (batchResults[1].results as { round?: string }[])[0]?.round
-      const lastRound = (batchResults[2].results as { round?: string }[])[0]?.round
-      defaultRound = activeRound ?? lastRound ?? null
-    }
-
+    const { results, defaultRound, hasFilters } = await fetchMatches(
+      db,
+      competitionId,
+      round,
+      status,
+    )
     const dbMs = Date.now() - dbStartedAt
 
     // Cache strategy is derived from the RESPONSE CONTENTS, not the query param:
@@ -319,31 +355,20 @@ async function handleGetMatches(c: Context<AppContext>) {
     // gate (parsed in TS — no SQL json_each) and strip the raw gate from the
     // payload. The frontend stays dumb: it only reads the boolean to decide
     // whether to show the penalty-winner pick.
-    const matchesOut = (result.results as Array<Record<string, unknown>>).map((row) => {
-      const { penalty_phases, ...rest } = row
-      return {
-        ...rest,
-        // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
-        round_label: roundLabel((rest.round as string | null) ?? ''),
-        decides_on_penalties: matchGoesToPenalties(
-          parsePenaltyPhases(penalty_phases as string | null),
-          (rest.phase as string | null) ?? null,
-        ),
-      }
-    })
+    const matchesOut = mapMatchesResponse(results as Array<Record<string, unknown>>)
 
     const response = c.json({
       matches: matchesOut,
       ...(hasFilters ? {} : { default_round: defaultRound }),
     })
-    response.headers.set('Cache-Control', matchesCacheControl(result.results))
+    response.headers.set('Cache-Control', matchesCacheControl(results))
 
     // Só cacheia listas não-vazias. Isso (a) evita servir um snapshot vazio de uma
     // competição que ainda vai ser sincronizada e (b) fecha o abuso: um competition_id
     // inexistente sempre retorna vazio → nunca entra no edge cache → nunca vira um HIT,
     // então o blob de `matches_cache` no hit só carrega competição real (cardinalidade
     // limitada). O Cache-Control (browser) continua valendo p/ a resposta vazia.
-    if (cache && result.results.length > 0) {
+    if (cache && results.length > 0) {
       // clone(): a response body can only be consumed once — the cache keeps
       // its own copy while we still return the original to the caller.
       c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
@@ -361,14 +386,14 @@ async function handleGetMatches(c: Context<AppContext>) {
     // Cap dimension cardinality: only real competitions (response had games)
     // get their id; random junk competition_id from anon flooding all collapse
     // into one 'unknown' bucket.
-    const cacheCompetition = result.results.length > 0 ? competitionId : 'unknown'
+    const cacheCompetition = results.length > 0 ? competitionId : 'unknown'
     logEvent(c.env.AE, 'matches_cache', { blobs: ['miss', cacheCompetition] })
 
     logRequestPerf('GET /matches', {
       status: 200,
       totalMs: Date.now() - startedAt,
       dbMs,
-      rows: result.results.length,
+      rows: results.length,
       extra: {
         competition_id: competitionId,
         has_round_filter: Boolean(round),
