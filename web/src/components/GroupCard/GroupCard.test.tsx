@@ -49,4 +49,51 @@ describe('GroupCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /Abrir grupo/i }))
     expect(onClick).toHaveBeenCalledOnce()
   })
+
+  describe('finished (encerrado) variant', () => {
+    const finishedGroup = {
+      ...baseGroup,
+      competition_status: 'finished' as const,
+      user_position: 5,
+      user_points: 42,
+      podium: [
+        { position: 1, display: 'João', points: 152, is_you: false },
+        { position: 2, display: 'Ana', points: 140, is_you: false },
+        { position: 3, display: 'Rui', points: 131, is_you: false },
+      ],
+    }
+
+    it('renders the podium instead of the stats block', () => {
+      render(<GroupCard group={finishedGroup} onClick={onClick} />)
+      expect(screen.getByText('João')).toBeInTheDocument()
+      expect(screen.getByText('152')).toBeInTheDocument()
+      // Stats labels from the active card must be gone.
+      expect(screen.queryByText('Sua posição')).not.toBeInTheDocument()
+    })
+
+    it('labels the current user as "Você" when they are on the podium', () => {
+      render(
+        <GroupCard
+          group={{
+            ...finishedGroup,
+            podium: [
+              { position: 1, display: 'João', points: 152, is_you: true },
+              { position: 2, display: 'Ana', points: 140, is_you: false },
+            ],
+          }}
+          onClick={onClick}
+        />,
+      )
+      expect(screen.getByText('Você')).toBeInTheDocument()
+      expect(screen.queryByText('João')).not.toBeInTheDocument()
+    })
+
+    it('appends the user own row when they finished outside the top 3', () => {
+      render(<GroupCard group={finishedGroup} onClick={onClick} />)
+      // Not in podium → own row shows position #5 and 42 points.
+      expect(screen.getByText('Você')).toBeInTheDocument()
+      expect(screen.getByText('#5')).toBeInTheDocument()
+      expect(screen.getByText('42')).toBeInTheDocument()
+    })
+  })
 })

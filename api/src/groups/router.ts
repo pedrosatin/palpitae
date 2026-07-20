@@ -15,10 +15,20 @@ type GroupRow = {
   competition_id: string
   competition_name: string | null
   competition_type: 'league' | 'cup' | null
+  competition_status: 'upcoming' | 'ongoing' | 'finished' | null
   admin_id: string
   invite_code: string
   created_at: string
   member_count: number
+}
+
+// Pódio de um grupo encerrado: os 3 primeiros do leaderboard + flag de quem é o
+// próprio usuário (calculada no servidor para o card não precisar do id do user).
+type PodiumEntry = {
+  position: number
+  display: string
+  points: number
+  is_you: boolean
 }
 
 /**
@@ -53,6 +63,7 @@ async function handleGetGroups(c: Context<AppContext>) {
           g.competition_id,
           c.name AS competition_name,
           c.type AS competition_type,
+          c.status AS competition_status,
           g.owner_user_id AS admin_id,
           g.invite_code,
           g.created_at,
@@ -87,6 +98,60 @@ async function handleGetGroups(c: Context<AppContext>) {
       ? (groups.results.find((group) => group.invite_code === inviteCode) ?? null)
       : null
 
+    // Pódio só para grupos encerrados: o card ativo mostra "como vou", o encerrado
+    // mostra "quem ganhou". Buscamos os 3 primeiros de cada grupo finalizado numa
+    // única query com ROW_NUMBER(), em vez de N subqueries no SELECT principal.
+    const finishedGroupIds = groups.results
+      .filter((group) => group.competition_status === 'finished')
+      .map((group) => group.id)
+
+    const podiumByGroup = new Map<string, PodiumEntry[]>()
+    if (finishedGroupIds.length > 0) {
+      const placeholders = finishedGroupIds.map(() => '?').join(', ')
+      const podiumRows = await db
+        .prepare(
+          `
+          SELECT group_id, user_id, display, points, rank
+          FROM (
+            SELECT
+              l.group_id AS group_id,
+              l.user_id AS user_id,
+              COALESCE(p.nickname, u.email) AS display,
+              l.total_points AS points,
+              ROW_NUMBER() OVER (
+                PARTITION BY l.group_id
+                ORDER BY l.total_points DESC, COALESCE(p.nickname, u.email) ASC
+              ) AS rank
+            FROM leaderboard l
+            JOIN users u ON u.id = l.user_id
+            LEFT JOIN profiles p ON p.user_id = l.user_id
+            WHERE l.group_id IN (${placeholders})
+          )
+          WHERE rank <= 3
+          ORDER BY group_id, rank
+          `,
+        )
+        .bind(...finishedGroupIds)
+        .all<{
+          group_id: string
+          user_id: string
+          display: string
+          points: number
+          rank: number
+        }>()
+
+      for (const row of podiumRows.results) {
+        const entries = podiumByGroup.get(row.group_id) ?? []
+        entries.push({
+          position: row.rank,
+          display: row.display,
+          points: row.points,
+          is_you: row.user_id === userId,
+        })
+        podiumByGroup.set(row.group_id, entries)
+      }
+    }
+
     const dbMs = Date.now() - dbStartedAt
     const payload = {
       groups: groups.results.map((group) => ({
@@ -95,11 +160,13 @@ async function handleGetGroups(c: Context<AppContext>) {
         competition_id: group.competition_id,
         competition_name: group.competition_name ?? null,
         competition_type: group.competition_type ?? null,
+        competition_status: group.competition_status ?? null,
         is_admin: group.admin_id === userId,
         created_at: group.created_at,
         member_count: group.member_count,
         user_position: group.user_position,
         user_points: group.user_points,
+        podium: podiumByGroup.get(group.id) ?? null,
       })),
       matched_invite_group_id: matchedInviteGroup?.id ?? null,
     }
