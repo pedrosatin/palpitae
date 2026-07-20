@@ -5,7 +5,7 @@ import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import ErrorState from '../../components/ErrorState'
 import styles from './AdminMetricsPage.module.css'
-import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
+import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
 import { eventLabel } from './labels'
 
 /**
@@ -86,7 +86,7 @@ function buildStackedSeries(
   daily: OverviewResponse['daily'],
   totals: OverviewResponse['totals'],
   days: number,
-): { series: StackedDay[]; legend: { type: string; color: string }[] } {
+) {
   const ranked = totals.map((t) => t.event_type)
   const top = ranked.slice(0, MAX_CHART_TYPES)
   const colorFor = new Map(top.map((type, i) => [type, SERIES_COLORS[i]]))
