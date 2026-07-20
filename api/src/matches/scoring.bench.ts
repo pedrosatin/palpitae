@@ -56,11 +56,14 @@ const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
   } as unknown as D1Database
 }
 
-describe('scoreUnprocessedMatches N+1 issue fixed', () => {
-  // Use a smaller number of matches for benchmark to prevent out-of-memory error
-  const db = createMockDb(10, 5)
+const db = createMockDb(10, 5)
 
-  bench('fixed implementation with bulk queries', async () => {
-    await scoreUnprocessedMatches('c1', db)
-  })
+describe('scoreUnprocessedMatches N+1 issue', () => {
+  bench(
+    'original vs optimized',
+    async () => {
+      await scoreUnprocessedMatches('c1', db)
+    },
+    { time: 500 },
+  )
 })

@@ -74,17 +74,16 @@ async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<
   if (rows.results.length === 0) return
 
   const now = new Date().toISOString()
+  const insertLeaderboardStmt = db.prepare(
+    `INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (group_id, user_id) DO UPDATE SET
+       total_points = excluded.total_points,
+       exact_hits   = excluded.exact_hits,
+       last_updated = excluded.last_updated`,
+  )
   const statements = rows.results.map((row) =>
-    db
-      .prepare(
-        `INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (group_id, user_id) DO UPDATE SET
-           total_points = excluded.total_points,
-           exact_hits   = excluded.exact_hits,
-           last_updated = excluded.last_updated`,
-      )
-      .bind(groupId, row.user_id, row.total_points, row.exact_hits, now),
+    insertLeaderboardStmt.bind(groupId, row.user_id, row.total_points, row.exact_hits, now),
   )
 
   await db.batch(statements)
@@ -170,6 +169,10 @@ export async function scoreUnprocessedMatches(
   const statements: ReturnType<D1Database['prepare']>[] = []
   const affectedGroups = new Set<string>()
 
+  const updatePredictionStmt = db.prepare(
+    `UPDATE predictions SET points_awarded = ?, penalty_points = ? WHERE id = ?`,
+  )
+
   // 4. Evaluate all predictions
   for (const p of allPredictions) {
     const matchCtx = matchMap.get(p.match_id)!
@@ -199,17 +202,14 @@ export async function scoreUnprocessedMatches(
       eligible,
     )
 
-    statements.push(
-      db
-        .prepare(`UPDATE predictions SET points_awarded = ?, penalty_points = ? WHERE id = ?`)
-        .bind(points, penaltyPoints, p.id),
-    )
+    statements.push(updatePredictionStmt.bind(points, penaltyPoints, p.id))
     affectedGroups.add(p.group_id)
   }
 
   // 5. Update matches as scored
+  const updateMatchStmt = db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`)
   for (const matchId of matchIds) {
-    statements.push(db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).bind(now, matchId))
+    statements.push(updateMatchStmt.bind(now, matchId))
   }
 
   // 6. Execute updates in chunks of 100 to avoid D1 limits
