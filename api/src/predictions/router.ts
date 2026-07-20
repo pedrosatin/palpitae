@@ -663,6 +663,16 @@ async function handleBulkPut(c: Context<AppContext>) {
   const invalidPenalty: string[] = []
   const statements: D1PreparedStatement[] = []
 
+  const insertStmt = db.prepare(
+    `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+       predicted_home_score     = excluded.predicted_home_score,
+       predicted_away_score     = excluded.predicted_away_score,
+       predicted_penalty_winner = excluded.predicted_penalty_winner,
+       updated_at               = excluded.updated_at`,
+  )
+
   for (const matchId of matchIds) {
     const info = matchInfo.get(matchId)
     if (!info) {
@@ -691,17 +701,17 @@ async function handleBulkPut(c: Context<AppContext>) {
     }
 
     statements.push(
-      db
-        .prepare(
-          `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-             predicted_home_score     = excluded.predicted_home_score,
-             predicted_away_score     = excluded.predicted_away_score,
-             predicted_penalty_winner = excluded.predicted_penalty_winner,
-             updated_at               = excluded.updated_at`,
-        )
-        .bind(crypto.randomUUID(), userId, group_id, matchId, home, away, penaltyWinner, now, now),
+      insertStmt.bind(
+        crypto.randomUUID(),
+        userId,
+        group_id,
+        matchId,
+        home,
+        away,
+        penaltyWinner,
+        now,
+        now,
+      ),
     )
     saved.push(matchId)
   }
@@ -843,28 +853,28 @@ async function handleImportPost(c: Context<AppContext>) {
   }
 
   // Upsert all importable predictions in a single batch
+  const importStmt = db.prepare(
+    `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+       predicted_home_score     = excluded.predicted_home_score,
+       predicted_away_score     = excluded.predicted_away_score,
+       predicted_penalty_winner = excluded.predicted_penalty_winner,
+       updated_at               = excluded.updated_at`,
+  )
+
   const importStatements = toImport.map((p) =>
-    db
-      .prepare(
-        `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-           predicted_home_score     = excluded.predicted_home_score,
-           predicted_away_score     = excluded.predicted_away_score,
-           predicted_penalty_winner = excluded.predicted_penalty_winner,
-           updated_at               = excluded.updated_at`,
-      )
-      .bind(
-        crypto.randomUUID(),
-        userId,
-        target_group_id,
-        p.match_id,
-        p.predicted_home_score,
-        p.predicted_away_score,
-        p.predicted_penalty_winner,
-        now,
-        now,
-      ),
+    importStmt.bind(
+      crypto.randomUUID(),
+      userId,
+      target_group_id,
+      p.match_id,
+      p.predicted_home_score,
+      p.predicted_away_score,
+      p.predicted_penalty_winner,
+      now,
+      now,
+    ),
   )
 
   await db.batch(importStatements)
