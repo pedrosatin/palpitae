@@ -147,6 +147,38 @@ function slugify(str: string): string {
 export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   const { competitionCode, season, matchday, apiKey, db } = opts
 
+  const data = await fetchFootballDataApi(competitionCode, season, matchday, apiKey)
+  const { competition: apiComp, matches } = data
+
+  const competitionName = resolveCompetitionName(apiComp, competitionCode)
+
+  if (matches.length === 0) {
+    return {
+      competition: competitionName,
+      competitionId: '',
+      matches: 0,
+      teams: 0,
+    }
+  }
+
+  const competitionId = await upsertCompetition(db, apiComp, competitionName, season)
+  const teamIds = await upsertTeamsAndResolveIds(db, matches)
+  const matchCount = await upsertMatchesBatch(db, matches, competitionId, teamIds)
+
+  return {
+    competition: competitionName,
+    competitionId,
+    matches: matchCount,
+    teams: teamIds.size,
+  }
+}
+
+async function fetchFootballDataApi(
+  competitionCode: string,
+  season: number,
+  matchday: number | undefined,
+  apiKey: string,
+): Promise<ApiMatchesResponse> {
   const url = new URL(`${API_BASE}/competitions/${competitionCode}/matches`)
   url.searchParams.set('season', String(season))
   if (matchday !== undefined) url.searchParams.set('matchday', String(matchday))
@@ -160,37 +192,34 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     throw new Error(`football-data.org respondeu ${res.status}: ${text}`)
   }
 
-  const data = (await res.json()) as ApiMatchesResponse
+  return (await res.json()) as ApiMatchesResponse
+}
 
-  const { competition: apiComp, matches } = data
-
+function resolveCompetitionName(apiComp: ApiCompetition | undefined, fallbackCode: string): string {
   // Fuzzy lookup: a API manda "FIFA World Cup", o mapa tem a chave "World Cup".
   // includes() casa sem precisar duplicar variações da chave no mapa.
   const translationKey = apiComp
     ? Object.keys(COMP_TRANSLATIONS).find((key) => apiComp.name.includes(key))
     : undefined
-  const competitionName = apiComp
+  return apiComp
     ? translationKey
       ? COMP_TRANSLATIONS[translationKey]
       : apiComp.name
-    : competitionCode
+    : fallbackCode
+}
 
-  if (matches.length === 0) {
-    return {
-      competition: competitionName,
-      competitionId: '',
-      matches: 0,
-      teams: 0,
-    }
-  }
-
+async function upsertCompetition(
+  db: D1Database,
+  apiComp: ApiCompetition,
+  competitionName: string,
+  season: number,
+): Promise<string> {
   const competitionExternalId = String(apiComp.id)
   // Slug deriva do nome CRU da API (não do traduzido) p/ ficar estável: mudar a
   // tradução de exibição não pode mudar a chave de conflito do upsert, senão um
   // re-sync criaria uma competição duplicada (slug = 'fifa-world-cup-2026' em prod).
   const competitionSlug = slugify(`${apiComp.name}-${season}`)
 
-  // Upsert competition
   await db
     .prepare(
       `INSERT INTO competitions (id, name, slug, external_id, provider, season, status)
@@ -217,6 +246,13 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   if (!competition) throw new Error('Competição não encontrada após upsert')
 
+  return competition.id
+}
+
+async function upsertTeamsAndResolveIds(
+  db: D1Database,
+  matches: ApiMatch[],
+): Promise<Map<number, string>> {
   // Collect unique teams
   const teamMap = new Map<number, ApiTeam>()
   for (const m of matches) {
@@ -276,9 +312,80 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
-  // Upsert matches
+  return teamIds
+}
+
+function deriveCanonicalScore(
+  isShootout: boolean,
+  m: ApiMatch,
+): { canonicalHome: number | null; canonicalAway: number | null } {
+  // Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
+  // SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data às vezes INCLUI os
+  // gols de pênalti, e outras vezes não (além de regularTime e extraTime ocasionalmente
+  // virem nulos).
+  //
+  // Estratégia (prioridade decrescente):
+  // 1. Se regularTime está disponível (não-null): canonicalScore = regularTime + extraTime.
+  //    Esses campos NUNCA incluem gols de pênalti e são a fonte mais confiável.
+  // 2. Se regularTime é null (provider omitiu) e fullTime é diferente: subtrai os gols
+  //    de pênalti de fullTime. Essa heurística assume que o provider embutiu os pênaltis
+  //    em fullTime — o que só acontece quando os valores são desiguais.
+  // 3. fullTime igual: já é o placar do empate, não faz nada.
+  let canonicalHome = m.score.fullTime.home ?? null
+  let canonicalAway = m.score.fullTime.away ?? null
+
+  if (isShootout) {
+    const rtHome = m.score.regularTime?.home
+    const rtAway = m.score.regularTime?.away
+    if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
+      // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
+      canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
+      canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
+    } else if (
+      canonicalHome !== null &&
+      canonicalAway !== null &&
+      canonicalHome !== canonicalAway
+    ) {
+      // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
+      canonicalHome -= m.score.penalties?.home ?? 0
+      canonicalAway -= m.score.penalties?.away ?? 0
+    }
+    // else: fullTime já é o placar do empate.
+  }
+
+  return { canonicalHome, canonicalAway }
+}
+
+function derivePenaltyWinner(isShootout: boolean, m: ApiMatch): 'home' | 'away' | null {
+  // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
+  // vem preenchido em jogos REGULAR, onde significa o vencedor no tempo normal).
+  // Se o provider mandar winner como null (comum em empates com disputa de pênaltis
+  // concluída), derivamos pelo placar da DISPUTA (score.penalties) — fonte canônica
+  // e que nunca empata. NÃO derivar de fullTime: quando o provider manda winner null
+  // ele também devolve fullTime = placar do tempo normal (empate), o que faria a
+  // derivação retornar null e zerar o bônus de pênalti de quem acertou.
+  if (!isShootout) return null
+
+  if (m.score.winner === 'HOME_TEAM') return 'home'
+  if (m.score.winner === 'AWAY_TEAM') return 'away'
+
+  const penHome = m.score.penalties?.home ?? 0
+  const penAway = m.score.penalties?.away ?? 0
+  if (penHome > penAway) return 'home'
+  if (penHome < penAway) return 'away'
+
+  return null
+}
+
+async function upsertMatchesBatch(
+  db: D1Database,
+  matches: ApiMatch[],
+  competitionId: string,
+  teamIds: Map<number, string>,
+): Promise<number> {
   let matchCount = 0
   const matchStatements = []
+
   for (const m of matches) {
     const homeTeamId = teamIds.get(m.homeTeam?.id)
     const awayTeamId = teamIds.get(m.awayTeam?.id)
@@ -289,60 +396,10 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     const round = m.matchday !== null ? String(m.matchday) : m.stage
     const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
 
-    // Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
-    // SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data às vezes INCLUI os
-    // gols de pênalti, e outras vezes não (além de regularTime e extraTime ocasionalmente
-    // virem nulos).
-    //
-    // Estratégia (prioridade decrescente):
-    // 1. Se regularTime está disponível (não-null): canonicalScore = regularTime + extraTime.
-    //    Esses campos NUNCA incluem gols de pênalti e são a fonte mais confiável.
-    // 2. Se regularTime é null (provider omitiu) e fullTime é diferente: subtrai os gols
-    //    de pênalti de fullTime. Essa heurística assume que o provider embutiu os pênaltis
-    //    em fullTime — o que só acontece quando os valores são desiguais.
-    // 3. fullTime igual: já é o placar do empate, não faz nada.
     const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
-    let canonicalHome = m.score.fullTime.home ?? null
-    let canonicalAway = m.score.fullTime.away ?? null
-
-    if (isShootout) {
-      const rtHome = m.score.regularTime?.home
-      const rtAway = m.score.regularTime?.away
-      if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
-        // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
-        canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
-        canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
-      } else if (
-        canonicalHome !== null &&
-        canonicalAway !== null &&
-        canonicalHome !== canonicalAway
-      ) {
-        // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
-        canonicalHome -= m.score.penalties?.home ?? 0
-        canonicalAway -= m.score.penalties?.away ?? 0
-      }
-      // else: fullTime já é o placar do empate.
-    }
-
+    const { canonicalHome, canonicalAway } = deriveCanonicalScore(isShootout, m)
     const duration = m.score.duration ?? null
-    // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
-    // vem preenchido em jogos REGULAR, onde significa o vencedor no tempo normal).
-    // Se o provider mandar winner como null (comum em empates com disputa de pênaltis
-    // concluída), derivamos pelo placar da DISPUTA (score.penalties) — fonte canônica
-    // e que nunca empata. NÃO derivar de fullTime: quando o provider manda winner null
-    // ele também devolve fullTime = placar do tempo normal (empate), o que faria a
-    // derivação retornar null e zerar o bônus de pênalti de quem acertou.
-    const penaltyWinner = isShootout
-      ? m.score.winner === 'HOME_TEAM'
-        ? 'home'
-        : m.score.winner === 'AWAY_TEAM'
-          ? 'away'
-          : (m.score.penalties?.home ?? 0) > (m.score.penalties?.away ?? 0)
-            ? 'home'
-            : (m.score.penalties?.home ?? 0) < (m.score.penalties?.away ?? 0)
-              ? 'away'
-              : null
-      : null
+    const penaltyWinner = derivePenaltyWinner(isShootout, m)
     const homePenaltyGoals = isShootout ? (m.score.penalties?.home ?? null) : null
     const awayPenaltyGoals = isShootout ? (m.score.penalties?.away ?? null) : null
 
@@ -376,7 +433,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         )
         .bind(
           crypto.randomUUID(),
-          competition.id,
+          competitionId,
           String(m.id),
           PROVIDER,
           homeTeamId,
@@ -402,10 +459,5 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     await db.batch(matchStatements)
   }
 
-  return {
-    competition: competitionName,
-    competitionId: competition.id,
-    matches: matchCount,
-    teams: teamMap.size,
-  }
+  return matchCount
 }
