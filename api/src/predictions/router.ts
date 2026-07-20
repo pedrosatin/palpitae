@@ -568,33 +568,28 @@ router.put('/', requireAuth, async (c) => {
  *   400 — missing/invalid fields
  *   403 — user not in group
  */
-async function handleBulkPut(c: Context<AppContext>) {
-  const userId = c.get('userId')
+type BulkPrediction = {
+  match_id?: string
+  predicted_home_score?: number
+  predicted_away_score?: number
+  predicted_penalty_winner?: 'home' | 'away' | null
+}
 
-  type BulkBody = {
-    group_id?: string
-    predictions?: Array<{
-      match_id?: string
-      predicted_home_score?: number
-      predicted_away_score?: number
-      predicted_penalty_winner?: 'home' | 'away' | null
-    }>
-  }
-  const parsed = await parseJsonBody<BulkBody>(c)
-  if (!parsed.ok) return parsed.response
-  const body = parsed.body
+type BulkBody = {
+  group_id?: string
+  predictions?: Array<BulkPrediction>
+}
 
-  const { group_id, predictions } = body
-
-  if (!group_id) {
-    return c.json({ error: 'group_id é obrigatório' }, 400)
+function validateBulkPutPayload(body: BulkBody): string | null {
+  if (!body.group_id) {
+    return 'group_id é obrigatório'
   }
 
-  if (!Array.isArray(predictions) || predictions.length === 0) {
-    return c.json({ error: 'predictions deve ser uma lista não-vazia' }, 400)
+  if (!Array.isArray(body.predictions) || body.predictions.length === 0) {
+    return 'predictions deve ser uma lista não-vazia'
   }
 
-  for (const p of predictions) {
+  for (const p of body.predictions) {
     if (
       !p ||
       typeof p.match_id !== 'string' ||
@@ -603,19 +598,96 @@ async function handleBulkPut(c: Context<AppContext>) {
       !Number.isInteger(p.predicted_away_score) ||
       (p.predicted_away_score as number) < 0
     ) {
-      return c.json(
-        {
-          error: 'Cada palpite precisa de match_id e placares inteiros não-negativos',
-        },
-        400,
-      )
+      return 'Cada palpite precisa de match_id e placares inteiros não-negativos'
     }
   }
+
+  return null
+}
+
+function buildBulkPutStatements(
+  db: D1Database,
+  userId: string,
+  groupId: string,
+  byMatch: Map<string, { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }>,
+  matchInfo: Map<
+    string,
+    { id: string; start_time: string; phase: string | null; penalty_phases: string }
+  >,
+  now: string,
+) {
+  const saved: string[] = []
+  const locked: string[] = []
+  const notFound: string[] = []
+  const invalidPenalty: string[] = []
+  const statements: D1PreparedStatement[] = []
+
+  for (const [matchId, matchData] of byMatch.entries()) {
+    const info = matchInfo.get(matchId)
+    if (!info) {
+      notFound.push(matchId)
+      continue
+    }
+
+    // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
+    if (now >= info.start_time) {
+      locked.push(matchId)
+      continue
+    }
+
+    const { home, away, penaltyWinner: rawPenaltyWinner } = matchData
+
+    // Same penalty validation as PUT /: required for a draw in an eligible phase,
+    // nulled out otherwise.
+    const isDraw = home === away
+    const eligible = matchGoesToPenalties(parsePenaltyPhases(info.penalty_phases), info.phase)
+    let penaltyWinner: 'home' | 'away' | null = null
+
+    if (isDraw && eligible) {
+      if (rawPenaltyWinner !== 'home' && rawPenaltyWinner !== 'away') {
+        invalidPenalty.push(matchId)
+        continue
+      }
+      penaltyWinner = rawPenaltyWinner
+    }
+
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+             predicted_home_score     = excluded.predicted_home_score,
+             predicted_away_score     = excluded.predicted_away_score,
+             predicted_penalty_winner = excluded.predicted_penalty_winner,
+             updated_at               = excluded.updated_at`,
+        )
+        .bind(crypto.randomUUID(), userId, groupId, matchId, home, away, penaltyWinner, now, now),
+    )
+    saved.push(matchId)
+  }
+
+  return { saved, locked, notFound, invalidPenalty, statements }
+}
+
+async function handleBulkPut(c: Context<AppContext>) {
+  const userId = c.get('userId')
+
+  const parsed = await parseJsonBody<BulkBody>(c)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
+
+  const validationError = validateBulkPutPayload(body)
+  if (validationError) {
+    return c.json({ error: validationError }, 400)
+  }
+
+  const { group_id, predictions } = body
 
   const db = c.env.DB
 
   // Verify user is a member of the group
-  const { membership } = await getGroupMembershipTimed(db, group_id, userId)
+  const { membership } = await getGroupMembershipTimed(db, group_id as string, userId)
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
@@ -626,7 +698,7 @@ async function handleBulkPut(c: Context<AppContext>) {
     string,
     { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }
   >()
-  for (const p of predictions) {
+  for (const p of predictions!) {
     byMatch.set(p.match_id as string, {
       home: p.predicted_home_score as number,
       away: p.predicted_away_score as number,
@@ -657,54 +729,14 @@ async function handleBulkPut(c: Context<AppContext>) {
   const matchInfo = new Map(matchRows.results.map((m) => [m.id, m]))
   const now = new Date().toISOString()
 
-  const saved: string[] = []
-  const locked: string[] = []
-  const notFound: string[] = []
-  const invalidPenalty: string[] = []
-  const statements: D1PreparedStatement[] = []
-
-  for (const matchId of matchIds) {
-    const info = matchInfo.get(matchId)
-    if (!info) {
-      notFound.push(matchId)
-      continue
-    }
-    // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
-    if (now >= info.start_time) {
-      locked.push(matchId)
-      continue
-    }
-
-    const { home, away, penaltyWinner: rawPenaltyWinner } = byMatch.get(matchId)!
-
-    // Same penalty validation as PUT /: required for a draw in an eligible phase,
-    // nulled out otherwise.
-    const isDraw = home === away
-    const eligible = matchGoesToPenalties(parsePenaltyPhases(info.penalty_phases), info.phase)
-    let penaltyWinner: 'home' | 'away' | null = null
-    if (isDraw && eligible) {
-      if (rawPenaltyWinner !== 'home' && rawPenaltyWinner !== 'away') {
-        invalidPenalty.push(matchId)
-        continue
-      }
-      penaltyWinner = rawPenaltyWinner
-    }
-
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-             predicted_home_score     = excluded.predicted_home_score,
-             predicted_away_score     = excluded.predicted_away_score,
-             predicted_penalty_winner = excluded.predicted_penalty_winner,
-             updated_at               = excluded.updated_at`,
-        )
-        .bind(crypto.randomUUID(), userId, group_id, matchId, home, away, penaltyWinner, now, now),
-    )
-    saved.push(matchId)
-  }
+  const { saved, locked, notFound, invalidPenalty, statements } = buildBulkPutStatements(
+    db,
+    userId,
+    group_id as string,
+    byMatch,
+    matchInfo,
+    now,
+  )
 
   // Reject the whole request when any eligible draw is missing its shootout winner
   // — same rule as the singular endpoint, so the client can't silently lose a pick.
@@ -722,7 +754,7 @@ async function handleBulkPut(c: Context<AppContext>) {
   if (statements.length > 0) {
     await db.batch(statements)
     logEvent(c.env.AE, 'prediction_saved', {
-      blobs: [group_id, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
+      blobs: [group_id!, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
       doubles: [saved.length],
     })
   }
