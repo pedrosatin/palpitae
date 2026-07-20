@@ -127,3 +127,101 @@
   font-weight: var(--font-weight-bold);
   color: var(--color-primary);
 }
+
+/* ─── Finished (encerrado) ──────────────────────────────────────────────────
+   Campeonato acabou → o card vira arquivo: quieto e dessaturado. O único estouro
+   é a coroa do campeão em lime. Nenhuma cor nova entra na marca. */
+
+.finished {
+  border-color: var(--color-border);
+  opacity: 0.92;
+}
+
+.finished:hover {
+  opacity: 1;
+}
+
+.finished .name {
+  color: var(--color-text-secondary);
+}
+
+/* A badge de competição é lime-cheia no card ativo; num card mudo ela gritaria,
+   então vira contorno discreto. */
+.finished .badge {
+  background-color: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+/* ─── Podium (top-3 do grupo encerrado) ─────────────────────────────────── */
+
+.podium {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.podiumRow {
+  display: grid;
+  grid-template-columns: 1.75rem 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  color: var(--color-text-secondary);
+}
+
+.podiumRank {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.podiumName {
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.podiumPoints {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Coroa: a única cor de marca no card encerrado. */
+.podiumRow[data-champion] {
+  color: var(--color-primary);
+}
+
+.podiumRow[data-champion] .podiumName {
+  font-weight: var(--font-weight-bold);
+}
+
+/* "Você" fora do pódio: destacado por peso e separado por uma régua acima. */
+.podiumRow[data-you] .podiumName {
+  font-weight: var(--font-weight-bold);
+}
+
+.podiumRow[data-outside] {
+  margin-top: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
