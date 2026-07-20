@@ -14,7 +14,7 @@ interface PredictionsModalProps {
   onClose: () => void
 }
 
-function formatDate(iso: string): string {
+export function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit',
     month: '2-digit',
