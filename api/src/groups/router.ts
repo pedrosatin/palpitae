@@ -1,4 +1,4 @@
-import { type Context, Hono } from 'hono'
+import { Hono } from 'hono'
 import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
@@ -34,7 +34,7 @@ function generateInviteCode(): string {
   return `${raw.slice(0, 4)}-${raw.slice(4)}`
 }
 
-async function handleGetGroups(c: Context<AppContext>) {
+router.get('/', requireAuth, async (c) => {
   const userId = c.get('userId')
   const startedAt = Date.now()
   const inviteCode = c.req.query('invite_code')?.trim().toUpperCase()
@@ -116,9 +116,7 @@ async function handleGetGroups(c: Context<AppContext>) {
     console.error('Error fetching groups:', error)
     return c.json({ error: 'Erro ao carregar grupos' }, 500)
   }
-}
-
-router.get('/', requireAuth, handleGetGroups)
+})
 
 /**
  * POST /groups
