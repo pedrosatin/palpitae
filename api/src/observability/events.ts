@@ -20,6 +20,8 @@ export type EventType =
   | 'poller_run'
   | 'fixture_discovery_run'
   | 'football_api_error'
+  // Performance / latência de request
+  | 'request_perf'
   // Negócio (server-side, nos routers)
   | 'prediction_saved'
   | 'group_created'

@@ -99,7 +99,7 @@ router.get('/', requireAuth, async (c) => {
     .all()
   const queryMs = Date.now() - queryStartedAt
 
-  logRequestPerf('GET /predictions', {
+  logRequestPerf(c.env.AE, 'GET /predictions', {
     status: 200,
     totalMs: Date.now() - startedAt,
     dbMs: membershipMs + queryMs,
@@ -228,7 +228,7 @@ router.get('/user', requireAuth, async (c) => {
     round_label: roundLabel(p.round),
   }))
 
-  logRequestPerf('GET /predictions/user', {
+  logRequestPerf(c.env.AE, 'GET /predictions/user', {
     status: 200,
     totalMs: Date.now() - startedAt,
     dbMs: membershipMs + queryMs,
@@ -377,7 +377,7 @@ router.get('/group', requireAuth, async (c) => {
         .all()
   const predictionsMs = Date.now() - predictionsStartedAt
 
-  logRequestPerf('GET /predictions/group', {
+  logRequestPerf(c.env.AE, 'GET /predictions/group', {
     status: 200,
     totalMs: Date.now() - startedAt,
     dbMs: membershipMs + membersMs + predictionsMs,
