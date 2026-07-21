@@ -33,6 +33,21 @@ function download(blob: Blob, name: string): void {
 }
 
 /**
+ * O navegador consegue compartilhar um arquivo de imagem via share sheet nativo?
+ * Verdadeiro no mobile (iOS/Android), falso no desktop — onde "compartilhar"
+ * seria só um download disfarçado. Sondamos com um File vazio para não duplicar
+ * o botão de baixar quando não há share real.
+ */
+function canShareImageFiles(): boolean {
+  if (typeof navigator === 'undefined' || !navigator.canShare) return false
+  try {
+    return navigator.canShare({ files: [new File([], 'r.png', { type: 'image/png' })] })
+  } catch {
+    return false
+  }
+}
+
+/**
  * Preview do cartão de resultado antes de postar. Renderiza o PNG no cliente e
  * oferece três saídas: compartilhar (share sheet nativo no mobile → WhatsApp,
  * Stories...), baixar a imagem, ou copiar o link do Palpitae. O link aponta pra
@@ -42,6 +57,7 @@ function download(blob: Blob, name: string): void {
 export default function ShareGroupModal({ isOpen, onClose, group }: ShareGroupModalProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [canShareFiles] = useState(canShareImageFiles)
   const blobRef = useRef<Blob | null>(null)
   const dataRef = useRef<ShareCardData | null>(null)
 
@@ -75,22 +91,14 @@ export default function ShareGroupModal({ isOpen, onClose, group }: ShareGroupMo
     const data = dataRef.current
     if (!blob || !data) return
 
+    // Só renderizado quando `canShareFiles` — share sheet nativo com a imagem.
     const file = new File([blob], fileName(data), { type: 'image/png' })
-    const payload = { files: [file], text: `${shareText(data)} ${data.domain}` }
-
-    if (navigator.canShare?.(payload)) {
-      try {
-        await navigator.share(payload)
-        trackEvent('click_share_compartilhar', { method: 'native' })
-      } catch {
-        // Usuário cancelou o share sheet — sem erro.
-      }
-      return
+    try {
+      await navigator.share({ files: [file], text: `${shareText(data)} ${data.domain}` })
+      trackEvent('click_share_compartilhar')
+    } catch {
+      // Usuário cancelou o share sheet — sem erro.
     }
-
-    // Sem Web Share de arquivos (desktop) → baixa a imagem.
-    download(blob, fileName(data))
-    trackEvent('click_share_compartilhar', { method: 'download' })
   }
 
   function handleDownload() {
@@ -124,10 +132,16 @@ export default function ShareGroupModal({ isOpen, onClose, group }: ShareGroupMo
       </div>
 
       <div className={styles.actions}>
-        <Button variant="primary" onClick={handleShare} disabled={!previewUrl}>
-          Compartilhar
-        </Button>
-        <Button variant="outline" onClick={handleDownload} disabled={!previewUrl}>
+        {canShareFiles && (
+          <Button variant="primary" onClick={handleShare} disabled={!previewUrl}>
+            Compartilhar
+          </Button>
+        )}
+        <Button
+          variant={canShareFiles ? 'outline' : 'primary'}
+          onClick={handleDownload}
+          disabled={!previewUrl}
+        >
           Baixar imagem
         </Button>
         <Button variant="ghost" onClick={handleCopyLink}>
