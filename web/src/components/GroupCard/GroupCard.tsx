@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import Card from '../Card'
+import ShareGroupModal from '../ShareGroupModal'
+import { trackEvent } from '../../analytics/ga'
 import styles from './GroupCard.module.css'
 
 export interface PodiumEntry {
@@ -74,12 +77,10 @@ function Podium({ group }: { group: GroupWithStats }) {
 export default function GroupCard({ group, onClick }: GroupCardProps) {
   const isOwner = group.is_admin
   const isFinished = group.competition_status === 'finished'
+  const [shareOpen, setShareOpen] = useState(false)
 
   return (
-    <Card
-      hoverable
-      className={isFinished ? `${styles.card} ${styles.finished}` : styles.card}
-    >
+    <Card hoverable className={isFinished ? `${styles.card} ${styles.finished}` : styles.card}>
       <button className={styles.cardBtn} onClick={onClick} aria-label={`Abrir grupo ${group.name}`}>
         <div className={styles.header}>
           <h3 className={styles.name}>{group.name}</h3>
@@ -113,6 +114,23 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
           </div>
         )}
       </button>
+
+      {isFinished && (
+        <div className={styles.finishedFooter}>
+          <button
+            type="button"
+            className={styles.shareBtn}
+            onClick={() => {
+              trackEvent('click_groupcard_compartilhar', { group_id: group.id })
+              setShareOpen(true)
+            }}
+          >
+            <span aria-hidden="true">↗</span> Compartilhar resultado
+          </button>
+        </div>
+      )}
+
+      <ShareGroupModal isOpen={shareOpen} onClose={() => setShareOpen(false)} group={group} />
     </Card>
   )
 }
