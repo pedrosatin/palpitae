@@ -61,6 +61,15 @@ Eventos da config de pontuação/visibilidade no grupo (CreateGroupModal + Match
 > Steppers de placar e a troca de palpite empate→decisivo (que limpa o pick de pênalti)
 > seguem **não** rastreados — só o clique intencional no vencedor do pênalti gera evento.
 
+Compartilhamento do convite (`ShareButtons`, usado em GroupInviteSection + CreateGroupSuccessView).
+O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal de sucesso:
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_<contexto>_compartilhar` | botão "Compartilhar" (Web Share nativo; sem suporte, copia o link) | — |
+| `click_<contexto>_whatsapp` | ícone WhatsApp (abre wa.me com texto + link) | — |
+| `click_<contexto>_twitter` | ícone X/Twitter (abre intent/tweet com texto + link) | — |
+
 Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 
 | Evento | Disparo | Params |
