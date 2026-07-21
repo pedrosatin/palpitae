@@ -111,7 +111,9 @@ function FinishedGroupsSection({ groups }: { groups: GroupWithStats[] }) {
         <span className={styles.collapseChevron} data-open={open || undefined} aria-hidden="true">
           ▾
         </span>
-        <h2 className={styles.sectionTitle}>Encerrados</h2>
+        <span className={styles.sectionTitle} role="heading" aria-level={2}>
+          Encerrados
+        </span>
         <span className={styles.sectionCount}>{groups.length}</span>
       </button>
       {open && <GroupsGrid groups={groups} />}

@@ -130,7 +130,9 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
         </div>
       )}
 
-      <ShareGroupModal isOpen={shareOpen} onClose={() => setShareOpen(false)} group={group} />
+      {isFinished && (
+        <ShareGroupModal isOpen={shareOpen} onClose={() => setShareOpen(false)} group={group} />
+      )}
     </Card>
   )
 }
