@@ -29,7 +29,9 @@ function download(blob: Blob, name: string): void {
   a.href = url
   a.download = name
   a.click()
-  URL.revokeObjectURL(url)
+  // Revoga no próximo tick — revogar antes de o navegador iniciar o download
+  // interrompe o salvamento em alguns browsers.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
 /**

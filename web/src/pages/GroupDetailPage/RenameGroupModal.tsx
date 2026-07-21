@@ -37,8 +37,8 @@ export function RenameGroupModal({
     event.preventDefault()
 
     const name = renameValue.trim()
-    if (name.length < 2 || name.length > 50) {
-      setRenameError('Nome deve ter entre 2 e 50 caracteres')
+    if (name.length < 2 || name.length > 30) {
+      setRenameError('Nome deve ter entre 2 e 30 caracteres')
       return
     }
 
