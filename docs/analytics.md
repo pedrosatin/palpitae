@@ -75,6 +75,7 @@ Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_admin_metrics_periodo` | troca do período dos gráficos (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
+| `click_admin_metrics_arquivo_mes` | seleção de um mês pra analisar o arquivo frio (R2) | `{ month }` (`YYYY-MM`) |
 
 Modal genérico (componente `Modal`):
 
