@@ -19,6 +19,7 @@ export const EVENT_LABELS: Record<string, string> = {
   poller_run: 'Poller de resultados',
   fixture_discovery_run: 'Descoberta de jogos',
   football_api_error: 'Erro da API Football',
+  request_perf: 'Latência de request',
   // Notificações por e-mail
   email_reminder_sent: 'Lembrete enviado',
   cron_round_reminder: 'Cron de lembrete',
