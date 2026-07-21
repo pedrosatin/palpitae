@@ -135,10 +135,13 @@ async function handleGetGroups(c: Context<AppContext>) {
               l.total_points AS points,
               ROW_NUMBER() OVER (
                 PARTITION BY l.group_id
-                ORDER BY l.total_points DESC, COALESCE(p.nickname, u.email) ASC
+                -- Mesmo desempate do endpoint de membros (pontos → acertos exatos →
+                -- ordem de entrada), senão o #1 do card pode divergir do leaderboard.
+                ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC
               ) AS rank
             FROM leaderboard l
             JOIN users u ON u.id = l.user_id
+            JOIN group_members gm ON gm.group_id = l.group_id AND gm.user_id = l.user_id
             LEFT JOIN profiles p ON p.user_id = l.user_id
             WHERE l.group_id IN (${placeholders})
           )
