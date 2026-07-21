@@ -76,7 +76,7 @@ export function RenameGroupModal({
           type="text"
           value={renameValue}
           onChange={(e) => setRenameValue(e.target.value)}
-          maxLength={50}
+          maxLength={30}
           placeholder="Nome do grupo"
           autoFocus
         />
