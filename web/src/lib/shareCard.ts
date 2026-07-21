@@ -48,7 +48,7 @@ export function buildShareCardData(group: GroupWithStats, origin: string): Share
   const podium = group.podium ?? []
   const standings: ShareCardEntry[] = podium.map((e) => ({
     position: e.position,
-    display: e.is_you ? 'Você' : e.display,
+    display: e.is_you ? 'Você' : firstName(e.display),
     points: e.points,
     isYou: e.is_you,
   }))
@@ -75,6 +75,15 @@ export function buildShareCardData(group: GroupWithStats, origin: string): Share
 
 function stripScheme(origin: string): string {
   return origin.replace(/^https?:\/\//, '').replace(/\/$/, '')
+}
+
+/**
+ * Só o primeiro nome — o cartão é público (posta em redes sociais), então
+ * exibir sobrenome de terceiros seria vazamento de dado pessoal. Você continua
+ * sendo "Você".
+ */
+function firstName(display: string): string {
+  return display.trim().split(/\s+/)[0] || display
 }
 
 /** Desenha texto com tracking (espaçamento entre letras) — canvas não tem nativo. */
