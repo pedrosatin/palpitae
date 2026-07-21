@@ -72,3 +72,12 @@ Modal genérico (componente `Modal`):
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_modal_fechar` | clique no botão ✕ de qualquer modal (backdrop/ESC seguem não rastreados) | `{ modal }` (título do modal) |
+
+Compartilhar resultado de campeonato encerrado (GroupCard + ShareGroupModal):
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_groupcard_compartilhar` | clique em "Compartilhar resultado" no card encerrado (abre o modal) | `{ group_id }` |
+| `click_share_compartilhar` | clique em "Compartilhar" no modal (só aparece onde há Web Share de arquivos — mobile) | — |
+| `click_share_baixar` | clique em "Baixar imagem" no modal | — |
+| `click_share_copiar_link` | clique em "Copiar link" no modal | — |
