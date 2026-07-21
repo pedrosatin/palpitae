@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trackEvent } from '../../../analytics/ga'
 import Button from '../../Button'
+import ShareButtons from '../../ShareButtons'
 import styles from '../CreateGroupModal.module.css'
 import shared from '../../modal-shared.module.css'
 
@@ -56,6 +57,8 @@ export default function CreateGroupSuccessView({ created, onClose }: CreateGroup
           {copied ? 'Copiado!' : 'Copiar link'}
         </Button>
       </div>
+
+      <ShareButtons shareLink={getShareLink(created.invite_code)} eventContext="create_group" />
 
       <Button variant="primary" className={styles.doneBtn} onClick={onClose}>
         Pronto
