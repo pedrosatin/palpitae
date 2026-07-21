@@ -78,6 +78,6 @@ Compartilhar resultado de campeonato encerrado (GroupCard + ShareGroupModal):
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_groupcard_compartilhar` | clique em "Compartilhar resultado" no card encerrado (abre o modal) | `{ group_id }` |
-| `click_share_compartilhar` | clique em "Compartilhar" no modal | `{ method }` (`native` = Web Share / `download` = fallback desktop) |
+| `click_share_compartilhar` | clique em "Compartilhar" no modal (só aparece onde há Web Share de arquivos — mobile) | — |
 | `click_share_baixar` | clique em "Baixar imagem" no modal | — |
 | `click_share_copiar_link` | clique em "Copiar link" no modal | — |
