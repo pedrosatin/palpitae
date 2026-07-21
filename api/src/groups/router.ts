@@ -236,8 +236,8 @@ router.post('/', requireAuth, async (c) => {
     return c.json({ error: 'Nome e competição são obrigatórios' }, 400)
   }
 
-  if (name.length < 2 || name.length > 50) {
-    return c.json({ error: 'Nome deve ter entre 2 e 50 caracteres' }, 400)
+  if (name.length < 2 || name.length > 30) {
+    return c.json({ error: 'Nome deve ter entre 2 e 30 caracteres' }, 400)
   }
 
   // Scoring rules & visibility — set at creation, immutable afterwards.
@@ -528,8 +528,8 @@ router.patch('/:id', requireAuth, async (c) => {
     return c.json({ error: 'Nome é obrigatório' }, 400)
   }
 
-  if (name.length < 2 || name.length > 50) {
-    return c.json({ error: 'Nome deve ter entre 2 e 50 caracteres' }, 400)
+  if (name.length < 2 || name.length > 30) {
+    return c.json({ error: 'Nome deve ter entre 2 e 30 caracteres' }, 400)
   }
 
   const group = await db
