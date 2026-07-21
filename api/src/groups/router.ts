@@ -189,7 +189,7 @@ async function handleGetGroups(c: Context<AppContext>) {
       matched_invite_group_id: matchedInviteGroup?.id ?? null,
     }
 
-    logRequestPerf('GET /groups', {
+    logRequestPerf(c.env.AE, 'GET /groups', {
       status: 200,
       totalMs: Date.now() - startedAt,
       dbMs,
