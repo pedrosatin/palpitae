@@ -63,7 +63,22 @@ async function handleGetGroups(c: Context<AppContext>) {
           g.competition_id,
           c.name AS competition_name,
           c.type AS competition_type,
-          c.status AS competition_status,
+          -- competitions.status hoje nasce 'upcoming' e nunca é atualizado, então
+          -- derivamos o fim a partir dos jogos reais: acabou quando a competição
+          -- tem partidas e nenhuma está pendente. Ainda respeitamos a coluna caso
+          -- ela venha a ser mantida no futuro.
+          CASE
+            WHEN c.status = 'finished' THEN 'finished'
+            WHEN EXISTS (
+              SELECT 1 FROM matches m WHERE m.competition_id = g.competition_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM matches m
+              WHERE m.competition_id = g.competition_id AND m.status != 'finished'
+            )
+            THEN 'finished'
+            ELSE c.status
+          END AS competition_status,
           g.owner_user_id AS admin_id,
           g.invite_code,
           g.created_at,
