@@ -3,6 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import GroupCard from './GroupCard'
 
+const mockTrackEvent = vi.fn()
+vi.mock('../../analytics/ga', () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}))
+
 const baseGroup = {
   id: 'group-1',
   name: 'Meu Grupo',
@@ -20,6 +25,7 @@ describe('GroupCard', () => {
 
   beforeEach(() => {
     onClick.mockClear()
+    mockTrackEvent.mockClear()
   })
 
   it('renders group name', () => {
@@ -94,6 +100,28 @@ describe('GroupCard', () => {
       expect(screen.getByText('Você')).toBeInTheDocument()
       expect(screen.getByText('#5')).toBeInTheDocument()
       expect(screen.getByText('42')).toBeInTheDocument()
+    })
+
+    it('shows a share button that opens the share modal and tracks the click', async () => {
+      render(<GroupCard group={finishedGroup} onClick={onClick} />)
+      const shareBtn = screen.getByRole('button', { name: /Compartilhar resultado/i })
+
+      await userEvent.click(shareBtn)
+
+      expect(mockTrackEvent).toHaveBeenCalledWith('click_groupcard_compartilhar', {
+        group_id: 'group-1',
+      })
+      // Modal opened.
+      expect(screen.getByText('Compartilhar resultado', { selector: 'h2' })).toBeInTheDocument()
+      // Opening the card must not fire when clicking share.
+      expect(onClick).not.toHaveBeenCalled()
+    })
+
+    it('does not render a share button on active (non-finished) cards', () => {
+      render(<GroupCard group={baseGroup} onClick={onClick} />)
+      expect(
+        screen.queryByRole('button', { name: /Compartilhar resultado/i }),
+      ).not.toBeInTheDocument()
     })
   })
 })
