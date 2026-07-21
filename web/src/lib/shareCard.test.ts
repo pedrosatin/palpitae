@@ -53,6 +53,17 @@ describe('buildShareCardData', () => {
     expect(data.standings.filter((e) => e.isYou)).toHaveLength(1)
   })
 
+  it('shows only the first name of other participants (no PII leak on a public card)', () => {
+    const data = buildShareCardData(
+      {
+        ...base,
+        podium: [{ position: 1, display: 'João da Silva Souza', points: 152, is_you: false }],
+      },
+      'https://palpitae.app',
+    )
+    expect(data.standings[0].display).toBe('João')
+  })
+
   it('strips scheme and trailing slash from the domain', () => {
     expect(buildShareCardData(base, 'https://palpitae.app/').domain).toBe('palpitae.app')
     expect(buildShareCardData(base, 'http://localhost:5173').domain).toBe('localhost:5173')
