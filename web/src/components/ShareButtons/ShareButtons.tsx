@@ -41,17 +41,7 @@ export default function ShareButtons({
     message,
   )}&url=${encodeURIComponent(shareLink)}`
 
-  async function handleShare() {
-    trackEvent(`click_${eventContext}_compartilhar`)
-    if (canWebShare) {
-      try {
-        await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
-      } catch {
-        // Usuário cancelou o menu de compartilhar — nada a fazer.
-      }
-      return
-    }
-    // Desktop / navegador sem Web Share: copia o link como fallback.
+  async function copyLinkFallback() {
     try {
       await navigator.clipboard.writeText(shareLink)
       setCopied(true)
@@ -59,6 +49,23 @@ export default function ShareButtons({
     } catch {
       // Clipboard indisponível — silencioso.
     }
+  }
+
+  async function handleShare() {
+    trackEvent(`click_${eventContext}_compartilhar`)
+    if (canWebShare) {
+      try {
+        await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
+      } catch (err) {
+        // Cancelar o menu (AbortError) é no-op. Qualquer outra falha (permissão,
+        // contexto não-seguro...) cai para copiar o link, senão o usuário fica sem nada.
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        await copyLinkFallback()
+      }
+      return
+    }
+    // Desktop / navegador sem Web Share: copia o link como fallback.
+    await copyLinkFallback()
   }
 
   function openExternal(url: string, action: 'whatsapp' | 'twitter') {
