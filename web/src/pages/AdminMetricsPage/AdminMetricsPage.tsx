@@ -46,6 +46,14 @@ interface OverviewResponse {
     sent: string | number
     failed: string | number
   }
+  latency: {
+    route: string
+    requests: string | number
+    avg_ms: string | number
+    max_ms: string | number
+    avg_db_ms: string | number
+  }[]
+  predictionsDaily: { day: string; users: string | number }[]
 }
 
 interface ArchiveResponse {
@@ -57,6 +65,17 @@ interface ArchiveResponse {
     uploaded: string
     events: number | null
   }[]
+}
+
+// Análise sob demanda do arquivo frio: agrega o CORPO dos NDJSON de um período
+// (GET /metrics/archive/query). Único jeito de dissecar dados além da janela do AE.
+interface ArchiveQueryResponse {
+  from: string
+  to: string
+  filesRead: number
+  totalEvents: number
+  byType: { event_type: string; count: number }[]
+  byDay: { day: string; count: number }[]
 }
 
 const PERIODS = [7, 30, 90] as const
@@ -128,6 +147,18 @@ function buildApiCallsSeries(
   days: number,
 ): { label: string; total: number }[] {
   const byDay = new Map(apiCallsDaily.map((r) => [r.day.slice(0, 10), Number(r.api_calls)]))
+  return lastDays(days).map((label) => ({
+    label,
+    total: byDay.get(label) ?? 0,
+  }))
+}
+
+/** DAU: usuários distintos palpitando por dia, alinhado à janela do período. */
+function buildDauSeries(
+  predictionsDaily: OverviewResponse['predictionsDaily'],
+  days: number,
+): { label: string; total: number }[] {
+  const byDay = new Map(predictionsDaily.map((r) => [r.day.slice(0, 10), Number(r.users)]))
   return lastDays(days).map((label) => ({
     label,
     total: byDay.get(label) ?? 0,
@@ -212,6 +243,11 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
 
   const apiCallsSeries = useMemo(
     () => (overview ? buildApiCallsSeries(overview.apiCallsDaily, overview.days) : []),
+    [overview],
+  )
+
+  const dauSeries = useMemo(
+    () => (overview ? buildDauSeries(overview.predictionsDaily, overview.days) : []),
     [overview],
   )
 
@@ -307,6 +343,7 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
   return {
     stacked,
     apiCallsSeries,
+    dauSeries,
     kpis,
     avgSample,
     isSampling,
@@ -450,6 +487,56 @@ function HealthSection({
         ariaLabel="Chamadas à API Football por dia"
         unit=" chamadas"
       />
+    </section>
+  )
+}
+
+function EngagementSection({
+  dauSeries,
+}: {
+  dauSeries: ReturnType<typeof useMetricsData>['dauSeries']
+}) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Usuários ativos (palpitando) por dia</h2>
+      <BarChart series={dauSeries} ariaLabel="Usuários palpitando por dia" unit=" usuários" />
+      <p className={styles.hint}>
+        Distintos por <code>prediction_saved</code> — sob amostragem do Analytics Engine é piso.
+      </p>
+    </section>
+  )
+}
+
+function LatencySection({ overview }: { overview: OverviewResponse }) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Latência por rota</h2>
+      {overview.latency.length === 0 ? (
+        <p className={styles.hint}>Nenhuma medida de latência no período.</p>
+      ) : (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>rota</th>
+              <th className={styles.num}>requests</th>
+              <th className={styles.num}>média</th>
+              <th className={styles.num}>máx.</th>
+              <th className={styles.num}>db médio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overview.latency.map((r) => (
+              <tr key={r.route}>
+                <td className={styles.nowrap}>{r.route}</td>
+                <td className={styles.num}>{Number(r.requests)}</td>
+                <td className={styles.num}>{formatDuration(Number(r.avg_ms))}</td>
+                <td className={styles.num}>{formatDuration(Number(r.max_ms))}</td>
+                <td className={styles.num}>{formatDuration(Number(r.avg_db_ms))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
   )
 }
@@ -656,6 +743,78 @@ function ArchiveSection({
   )
 }
 
+/** Bounds UTC de um mês "YYYY-MM": primeiro e último dia (YYYY-MM-DD). */
+function monthBounds(month: string): { from: string; to: string } {
+  const [y, m] = month.split('-').map(Number)
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` }
+}
+
+function ArchiveQuerySection({
+  months,
+  selected,
+  loading,
+  result,
+  onSelect,
+}: {
+  months: { label: string; total: number }[]
+  selected: string | null
+  loading: boolean
+  result: ArchiveQueryResponse | null
+  onSelect: (month: string) => void
+}) {
+  if (months.length === 0) return null
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Análise do arquivo (além da janela do AE)</h2>
+      <p className={styles.hint}>
+        Lê o corpo dos NDJSON de um mês e agrega por tipo — enxerga dados que já saíram dos ~3 meses
+        do Analytics Engine.
+      </p>
+      <div className={styles.periods}>
+        {months.map((m) => (
+          <button
+            key={m.label}
+            type="button"
+            className={m.label === selected ? styles.periodActive : styles.period}
+            onClick={() => {
+              trackEvent('click_admin_metrics_arquivo_mes', { month: m.label })
+              onSelect(m.label)
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <p className={styles.hint}>Lendo arquivos…</p>}
+
+      {result && !loading && (
+        <>
+          <p className={styles.hint}>
+            {result.from} a {result.to} · {result.filesRead} arquivo(s) ·{' '}
+            <strong>{result.totalEvents}</strong> eventos
+          </p>
+          {result.byType.length === 0 ? (
+            <p className={styles.hint}>Nenhum evento arquivado nesse mês.</p>
+          ) : (
+            <table className={styles.table}>
+              <tbody>
+                {result.byType.map((t) => (
+                  <tr key={t.event_type}>
+                    <td title={t.event_type}>{eventLabel(t.event_type)}</td>
+                    <td className={styles.num}>{t.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 export default function AdminMetricsPage() {
   useDocumentTitle('Métricas')
 
@@ -664,6 +823,11 @@ export default function AdminMetricsPage() {
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Análise do arquivo frio, sob demanda (um mês por vez) — independente do período.
+  const [queryMonth, setQueryMonth] = useState<string | null>(null)
+  const [queryResult, setQueryResult] = useState<ArchiveQueryResponse | null>(null)
+  const [queryLoading, setQueryLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -701,6 +865,7 @@ export default function AdminMetricsPage() {
   const {
     stacked,
     apiCallsSeries,
+    dauSeries,
     kpis,
     avgSample,
     isSampling,
@@ -708,6 +873,22 @@ export default function AdminMetricsPage() {
     archiveDays,
     archiveStats,
   } = useMetricsData(overview, archive)
+
+  async function runArchiveQuery(month: string) {
+    setQueryMonth(month)
+    setQueryLoading(true)
+    setQueryResult(null)
+    const { from, to } = monthBounds(month)
+    try {
+      const params = new URLSearchParams({ from, to })
+      const res = await apiFetch(buildApiUrl('/metrics/archive/query', params))
+      if (res.ok) setQueryResult((await res.json()) as ArchiveQueryResponse)
+    } catch {
+      // Falha na análise não derruba a página — o mês fica sem resultado.
+    } finally {
+      setQueryLoading(false)
+    }
+  }
 
   if (error === 'forbidden') {
     return (
@@ -760,7 +941,9 @@ export default function AdminMetricsPage() {
             )}
 
             <EventsSection overview={overview} stacked={stacked} />
+            <EngagementSection dauSeries={dauSeries} />
             <HealthSection overview={overview} apiCallsSeries={apiCallsSeries} />
+            <LatencySection overview={overview} />
             <EmailSection overview={overview} kpis={kpis} />
             <ConcentrationSection whaleShare={whaleShare} />
             <LoginFailuresSection overview={overview} />
@@ -769,7 +952,16 @@ export default function AdminMetricsPage() {
         )}
 
         {archive && !loading && (
-          <ArchiveSection archiveStats={archiveStats} archiveDays={archiveDays} />
+          <>
+            <ArchiveSection archiveStats={archiveStats} archiveDays={archiveDays} />
+            <ArchiveQuerySection
+              months={archiveStats?.monthly ?? []}
+              selected={queryMonth}
+              loading={queryLoading}
+              result={queryResult}
+              onSelect={runArchiveQuery}
+            />
+          </>
         )}
       </div>
     </div>
