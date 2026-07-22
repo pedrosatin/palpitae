@@ -61,14 +61,33 @@ Eventos da config de pontuação/visibilidade no grupo (CreateGroupModal + Match
 > Steppers de placar e a troca de palpite empate→decisivo (que limpa o pick de pênalti)
 > seguem **não** rastreados — só o clique intencional no vencedor do pênalti gera evento.
 
+Compartilhamento do convite (`ShareButtons`, usado em GroupInviteSection + CreateGroupSuccessView).
+O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal de sucesso:
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_<contexto>_compartilhar` | botão "Compartilhar" (Web Share nativo; sem suporte, copia o link) | — |
+| `click_<contexto>_whatsapp` | ícone WhatsApp (abre wa.me com texto + link) | — |
+| `click_<contexto>_twitter` | ícone X/Twitter (abre intent/tweet com texto + link) | — |
+
 Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_admin_metrics_periodo` | troca do período dos gráficos (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
+| `click_admin_metrics_arquivo_mes` | seleção de um mês pra analisar o arquivo frio (R2) | `{ month }` (`YYYY-MM`) |
 
 Modal genérico (componente `Modal`):
 
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_modal_fechar` | clique no botão ✕ de qualquer modal (backdrop/ESC seguem não rastreados) | `{ modal }` (título do modal) |
+
+Compartilhar resultado de campeonato encerrado (GroupCard + ShareGroupModal):
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_groupcard_compartilhar` | clique em "Compartilhar resultado" no card encerrado (abre o modal) | `{ group_id }` |
+| `click_share_compartilhar` | clique em "Compartilhar" no modal (só aparece onde há Web Share de arquivos — mobile) | — |
+| `click_share_baixar` | clique em "Baixar imagem" no modal | — |
+| `click_share_copiar_link` | clique em "Copiar link" no modal | — |
