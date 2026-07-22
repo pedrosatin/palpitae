@@ -117,6 +117,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`) | `error_message` (só em `exchange_failed`) | — | — |
 | `oauth_error` | `error_code` | — | — | — |
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
+| `request_perf` | `route` (`GET /matches`, ...) | `status` (HTTP, string) | — | `double1`=total_ms, `double2`=db_ms (0 se ausente), `double3`=rows (0 se ausente) |
 | `email_reminder_sent` | `user_hash` | `competition_name` | `round` | — |
 | `cron_round_reminder` | — | — | — | `double1`=rounds, `double2`=sent, `double3`=failed |
 | `cron_round_reminder_misconfig` | `reason` (`no_api_key`) | — | — | — |
