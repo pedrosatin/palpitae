@@ -70,24 +70,80 @@ function EmptyState({
   )
 }
 
-function GroupsList({ groups }: { groups: GroupWithStats[] }) {
+function GroupsGrid({ groups }: { groups: GroupWithStats[] }) {
   const navigate = useNavigate()
 
   return (
-    <div className={styles.groupsContainer}>
-      <h2 className={styles.sectionTitle}>Seus grupos</h2>
-      <div className={styles.groupsGrid}>
-        {groups.map((group) => (
-          <GroupCard
-            key={group.id}
-            group={group}
-            onClick={() => {
-              trackEvent('click_dashboard_grupo', { group_id: group.id })
-              navigate(`/grupos/${group.id}`)
-            }}
-          />
-        ))}
+    <div className={styles.groupsGrid}>
+      {groups.map((group) => (
+        <GroupCard
+          key={group.id}
+          group={group}
+          onClick={() => {
+            trackEvent('click_dashboard_grupo', { group_id: group.id })
+            navigate(`/grupos/${group.id}`)
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Grupos de campeonatos encerrados. Ficam numa seção própria, abaixo dos ativos,
+ * colapsável — o resultado ainda é a parte mais empolgante logo após o fim, então
+ * abre por padrão, mas o usuário pode recolher para tirar do caminho.
+ */
+function FinishedGroupsSection({ groups }: { groups: GroupWithStats[] }) {
+  const [open, setOpen] = useState(true)
+
+  return (
+    <section className={styles.groupsContainer}>
+      <button
+        type="button"
+        className={styles.collapseToggle}
+        aria-expanded={open}
+        onClick={() => {
+          trackEvent('click_dashboard_encerrados_toggle', { open: !open })
+          setOpen((v) => !v)
+        }}
+      >
+        <span className={styles.collapseChevron} data-open={open || undefined} aria-hidden="true">
+          ▾
+        </span>
+        <span className={styles.sectionTitle} role="heading" aria-level={2}>
+          Encerrados
+        </span>
+        <span className={styles.sectionCount}>{groups.length}</span>
+      </button>
+      {open && <GroupsGrid groups={groups} />}
+    </section>
+  )
+}
+
+function GroupsList({ groups }: { groups: GroupWithStats[] }) {
+  const ongoing = groups.filter((g) => g.competition_status !== 'finished')
+  const finished = groups.filter((g) => g.competition_status === 'finished')
+
+  // Sem grupos encerrados: mantém a visão simples de sempre, sem seções extras.
+  if (finished.length === 0) {
+    return (
+      <div className={styles.groupsContainer}>
+        <h2 className={styles.sectionTitle}>Seus grupos</h2>
+        <GroupsGrid groups={ongoing} />
       </div>
+    )
+  }
+
+  return (
+    <div className={styles.sections}>
+      {ongoing.length > 0 && (
+        <section className={styles.groupsContainer}>
+          <h2 className={styles.sectionTitle}>Em andamento</h2>
+          <GroupsGrid groups={ongoing} />
+        </section>
+      )}
+      <FinishedGroupsSection groups={finished} />
     </div>
   )
 }
