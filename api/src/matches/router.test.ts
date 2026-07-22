@@ -290,6 +290,34 @@ describe('matches router – GET /', () => {
   })
 
   describe('POST /sync', () => {
+    it('returns 400 when body is invalid JSON', async () => {
+      vi.spyOn(permissions, 'hasFeatureAccess').mockReturnValue(true)
+
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+      const token = await signJwt({ sub: 'admin-1', email: 'admin@example.com' }, 'secret', 3600)
+
+      const req = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          Cookie: `session=${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: 'not a valid json',
+      })
+
+      const response = await app.fetch(req, fakeEnv(createMatchesDbMock()), {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      })
+
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'Body JSON inválido',
+      })
+    })
+
     it('returns 403 when user does not have sync_matches access', async () => {
       vi.spyOn(permissions, 'hasFeatureAccess').mockReturnValue(false)
 

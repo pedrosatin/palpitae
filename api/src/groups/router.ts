@@ -1,4 +1,4 @@
-import { type Context, Hono } from 'hono'
+import { Hono } from 'hono'
 import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
@@ -15,10 +15,20 @@ type GroupRow = {
   competition_id: string
   competition_name: string | null
   competition_type: 'league' | 'cup' | null
+  competition_status: 'upcoming' | 'ongoing' | 'finished' | null
   admin_id: string
   invite_code: string
   created_at: string
   member_count: number
+}
+
+// Pódio de um grupo encerrado: os 3 primeiros do leaderboard + flag de quem é o
+// próprio usuário (calculada no servidor para o card não precisar do id do user).
+type PodiumEntry = {
+  position: number
+  display: string
+  points: number
+  is_you: boolean
 }
 
 /**
@@ -34,7 +44,7 @@ function generateInviteCode(): string {
   return `${raw.slice(0, 4)}-${raw.slice(4)}`
 }
 
-async function handleGetGroups(c: Context<AppContext>) {
+router.get('/', requireAuth, async (c) => {
   const userId = c.get('userId')
   const startedAt = Date.now()
   const inviteCode = c.req.query('invite_code')?.trim().toUpperCase()
@@ -53,6 +63,22 @@ async function handleGetGroups(c: Context<AppContext>) {
           g.competition_id,
           c.name AS competition_name,
           c.type AS competition_type,
+          -- competitions.status hoje nasce 'upcoming' e nunca é atualizado, então
+          -- derivamos o fim a partir dos jogos reais: acabou quando a competição
+          -- tem partidas e nenhuma está pendente. Ainda respeitamos a coluna caso
+          -- ela venha a ser mantida no futuro.
+          CASE
+            WHEN c.status = 'finished' THEN 'finished'
+            WHEN EXISTS (
+              SELECT 1 FROM matches m WHERE m.competition_id = g.competition_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM matches m
+              WHERE m.competition_id = g.competition_id AND m.status != 'finished'
+            )
+            THEN 'finished'
+            ELSE c.status
+          END AS competition_status,
           g.owner_user_id AS admin_id,
           g.invite_code,
           g.created_at,
@@ -87,6 +113,63 @@ async function handleGetGroups(c: Context<AppContext>) {
       ? (groups.results.find((group) => group.invite_code === inviteCode) ?? null)
       : null
 
+    // Pódio só para grupos encerrados: o card ativo mostra "como vou", o encerrado
+    // mostra "quem ganhou". Buscamos os 3 primeiros de cada grupo finalizado numa
+    // única query com ROW_NUMBER(), em vez de N subqueries no SELECT principal.
+    const finishedGroupIds = groups.results
+      .filter((group) => group.competition_status === 'finished')
+      .map((group) => group.id)
+
+    const podiumByGroup = new Map<string, PodiumEntry[]>()
+    if (finishedGroupIds.length > 0) {
+      const placeholders = finishedGroupIds.map(() => '?').join(', ')
+      const podiumRows = await db
+        .prepare(
+          `
+          SELECT group_id, user_id, display, points, rank
+          FROM (
+            SELECT
+              l.group_id AS group_id,
+              l.user_id AS user_id,
+              COALESCE(p.nickname, u.email) AS display,
+              l.total_points AS points,
+              ROW_NUMBER() OVER (
+                PARTITION BY l.group_id
+                -- Mesmo desempate do endpoint de membros (pontos → acertos exatos →
+                -- ordem de entrada), senão o #1 do card pode divergir do leaderboard.
+                ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC
+              ) AS rank
+            FROM leaderboard l
+            JOIN users u ON u.id = l.user_id
+            JOIN group_members gm ON gm.group_id = l.group_id AND gm.user_id = l.user_id
+            LEFT JOIN profiles p ON p.user_id = l.user_id
+            WHERE l.group_id IN (${placeholders})
+          )
+          WHERE rank <= 3
+          ORDER BY group_id, rank
+          `,
+        )
+        .bind(...finishedGroupIds)
+        .all<{
+          group_id: string
+          user_id: string
+          display: string
+          points: number
+          rank: number
+        }>()
+
+      for (const row of podiumRows.results) {
+        const entries = podiumByGroup.get(row.group_id) ?? []
+        entries.push({
+          position: row.rank,
+          display: row.display,
+          points: row.points,
+          is_you: row.user_id === userId,
+        })
+        podiumByGroup.set(row.group_id, entries)
+      }
+    }
+
     const dbMs = Date.now() - dbStartedAt
     const payload = {
       groups: groups.results.map((group) => ({
@@ -95,16 +178,18 @@ async function handleGetGroups(c: Context<AppContext>) {
         competition_id: group.competition_id,
         competition_name: group.competition_name ?? null,
         competition_type: group.competition_type ?? null,
+        competition_status: group.competition_status ?? null,
         is_admin: group.admin_id === userId,
         created_at: group.created_at,
         member_count: group.member_count,
         user_position: group.user_position,
         user_points: group.user_points,
+        podium: podiumByGroup.get(group.id) ?? null,
       })),
       matched_invite_group_id: matchedInviteGroup?.id ?? null,
     }
 
-    logRequestPerf('GET /groups', {
+    logRequestPerf(c.env.AE, 'GET /groups', {
       status: 200,
       totalMs: Date.now() - startedAt,
       dbMs,
@@ -113,12 +198,10 @@ async function handleGetGroups(c: Context<AppContext>) {
 
     return c.json(payload)
   } catch (error) {
-    console.error('Error fetching groups:', error)
+    console.error('[groups] Error fetching groups for user %s:', userId, error)
     return c.json({ error: 'Erro ao carregar grupos' }, 500)
   }
-}
-
-router.get('/', requireAuth, handleGetGroups)
+})
 
 /**
  * POST /groups
@@ -154,8 +237,8 @@ router.post('/', requireAuth, async (c) => {
     return c.json({ error: 'Nome e competição são obrigatórios' }, 400)
   }
 
-  if (name.length < 2 || name.length > 50) {
-    return c.json({ error: 'Nome deve ter entre 2 e 50 caracteres' }, 400)
+  if (name.length < 2 || name.length > 30) {
+    return c.json({ error: 'Nome deve ter entre 2 e 30 caracteres' }, 400)
   }
 
   // Scoring rules & visibility — set at creation, immutable afterwards.
@@ -260,7 +343,7 @@ router.post('/', requireAuth, async (c) => {
 
     return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
   } catch (error) {
-    console.error('Error creating group:', error)
+    console.error('[groups] Error creating group for user %s:', userId, error)
     return c.json({ error: 'Erro ao criar grupo' }, 500)
   }
 })
@@ -446,8 +529,8 @@ router.patch('/:id', requireAuth, async (c) => {
     return c.json({ error: 'Nome é obrigatório' }, 400)
   }
 
-  if (name.length < 2 || name.length > 50) {
-    return c.json({ error: 'Nome deve ter entre 2 e 50 caracteres' }, 400)
+  if (name.length < 2 || name.length > 30) {
+    return c.json({ error: 'Nome deve ter entre 2 e 30 caracteres' }, 400)
   }
 
   const group = await db
