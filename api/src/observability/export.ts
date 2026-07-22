@@ -52,7 +52,6 @@ export function dayBounds(day: Date): {
  */
 export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
   if (!env.EVENTS || !env.CF_ACCOUNT_ID || !env.AE_SQL_TOKEN) {
-    console.warn('[export] R2/SQL API não configurado — export ignorado.')
     return
   }
 
@@ -161,7 +160,6 @@ async function backfillEventsMetadata(bucket: R2Bucket, key: string): Promise<vo
  */
 export async function exportRecentDays(env: Env, today: Date, lookbackDays = 90): Promise<void> {
   if (!env.EVENTS || !env.CF_ACCOUNT_ID || !env.AE_SQL_TOKEN) {
-    console.warn('[export] R2/SQL API não configurado — backfill ignorado.')
     return
   }
 
