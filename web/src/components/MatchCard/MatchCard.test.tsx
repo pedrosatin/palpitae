@@ -417,6 +417,8 @@ describe('MatchCard – penalty shootout pick', () => {
     } as Response)
     const onSaved = vi.fn()
 
+    const penaltyMatch = () => makeMatch({ decides_on_penalties: true })
+
     render(
       <MatchCard
         match={penaltyMatch()}
@@ -438,5 +440,105 @@ describe('MatchCard – penalty shootout pick', () => {
     expect(body.predicted_away_score).toBe(0)
     expect(body.predicted_penalty_winner).toBe('away')
     expect(onSaved).toHaveBeenCalledWith('match-1', 0, 0, 'away')
+  })
+})
+
+describe('MatchCard – Finished state', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows the "encerrado" badge and final score', () => {
+    const match = makeMatch({
+      status: 'finished',
+      home_score: 2,
+      away_score: 1,
+    })
+    renderCard(match, makePrediction())
+
+    expect(screen.getByText('encerrado')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+  })
+
+  it('renders total points including penalty bonus', () => {
+    const match = makeMatch({
+      status: 'finished',
+      home_score: 1,
+      away_score: 1,
+      penalty_winner: 'home',
+      home_penalty_goals: 4,
+      away_penalty_goals: 3,
+    })
+    const prediction = makePrediction({
+      points_awarded: 5,
+      penalty_points: 2,
+      locked: 1,
+    })
+    renderCard(match, prediction)
+
+    expect(screen.getByText('7 pontos')).toBeInTheDocument()
+    expect(screen.getByText('(+2 pênalti)')).toBeInTheDocument()
+    expect(screen.getByText('(4-3 pênaltis)')).toBeInTheDocument()
+  })
+})
+
+describe('MatchCard – Error state', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows an error message when saving fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Database timeout' }),
+    } as Response)
+
+    renderCard(makeMatch(), undefined)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
+
+    expect(await screen.findByText('Database timeout')).toBeInTheDocument()
+  })
+
+  it('shows generic error message if api fails without error description', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({}),
+    } as Response)
+
+    renderCard(makeMatch(), undefined)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
+
+    expect(await screen.findByText('Erro ao salvar palpite')).toBeInTheDocument()
+  })
+})
+
+describe('MatchCard – Score inputs', () => {
+  it('updates the score on typing', async () => {
+    renderCard(makeMatch(), undefined)
+
+    const homeInput = screen.getByRole('spinbutton', {
+      name: /Placar Brasil/i,
+    }) as HTMLInputElement
+    const awayInput = screen.getByRole('spinbutton', {
+      name: /Placar Argentina/i,
+    }) as HTMLInputElement
+
+    await userEvent.clear(homeInput)
+    await userEvent.type(homeInput, '3')
+
+    await userEvent.clear(awayInput)
+    await userEvent.type(awayInput, '2')
+
+    expect(homeInput.value).toBe('3')
+    expect(awayInput.value).toBe('2')
   })
 })
