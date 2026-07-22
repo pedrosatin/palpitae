@@ -1,7 +1,7 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { hashUserId, logEvent } from '../observability/events'
 import { roundLabel } from '../matches/rounds'
-import { type EmailMessage, EmailError, sendEmail } from './email'
+import { EmailError, sendEmail } from './email'
 import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
@@ -19,7 +19,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * exponential backoff that honours Resend's Retry-After. Permanent 4xx fail fast.
  * Throws if every attempt fails so the caller counts it and moves on.
  */
-async function sendWithRetry(apiKey: string, msg: EmailMessage): Promise<void> {
+async function sendWithRetry(apiKey: string, msg: Parameters<typeof sendEmail>[1]): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
       await sendEmail(apiKey, msg)
