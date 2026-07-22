@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { hashUserId, logEvent } from './events'
+import { describe, expect, it, vi, afterEach } from 'vitest'
+import { hashUserId, logError, logEvent } from './events'
 
 type Point = {
   indexes?: string[]
@@ -43,6 +43,35 @@ describe('logEvent', () => {
 
   it('is a no-op when the binding is undefined', () => {
     expect(() => logEvent(undefined, 'login_success', { blobs: ['x'] })).not.toThrow()
+  })
+})
+
+describe('logError', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('calls console.error and logs event with Error object', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { ae, calls } = fakeAe()
+    const err = new Error('Test error')
+
+    logError(ae, 'football_api_error', 'Sync failed:', err, { blobs: ['comp-1'] })
+
+    expect(consoleSpy).toHaveBeenCalledWith('Sync failed:', err)
+    expect(calls).toHaveLength(1)
+    expect(calls[0].blobs).toEqual(['football_api_error', 'comp-1', 'Test error'])
+  })
+
+  it('calls console.error and logs event with non-Error object', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { ae, calls } = fakeAe()
+
+    logError(ae, 'football_api_error', 'Sync failed:', 'String error', { blobs: ['comp-1'] })
+
+    expect(consoleSpy).toHaveBeenCalledWith('Sync failed:', 'String error')
+    expect(calls).toHaveLength(1)
+    expect(calls[0].blobs).toEqual(['football_api_error', 'comp-1', 'String error'])
   })
 })
 

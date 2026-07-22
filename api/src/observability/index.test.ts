@@ -13,7 +13,7 @@ describe('logRequestPerf', () => {
   })
 
   it('should log basic metrics correctly', () => {
-    logRequestPerf('/api/test', {
+    logRequestPerf(undefined, '/api/test', {
       status: 200,
       totalMs: 123.456,
     })
@@ -30,7 +30,7 @@ describe('logRequestPerf', () => {
   })
 
   it('should include db_ms if provided', () => {
-    logRequestPerf('/api/test', {
+    logRequestPerf(undefined, '/api/test', {
       status: 200,
       totalMs: 123.456,
       dbMs: 45.678,
@@ -49,7 +49,7 @@ describe('logRequestPerf', () => {
   })
 
   it('should include rows if provided', () => {
-    logRequestPerf('/api/test', {
+    logRequestPerf(undefined, '/api/test', {
       status: 200,
       totalMs: 123.456,
       rows: 42,
@@ -68,7 +68,7 @@ describe('logRequestPerf', () => {
   })
 
   it('should include extra fields at the root level if provided', () => {
-    logRequestPerf('/api/test', {
+    logRequestPerf(undefined, '/api/test', {
       status: 200,
       totalMs: 123.456,
       extra: {
@@ -93,7 +93,7 @@ describe('logRequestPerf', () => {
   })
 
   it('should handle all fields combined', () => {
-    logRequestPerf('/api/test', {
+    logRequestPerf(undefined, '/api/test', {
       status: 404,
       totalMs: 0.123,
       dbMs: 0.045,
@@ -115,5 +115,39 @@ describe('logRequestPerf', () => {
         reason: 'not found',
       }),
     )
+  })
+
+  it('writes a request_perf datapoint to the Analytics Engine (route/status blobs, ms/rows doubles)', () => {
+    const writeDataPoint = vi.fn()
+    const ae = { writeDataPoint } as unknown as AnalyticsEngineDataset
+
+    logRequestPerf(ae, 'GET /matches', {
+      status: 200,
+      totalMs: 12.34,
+      dbMs: 5.6,
+      rows: 7,
+      // extra é alta cardinalidade — não deve virar dimensão no AE.
+      extra: { competition_id: 'BSA' },
+    })
+
+    expect(writeDataPoint).toHaveBeenCalledTimes(1)
+    expect(writeDataPoint).toHaveBeenCalledWith({
+      indexes: ['request_perf'],
+      blobs: ['request_perf', 'GET /matches', '200'],
+      doubles: [12.3, 5.6, 7],
+    })
+  })
+
+  it('defaults missing db_ms/rows to 0 in the Analytics Engine doubles', () => {
+    const writeDataPoint = vi.fn()
+    const ae = { writeDataPoint } as unknown as AnalyticsEngineDataset
+
+    logRequestPerf(ae, 'GET /groups', { status: 200, totalMs: 8 })
+
+    expect(writeDataPoint).toHaveBeenCalledWith({
+      indexes: ['request_perf'],
+      blobs: ['request_perf', 'GET /groups', '200'],
+      doubles: [8, 0, 0],
+    })
   })
 })
