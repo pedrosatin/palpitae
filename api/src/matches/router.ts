@@ -389,7 +389,7 @@ async function handleGetMatches(c: Context<AppContext>) {
     const cacheCompetition = results.length > 0 ? competitionId : 'unknown'
     logEvent(c.env.AE, 'matches_cache', { blobs: ['miss', cacheCompetition] })
 
-    logRequestPerf('GET /matches', {
+    logRequestPerf(c.env.AE, 'GET /matches', {
       status: 200,
       totalMs: Date.now() - startedAt,
       dbMs,
