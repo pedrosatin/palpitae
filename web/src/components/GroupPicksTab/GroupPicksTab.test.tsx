@@ -29,7 +29,7 @@ function mockFetch(matches: Match[], picks: GroupPicksResponse) {
         .filter(([, max]) => max > nowIso)
         .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
       const chronologicalLast = matches.reduce<Match | undefined>(
-        (acc, m) => !acc || m.start_time >= acc.start_time ? m : acc,
+        (acc, m) => (!acc || m.start_time >= acc.start_time ? m : acc),
         undefined,
       )
       const default_round = activeRound?.[0] ?? chronologicalLast?.round ?? null
@@ -303,7 +303,9 @@ describe('GroupPicksTab – analytics', () => {
     await userEvent.click(screen.getByRole('button', { name: /Próxima rodada/i }))
     mockTrackEvent.mockClear()
     await userEvent.click(screen.getByRole('button', { name: /Rodada anterior/i }))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_rodada_anterior', { round: '1' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_rodada_anterior', {
+      round: '1',
+    })
   })
 
   it('fires change_group_picks_rodada when the round select is changed', async () => {
@@ -313,6 +315,8 @@ describe('GroupPicksTab – analytics', () => {
 
     await waitFor(() => screen.getByRole('combobox'))
     await userEvent.selectOptions(screen.getByRole('combobox'), 'Rodada 2')
-    expect(mockTrackEvent).toHaveBeenCalledWith('change_group_picks_rodada', { round: '2' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('change_group_picks_rodada', {
+      round: '2',
+    })
   })
 })

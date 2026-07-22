@@ -30,10 +30,15 @@ const env = {
   BASE_URL: 'https://api.palpitae.com.br',
 } as unknown as Env
 
-const ctx = { waitUntil: (p: Promise<unknown>) => p } as unknown as ExecutionContext
+const ctx = {
+  waitUntil: (p: Promise<unknown>) => p,
+} as unknown as ExecutionContext
 
 function run(cron: string) {
-  const controller = { cron, scheduledTime: Date.now() } as unknown as ScheduledController
+  const controller = {
+    cron,
+    scheduledTime: Date.now(),
+  } as unknown as ScheduledController
   return worker.scheduled!(controller, env, ctx)
 }
 

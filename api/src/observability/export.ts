@@ -21,7 +21,15 @@ const ROW_LIMIT = 10000
 const MAX_EXPORTS_PER_RUN = 10
 
 /** Limites UTC do dia e a chave R2 correspondente. Exportado para testes. */
-export function dayBounds(day: Date): { from: string; to: string; key: string } {
+export function dayBounds(day: Date): {
+  from: string
+  to: string
+  key: string
+} {
+  if (isNaN(day.getTime())) {
+    throw new TypeError('Invalid Date')
+  }
+
   const y = day.getUTCFullYear()
   const m = String(day.getUTCMonth() + 1).padStart(2, '0')
   const d = String(day.getUTCDate()).padStart(2, '0')
@@ -44,14 +52,20 @@ export function dayBounds(day: Date): { from: string; to: string; key: string } 
  */
 export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
   if (!env.EVENTS || !env.CF_ACCOUNT_ID || !env.AE_SQL_TOKEN) {
-    console.warn('[export] R2/SQL API não configurado — export ignorado.')
     return
   }
 
   const { from, to, key } = dayBounds(day)
 
+  // Validate limits to prevent SQL injection since Cloudflare AE API does not support bind parameters.
+  // Although `from` and `to` come from `dayBounds`, this ensures strict safety.
+  const dateTimeRegex = /^\d{4}-\d{2}-\d{2} 00:00:00$/
+  if (!dateTimeRegex.test(from) || !dateTimeRegex.test(to)) {
+    throw new Error('Invalid date format for export bounds')
+  }
+
   // A SQL API do Analytics Engine é ClickHouse-like e não aceita bind params —
-  // os limites vêm de dayBounds (não de input externo), então a interpolação é segura.
+  // os limites foram estritamente validados acima.
   const sql =
     `SELECT * FROM ${DATASET} ` +
     `WHERE timestamp >= toDateTime('${from}') AND timestamp < toDateTime('${to}') ` +
@@ -60,7 +74,11 @@ export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
 
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-    { method: 'POST', headers: { Authorization: `Bearer ${env.AE_SQL_TOKEN}` }, body: sql },
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.AE_SQL_TOKEN}` },
+      body: sql,
+    },
   )
 
   if (!res.ok) {
@@ -140,13 +158,8 @@ async function backfillEventsMetadata(bucket: R2Bucket, key: string): Promise<vo
  *
  * No-op se R2/credenciais não estiverem configurados (dev local/testes).
  */
-export async function exportRecentDays(
-  env: Env,
-  today: Date,
-  lookbackDays = 90,
-): Promise<void> {
+export async function exportRecentDays(env: Env, today: Date, lookbackDays = 90): Promise<void> {
   if (!env.EVENTS || !env.CF_ACCOUNT_ID || !env.AE_SQL_TOKEN) {
-    console.warn('[export] R2/SQL API não configurado — backfill ignorado.')
     return
   }
 

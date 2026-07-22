@@ -79,7 +79,7 @@ describe('GET /metrics/overview', () => {
     expect(res.status).toBe(503)
   })
 
-  it('happy path: 12 queries, janela aplicada em todas e shape esperado', async () => {
+  it('happy path: 14 queries, janela aplicada em todas e shape esperado', async () => {
     const fetchFake = fetchOk([{ event_type: 'login_success', count: '3' }])
     vi.stubGlobal('fetch', fetchFake)
 
@@ -104,6 +104,8 @@ describe('GET /metrics/overview', () => {
       whales: unknown[]
       lastRuns: unknown[]
       emailHealth: unknown
+      latency: unknown[]
+      predictionsDaily: unknown[]
     }
     expect(body.days).toBe(7)
     expect(body.totals).toHaveLength(1)
@@ -114,8 +116,10 @@ describe('GET /metrics/overview', () => {
     expect(body.whales).toHaveLength(1)
     expect(body.lastRuns).toHaveLength(1)
     expect(body.emailHealth).toBeTruthy()
+    expect(body.latency).toHaveLength(1)
+    expect(body.predictionsDaily).toHaveLength(1)
 
-    expect(fetchFake).toHaveBeenCalledTimes(12)
+    expect(fetchFake).toHaveBeenCalledTimes(14)
     const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
       (call) => call[1].body,
     )
@@ -216,16 +220,110 @@ describe('GET /metrics/archive', () => {
     }
 
     expect(list).toHaveBeenCalledTimes(2)
-    expect(list).toHaveBeenNthCalledWith(1, { prefix: 'events/', limit: 1000, cursor: undefined })
-    expect(list).toHaveBeenNthCalledWith(2, { prefix: 'events/', limit: 1000, cursor: 'cur-1' })
+    expect(list).toHaveBeenNthCalledWith(1, {
+      prefix: 'events/',
+      limit: 1000,
+      cursor: undefined,
+    })
+    expect(list).toHaveBeenNthCalledWith(2, {
+      prefix: 'events/',
+      limit: 1000,
+      cursor: 'cur-1',
+    })
     expect(body.files).toHaveLength(2)
-    expect(body.files[0]).toMatchObject({ key: 'events/2026/05/01.ndjson', size: 123, events: 42 })
-    expect(body.files[1]).toMatchObject({ key: 'events/2026/05/02.ndjson', size: 456, events: null })
+    expect(body.files[0]).toMatchObject({
+      key: 'events/2026/05/01.ndjson',
+      size: 123,
+      events: 42,
+    })
+    expect(body.files[1]).toMatchObject({
+      key: 'events/2026/05/02.ndjson',
+      size: 456,
+      events: null,
+    })
   })
 
   it('503 sem bucket configurado', async () => {
     const res = await makeApp().request(
       '/metrics/archive',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: undefined }),
+    )
+    expect(res.status).toBe(503)
+  })
+})
+
+describe('GET /metrics/archive/query', () => {
+  function ndjson(...rows: Record<string, unknown>[]): string {
+    return `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`
+  }
+
+  it('agrega o corpo dos NDJSON por tipo e por dia, ponderando pelo sampling', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': ndjson(
+        { blob1: 'login_success', _sample_interval: 1 },
+        { blob1: 'prediction_saved', _sample_interval: 3 }, // vale 3 eventos
+      ),
+      'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    const get = vi.fn(async (key: string) => (files[key] ? { text: async () => files[key] } : null))
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-02',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: { get } as unknown as R2Bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      filesRead: number
+      totalEvents: number
+      byType: { event_type: string; count: number }[]
+      byDay: { day: string; count: number }[]
+    }
+    expect(body.filesRead).toBe(2)
+    expect(body.totalEvents).toBe(5) // 1 + 3 + 1
+    // Ordenado por contagem desc: prediction_saved (3) antes de login_success (2).
+    expect(body.byType).toEqual([
+      { event_type: 'prediction_saved', count: 3 },
+      { event_type: 'login_success', count: 2 },
+    ])
+    expect(body.byDay).toEqual([
+      { day: '2026-05-01', count: 4 },
+      { day: '2026-05-02', count: 1 },
+    ])
+  })
+
+  it('400 para from/to inválidos ou invertidos', async () => {
+    const headers = await authHeaders(ADMIN)
+    const env = makeEnv({ EVENTS: {} as unknown as R2Bucket })
+
+    let res = await makeApp().request(
+      '/metrics/archive/query?from=xx&to=2026-05-02',
+      { headers },
+      env,
+    )
+    expect(res.status).toBe(400)
+
+    res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-05&to=2026-05-01',
+      { headers },
+      env,
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('400 quando o intervalo excede o teto', async () => {
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-01-01&to=2026-12-31',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: {} as unknown as R2Bucket }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('503 sem bucket configurado', async () => {
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-02',
       { headers: await authHeaders(ADMIN) },
       makeEnv({ EVENTS: undefined }),
     )

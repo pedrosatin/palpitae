@@ -80,7 +80,8 @@ export function initGa(): void {
 
   window.dataLayer = window.dataLayer || []
   window.gtag = function gtag() {
-    // forma canônica do gtag: empurra o próprio objeto `arguments` no dataLayer
+    // O GTM exige estritamente o objeto `arguments` nativo. Se usarmos rest parameters
+    // (...args), um Array é criado e o GTM ignora silenciosamente os eventos.
     // eslint-disable-next-line prefer-rest-params
     window.dataLayer.push(arguments)
   }
@@ -109,9 +110,6 @@ export function initGa(): void {
 }
 
 /** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */
-export function trackEvent(
-  name: string,
-  params?: Record<string, string | number | boolean>,
-): void {
+export function trackEvent(name: string, params?: Record<string, string | number | boolean>): void {
   window.gtag?.('event', name, params)
 }
