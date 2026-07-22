@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { gaEnabled, getStoredConsent, setConsent, type Consent } from '../../analytics/ga'
+import { gaEnabled, getStoredConsent, setConsent } from '../../analytics/ga'
 import styles from './CookieConsent.module.css'
 
 /**
@@ -15,11 +15,6 @@ export default function CookieConsent() {
 
   if (!visible) return null
 
-  function decide(consent: Consent) {
-    setConsent(consent)
-    setVisible(false)
-  }
-
   return (
     <div className={styles.banner} role="dialog" aria-label="Aviso de cookies" aria-live="polite">
       <p className={styles.text}>
@@ -27,10 +22,24 @@ export default function CookieConsent() {
         Você decide.
       </p>
       <div className={styles.actions}>
-        <button type="button" className={styles.reject} onClick={() => decide('denied')}>
+        <button
+          type="button"
+          className={styles.reject}
+          onClick={() => {
+            setConsent('denied')
+            setVisible(false)
+          }}
+        >
           Recusar
         </button>
-        <button type="button" className={styles.accept} onClick={() => decide('granted')}>
+        <button
+          type="button"
+          className={styles.accept}
+          onClick={() => {
+            setConsent('granted')
+            setVisible(false)
+          }}
+        >
           Aceitar
         </button>
       </div>
