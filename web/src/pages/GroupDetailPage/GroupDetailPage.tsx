@@ -1,68 +1,22 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams, Navigate } from 'react-router-dom'
 import { config } from '../../config'
 import { useConfirm } from '../../components/ConfirmModal'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
-import GroupPicksTab from '../../components/GroupPicksTab'
 import GroupHeader from './GroupHeader'
 import GroupInviteSection from './GroupInviteSection'
 import RenameGroupModal from './RenameGroupModal'
-import LeaderboardTab from '../../components/LeaderboardTab'
-import MembersTab from '../../components/MembersTab'
-import PredictionsTab from '../../components/PredictionsTab'
-import StandingsTab, { type CompetitionType } from '../../components/StandingsTab'
 import ErrorState from '../../components/ErrorState'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
 import styles from './GroupDetailPage.module.css'
-
-interface User {
-  id: string
-  email: string
-  nickname?: string
-  avatar_url?: string
-  feature_flags?: {
-    create_group?: boolean
-  }
-}
-
-interface GroupDetail {
-  id: string
-  name: string
-  competition_id: string
-  competition_name: string | null
-  competition_type: CompetitionType | null
-  is_admin: boolean
-  invite_code: string
-  created_at: string
-  points_exact: number
-  points_winner: number
-  predictions_visibility: string
-  member_count: number
-  user_position: number
-  user_points: number
-  exact_hits: number
-}
-
-const TABS = ['predictions', 'standings', 'group-picks', 'leaderboard', 'members'] as const
-type Tab = (typeof TABS)[number]
-const DEFAULT_TAB: Tab = 'predictions'
-
-const TAB_LABELS: Record<Tab, string> = {
-  predictions: 'Palpitar',
-  standings: 'Tabela',
-  'group-picks': 'Grupo',
-  leaderboard: 'Ranking',
-  members: 'Membros',
-}
-
-function parseTab(value: string | null): Tab {
-  return TABS.includes(value as Tab) ? (value as Tab) : DEFAULT_TAB
-}
+import { type User, type GroupDetail, type Tab, DEFAULT_TAB, TAB_LABELS, parseTab } from './types'
+import GroupTabs from './GroupTabs'
+import GroupTabContent from './GroupTabContent'
 
 interface GroupDetailPageProps {
   user: User
@@ -332,76 +286,23 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         {isAdmin && <GroupInviteSection inviteCode={group.invite_code} />}
 
         {/* Tabs */}
-        <div
-          className={styles.tabs}
-          style={{ '--tabs-offset': `${tabsOffset}px` } as CSSProperties}
-          data-testid="group-tabs"
-        >
-          <a
-            href={tabHref('predictions')}
-            className={`${styles.tab} ${activeTab === 'predictions' ? styles.tabActive : ''}`}
-            onClick={(e) => handleTabClick(e, 'predictions')}
-          >
-            Palpitar
-          </a>
-          {showStandings && (
-            <a
-              href={tabHref('standings')}
-              className={`${styles.tab} ${activeTab === 'standings' ? styles.tabActive : ''}`}
-              onClick={(e) => handleTabClick(e, 'standings')}
-            >
-              Tabela
-            </a>
-          )}
-          <a
-            href={tabHref('group-picks')}
-            className={`${styles.tab} ${activeTab === 'group-picks' ? styles.tabActive : ''}`}
-            onClick={(e) => handleTabClick(e, 'group-picks')}
-          >
-            Grupo
-          </a>
-          <a
-            href={tabHref('leaderboard')}
-            className={`${styles.tab} ${activeTab === 'leaderboard' ? styles.tabActive : ''}`}
-            onClick={(e) => handleTabClick(e, 'leaderboard')}
-          >
-            Ranking
-          </a>
-          {isAdmin && (
-            <a
-              href={tabHref('members')}
-              className={`${styles.tab} ${activeTab === 'members' ? styles.tabActive : ''}`}
-              onClick={(e) => handleTabClick(e, 'members')}
-            >
-              Membros
-            </a>
-          )}
-        </div>
+        <GroupTabs
+          activeTab={activeTab}
+          showStandings={showStandings}
+          isAdmin={isAdmin}
+          tabsOffset={tabsOffset}
+          tabHref={tabHref}
+          onTabClick={handleTabClick}
+        />
 
-        <div className={styles.tabContent}>
-          {activeTab === 'predictions' && (
-            <PredictionsTab
-              groupId={groupId}
-              competitionId={group.competition_id}
-              pointsExact={group.points_exact}
-            />
-          )}
-          {activeTab === 'standings' && showStandings && (
-            <StandingsTab
-              competitionId={group.competition_id}
-              competitionType={group.competition_type}
-            />
-          )}
-          {activeTab === 'group-picks' && (
-            <GroupPicksTab groupId={groupId} competitionId={group.competition_id} />
-          )}
-          {activeTab === 'leaderboard' && (
-            <LeaderboardTab groupId={groupId} currentUserId={user.id} />
-          )}
-          {activeTab === 'members' && isAdmin && (
-            <MembersTab groupId={groupId} currentUserId={user.id} />
-          )}
-        </div>
+        <GroupTabContent
+          activeTab={activeTab}
+          groupId={groupId}
+          group={group}
+          showStandings={showStandings}
+          isAdmin={isAdmin}
+          userId={user.id}
+        />
       </main>
       {modals}
     </>
