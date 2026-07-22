@@ -347,6 +347,14 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
         canonicalHome -= m.score.penalties?.home ?? 0
         canonicalAway -= m.score.penalties?.away ?? 0
+
+        // Sanity check: shootout implies a draw. If subtraction yields a non-draw or negative score,
+        // fallback to the most reasonable non-negative draw score.
+        if (canonicalHome < 0 || canonicalAway < 0 || canonicalHome !== canonicalAway) {
+          const drawScore = Math.max(0, Math.min(canonicalHome, canonicalAway))
+          canonicalHome = drawScore
+          canonicalAway = drawScore
+        }
       }
       // else: fullTime já é o placar do empate.
     }
