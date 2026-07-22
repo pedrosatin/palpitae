@@ -198,7 +198,7 @@ async function handleGetGroups(c: Context<AppContext>) {
 
     return c.json(payload)
   } catch (error) {
-    console.error('Error fetching groups:', error)
+    console.error('[groups] Error fetching groups for user %s:', userId, error)
     return c.json({ error: 'Erro ao carregar grupos' }, 500)
   }
 }
@@ -345,7 +345,7 @@ router.post('/', requireAuth, async (c) => {
 
     return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
   } catch (error) {
-    console.error('Error creating group:', error)
+    console.error('[groups] Error creating group for user %s:', userId, error)
     return c.json({ error: 'Erro ao criar grupo' }, 500)
   }
 })
