@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logEvent } from '../observability/events'
+import { logError, logEvent } from '../observability/events'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -75,9 +75,8 @@ export async function discoverFixtures(
       await scoreUnprocessedMatches(comp.id, db)
     } catch (err) {
       hadError = true
-      console.error(`[discovery] Sync falhou comp=${comp.id}:`, err)
-      logEvent(ae, 'football_api_error', {
-        blobs: ['fixture_discovery', comp.id, err instanceof Error ? err.message : String(err)],
+      logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
+        blobs: ['fixture_discovery', comp.id],
       })
     }
   }
