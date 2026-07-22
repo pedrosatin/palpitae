@@ -94,6 +94,8 @@ metricsRouter.get('/overview', async (c) => {
       whales,
       lastRuns,
       emailHealth,
+      latency,
+      predictionsDaily,
     ] = await Promise.all([
       runAeSql(
         c.env,
@@ -183,6 +185,28 @@ metricsRouter.get('/overview', async (c) => {
           `SUM(double3 * _sample_interval) AS failed ` +
           `FROM ${DATASET} WHERE blob1 = 'cron_round_reminder' AND ${since}`,
       ),
+      // Latência por rota (request_perf): blob2 = rota, double1 = total_ms.
+      // Média ponderada pelo sampling (SUM(ms*interval)/SUM(interval)); MAX é o
+      // pior caso observado. Rota mais chamada primeiro.
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS route, SUM(_sample_interval) AS requests, ` +
+          `SUM(double1 * _sample_interval) / SUM(_sample_interval) AS avg_ms, ` +
+          `MAX(double1) AS max_ms, ` +
+          `SUM(double2 * _sample_interval) / SUM(_sample_interval) AS avg_db_ms ` +
+          `FROM ${DATASET} WHERE blob1 = 'request_perf' AND ${since} ` +
+          `GROUP BY route ORDER BY requests DESC`,
+      ),
+      // DAU: usuários distintos que palpitaram por dia (prediction_saved,
+      // blob4 = user_hash). Sob sampling o DISTINCT é piso — mesma ressalva dos
+      // whales. É o sinal de engajamento central do produto (app de palpite).
+      runAeSql(
+        c.env,
+        `SELECT toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day, ` +
+          `COUNT(DISTINCT blob4) AS users ` +
+          `FROM ${DATASET} WHERE blob1 = 'prediction_saved' AND ${since} ` +
+          `GROUP BY day ORDER BY day ASC`,
+      ),
     ])
 
     return c.json({
@@ -199,6 +223,8 @@ metricsRouter.get('/overview', async (c) => {
       whales,
       lastRuns,
       emailHealth: emailHealth[0] ?? { rounds: 0, sent: 0, failed: 0 },
+      latency,
+      predictionsDaily,
     })
   } catch (err) {
     console.error('[metrics] falha na SQL API:', err)
@@ -247,4 +273,77 @@ metricsRouter.get('/archive', async (c) => {
   } while (cursor)
 
   return c.json({ files })
+})
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+const MAX_QUERY_SPAN_DAYS = 92
+
+/** Lista de dias YYYY-MM-DD de `from` a `to` (inclusive), UTC. */
+function daysInRange(from: string, to: string): string[] {
+  const days: string[] = []
+  const cur = new Date(`${from}T00:00:00Z`)
+  const end = new Date(`${to}T00:00:00Z`)
+  while (cur <= end) {
+    days.push(cur.toISOString().slice(0, 10))
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return days
+}
+
+/**
+ * Análise do arquivo frio — agrega os NDJSON de um intervalo lendo o CORPO dos
+ * arquivos (não só a metadata do /archive). É o que permite dissecar dados além
+ * da janela de ~3 meses do Analytics Engine: breakdown por tipo de evento e por
+ * dia. Cada linha vale `_sample_interval` eventos reais (sampling).
+ *
+ * `from`/`to` em YYYY-MM-DD (UTC, inclusivo). Span limitado a
+ * MAX_QUERY_SPAN_DAYS pra não estourar CPU/memória do Worker — o dashboard
+ * consulta um mês por vez.
+ */
+metricsRouter.get('/archive/query', async (c) => {
+  const bucket = c.env.EVENTS
+  if (!bucket) {
+    return c.json({ error: 'Bucket R2 não configurado' }, 503)
+  }
+
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+  if (!from || !to || !DAY_RE.test(from) || !DAY_RE.test(to) || from > to) {
+    return c.json({ error: 'Parâmetros from/to inválidos (YYYY-MM-DD, from ≤ to)' }, 400)
+  }
+
+  const days = daysInRange(from, to)
+  if (days.length > MAX_QUERY_SPAN_DAYS) {
+    return c.json({ error: `Intervalo máximo é ${MAX_QUERY_SPAN_DAYS} dias` }, 400)
+  }
+
+  const byType = new Map<string, number>()
+  const byDay: { day: string; count: number }[] = []
+  let filesRead = 0
+
+  for (const day of days) {
+    const key = `events/${day.replaceAll('-', '/')}.ndjson`
+    const obj = await bucket.get(key)
+    if (!obj) continue
+    filesRead++
+
+    const body = await obj.text()
+    let dayTotal = 0
+    for (const line of body.split('\n')) {
+      if (line.trim() === '') continue
+      const row = JSON.parse(line) as Record<string, unknown>
+      const weight = Number(row._sample_interval ?? 1)
+      const type = String(row.blob1 ?? 'unknown')
+      byType.set(type, (byType.get(type) ?? 0) + weight)
+      dayTotal += weight
+    }
+    byDay.push({ day, count: dayTotal })
+  }
+
+  const totalEvents = byDay.reduce((sum, d) => sum + d.count, 0)
+  const byTypeSorted = [...byType.entries()]
+    .map(([event_type, count]) => ({ event_type, count }))
+    .sort((a, b) => b.count - a.count)
+
+  return c.json({ from, to, filesRead, totalEvents, byType: byTypeSorted, byDay })
 })
