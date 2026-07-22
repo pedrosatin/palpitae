@@ -195,9 +195,19 @@ describe('StandingsTab – render', () => {
   })
 
   it('shows a loading state', () => {
-    mockFetch([])
+    // Return a never-resolving promise to keep it in the loading state,
+    // avoiding the act() warning that occurs if it resolves after the test finishes.
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise(() => {}))
     render(<StandingsTab competitionId="c1" />)
     expect(screen.getByText(/Carregando/i)).toBeInTheDocument()
+  })
+
+  it('shows an error state if fetch fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network failure'))
+    render(<StandingsTab competitionId="c1" />)
+    await waitFor(() => {
+      expect(screen.getByText(/Network failure/i)).toBeInTheDocument()
+    })
   })
 
   it('renders a header for each group', async () => {
@@ -231,6 +241,48 @@ describe('StandingsTab – render', () => {
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toBeInTheDocument()
     expect(screen.getByText(/BRA 2 × 1 ARG/i)).toBeInTheDocument()
+  })
+
+  it('sorts matches chronologically in the modal', async () => {
+    const time1 = new Date(Date.now() - 3_600_000).toISOString()
+    const time2 = new Date(Date.now() - 7_200_000).toISOString()
+    mockFetch([
+      makeMatch({ id: 'm1', group_name: 'A', start_time: time1, status: 'scheduled' }),
+      makeMatch({ id: 'm2', group_name: 'A', start_time: time2, status: 'scheduled', home_team_short_name: 'URU' }),
+    ])
+    render(<StandingsTab competitionId="c1" />)
+
+    await waitFor(() => screen.getByText('Grupo A'))
+    await userEvent.click(screen.getByRole('button', { name: /Grupo A/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+
+    const matchItems = screen.getAllByRole('listitem')
+    expect(matchItems).toHaveLength(2)
+    // The second match (m2) has an earlier start time, so it should be first
+    expect(matchItems[0]).toHaveTextContent(/URU/i)
+    expect(matchItems[1]).toHaveTextContent(/BRA/i)
+  })
+
+  it('renders a finished match with null scores safely in the modal', async () => {
+    mockFetch([
+      makeMatch({
+        id: 'm1',
+        group_name: 'A',
+        status: 'finished',
+        home_score: null,
+        away_score: null,
+      }),
+    ])
+    render(<StandingsTab competitionId="c1" />)
+
+    await waitFor(() => screen.getByText('Grupo A'))
+    await userEvent.click(screen.getByRole('button', { name: /Grupo A/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(screen.getByText(/BRA – × – ARG/i)).toBeInTheDocument()
   })
 
   it('shows an empty message when there is no group phase', async () => {
