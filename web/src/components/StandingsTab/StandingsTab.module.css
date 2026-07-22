@@ -206,5 +206,7 @@
 
 /* Jogo mais recente ganha um anel discreto — recência sem depender de posição */
 .formLatest {
-  box-shadow: 0 0 0 1px var(--color-bg), 0 0 0 2px var(--color-text-secondary);
+  box-shadow:
+    0 0 0 1px var(--color-bg),
+    0 0 0 2px var(--color-text-secondary);
 }

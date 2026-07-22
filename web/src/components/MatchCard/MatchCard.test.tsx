@@ -47,18 +47,9 @@ function makePrediction(overrides: Partial<Prediction> = {}): Prediction {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function renderCard(
-  match: Match,
-  prediction: Prediction | undefined,
-  onSaved = vi.fn(),
-) {
+function renderCard(match: Match, prediction: Prediction | undefined, onSaved = vi.fn()) {
   return render(
-    <MatchCard
-      match={match}
-      prediction={prediction}
-      groupId="group-1"
-      onSaved={onSaved}
-    />,
+    <MatchCard match={match} prediction={prediction} groupId="group-1" onSaved={onSaved} />,
   )
 }
 
@@ -84,9 +75,7 @@ describe('MatchCard – hasChanged / canSave', () => {
   it('keeps save enabled after the user changes values when no prediction exists', async () => {
     renderCard(makeMatch(), undefined)
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
     expect(screen.getByRole('button', { name: /Salvar/i })).toBeEnabled()
   })
@@ -103,9 +92,7 @@ describe('MatchCard – hasChanged / canSave', () => {
     renderCard(makeMatch(), makePrediction())
 
     // Increase home score from 1 to 2 — now differs from prediction (1×2)
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
     expect(screen.getByRole('button', { name: /Atualizar/i })).toBeEnabled()
   })
@@ -115,9 +102,7 @@ describe('MatchCard – Stepper "+"', () => {
   it('increments from 0 to 1 when "+" is clicked', async () => {
     renderCard(makeMatch(), undefined)
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
@@ -127,14 +112,9 @@ describe('MatchCard – Stepper "+"', () => {
 
   it('does not exceed 99 when "+" is clicked at the maximum', async () => {
     // Start with prediction at 99 so initial value is '99'
-    renderCard(
-      makeMatch(),
-      makePrediction({ predicted_home_score: 99, predicted_away_score: 0 }),
-    )
+    renderCard(makeMatch(), makePrediction({ predicted_home_score: 99, predicted_away_score: 0 }))
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
@@ -151,9 +131,7 @@ describe('MatchCard – Stepper "+"', () => {
     }) as HTMLInputElement
     expect(input.value).toBe('0')
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
     expect(input.value).toBe('1')
   })
@@ -161,14 +139,9 @@ describe('MatchCard – Stepper "+"', () => {
 
 describe('MatchCard – Stepper "−"', () => {
   it('decrements from 2 to 1 when "−" is clicked', async () => {
-    renderCard(
-      makeMatch(),
-      makePrediction({ predicted_home_score: 2, predicted_away_score: 0 }),
-    )
+    renderCard(makeMatch(), makePrediction({ predicted_home_score: 2, predicted_away_score: 0 }))
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Diminuir placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
 
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
@@ -177,14 +150,9 @@ describe('MatchCard – Stepper "−"', () => {
   })
 
   it('does not go below 0 when "−" is clicked at the minimum', async () => {
-    renderCard(
-      makeMatch(),
-      makePrediction({ predicted_home_score: 0, predicted_away_score: 0 }),
-    )
+    renderCard(makeMatch(), makePrediction({ predicted_home_score: 0, predicted_away_score: 0 }))
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Diminuir placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
 
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
@@ -200,9 +168,7 @@ describe('MatchCard – Stepper "−"', () => {
     }) as HTMLInputElement
     expect(input.value).toBe('0')
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Diminuir placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
 
     expect(input.value).toBe('0')
   })
@@ -226,7 +192,9 @@ describe('MatchCard – analytics', () => {
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_matchcard_salvar', { match_id: 'match-1' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_matchcard_salvar', {
+      match_id: 'match-1',
+    })
   })
 })
 
@@ -250,9 +218,7 @@ describe('MatchCard – outcome-only (1X2) mode', () => {
     expect(screen.getByRole('radio', { name: 'Casa' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Empate' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Fora' })).toBeInTheDocument()
-    expect(
-      screen.queryByRole('spinbutton', { name: /Placar Brasil/i }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('spinbutton', { name: /Placar Brasil/i })).not.toBeInTheDocument()
   })
 
   it('saves (1,0) and tracks the outcome when "Casa" is clicked', async () => {
@@ -289,21 +255,18 @@ describe('MatchCard – outcome-only (1X2) mode', () => {
     render(
       <MatchCard
         match={makeMatch()}
-        prediction={makePrediction({ predicted_home_score: 0, predicted_away_score: 1 })}
+        prediction={makePrediction({
+          predicted_home_score: 0,
+          predicted_away_score: 1,
+        })}
         groupId="group-1"
         outcomeOnly
         onSaved={vi.fn()}
       />,
     )
 
-    expect(screen.getByRole('radio', { name: 'Fora' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    )
-    expect(screen.getByRole('radio', { name: 'Casa' })).toHaveAttribute(
-      'aria-checked',
-      'false',
-    )
+    expect(screen.getByRole('radio', { name: 'Fora' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: 'Casa' })).toHaveAttribute('aria-checked', 'false')
   })
 
   it('shows the outcome label (not a score) for a locked prediction', () => {
@@ -442,7 +405,9 @@ describe('MatchCard – penalty shootout pick', () => {
     renderCard(makeMatch({ decides_on_penalties: false }), undefined)
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
-    expect(screen.queryByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Quem vence nos pênaltis?' }),
+    ).not.toBeInTheDocument()
   })
 
   it('outcome mode: clicking Empate waits for the penalty winner before persisting', async () => {
@@ -451,6 +416,8 @@ describe('MatchCard – penalty shootout pick', () => {
       json: async () => ({}),
     } as Response)
     const onSaved = vi.fn()
+
+    const penaltyMatch = () => makeMatch({ decides_on_penalties: true })
 
     render(
       <MatchCard
@@ -473,5 +440,105 @@ describe('MatchCard – penalty shootout pick', () => {
     expect(body.predicted_away_score).toBe(0)
     expect(body.predicted_penalty_winner).toBe('away')
     expect(onSaved).toHaveBeenCalledWith('match-1', 0, 0, 'away')
+  })
+})
+
+describe('MatchCard – Finished state', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows the "encerrado" badge and final score', () => {
+    const match = makeMatch({
+      status: 'finished',
+      home_score: 2,
+      away_score: 1,
+    })
+    renderCard(match, makePrediction())
+
+    expect(screen.getByText('encerrado')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
+  })
+
+  it('renders total points including penalty bonus', () => {
+    const match = makeMatch({
+      status: 'finished',
+      home_score: 1,
+      away_score: 1,
+      penalty_winner: 'home',
+      home_penalty_goals: 4,
+      away_penalty_goals: 3,
+    })
+    const prediction = makePrediction({
+      points_awarded: 5,
+      penalty_points: 2,
+      locked: 1,
+    })
+    renderCard(match, prediction)
+
+    expect(screen.getByText('7 pontos')).toBeInTheDocument()
+    expect(screen.getByText('(+2 pênalti)')).toBeInTheDocument()
+    expect(screen.getByText('(4-3 pênaltis)')).toBeInTheDocument()
+  })
+})
+
+describe('MatchCard – Error state', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows an error message when saving fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Database timeout' }),
+    } as Response)
+
+    renderCard(makeMatch(), undefined)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
+
+    expect(await screen.findByText('Database timeout')).toBeInTheDocument()
+  })
+
+  it('shows generic error message if api fails without error description', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({}),
+    } as Response)
+
+    renderCard(makeMatch(), undefined)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
+
+    expect(await screen.findByText('Erro ao salvar palpite')).toBeInTheDocument()
+  })
+})
+
+describe('MatchCard – Score inputs', () => {
+  it('updates the score on typing', async () => {
+    renderCard(makeMatch(), undefined)
+
+    const homeInput = screen.getByRole('spinbutton', {
+      name: /Placar Brasil/i,
+    }) as HTMLInputElement
+    const awayInput = screen.getByRole('spinbutton', {
+      name: /Placar Argentina/i,
+    }) as HTMLInputElement
+
+    await userEvent.clear(homeInput)
+    await userEvent.type(homeInput, '3')
+
+    await userEvent.clear(awayInput)
+    await userEvent.type(awayInput, '2')
+
+    expect(homeInput.value).toBe('3')
+    expect(awayInput.value).toBe('2')
   })
 })

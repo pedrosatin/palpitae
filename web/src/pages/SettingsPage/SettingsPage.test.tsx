@@ -33,9 +33,7 @@ describe('SettingsPage', () => {
   })
 
   it('loads the current preference and reflects it in the toggle', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({ round_reminders: true }),
-    )
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse({ round_reminders: true }))
 
     renderPage()
 
@@ -44,9 +42,7 @@ describe('SettingsPage', () => {
   })
 
   it('shows the toggle off when the user is unsubscribed', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({ round_reminders: false }),
-    )
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse({ round_reminders: false }))
 
     renderPage()
 
@@ -55,9 +51,7 @@ describe('SettingsPage', () => {
   })
 
   it('opens a confirmation modal when the toggle is clicked and tracks the intent', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({ round_reminders: true }),
-    )
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse({ round_reminders: true }))
 
     renderPage()
 
@@ -68,7 +62,9 @@ describe('SettingsPage', () => {
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText(/desativar lembretes/i)).toBeInTheDocument()
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_toggle_lembretes', { enabled: false })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_toggle_lembretes', {
+      enabled: false,
+    })
   })
 
   it('closes modal and tracks cancel when the user clicks Cancelar', async () => {
@@ -87,7 +83,9 @@ describe('SettingsPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /cancelar/i }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(fetchSpy.mock.calls.filter((c) => (c[1] as RequestInit)?.method === 'PATCH')).toHaveLength(0)
+    expect(
+      fetchSpy.mock.calls.filter((c) => (c[1] as RequestInit)?.method === 'PATCH'),
+    ).toHaveLength(0)
     expect(toggle).toBeChecked()
     expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_cancelar_lembretes')
   })
@@ -114,7 +112,9 @@ describe('SettingsPage', () => {
     expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({
       round_reminders: false,
     })
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_confirmar_lembretes', { enabled: false })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_confirmar_lembretes', {
+      enabled: false,
+    })
   })
 
   it('shows a success message below the section after the PATCH succeeds', async () => {
@@ -140,18 +140,22 @@ describe('SettingsPage', () => {
 
   it('shows a retry button after initial load failure and recovers on retry', async () => {
     vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockResponse(null, false))                    // initial GET fails
-      .mockResolvedValueOnce(mockResponse({ round_reminders: true }))     // retry succeeds
+      .mockResolvedValueOnce(mockResponse(null, false)) // initial GET fails
+      .mockResolvedValueOnce(mockResponse({ round_reminders: true })) // retry succeeds
 
     renderPage()
 
-    const retryButton = await screen.findByRole('button', { name: /tentar novamente/i })
+    const retryButton = await screen.findByRole('button', {
+      name: /tentar novamente/i,
+    })
     expect(retryButton).toBeInTheDocument()
     expect(screen.getByRole('checkbox')).toBeDisabled()
 
     await userEvent.click(retryButton)
 
-    await waitFor(() => expect(screen.queryByRole('button', { name: /tentar novamente/i })).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /tentar novamente/i })).not.toBeInTheDocument(),
+    )
     await waitFor(() => expect(screen.getByRole('checkbox')).not.toBeDisabled())
   })
 

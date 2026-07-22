@@ -11,15 +11,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import type { User } from '../../types'
 import styles from './SettingsPage.module.css'
 
-interface SettingsPageProps {
-  user: User
-  onLogout: () => void
-}
-
-export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
-  useDocumentTitle('Configurações')
-  const navigate = useNavigate()
-
+function useNotificationPreferences() {
   const [roundReminders, setRoundReminders] = useState<boolean | null>(null)
   const [pending, setPending] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
@@ -85,6 +77,40 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
       .finally(() => setSaving(false))
   }
 
+  return {
+    roundReminders,
+    pending,
+    saving,
+    error,
+    success,
+    loadPreferences,
+    handleOpenModal,
+    handleCancel,
+    handleConfirm,
+  }
+}
+
+interface SettingsPageProps {
+  user: User
+  onLogout: () => void
+}
+
+export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
+  useDocumentTitle('Configurações')
+  const navigate = useNavigate()
+
+  const {
+    roundReminders,
+    pending,
+    saving,
+    error,
+    success,
+    loadPreferences,
+    handleOpenModal,
+    handleCancel,
+    handleConfirm,
+  } = useNotificationPreferences()
+
   return (
     <>
       <Header
@@ -136,9 +162,7 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
             </label>
           </section>
 
-          {success && (
-            <div className={styles.successMessage}>Configuração salva com sucesso.</div>
-          )}
+          {success && <div className={styles.successMessage}>Configuração salva com sucesso.</div>}
         </div>
       </main>
 

@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the two collaborators — pollActiveMatches only orchestrates them.
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
-vi.mock('./scoring', () => ({ scoreUnprocessedMatches: vi.fn(async () => undefined) }))
+vi.mock('./scoring', () => ({
+  scoreUnprocessedMatches: vi.fn(async () => undefined),
+}))
 
 import { pollActiveMatches } from './poller'
 import { scoreUnprocessedMatches } from './scoring'
@@ -56,7 +58,10 @@ function buildFakeAe() {
 
 type WrittenPoint = { indexes?: string[]; blobs?: string[]; doubles?: number[] }
 
-function pointsOfType(ae: { writeDataPoint: ReturnType<typeof vi.fn> }, type: string): WrittenPoint[] {
+function pointsOfType(
+  ae: { writeDataPoint: ReturnType<typeof vi.fn> },
+  type: string,
+): WrittenPoint[] {
   return ae.writeDataPoint.mock.calls
     .map((c) => c[0] as WrittenPoint)
     .filter((p) => p.blobs?.[0] === type)
@@ -109,29 +114,28 @@ describe('pollActiveMatches', () => {
   })
 
   it('passes matchday for numeric rounds (group stage)', async () => {
-    const db = buildFakeDb([
-      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '3' },
-    ])
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'WC', season: '2026', round: '3' }])
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(1)
     expect(syncFixturesMock).toHaveBeenCalledWith(
-      expect.objectContaining({ competitionCode: 'WC', season: 2026, matchday: 3, apiKey: 'key' }),
+      expect.objectContaining({
+        competitionCode: 'WC',
+        season: 2026,
+        matchday: 3,
+        apiKey: 'key',
+      }),
     )
     expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
   })
 
   it('omits matchday for non-numeric rounds (knockout phase)', async () => {
-    const db = buildFakeDb([
-      { comp_id: 'c1', external_id: 'WC', season: '2026', round: 'FINAL' },
-    ])
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'WC', season: '2026', round: 'FINAL' }])
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
-    expect(syncFixturesMock).toHaveBeenCalledWith(
-      expect.objectContaining({ matchday: undefined }),
-    )
+    expect(syncFixturesMock).toHaveBeenCalledWith(expect.objectContaining({ matchday: undefined }))
   })
 
   it('syncs each distinct round once but scores the competition once', async () => {
@@ -180,9 +184,7 @@ describe('pollActiveMatches', () => {
 
   it('does not score a competition when all its rounds fail to sync', async () => {
     syncFixturesMock.mockRejectedValue(new Error('API down'))
-    const db = buildFakeDb([
-      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' },
-    ])
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' }])
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
@@ -193,7 +195,11 @@ describe('pollActiveMatches', () => {
     const ae = buildFakeAe()
     const db = buildFakeDb([])
 
-    await pollActiveMatches(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+    await pollActiveMatches(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
 
     const runs = pointsOfType(ae, 'poller_run')
     expect(runs).toHaveLength(1)
@@ -214,7 +220,11 @@ describe('pollActiveMatches', () => {
       { comp_id: 'c1', external_id: 'WC', season: '2026', round: '2' },
     ])
 
-    await pollActiveMatches(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+    await pollActiveMatches(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
 
     const runs = pointsOfType(ae, 'poller_run')
     expect(runs).toHaveLength(1)
@@ -230,11 +240,13 @@ describe('pollActiveMatches', () => {
   it('emits football_api_error and a poller_run with status error when a sync rejects', async () => {
     syncFixturesMock.mockRejectedValue(new Error('API down'))
     const ae = buildFakeAe()
-    const db = buildFakeDb([
-      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' },
-    ])
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' }])
 
-    await pollActiveMatches(db as unknown as D1Database, 'key', ae as unknown as AnalyticsEngineDataset)
+    await pollActiveMatches(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
 
     const errors = pointsOfType(ae, 'football_api_error')
     expect(errors).toHaveLength(1)
@@ -246,5 +258,25 @@ describe('pollActiveMatches', () => {
     const runs = pointsOfType(ae, 'poller_run')
     expect(runs).toHaveLength(1)
     expect(runs[0].blobs?.[1]).toBe('error')
+  })
+
+  it('emits football_api_error handling a non-Error rejection correctly', async () => {
+    syncFixturesMock.mockRejectedValue('String error')
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ae = buildFakeAe()
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' }])
+
+    await pollActiveMatches(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
+
+    const errors = pointsOfType(ae, 'football_api_error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].blobs?.[3]).toBe('String error')
+
+    expect(consoleSpy).toHaveBeenCalledWith('[poller] Sync falhou comp=c1 round=1:', 'String error')
+    consoleSpy.mockRestore()
   })
 })

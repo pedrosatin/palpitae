@@ -51,8 +51,7 @@
 
   /** System font stack — no external font dependencies */
   --font-family-base:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
-    Cantarell, sans-serif;
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 
   --font-size-xs: 0.75rem; /* 12px */
   --font-size-sm: 0.875rem; /* 14px */

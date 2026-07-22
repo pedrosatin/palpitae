@@ -5,7 +5,7 @@ import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import ErrorState from '../../components/ErrorState'
 import styles from './AdminMetricsPage.module.css'
-import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
+import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
 import { eventLabel } from './labels'
 
 /**
@@ -41,13 +41,41 @@ interface OverviewResponse {
   sampling: { avg_sample_interval: string | number }
   whales: { user_hash: string; predictions: string | number }[]
   lastRuns: { event_type: string; last_run: string }[]
-  emailHealth: { rounds: string | number; sent: string | number; failed: string | number }
+  emailHealth: {
+    rounds: string | number
+    sent: string | number
+    failed: string | number
+  }
+  latency: {
+    route: string
+    requests: string | number
+    avg_ms: string | number
+    max_ms: string | number
+    avg_db_ms: string | number
+  }[]
+  predictionsDaily: { day: string; users: string | number }[]
 }
 
 interface ArchiveResponse {
   // `events` = contagem real do dia (customMetadata do export); null em
   // arquivo antigo que o backfill de metadata ainda não alcançou.
-  files: { key: string; size: number; uploaded: string; events: number | null }[]
+  files: {
+    key: string
+    size: number
+    uploaded: string
+    events: number | null
+  }[]
+}
+
+// Análise sob demanda do arquivo frio: agrega o CORPO dos NDJSON de um período
+// (GET /metrics/archive/query). Único jeito de dissecar dados além da janela do AE.
+interface ArchiveQueryResponse {
+  from: string
+  to: string
+  filesRead: number
+  totalEvents: number
+  byType: { event_type: string; count: number }[]
+  byDay: { day: string; count: number }[]
 }
 
 const PERIODS = [7, 30, 90] as const
@@ -77,7 +105,7 @@ function buildStackedSeries(
   daily: OverviewResponse['daily'],
   totals: OverviewResponse['totals'],
   days: number,
-): { series: StackedDay[]; legend: { type: string; color: string }[] } {
+) {
   const ranked = totals.map((t) => t.event_type)
   const top = ranked.slice(0, MAX_CHART_TYPES)
   const colorFor = new Map(top.map((type, i) => [type, SERIES_COLORS[i]]))
@@ -107,7 +135,10 @@ function buildStackedSeries(
     }
   })
 
-  const legend = order.map((type) => ({ type, color: colorFor.get(type) ?? OTHER_COLOR }))
+  const legend = order.map((type) => ({
+    type,
+    color: colorFor.get(type) ?? OTHER_COLOR,
+  }))
   return { series, legend }
 }
 
@@ -116,7 +147,22 @@ function buildApiCallsSeries(
   days: number,
 ): { label: string; total: number }[] {
   const byDay = new Map(apiCallsDaily.map((r) => [r.day.slice(0, 10), Number(r.api_calls)]))
-  return lastDays(days).map((label) => ({ label, total: byDay.get(label) ?? 0 }))
+  return lastDays(days).map((label) => ({
+    label,
+    total: byDay.get(label) ?? 0,
+  }))
+}
+
+/** DAU: usuários distintos palpitando por dia, alinhado à janela do período. */
+function buildDauSeries(
+  predictionsDaily: OverviewResponse['predictionsDaily'],
+  days: number,
+): { label: string; total: number }[] {
+  const byDay = new Map(predictionsDaily.map((r) => [r.day.slice(0, 10), Number(r.users)]))
+  return lastDays(days).map((label) => ({
+    label,
+    total: byDay.get(label) ?? 0,
+  }))
 }
 
 function formatBytes(size: number): string {
@@ -156,9 +202,18 @@ function formatAgo(ts: string): string {
  * execução além do limite pinta de vermelho — cron provavelmente parado.
  */
 const CRON_INFO: Record<string, { label: string; staleAfterMin: number }> = {
-  poller_run: { label: 'Poller de resultados (a cada 30 min)', staleAfterMin: 45 },
-  fixture_discovery_run: { label: 'Descoberta de jogos (diário)', staleAfterMin: 26 * 60 },
-  cron_round_reminder: { label: 'Lembrete de rodada (diário)', staleAfterMin: 26 * 60 },
+  poller_run: {
+    label: 'Poller de resultados (a cada 30 min)',
+    staleAfterMin: 45,
+  },
+  fixture_discovery_run: {
+    label: 'Descoberta de jogos (diário)',
+    staleAfterMin: 26 * 60,
+  },
+  cron_round_reminder: {
+    label: 'Lembrete de rodada (diário)',
+    staleAfterMin: 26 * 60,
+  },
 }
 
 function isStale(ts: string, staleAfterMin: number): boolean {
@@ -177,48 +232,7 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint?: 
   )
 }
 
-export default function AdminMetricsPage() {
-  useDocumentTitle('Métricas')
-
-  const [days, setDays] = useState<number>(30)
-  const [overview, setOverview] = useState<OverviewResponse | null>(null)
-  const [archive, setArchive] = useState<ArchiveResponse | null>(null)
-  const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-
-    const params = new URLSearchParams({ days: String(days) })
-    Promise.all([
-      apiFetch(buildApiUrl('/metrics/overview', params)),
-      apiFetch(buildApiUrl('/metrics/archive')),
-    ])
-      .then(async ([ovRes, arRes]) => {
-        if (cancelled) return
-        if (ovRes.status === 403) {
-          setError('forbidden')
-          return
-        }
-        if (!ovRes.ok) throw new Error(`overview ${ovRes.status}`)
-        setOverview((await ovRes.json()) as OverviewResponse)
-        // Arquivo é secundário — falha nele não derruba a página inteira.
-        if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
-      })
-      .catch(() => {
-        if (!cancelled) setError('failed')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [days])
-
+function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
   const stacked = useMemo(
     () =>
       overview
@@ -229,6 +243,11 @@ export default function AdminMetricsPage() {
 
   const apiCallsSeries = useMemo(
     () => (overview ? buildApiCallsSeries(overview.apiCallsDaily, overview.days) : []),
+    [overview],
+  )
+
+  const dauSeries = useMemo(
+    () => (overview ? buildDauSeries(overview.predictionsDaily, overview.days) : []),
     [overview],
   )
 
@@ -311,8 +330,565 @@ export default function AdminMetricsPage() {
       .sort(([a], [b]) => (a < b ? -1 : 1))
       .map(([label, total]) => ({ label, total }))
 
-    return { totalDays: archive.files.length, totalBytes, totalEvents, missingMeta, oldestDay, monthly }
+    return {
+      totalDays: archive.files.length,
+      totalBytes,
+      totalEvents,
+      missingMeta,
+      oldestDay,
+      monthly,
+    }
   }, [archive])
+
+  return {
+    stacked,
+    apiCallsSeries,
+    dauSeries,
+    kpis,
+    avgSample,
+    isSampling,
+    whaleShare,
+    archiveDays,
+    archiveStats,
+  }
+}
+
+function OverviewKpisRow({
+  kpis,
+}: {
+  kpis: {
+    activeUsers: number
+    predictions: number
+    groupsCreated: number
+    joinRate: string
+    logins: number
+    cacheHitRate: string
+  }
+}) {
+  return (
+    <div className={styles.kpiRow}>
+      <KpiCard label="usuários palpitando" value={String(kpis.activeUsers)} />
+      <KpiCard label="palpites salvos" value={String(kpis.predictions)} />
+      <KpiCard label="grupos criados" value={String(kpis.groupsCreated)} />
+      <KpiCard label="entradas por grupo" value={kpis.joinRate} hint="conversão de convite" />
+      <KpiCard label="logins" value={String(kpis.logins)} />
+      <KpiCard label="cache hit" value={kpis.cacheHitRate} hint="GET /matches" />
+    </div>
+  )
+}
+
+function EventsSection({
+  overview,
+  stacked,
+}: {
+  overview: OverviewResponse
+  stacked: ReturnType<typeof useMetricsData>['stacked']
+}) {
+  return (
+    <>
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Eventos por dia · últimos {overview.days} dias</h2>
+        <StackedBarChart days={stacked.series} ariaLabel="Eventos por dia, por tipo" />
+        <div className={styles.legend}>
+          {stacked.legend.map((l) => (
+            <span key={l.type} className={styles.legendItem} title={l.type}>
+              <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
+              {eventLabel(l.type)}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Totais por evento</h2>
+        {overview.totals.length === 0 ? (
+          <p className={styles.hint}>Nenhum evento no período.</p>
+        ) : (
+          <table className={styles.table}>
+            <tbody>
+              {overview.totals.map((t) => (
+                <tr key={t.event_type}>
+                  {/* title mantém o event_type cru — é a chave do esquema
+                      posicional em docs/observability.md */}
+                  <td title={t.event_type}>{eventLabel(t.event_type)}</td>
+                  <td className={styles.num}>{Number(t.count)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </>
+  )
+}
+
+function HealthSection({
+  overview,
+  apiCallsSeries,
+}: {
+  overview: OverviewResponse
+  apiCallsSeries: ReturnType<typeof useMetricsData>['apiCallsSeries']
+}) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Saúde dos crons</h2>
+      {overview.lastRuns.length === 0 ? (
+        <p className={styles.hint}>Nenhuma execução de cron no período. ⚠️</p>
+      ) : (
+        <table className={styles.table}>
+          <tbody>
+            {overview.lastRuns.map((r) => {
+              const info = CRON_INFO[r.event_type]
+              const stale = info ? isStale(r.last_run, info.staleAfterMin) : false
+              return (
+                <tr key={r.event_type}>
+                  <td>{info?.label ?? r.event_type}</td>
+                  <td className={`${styles.num} ${stale ? styles.statusError : ''}`}>
+                    {formatAgo(r.last_run)}
+                    {stale && ' ⚠️'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+
+      <h3 className={styles.subTitle}>Poller de resultados</h3>
+      {overview.poller.length === 0 ? (
+        <p className={styles.hint}>Nenhuma execução no período.</p>
+      ) : (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>status</th>
+              <th className={styles.num}>execuções</th>
+              <th className={styles.num}>duração média</th>
+              <th className={styles.num}>duração máx.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overview.poller.map((p) => (
+              <tr key={p.status}>
+                <td className={p.status === 'error' ? styles.statusError : styles.statusOk}>
+                  {p.status}
+                </td>
+                <td className={styles.num}>{Number(p.runs)}</td>
+                <td className={styles.num}>{formatDuration(Number(p.avg_duration_ms))}</td>
+                <td className={styles.num}>{formatDuration(Number(p.max_duration_ms))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <h3 className={styles.subTitle}>Chamadas à API Football por dia</h3>
+      <BarChart
+        series={apiCallsSeries}
+        ariaLabel="Chamadas à API Football por dia"
+        unit=" chamadas"
+      />
+    </section>
+  )
+}
+
+function EngagementSection({
+  dauSeries,
+}: {
+  dauSeries: ReturnType<typeof useMetricsData>['dauSeries']
+}) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Usuários ativos (palpitando) por dia</h2>
+      <BarChart series={dauSeries} ariaLabel="Usuários palpitando por dia" unit=" usuários" />
+      <p className={styles.hint}>
+        Distintos por <code>prediction_saved</code> — sob amostragem do Analytics Engine é piso.
+      </p>
+    </section>
+  )
+}
+
+function LatencySection({ overview }: { overview: OverviewResponse }) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Latência por rota</h2>
+      {overview.latency.length === 0 ? (
+        <p className={styles.hint}>Nenhuma medida de latência no período.</p>
+      ) : (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>rota</th>
+              <th className={styles.num}>requests</th>
+              <th className={styles.num}>média</th>
+              <th className={styles.num}>máx.</th>
+              <th className={styles.num}>db médio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overview.latency.map((r) => (
+              <tr key={r.route}>
+                <td className={styles.nowrap}>{r.route}</td>
+                <td className={styles.num}>{Number(r.requests)}</td>
+                <td className={styles.num}>{formatDuration(Number(r.avg_ms))}</td>
+                <td className={styles.num}>{formatDuration(Number(r.max_ms))}</td>
+                <td className={styles.num}>{formatDuration(Number(r.avg_db_ms))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  )
+}
+
+function EmailSection({
+  overview,
+  kpis,
+}: {
+  overview: OverviewResponse
+  kpis: { emailUnsubs: number; emailResubs: number }
+}) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>E-mail de lembrete</h2>
+      <table className={styles.table}>
+        <tbody>
+          <tr>
+            <td>rodadas lembradas (cron)</td>
+            <td className={styles.num}>{Number(overview.emailHealth.rounds)}</td>
+          </tr>
+          <tr>
+            <td>e-mails enviados</td>
+            <td className={styles.num}>{Number(overview.emailHealth.sent)}</td>
+          </tr>
+          <tr>
+            <td>falhas de envio</td>
+            <td
+              className={`${styles.num} ${Number(overview.emailHealth.failed) > 0 ? styles.statusError : ''}`}
+            >
+              {Number(overview.emailHealth.failed)}
+            </td>
+          </tr>
+          <tr>
+            <td>descadastros</td>
+            <td className={styles.num}>{kpis.emailUnsubs}</td>
+          </tr>
+          <tr>
+            <td>recadastros</td>
+            <td className={styles.num}>{kpis.emailResubs}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  )
+}
+
+function ConcentrationSection({
+  whaleShare,
+}: {
+  whaleShare: { top1: number; top5: number } | null
+}) {
+  if (!whaleShare) return null
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Concentração de palpites</h2>
+      <p className={styles.hint}>
+        Maior palpiteiro: <strong>{whaleShare.top1}%</strong> dos palpites · top 5:{' '}
+        <strong>{whaleShare.top5}%</strong> — quanto mais alto, mais a retenção depende de poucos
+        usuários hardcore.
+      </p>
+    </section>
+  )
+}
+
+function LoginFailuresSection({ overview }: { overview: OverviewResponse }) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Falhas de login por motivo</h2>
+      {overview.loginFailures.length === 0 ? (
+        <p className={styles.hint}>Nenhuma falha no período. 🎉</p>
+      ) : (
+        <table className={styles.table}>
+          <tbody>
+            {overview.loginFailures.map((f) => (
+              <tr key={f.reason}>
+                <td>{f.reason}</td>
+                <td className={styles.num}>{Number(f.count)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  )
+}
+
+function RecentErrorsSection({ overview }: { overview: OverviewResponse }) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Erros recentes</h2>
+      {overview.recentErrors.length === 0 ? (
+        <p className={styles.hint}>Nenhum erro no período. 🎉</p>
+      ) : (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>quando (UTC)</th>
+              <th>evento</th>
+              <th>detalhe</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overview.recentErrors.map((e, i) => (
+              <tr key={`${e.timestamp}-${i}`}>
+                <td className={styles.nowrap}>{formatTimestamp(e.timestamp)}</td>
+                <td className={styles.nowrap} title={e.event_type}>
+                  {eventLabel(e.event_type)}
+                </td>
+                {/* blobs posicionais variam por tipo de evento — mostra cru */}
+                <td className={styles.detail}>
+                  {[e.blob2, e.blob3, e.blob4].filter(Boolean).join(' · ')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  )
+}
+
+function ArchiveSection({
+  archiveStats,
+  archiveDays,
+}: {
+  archiveStats: ReturnType<typeof useMetricsData>['archiveStats']
+  archiveDays: ReturnType<typeof useMetricsData>['archiveDays']
+}) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Arquivo frio (R2)</h2>
+      {!archiveStats ? (
+        <p className={styles.hint}>
+          Nenhum arquivo no bucket — em dev local o R2 é simulado e começa vazio; em produção, ver
+          se o cron de export (00:05 UTC) está rodando.
+        </p>
+      ) : (
+        <>
+          <div className={styles.kpiRow}>
+            <KpiCard label="dias arquivados" value={String(archiveStats.totalDays)} />
+            <KpiCard
+              label="eventos arquivados"
+              value={`${archiveStats.missingMeta > 0 ? '≥ ' : ''}${archiveStats.totalEvents}`}
+            />
+            <KpiCard label="tamanho total" value={formatBytes(archiveStats.totalBytes)} />
+            <KpiCard label="desde" value={archiveStats.oldestDay} />
+          </div>
+
+          <h3 className={styles.subTitle}>Eventos por mês · histórico completo</h3>
+          <BarChart
+            series={archiveStats.monthly}
+            ariaLabel="Eventos arquivados por mês"
+            unit=" eventos"
+            tickLabel={(l) => `${l.slice(5, 7)}/${l.slice(2, 4)}`}
+          />
+          {archiveStats.missingMeta > 0 && (
+            <p className={styles.hint}>
+              {archiveStats.missingMeta}{' '}
+              {archiveStats.missingMeta === 1 ? 'arquivo ainda sem' : 'arquivos ainda sem'} contagem
+              de eventos (export antigo) — o cron re-grava a metadata aos poucos; até lá os totais
+              acima são piso ("≥").
+            </p>
+          )}
+
+          <h3 className={styles.subTitle}>Integridade · últimos 14 dias</h3>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>dia</th>
+                <th className={styles.num}>eventos</th>
+                <th className={styles.num}>tamanho</th>
+              </tr>
+            </thead>
+            <tbody>
+              {archiveDays.map(({ day, file, beforeFirstExport }) => (
+                <tr key={day}>
+                  <td>{day}</td>
+                  {file ? (
+                    <>
+                      <td className={styles.num}>{file.events ?? '—'}</td>
+                      <td className={styles.num}>{formatBytes(file.size)}</td>
+                    </>
+                  ) : beforeFirstExport ? (
+                    <td className={styles.num} colSpan={2}>
+                      —
+                    </td>
+                  ) : (
+                    <td className={`${styles.num} ${styles.statusError}`} colSpan={2}>
+                      faltando
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className={styles.hint}>
+            <strong>faltando</strong> = o export diário não gravou o NDJSON desse dia (cron falhou;
+            o backfill re-tenta sozinho enquanto o dia estiver na janela de ~3 meses do Analytics
+            Engine). "—" = dia anterior ao primeiro export.
+          </p>
+        </>
+      )}
+    </section>
+  )
+}
+
+/** Bounds UTC de um mês "YYYY-MM": primeiro e último dia (YYYY-MM-DD). */
+function monthBounds(month: string): { from: string; to: string } {
+  const [y, m] = month.split('-').map(Number)
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return { from: `${month}-01`, to: `${month}-${String(last).padStart(2, '0')}` }
+}
+
+function ArchiveQuerySection({
+  months,
+  selected,
+  loading,
+  result,
+  onSelect,
+}: {
+  months: { label: string; total: number }[]
+  selected: string | null
+  loading: boolean
+  result: ArchiveQueryResponse | null
+  onSelect: (month: string) => void
+}) {
+  if (months.length === 0) return null
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Análise do arquivo (além da janela do AE)</h2>
+      <p className={styles.hint}>
+        Lê o corpo dos NDJSON de um mês e agrega por tipo — enxerga dados que já saíram dos ~3 meses
+        do Analytics Engine.
+      </p>
+      <div className={styles.periods}>
+        {months.map((m) => (
+          <button
+            key={m.label}
+            type="button"
+            className={m.label === selected ? styles.periodActive : styles.period}
+            onClick={() => {
+              trackEvent('click_admin_metrics_arquivo_mes', { month: m.label })
+              onSelect(m.label)
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <p className={styles.hint}>Lendo arquivos…</p>}
+
+      {result && !loading && (
+        <>
+          <p className={styles.hint}>
+            {result.from} a {result.to} · {result.filesRead} arquivo(s) ·{' '}
+            <strong>{result.totalEvents}</strong> eventos
+          </p>
+          {result.byType.length === 0 ? (
+            <p className={styles.hint}>Nenhum evento arquivado nesse mês.</p>
+          ) : (
+            <table className={styles.table}>
+              <tbody>
+                {result.byType.map((t) => (
+                  <tr key={t.event_type}>
+                    <td title={t.event_type}>{eventLabel(t.event_type)}</td>
+                    <td className={styles.num}>{t.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
+export default function AdminMetricsPage() {
+  useDocumentTitle('Métricas')
+
+  const [days, setDays] = useState<number>(30)
+  const [overview, setOverview] = useState<OverviewResponse | null>(null)
+  const [archive, setArchive] = useState<ArchiveResponse | null>(null)
+  const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  // Análise do arquivo frio, sob demanda (um mês por vez) — independente do período.
+  const [queryMonth, setQueryMonth] = useState<string | null>(null)
+  const [queryResult, setQueryResult] = useState<ArchiveQueryResponse | null>(null)
+  const [queryLoading, setQueryLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    const params = new URLSearchParams({ days: String(days) })
+    Promise.all([
+      apiFetch(buildApiUrl('/metrics/overview', params)),
+      apiFetch(buildApiUrl('/metrics/archive')),
+    ])
+      .then(async ([ovRes, arRes]) => {
+        if (cancelled) return
+        if (ovRes.status === 403) {
+          setError('forbidden')
+          return
+        }
+        if (!ovRes.ok) throw new Error(`overview ${ovRes.status}`)
+        setOverview((await ovRes.json()) as OverviewResponse)
+        // Arquivo é secundário — falha nele não derruba a página inteira.
+        if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
+      })
+      .catch(() => {
+        if (!cancelled) setError('failed')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [days])
+
+  const {
+    stacked,
+    apiCallsSeries,
+    dauSeries,
+    kpis,
+    avgSample,
+    isSampling,
+    whaleShare,
+    archiveDays,
+    archiveStats,
+  } = useMetricsData(overview, archive)
+
+  async function runArchiveQuery(month: string) {
+    setQueryMonth(month)
+    setQueryLoading(true)
+    setQueryResult(null)
+    const { from, to } = monthBounds(month)
+    try {
+      const params = new URLSearchParams({ from, to })
+      const res = await apiFetch(buildApiUrl('/metrics/archive/query', params))
+      if (res.ok) setQueryResult((await res.json()) as ArchiveQueryResponse)
+    } catch {
+      // Falha na análise não derruba a página — o mês fica sem resultado.
+    } finally {
+      setQueryLoading(false)
+    }
+  }
 
   if (error === 'forbidden') {
     return (
@@ -354,282 +930,38 @@ export default function AdminMetricsPage() {
 
         {overview && kpis && !loading && (
           <>
-            <div className={styles.kpiRow}>
-              <KpiCard label="usuários palpitando" value={String(kpis.activeUsers)} />
-              <KpiCard label="palpites salvos" value={String(kpis.predictions)} />
-              <KpiCard label="grupos criados" value={String(kpis.groupsCreated)} />
-              <KpiCard label="entradas por grupo" value={kpis.joinRate} hint="conversão de convite" />
-              <KpiCard label="logins" value={String(kpis.logins)} />
-              <KpiCard label="cache hit" value={kpis.cacheHitRate} hint="GET /matches" />
-            </div>
+            <OverviewKpisRow kpis={kpis} />
 
             {isSampling && (
               <p className={styles.samplingWarning}>
                 ⚠️ Analytics Engine está amostrando (média de _sample_interval ={' '}
-                {avgSample.toFixed(2)}) — os números do período são estimativa e o volume de
-                eventos merece atenção.
+                {avgSample.toFixed(2)}) — os números do período são estimativa e o volume de eventos
+                merece atenção.
               </p>
             )}
 
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>
-                Eventos por dia · últimos {overview.days} dias
-              </h2>
-              <StackedBarChart days={stacked.series} ariaLabel="Eventos por dia, por tipo" />
-              <div className={styles.legend}>
-                {stacked.legend.map((l) => (
-                  <span key={l.type} className={styles.legendItem} title={l.type}>
-                    <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
-                    {eventLabel(l.type)}
-                  </span>
-                ))}
-              </div>
-            </section>
-
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Totais por evento</h2>
-              {overview.totals.length === 0 ? (
-                <p className={styles.hint}>Nenhum evento no período.</p>
-              ) : (
-                <table className={styles.table}>
-                  <tbody>
-                    {overview.totals.map((t) => (
-                      <tr key={t.event_type}>
-                        {/* title mantém o event_type cru — é a chave do esquema
-                            posicional em docs/observability.md */}
-                        <td title={t.event_type}>{eventLabel(t.event_type)}</td>
-                        <td className={styles.num}>{Number(t.count)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
-
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Saúde dos crons</h2>
-              {overview.lastRuns.length === 0 ? (
-                <p className={styles.hint}>Nenhuma execução de cron no período. ⚠️</p>
-              ) : (
-                <table className={styles.table}>
-                  <tbody>
-                    {overview.lastRuns.map((r) => {
-                      const info = CRON_INFO[r.event_type]
-                      const stale = info ? isStale(r.last_run, info.staleAfterMin) : false
-                      return (
-                        <tr key={r.event_type}>
-                          <td>{info?.label ?? r.event_type}</td>
-                          <td className={`${styles.num} ${stale ? styles.statusError : ''}`}>
-                            {formatAgo(r.last_run)}
-                            {stale && ' ⚠️'}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
-
-              <h3 className={styles.subTitle}>Poller de resultados</h3>
-              {overview.poller.length === 0 ? (
-                <p className={styles.hint}>Nenhuma execução no período.</p>
-              ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>status</th>
-                      <th className={styles.num}>execuções</th>
-                      <th className={styles.num}>duração média</th>
-                      <th className={styles.num}>duração máx.</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {overview.poller.map((p) => (
-                      <tr key={p.status}>
-                        <td className={p.status === 'error' ? styles.statusError : styles.statusOk}>
-                          {p.status}
-                        </td>
-                        <td className={styles.num}>{Number(p.runs)}</td>
-                        <td className={styles.num}>{formatDuration(Number(p.avg_duration_ms))}</td>
-                        <td className={styles.num}>{formatDuration(Number(p.max_duration_ms))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              <h3 className={styles.subTitle}>Chamadas à API Football por dia</h3>
-              <BarChart series={apiCallsSeries} ariaLabel="Chamadas à API Football por dia" unit=" chamadas" />
-            </section>
-
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>E-mail de lembrete</h2>
-              <table className={styles.table}>
-                <tbody>
-                  <tr>
-                    <td>rodadas lembradas (cron)</td>
-                    <td className={styles.num}>{Number(overview.emailHealth.rounds)}</td>
-                  </tr>
-                  <tr>
-                    <td>e-mails enviados</td>
-                    <td className={styles.num}>{Number(overview.emailHealth.sent)}</td>
-                  </tr>
-                  <tr>
-                    <td>falhas de envio</td>
-                    <td
-                      className={`${styles.num} ${Number(overview.emailHealth.failed) > 0 ? styles.statusError : ''}`}
-                    >
-                      {Number(overview.emailHealth.failed)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>descadastros</td>
-                    <td className={styles.num}>{kpis.emailUnsubs}</td>
-                  </tr>
-                  <tr>
-                    <td>recadastros</td>
-                    <td className={styles.num}>{kpis.emailResubs}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </section>
-
-            {whaleShare && (
-              <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Concentração de palpites</h2>
-                <p className={styles.hint}>
-                  Maior palpiteiro: <strong>{whaleShare.top1}%</strong> dos palpites · top 5:{' '}
-                  <strong>{whaleShare.top5}%</strong> — quanto mais alto, mais a retenção
-                  depende de poucos usuários hardcore.
-                </p>
-              </section>
-            )}
-
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Falhas de login por motivo</h2>
-              {overview.loginFailures.length === 0 ? (
-                <p className={styles.hint}>Nenhuma falha no período. 🎉</p>
-              ) : (
-                <table className={styles.table}>
-                  <tbody>
-                    {overview.loginFailures.map((f) => (
-                      <tr key={f.reason}>
-                        <td>{f.reason}</td>
-                        <td className={styles.num}>{Number(f.count)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
-
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Erros recentes</h2>
-              {overview.recentErrors.length === 0 ? (
-                <p className={styles.hint}>Nenhum erro no período. 🎉</p>
-              ) : (
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>quando (UTC)</th>
-                      <th>evento</th>
-                      <th>detalhe</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {overview.recentErrors.map((e, i) => (
-                      <tr key={`${e.timestamp}-${i}`}>
-                        <td className={styles.nowrap}>{formatTimestamp(e.timestamp)}</td>
-                        <td className={styles.nowrap} title={e.event_type}>
-                          {eventLabel(e.event_type)}
-                        </td>
-                        {/* blobs posicionais variam por tipo de evento — mostra cru */}
-                        <td className={styles.detail}>
-                          {[e.blob2, e.blob3, e.blob4].filter(Boolean).join(' · ')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
+            <EventsSection overview={overview} stacked={stacked} />
+            <EngagementSection dauSeries={dauSeries} />
+            <HealthSection overview={overview} apiCallsSeries={apiCallsSeries} />
+            <LatencySection overview={overview} />
+            <EmailSection overview={overview} kpis={kpis} />
+            <ConcentrationSection whaleShare={whaleShare} />
+            <LoginFailuresSection overview={overview} />
+            <RecentErrorsSection overview={overview} />
           </>
         )}
 
         {archive && !loading && (
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Arquivo frio (R2)</h2>
-            {!archiveStats ? (
-              <p className={styles.hint}>
-                Nenhum arquivo no bucket — em dev local o R2 é simulado e começa vazio; em
-                produção, ver se o cron de export (00:05 UTC) está rodando.
-              </p>
-            ) : (
-              <>
-                <div className={styles.kpiRow}>
-                  <KpiCard label="dias arquivados" value={String(archiveStats.totalDays)} />
-                  <KpiCard
-                    label="eventos arquivados"
-                    value={`${archiveStats.missingMeta > 0 ? '≥ ' : ''}${archiveStats.totalEvents}`}
-                  />
-                  <KpiCard label="tamanho total" value={formatBytes(archiveStats.totalBytes)} />
-                  <KpiCard label="desde" value={archiveStats.oldestDay} />
-                </div>
-
-                <h3 className={styles.subTitle}>Eventos por mês · histórico completo</h3>
-                <BarChart
-                  series={archiveStats.monthly}
-                  ariaLabel="Eventos arquivados por mês"
-                  unit=" eventos"
-                  tickLabel={(l) => `${l.slice(5, 7)}/${l.slice(2, 4)}`}
-                />
-                {archiveStats.missingMeta > 0 && (
-                  <p className={styles.hint}>
-                    {archiveStats.missingMeta}{' '}
-                    {archiveStats.missingMeta === 1 ? 'arquivo ainda sem' : 'arquivos ainda sem'}{' '}
-                    contagem de eventos (export antigo) — o cron re-grava a metadata aos poucos;
-                    até lá os totais acima são piso ("≥").
-                  </p>
-                )}
-
-                <h3 className={styles.subTitle}>Integridade · últimos 14 dias</h3>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>dia</th>
-                      <th className={styles.num}>eventos</th>
-                      <th className={styles.num}>tamanho</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {archiveDays.map(({ day, file, beforeFirstExport }) => (
-                      <tr key={day}>
-                        <td>{day}</td>
-                        {file ? (
-                          <>
-                            <td className={styles.num}>{file.events ?? '—'}</td>
-                            <td className={styles.num}>{formatBytes(file.size)}</td>
-                          </>
-                        ) : beforeFirstExport ? (
-                          <td className={styles.num} colSpan={2}>
-                            —
-                          </td>
-                        ) : (
-                          <td className={`${styles.num} ${styles.statusError}`} colSpan={2}>
-                            faltando
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <p className={styles.hint}>
-                  <strong>faltando</strong> = o export diário não gravou o NDJSON desse dia
-                  (cron falhou; o backfill re-tenta sozinho enquanto o dia estiver na janela de
-                  ~3 meses do Analytics Engine). "—" = dia anterior ao primeiro export.
-                </p>
-              </>
-            )}
-          </section>
+          <>
+            <ArchiveSection archiveStats={archiveStats} archiveDays={archiveDays} />
+            <ArchiveQuerySection
+              months={archiveStats?.monthly ?? []}
+              selected={queryMonth}
+              loading={queryLoading}
+              result={queryResult}
+              onSelect={runArchiveQuery}
+            />
+          </>
         )}
       </div>
     </div>

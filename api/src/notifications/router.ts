@@ -1,4 +1,4 @@
-import { type Context, Hono } from 'hono'
+import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
@@ -55,33 +55,6 @@ function unsubscribeFormPage(token: string): string {
 </html>`
 }
 
-/** Sets email_unsubscribed_at for the user behind a valid token. Idempotent. */
-async function unsubscribeByToken(c: Context<AppContext>): Promise<boolean> {
-  const token = c.req.query('token')
-  if (!token) return false
-
-  let userId: string
-  try {
-    userId = await verifyUnsubToken(token, c.env.JWT_SECRET)
-  } catch {
-    return false
-  }
-
-  const result = await c.env.DB.prepare(
-    `UPDATE users SET email_unsubscribed_at = datetime('now')
-     WHERE id = ? AND email_unsubscribed_at IS NULL`,
-  )
-    .bind(userId)
-    .run()
-
-  // Only log when the row actually changed — a repeated one-click POST (some mail
-  // clients retry) is a no-op and must not inflate the unsubscribe metric.
-  if (result.meta.changes > 0) {
-    logEvent(c.env.AE, 'email_unsubscribed', { blobs: [await hashUserId(userId), 'link'] })
-  }
-  return true
-}
-
 /**
  * GET /notifications/unsubscribe?token=...
  * Public — opened from the e-mail footer link. Renders a confirmation form; does
@@ -109,8 +82,32 @@ router.get('/unsubscribe', async (c) => {
  * the URL. Returns 200 text, no page.
  */
 router.post('/unsubscribe', async (c) => {
-  const ok = await unsubscribeByToken(c)
-  return c.text(ok ? 'unsubscribed' : 'invalid token', ok ? 200 : 400)
+  const token = c.req.query('token')
+  if (!token) return c.text('invalid token', 400)
+
+  let userId: string
+  try {
+    userId = await verifyUnsubToken(token, c.env.JWT_SECRET)
+  } catch {
+    return c.text('invalid token', 400)
+  }
+
+  const result = await c.env.DB.prepare(
+    `UPDATE users SET email_unsubscribed_at = datetime('now')
+     WHERE id = ? AND email_unsubscribed_at IS NULL`,
+  )
+    .bind(userId)
+    .run()
+
+  // Only log when the row actually changed — a repeated one-click POST (some mail
+  // clients retry) is a no-op and must not inflate the unsubscribe metric.
+  if (result.meta.changes > 0) {
+    logEvent(c.env.AE, 'email_unsubscribed', {
+      blobs: [await hashUserId(userId), 'link'],
+    })
+  }
+
+  return c.text('unsubscribed', 200)
 })
 
 /**
@@ -133,7 +130,9 @@ router.get('/preferences', requireAuth, async (c) => {
  */
 router.patch('/preferences', requireAuth, async (c) => {
   const userId = c.get('userId')
-  const body = (await c.req.json().catch(() => ({}))) as { round_reminders?: unknown }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    round_reminders?: unknown
+  }
 
   if (typeof body.round_reminders !== 'boolean') {
     return c.json({ error: 'round_reminders (boolean) é obrigatório' }, 400)

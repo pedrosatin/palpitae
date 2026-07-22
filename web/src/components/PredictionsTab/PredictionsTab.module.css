@@ -5,57 +5,6 @@
   padding-bottom: calc(3.5rem + var(--space-3));
 }
 
-.roundNav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.navBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  height: 2rem;
-  padding: 0 var(--space-3);
-  flex-shrink: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.navBtn:hover:not(:disabled) {
-  background: var(--color-surface-hover, var(--color-border));
-}
-
-.navBtn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.roundSelect {
-  flex: 1;
-  height: 2rem;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  appearance: none;
-  text-align: center;
-}
-
 .saveAllBar {
   display: flex;
   align-items: center;
@@ -71,32 +20,18 @@
   z-index: 100;
 }
 
-.saveAllBtn {
+/* Compostos com .saveAllBar para vencer a base do Button (2 classes > 1)
+   sem depender da ordem de injeção dos CSS Modules. */
+.saveAllBar .saveAllBtn {
   margin-left: auto;
-  background-color: var(--color-primary);
-  color: var(--color-on-primary);
-  border: none;
-  border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-4);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  transition:
-    background-color var(--transition-fast),
-    opacity var(--transition-fast);
 }
 
-.saveAllBtn:hover:not(:disabled) {
-  background-color: var(--color-primary-hover);
-}
-
-.saveAllBtn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.saveAllBtnSaved {
+.saveAllBar .saveAllBtnSaved {
   background-color: #1e7a0e;
+  border-color: #1e7a0e;
   color: #ffffff;
 }
 
@@ -151,42 +86,23 @@
   white-space: nowrap;
 }
 
-.importSelect {
+/* Compostos com .importBar para vencer as bases de Select/Button
+   (2 classes > 1) sem depender da ordem de injeção dos CSS Modules. */
+.importBar .importSelect {
   flex: 1;
   min-width: 0;
+  width: auto;
   height: 2rem;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
+  padding: 0 var(--space-8) 0 var(--space-3);
   font-size: var(--font-size-sm);
-  cursor: pointer;
 }
 
-.importBtn {
+.importBar .importBtn {
+  margin-left: 0;
   height: 2rem;
   padding: 0 var(--space-4);
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: var(--color-on-primary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background-color var(--transition-fast),
-    opacity var(--transition-fast);
-}
-
-.importBtn:hover:not(:disabled) {
-  background-color: var(--color-primary-hover);
-}
-
-.importBtn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 .importSuccess {

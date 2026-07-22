@@ -36,6 +36,20 @@ describe('ga', () => {
       })
       expect(getStoredConsent()).toBeNull()
     })
+
+    it('tests the error path in getStoredConsent by mocking localStorage.getItem to throw an error', () => {
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('Mocked error for testing')
+      })
+
+      const result = getStoredConsent()
+
+      expect(result).toBeNull()
+      // Clean up the spies
+      consoleErrorSpy.mockRestore()
+      getItemSpy.mockRestore()
+    })
   })
 
   describe('setConsent', () => {
@@ -54,7 +68,9 @@ describe('ga', () => {
       setConsent('granted')
 
       expect(setItemMock).toHaveBeenCalledWith('palpitae:analytics-consent', 'granted')
-      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', { analytics_storage: 'granted' })
+      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', {
+        analytics_storage: 'granted',
+      })
     })
 
     it('should catch localStorage errors silently and still call gtag update', () => {
@@ -69,7 +85,9 @@ describe('ga', () => {
         'palpitae:analytics-consent',
         expect.stringMatching(/^denied:\d+$/),
       )
-      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', { analytics_storage: 'denied' })
+      expect(window.gtag).toHaveBeenCalledWith('consent', 'update', {
+        analytics_storage: 'denied',
+      })
     })
   })
 })
