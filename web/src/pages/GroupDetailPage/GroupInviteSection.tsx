@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import Button from '../../components/Button'
+import ShareButtons from '../../components/ShareButtons'
 import styles from './GroupDetailPage.module.css'
 import shared from '../../components/modal-shared.module.css'
 
@@ -52,6 +53,7 @@ export function GroupInviteSection({ inviteCode }: GroupInviteSectionProps) {
           </div>
         </div>
       </div>
+      <ShareButtons shareLink={getShareLink()} eventContext="group_detail" />
     </div>
   )
 }
