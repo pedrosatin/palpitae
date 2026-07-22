@@ -14,7 +14,12 @@ const overview = {
   ],
   daily: [{ day: '2026-06-29 00:00:00', event_type: 'login_success', count: '12' }],
   poller: [
-    { status: 'ok', runs: '48', avg_duration_ms: '850', max_duration_ms: '2100' },
+    {
+      status: 'ok',
+      runs: '48',
+      avg_duration_ms: '850',
+      max_duration_ms: '2100',
+    },
   ],
   predictions: { active_users: '7', total: '37' },
   cache: [
@@ -42,6 +47,10 @@ const overview = {
     },
   ],
   emailHealth: { rounds: '3', sent: '25', failed: '0' },
+  latency: [
+    { route: 'GET /matches', requests: '100', avg_ms: '45', max_ms: '320', avg_db_ms: '12' },
+  ],
+  predictionsDaily: [{ day: '2026-06-29 00:00:00', users: '7' }],
 }
 
 // A tabela do arquivo R2 é montada a partir da data corrente (ontem pra trás),
@@ -49,8 +58,22 @@ const overview = {
 const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const archive = {
   files: [
-    { key: `events/${yesterday.replaceAll('-', '/')}.ndjson`, size: 2048, uploaded: '', events: 42 },
+    {
+      key: `events/${yesterday.replaceAll('-', '/')}.ndjson`,
+      size: 2048,
+      uploaded: '',
+      events: 42,
+    },
   ],
+}
+
+const archiveQuery = {
+  from: `${yesterday.slice(0, 7)}-01`,
+  to: yesterday,
+  filesRead: 1,
+  totalEvents: 42,
+  byType: [{ event_type: 'login_success', count: 42 }],
+  byDay: [{ day: yesterday, count: 42 }],
 }
 
 function mockFetch(overviewStatus = 200, overviewBody: unknown = overview) {
@@ -61,6 +84,9 @@ function mockFetch(overviewStatus = 200, overviewBody: unknown = overview) {
         status: overviewStatus,
         json: async () => overviewBody,
       }
+    }
+    if (url.includes('/metrics/archive/query')) {
+      return { ok: true, status: 200, json: async () => archiveQuery }
     }
     return { ok: true, status: 200, json: async () => archive }
   })
@@ -92,6 +118,11 @@ describe('AdminMetricsPage', () => {
     // Saúde do e-mail
     expect(screen.getByText('e-mails enviados')).toBeInTheDocument()
     expect(screen.getByText('25')).toBeInTheDocument()
+
+    // DAU + latência por rota ("GET /matches" também é hint do KPI de cache → getAll)
+    expect(screen.getByText('Usuários ativos (palpitando) por dia')).toBeInTheDocument()
+    expect(screen.getByText('Latência por rota')).toBeInTheDocument()
+    expect(screen.getAllByText('GET /matches').length).toBeGreaterThanOrEqual(1)
 
     // Concentração de palpites: top1 = top5 = round(20/37) = 54% (1 whale só)
     expect(screen.getAllByText('54%')).toHaveLength(2)
@@ -160,6 +191,27 @@ describe('AdminMetricsPage', () => {
 
     expect(await screen.findByText(/amostrando/)).toBeInTheDocument()
     expect(screen.getByText(/2\.50/)).toBeInTheDocument()
+  })
+
+  it('analisa o arquivo frio de um mês ao clicar no botão', async () => {
+    const fetchFake = mockFetch()
+    vi.stubGlobal('fetch', fetchFake)
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    // Botão do mês (YYYY-MM de "ontem") na seção de análise do arquivo.
+    const month = yesterday.slice(0, 7)
+    await screen.findByText('Análise do arquivo (além da janela do AE)')
+    await user.click(screen.getByRole('button', { name: month }))
+
+    // Dispara o fetch da query e renderiza o breakdown por tipo.
+    await waitFor(() => {
+      expect(
+        fetchFake.mock.calls.some(([url]: [string]) => url.includes('/metrics/archive/query')),
+      ).toBe(true)
+    })
+    // Linha-resumo única da seção de análise (…N arquivo(s) · M eventos).
+    await screen.findByText(/arquivo\(s\)/)
   })
 
   it('mostra acesso restrito quando a API responde 403', async () => {

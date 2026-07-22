@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { trackEvent } from '../../analytics/ga'
 import styles from './Modal.module.css'
+import Button from '../Button'
 
 interface ModalProps {
   isOpen: boolean
@@ -9,12 +11,7 @@ interface ModalProps {
   children: ReactNode
 }
 
-export default function Modal({
-  isOpen,
-  onClose,
-  title,
-  children,
-}: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return
     function handleKeyDown(e: KeyboardEvent) {
@@ -27,22 +24,21 @@ export default function Modal({
   if (!isOpen) return null
 
   return (
-    <div
-      className={styles.overlay}
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
+    <div className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true">
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <h2 className={styles.title}>{title}</h2>
-          <button
-            className={styles.closeBtn}
-            onClick={onClose}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              trackEvent('click_modal_fechar', { modal: title })
+              onClose()
+            }}
             aria-label="Fechar"
           >
             ✕
-          </button>
+          </Button>
         </div>
         <div className={styles.body}>{children}</div>
       </div>

@@ -37,7 +37,7 @@ describe('requireAuth middleware', () => {
     const app = buildApp()
     const res = await requestWithCookie(app)
     expect(res.status).toBe(401)
-    const body = await res.json() as { error: string }
+    const body = (await res.json()) as { error: string }
     expect(body.error).toBe('Unauthorized')
   })
 
@@ -66,7 +66,7 @@ describe('requireAuth middleware', () => {
     const app = buildApp()
     const res = await requestWithCookie(app, `session=${token}`)
     expect(res.status).toBe(200)
-    const body = await res.json() as { userId: string }
+    const body = (await res.json()) as { userId: string }
     expect(body.userId).toBe('user-42')
   })
 })

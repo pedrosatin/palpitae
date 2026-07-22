@@ -2,12 +2,6 @@
  * JoinGroupModal styles
  */
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
 .hint {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
@@ -15,86 +9,12 @@
   line-height: var(--line-height-relaxed);
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.label {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
-}
-
-.input {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-md);
-  font-family: var(--font-family-base);
-  padding: var(--space-3) var(--space-4);
-  width: 100%;
-  box-sizing: border-box;
-  outline: none;
-  transition: border-color 0.15s;
+.inputCode {
   letter-spacing: 0.05em;
 }
 
-.input::placeholder {
-  color: var(--color-text-muted);
+.inputCode::placeholder {
   letter-spacing: normal;
-}
-
-.input:focus {
-  border-color: var(--color-primary);
-}
-
-.error {
-  background-color: rgba(255, 77, 79, 0.08);
-  border: 1px solid rgba(255, 77, 79, 0.3);
-  border-radius: var(--radius-md);
-  color: #ff4d4f;
-  font-size: var(--font-size-sm);
-  padding: var(--space-3) var(--space-4);
-  margin: 0;
-}
-
-.actions {
-  display: flex;
-  gap: var(--space-3);
-  justify-content: flex-end;
-  padding-top: var(--space-2);
-}
-
-/* ─── Success state ───────────────────────────────────────────────────── */
-
-.success {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: var(--space-4);
-}
-
-.successIcon {
-  font-size: 2.5rem;
-  line-height: 1;
-}
-
-.successTitle {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.successName {
-  font-size: var(--font-size-lg);
-  color: var(--color-primary);
-  font-weight: var(--font-weight-medium);
-  margin: 0;
 }
 
 .doneBtn {
