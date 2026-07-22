@@ -142,7 +142,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('syncFixtures — canonical score & penalty mapping', () => {
   it('PENALTY_SHOOTOUT: canonical = regularTime + extraTime, NOT fullTime (which includes penalty goals)', async () => {
-    // Regression for the football-data fullTime bug: in a shootout, fullTime
+    // Handling for the football-data fullTime anomaly: in a shootout, fullTime
     // (4-3) carries the penalty goals; the canonical draw is reg+ET = 1-1.
     mockFetch([
       match(101, {
@@ -219,8 +219,8 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(captured.matches[1][AWAY]).toBe(2) // Kept as 2
   })
 
-  it('PENALTY_SHOOTOUT: regularTime wins over fullTime heuristic when fullTime is inconsistent (AUS -1 / EGI 1 bug)', async () => {
-    // Regression: football-data sent fullTime={home:1,away:2} for an actual 1-1 draw
+  it('PENALTY_SHOOTOUT: regularTime wins over fullTime heuristic when fullTime is inconsistent (AUS -1 / EGI 1 anomaly)', async () => {
+    // Handling: football-data sent fullTime={home:1,away:2} for an actual 1-1 draw
     // that went to penalties (e.g. AUS vs EGY). The old heuristic subtracted the
     // penalty goals from fullTime and produced canonicalHome=-1. The fix: when
     // regularTime is available it is the authoritative canonical score.
@@ -242,9 +242,29 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[AWAY]).toBe(1) // must be 1, not  2
     expect(row[PEN_WINNER]).toBe('away')
   })
+  it('PENALTY_SHOOTOUT: prevents negative canonical score when regularTime is missing and fullTime is inconsistent', async () => {
+    mockFetch([
+      match(113, {
+        winner: 'AWAY_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 1, away: 2 }, // inconsistent
+        regularTime: { home: null, away: null },
+        extraTime: { home: null, away: null },
+        penalties: { home: 2, away: 1 },
+      }),
+    ])
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+
+    const row = captured.matches[0]
+    expect(row[HOME]).toBeGreaterThanOrEqual(0)
+    expect(row[AWAY]).toBeGreaterThanOrEqual(0)
+    expect(row[HOME]).toBe(row[AWAY])
+  })
+
 
   it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
-    // Regression (Holanda x Marrocos em prod): o provider mandou winner=null e
+    // Handling (Holanda x Marrocos em prod): o provider mandou winner=null e
     // fullTime = placar do tempo normal (empate). Derivar de fullTime devolvia null
     // e zerava o bônus de quem acertou o vencedor. A fonte canônica é score.penalties.
     mockFetch([
