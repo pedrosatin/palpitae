@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logEvent } from '../observability/events'
+import { logError, logEvent } from '../observability/events'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -104,10 +104,15 @@ export async function pollActiveMatches(
         synced = true
       } catch (err) {
         hadError = true
-        console.error(`[poller] Sync falhou comp=${comp.comp_id} round=${round}:`, err)
-        logEvent(ae, 'football_api_error', {
-          blobs: [comp.comp_id, round, err instanceof Error ? err.message : String(err)],
-        })
+        logError(
+          ae,
+          'football_api_error',
+          `[poller] Sync falhou comp=${comp.comp_id} round=${round}:`,
+          err,
+          {
+            blobs: [comp.comp_id, round],
+          },
+        )
       }
     }
 

@@ -242,6 +242,26 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[AWAY]).toBe(1) // must be 1, not  2
     expect(row[PEN_WINNER]).toBe('away')
   })
+  it('PENALTY_SHOOTOUT: prevents negative canonical score when regularTime is missing and fullTime is inconsistent', async () => {
+    mockFetch([
+      match(113, {
+        winner: 'AWAY_TEAM',
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 1, away: 2 }, // inconsistent
+        regularTime: { home: null, away: null },
+        extraTime: { home: null, away: null },
+        penalties: { home: 2, away: 1 },
+      }),
+    ])
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+
+    const row = captured.matches[0]
+    expect(row[HOME]).toBeGreaterThanOrEqual(0)
+    expect(row[AWAY]).toBeGreaterThanOrEqual(0)
+    expect(row[HOME]).toBe(row[AWAY])
+  })
+
 
   it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
     // Handling (Holanda x Marrocos em prod): o provider mandou winner=null e
