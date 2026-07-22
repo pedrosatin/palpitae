@@ -157,7 +157,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
               placeholder="Ex: Os Craques do Bairro"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              maxLength={50}
+              maxLength={30}
               required
               autoFocus
             />
