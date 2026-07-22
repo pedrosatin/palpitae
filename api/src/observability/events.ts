@@ -20,6 +20,8 @@ export type EventType =
   | 'poller_run'
   | 'fixture_discovery_run'
   | 'football_api_error'
+  // Performance / latência de request
+  | 'request_perf'
   // Negócio (server-side, nos routers)
   | 'prediction_saved'
   | 'group_created'
@@ -43,6 +45,25 @@ export type EventDims = {
   blobs?: (string | null | undefined)[]
   /** Medidas numéricas. Viram double1, double2, ... */
   doubles?: number[]
+}
+
+/**
+ * Registra um erro de negócio/integração. Emite no console com a stack trace original,
+ * e salva um evento no Analytics Engine com a mensagem extraída para monitoramento.
+ */
+export function logError(
+  ae: AnalyticsEngineDataset | undefined,
+  type: EventType,
+  consoleMessage: string,
+  error: unknown,
+  dims: EventDims = {},
+): void {
+  console.error(consoleMessage, error)
+  const message = error instanceof Error ? error.message : String(error)
+  logEvent(ae, type, {
+    blobs: [...(dims.blobs ?? []), message],
+    doubles: dims.doubles,
+  })
 }
 
 /**

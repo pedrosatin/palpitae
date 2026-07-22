@@ -263,40 +263,48 @@ function buildFakeDb(
     }>
   } = {
     prepare(sql: string) {
-      const boundParams: unknown[] = []
-      const stmt: FakeStatement = {
+      const stmt = {
         bind(...args: unknown[]) {
-          boundParams.push(...args)
-          return stmt
+          return {
+            ...stmt,
+            _params: args,
+            async first<T>() {
+              return makeStatement(sql, args).first<T>()
+            },
+            async all<T>() {
+              return makeStatement(sql, args).all<T>()
+            },
+            async run() {},
+          }
         },
         async first<T>() {
-          return makeStatement(sql, boundParams).first<T>()
+          return makeStatement(sql, []).first<T>()
         },
         async all<T>() {
-          return makeStatement(sql, boundParams).all<T>()
+          return makeStatement(sql, []).all<T>()
         },
         async run() {},
         _sql: sql,
-        _params: boundParams,
+        _params: [] as unknown[],
       }
-      return stmt
+      return stmt as unknown as FakeStatement
     },
     async batch(statements: FakeStatement[]) {
       for (const s of statements) {
         const sql = (s as unknown as { _sql: string })._sql
         const params = (s as unknown as { _params: unknown[] })._params
-        if (sql.startsWith('UPDATE predictions SET points_awarded')) {
+        if (sql?.startsWith('UPDATE predictions SET points_awarded')) {
           const [points, penaltyPoints, id] = params as [number, number, string]
           updatedPredictions[id] = {
             points_awarded: points,
             penalty_points: penaltyPoints,
           }
         }
-        if (sql.startsWith('UPDATE matches SET scored_at')) {
+        if (sql?.startsWith('UPDATE matches SET scored_at')) {
           const [scoredAt, id] = params as [string, string]
           updatedMatches[id] = { scored_at: scoredAt }
         }
-        if (sql.includes('INSERT INTO leaderboard')) {
+        if (sql?.includes('INSERT INTO leaderboard')) {
           const [group_id, user_id, total_points, exact_hits] = params as [
             string,
             string,
