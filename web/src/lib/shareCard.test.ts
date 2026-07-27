@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildShareCardData } from './shareCard'
+import { buildShareCardData, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './shareCard'
 import type { GroupWithStats } from '../components/GroupCard'
 
 const base: GroupWithStats = {
@@ -19,6 +19,13 @@ const base: GroupWithStats = {
     { position: 3, display: 'Rui', points: 131, is_you: false },
   ],
 }
+
+describe('Share Card Constants', () => {
+  it('exports correct dimensions for a portrait story card', () => {
+    expect(SHARE_CARD_WIDTH).toBe(1080)
+    expect(SHARE_CARD_HEIGHT).toBe(1350)
+  })
+})
 
 describe('buildShareCardData', () => {
   it('maps competition, position and total from the group', () => {
