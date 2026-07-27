@@ -38,7 +38,7 @@ const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
           }
           if (query.includes('FROM leaderboard')) {
             return {
-              results: [{ group_id: 'g1', user_id: 'u1', total_points: 10, exact_hits: 2 }],
+              results: [{ user_id: 'u1', total_points: 10, exact_hits: 2 }],
             }
           }
           return { results: [] }
