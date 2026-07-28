@@ -38,7 +38,7 @@ describe('api', () => {
     })
 
     it('does nothing if window is undefined', () => {
-      const originalWindow = global.window
+      const originalWindow = window
       vi.stubGlobal('window', undefined)
 
       expect(() => notifySessionExpired()).not.toThrow()
@@ -66,7 +66,7 @@ describe('api', () => {
     })
 
     it('returns false if window is undefined', () => {
-      const originalWindow = global.window
+      const originalWindow = window
       vi.stubGlobal('window', undefined)
       expect(consumeSessionExpired()).toBe(false)
       vi.stubGlobal('window', originalWindow)
