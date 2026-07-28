@@ -34,12 +34,12 @@ describe('api', () => {
     })
 
     it('does nothing if window is undefined', () => {
-      const originalWindow = global.window
+      const originalWindow = globalThis.window
       // @ts-ignore
-      delete global.window
+      delete globalThis.window
       notifySessionExpired()
-      expect(global.dispatchEvent).not.toHaveBeenCalled()
-      global.window = originalWindow
+      expect(globalThis.dispatchEvent).not.toHaveBeenCalled()
+      globalThis.window = originalWindow
     })
   })
 
@@ -64,27 +64,27 @@ describe('api', () => {
     })
 
     it('returns false if window is undefined', () => {
-      const originalWindow = global.window
+      const originalWindow = globalThis.window
       // @ts-ignore
-      delete global.window
+      delete globalThis.window
       expect(consumeSessionExpired()).toBe(false)
-      global.window = originalWindow
+      globalThis.window = originalWindow
     })
   })
 
   describe('apiFetch', () => {
     it('calls fetch with credentials include', async () => {
       const mockResponse = new Response(null, { status: 200 })
-      vi.mocked(global.fetch).mockResolvedValue(mockResponse as any)
+      vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse as any)
 
       const res = await apiFetch('/test', { method: 'POST' })
-      expect(global.fetch).toHaveBeenCalledWith('/test', { method: 'POST', credentials: 'include' })
+      expect(globalThis.fetch).toHaveBeenCalledWith('/test', { method: 'POST', credentials: 'include' })
       expect(res).toBe(mockResponse)
     })
 
     it('calls notifySessionExpired on 401 response', async () => {
       const mockResponse = new Response(null, { status: 401 })
-      vi.mocked(global.fetch).mockResolvedValue(mockResponse as any)
+      vi.mocked(globalThis.fetch).mockResolvedValue(mockResponse as any)
 
       await apiFetch('/test')
       expect(window.sessionStorage.setItem).toHaveBeenCalledWith('palpitae:session-expired', '1')
