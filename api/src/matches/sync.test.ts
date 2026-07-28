@@ -262,7 +262,6 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[HOME]).toBe(row[AWAY])
   })
 
-
   it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
     // Handling (Holanda x Marrocos em prod): o provider mandou winner=null e
     // fullTime = placar do tempo normal (empate). Derivar de fullTime devolvia null

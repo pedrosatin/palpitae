@@ -496,9 +496,7 @@ describe('MatchCard – Error state', () => {
 
     renderCard(makeMatch(), undefined)
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
     expect(await screen.findByText('Database timeout')).toBeInTheDocument()
@@ -512,9 +510,7 @@ describe('MatchCard – Error state', () => {
 
     renderCard(makeMatch(), undefined)
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
     expect(await screen.findByText('Erro ao salvar palpite')).toBeInTheDocument()
