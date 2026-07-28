@@ -47,7 +47,9 @@ describe('competitions router', () => {
     )
 
     expect(response.status).toBe(200)
-    expect(response.headers.get('Cache-Control')).toBe('public, max-age=3600, stale-while-revalidate=86400')
+    expect(response.headers.get('Cache-Control')).toBe(
+      'public, max-age=3600, stale-while-revalidate=86400',
+    )
 
     const body = await response.json()
     expect(body).toEqual({
