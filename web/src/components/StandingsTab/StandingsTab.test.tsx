@@ -248,7 +248,13 @@ describe('StandingsTab – render', () => {
     const time2 = new Date(Date.now() - 7_200_000).toISOString()
     mockFetch([
       makeMatch({ id: 'm1', group_name: 'A', start_time: time1, status: 'scheduled' }),
-      makeMatch({ id: 'm2', group_name: 'A', start_time: time2, status: 'scheduled', home_team_short_name: 'URU' }),
+      makeMatch({
+        id: 'm2',
+        group_name: 'A',
+        start_time: time2,
+        status: 'scheduled',
+        home_team_short_name: 'URU',
+      }),
     ])
     render(<StandingsTab competitionId="c1" />)
 
