@@ -90,4 +90,78 @@ describe('ga', () => {
       })
     })
   })
+
+  describe('initGa', () => {
+    beforeEach(() => {
+      vi.resetModules()
+      vi.restoreAllMocks()
+      delete (window as any).gtag
+      delete (window as any).dataLayer
+      document.head.innerHTML = ''
+      localStorage.clear()
+    })
+
+    it('does nothing if gaEnabled is false', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: '' },
+      }))
+
+      const { initGa } = await import('./ga')
+      initGa()
+
+      expect((window as any).dataLayer).toBeUndefined()
+      expect((window as any).gtag).toBeUndefined()
+      expect(document.head.innerHTML).toBe('')
+    })
+
+    it('initializes GA properly when gaEnabled is true', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: 'G-1234567890' },
+      }))
+
+      const { initGa } = await import('./ga')
+      initGa()
+
+      expect((window as any).dataLayer).toBeDefined()
+      expect((window as any).gtag).toBeDefined()
+      expect((window as any).dataLayer.length).toBe(3) // js, config, and 1 for default consent
+
+      const script = document.head.querySelector('script')
+      expect(script).not.toBeNull()
+      expect(script?.src).toBe('https://www.googletagmanager.com/gtag/js?id=G-1234567890')
+      expect(script?.async).toBe(true)
+    })
+
+    it('initializes GA and sets granted if consent was already granted', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: 'G-1234567890' },
+      }))
+      localStorage.setItem('palpitae:analytics-consent', 'granted')
+
+      const { initGa } = await import('./ga')
+      initGa()
+
+      expect((window as any).dataLayer).toBeDefined()
+      expect((window as any).gtag).toBeDefined()
+      expect((window as any).dataLayer.length).toBe(4) // js, config, 1 for default consent, 1 for update consent
+    })
+
+    it('pushes arguments to dataLayer when gtag is called', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: 'G-1234567890' },
+      }))
+
+      const { initGa } = await import('./ga')
+      initGa()
+
+      // Reset dataLayer for clean check of gtag call arguments
+      ;(window as any).dataLayer = []
+
+      // Simulate a gtag call
+      window.gtag('event', 'test_event', { value: 1 })
+
+      expect((window as any).dataLayer.length).toBe(1)
+      expect(Array.from((window as any).dataLayer[0])).toEqual(['event', 'test_event', { value: 1 }])
+    })
+  })
 })
