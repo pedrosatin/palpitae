@@ -63,6 +63,58 @@ describe('auth router', () => {
     vi.clearAllMocks()
   })
 
+  describe('GET /google', () => {
+    it('stores valid relative redirect queries', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=?foo=bar'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).toContain(`oauth_redirect=${encodeURIComponent('/?foo=bar')};`)
+    })
+
+    it('stores valid path redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=/group/123'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).toContain(`oauth_redirect=${encodeURIComponent('/group/123')};`)
+    })
+
+    it('blocks absolute URL redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=https://evil.com'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).not.toContain('oauth_redirect=')
+    })
+
+    it('blocks protocol-relative URL redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=//evil.com'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).not.toContain('oauth_redirect=')
+    })
+
+    it('blocks backslash absolute redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=\\\\evil.com'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).not.toContain('oauth_redirect=')
+    })
+  })
+
   it('returns create_group true for any authenticated user', async () => {
     const res = await requestWithCookie('user@example.com')
     expect(res.status).toBe(200)
@@ -151,7 +203,7 @@ describe('auth router', () => {
     const res = await app.fetch(new Request('http://localhost/auth/callback?state=abc&code=123', { headers }), fakeEnv('user@example.com'))
     expect(res.status).toBe(302)
     const location = res.headers.get('Location')
-    expect(location).toBe('http://localhost:5173?group=123')
+    expect(location).toBe('http://localhost:5173/?group=123')
 
     const setCookies = res.headers.getSetCookie()
     expect(setCookies.some(c => c.startsWith('session='))).toBe(true)
@@ -211,7 +263,7 @@ describe('auth router', () => {
     expect(location).toBe('http://localhost:5173')
   })
 
-  it('callback works properly with valid parameters without query string storedRedirect', async () => {
+  it('callback treats a bare storedRedirect value as a relative path', async () => {
     vi.mocked(googleAuth.exchangeCode).mockResolvedValue({ id_token: 'id_token_123', access_token: 'access_token_123' })
     vi.mocked(googleAuth.verifyGoogleIdToken).mockResolvedValue({
       sub: 'google_id',
@@ -228,7 +280,7 @@ describe('auth router', () => {
     const res = await app.fetch(new Request('http://localhost/auth/callback?state=abc&code=123', { headers }), fakeEnv('user@example.com'))
     expect(res.status).toBe(302)
     const location = res.headers.get('Location')
-    expect(location).toBe('http://localhost:5173')
+    expect(location).toBe('http://localhost:5173/invalid')
   })
 
   it('returns 404 from me endpoint if user is not found', async () => {
