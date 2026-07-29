@@ -23,6 +23,7 @@ export interface GroupWithStats {
   member_count: number
   user_position: number
   user_points: number
+  pending_predictions: number
   podium?: PodiumEntry[] | null
 }
 
@@ -78,6 +79,11 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
   const isOwner = group.is_admin
   const isFinished = group.competition_status === 'finished'
   const [shareOpen, setShareOpen] = useState(false)
+  const hasPending = !isFinished && group.pending_predictions > 0
+  const pendingLabel =
+    group.pending_predictions === 1
+      ? '1 palpite pendente'
+      : `${group.pending_predictions} palpites pendentes`
 
   return (
     <Card hoverable className={isFinished ? `${styles.card} ${styles.finished}` : styles.card}>
@@ -85,6 +91,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
         <div className={styles.header}>
           <h3 className={styles.name}>{group.name}</h3>
           <div className={styles.badges}>
+            {hasPending && <span className={styles.pendingBadge}>{pendingLabel}</span>}
             {isOwner && <span className={styles.ownerBadge}>Admin</span>}
             <span
               className={styles.badgeWrapper}

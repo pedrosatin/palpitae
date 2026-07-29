@@ -63,6 +63,7 @@ function createGroupsListDbMock() {
                       created_at: '2026-01-01T00:00:00Z',
                       member_count: 3,
                       user_points: 12,
+                      pending_predictions: 2,
                     },
                   ],
                 }
@@ -280,6 +281,17 @@ describe('groups router', () => {
 
     expect(body.groups).toHaveLength(1)
     expect(body.groups[0]?.member_count).toBe(3)
+  })
+
+  it('returns pending_predictions count for each group', async () => {
+    const res = await requestGroupsList('user@example.com')
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      groups: Array<{ id: string; pending_predictions: number }>
+    }
+
+    expect(body.groups[0]?.pending_predictions).toBe(2)
   })
 
   it('returns the matched group id for an invite code the user already belongs to', async () => {
