@@ -62,14 +62,9 @@ describe('GroupCard', () => {
     expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
   })
 
-  it('shows singular pending badge when pending_predictions is 1', () => {
-    render(<GroupCard group={{ ...baseGroup, pending_predictions: 1 }} onClick={onClick} />)
-    expect(screen.getByText('1 palpite pendente')).toBeInTheDocument()
-  })
-
-  it('shows plural pending badge when pending_predictions is more than 1', () => {
+  it('does not show pending badge even when pending_predictions > 0 (disabled, #207)', () => {
     render(<GroupCard group={{ ...baseGroup, pending_predictions: 3 }} onClick={onClick} />)
-    expect(screen.getByText('3 palpites pendentes')).toBeInTheDocument()
+    expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
   })
 
   describe('finished (encerrado) variant', () => {
