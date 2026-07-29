@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logEvent } from '../observability/events'
+import { logError, logEvent } from '../observability/events'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -60,27 +60,40 @@ export async function discoverFixtures(
   let fixturesUpdated = 0
   let hadError = false
 
+  const CONCURRENCY_LIMIT = 5
+  const executing = new Set<Promise<void>>()
+
   for (const comp of rows.results) {
-    try {
-      footballApiCalls++ // cada syncFixtures faz exatamente 1 fetch à API Football
-      const result = await syncFixtures({
-        competitionCode: comp.external_id,
-        season: Number(comp.season),
-        apiKey,
-        db,
-      })
-      fixturesUpdated += result?.matches ?? 0
-      // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
-      // correção de placar que o upsert do sync zerou).
-      await scoreUnprocessedMatches(comp.id, db)
-    } catch (err) {
-      hadError = true
-      console.error(`[discovery] Sync falhou comp=${comp.id}:`, err)
-      logEvent(ae, 'football_api_error', {
-        blobs: ['fixture_discovery', comp.id, err instanceof Error ? err.message : String(err)],
-      })
+    const promise = (async () => {
+      try {
+        const result = await syncFixtures({
+          competitionCode: comp.external_id,
+          season: Number(comp.season),
+          apiKey,
+          db,
+        })
+        fixturesUpdated += result?.matches ?? 0
+        // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
+        // correção de placar que o upsert do sync zerou).
+        await scoreUnprocessedMatches(comp.id, db)
+      } catch (err) {
+        hadError = true
+        logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
+          blobs: ['fixture_discovery', comp.id],
+        })
+      }
+    })()
+
+    footballApiCalls++ // cada syncFixtures faz exatamente 1 fetch à API Football
+    executing.add(promise)
+    promise.finally(() => executing.delete(promise))
+
+    if (executing.size >= CONCURRENCY_LIMIT) {
+      await Promise.race(executing)
     }
   }
+
+  await Promise.all(executing)
 
   logEvent(ae, 'fixture_discovery_run', {
     blobs: [hadError ? 'error' : 'ok'],
