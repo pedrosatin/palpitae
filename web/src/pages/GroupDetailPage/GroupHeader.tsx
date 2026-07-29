@@ -18,15 +18,23 @@ interface GroupHeaderProps {
   leaving: boolean
 }
 
-export function GroupHeader({
-  group,
+interface GroupMenuProps {
+  isAdmin: boolean
+  onOpenRename: () => void
+  onDeleteGroup: () => void
+  deleting: boolean
+  onLeaveGroup: () => void
+  leaving: boolean
+}
+
+function GroupMenu({
   isAdmin,
   onOpenRename,
   onDeleteGroup,
   deleting,
   onLeaveGroup,
   leaving,
-}: GroupHeaderProps) {
+}: GroupMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -52,63 +60,84 @@ export function GroupHeader({
   }, [menuOpen])
 
   return (
+    <div className={styles.menuWrap} ref={menuRef}>
+      <button
+        className={styles.kebabBtn}
+        onClick={() => setMenuOpen((o) => !o)}
+        aria-label="Opções do grupo"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+      >
+        ⋯
+      </button>
+      {menuOpen && (
+        <div className={styles.menu} role="menu">
+          {isAdmin ? (
+            <>
+              <button
+                className={styles.menuItemNeutral}
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onOpenRename()
+                }}
+              >
+                Editar nome
+              </button>
+              <button
+                className={styles.menuItem}
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onDeleteGroup()
+                }}
+                disabled={deleting}
+              >
+                {deleting ? 'Excluindo...' : 'Excluir grupo'}
+              </button>
+            </>
+          ) : (
+            <button
+              className={styles.menuItem}
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false)
+                onLeaveGroup()
+              }}
+              disabled={leaving}
+            >
+              {leaving ? 'Saindo...' : 'Sair do grupo'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function GroupHeader({
+  group,
+  isAdmin,
+  onOpenRename,
+  onDeleteGroup,
+  deleting,
+  onLeaveGroup,
+  leaving,
+}: GroupHeaderProps) {
+  return (
     <div className={styles.groupHeader}>
       <div className={styles.groupMeta}>
         <span className={styles.competition}>{group.competition_name ?? group.competition_id}</span>
         <div className={styles.groupNameRow}>
           <h1 className={styles.groupName}>{group.name}</h1>
-          <div className={styles.menuWrap} ref={menuRef}>
-            <button
-              className={styles.kebabBtn}
-              onClick={() => setMenuOpen((o) => !o)}
-              aria-label="Opções do grupo"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-            >
-              ⋯
-            </button>
-            {menuOpen && (
-              <div className={styles.menu} role="menu">
-                {isAdmin ? (
-                  <>
-                    <button
-                      className={styles.menuItemNeutral}
-                      role="menuitem"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        onOpenRename()
-                      }}
-                    >
-                      Editar nome
-                    </button>
-                    <button
-                      className={styles.menuItem}
-                      role="menuitem"
-                      onClick={() => {
-                        setMenuOpen(false)
-                        onDeleteGroup()
-                      }}
-                      disabled={deleting}
-                    >
-                      {deleting ? 'Excluindo...' : 'Excluir grupo'}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className={styles.menuItem}
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false)
-                      onLeaveGroup()
-                    }}
-                    disabled={leaving}
-                  >
-                    {leaving ? 'Saindo...' : 'Sair do grupo'}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          <GroupMenu
+            isAdmin={isAdmin}
+            onOpenRename={onOpenRename}
+            onDeleteGroup={onDeleteGroup}
+            deleting={deleting}
+            onLeaveGroup={onLeaveGroup}
+            leaving={leaving}
+          />
         </div>
       </div>
       <div className={styles.groupActions}>
