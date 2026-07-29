@@ -1,7 +1,29 @@
 import { describe, expect, it, vi } from 'vitest'
-import { applyDefaultRound } from './rounds'
+import { applyDefaultRound, isGroupStageRound } from './rounds'
 
 describe('rounds', () => {
+  describe('isGroupStageRound', () => {
+    it('returns true for numeric strings', () => {
+      expect(isGroupStageRound('1')).toBe(true)
+      expect(isGroupStageRound('38')).toBe(true)
+      expect(isGroupStageRound('0')).toBe(true)
+    })
+
+    it('returns false for non-numeric strings', () => {
+      expect(isGroupStageRound('Round of 16')).toBe(false)
+      expect(isGroupStageRound('Quarter-finals')).toBe(false)
+      expect(isGroupStageRound('Final')).toBe(false)
+      expect(isGroupStageRound('1a')).toBe(false)
+      expect(isGroupStageRound('a1')).toBe(false)
+    })
+
+    it('returns false for empty strings or strings with whitespace', () => {
+      expect(isGroupStageRound('')).toBe(false)
+      expect(isGroupStageRound(' ')).toBe(false)
+      expect(isGroupStageRound(' 1 ')).toBe(false)
+    })
+  })
+
   describe('applyDefaultRound', () => {
     it('sets the round index when defaultRound is found in the rounds array', () => {
       const setRoundIndex = vi.fn()
