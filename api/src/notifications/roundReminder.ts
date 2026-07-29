@@ -1,7 +1,7 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { hashUserId, logEvent } from '../observability/events'
 import { roundLabel } from '../matches/rounds'
-import { type EmailMessage, EmailError, sendEmail } from './email'
+import { EmailError, sendEmail } from './email'
 import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
@@ -19,7 +19,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * exponential backoff that honours Resend's Retry-After. Permanent 4xx fail fast.
  * Throws if every attempt fails so the caller counts it and moves on.
  */
-async function sendWithRetry(apiKey: string, msg: EmailMessage): Promise<void> {
+async function sendWithRetry(apiKey: string, msg: Parameters<typeof sendEmail>[1]): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
       await sendEmail(apiKey, msg)
@@ -241,16 +241,39 @@ async function dispatchBatch(
     // A single send failure is isolated so the rest of the batch still goes out.
     // The unsubscribe link is per-user (signed token), so the body is built per
     // recipient — match list rebuild is cheap at this volume.
-    for (const { id, email, groups: recipientGroups } of recipientMap.values()) {
-      // Hoist the hash: reused in both the success logEvent and the error console.error.
-      // .catch guards against SubtleCrypto being unavailable — if it throws inside
-      // the catch block the entire batch loop aborts and the summary metric never fires.
-      const hashedId = await hashUserId(id).catch(() => '<hash-error>')
+    const recipients = Array.from(recipientMap.values())
+
+    // Prepare cryptographic operations (hashes and tokens) concurrently to avoid
+    // blocking the event loop sequentially for every recipient before they are sent.
+    // The try/catch for signing token needs to be preserved per recipient so one failure
+    // doesn't abort the entire batch.
+    const preparedRecipients = await Promise.all(
+      recipients.map(async (recipient) => {
+        const hashedId = await hashUserId(recipient.id).catch(() => '<hash-error>')
+        let unsubToken: string | undefined = undefined
+        let tokenError: unknown = null
+        if (unsub && apiBaseUrl) {
+          try {
+            unsubToken = await signUnsubToken(recipient.id, unsub.secret)
+          } catch (err) {
+            tokenError = err
+          }
+        }
+        return { recipient, hashedId, unsubToken, tokenError }
+      }),
+    )
+
+    for (const {
+      recipient: { email, groups: recipientGroups },
+      hashedId,
+      unsubToken,
+      tokenError,
+    } of preparedRecipients) {
       try {
-        const unsubUrl =
-          unsub && apiBaseUrl
-            ? `${apiBaseUrl}/notifications/unsubscribe?token=${await signUnsubToken(id, unsub.secret)}`
-            : undefined
+        if (tokenError) throw tokenError
+        const unsubUrl = unsubToken
+          ? `${apiBaseUrl}/notifications/unsubscribe?token=${unsubToken}`
+          : undefined
 
         const options: EmailTemplateOptions = {
           competitionName,
