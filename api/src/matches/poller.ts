@@ -83,16 +83,19 @@ export async function pollActiveMatches(
   let fixturesUpdated = 0
   let hadError = false
 
+  const allTasks: { comp: ActiveRound; round: string }[] = []
   for (const { comp, rounds } of byComp.values()) {
-    let synced = false
-
     for (const round of rounds) {
+      allTasks.push({ comp, round })
+    }
+  }
+
+  const syncResults = await Promise.all(
+    allTasks.map(async ({ comp, round }) => {
       const matchday = parseInt(round, 10)
-      // Non-numeric round = knockout stage — no matchday filter
       const matchdayParam = Number.isNaN(matchday) ? undefined : matchday
 
       try {
-        footballApiCalls++ // cada syncFixtures faz exatamente 1 fetch à API Football
         const result = await syncFixtures({
           competitionCode: comp.external_id,
           season: Number(comp.season),
@@ -100,25 +103,36 @@ export async function pollActiveMatches(
           apiKey,
           db,
         })
-        fixturesUpdated += result?.matches ?? 0
-        synced = true
+        return { success: true as const, comp, round, matches: result?.matches ?? 0 }
       } catch (err) {
-        hadError = true
-        logError(
-          ae,
-          'football_api_error',
-          `[poller] Sync falhou comp=${comp.comp_id} round=${round}:`,
-          err,
-          {
-            blobs: [comp.comp_id, round],
-          },
-        )
+        return { success: false as const, comp, round, err }
       }
-    }
+    }),
+  )
 
-    if (synced) {
-      await scoreUnprocessedMatches(comp.comp_id, db)
+  const syncedComps = new Set<string>()
+
+  for (const res of syncResults) {
+    footballApiCalls++ // cada syncFixtures faz exatamente 1 fetch à API Football
+    if (res.success) {
+      fixturesUpdated += res.matches
+      syncedComps.add(res.comp.comp_id)
+    } else {
+      hadError = true
+      logError(
+        ae,
+        'football_api_error',
+        `[poller] Sync falhou comp=${res.comp.comp_id} round=${res.round}:`,
+        res.err,
+        {
+          blobs: [res.comp.comp_id, res.round],
+        },
+      )
     }
+  }
+
+  for (const compId of syncedComps) {
+    await scoreUnprocessedMatches(compId, db)
   }
 
   // matches_checked = nº de (comp, round) na janela ativa — proxy de quantos jogos
