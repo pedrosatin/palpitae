@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
-import StandingsTab, { computeStandings } from './StandingsTab'
+import StandingsTab, { computeStandings, isLeagueTable } from './StandingsTab'
 import { LEAGUE, FORM_SIZE } from './StandingsTab'
 import { type Match } from '../MatchCard'
 
@@ -51,6 +51,20 @@ function mockFetch(matches: Match[]) {
     return Promise.reject(new Error(`Unexpected fetch: ${u}`))
   })
 }
+
+// ─── isLeagueTable ──────────────────────────────────────────────────────────
+
+describe('isLeagueTable', () => {
+  it('returns true for the LEAGUE constant', () => {
+    expect(isLeagueTable(LEAGUE)).toBe(true)
+  })
+
+  it('returns false for other strings', () => {
+    expect(isLeagueTable('A')).toBe(false)
+    expect(isLeagueTable('Group B')).toBe(false)
+    expect(isLeagueTable('league')).toBe(false)
+  })
+})
 
 // ─── computeStandings (pure logic) ──────────────────────────────────────────
 
