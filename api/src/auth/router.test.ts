@@ -45,6 +45,58 @@ async function requestWithCookie(email: string) {
 }
 
 describe('auth router', () => {
+  describe('GET /google', () => {
+    it('stores valid relative redirect queries', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=?foo=bar'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).toContain(`oauth_redirect=${encodeURIComponent('/?foo=bar')};`)
+    })
+
+    it('stores valid path redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=/group/123'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).toContain(`oauth_redirect=${encodeURIComponent('/group/123')};`)
+    })
+
+    it('blocks absolute URL redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=https://evil.com'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).not.toContain('oauth_redirect=')
+    })
+
+    it('blocks protocol-relative URL redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=//evil.com'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).not.toContain('oauth_redirect=')
+    })
+
+    it('blocks backslash absolute redirects', async () => {
+      const res = await app.fetch(
+        new Request('http://localhost/auth/google?redirect=\\\\evil.com'),
+        fakeEnv('test@example.com'),
+      )
+      expect(res.status).toBe(302)
+      const cookies = res.headers.get('Set-Cookie') || ''
+      expect(cookies).not.toContain('oauth_redirect=')
+    })
+  })
+
   it('returns create_group true for any authenticated user', async () => {
     const res = await requestWithCookie('user@example.com')
     expect(res.status).toBe(200)

@@ -76,10 +76,17 @@ authRouter.get('/google', async (c) => {
   setCookie(c, NONCE_COOKIE, nonce, tempOpts)
   setCookie(c, VERIFIER_COOKIE, verifier, tempOpts)
 
-  // Store the post-login redirect (only allow relative query strings to prevent open redirect)
+  // Store the post-login redirect securely
   const postRedirect = c.req.query('redirect') ?? ''
-  if (postRedirect.startsWith('?')) {
-    setCookie(c, REDIRECT_COOKIE, postRedirect, tempOpts)
+  if (postRedirect) {
+    try {
+      const parsed = new URL(postRedirect, c.env.FRONTEND_URL)
+      if (parsed.origin === new URL(c.env.FRONTEND_URL).origin) {
+        setCookie(c, REDIRECT_COOKIE, parsed.pathname + parsed.search + parsed.hash, tempOpts)
+      }
+    } catch {
+      // Ignore invalid URLs
+    }
   }
 
   return c.redirect(url)
@@ -151,9 +158,17 @@ authRouter.get('/callback', async (c) => {
 
     logEvent(c.env.AE, 'login_success', { blobs: [await hashUserId(user.id)] })
 
-    const destination = storedRedirect.startsWith('?')
-      ? `${c.env.FRONTEND_URL}${storedRedirect}`
-      : c.env.FRONTEND_URL
+    let destination = c.env.FRONTEND_URL
+    if (storedRedirect) {
+      try {
+        const parsed = new URL(storedRedirect, c.env.FRONTEND_URL)
+        if (parsed.origin === new URL(c.env.FRONTEND_URL).origin) {
+          destination = parsed.toString()
+        }
+      } catch {
+        // Fallback to default destination
+      }
+    }
     return c.redirect(destination)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'auth_failed'
