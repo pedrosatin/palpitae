@@ -69,3 +69,10 @@
   flex: 1;
   min-height: 0;
 }
+
+.closeBtn {
+  font-size: var(--font-size-xl);
+  padding: var(--space-3);
+  min-width: 44px;
+  min-height: 44px;
+}
