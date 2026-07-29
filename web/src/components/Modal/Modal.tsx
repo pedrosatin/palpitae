@@ -31,13 +31,14 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
           <Button
             variant="ghost"
             size="icon"
+            className={styles.closeBtn}
             onClick={() => {
               trackEvent('click_modal_fechar', { modal: title })
               onClose()
             }}
             aria-label="Fechar"
           >
-            ✕
+            X
           </Button>
         </div>
         <div className={styles.body}>{children}</div>
