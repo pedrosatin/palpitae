@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildShareCardData, drawShareCard, type ShareCardData } from './shareCard'
+import {
+  buildShareCardData,
+  drawShareCard,
+  SHARE_CARD_WIDTH,
+  SHARE_CARD_HEIGHT,
+  type ShareCardData,
+} from './shareCard'
 import type { GroupWithStats } from '../components/GroupCard'
 
 const base: GroupWithStats = {
@@ -19,6 +25,13 @@ const base: GroupWithStats = {
     { position: 3, display: 'Rui', points: 131, is_you: false },
   ],
 }
+
+describe('Constants', () => {
+  it('exports correct SHARE_CARD_WIDTH and SHARE_CARD_HEIGHT', () => {
+    expect(SHARE_CARD_WIDTH).toBe(1080)
+    expect(SHARE_CARD_HEIGHT).toBe(1350)
+  })
+})
 
 describe('buildShareCardData', () => {
   it('maps competition, position and total from the group', () => {
