@@ -20,6 +20,7 @@ const group: GroupWithStats = {
   member_count: 8,
   user_position: 5,
   user_points: 42,
+  pending_predictions: 0,
   podium: [{ position: 1, display: 'João', points: 152, is_you: false }],
 }
 
