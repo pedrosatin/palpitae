@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
@@ -208,6 +208,26 @@ function usePredictionsBulkSave(
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  const savedAllTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  function clearSavedAllTimer() {
+    if (savedAllTimerRef.current) {
+      clearTimeout(savedAllTimerRef.current)
+      savedAllTimerRef.current = null
+    }
+  }
+
+  // Cancel the savedAll feedback timer and reset savedAll when the round changes,
+  // and on unmount — otherwise a stale timeout can fire after a second save,
+  // flipping savedAll back off (or on) at the wrong time.
+  useEffect(() => {
+    clearSavedAllTimer()
+    setSavedAll(false)
+  }, [selectedRound])
+
+  useEffect(() => {
+    return () => clearSavedAllTimer()
+  }, [])
 
   function handleSaved(
     matchId: string,
@@ -303,6 +323,7 @@ function usePredictionsBulkSave(
       round: selectedRound ?? '',
     })
 
+    clearSavedAllTimer()
     setSavingAll(true)
     setSavedAll(false)
     setBulkError(null)
@@ -333,7 +354,7 @@ function usePredictionsBulkSave(
       }
 
       setSavedAll(true)
-      setTimeout(() => setSavedAll(false), 2500)
+      savedAllTimerRef.current = setTimeout(() => setSavedAll(false), 2500)
     } catch (e) {
       setBulkError((e as Error).message)
     } finally {
