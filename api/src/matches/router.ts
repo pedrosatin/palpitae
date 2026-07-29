@@ -407,7 +407,7 @@ async function handleGetMatches(c: Context<AppContext>) {
   }
 }
 
-router.get('/', handleGetMatches)
+router.get('/', requireAuth, handleGetMatches)
 
 /**
  * POST /matches/sync
