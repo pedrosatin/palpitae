@@ -1,7 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getStoredConsent, setConsent } from './ga'
+import { getStoredConsent, setConsent, trackEvent } from './ga'
 
 describe('ga', () => {
+  describe('gaEnabled', () => {
+    beforeEach(() => {
+      vi.resetModules()
+    })
+
+    it('is true when gaMeasurementId is set', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: 'G-123' }
+      }))
+      const { gaEnabled } = await import('./ga')
+      expect(gaEnabled).toBe(true)
+    })
+
+    it('is false when gaMeasurementId is not set', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: '' }
+      }))
+      const { gaEnabled } = await import('./ga')
+      expect(gaEnabled).toBe(false)
+    })
+  })
+
   describe('getStoredConsent', () => {
     beforeEach(() => {
       vi.restoreAllMocks()
@@ -162,6 +184,37 @@ describe('ga', () => {
 
       expect((window as any).dataLayer.length).toBe(1)
       expect(Array.from((window as any).dataLayer[0])).toEqual(['event', 'test_event', { value: 1 }])
+    })
+  })
+
+  describe('trackEvent', () => {
+    beforeEach(() => {
+      vi.restoreAllMocks()
+      window.gtag = vi.fn()
+    })
+
+    afterEach(() => {
+      // @ts-ignore
+      delete window.gtag
+    })
+
+    it('should call gtag with the correct arguments when params are provided', () => {
+      trackEvent('test_event', { custom_param: 'value', count: 1 })
+
+      expect(window.gtag).toHaveBeenCalledWith('event', 'test_event', { custom_param: 'value', count: 1 })
+    })
+
+    it('should call gtag with the correct arguments when params are omitted', () => {
+      trackEvent('test_event_no_params')
+
+      expect(window.gtag).toHaveBeenCalledWith('event', 'test_event_no_params', undefined)
+    })
+
+    it('should not throw an error when window.gtag is undefined', () => {
+      // @ts-ignore
+      delete window.gtag
+
+      expect(() => trackEvent('test_event_no_gtag')).not.toThrow()
     })
   })
 })
