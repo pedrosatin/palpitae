@@ -97,6 +97,11 @@ function createMatchesDbMock(
 }
 
 describe('matches router – GET /', () => {
+  async function authRequest(url: string) {
+    const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, 'secret', 3600)
+    return new Request(url, { headers: { Cookie: `session=${token}` } })
+  }
+
   beforeEach(() => {
     vi.clearAllMocks()
     syncFixturesSpy.mockResolvedValue({
@@ -112,7 +117,7 @@ describe('matches router – GET /', () => {
     app.route('/matches', matchesRouter)
 
     const response = await app.fetch(
-      new Request('http://localhost/matches?competition_id=comp-1'),
+      await authRequest('http://localhost/matches?competition_id=comp-1'),
       fakeEnv(
         createMatchesDbMock([{ status: 'scheduled' }], undefined, {
           active: '3',
@@ -129,7 +134,7 @@ describe('matches router – GET /', () => {
     app.route('/matches', matchesRouter)
 
     const response = await app.fetch(
-      new Request('http://localhost/matches?competition_id=comp-1'),
+      await authRequest('http://localhost/matches?competition_id=comp-1'),
       fakeEnv(createMatchesDbMock([{ status: 'finished' }], undefined, { last: '2' })),
       { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
     )
@@ -142,7 +147,7 @@ describe('matches router – GET /', () => {
     app.route('/matches', matchesRouter)
 
     const response = await app.fetch(
-      new Request('http://localhost/matches?competition_id=comp-1&round=1'),
+      await authRequest('http://localhost/matches?competition_id=comp-1&round=1'),
       fakeEnv(createMatchesDbMock([{ status: 'scheduled' }])),
       { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
     )
@@ -169,7 +174,7 @@ describe('matches router – GET /', () => {
     ] as unknown as { status: string }[]
 
     const response = await app.fetch(
-      new Request('http://localhost/matches?competition_id=comp-1&round=1'),
+      await authRequest('http://localhost/matches?competition_id=comp-1&round=1'),
       fakeEnv(createMatchesDbMock(rows)),
       { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
     )
@@ -188,7 +193,7 @@ describe('matches router – GET /', () => {
 
     const waitUntil = vi.fn()
     const response = await app.fetch(
-      new Request('http://localhost/matches?competition_id=comp-1'),
+      await authRequest('http://localhost/matches?competition_id=comp-1'),
       fakeEnv(createMatchesDbMock()),
       { waitUntil, passThroughOnException: vi.fn(), props: {} },
     )
@@ -208,7 +213,7 @@ describe('matches router – GET /', () => {
       app.route('/matches', matchesRouter)
 
       const response = await app.fetch(
-        new Request('http://localhost/matches?competition_id=comp-1'),
+        await authRequest('http://localhost/matches?competition_id=comp-1'),
         fakeEnv(createMatchesDbMock(matchRows)),
         { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
       )
@@ -269,15 +274,15 @@ describe('matches router – GET /', () => {
           settle: () => Promise.all(pending),
         }
       }
-      const newRequest = () => new Request('http://localhost/matches?competition_id=comp-1')
+      const newRequest = async () => authRequest('http://localhost/matches?competition_id=comp-1')
 
       const first = makeCtx()
-      const r1 = await app.fetch(newRequest(), env, first.ctx)
+      const r1 = await app.fetch(await newRequest(), env, first.ctx)
       await first.settle() // let waitUntil(cache.put(...)) run
       expect(r1.status).toBe(200)
 
       const second = makeCtx()
-      const r2 = await app.fetch(newRequest(), env, second.ctx)
+      const r2 = await app.fetch(await newRequest(), env, second.ctx)
       expect(r2.status).toBe(200)
       await expect(r2.json()).resolves.toEqual({
         matches: [{ status: 'finished', round_label: '', decides_on_penalties: false }],
