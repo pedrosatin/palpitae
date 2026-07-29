@@ -1,6 +1,20 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import PenaltyBadge from './PenaltyBadge'
+import PenaltyBadge, { BallIcon } from './PenaltyBadge'
+
+describe('BallIcon', () => {
+  it('renders the ball icon', () => {
+    render(<BallIcon />)
+    expect(screen.getByText('⚽')).toBeInTheDocument()
+    expect(screen.getByText('⚽')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('applies className when provided', () => {
+    render(<BallIcon className="custom-class" />)
+    const icon = screen.getByText('⚽')
+    expect(icon).toHaveClass('custom-class')
+  })
+})
 
 describe('PenaltyBadge', () => {
   beforeEach(() => {
