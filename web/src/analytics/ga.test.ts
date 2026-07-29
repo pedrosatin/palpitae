@@ -2,6 +2,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getStoredConsent, setConsent, trackEvent } from './ga'
 
 describe('ga', () => {
+  describe('gaEnabled', () => {
+    beforeEach(() => {
+      vi.resetModules()
+    })
+
+    it('is true when gaMeasurementId is set', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: 'G-123' }
+      }))
+      const { gaEnabled } = await import('./ga')
+      expect(gaEnabled).toBe(true)
+    })
+
+    it('is false when gaMeasurementId is not set', async () => {
+      vi.doMock('../config', () => ({
+        config: { gaMeasurementId: '' }
+      }))
+      const { gaEnabled } = await import('./ga')
+      expect(gaEnabled).toBe(false)
+    })
+  })
+
   describe('getStoredConsent', () => {
     beforeEach(() => {
       vi.restoreAllMocks()
