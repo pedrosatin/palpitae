@@ -4,12 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import PredictionsTab from './PredictionsTab'
 import { makeMatch } from '../matchFixtures'
-import { type Match } from '../MatchCard'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-function mockFetch(matches: Match[]) {
+function mockFetch(matches: ReturnType<typeof makeMatch>[]) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
     if (u.includes('/matches')) {
@@ -22,7 +21,7 @@ function mockFetch(matches: Match[]) {
       const activeRound = [...roundMaxStart.entries()]
         .filter(([, max]) => max > nowIso)
         .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
-      const chronologicalLast = matches.reduce<Match | undefined>(
+      const chronologicalLast = matches.reduce<ReturnType<typeof makeMatch> | undefined>(
         (acc, m) => (!acc || m.start_time >= acc.start_time ? m : acc),
         undefined,
       )
@@ -50,7 +49,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
   })
 
   it('selects the first round that contains a scheduled match', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
     ]
@@ -66,7 +65,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
   })
 
   it('skips a round where all matches have already started and selects the next open round', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({
         id: 'm2',
@@ -87,7 +86,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
   })
 
   it('falls back to the last round when all matches are finished', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'finished' }),
       makeMatch({ id: 'm3', round: '3', status: 'finished' }),
@@ -111,7 +110,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
   })
 
   it('renders a group header for matches that share a group_name', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', group_name: 'A', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '1', group_name: 'A', status: 'scheduled' }),
     ]
@@ -125,7 +124,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
   })
 
   it('renders no group header when group_name is null', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({
         id: 'm1',
         round: '1',
@@ -143,7 +142,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
   })
 
   it('renders separate group sections for different group_names', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', group_name: 'A', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '1', group_name: 'B', status: 'scheduled' }),
     ]
@@ -159,7 +158,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
 
   it('creates a new group section when the same group_name appears non-consecutively', async () => {
     // A, B, A → should produce 3 groups (two "Grupo A" headers)
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', group_name: 'A', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '1', group_name: 'B', status: 'scheduled' }),
       makeMatch({ id: 'm3', round: '1', group_name: 'A', status: 'scheduled' }),
@@ -181,7 +180,7 @@ describe('PredictionsTab – Round navigation', () => {
     vi.restoreAllMocks()
   })
 
-  function twoRoundMatches(): Match[] {
+  function twoRoundMatches() {
     return [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({
@@ -197,7 +196,7 @@ describe('PredictionsTab – Round navigation', () => {
   }
 
   it('disables "Anterior" button on the first round', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '2', status: 'finished' }),
     ]
@@ -223,7 +222,7 @@ describe('PredictionsTab – Round navigation', () => {
   })
 
   it('navigates to the next round when "Próxima" is clicked', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({
         id: 'm1',
         round: '1',
@@ -287,7 +286,7 @@ describe('PredictionsTab – Initialisation', () => {
   })
 
   it('counts a new draft after changing only one score from the 0 default', async () => {
-    const matches: Match[] = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches)
 
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
@@ -302,7 +301,7 @@ describe('PredictionsTab – Initialisation', () => {
   })
 
   it('includes a default 0×0 knockout draw in "Salvar todos" when only the penalty winner is set', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({
         id: 'm1',
         round: '1',
@@ -361,7 +360,7 @@ describe('PredictionsTab – Initialisation', () => {
   })
 
   it('selects the first round with a scheduled match on load', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
       makeMatch({ id: 'm3', round: '3', status: 'scheduled' }),
