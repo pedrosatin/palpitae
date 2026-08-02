@@ -37,8 +37,7 @@ describe('lockedSql', () => {
   })
 
   it('usa o alias pedido', () => {
-    expect(lockedSql('pr')).toContain('pr.start_time')
-    expect(lockedSql('pr')).toContain('pr.postponed')
+    expect(lockedSql('pr')).toBe('(pr.start_time <= ? AND pr.postponed = 0)')
   })
 
   it('default é o alias `m`', () => {
