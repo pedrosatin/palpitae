@@ -1,5 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { sendEmail } from './email'
+import { EmailError, sendEmail } from './email'
+
+describe('EmailError', () => {
+  it('sets status, message, and name correctly', () => {
+    const error = new EmailError(422, 'Unprocessable Entity')
+    expect(error.name).toBe('EmailError')
+    expect(error.status).toBe(422)
+    expect(error.message).toBe('Resend respondeu 422: Unprocessable Entity')
+    expect(error.retryAfterMs).toBeUndefined()
+  })
+
+  it('parses retryAfter when provided as a valid string', () => {
+    const error = new EmailError(429, 'Rate Limited', '60')
+    expect(error.retryAfterMs).toBe(60000)
+  })
+
+  it('leaves retryAfterMs undefined when retryAfter is null or missing', () => {
+    const error1 = new EmailError(500, 'Server Error', null)
+    expect(error1.retryAfterMs).toBeUndefined()
+
+    const error2 = new EmailError(500, 'Server Error')
+    expect(error2.retryAfterMs).toBeUndefined()
+  })
+
+  it('leaves retryAfterMs undefined when retryAfter is an invalid number', () => {
+    const error = new EmailError(429, 'Rate Limited', 'invalid')
+    expect(error.retryAfterMs).toBeUndefined()
+  })
+})
 
 describe('sendEmail', () => {
   beforeEach(() => {
