@@ -169,6 +169,13 @@ describe('buildAuthUrl', () => {
     expect(url.searchParams.get('client_id')).toBe('test-client-id')
     expect(url.searchParams.get('redirect_uri')).toBe('http://localhost:8787/auth/callback')
   })
+
+  it('builds the exact expected complete URL string', () => {
+    const urlString = buildAuthUrl(base)
+    expect(urlString).toBe(
+      'https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=test-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A8787%2Fauth%2Fcallback&scope=openid+email+profile&state=test-state&nonce=test-nonce&code_challenge=test-challenge&code_challenge_method=S256&access_type=online&prompt=select_account'
+    )
+  })
 })
 
 
