@@ -140,23 +140,25 @@ export function useMatchCard({
 
   const { saving, saved, error, persist } = useMatchPersistence(groupId, match.id, onSaved)
 
-  const selectedOutcome: Outcome | null = hasPrediction
-    ? prediction.predicted_home_score > prediction.predicted_away_score
-      ? 'home'
-      : prediction.predicted_home_score < prediction.predicted_away_score
-        ? 'away'
-        : 'draw'
-    : pendingOutcome
+  const selectedOutcome: Outcome | null =
+    prediction !== undefined
+      ? prediction.predicted_home_score > prediction.predicted_away_score
+        ? 'home'
+        : prediction.predicted_home_score < prediction.predicted_away_score
+          ? 'away'
+          : 'draw'
+      : pendingOutcome
 
   const drawMarked = outcomeOnly
     ? selectedOutcome === 'draw'
     : home !== '' && away !== '' && Number(home) === Number(away)
   const showPenaltyPicker = !locked && Boolean(match.decides_on_penalties) && drawMarked
 
-  const scoreChanged = hasPrediction
-    ? Number(home) !== prediction.predicted_home_score ||
-      Number(away) !== prediction.predicted_away_score
-    : true
+  const scoreChanged =
+    prediction !== undefined
+      ? Number(home) !== prediction.predicted_home_score ||
+        Number(away) !== prediction.predicted_away_score
+      : true
   const penaltyChanged = (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
   const hasChanged = scoreChanged || penaltyChanged
   const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
