@@ -22,8 +22,8 @@ describe('generateNonce', () => {
     expect(generateNonce()).toMatch(/^[A-Za-z0-9_-]+$/)
   })
 
-  it('is at least 20 characters long', () => {
-    expect(generateNonce().length).toBeGreaterThanOrEqual(20)
+  it('is exactly 22 characters long (16 bytes base64url)', () => {
+    expect(generateNonce().length).toBe(22)
   })
 
   it('generates unique values on each call', () => {
