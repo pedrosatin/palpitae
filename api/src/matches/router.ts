@@ -50,10 +50,15 @@ async function fetchSyncNeeds(competitionId: string, db: D1Database): Promise<Sy
 
   const needsInitialSync = (localMatches?.count ?? 0) === 0
 
+  // `postponed = 0` é essencial: um jogo adiado tem start_time no passado e nunca
+  // vira 'finished', então sem esse filtro ele deixaria `needsSync` verdadeiro para
+  // sempre — todo GET /matches dispararia um sync em background e queimaria a quota
+  // da football-data indefinidamente.
   const pending = await db
     .prepare(
       `SELECT COUNT(*) AS count FROM matches
-       WHERE competition_id = ? AND start_time <= ? AND status != 'finished'`,
+       WHERE competition_id = ? AND start_time <= ? AND status != 'finished'
+         AND postponed = 0`,
     )
     .bind(competitionId, threeHoursAgo)
     .first<{ count: number }>()
@@ -160,6 +165,7 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
       m.id,
       m.start_time,
       m.status,
+      m.postponed,
       m.home_score,
       m.away_score,
       m.phase,
@@ -407,7 +413,7 @@ async function handleGetMatches(c: Context<AppContext>) {
   }
 }
 
-router.get('/', handleGetMatches)
+router.get('/', requireAuth, handleGetMatches)
 
 /**
  * POST /matches/sync
