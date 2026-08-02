@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 import { importHmacKey, HMAC_SHA256 } from './crypto'
 
 describe('crypto', () => {
   describe('HMAC_SHA256', () => {
     it('has the correct name and hash', () => {
       expect(HMAC_SHA256).toEqual({ name: 'HMAC', hash: 'SHA-256' })
+      expectTypeOf<typeof HMAC_SHA256>().toEqualTypeOf<{
+        readonly name: 'HMAC'
+        readonly hash: 'SHA-256'
+      }>()
     })
   })
 
