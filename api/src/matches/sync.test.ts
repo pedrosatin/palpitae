@@ -130,13 +130,16 @@ function mockFetch(matches: unknown[], compName = 'FIFA World Cup') {
 // 0 id  1 competition_id  2 external_id  3 provider  4 home_team_id
 // 5 away_team_id  6 start_time  7 status  8 home_score(canonical)
 // 9 away_score(canonical)  10 phase  11 round  12 group_name  13 duration
-// 14 penalty_winner  15 home_penalty_goals  16 away_penalty_goals
+// 14 penalty_winner  15 home_penalty_goals  16 away_penalty_goals  17 postponed
+const START_TIME = 6
+const STATUS = 7
 const HOME = 8
 const AWAY = 9
 const DURATION = 13
 const PEN_WINNER = 14
 const PEN_HOME = 15
 const PEN_AWAY = 16
+const POSTPONED = 17
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -261,7 +264,6 @@ describe('syncFixtures — canonical score & penalty mapping', () => {
     expect(row[AWAY]).toBeGreaterThanOrEqual(0)
     expect(row[HOME]).toBe(row[AWAY])
   })
-
 
   it('PENALTY_SHOOTOUT with winner null: derives penalty_winner from penalties score, not fullTime', async () => {
     // Handling (Holanda x Marrocos em prod): o provider mandou winner=null e
@@ -389,5 +391,91 @@ describe('syncFixtures — competition translation & stable slug (Decision 7/8)'
     const comp = captured.competition[0]
     expect(comp[1]).toBe('Copa do Mundo FIFA') // fuzzy-translated display name
     expect(comp[2]).toBe('fifa-world-cup-2026') // slug from raw name, stays stable
+  })
+})
+
+describe('syncFixtures — jogos adiados (POSTPONED)', () => {
+  // Caso real: rodada 21 do Brasileirão 2026. O provider marcou 4 jogos como
+  // POSTPONED e zerou o utcDate para o placeholder de meia-noite. Antes disso o
+  // mapStatus achatava tudo em 'scheduled' e o upsert gravava o placeholder —
+  // o jogo virava um "agendado no passado" que nunca destravava nem pontuava.
+  const POSTPONED_PLACEHOLDER = '2026-07-29T00:00:00Z'
+
+  function postponedMatch(id: number) {
+    return {
+      ...match(id, {}, 'REGULAR_SEASON'),
+      status: 'POSTPONED',
+      utcDate: POSTPONED_PLACEHOLDER,
+      matchday: 21,
+      score: {
+        winner: null,
+        duration: null,
+        fullTime: { home: null, away: null },
+        halfTime: { home: null, away: null },
+      },
+    }
+  }
+
+  it('marca postponed=1 e mantém status scheduled (CHECK do schema não comporta outro valor)', async () => {
+    mockFetch([postponedMatch(554940)])
+    const { db, captured } = buildFakeDb()
+
+    await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
+
+    const row = captured.matches[0]
+    expect(row[POSTPONED]).toBe(1)
+    expect(row[STATUS]).toBe('scheduled')
+  })
+
+  it('SUSPENDED e CANCELLED também contam como adiado', async () => {
+    for (const providerStatus of ['SUSPENDED', 'CANCELLED']) {
+      mockFetch([{ ...postponedMatch(554941), status: providerStatus }])
+      const { db, captured } = buildFakeDb()
+
+      await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
+
+      expect(captured.matches[0][POSTPONED], providerStatus).toBe(1)
+    }
+  })
+
+  it('jogo normal marca postponed=0', async () => {
+    mockFetch([{ ...postponedMatch(554946), status: 'TIMED', utcDate: '2026-07-29T22:30:00Z' }])
+    const { db, captured } = buildFakeDb()
+
+    await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
+
+    expect(captured.matches[0][POSTPONED]).toBe(0)
+  })
+
+  it('o upsert NÃO sobrescreve start_time quando o jogo está adiado', async () => {
+    mockFetch([postponedMatch(554940)])
+    const { db, sqls } = buildFakeDb()
+
+    await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
+
+    // O INSERT ainda carrega o placeholder (é o valor da linha nova), mas o
+    // DO UPDATE precisa preservar o start_time já gravado.
+    expect(sqls.match).toContain('start_time         = CASE WHEN excluded.postponed = 1')
+    expect(sqls.match).toContain('THEN matches.start_time ELSE excluded.start_time END')
+  })
+
+  it('o upsert propaga postponed para linhas já existentes', async () => {
+    mockFetch([postponedMatch(554940)])
+    const { db, sqls } = buildFakeDb()
+
+    await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
+
+    expect(sqls.match).toContain('postponed          = excluded.postponed')
+    // sanity: o placeholder é mesmo o que chega da API
+    expect(sqls.match).toContain('INSERT INTO matches')
+  })
+
+  it('linha nova de jogo adiado entra com o placeholder do provider', async () => {
+    mockFetch([postponedMatch(554940)])
+    const { db, captured } = buildFakeDb()
+
+    await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
+
+    expect(captured.matches[0][START_TIME]).toBe(POSTPONED_PLACEHOLDER)
   })
 })
