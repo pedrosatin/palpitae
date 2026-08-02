@@ -1,0 +1,12 @@
+-- Jogo adiado (POSTPONED/SUSPENDED/CANCELLED no football-data).
+--
+-- Por que uma coluna e não um novo valor em `matches.status`: o CHECK original
+-- (0001) é `status IN ('scheduled','live','finished')` e o SQLite não permite
+-- alterar CHECK sem rebuild da tabela. Rebuild aqui é inviável — `predictions`
+-- referencia `matches(id) ON DELETE CASCADE`, então o DROP intermediário apagaria
+-- todos os palpites de produção. Flag separada resolve sem tocar no schema existente.
+--
+-- Default 0 = fail-open: linha antiga sem informação é tratada como não-adiada,
+-- que é o comportamento de hoje. O sync diário (fixtureDiscovery) corrige as que
+-- estiverem adiadas no primeiro run após o deploy.
+ALTER TABLE matches ADD COLUMN postponed INTEGER NOT NULL DEFAULT 0 CHECK (postponed IN (0, 1));

@@ -128,6 +128,18 @@ function mapStatus(status: string): 'scheduled' | 'finished' {
   return 'scheduled'
 }
 
+/**
+ * Status em que o provider diz que o jogo não vai acontecer no horário marcado.
+ * Todos continuam mapeando para `status = 'scheduled'` (o CHECK do schema não
+ * comporta outro valor, ver migration 0013) — a flag `postponed` é que carrega
+ * a informação para o locking e para a UI.
+ */
+const POSTPONED_STATUSES = new Set(['POSTPONED', 'SUSPENDED', 'CANCELLED'])
+
+function isPostponed(status: string): boolean {
+  return POSTPONED_STATUSES.has(status)
+}
+
 function slugify(str: string): string {
   return str
     .toLowerCase()
@@ -280,13 +292,22 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   let matchCount = 0
   const matchStatements = []
   const matchInsertStmt = db.prepare(
-    `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (external_id, provider) DO UPDATE SET
        status             = excluded.status,
+       postponed          = excluded.postponed,
        home_score         = excluded.home_score,
        away_score         = excluded.away_score,
-       start_time         = excluded.start_time,
+       -- Enquanto o jogo está adiado o provider zera o horário para um placeholder
+       -- de meia-noite (ex: "2026-07-29T00:00:00Z" nos 4 jogos adiados da rodada 21
+       -- do Brasileirão). Gravar isso puxaria o kickoff para ANTES do original e
+       -- bagunçaria ordenação e default_round. Preserva-se o horário conhecido até
+       -- o provider tirar o POSTPONED com uma data real — aí o UPDATE volta a valer.
+       -- Sem heurística de "parece placeholder": 00:00Z é kickoff legítimo no
+       -- Brasileirão (21h BRT), então detectar pelo horário daria falso positivo.
+       start_time         = CASE WHEN excluded.postponed = 1
+                                 THEN matches.start_time ELSE excluded.start_time END,
        group_name         = excluded.group_name,
        duration           = excluded.duration,
        penalty_winner     = excluded.penalty_winner,
@@ -312,6 +333,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     if (!homeTeamId || !awayTeamId) continue
 
     const status = mapStatus(m.status)
+    const postponed = isPostponed(m.status) ? 1 : 0
     const phase = m.stage ?? null
     const round = m.matchday !== null ? String(m.matchday) : m.stage
     const groupName = m.group ? m.group.replace(/^GROUP_/, '') : null
@@ -400,6 +422,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
         penaltyWinner,
         homePenaltyGoals,
         awayPenaltyGoals,
+        postponed,
       ),
     )
 
