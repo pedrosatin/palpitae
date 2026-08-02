@@ -1,4 +1,4 @@
-const FEATURE_KEYS = ['create_group', 'sync_matches'] as const
+export const FEATURE_KEYS = ['create_group', 'sync_matches'] as const
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number]
 
