@@ -29,6 +29,7 @@ export default function PredictionsTab({
     selectedRound,
     roundMatches,
     labelFor,
+    postponedByRound,
     prev,
     next,
     setRoundIndex,
@@ -47,6 +48,12 @@ export default function PredictionsTab({
     handleDraftChange,
     handlePenaltyDraftChange,
   } = usePredictionsTab(groupId, competitionId)
+
+  // Só avisa sobre rodada adiada que NÃO é a aberta — na própria rodada os cards
+  // já mostram o badge "adiado", repetir aqui seria ruído.
+  const postponedElsewhere = Array.from(postponedByRound)
+    .filter(([round]) => round !== selectedRound)
+    .map(([round, count]) => ({ round, count }))[0]
 
   if (loading) {
     return <p className={styles.loading}>Carregando jogos...</p>
@@ -113,11 +120,34 @@ export default function PredictionsTab({
         labelFor={labelFor}
         onPrev={prev}
         onNext={next}
+        postponedByRound={postponedByRound}
         onSelect={(round) => {
           trackEvent('change_predictions_rodada', { round })
           setRoundIndex(roundKeys.indexOf(round))
         }}
       />
+
+      {/* Atalho para a rodada com jogo adiado. Sem isso o palpite reaberto fica
+          invisível: a rodada não é o default e o usuário não tem por que visitá-la. */}
+      {postponedElsewhere && (
+        <p className={styles.postponedHint}>
+          <strong>{labelFor(postponedElsewhere.round)}</strong> tem {postponedElsewhere.count} jogo
+          {postponedElsewhere.count > 1 ? 's' : ''} adiado
+          {postponedElsewhere.count > 1 ? 's' : ''} — o palpite segue aberto.{' '}
+          <button
+            type="button"
+            className={styles.postponedHintLink}
+            onClick={() => {
+              trackEvent('click_predictions_rodada_adiada', {
+                round: postponedElsewhere.round,
+              })
+              setRoundIndex(roundKeys.indexOf(postponedElsewhere.round))
+            }}
+          >
+            Ver rodada
+          </button>
+        </p>
+      )}
 
       <div className={styles.saveAllBar}>
         {bulkError && <span className={styles.error}>{bulkError}</span>}
