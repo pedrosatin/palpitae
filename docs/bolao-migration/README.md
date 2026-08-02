@@ -149,7 +149,11 @@ predictions (`recalculateLeaderboard`). Serve só como fonte de validação.
   `scoreUnprocessedMatches` não sobrescreve o histórico — e se sobrescrevesse, daria o
   mesmo número (regras idênticas).
 - Rodadas 1–2 aparecem sem palpites (bolão começou na rodada 3) — cosmético.
-- 3 jogos POSTPONED viram `scheduled` no Palpitae (mapStatus) — ok, poller resolve.
+- ~~3 jogos POSTPONED viram `scheduled` no Palpitae (mapStatus) — ok, poller resolve.~~
+  **Errado — corrigido em 2026-08-01 (ADR-013).** O poller não resolve: a janela dele
+  (`now-200min … now-115min`) passa uma vez e nunca mais olha. O jogo ficava `scheduled`
+  num horário já vencido, com o palpite travado para sempre. Hoje existe a flag
+  `matches.postponed` (migration 0013).
 - Verificar se `groups.payment_status='pending'` bloqueia algum fluxo (crença: não, MVP).
 - Times de clube não estão em `TEAM_TRANSLATIONS` — caem no nome/TLA da API (aceitável;
   tradução/apelidos opcionais depois).
