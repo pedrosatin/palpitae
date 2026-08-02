@@ -10,6 +10,14 @@ describe('permissions', () => {
     it('should return true regardless of email', () => {
       expect(hasFeatureAccess('another@example.com', 'create_group')).toBe(true)
     })
+
+    it('should return true for sync_matches feature', () => {
+      expect(hasFeatureAccess('test@example.com', 'sync_matches')).toBe(true)
+    })
+
+    it('should return true for sync_matches regardless of email', () => {
+      expect(hasFeatureAccess('another@example.com', 'sync_matches')).toBe(true)
+    })
   })
 
   describe('getFeatureFlags', () => {
