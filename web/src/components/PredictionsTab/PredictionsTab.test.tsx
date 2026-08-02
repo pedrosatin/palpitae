@@ -613,3 +613,84 @@ describe('PredictionsTab – rodada com jogo adiado', () => {
     expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
   })
 })
+
+// ─── Múltiplas rodadas adiadas: só a mais próxima antes da aberta ───────────
+
+describe('PredictionsTab – múltiplas rodadas com jogo adiado', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const past = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
+
+  // Cenário real do Brasileirão 2026: a rodada 4 tem um Flamengo×Mirassol parado
+  // desde fevereiro e a 21 tem 2 adiados de julho. O default é a 22. Avisar da
+  // rodada 4 primeiro fazia o usuário pular 17 rodadas pra trás e só então
+  // descobrir que a 21 também tinha.
+  function twoPostponedRounds() {
+    return [
+      makeMatch({
+        id: 'm4a',
+        round: '4',
+        status: 'scheduled',
+        start_time: past(4000),
+        postponed: 1,
+      }),
+      makeMatch({ id: 'm4b', round: '4', status: 'finished', start_time: past(3999) }),
+      makeMatch({ id: 'm21a', round: '21', status: 'finished', start_time: past(48) }),
+      makeMatch({
+        id: 'm21b',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({
+        id: 'm21c',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({ id: 'm22a', round: '22', status: 'scheduled' }),
+    ]
+  }
+
+  it('avisa da rodada 21 (a mais próxima), não da 4', async () => {
+    mockFetch(twoPostponedRounds())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
+    })
+    expect(screen.getByText(/2 jogos adiados/i)).toBeInTheDocument()
+    expect(screen.queryByText(/1 jogo adiado/i)).not.toBeInTheDocument()
+  })
+
+  it('não encadeia: ao pular para a 21, nenhum aviso aponta para a 4', async () => {
+    const user = userEvent.setup({ delay: null })
+    mockFetch(twoPostponedRounds())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+
+  it('o seletor continua marcando TODAS as rodadas adiadas', async () => {
+    mockFetch(twoPostponedRounds())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'Rodada 4 · 1 adiado' })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('option', { name: 'Rodada 21 · 2 adiados' })).toBeInTheDocument()
+  })
+})

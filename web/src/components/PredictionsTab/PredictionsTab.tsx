@@ -49,11 +49,24 @@ export default function PredictionsTab({
     handlePenaltyDraftChange,
   } = usePredictionsTab(groupId, competitionId)
 
-  // Só avisa sobre rodada adiada que NÃO é a aberta — na própria rodada os cards
-  // já mostram o badge "adiado", repetir aqui seria ruído.
-  const postponedElsewhere = Array.from(postponedByRound)
-    .filter(([round]) => round !== selectedRound)
-    .map(([round, count]) => ({ round, count }))[0]
+  // Avisa sobre UMA rodada adiada: a mais próxima ANTES da aberta.
+  //
+  // Olhar pra trás porque jogo adiado é sempre passado — ele guarda o horário
+  // original, que já venceu. E mostrar só a mais próxima porque o Brasileirão
+  // acumula adiados distantes (a rodada 4 tem um Flamengo×Mirassol parado desde
+  // fevereiro): avisar do mais antigo primeiro fazia o usuário pular 17 rodadas
+  // pra trás e só então descobrir que a 21 também tinha. O seletor continua
+  // marcando todas, então nada some — só sai do caminho.
+  //
+  // Estando numa rodada adiada não há aviso nenhum: os cards já mostram o badge,
+  // e apontar para a adiada anterior recriaria o encadeamento (22 → 21 → 4).
+  const postponedBefore = postponedByRound.has(selectedRound)
+    ? []
+    : roundKeys.slice(0, Math.max(0, safeIndex)).filter((round) => postponedByRound.has(round))
+  const previousPostponedRound = postponedBefore[postponedBefore.length - 1]
+  const postponedElsewhere = previousPostponedRound
+    ? { round: previousPostponedRound, count: postponedByRound.get(previousPostponedRound)! }
+    : undefined
 
   if (loading) {
     return <p className={styles.loading}>Carregando jogos...</p>
