@@ -95,10 +95,12 @@ interface BulkMockOptions {
   phases?: Record<string, string>
   // Competition penalty_phases gate applied to every match in the mock.
   penaltyPhases?: string[]
+  // match_ids adiados — start_time no passado NÃO trava o palpite (locking.ts).
+  postponed?: string[]
 }
 
 function createBulkDbMock(opts: BulkMockOptions = {}) {
-  const { isMember = true, matches = {}, phases = {}, penaltyPhases = [] } = opts
+  const { isMember = true, matches = {}, phases = {}, penaltyPhases = [], postponed = [] } = opts
   const batched: unknown[] = []
 
   const db = {
@@ -122,6 +124,7 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
                   .map((id) => ({
                     id,
                     start_time: matches[id],
+                    postponed: postponed.includes(id) ? 1 : 0,
                     phase: phases[id] ?? null,
                     penalty_phases: JSON.stringify(penaltyPhases),
                   }))
@@ -219,6 +222,23 @@ describe('predictions router – PUT /bulk', () => {
     expect(body.locked).toEqual(['m2'])
     expect(body.not_found).toEqual(['m3'])
     // Only the one saveable match is batched.
+    expect(db.batched).toHaveLength(1)
+  })
+
+  it('jogo adiado NÃO trava, mesmo com start_time no passado', async () => {
+    // Rodada 21 do Brasileirão: o provider adiou o jogo e o start_time gravado
+    // continua sendo o horário original (já passou). Travar aqui congelaria o
+    // palpite semanas antes do jogo ser efetivamente disputado.
+    const db = createBulkDbMock({ matches: { m1: past }, postponed: ['m1'] })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions: [{ match_id: 'm1', predicted_home_score: 2, predicted_away_score: 1 }],
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { saved: string[]; locked: string[] }
+    expect(body.saved).toEqual(['m1'])
+    expect(body.locked).toEqual([])
     expect(db.batched).toHaveLength(1)
   })
 

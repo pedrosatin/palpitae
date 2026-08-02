@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { isMatchLocked, lockedSql } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { roundLabel } from '../matches/rounds'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
@@ -77,7 +78,7 @@ router.get('/', requireAuth, async (c) => {
       p.penalty_points,
       p.created_at,
       p.updated_at,
-      CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+      CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
     FROM predictions p
     JOIN matches m ON m.id = p.match_id
     WHERE p.user_id = ? AND p.group_id = ?
@@ -159,8 +160,9 @@ router.get('/user', requireAuth, async (c) => {
   const now = new Date().toISOString()
 
   // Fetch all matches for the group's competition, left-joining predictions.
-  // The join condition restricts predictions to started matches (anti-copy: future
-  // picks are not revealed even if the target user has already submitted them).
+  // The join condition restricts predictions to LOCKED matches (anti-copy: picks
+  // that can still be edited are not revealed even if the target user already
+  // submitted them). Jogo adiado não conta como começado — ver locking.ts.
   const queryStartedAt = Date.now()
   const batchResults = await db.batch([
     db
@@ -192,7 +194,7 @@ router.get('/user', requireAuth, async (c) => {
          JOIN teams ht ON ht.id = m.home_team_id
          JOIN teams at ON at.id = m.away_team_id
          LEFT JOIN predictions p
-           ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND m.start_time <= ?
+           ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND ${lockedSql()}
          ORDER BY CAST(m.round AS INTEGER) ASC, m.group_name ASC NULLS LAST, m.start_time ASC`,
       )
       .bind(groupId, groupId, targetUserId, now),
@@ -319,9 +321,12 @@ router.get('/group', requireAuth, async (c) => {
   // All members' predictions — revealed according to the anti-copy rule:
   //   • For future/unlocked matches: only shown if the requester has already
   //     submitted their own prediction for that match.
-  //   • For past/locked matches (start_time <= now): always revealed, even if
-  //     the requester never predicted — they can no longer predict, so hiding
-  //     others' picks would be pointless.
+  //   • For past/locked matches (start_time <= now e não adiado): always revealed,
+  //     even if the requester never predicted — they can no longer predict, so
+  //     hiding others' picks would be pointless.
+  // A condição de revelação é a MESMA do campo `locked` (locking.ts) de propósito:
+  // se um jogo adiado revelasse os palpites alheios enquanto ainda aceita edição,
+  // daria pra copiar.
   const predictionsStartedAt = Date.now()
   const predictionsResult = isPublic
     ? // Public group: every member's picks are visible in real time, no anti-copy filter.
@@ -336,7 +341,7 @@ router.get('/group', requireAuth, async (c) => {
              pr.predicted_penalty_winner,
              pr.points_awarded,
              pr.penalty_points,
-             CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
@@ -359,14 +364,14 @@ router.get('/group', requireAuth, async (c) => {
              pr.predicted_penalty_winner,
              pr.points_awarded,
              pr.penalty_points,
-             CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.group_id = ?
              AND (
-               m.start_time <= ?
+               ${lockedSql()}
                OR pr.match_id IN (
                  SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
                )
@@ -405,6 +410,7 @@ router.get('/group', requireAuth, async (c) => {
  *   - Predictions can be submitted or edited freely BEFORE match.start_time
  *   - Once match.start_time is reached, predictions are LOCKED — no edits allowed
  *   - If a match is rescheduled, the lock/unlock follows the new start_time automatically
+ *   - Jogo adiado (`postponed = 1`) NÃO trava, mesmo com start_time no passado
  *
  * Body: { group_id, match_id, predicted_home_score, predicted_away_score }
  *
@@ -472,7 +478,7 @@ router.put('/', requireAuth, async (c) => {
   // (phase + competition.penalty_phases) so we can validate the shootout pick.
   const match = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.round, m.phase, c.penalty_phases
+      `SELECT m.id, m.start_time, m.postponed, m.round, m.phase, c.penalty_phases
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
@@ -482,6 +488,7 @@ router.put('/', requireAuth, async (c) => {
     .first<{
       id: string
       start_time: string
+      postponed: number
       round: string
       phase: string | null
       penalty_phases: string
@@ -493,7 +500,7 @@ router.put('/', requireAuth, async (c) => {
 
   // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
   const now = new Date().toISOString()
-  if (now >= match.start_time) {
+  if (isMatchLocked(match, now)) {
     return c.json({ error: 'Palpite bloqueado — o jogo já começou' }, 422)
   }
 
@@ -612,7 +619,13 @@ function buildBulkPutStatements(
   byMatch: Map<string, { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }>,
   matchInfo: Map<
     string,
-    { id: string; start_time: string; phase: string | null; penalty_phases: string }
+    {
+      id: string
+      start_time: string
+      postponed: number
+      phase: string | null
+      penalty_phases: string
+    }
   >,
   now: string,
 ) {
@@ -640,7 +653,7 @@ function buildBulkPutStatements(
     }
 
     // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
-    if (now >= info.start_time) {
+    if (isMatchLocked(info, now)) {
       locked.push(matchId)
       continue
     }
@@ -662,7 +675,17 @@ function buildBulkPutStatements(
     }
 
     statements.push(
-      insertStmt.bind(crypto.randomUUID(), userId, groupId, matchId, home, away, penaltyWinner, now, now),
+      insertStmt.bind(
+        crypto.randomUUID(),
+        userId,
+        groupId,
+        matchId,
+        home,
+        away,
+        penaltyWinner,
+        now,
+        now,
+      ),
     )
     saved.push(matchId)
   }
@@ -712,7 +735,7 @@ async function handleBulkPut(c: Context<AppContext>) {
   const placeholders = matchIds.map(() => '?').join(', ')
   const matchRows = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.phase, c.penalty_phases
+      `SELECT m.id, m.start_time, m.postponed, m.phase, c.penalty_phases
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
@@ -722,6 +745,7 @@ async function handleBulkPut(c: Context<AppContext>) {
     .all<{
       id: string
       start_time: string
+      postponed: number
       phase: string | null
       penalty_phases: string
     }>()
@@ -771,7 +795,7 @@ router.put('/bulk', requireAuth, handleBulkPut)
  * of the same competition. Useful when a user belongs to multiple groups and
  * wants to reuse the same predictions.
  *
- * Only unlocked predictions (match.start_time > now) are copied. Already-locked
+ * Only unlocked predictions (jogo ainda não começou, ou adiado) are copied. Already-locked
  * matches are silently skipped and reported in `locked_skipped`. Existing
  * predictions in the target group are overwritten.
  *
@@ -850,7 +874,7 @@ async function handleImportPost(c: Context<AppContext>) {
       `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND m.start_time > ?`,
+       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}`,
     )
     .bind(userId, source_group_id, now)
     .all<{
