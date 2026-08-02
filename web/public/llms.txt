@@ -1,17 +1,20 @@
 # Palpitae
 
-> Palpitae é um app web gratuito de bolões de futebol para a Copa do Mundo 2026.
-> Você cria grupos privados com amigos, dá palpites rodada a rodada, monta o
-> chaveamento do mata-mata e disputa a classificação do grupo. Funciona direto
-> no navegador (celular ou computador), com login pela conta Google.
+> Palpitae é um app web gratuito de bolões de futebol. Você cria grupos privados
+> com amigos, dá palpites rodada a rodada e disputa a classificação do grupo.
+> Funciona direto no navegador (celular ou computador), com login pela conta Google.
+
+## Campeonatos suportados
+
+- Brasileirão Série A 2026 — pontos corridos, 38 rodadas, de maio a dezembro.
+- Copa do Mundo 2026 — fase de grupos e chaveamento do mata-mata.
 
 ## Como funciona
 
 - Crie um grupo privado e convide amigos por código ou link de convite.
-- Dê seus palpites de placar a cada rodada da Copa do Mundo 2026.
-- Na fase de mata-mata os acertos valem mais: começam em 1 ponto nos 16-avos e
-  dobram a cada fase, até 16 pontos na final.
+- Dê seus palpites de placar a cada rodada.
 - Acompanhe a classificação do grupo em tempo real.
+- Pontuação automática: 3 pontos para placar exato, 1 ponto para acertar o resultado.
 
 ## Detalhes
 
@@ -22,10 +25,11 @@
 ## Links
 
 - [Site oficial](https://palpitae.com.br/): página inicial com apresentação e FAQ.
+- [Guias de bolão](https://palpitae.com.br/guias/): artigos sobre como organizar e disputar bolões.
 - [Sitemap](https://palpitae.com.br/sitemap.xml): URLs públicas indexáveis.
 - [robots.txt](https://palpitae.com.br/robots.txt): regras de rastreamento.
 
 ## Observações
 
-- A única página pública é a inicial (`/`). As telas de grupos, palpites e
-  dashboard exigem login e não são indexáveis.
+- Páginas públicas indexáveis: `/` (landing) e `/guias/*` (guias de bolão).
+- As telas de grupos, palpites e dashboard exigem login e não são indexáveis.
