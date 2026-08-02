@@ -166,6 +166,17 @@ function usePredictionsRounds(
 
   const roundKeys = Array.from(rounds.keys())
   const labelFor = (r: string) => rounds.get(r)?.[0]?.round_label ?? r
+
+  // Rodadas com jogo adiado. Elas ficam fora do default_round (a API escolhe a
+  // primeira rodada com jogo futuro, e um adiado guarda o horário original, que
+  // já passou), então o palpite reaberto ficaria invisível sem um marcador —
+  // o usuário abre na rodada seguinte e não tem como saber que ainda dá pra
+  // editar aqueles jogos. Ver ADR-013.
+  const postponedByRound = new Map<string, number>()
+  for (const [round, roundList] of rounds) {
+    const count = roundList.filter((m) => Boolean(m.postponed)).length
+    if (count > 0) postponedByRound.set(round, count)
+  }
   const safeIndex = Math.min(roundIndex, roundKeys.length - 1)
   const selectedRound = roundKeys[safeIndex]
   const roundMatches = rounds.get(selectedRound) ?? []
@@ -190,6 +201,7 @@ function usePredictionsRounds(
     selectedRound,
     roundMatches,
     labelFor,
+    postponedByRound,
     prev,
     next,
   }
@@ -389,8 +401,16 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     handleImport,
   } = usePredictionsImport(groupId, competitionId, setPredictions)
 
-  const { roundKeys, safeIndex, selectedRound, roundMatches, labelFor, prev, next } =
-    usePredictionsRounds(matches, roundIndex, setRoundIndex)
+  const {
+    roundKeys,
+    safeIndex,
+    selectedRound,
+    roundMatches,
+    labelFor,
+    postponedByRound,
+    prev,
+    next,
+  } = usePredictionsRounds(matches, roundIndex, setRoundIndex)
 
   const {
     savingAll,
@@ -413,6 +433,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     selectedRound,
     roundMatches,
     labelFor,
+    postponedByRound,
     prev,
     next,
     setRoundIndex,

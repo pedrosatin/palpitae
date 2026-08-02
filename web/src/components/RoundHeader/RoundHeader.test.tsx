@@ -104,3 +104,36 @@ describe('RoundHeader', () => {
     expect(knockoutOptgroup).toBeInTheDocument()
   })
 })
+
+describe('RoundHeader – rodada com jogo adiado', () => {
+  const baseProps = {
+    roundKeys: ['21', '22', '23'],
+    safeIndex: 1,
+    selectedRound: '22',
+    labelFor: (r: string) => `Rodada ${r}`,
+    onPrev: vi.fn(),
+    onNext: vi.fn(),
+    onSelect: vi.fn(),
+  }
+
+  it('marca a opção da rodada adiada com a contagem', () => {
+    render(<RoundHeader {...baseProps} postponedByRound={new Map([['21', 4]])} />)
+
+    expect(screen.getByRole('option', { name: 'Rodada 21 · 4 adiados' })).toBeInTheDocument()
+    // As demais ficam intactas.
+    expect(screen.getByRole('option', { name: 'Rodada 22' })).toBeInTheDocument()
+  })
+
+  it('usa singular quando é um jogo só', () => {
+    render(<RoundHeader {...baseProps} postponedByRound={new Map([['21', 1]])} />)
+
+    expect(screen.getByRole('option', { name: 'Rodada 21 · 1 adiado' })).toBeInTheDocument()
+  })
+
+  it('sem a prop, nenhum rótulo é alterado', () => {
+    render(<RoundHeader {...baseProps} />)
+
+    expect(screen.getByRole('option', { name: 'Rodada 21' })).toBeInTheDocument()
+    expect(screen.queryByText(/adiado/i)).not.toBeInTheDocument()
+  })
+})

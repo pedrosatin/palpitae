@@ -11,6 +11,12 @@ interface RoundHeaderProps {
   onPrev: () => void
   onNext: () => void
   onSelect: (round: string) => void
+  /**
+   * round -> nº de jogos adiados. Marca a opção no seletor, senão a rodada
+   * some da vista: ela não é o default (o adiado guarda o horário original,
+   * já passado) mas ainda tem palpite aberto. Ver ADR-013.
+   */
+  postponedByRound?: Map<string, number>
   id?: string
   className?: string
 }
@@ -23,9 +29,17 @@ export default function RoundHeader({
   onPrev,
   onNext,
   onSelect,
+  postponedByRound,
   id = 'round-select',
   className,
 }: RoundHeaderProps) {
+  // `<option>` só renderiza texto — nada de badge aqui, o marcador vai no rótulo.
+  const optionLabel = (r: string) => {
+    const count = postponedByRound?.get(r)
+    if (!count) return labelFor(r)
+    return `${labelFor(r)} · ${count} adiado${count > 1 ? 's' : ''}`
+  }
+
   return (
     <div className={[styles.roundNav, className].filter(Boolean).join(' ')}>
       <Button
@@ -50,7 +64,7 @@ export default function RoundHeader({
               <optgroup label="Fase de grupos">
                 {roundKeys.filter(isGroupStageRound).map((r) => (
                   <option key={r} value={r}>
-                    {labelFor(r)}
+                    {optionLabel(r)}
                   </option>
                 ))}
               </optgroup>
@@ -60,7 +74,7 @@ export default function RoundHeader({
                 .filter((r) => !isGroupStageRound(r))
                 .map((r) => (
                   <option key={r} value={r}>
-                    {labelFor(r)}
+                    {optionLabel(r)}
                   </option>
                 ))}
             </optgroup>
@@ -68,7 +82,7 @@ export default function RoundHeader({
         ) : (
           roundKeys.map((r) => (
             <option key={r} value={r}>
-              {labelFor(r)}
+              {optionLabel(r)}
             </option>
           ))
         )}

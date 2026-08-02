@@ -522,3 +522,94 @@ describe('PredictionsTab – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_importar')
   })
 })
+
+// ─── Aviso de rodada com jogo adiado (ADR-013) ─────────────────────────────
+
+describe('PredictionsTab – rodada com jogo adiado', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const past = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
+
+  // Reproduz a rodada 21 do Brasileirão: alguns jogos já foram, os adiados
+  // guardam o horário original (passado). A rodada cai fora do default_round,
+  // então o default vai para a 22 — e o palpite reaberto ficaria invisível.
+  function brasileiraoLikeMatches() {
+    return [
+      makeMatch({ id: 'm21a', round: '21', status: 'finished', start_time: past(48) }),
+      makeMatch({
+        id: 'm21b',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({
+        id: 'm21c',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({ id: 'm22a', round: '22', status: 'scheduled' }),
+    ]
+  }
+
+  it('abre na rodada 22 e avisa que a 21 tem jogos adiados', async () => {
+    mockFetch(brasileiraoLikeMatches())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
+    })
+    expect(screen.getByText(/2 jogos adiados/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+  })
+
+  it('"Ver rodada" pula para a rodada adiada e rastreia o clique', async () => {
+    const user = userEvent.setup({ delay: null })
+    mockFetch(brasileiraoLikeMatches())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_adiada', {
+      round: '21',
+    })
+  })
+
+  it('some o aviso quando a rodada adiada já é a aberta (os cards já mostram o badge)', async () => {
+    const user = userEvent.setup({ delay: null })
+    mockFetch(brasileiraoLikeMatches())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+
+    expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+
+  it('sem jogo adiado, nenhum aviso aparece', async () => {
+    mockFetch([
+      makeMatch({ id: 'm1', round: '21', status: 'finished', start_time: past(48) }),
+      makeMatch({ id: 'm2', round: '22', status: 'scheduled' }),
+    ])
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
+    })
+    expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+})
