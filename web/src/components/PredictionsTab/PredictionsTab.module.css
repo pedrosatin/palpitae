@@ -114,6 +114,32 @@
   color: var(--color-error, #c0392b);
 }
 
+/* Aviso de rodada com jogo adiado — mesma cor do badge "adiado" do MatchCard. */
+.postponedHint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-warning-border, #f59e0b40);
+  border-radius: var(--radius-md);
+  background-color: var(--color-warning-bg, #f59e0b1a);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.postponedHintLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-warning, #f59e0b);
+  font: inherit;
+  font-weight: var(--font-weight-semibold);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .loading,
 .empty {
   color: var(--color-text-secondary);
