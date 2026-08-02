@@ -220,6 +220,47 @@ const guides: Guide[] = [
     ],
     updated: '2026-07-12',
   },
+  {
+    slug: 'bolao-copa-do-mundo',
+    title: 'Como fazer um bolão da Copa do Mundo',
+    teaser:
+      'Clique aqui e veja como montar um bolão da Copa do Mundo com os amigos: fase de grupos, mata-mata, pontuação por placar e como manter a galera engajada até a grande final.',
+    description:
+      'Monte um bolão da Copa do Mundo com seus amigos: como organizar a fase de grupos e o mata-mata, quais regras de pontuação usar e como manter todo mundo engajado até a final.',
+    intro:
+      'A Copa do Mundo é o maior evento do futebol e um dos melhores momentos para fazer bolão com os amigos. São semanas de jogos diários, surpresas na fase de grupos e mata-mata até a final. Veja como organizar o seu bolão e aproveitar cada partida.',
+    sections: [
+      {
+        heading: 'Por que a Copa do Mundo é perfeita para bolão',
+        body: [
+          'Diferente de um campeonato de pontos corridos, a Copa concentra muita emoção em poucas semanas: fase de grupos com surpresas, oitavas, quartas, semis e final. Cada rodada elimina times, o que mantém a tensão alta até o último jogo.',
+          'A Copa também é acessível para quem não acompanha futebol o ano inteiro. A atenção de todo mundo facilita o engajamento, e qualquer pessoa tem uma opinião sobre quem vai longe.',
+        ],
+      },
+      {
+        heading: 'Regras para a fase de grupos',
+        body: [
+          'Na fase de grupos cada seleção joga três partidas, e o palpite de placar exato ou resultado funciona igual a qualquer bolão. O sistema clássico dá 3 pontos para o placar exato e 1 ponto para quem acerta só o resultado (vitória, empate ou derrota).',
+          'Vale combinar se o bolão cobre todos os jogos da fase de grupos ou só a partir das oitavas. Cobrir tudo dá mais pontos para quem acompanha desde o início e mantém o grupo ativo nas primeiras semanas.',
+        ],
+      },
+      {
+        heading: 'Como pontuar no mata-mata',
+        body: [
+          'No mata-mata o jogo pode ir para prorrogação e pênaltis. O mais comum é considerar o placar dos 90 minutos para definir se o palpite foi de placar exato ou só de resultado, independente de prorrogação.',
+          'Alguns grupos dão mais pontos nas fases finais, já que os jogos ficam mais decisivos. Uma opção simples: manter a pontuação igual em todas as fases e fazer as semifinais e a final valerem em dobro. Cria tensão no fim sem complicar as regras.',
+        ],
+      },
+      {
+        heading: 'Monte seu bolão da Copa no Palpitae',
+        body: [
+          'No Palpitae você cria um grupo privado gratuito e convida os amigos por link. Cada um dá seus palpites antes de cada jogo, e a pontuação é calculada automaticamente a cada resultado. A classificação do grupo atualiza sozinha.',
+          'O Palpitae suporta a Copa do Mundo com fase de grupos e chaveamento completo do mata-mata. Dá para acompanhar quem está na frente e comparar os palpites com os amigos rodada a rodada.',
+        ],
+      },
+    ],
+    updated: '2026-07-26',
+  },
 ]
 
 /** Public path for a guide (with trailing slash, as served). */
