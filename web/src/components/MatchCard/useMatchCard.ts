@@ -19,22 +19,20 @@ export interface UseMatchCardProps {
   onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
 }
 
-export function useMatchCard({
-  match,
-  prediction,
-  groupId,
-  outcomeOnly = false,
-  onSaved,
-  onDraftChange,
-  onPenaltyDraftChange,
-}: UseMatchCardProps) {
+function useMatchStatus(match: Match, prediction: Prediction | undefined) {
   // Jogo adiado nunca trava: o `start_time` guardado ainda é o horário original
   // (já passou), então a checagem por data sozinha travaria o palpite para sempre.
   // Espelha a regra do servidor em api/src/matches/locking.ts.
   const isPostponed = Boolean(match.postponed)
   const locked =
     !isPostponed && (Boolean(prediction?.locked) || new Date() >= new Date(match.start_time))
+  const isFinished = match.status === 'finished'
+  const hasPrediction = prediction !== undefined
 
+  return { isPostponed, locked, isFinished, hasPrediction }
+}
+
+function useMatchDraft(prediction: Prediction | undefined) {
   const [home, setHome] = useState<string>(
     prediction !== undefined ? String(prediction.predicted_home_score) : '0',
   )
@@ -44,6 +42,8 @@ export function useMatchCard({
   const [penaltyWinner, setPenaltyWinner] = useState<'home' | 'away' | null>(
     prediction?.predicted_penalty_winner ?? null,
   )
+  const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
+  const [reopenPenalty, setReopenPenalty] = useState(false)
 
   useEffect(() => {
     if (prediction !== undefined) {
@@ -52,14 +52,93 @@ export function useMatchCard({
       setPenaltyWinner(prediction.predicted_penalty_winner ?? null)
     }
   }, [prediction])
+
+  return {
+    home,
+    setHome,
+    away,
+    setAway,
+    penaltyWinner,
+    setPenaltyWinner,
+    pendingOutcome,
+    setPendingOutcome,
+    reopenPenalty,
+    setReopenPenalty,
+  }
+}
+
+function useMatchPersistence(
+  groupId: string,
+  matchId: string,
+  onSaved: (
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) => void,
+) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
-  const [reopenPenalty, setReopenPenalty] = useState(false)
 
-  const isFinished = match.status === 'finished'
-  const hasPrediction = prediction !== undefined
+  async function persist(homeScore: number, awayScore: number, penWinner: 'home' | 'away' | null) {
+    setSaving(true)
+    setError(null)
+    setSaved(false)
+
+    const res = await apiFetch(`${config.apiUrl}/predictions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        group_id: groupId,
+        match_id: matchId,
+        predicted_home_score: homeScore,
+        predicted_away_score: awayScore,
+        predicted_penalty_winner: penWinner,
+      }),
+    })
+
+    setSaving(false)
+
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      setError(data.error ?? 'Erro ao salvar palpite')
+      return
+    }
+
+    setSaved(true)
+    onSaved(matchId, homeScore, awayScore, penWinner)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  return { saving, error, saved, persist }
+}
+
+export function useMatchCard({
+  match,
+  prediction,
+  groupId,
+  outcomeOnly = false,
+  onSaved,
+  onDraftChange,
+  onPenaltyDraftChange,
+}: UseMatchCardProps) {
+  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction)
+
+  const {
+    home,
+    setHome,
+    away,
+    setAway,
+    penaltyWinner,
+    setPenaltyWinner,
+    pendingOutcome,
+    setPendingOutcome,
+    reopenPenalty,
+    setReopenPenalty,
+  } = useMatchDraft(prediction)
+
+  const { saving, saved, error, persist } = useMatchPersistence(groupId, match.id, onSaved)
 
   const selectedOutcome: Outcome | null = hasPrediction
     ? prediction.predicted_home_score > prediction.predicted_away_score
@@ -82,36 +161,6 @@ export function useMatchCard({
   const hasChanged = scoreChanged || penaltyChanged
   const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
   const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
-
-  async function persist(homeScore: number, awayScore: number, penWinner: 'home' | 'away' | null) {
-    setSaving(true)
-    setError(null)
-    setSaved(false)
-
-    const res = await apiFetch(`${config.apiUrl}/predictions`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        group_id: groupId,
-        match_id: match.id,
-        predicted_home_score: homeScore,
-        predicted_away_score: awayScore,
-        predicted_penalty_winner: penWinner,
-      }),
-    })
-
-    setSaving(false)
-
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
-      setError(data.error ?? 'Erro ao salvar palpite')
-      return
-    }
-
-    setSaved(true)
-    onSaved(match.id, homeScore, awayScore, penWinner)
-    setTimeout(() => setSaved(false), 2500)
-  }
 
   async function handleSave() {
     if (!canSave) return
