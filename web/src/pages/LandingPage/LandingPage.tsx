@@ -72,7 +72,7 @@ function Hero() {
   return (
     <section className={styles.hero}>
       <div className={styles.heroCopy}>
-        <span className={styles.eyebrow}>Brasileirão Série A · Copa do Mundo 2026</span>
+        <span className={styles.eyebrow}>Brasileirão Série A 2026</span>
         <h1 className={styles.heroTitle}>
           Bolões de futebol <span className={styles.accent}>com seus amigos</span>
         </h1>
@@ -156,7 +156,7 @@ function Faq() {
         />
         <FaqItem
           q="Quais campeonatos tem no Palpitae?"
-          a="Copa do Mundo 2026 e Brasileirão Série A 2026. Você pode criar um grupo para cada campeonato, e novos torneios serão adicionados."
+          a="Brasileirão Série A 2026 e Copa do Mundo 2026. Você pode criar um grupo para cada campeonato, e novos torneios serão adicionados."
         />
       </dl>
     </section>
