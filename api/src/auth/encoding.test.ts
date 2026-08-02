@@ -18,6 +18,35 @@ describe('base64UrlEncode', () => {
     const buf = new TextEncoder().encode('hello').buffer as ArrayBuffer
     expect(base64UrlEncode(buf)).toBe('aGVsbG8')
   })
+
+  it('correctly replaces + with - and removes padding', () => {
+    // 251 in base64 is +w==, so in base64url it should be -w
+    const buf = new Uint8Array([251]).buffer
+    expect(base64UrlEncode(buf)).toBe('-w')
+  })
+
+  it('correctly replaces / with _ and removes padding', () => {
+    // 255, 255 in base64 is //8=, so in base64url it should be __8
+    const buf = new Uint8Array([255, 255]).buffer
+    expect(base64UrlEncode(buf)).toBe('__8')
+  })
+
+  it('encodes RFC 4648 test vectors correctly', () => {
+    const vectors = [
+      ['', ''],
+      ['f', 'Zg'],
+      ['fo', 'Zm8'],
+      ['foo', 'Zm9v'],
+      ['foob', 'Zm9vYg'],
+      ['fooba', 'Zm9vYmE'],
+      ['foobar', 'Zm9vYmFy'],
+    ]
+
+    for (const [input, expected] of vectors) {
+      const buf = new TextEncoder().encode(input).buffer as ArrayBuffer
+      expect(base64UrlEncode(buf)).toBe(expected)
+    }
+  })
 })
 
 describe('base64UrlDecode', () => {
@@ -37,6 +66,11 @@ describe('base64UrlDecode', () => {
     expect(encoded).not.toContain('=')
     const decoded = new TextDecoder().decode(base64UrlDecode(encoded))
     expect(decoded).toBe(original)
+  })
+
+  it('throws an error when decoding malformed strings', () => {
+    expect(() => base64UrlDecode('a===')).toThrow()
+    expect(() => base64UrlDecode('a')).toThrow()
   })
 })
 
