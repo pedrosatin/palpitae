@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  SESSION_EXPIRED_EVENT,
-  apiFetch,
-  consumeSessionExpired,
-  notifySessionExpired,
-} from './api'
+import { SESSION_EXPIRED_EVENT, apiFetch, consumeSessionExpired, notifySessionExpired } from './api'
 
 describe('api', () => {
   afterEach(() => {
@@ -82,7 +77,7 @@ describe('api', () => {
 
       expect(fetchMock).toHaveBeenCalledWith('https://api.example.com', {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
       })
     })
 

@@ -85,6 +85,76 @@ function emptyStanding(
   }
 }
 
+function applyMatchResult(home: TeamStanding, away: TeamStanding, m: Match) {
+  if (m.status !== 'finished' || m.home_score === null || m.away_score === null) {
+    return
+  }
+
+  home.j += 1
+  away.j += 1
+  home.gf += m.home_score
+  home.ga += m.away_score
+  away.gf += m.away_score
+  away.ga += m.home_score
+  home.sg = home.gf - home.ga
+  away.sg = away.gf - away.ga
+
+  if (m.home_score > m.away_score) {
+    home.v += 1
+    home.p += 3
+    away.d += 1
+  } else if (m.home_score < m.away_score) {
+    away.v += 1
+    away.p += 3
+    home.d += 1
+  } else {
+    home.e += 1
+    away.e += 1
+    home.p += 1
+    away.p += 1
+  }
+
+  const score = `${m.home_score}x${m.away_score}`
+  const homeResult: FormEntry['result'] =
+    m.home_score > m.away_score ? 'v' : m.home_score < m.away_score ? 'd' : 'e'
+  const awayResult: FormEntry['result'] = homeResult === 'v' ? 'd' : homeResult === 'd' ? 'v' : 'e'
+
+  home.form.push({
+    result: homeResult,
+    label: `${RESULT_LABELS[homeResult]} ${score} contra ${m.away_team_short_name}`,
+  })
+  away.form.push({
+    result: awayResult,
+    label: `${RESULT_LABELS[awayResult]} ${score} contra ${m.home_team_short_name}`,
+  })
+}
+
+function sortStandings(
+  byGroup: Map<string, Map<string, TeamStanding>>,
+): Map<string, TeamStanding[]> {
+  const result = new Map<string, TeamStanding[]>()
+  for (const [group, teams] of byGroup) {
+    for (const team of teams.values()) {
+      team.form = team.form.slice(-FORM_SIZE)
+    }
+    // Liga (CBF, aproximado): pontos, VITÓRIAS, saldo, gols pró. Critérios
+    // seguintes do regulamento (confronto direto, cartões) não se aplicam —
+    // cartões não são sincronizados; empate residual cai em ordem alfabética.
+    // Copa (FIFA): pontos, saldo, gols pró.
+    const isLeague = isLeagueTable(group)
+    const sorted = [...teams.values()].sort(
+      (a, b) =>
+        b.p - a.p ||
+        (isLeague ? b.v - a.v : 0) ||
+        b.sg - a.sg ||
+        b.gf - a.gf ||
+        a.team_name.localeCompare(b.team_name),
+    )
+    result.set(group, sorted)
+  }
+  return result
+}
+
 export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> {
   const byGroup = new Map<string, Map<string, TeamStanding>>()
 
@@ -137,70 +207,10 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
       m.away_team_logo,
     )
 
-    if (m.status !== 'finished' || m.home_score === null || m.away_score === null) {
-      continue
-    }
-
-    home.j += 1
-    away.j += 1
-    home.gf += m.home_score
-    home.ga += m.away_score
-    away.gf += m.away_score
-    away.ga += m.home_score
-    home.sg = home.gf - home.ga
-    away.sg = away.gf - away.ga
-
-    if (m.home_score > m.away_score) {
-      home.v += 1
-      home.p += 3
-      away.d += 1
-    } else if (m.home_score < m.away_score) {
-      away.v += 1
-      away.p += 3
-      home.d += 1
-    } else {
-      home.e += 1
-      away.e += 1
-      home.p += 1
-      away.p += 1
-    }
-
-    const score = `${m.home_score}x${m.away_score}`
-    const homeResult: FormEntry['result'] =
-      m.home_score > m.away_score ? 'v' : m.home_score < m.away_score ? 'd' : 'e'
-    const awayResult: FormEntry['result'] =
-      homeResult === 'v' ? 'd' : homeResult === 'd' ? 'v' : 'e'
-    home.form.push({
-      result: homeResult,
-      label: `${RESULT_LABELS[homeResult]} ${score} contra ${m.away_team_short_name}`,
-    })
-    away.form.push({
-      result: awayResult,
-      label: `${RESULT_LABELS[awayResult]} ${score} contra ${m.home_team_short_name}`,
-    })
+    applyMatchResult(home, away, m)
   }
 
-  const result = new Map<string, TeamStanding[]>()
-  for (const [group, teams] of byGroup) {
-    for (const team of teams.values()) {
-      team.form = team.form.slice(-FORM_SIZE)
-    }
-    // Liga (CBF, aproximado): pontos, VITÓRIAS, saldo, gols pró. Critérios
-    // seguintes do regulamento (confronto direto, cartões) não se aplicam —
-    // cartões não são sincronizados; empate residual cai em ordem alfabética.
-    // Copa (FIFA): pontos, saldo, gols pró.
-    const isLeague = isLeagueTable(group)
-    const sorted = [...teams.values()].sort(
-      (a, b) =>
-        b.p - a.p ||
-        (isLeague ? b.v - a.v : 0) ||
-        b.sg - a.sg ||
-        b.gf - a.gf ||
-        a.team_name.localeCompare(b.team_name),
-    )
-    result.set(group, sorted)
-  }
-  return result
+  return sortStandings(byGroup)
 }
 
 function formatDay(iso: string): string {
