@@ -809,6 +809,87 @@ router.put('/bulk', requireAuth, handleBulkPut)
  *   404 — group not found
  *   422 — groups belong to different competitions
  */
+async function verifyGroupsForImport(
+  db: D1Database,
+  userId: string,
+  sourceGroupId: string,
+  targetGroupId: string,
+) {
+  // Verify user is a member of both groups
+  const memberships = await db
+    .prepare(`SELECT group_id FROM group_members WHERE group_id IN (?, ?) AND user_id = ?`)
+    .bind(sourceGroupId, targetGroupId, userId)
+    .all<{ group_id: string }>()
+
+  const sourceMembership = memberships.results.find((m) => m.group_id === sourceGroupId)
+  const targetMembership = memberships.results.find((m) => m.group_id === targetGroupId)
+
+  if (!sourceMembership) {
+    return { error: 'Acesso negado ao grupo de origem', status: 403 }
+  }
+
+  if (!targetMembership) {
+    return { error: 'Acesso negado ao grupo de destino', status: 403 }
+  }
+
+  // Verify both groups belong to the same competition
+  const [sourceGroup, targetGroup] = await Promise.all([
+    db
+      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
+      .bind(sourceGroupId)
+      .first<{ competition_id: string }>(),
+    db
+      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
+      .bind(targetGroupId)
+      .first<{ competition_id: string }>(),
+  ])
+
+  if (!sourceGroup || !targetGroup) {
+    return { error: 'Grupo não encontrado', status: 404 }
+  }
+
+  if (sourceGroup.competition_id !== targetGroup.competition_id) {
+    return { error: 'Os grupos pertencem a campeonatos diferentes', status: 422 }
+  }
+
+  return null
+}
+
+async function fetchPredictionsToImport(
+  db: D1Database,
+  userId: string,
+  sourceGroupId: string,
+  now: string,
+) {
+  // Fetch user's predictions from source group for unlocked matches only
+  const sourcePredictions = await db
+    .prepare(
+      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
+       FROM predictions p
+       JOIN matches m ON m.id = p.match_id
+       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}`,
+    )
+    .bind(userId, sourceGroupId, now)
+    .all<{
+      match_id: string
+      predicted_home_score: number
+      predicted_away_score: number
+      predicted_penalty_winner: 'home' | 'away' | null
+    }>()
+
+  const toImport = sourcePredictions.results
+
+  // Count total source predictions to report how many were locked-skipped
+  const totalCount = await db
+    .prepare(`SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`)
+    .bind(userId, sourceGroupId)
+    .first<{ total: number }>()
+
+  const lockedSkipped = (totalCount?.total ?? 0) - toImport.length
+
+  return { toImport, lockedSkipped }
+}
+
 async function handleImportPost(c: Context<AppContext>) {
   const userId = c.get('userId')
 
@@ -829,70 +910,18 @@ async function handleImportPost(c: Context<AppContext>) {
 
   const db = c.env.DB
 
-  // Verify user is a member of both groups
-  const memberships = await db
-    .prepare(`SELECT group_id FROM group_members WHERE group_id IN (?, ?) AND user_id = ?`)
-    .bind(source_group_id, target_group_id, userId)
-    .all<{ group_id: string }>()
-
-  const sourceMembership = memberships.results.find((m) => m.group_id === source_group_id)
-  const targetMembership = memberships.results.find((m) => m.group_id === target_group_id)
-
-  if (!sourceMembership) {
-    return c.json({ error: 'Acesso negado ao grupo de origem' }, 403)
-  }
-
-  if (!targetMembership) {
-    return c.json({ error: 'Acesso negado ao grupo de destino' }, 403)
-  }
-
-  // Verify both groups belong to the same competition
-  const [sourceGroup, targetGroup] = await Promise.all([
-    db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
-      .bind(source_group_id)
-      .first<{ competition_id: string }>(),
-    db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
-      .bind(target_group_id)
-      .first<{ competition_id: string }>(),
-  ])
-
-  if (!sourceGroup || !targetGroup) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
-
-  if (sourceGroup.competition_id !== targetGroup.competition_id) {
-    return c.json({ error: 'Os grupos pertencem a campeonatos diferentes' }, 422)
+  const validationError = await verifyGroupsForImport(
+    db,
+    userId,
+    source_group_id,
+    target_group_id,
+  )
+  if (validationError) {
+    return c.json({ error: validationError.error }, validationError.status as any)
   }
 
   const now = new Date().toISOString()
-
-  // Fetch user's predictions from source group for unlocked matches only
-  const sourcePredictions = await db
-    .prepare(
-      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
-       FROM predictions p
-       JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}`,
-    )
-    .bind(userId, source_group_id, now)
-    .all<{
-      match_id: string
-      predicted_home_score: number
-      predicted_away_score: number
-      predicted_penalty_winner: 'home' | 'away' | null
-    }>()
-
-  const toImport = sourcePredictions.results
-
-  // Count total source predictions to report how many were locked-skipped
-  const totalCount = await db
-    .prepare(`SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`)
-    .bind(userId, source_group_id)
-    .first<{ total: number }>()
-
-  const lockedSkipped = (totalCount?.total ?? 0) - toImport.length
+  const { toImport, lockedSkipped } = await fetchPredictionsToImport(db, userId, source_group_id, now)
 
   if (toImport.length === 0) {
     return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })
