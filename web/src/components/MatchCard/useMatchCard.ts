@@ -19,17 +19,20 @@ export interface UseMatchCardProps {
   onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
 }
 
-export function useMatchCard({
-  match,
-  prediction,
-  groupId,
-  outcomeOnly = false,
-  onSaved,
-  onDraftChange,
-  onPenaltyDraftChange,
-}: UseMatchCardProps) {
-  const locked = Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)
+function useMatchStatus(match: Match, prediction: Prediction | undefined) {
+  // Jogo adiado nunca trava: o `start_time` guardado ainda é o horário original
+  // (já passou), então a checagem por data sozinha travaria o palpite para sempre.
+  // Espelha a regra do servidor em api/src/matches/locking.ts.
+  const isPostponed = Boolean(match.postponed)
+  const locked =
+    !isPostponed && (Boolean(prediction?.locked) || new Date() >= new Date(match.start_time))
+  const isFinished = match.status === 'finished'
+  const hasPrediction = prediction !== undefined
 
+  return { isPostponed, locked, isFinished, hasPrediction }
+}
+
+function useMatchDraft(prediction: Prediction | undefined) {
   const [home, setHome] = useState<string>(
     prediction !== undefined ? String(prediction.predicted_home_score) : '0',
   )
@@ -39,6 +42,8 @@ export function useMatchCard({
   const [penaltyWinner, setPenaltyWinner] = useState<'home' | 'away' | null>(
     prediction?.predicted_penalty_winner ?? null,
   )
+  const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
+  const [reopenPenalty, setReopenPenalty] = useState(false)
 
   useEffect(() => {
     if (prediction !== undefined) {
@@ -47,36 +52,34 @@ export function useMatchCard({
       setPenaltyWinner(prediction.predicted_penalty_winner ?? null)
     }
   }, [prediction])
+
+  return {
+    home,
+    setHome,
+    away,
+    setAway,
+    penaltyWinner,
+    setPenaltyWinner,
+    pendingOutcome,
+    setPendingOutcome,
+    reopenPenalty,
+    setReopenPenalty,
+  }
+}
+
+function useMatchPersistence(
+  groupId: string,
+  matchId: string,
+  onSaved: (
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) => void,
+) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
-  const [reopenPenalty, setReopenPenalty] = useState(false)
-
-  const isFinished = match.status === 'finished'
-  const hasPrediction = prediction !== undefined
-
-  const selectedOutcome: Outcome | null = hasPrediction
-    ? prediction.predicted_home_score > prediction.predicted_away_score
-      ? 'home'
-      : prediction.predicted_home_score < prediction.predicted_away_score
-        ? 'away'
-        : 'draw'
-    : pendingOutcome
-
-  const drawMarked = outcomeOnly
-    ? selectedOutcome === 'draw'
-    : home !== '' && away !== '' && Number(home) === Number(away)
-  const showPenaltyPicker = !locked && Boolean(match.decides_on_penalties) && drawMarked
-
-  const scoreChanged = hasPrediction
-    ? Number(home) !== prediction.predicted_home_score ||
-      Number(away) !== prediction.predicted_away_score
-    : true
-  const penaltyChanged = (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
-  const hasChanged = scoreChanged || penaltyChanged
-  const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
-  const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
 
   async function persist(homeScore: number, awayScore: number, penWinner: 'home' | 'away' | null) {
     setSaving(true)
@@ -88,7 +91,7 @@ export function useMatchCard({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         group_id: groupId,
-        match_id: match.id,
+        match_id: matchId,
         predicted_home_score: homeScore,
         predicted_away_score: awayScore,
         predicted_penalty_winner: penWinner,
@@ -104,9 +107,62 @@ export function useMatchCard({
     }
 
     setSaved(true)
-    onSaved(match.id, homeScore, awayScore, penWinner)
+    onSaved(matchId, homeScore, awayScore, penWinner)
     setTimeout(() => setSaved(false), 2500)
   }
+
+  return { saving, error, saved, persist }
+}
+
+export function useMatchCard({
+  match,
+  prediction,
+  groupId,
+  outcomeOnly = false,
+  onSaved,
+  onDraftChange,
+  onPenaltyDraftChange,
+}: UseMatchCardProps) {
+  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction)
+
+  const {
+    home,
+    setHome,
+    away,
+    setAway,
+    penaltyWinner,
+    setPenaltyWinner,
+    pendingOutcome,
+    setPendingOutcome,
+    reopenPenalty,
+    setReopenPenalty,
+  } = useMatchDraft(prediction)
+
+  const { saving, saved, error, persist } = useMatchPersistence(groupId, match.id, onSaved)
+
+  const selectedOutcome: Outcome | null =
+    prediction !== undefined
+      ? prediction.predicted_home_score > prediction.predicted_away_score
+        ? 'home'
+        : prediction.predicted_home_score < prediction.predicted_away_score
+          ? 'away'
+          : 'draw'
+      : pendingOutcome
+
+  const drawMarked = outcomeOnly
+    ? selectedOutcome === 'draw'
+    : home !== '' && away !== '' && Number(home) === Number(away)
+  const showPenaltyPicker = !locked && Boolean(match.decides_on_penalties) && drawMarked
+
+  const scoreChanged =
+    prediction !== undefined
+      ? Number(home) !== prediction.predicted_home_score ||
+        Number(away) !== prediction.predicted_away_score
+      : true
+  const penaltyChanged = (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
+  const hasChanged = scoreChanged || penaltyChanged
+  const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
+  const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
 
   async function handleSave() {
     if (!canSave) return
@@ -175,6 +231,7 @@ export function useMatchCard({
 
   return {
     locked,
+    isPostponed,
     isFinished,
     hasPrediction,
     saving,

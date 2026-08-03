@@ -479,3 +479,44 @@ Gate by a new `competitions.type` column (`'league' | 'cup'`, migration 0012), t
 - New leagues need one `UPDATE competitions SET type='league'` — no code change.
 - Deploy coupling: the group endpoints select `c.type`, so migration 0012 must be applied before the API deploy (done for prod on 2026-07-13).
 - football-data.org already classifies competitions (`type: LEAGUE|CUP`); if competition creation is ever automated, the column can be filled from the provider.
+
+---
+
+## ADR-013: Postponed Matches — Dedicated Flag, Not a `status` Value
+
+**Status:** Accepted
+**Date:** 2026-08-01
+
+### Context
+
+Rodada 21 do Brasileirão 2026 teve 4 jogos adiados (Mineiro×Bragantino, Botafogo×Grêmio, Chapecoense×Vasco, São Paulo×Santos). O Palpitae não refletiu o adiamento — e não foi falha de cron: o `discoverFixtures` (ADR-010) rodou e leu os dados certos. O pipeline é que não tinha como representar o estado.
+
+Duas coisas se somavam:
+
+1. `mapStatus()` (`api/src/matches/sync.ts`) achatava tudo que não fosse `FINISHED`/`AWARDED` em `'scheduled'`, porque o CHECK de `matches.status` (migration 0001) só admite `('scheduled','live','finished')`. `POSTPONED`, `SUSPENDED` e `CANCELLED` viravam "agendado".
+2. Ao adiar sem data nova, a football-data **zera o `utcDate`** para um placeholder de meia-noite (os 4 jogos passaram a reportar `2026-07-29T00:00:00Z`). O upsert gravava esse valor.
+
+Resultado: jogo "agendado" num horário que já passou. Como `locked` é derivado em runtime de `start_time <= now` (ADR-004), o palpite travava permanentemente — e travava *mais cedo* que o horário original, tirando janela de edição de quem ainda não tinha palpitado. O jogo nunca virava `finished`, nunca pontuava, e o card mostrava "aguardando resultado" para sempre. O poller (ADR-007) não resgata: sua janela é `now-200min … now-115min`, passa uma vez e nunca mais olha.
+
+### Decision
+
+Coluna dedicada `matches.postponed INTEGER NOT NULL DEFAULT 0` (migration 0013), **não** um novo valor em `status`.
+
+Alterar o CHECK exigiria rebuild da tabela, e `predictions.match_id REFERENCES matches(id) ON DELETE CASCADE` — o `DROP TABLE` intermediário do rebuild apagaria todos os palpites de produção. Flag separada resolve com um `ALTER TABLE`, sem tocar no schema existente.
+
+Três consequências no comportamento:
+
+1. **`start_time` não é sobrescrito enquanto `postponed = 1`.** O upsert usa `CASE WHEN excluded.postponed = 1 THEN matches.start_time ELSE excluded.start_time END`. Preserva o horário conhecido até o provider tirar o POSTPONED com data real. Sem heurística de "parece placeholder": `00:00Z` é kickoff legítimo no Brasileirão (21h BRT), detectar pelo horário daria falso positivo.
+2. **Jogo adiado não trava o palpite.** Regra centralizada em `api/src/matches/locking.ts` (`lockedSql()` para SQL, `isMatchLocked()` para TS): travado = começou **e** não adiado. A versão TS compara `postponed !== 1` (fail-closed) — coluna ausente/nula volta ao lock normal por horário.
+3. **A mesma condição governa a revelação anti-cópia.** Se um jogo adiado revelasse os palpites alheios enquanto ainda aceita edição, daria para copiar. Por isso `lockedSql()` é usado tanto no campo `locked` quanto nos `WHERE` de `GET /predictions/user` e `GET /predictions/group`.
+
+### Consequences
+
+- `needsSync` em `GET /matches` passou a filtrar `postponed = 0`. Sem isso um jogo adiado (start_time no passado, nunca `finished`) deixaria a flag verdadeira para sempre e **todo** GET dispararia sync em background, queimando a quota da football-data indefinidamente.
+- O front recebe `postponed` no payload de `/matches` e espelha a regra em `useMatchCard` — o lock client-side por data também precisava da exceção.
+- UI: badge "adiado" e data trocada por "data a definir", separados do badge "bloqueado" (que agora significa só "já começou").
+- Corrige a premissa errada registrada em `docs/bolao-migration/README.md` ("3 jogos POSTPONED viram `scheduled` — ok, poller resolve").
+- Migration 0013 precisa ser aplicada **antes** do deploy da API (as queries selecionam `m.postponed`).
+- Jogo remarcado volta sozinho: o provider troca `POSTPONED` por `TIMED`/`SCHEDULED` com a data nova, o sync diário zera a flag e o `start_time` volta a ser atualizado.
+- **`default_round` não muda.** A query pega a primeira rodada com `MAX(start_time) > now`; como o adiado guarda o horário original (passado), a rodada 21 continua fora e o default segue na 22 — correto, já que 6 dos 10 jogos dela foram disputados. Isso cria um buraco de descoberta: o palpite reaberto fica numa rodada que o usuário não tem motivo para visitar. Resolvido com um marcador no seletor de rodadas (`Rodada 21 · 4 adiados`) e um aviso com atalho "Ver rodada" no `PredictionsTab`, ambos sumindo sozinhos quando a flag zera. O aviso mostra **uma** rodada — a adiada mais próxima *antes* da aberta — e não aparece quando a rodada aberta já tem adiado. Sem essas duas regras o Brasileirão encadeia: ele acumula adiados distantes (a rodada 4 tem um Flamengo×Mirassol parado desde fevereiro), então avisar do mais antigo primeiro jogava o usuário 17 rodadas pra trás, e de lá um novo aviso apontava para a 21. O seletor continua marcando todas. Forçar o default na rodada adiada foi descartado: abriria numa tela majoritariamente encerrada enquanto a ação real do usuário é a rodada seguinte.
+- Quando os jogos forem remarcados, o `ORDER BY MAX(start_time) ASC` mantém o comportamento correto: a rodada 21 só volta a ser default quando aqueles jogos forem de fato o próximo compromisso do calendário.

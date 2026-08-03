@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { requireAuth } from '../auth/middleware'
 import { parsePenaltyPhases } from '../matches/penalties'
 import type { AppContext } from '../types'
 
@@ -21,7 +22,7 @@ const router = new Hono<AppContext>()
  * phase) gate). The frontend uses it to decide whether to show the points_penalty
  * field in CreateGroupModal — it never sees the raw phase list.
  */
-router.get('/', async (c) => {
+router.get('/', requireAuth, async (c) => {
   const db = c.env.DB
 
   try {
