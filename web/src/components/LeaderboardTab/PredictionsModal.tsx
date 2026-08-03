@@ -12,7 +12,7 @@ interface PredictionsModalProps {
   onClose: () => void
 }
 
-function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPrediction[]][] {
+export function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPrediction[]][] {
   const result: [string | null, UserPrediction[]][] = []
   for (const m of ms) {
     const key = m.group_name ?? null
