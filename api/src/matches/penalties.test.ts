@@ -50,4 +50,17 @@ describe('matchGoesToPenalties', () => {
   it('should handle empty penaltyPhases', () => {
     expect(matchGoesToPenalties([], 'FINAL')).toBe(false)
   })
+
+  it('should be case-sensitive', () => {
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL'], 'final')).toBe(false)
+  })
+
+  it('should handle matchPhase as an empty string', () => {
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL'], '')).toBe(false)
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL', ''], '')).toBe(true)
+  })
+
+  it('should return true if matchPhase is null and empty string is in penaltyPhases', () => {
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL', ''], null)).toBe(true)
+  })
 })
