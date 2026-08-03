@@ -30,9 +30,7 @@ describe('parsePenaltyPhases', () => {
   })
 
   it('should handle mixed elements in array', () => {
-    // Note: The current implementation typecasts the array to string[],
-    // so it doesn't filter out non-strings. It just returns the parsed array.
-    expect(parsePenaltyPhases('["LAST_16", 123, null]')).toEqual(['LAST_16', 123, null])
+    expect(parsePenaltyPhases('["LAST_16", 123, null]')).toEqual(['LAST_16'])
   })
 })
 
@@ -51,5 +49,18 @@ describe('matchGoesToPenalties', () => {
 
   it('should handle empty penaltyPhases', () => {
     expect(matchGoesToPenalties([], 'FINAL')).toBe(false)
+  })
+
+  it('should be case-sensitive', () => {
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL'], 'final')).toBe(false)
+  })
+
+  it('should handle matchPhase as an empty string', () => {
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL'], '')).toBe(false)
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL', ''], '')).toBe(true)
+  })
+
+  it('should return true if matchPhase is null and empty string is in penaltyPhases', () => {
+    expect(matchGoesToPenalties(['LAST_16', 'FINAL', ''], null)).toBe(true)
   })
 })
