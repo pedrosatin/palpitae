@@ -4,12 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import PredictionsTab from './PredictionsTab'
 import { makeMatch } from '../matchFixtures'
-import { type Match } from '../MatchCard'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-function mockFetch(matches: Match[]) {
+function mockFetch(matches: ReturnType<typeof makeMatch>[]) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
     if (u.includes('/matches')) {
@@ -22,7 +21,7 @@ function mockFetch(matches: Match[]) {
       const activeRound = [...roundMaxStart.entries()]
         .filter(([, max]) => max > nowIso)
         .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
-      const chronologicalLast = matches.reduce<Match | undefined>(
+      const chronologicalLast = matches.reduce<ReturnType<typeof makeMatch> | undefined>(
         (acc, m) => (!acc || m.start_time >= acc.start_time ? m : acc),
         undefined,
       )
@@ -50,7 +49,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
   })
 
   it('selects the first round that contains a scheduled match', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
     ]
@@ -66,7 +65,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
   })
 
   it('skips a round where all matches have already started and selects the next open round', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({
         id: 'm2',
@@ -87,7 +86,7 @@ describe('PredictionsTab – defaultRoundIndex', () => {
   })
 
   it('falls back to the last round when all matches are finished', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'finished' }),
       makeMatch({ id: 'm3', round: '3', status: 'finished' }),
@@ -111,7 +110,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
   })
 
   it('renders a group header for matches that share a group_name', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', group_name: 'A', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '1', group_name: 'A', status: 'scheduled' }),
     ]
@@ -125,7 +124,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
   })
 
   it('renders no group header when group_name is null', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({
         id: 'm1',
         round: '1',
@@ -143,7 +142,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
   })
 
   it('renders separate group sections for different group_names', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', group_name: 'A', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '1', group_name: 'B', status: 'scheduled' }),
     ]
@@ -159,7 +158,7 @@ describe('PredictionsTab – groupedRoundMatches', () => {
 
   it('creates a new group section when the same group_name appears non-consecutively', async () => {
     // A, B, A → should produce 3 groups (two "Grupo A" headers)
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', group_name: 'A', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '1', group_name: 'B', status: 'scheduled' }),
       makeMatch({ id: 'm3', round: '1', group_name: 'A', status: 'scheduled' }),
@@ -181,7 +180,7 @@ describe('PredictionsTab – Round navigation', () => {
     vi.restoreAllMocks()
   })
 
-  function twoRoundMatches(): Match[] {
+  function twoRoundMatches() {
     return [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({
@@ -197,7 +196,7 @@ describe('PredictionsTab – Round navigation', () => {
   }
 
   it('disables "Anterior" button on the first round', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '2', status: 'finished' }),
     ]
@@ -223,7 +222,7 @@ describe('PredictionsTab – Round navigation', () => {
   })
 
   it('navigates to the next round when "Próxima" is clicked', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({
         id: 'm1',
         round: '1',
@@ -287,7 +286,7 @@ describe('PredictionsTab – Initialisation', () => {
   })
 
   it('counts a new draft after changing only one score from the 0 default', async () => {
-    const matches: Match[] = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches)
 
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
@@ -302,7 +301,7 @@ describe('PredictionsTab – Initialisation', () => {
   })
 
   it('includes a default 0×0 knockout draw in "Salvar todos" when only the penalty winner is set', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({
         id: 'm1',
         round: '1',
@@ -361,7 +360,7 @@ describe('PredictionsTab – Initialisation', () => {
   })
 
   it('selects the first round with a scheduled match on load', async () => {
-    const matches: Match[] = [
+    const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
       makeMatch({ id: 'm3', round: '3', status: 'scheduled' }),
@@ -521,5 +520,177 @@ describe('PredictionsTab – analytics', () => {
     await waitFor(() => screen.getByText(/Importar palpites de:/i))
     await userEvent.click(screen.getByRole('button', { name: 'Importar' }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_importar')
+  })
+})
+
+// ─── Aviso de rodada com jogo adiado (ADR-013) ─────────────────────────────
+
+describe('PredictionsTab – rodada com jogo adiado', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const past = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
+
+  // Reproduz a rodada 21 do Brasileirão: alguns jogos já foram, os adiados
+  // guardam o horário original (passado). A rodada cai fora do default_round,
+  // então o default vai para a 22 — e o palpite reaberto ficaria invisível.
+  function brasileiraoLikeMatches() {
+    return [
+      makeMatch({ id: 'm21a', round: '21', status: 'finished', start_time: past(48) }),
+      makeMatch({
+        id: 'm21b',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({
+        id: 'm21c',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({ id: 'm22a', round: '22', status: 'scheduled' }),
+    ]
+  }
+
+  it('abre na rodada 22 e avisa que a 21 tem jogos adiados', async () => {
+    mockFetch(brasileiraoLikeMatches())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
+    })
+    expect(screen.getByText(/2 jogos adiados/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+  })
+
+  it('"Ver rodada" pula para a rodada adiada e rastreia o clique', async () => {
+    const user = userEvent.setup({ delay: null })
+    mockFetch(brasileiraoLikeMatches())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_adiada', {
+      round: '21',
+    })
+  })
+
+  it('some o aviso quando a rodada adiada já é a aberta (os cards já mostram o badge)', async () => {
+    const user = userEvent.setup({ delay: null })
+    mockFetch(brasileiraoLikeMatches())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+
+    expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+
+  it('sem jogo adiado, nenhum aviso aparece', async () => {
+    mockFetch([
+      makeMatch({ id: 'm1', round: '21', status: 'finished', start_time: past(48) }),
+      makeMatch({ id: 'm2', round: '22', status: 'scheduled' }),
+    ])
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
+    })
+    expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+})
+
+// ─── Múltiplas rodadas adiadas: só a mais próxima antes da aberta ───────────
+
+describe('PredictionsTab – múltiplas rodadas com jogo adiado', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const past = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
+
+  // Cenário real do Brasileirão 2026: a rodada 4 tem um Flamengo×Mirassol parado
+  // desde fevereiro e a 21 tem 2 adiados de julho. O default é a 22. Avisar da
+  // rodada 4 primeiro fazia o usuário pular 17 rodadas pra trás e só então
+  // descobrir que a 21 também tinha.
+  function twoPostponedRounds() {
+    return [
+      makeMatch({
+        id: 'm4a',
+        round: '4',
+        status: 'scheduled',
+        start_time: past(4000),
+        postponed: 1,
+      }),
+      makeMatch({ id: 'm4b', round: '4', status: 'finished', start_time: past(3999) }),
+      makeMatch({ id: 'm21a', round: '21', status: 'finished', start_time: past(48) }),
+      makeMatch({
+        id: 'm21b',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({
+        id: 'm21c',
+        round: '21',
+        status: 'scheduled',
+        start_time: past(72),
+        postponed: 1,
+      }),
+      makeMatch({ id: 'm22a', round: '22', status: 'scheduled' }),
+    ]
+  }
+
+  it('avisa da rodada 21 (a mais próxima), não da 4', async () => {
+    mockFetch(twoPostponedRounds())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
+    })
+    expect(screen.getByText(/2 jogos adiados/i)).toBeInTheDocument()
+    expect(screen.queryByText(/1 jogo adiado/i)).not.toBeInTheDocument()
+  })
+
+  it('não encadeia: ao pular para a 21, nenhum aviso aponta para a 4', async () => {
+    const user = userEvent.setup({ delay: null })
+    mockFetch(twoPostponedRounds())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+
+  it('o seletor continua marcando TODAS as rodadas adiadas', async () => {
+    mockFetch(twoPostponedRounds())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'Rodada 4 · 1 adiado' })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('option', { name: 'Rodada 21 · 2 adiados' })).toBeInTheDocument()
   })
 })

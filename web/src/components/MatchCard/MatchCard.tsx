@@ -7,6 +7,12 @@ export interface Match {
   id: string
   start_time: string
   status: 'scheduled' | 'finished'
+  /**
+   * Jogo adiado pelo provider. O `start_time` continua sendo o horário original
+   * (que já passou), então o card não pode se guiar só pela data — sem essa flag
+   * ele mostraria "bloqueado / aguardando resultado" para sempre.
+   */
+  postponed?: number | boolean
   home_score: number | null
   away_score: number | null
   phase: string
@@ -87,6 +93,7 @@ export default function MatchCard(props: MatchCardProps) {
 
   const {
     locked,
+    isPostponed,
     isFinished,
     hasPrediction,
     saving,
@@ -159,9 +166,14 @@ export default function MatchCard(props: MatchCardProps) {
     <div className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}>
       {/* Status badge */}
       <div className={styles.meta}>
-        <span className={styles.date}>{formatDate(match.start_time)}</span>
+        <span className={styles.date}>
+          {isPostponed ? 'data a definir' : formatDate(match.start_time)}
+        </span>
         {isFinished && <span className={styles.badgeFinished}>encerrado</span>}
-        {locked && !isFinished && <span className={styles.badgeLocked}>bloqueado</span>}
+        {isPostponed && <span className={styles.badgePostponed}>adiado</span>}
+        {locked && !isFinished && !isPostponed && (
+          <span className={styles.badgeLocked}>bloqueado</span>
+        )}
       </div>
 
       {/* Teams + scores */}

@@ -41,8 +41,13 @@ describe('competitions router', () => {
       { id: '4', name: 'Comp 4', penalty_phases: 'invalid json' },
     ]
 
+    const token = await import('../auth/jwt').then(m => m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600))
     const response = await app.fetch(
-      new Request('http://localhost/competitions'),
+      new Request('http://localhost/competitions', {
+        headers: {
+          Cookie: `session=${token}`,
+        },
+      }),
       fakeEnv(createDbMock(competitions)),
     )
 
@@ -69,8 +74,13 @@ describe('competitions router', () => {
     const app = new Hono<AppContext>()
     app.route('/competitions', competitionsRouter)
 
+    const token = await import('../auth/jwt').then(m => m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600))
     const response = await app.fetch(
-      new Request('http://localhost/competitions'),
+      new Request('http://localhost/competitions', {
+        headers: {
+          Cookie: `session=${token}`,
+        },
+      }),
       fakeEnv(createDbMock([], true)),
     )
 

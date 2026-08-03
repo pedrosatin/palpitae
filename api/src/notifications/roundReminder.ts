@@ -1,4 +1,4 @@
-import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
+import type { AnalyticsEngineDataset, D1Database, D1Result } from '@cloudflare/workers-types'
 import { hashUserId, logEvent } from '../observability/events'
 import { roundLabel } from '../matches/rounds'
 import { EmailError, sendEmail } from './email'
@@ -90,12 +90,8 @@ type RoundGroup = {
  * groups them by competition+round, and attaches match info for each round.
  * Returns an empty map when no round starts today.
  */
-async function buildRecipientGroups(db: D1Database): Promise<Map<string, RoundGroup>> {
-  // Query 1: which users need to be notified?
-  //  - the round's first match is today (don't re-notify mid-round);
-  //  - the user has no prediction yet for any match of that round in that group
-  //    (NOT EXISTS).
-  const userRows = await db
+async function fetchUsersNeedingReminder(db: D1Database): Promise<D1Result<ReminderRow>> {
+  return db
     .prepare(
       `SELECT DISTINCT
          c.id    AS competition_id,
@@ -130,14 +126,43 @@ async function buildRecipientGroups(db: D1Database): Promise<Map<string, RoundGr
          )`,
     )
     .all<ReminderRow>()
+}
 
+async function fetchScheduledMatches(db: D1Database): Promise<D1Result<MatchRow>> {
+  return db
+    .prepare(
+      `SELECT
+         c.id         AS competition_id,
+         c.name       AS competition_name,
+         m.round      AS round,
+         ht.name      AS home_team,
+         awt.name     AS away_team,
+         ht.logo_url  AS home_logo,
+         awt.logo_url AS away_logo,
+         m.start_time
+       FROM matches m
+       JOIN competitions c ON c.id = m.competition_id
+       JOIN teams ht       ON ht.id = m.home_team_id
+       JOIN teams awt      ON awt.id = m.away_team_id
+       WHERE m.status = 'scheduled'
+         AND (
+           SELECT MIN(date(m2.start_time, '-3 hours'))
+           FROM matches m2
+           WHERE m2.competition_id = m.competition_id
+             AND m2.round = m.round
+         ) = date('now', '-3 hours')
+       ORDER BY m.start_time ASC`,
+    )
+    .all<MatchRow>()
+}
+
+function groupUserReminders(results: ReminderRow[]): Map<string, RoundGroup> {
   const grouped = new Map<string, RoundGroup>()
-  if (userRows.results.length === 0) return grouped
 
   // Group by competition + round. Keyed by user_id (not email): two accounts that
   // happen to share an email are distinct users with distinct unsubscribe tokens.
   // Map lookup is O(1) vs the O(n) array scan it replaces.
-  for (const row of userRows.results) {
+  for (const row of results) {
     const key = `${row.competition_id}::${row.round}`
     const entry = grouped.get(key)
     if (entry) {
@@ -170,37 +195,12 @@ async function buildRecipientGroups(db: D1Database): Promise<Map<string, RoundGr
       })
     }
   }
+  return grouped
+}
 
-  // Query 2: all scheduled matches for those rounds (may span more than one day),
-  // joined with team names, ordered by kick-off time.
-  const matchRows = await db
-    .prepare(
-      `SELECT
-         c.id         AS competition_id,
-         c.name       AS competition_name,
-         m.round      AS round,
-         ht.name      AS home_team,
-         awt.name     AS away_team,
-         ht.logo_url  AS home_logo,
-         awt.logo_url AS away_logo,
-         m.start_time
-       FROM matches m
-       JOIN competitions c ON c.id = m.competition_id
-       JOIN teams ht       ON ht.id = m.home_team_id
-       JOIN teams awt      ON awt.id = m.away_team_id
-       WHERE m.status = 'scheduled'
-         AND (
-           SELECT MIN(date(m2.start_time, '-3 hours'))
-           FROM matches m2
-           WHERE m2.competition_id = m.competition_id
-             AND m2.round = m.round
-         ) = date('now', '-3 hours')
-       ORDER BY m.start_time ASC`,
-    )
-    .all<MatchRow>()
-
+function attachMatchesToGroups(grouped: Map<string, RoundGroup>, matchResults: MatchRow[]) {
   // Attach match info to the corresponding round group.
-  for (const row of matchRows.results) {
+  for (const row of matchResults) {
     const key = `${row.competition_id}::${row.round}`
     const entry = grouped.get(key)
     if (entry) {
@@ -213,6 +213,28 @@ async function buildRecipientGroups(db: D1Database): Promise<Map<string, RoundGr
       })
     }
   }
+}
+
+/**
+ * Fetches all (competition, round, user, group) rows that need reminders today,
+ * groups them by competition+round, and attaches match info for each round.
+ * Returns an empty map when no round starts today.
+ */
+async function buildRecipientGroups(db: D1Database): Promise<Map<string, RoundGroup>> {
+  // Query 1: which users need to be notified?
+  //  - the round's first match is today (don't re-notify mid-round);
+  //  - the user has no prediction yet for any match of that round in that group
+  //    (NOT EXISTS).
+  const userRows = await fetchUsersNeedingReminder(db)
+
+  const grouped = groupUserReminders(userRows.results)
+  if (grouped.size === 0) return grouped
+
+  // Query 2: all scheduled matches for those rounds (may span more than one day),
+  // joined with team names, ordered by kick-off time.
+  const matchRows = await fetchScheduledMatches(db)
+
+  attachMatchesToGroups(grouped, matchRows.results)
 
   return grouped
 }
@@ -241,16 +263,39 @@ async function dispatchBatch(
     // A single send failure is isolated so the rest of the batch still goes out.
     // The unsubscribe link is per-user (signed token), so the body is built per
     // recipient — match list rebuild is cheap at this volume.
-    for (const { id, email, groups: recipientGroups } of recipientMap.values()) {
-      // Hoist the hash: reused in both the success logEvent and the error console.error.
-      // .catch guards against SubtleCrypto being unavailable — if it throws inside
-      // the catch block the entire batch loop aborts and the summary metric never fires.
-      const hashedId = await hashUserId(id).catch(() => '<hash-error>')
+    const recipients = Array.from(recipientMap.values())
+
+    // Prepare cryptographic operations (hashes and tokens) concurrently to avoid
+    // blocking the event loop sequentially for every recipient before they are sent.
+    // The try/catch for signing token needs to be preserved per recipient so one failure
+    // doesn't abort the entire batch.
+    const preparedRecipients = await Promise.all(
+      recipients.map(async (recipient) => {
+        const hashedId = await hashUserId(recipient.id).catch(() => '<hash-error>')
+        let unsubToken: string | undefined = undefined
+        let tokenError: unknown = null
+        if (unsub && apiBaseUrl) {
+          try {
+            unsubToken = await signUnsubToken(recipient.id, unsub.secret)
+          } catch (err) {
+            tokenError = err
+          }
+        }
+        return { recipient, hashedId, unsubToken, tokenError }
+      }),
+    )
+
+    for (const {
+      recipient: { email, groups: recipientGroups },
+      hashedId,
+      unsubToken,
+      tokenError,
+    } of preparedRecipients) {
       try {
-        const unsubUrl =
-          unsub && apiBaseUrl
-            ? `${apiBaseUrl}/notifications/unsubscribe?token=${await signUnsubToken(id, unsub.secret)}`
-            : undefined
+        if (tokenError) throw tokenError
+        const unsubUrl = unsubToken
+          ? `${apiBaseUrl}/notifications/unsubscribe?token=${unsubToken}`
+          : undefined
 
         const options: EmailTemplateOptions = {
           competitionName,

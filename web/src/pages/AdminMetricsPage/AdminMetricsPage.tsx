@@ -292,9 +292,7 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     return { top1: shareOf(1), top5: shareOf(5) }
   }, [overview, kpis])
 
-  // Integridade do cold path: últimos 14 dias já exportáveis (até ontem — o
-  // export roda 00:05 UTC do dia seguinte). "faltando" = export falhou; dias
-  // anteriores ao primeiro arquivo mostram "—" (o export ainda não existia).
+  // Verifica a integridade do export nos últimos 14 dias.
   const archiveDays = useMemo(() => {
     if (!archive || archive.files.length === 0) return []
     const byDay = new Map(
