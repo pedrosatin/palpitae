@@ -135,9 +135,7 @@ describe('PredictionsModal', () => {
     const prevBtn = screen.getByRole('button', { name: 'Rodada anterior' })
     await user.click(prevBtn)
 
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_leaderboard_rodada_anterior', {
-      round: 'r1',
-    })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_leaderboard_rodada_anterior', { round: 'r1' })
 
     // Select round directly
     const select = screen.getByRole('combobox')

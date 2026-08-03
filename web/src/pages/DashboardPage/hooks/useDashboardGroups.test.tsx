@@ -44,7 +44,7 @@ describe('useDashboardGroups', () => {
       mockResponse({
         groups: mockGroups,
         matched_invite_group_id: null,
-      }),
+      })
     )
 
     const { result } = renderHook(() => useDashboardGroups({}), {
@@ -61,7 +61,10 @@ describe('useDashboardGroups', () => {
     expect(result.current.groups).toEqual(mockGroups)
     expect(result.current.error).toBeNull()
     expect(result.current.joinOpen).toBe(false)
-    expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups'), undefined)
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/groups'),
+      undefined
+    )
   })
 
   it('handles API errors correctly', async () => {
@@ -84,14 +87,14 @@ describe('useDashboardGroups', () => {
       mockResponse({
         groups: mockGroups,
         matched_invite_group_id: null,
-      }),
+      })
     )
 
     const { result } = renderHook(
       () => useDashboardGroups({ normalizedPendingInvite: 'some-code' }),
       {
         wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
-      },
+      }
     )
 
     await waitFor(() => {
@@ -101,7 +104,7 @@ describe('useDashboardGroups', () => {
     expect(result.current.joinOpen).toBe(true)
     expect(mockApiFetch).toHaveBeenCalledWith(
       expect.stringContaining('invite_code=some-code'),
-      undefined,
+      undefined
     )
   })
 
@@ -110,14 +113,14 @@ describe('useDashboardGroups', () => {
       mockResponse({
         groups: mockGroups,
         matched_invite_group_id: 'g1',
-      }),
+      })
     )
 
     const { result } = renderHook(
       () => useDashboardGroups({ normalizedPendingInvite: 'some-code' }),
       {
         wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
-      },
+      }
     )
 
     await waitFor(() => {
@@ -132,7 +135,7 @@ describe('useDashboardGroups', () => {
       mockResponse({
         groups: mockGroups,
         matched_invite_group_id: null,
-      }),
+      })
     )
 
     const { result } = renderHook(() => useDashboardGroups({}), {
@@ -149,7 +152,7 @@ describe('useDashboardGroups', () => {
 
     expect(mockApiFetch).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ cache: 'no-store' }),
+      expect.objectContaining({ cache: 'no-store' })
     )
   })
 })
