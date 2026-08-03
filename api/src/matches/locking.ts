@@ -29,5 +29,5 @@ export function isMatchLocked(
   match: { start_time: string; postponed?: number | null },
   now: string,
 ): boolean {
-  return match.postponed !== 1 && now >= match.start_time
+  return match.postponed !== 1 && new Date(now).getTime() >= new Date(match.start_time).getTime()
 }
