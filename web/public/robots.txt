@@ -1,5 +1,6 @@
 User-agent: *
 Allow: /$
+Allow: /guias/
 Allow: /og-image.png
 Allow: /screenshots/
 Disallow: /grupos/
