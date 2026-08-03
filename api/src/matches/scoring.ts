@@ -49,14 +49,16 @@ export function calculatePenaltyBonus(
   return predictedPenaltyWinner === penaltyWinner ? pointsPenalty : 0
 }
 
-async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<void> {
+async function recalculateLeaderboards(groupIds: string[], db: D1Database): Promise<void> {
+  if (groupIds.length === 0) return
+
   // exact_hits is inferred from the awarded points: a prediction is an exact hit
   // when it scored the group's points_exact. We only count it when the exact bonus
   // is distinguishable from a plain winner hit (points_exact > points_winner) — when
   // they're equal there's no exact bonus to detect, so exact_hits stays 0.
   const rows = await db
     .prepare(
-      `SELECT p.user_id,
+      `SELECT p.group_id, p.user_id,
               SUM(p.points_awarded + p.penalty_points) AS total_points,
               SUM(
                 CASE WHEN g.points_exact > g.points_winner
@@ -65,11 +67,11 @@ async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<
               ) AS exact_hits
        FROM predictions p
        JOIN groups g ON g.id = p.group_id
-       WHERE p.group_id = ?
-       GROUP BY p.user_id`,
+       WHERE p.group_id IN (SELECT value FROM json_each(?))
+       GROUP BY p.group_id, p.user_id`,
     )
-    .bind(groupId)
-    .all<{ user_id: string; total_points: number; exact_hits: number }>()
+    .bind(JSON.stringify(groupIds))
+    .all<{ group_id: string; user_id: string; total_points: number; exact_hits: number }>()
 
   if (rows.results.length === 0) return
 
@@ -84,10 +86,13 @@ async function recalculateLeaderboard(groupId: string, db: D1Database): Promise<
            exact_hits   = excluded.exact_hits,
            last_updated = excluded.last_updated`,
       )
-      .bind(groupId, row.user_id, row.total_points, row.exact_hits, now),
+      .bind(row.group_id, row.user_id, row.total_points, row.exact_hits, now),
   )
 
-  await db.batch(statements)
+  for (let i = 0; i < statements.length; i += 100) {
+    const chunk = statements.slice(i, i + 100)
+    await db.batch(chunk)
+  }
 }
 
 /**
@@ -221,7 +226,5 @@ export async function scoreUnprocessedMatches(
   }
 
   // 7. Deduplicated recalculate leaderboard
-  for (const groupId of affectedGroups) {
-    await recalculateLeaderboard(groupId, db)
-  }
+  await recalculateLeaderboards(Array.from(affectedGroups), db)
 }
