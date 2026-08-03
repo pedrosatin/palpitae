@@ -19,9 +19,7 @@ describe('getGroupMembership', () => {
     const result = await getGroupMembership(db, 'group-1', 'user-1')
 
     expect(result).toEqual({ role: 'admin' })
-    expect(prepare).toHaveBeenCalledWith(
-      'SELECT role FROM group_members WHERE group_id = ? AND user_id = ?',
-    )
+    expect(prepare).toHaveBeenCalledWith('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?')
     expect(bind).toHaveBeenCalledWith('group-1', 'user-1')
     expect(first).toHaveBeenCalled()
   })
@@ -32,9 +30,7 @@ describe('getGroupMembership', () => {
     const result = await getGroupMembership(db, 'group-2', 'user-2')
 
     expect(result).toBeNull()
-    expect(prepare).toHaveBeenCalledWith(
-      'SELECT role FROM group_members WHERE group_id = ? AND user_id = ?',
-    )
+    expect(prepare).toHaveBeenCalledWith('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?')
     expect(bind).toHaveBeenCalledWith('group-2', 'user-2')
     expect(first).toHaveBeenCalled()
   })

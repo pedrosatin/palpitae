@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildAuthUrl,
-  generateNonce,
-  generatePkce,
-  generateState,
-  upsertUser,
-  verifyGoogleIdToken,
-} from './google'
+import { buildAuthUrl, generateNonce, generatePkce, generateState, upsertUser, verifyGoogleIdToken } from './google'
 import { beforeAll, vi, beforeEach, afterEach } from 'vitest'
 import { base64UrlEncode } from './encoding'
 
@@ -229,6 +222,7 @@ describe('buildAuthUrl', () => {
   })
 })
 
+
 describe('verifyGoogleIdToken', () => {
   const clientId = 'test-client-id'
   const expectedNonce = 'test-nonce'
@@ -238,14 +232,9 @@ describe('verifyGoogleIdToken', () => {
 
   beforeAll(async () => {
     keyPair = await crypto.subtle.generateKey(
-      {
-        name: 'RSASSA-PKCS1-v1_5',
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([1, 0, 1]),
-        hash: 'SHA-256',
-      },
+      { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
       true,
-      ['sign', 'verify'],
+      ['sign', 'verify']
     )
     jwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey)
   })
@@ -261,14 +250,14 @@ describe('verifyGoogleIdToken', () => {
   function mockFetchJwks(keys: any[] = [{ kid: 'test-kid', n: jwk.n, e: jwk.e }]) {
     vi.stubGlobal('fetch', async () => ({
       ok: true,
-      json: async () => ({ keys }),
+      json: async () => ({ keys })
     }))
   }
 
   function mockFetchError() {
     vi.stubGlobal('fetch', async () => ({
       ok: false,
-      text: async () => 'Internal Server Error',
+      text: async () => 'Internal Server Error'
     }))
   }
 
@@ -284,17 +273,13 @@ describe('verifyGoogleIdToken', () => {
       iss: 'https://accounts.google.com',
       exp: Math.floor(Date.now() / 1000) + 3600,
       nonce: expectedNonce,
-      ...claimsOverrides,
+      ...claimsOverrides
     }
 
     const rawHeader = base64UrlEncode(new TextEncoder().encode(JSON.stringify(header)).buffer)
     const rawPayload = base64UrlEncode(new TextEncoder().encode(JSON.stringify(claims)).buffer)
     const signingInput = new TextEncoder().encode(`${rawHeader}.${rawPayload}`)
-    const signature = await crypto.subtle.sign(
-      'RSASSA-PKCS1-v1_5',
-      keyPair.privateKey,
-      signingInput,
-    )
+    const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', keyPair.privateKey, signingInput)
     const rawSig = base64UrlEncode(signature)
 
     return `${rawHeader}.${rawPayload}.${rawSig}`
@@ -312,60 +297,44 @@ describe('verifyGoogleIdToken', () => {
   })
 
   it('rejects invalid format', async () => {
-    await expect(verifyGoogleIdToken('invalid.token', clientId, expectedNonce)).rejects.toThrow(
-      'Invalid ID token format',
-    )
+    await expect(verifyGoogleIdToken('invalid.token', clientId, expectedNonce)).rejects.toThrow('Invalid ID token format')
   })
 
   it('rejects expired token', async () => {
     const token = await generateToken({ exp: Math.floor(Date.now() / 1000) - 3600 })
-    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow(
-      'ID token expired',
-    )
+    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow('ID token expired')
   })
 
   it('rejects audience mismatch', async () => {
     const token = await generateToken({ aud: 'other-client' })
-    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow(
-      'ID token audience mismatch',
-    )
+    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow('ID token audience mismatch')
   })
 
   it('rejects issuer mismatch', async () => {
     const token = await generateToken({ iss: 'https://invalid-issuer.com' })
-    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow(
-      'ID token issuer mismatch',
-    )
+    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow('ID token issuer mismatch')
   })
 
   it('rejects nonce mismatch', async () => {
     const token = await generateToken({ nonce: 'other-nonce' })
-    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow(
-      'Nonce mismatch',
-    )
+    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow('Nonce mismatch')
   })
 
   it('rejects unverified email', async () => {
     const token = await generateToken({ email_verified: false })
-    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow(
-      'Google email not verified',
-    )
+    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow('Google email not verified')
   })
 
   it('rejects on JWKS fetch failure', async () => {
     mockFetchError()
     const token = await generateToken()
-    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow(
-      'Failed to fetch Google JWKS',
-    )
+    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow('Failed to fetch Google JWKS')
   })
 
   it('rejects when signing key not in JWKS', async () => {
     mockFetchJwks([{ kid: 'other-kid', n: jwk.n, e: jwk.e }])
     const token = await generateToken()
-    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow(
-      'Signing key not found in Google JWKS',
-    )
+    await expect(verifyGoogleIdToken(token, clientId, expectedNonce)).rejects.toThrow('Signing key not found in Google JWKS')
   })
 
   it('rejects invalid signature', async () => {
@@ -374,8 +343,6 @@ describe('verifyGoogleIdToken', () => {
     const parts = token.split('.')
     // Muddle the signature
     const invalidToken = `${parts[0]}.${parts[1]}.badsignature`
-    await expect(verifyGoogleIdToken(invalidToken, clientId, expectedNonce)).rejects.toThrow(
-      'ID token signature invalid',
-    )
+    await expect(verifyGoogleIdToken(invalidToken, clientId, expectedNonce)).rejects.toThrow('ID token signature invalid')
   })
 })
