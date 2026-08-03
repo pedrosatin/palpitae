@@ -147,9 +147,7 @@ describe('drawShareCard', () => {
 
     // We check that the hero champion trophy is not rendered since isChampion=false
     // Note: The big trophy is at y=288, while the standings trophy is at y=968
-    const bigTrophyCall = (ctx.fillText as any).mock.calls.find(
-      (call: any[]) => call[0] === '🏆' && call[2] === 288,
-    )
+    const bigTrophyCall = (ctx.fillText as any).mock.calls.find((call: any[]) => call[0] === '🏆' && call[2] === 288)
     expect(bigTrophyCall).toBeFalsy()
 
     expect(ctx.stroke).toHaveBeenCalled()
@@ -164,9 +162,7 @@ describe('drawShareCard', () => {
 
     // Validate big trophy placement logic for champion
     // The big trophy should be rendered at specific coordinates (W / 2, 288)
-    const trophyCall = (ctx.fillText as any).mock.calls.find(
-      (call: any[]) => call[0] === '🏆' && call[1] === 1080 / 2 && call[2] === 288,
-    )
+    const trophyCall = (ctx.fillText as any).mock.calls.find((call: any[]) => call[0] === '🏆' && call[1] === 1080 / 2 && call[2] === 288)
     expect(trophyCall).toBeTruthy()
   })
 
@@ -178,8 +174,8 @@ describe('drawShareCard', () => {
       ...baseData,
       competition: 'SUPER LONG COMPETITION NAME',
       standings: [
-        { position: 1, display: 'VERY LONG NAME THAT EXCEEDS WIDTH', points: 100, isYou: true },
-      ],
+        { position: 1, display: 'VERY LONG NAME THAT EXCEEDS WIDTH', points: 100, isYou: true }
+      ]
     }
 
     drawShareCard(ctx, longData)

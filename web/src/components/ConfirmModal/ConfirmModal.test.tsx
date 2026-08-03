@@ -40,7 +40,7 @@ describe('ConfirmModal', () => {
         title="Custom Title"
         confirmLabel="Yes, do it"
         cancelLabel="No, wait"
-      />,
+      />
     )
 
     expect(screen.getByText('Custom Title')).toBeInTheDocument()
