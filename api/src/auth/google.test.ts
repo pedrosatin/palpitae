@@ -4,39 +4,83 @@ import { beforeAll, vi, beforeEach, afterEach } from 'vitest'
 import { base64UrlEncode } from './encoding'
 
 describe('generateState', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('returns a URL-safe base64 string', () => {
     expect(generateState()).toMatch(/^[A-Za-z0-9_-]+$/)
   })
 
-  it('is at least 20 characters long', () => {
-    expect(generateState().length).toBeGreaterThanOrEqual(20)
+  it('is exactly 43 characters long (32 bytes base64url encoded)', () => {
+    expect(generateState()).toHaveLength(43)
   })
 
   it('generates unique values on each call', () => {
     expect(generateState()).not.toBe(generateState())
   })
+
+  it('calls crypto.getRandomValues with a 32-byte Uint8Array', () => {
+    const spy = vi.spyOn(crypto, 'getRandomValues')
+    generateState()
+    expect(spy).toHaveBeenCalledTimes(1)
+    const arrayArg = spy.mock.calls[0][0] as Uint8Array
+    expect(arrayArg).toBeInstanceOf(Uint8Array)
+    expect(arrayArg.length).toBe(32)
+  })
 })
 
 describe('generateNonce', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('returns a URL-safe base64 string', () => {
     expect(generateNonce()).toMatch(/^[A-Za-z0-9_-]+$/)
   })
 
-  it('is at least 20 characters long', () => {
-    expect(generateNonce().length).toBeGreaterThanOrEqual(20)
+  it('is exactly 22 characters long (16 bytes base64url encoded)', () => {
+    expect(generateNonce()).toHaveLength(22)
   })
 
   it('generates unique values on each call', () => {
     expect(generateNonce()).not.toBe(generateNonce())
   })
+
+  it('calls crypto.getRandomValues with a 16-byte Uint8Array', () => {
+    const spy = vi.spyOn(crypto, 'getRandomValues')
+    generateNonce()
+    expect(spy).toHaveBeenCalledTimes(1)
+    const arrayArg = spy.mock.calls[0][0] as Uint8Array
+    expect(arrayArg).toBeInstanceOf(Uint8Array)
+    expect(arrayArg.length).toBe(16)
+  })
 })
 
 describe('generatePkce', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('returns a verifier and challenge that are different', async () => {
     const { verifier, challenge } = await generatePkce()
     expect(verifier).toMatch(/^[A-Za-z0-9_-]+$/)
     expect(challenge).toMatch(/^[A-Za-z0-9_-]+$/)
     expect(verifier).not.toBe(challenge)
+  })
+
+  it('verifier is exactly 86 characters long (64 bytes base64url encoded)', async () => {
+    const { verifier } = await generatePkce()
+    expect(verifier).toHaveLength(86)
+  })
+
+  it('calls crypto.getRandomValues with a 64-byte Uint8Array for verifier', async () => {
+    const spy = vi.spyOn(crypto, 'getRandomValues')
+    await generatePkce()
+    expect(spy).toHaveBeenCalledTimes(1)
+    const arrayArg = spy.mock.calls[0][0] as Uint8Array
+    expect(arrayArg).toBeInstanceOf(Uint8Array)
+    expect(arrayArg.length).toBe(64)
   })
 
   it('challenge is the SHA-256 hash of the verifier (base64url)', async () => {
