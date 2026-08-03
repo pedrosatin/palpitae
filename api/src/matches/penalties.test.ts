@@ -30,9 +30,7 @@ describe('parsePenaltyPhases', () => {
   })
 
   it('should handle mixed elements in array', () => {
-    // Note: The current implementation typecasts the array to string[],
-    // so it doesn't filter out non-strings. It just returns the parsed array.
-    expect(parsePenaltyPhases('["LAST_16", 123, null]')).toEqual(['LAST_16', 123, null])
+    expect(parsePenaltyPhases('["LAST_16", 123, null]')).toEqual(['LAST_16'])
   })
 })
 
