@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { isMatchLocked, lockedSql } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { roundLabel } from '../matches/rounds'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
@@ -77,7 +78,7 @@ router.get('/', requireAuth, async (c) => {
       p.penalty_points,
       p.created_at,
       p.updated_at,
-      CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+      CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
     FROM predictions p
     JOIN matches m ON m.id = p.match_id
     WHERE p.user_id = ? AND p.group_id = ?
@@ -159,8 +160,9 @@ router.get('/user', requireAuth, async (c) => {
   const now = new Date().toISOString()
 
   // Fetch all matches for the group's competition, left-joining predictions.
-  // The join condition restricts predictions to started matches (anti-copy: future
-  // picks are not revealed even if the target user has already submitted them).
+  // The join condition restricts predictions to LOCKED matches (anti-copy: picks
+  // that can still be edited are not revealed even if the target user already
+  // submitted them). Jogo adiado não conta como começado — ver locking.ts.
   const queryStartedAt = Date.now()
   const batchResults = await db.batch([
     db
@@ -192,7 +194,7 @@ router.get('/user', requireAuth, async (c) => {
          JOIN teams ht ON ht.id = m.home_team_id
          JOIN teams at ON at.id = m.away_team_id
          LEFT JOIN predictions p
-           ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND m.start_time <= ?
+           ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND ${lockedSql()}
          ORDER BY CAST(m.round AS INTEGER) ASC, m.group_name ASC NULLS LAST, m.start_time ASC`,
       )
       .bind(groupId, groupId, targetUserId, now),
@@ -319,9 +321,12 @@ router.get('/group', requireAuth, async (c) => {
   // All members' predictions — revealed according to the anti-copy rule:
   //   • For future/unlocked matches: only shown if the requester has already
   //     submitted their own prediction for that match.
-  //   • For past/locked matches (start_time <= now): always revealed, even if
-  //     the requester never predicted — they can no longer predict, so hiding
-  //     others' picks would be pointless.
+  //   • For past/locked matches (start_time <= now e não adiado): always revealed,
+  //     even if the requester never predicted — they can no longer predict, so
+  //     hiding others' picks would be pointless.
+  // A condição de revelação é a MESMA do campo `locked` (locking.ts) de propósito:
+  // se um jogo adiado revelasse os palpites alheios enquanto ainda aceita edição,
+  // daria pra copiar.
   const predictionsStartedAt = Date.now()
   const predictionsResult = isPublic
     ? // Public group: every member's picks are visible in real time, no anti-copy filter.
@@ -336,7 +341,7 @@ router.get('/group', requireAuth, async (c) => {
              pr.predicted_penalty_winner,
              pr.points_awarded,
              pr.penalty_points,
-             CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
@@ -359,14 +364,14 @@ router.get('/group', requireAuth, async (c) => {
              pr.predicted_penalty_winner,
              pr.points_awarded,
              pr.penalty_points,
-             CASE WHEN m.start_time <= ? THEN 1 ELSE 0 END AS locked
+             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.group_id = ?
              AND (
-               m.start_time <= ?
+               ${lockedSql()}
                OR pr.match_id IN (
                  SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
                )
@@ -405,6 +410,7 @@ router.get('/group', requireAuth, async (c) => {
  *   - Predictions can be submitted or edited freely BEFORE match.start_time
  *   - Once match.start_time is reached, predictions are LOCKED — no edits allowed
  *   - If a match is rescheduled, the lock/unlock follows the new start_time automatically
+ *   - Jogo adiado (`postponed = 1`) NÃO trava, mesmo com start_time no passado
  *
  * Body: { group_id, match_id, predicted_home_score, predicted_away_score }
  *
@@ -472,7 +478,7 @@ router.put('/', requireAuth, async (c) => {
   // (phase + competition.penalty_phases) so we can validate the shootout pick.
   const match = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.round, m.phase, c.penalty_phases
+      `SELECT m.id, m.start_time, m.postponed, m.round, m.phase, c.penalty_phases
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
@@ -482,6 +488,7 @@ router.put('/', requireAuth, async (c) => {
     .first<{
       id: string
       start_time: string
+      postponed: number
       round: string
       phase: string | null
       penalty_phases: string
@@ -493,7 +500,7 @@ router.put('/', requireAuth, async (c) => {
 
   // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
   const now = new Date().toISOString()
-  if (now >= match.start_time) {
+  if (isMatchLocked(match, now)) {
     return c.json({ error: 'Palpite bloqueado — o jogo já começou' }, 422)
   }
 
@@ -568,33 +575,28 @@ router.put('/', requireAuth, async (c) => {
  *   400 — missing/invalid fields
  *   403 — user not in group
  */
-async function handleBulkPut(c: Context<AppContext>) {
-  const userId = c.get('userId')
+type BulkPrediction = {
+  match_id?: string
+  predicted_home_score?: number
+  predicted_away_score?: number
+  predicted_penalty_winner?: 'home' | 'away' | null
+}
 
-  type BulkBody = {
-    group_id?: string
-    predictions?: Array<{
-      match_id?: string
-      predicted_home_score?: number
-      predicted_away_score?: number
-      predicted_penalty_winner?: 'home' | 'away' | null
-    }>
-  }
-  const parsed = await parseJsonBody<BulkBody>(c)
-  if (!parsed.ok) return parsed.response
-  const body = parsed.body
+type BulkBody = {
+  group_id?: string
+  predictions?: Array<BulkPrediction>
+}
 
-  const { group_id, predictions } = body
-
-  if (!group_id) {
-    return c.json({ error: 'group_id é obrigatório' }, 400)
+function validateBulkPutPayload(body: BulkBody): string | null {
+  if (!body.group_id) {
+    return 'group_id é obrigatório'
   }
 
-  if (!Array.isArray(predictions) || predictions.length === 0) {
-    return c.json({ error: 'predictions deve ser uma lista não-vazia' }, 400)
+  if (!Array.isArray(body.predictions) || body.predictions.length === 0) {
+    return 'predictions deve ser uma lista não-vazia'
   }
 
-  for (const p of predictions) {
+  for (const p of body.predictions) {
     if (
       !p ||
       typeof p.match_id !== 'string' ||
@@ -603,60 +605,30 @@ async function handleBulkPut(c: Context<AppContext>) {
       !Number.isInteger(p.predicted_away_score) ||
       (p.predicted_away_score as number) < 0
     ) {
-      return c.json(
-        {
-          error: 'Cada palpite precisa de match_id e placares inteiros não-negativos',
-        },
-        400,
-      )
+      return 'Cada palpite precisa de match_id e placares inteiros não-negativos'
     }
   }
 
-  const db = c.env.DB
+  return null
+}
 
-  // Verify user is a member of the group
-  const { membership } = await getGroupMembershipTimed(db, group_id, userId)
-
-  if (!membership) {
-    return c.json({ error: 'Acesso negado' }, 403)
-  }
-
-  // Dedupe by match_id (last value wins) so the IN-clause and batch stay 1:1
-  const byMatch = new Map<
+function buildBulkPutStatements(
+  db: D1Database,
+  userId: string,
+  groupId: string,
+  byMatch: Map<string, { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }>,
+  matchInfo: Map<
     string,
-    { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }
-  >()
-  for (const p of predictions) {
-    byMatch.set(p.match_id as string, {
-      home: p.predicted_home_score as number,
-      away: p.predicted_away_score as number,
-      penaltyWinner: p.predicted_penalty_winner ?? null,
-    })
-  }
-  const matchIds = Array.from(byMatch.keys())
-
-  // Fetch all referenced matches that actually belong to the group's competition.
-  // phase + competition.penalty_phases drive the per-match penalty gate.
-  const placeholders = matchIds.map(() => '?').join(', ')
-  const matchRows = await db
-    .prepare(
-      `SELECT m.id, m.start_time, m.phase, c.penalty_phases
-       FROM matches m
-       JOIN groups g ON g.competition_id = m.competition_id
-       JOIN competitions c ON c.id = m.competition_id
-       WHERE g.id = ? AND m.id IN (${placeholders})`,
-    )
-    .bind(group_id, ...matchIds)
-    .all<{
+    {
       id: string
       start_time: string
+      postponed: number
       phase: string | null
       penalty_phases: string
-    }>()
-
-  const matchInfo = new Map(matchRows.results.map((m) => [m.id, m]))
-  const now = new Date().toISOString()
-
+    }
+  >,
+  now: string,
+) {
   const saved: string[] = []
   const locked: string[] = []
   const notFound: string[] = []
@@ -673,25 +645,27 @@ async function handleBulkPut(c: Context<AppContext>) {
        updated_at               = excluded.updated_at`,
   )
 
-  for (const matchId of matchIds) {
+  for (const [matchId, matchData] of byMatch.entries()) {
     const info = matchInfo.get(matchId)
     if (!info) {
       notFound.push(matchId)
       continue
     }
+
     // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
-    if (now >= info.start_time) {
+    if (isMatchLocked(info, now)) {
       locked.push(matchId)
       continue
     }
 
-    const { home, away, penaltyWinner: rawPenaltyWinner } = byMatch.get(matchId)!
+    const { home, away, penaltyWinner: rawPenaltyWinner } = matchData
 
     // Same penalty validation as PUT /: required for a draw in an eligible phase,
     // nulled out otherwise.
     const isDraw = home === away
     const eligible = matchGoesToPenalties(parsePenaltyPhases(info.penalty_phases), info.phase)
     let penaltyWinner: 'home' | 'away' | null = null
+
     if (isDraw && eligible) {
       if (rawPenaltyWinner !== 'home' && rawPenaltyWinner !== 'away') {
         invalidPenalty.push(matchId)
@@ -704,7 +678,7 @@ async function handleBulkPut(c: Context<AppContext>) {
       insertStmt.bind(
         crypto.randomUUID(),
         userId,
-        group_id,
+        groupId,
         matchId,
         home,
         away,
@@ -715,6 +689,78 @@ async function handleBulkPut(c: Context<AppContext>) {
     )
     saved.push(matchId)
   }
+
+  return { saved, locked, notFound, invalidPenalty, statements }
+}
+
+async function handleBulkPut(c: Context<AppContext>) {
+  const userId = c.get('userId')
+
+  const parsed = await parseJsonBody<BulkBody>(c)
+  if (!parsed.ok) return parsed.response
+  const body = parsed.body
+
+  const validationError = validateBulkPutPayload(body)
+  if (validationError) {
+    return c.json({ error: validationError }, 400)
+  }
+
+  const { group_id, predictions } = body
+
+  const db = c.env.DB
+
+  // Verify user is a member of the group
+  const { membership } = await getGroupMembershipTimed(db, group_id as string, userId)
+
+  if (!membership) {
+    return c.json({ error: 'Acesso negado' }, 403)
+  }
+
+  // Dedupe by match_id (last value wins) so the IN-clause and batch stay 1:1
+  const byMatch = new Map<
+    string,
+    { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }
+  >()
+  for (const p of predictions!) {
+    byMatch.set(p.match_id as string, {
+      home: p.predicted_home_score as number,
+      away: p.predicted_away_score as number,
+      penaltyWinner: p.predicted_penalty_winner ?? null,
+    })
+  }
+  const matchIds = Array.from(byMatch.keys())
+
+  // Fetch all referenced matches that actually belong to the group's competition.
+  // phase + competition.penalty_phases drive the per-match penalty gate.
+  const placeholders = matchIds.map(() => '?').join(', ')
+  const matchRows = await db
+    .prepare(
+      `SELECT m.id, m.start_time, m.postponed, m.phase, c.penalty_phases
+       FROM matches m
+       JOIN groups g ON g.competition_id = m.competition_id
+       JOIN competitions c ON c.id = m.competition_id
+       WHERE g.id = ? AND m.id IN (${placeholders})`,
+    )
+    .bind(group_id, ...matchIds)
+    .all<{
+      id: string
+      start_time: string
+      postponed: number
+      phase: string | null
+      penalty_phases: string
+    }>()
+
+  const matchInfo = new Map(matchRows.results.map((m) => [m.id, m]))
+  const now = new Date().toISOString()
+
+  const { saved, locked, notFound, invalidPenalty, statements } = buildBulkPutStatements(
+    db,
+    userId,
+    group_id as string,
+    byMatch,
+    matchInfo,
+    now,
+  )
 
   // Reject the whole request when any eligible draw is missing its shootout winner
   // — same rule as the singular endpoint, so the client can't silently lose a pick.
@@ -732,7 +778,7 @@ async function handleBulkPut(c: Context<AppContext>) {
   if (statements.length > 0) {
     await db.batch(statements)
     logEvent(c.env.AE, 'prediction_saved', {
-      blobs: [group_id, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
+      blobs: [group_id!, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
       doubles: [saved.length],
     })
   }
@@ -749,7 +795,7 @@ router.put('/bulk', requireAuth, handleBulkPut)
  * of the same competition. Useful when a user belongs to multiple groups and
  * wants to reuse the same predictions.
  *
- * Only unlocked predictions (match.start_time > now) are copied. Already-locked
+ * Only unlocked predictions (jogo ainda não começou, ou adiado) are copied. Already-locked
  * matches are silently skipped and reported in `locked_skipped`. Existing
  * predictions in the target group are overwritten.
  *
@@ -763,6 +809,87 @@ router.put('/bulk', requireAuth, handleBulkPut)
  *   404 — group not found
  *   422 — groups belong to different competitions
  */
+async function verifyGroupsForImport(
+  db: D1Database,
+  userId: string,
+  sourceGroupId: string,
+  targetGroupId: string,
+) {
+  // Verify user is a member of both groups
+  const memberships = await db
+    .prepare(`SELECT group_id FROM group_members WHERE group_id IN (?, ?) AND user_id = ?`)
+    .bind(sourceGroupId, targetGroupId, userId)
+    .all<{ group_id: string }>()
+
+  const sourceMembership = memberships.results.find((m) => m.group_id === sourceGroupId)
+  const targetMembership = memberships.results.find((m) => m.group_id === targetGroupId)
+
+  if (!sourceMembership) {
+    return { error: 'Acesso negado ao grupo de origem', status: 403 }
+  }
+
+  if (!targetMembership) {
+    return { error: 'Acesso negado ao grupo de destino', status: 403 }
+  }
+
+  // Verify both groups belong to the same competition
+  const [sourceGroup, targetGroup] = await Promise.all([
+    db
+      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
+      .bind(sourceGroupId)
+      .first<{ competition_id: string }>(),
+    db
+      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
+      .bind(targetGroupId)
+      .first<{ competition_id: string }>(),
+  ])
+
+  if (!sourceGroup || !targetGroup) {
+    return { error: 'Grupo não encontrado', status: 404 }
+  }
+
+  if (sourceGroup.competition_id !== targetGroup.competition_id) {
+    return { error: 'Os grupos pertencem a campeonatos diferentes', status: 422 }
+  }
+
+  return null
+}
+
+async function fetchPredictionsToImport(
+  db: D1Database,
+  userId: string,
+  sourceGroupId: string,
+  now: string,
+) {
+  // Fetch user's predictions from source group for unlocked matches only
+  const sourcePredictions = await db
+    .prepare(
+      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
+       FROM predictions p
+       JOIN matches m ON m.id = p.match_id
+       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}`,
+    )
+    .bind(userId, sourceGroupId, now)
+    .all<{
+      match_id: string
+      predicted_home_score: number
+      predicted_away_score: number
+      predicted_penalty_winner: 'home' | 'away' | null
+    }>()
+
+  const toImport = sourcePredictions.results
+
+  // Count total source predictions to report how many were locked-skipped
+  const totalCount = await db
+    .prepare(`SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`)
+    .bind(userId, sourceGroupId)
+    .first<{ total: number }>()
+
+  const lockedSkipped = (totalCount?.total ?? 0) - toImport.length
+
+  return { toImport, lockedSkipped }
+}
+
 async function handleImportPost(c: Context<AppContext>) {
   const userId = c.get('userId')
 
@@ -783,70 +910,18 @@ async function handleImportPost(c: Context<AppContext>) {
 
   const db = c.env.DB
 
-  // Verify user is a member of both groups
-  const memberships = await db
-    .prepare(`SELECT group_id FROM group_members WHERE group_id IN (?, ?) AND user_id = ?`)
-    .bind(source_group_id, target_group_id, userId)
-    .all<{ group_id: string }>()
-
-  const sourceMembership = memberships.results.find((m) => m.group_id === source_group_id)
-  const targetMembership = memberships.results.find((m) => m.group_id === target_group_id)
-
-  if (!sourceMembership) {
-    return c.json({ error: 'Acesso negado ao grupo de origem' }, 403)
-  }
-
-  if (!targetMembership) {
-    return c.json({ error: 'Acesso negado ao grupo de destino' }, 403)
-  }
-
-  // Verify both groups belong to the same competition
-  const [sourceGroup, targetGroup] = await Promise.all([
-    db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
-      .bind(source_group_id)
-      .first<{ competition_id: string }>(),
-    db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
-      .bind(target_group_id)
-      .first<{ competition_id: string }>(),
-  ])
-
-  if (!sourceGroup || !targetGroup) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
-
-  if (sourceGroup.competition_id !== targetGroup.competition_id) {
-    return c.json({ error: 'Os grupos pertencem a campeonatos diferentes' }, 422)
+  const validationError = await verifyGroupsForImport(
+    db,
+    userId,
+    source_group_id,
+    target_group_id,
+  )
+  if (validationError) {
+    return c.json({ error: validationError.error }, validationError.status as any)
   }
 
   const now = new Date().toISOString()
-
-  // Fetch user's predictions from source group for unlocked matches only
-  const sourcePredictions = await db
-    .prepare(
-      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
-       FROM predictions p
-       JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND m.start_time > ?`,
-    )
-    .bind(userId, source_group_id, now)
-    .all<{
-      match_id: string
-      predicted_home_score: number
-      predicted_away_score: number
-      predicted_penalty_winner: 'home' | 'away' | null
-    }>()
-
-  const toImport = sourcePredictions.results
-
-  // Count total source predictions to report how many were locked-skipped
-  const totalCount = await db
-    .prepare(`SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`)
-    .bind(userId, source_group_id)
-    .first<{ total: number }>()
-
-  const lockedSkipped = (totalCount?.total ?? 0) - toImport.length
+  const { toImport, lockedSkipped } = await fetchPredictionsToImport(db, userId, source_group_id, now)
 
   if (toImport.length === 0) {
     return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })

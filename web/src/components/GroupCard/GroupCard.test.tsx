@@ -18,6 +18,7 @@ const baseGroup = {
   member_count: 5,
   user_position: 2,
   user_points: 10,
+  pending_predictions: 0,
 }
 
 describe('GroupCard', () => {
@@ -54,6 +55,16 @@ describe('GroupCard', () => {
     render(<GroupCard group={baseGroup} onClick={onClick} />)
     await userEvent.click(screen.getByRole('button', { name: /Abrir grupo/i }))
     expect(onClick).toHaveBeenCalledOnce()
+  })
+
+  it('does not show pending badge when pending_predictions is 0', () => {
+    render(<GroupCard group={baseGroup} onClick={onClick} />)
+    expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
+  })
+
+  it('does not show pending badge even when pending_predictions > 0 (disabled, #207)', () => {
+    render(<GroupCard group={{ ...baseGroup, pending_predictions: 3 }} onClick={onClick} />)
+    expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
   })
 
   describe('finished (encerrado) variant', () => {
