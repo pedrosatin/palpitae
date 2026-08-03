@@ -23,6 +23,7 @@ export interface GroupWithStats {
   member_count: number
   user_position: number
   user_points: number
+  pending_predictions: number
   podium?: PodiumEntry[] | null
 }
 
@@ -84,6 +85,8 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
       <button className={styles.cardBtn} onClick={onClick} aria-label={`Abrir grupo ${group.name}`}>
         <div className={styles.header}>
           <h3 className={styles.name}>{group.name}</h3>
+          {/* Badge de palpites pendentes desabilitada — quebrada visualmente, #207.
+              Reabilitar quando tivermos uma UI melhor. */}
           <div className={styles.badges}>
             {isOwner && <span className={styles.ownerBadge}>Admin</span>}
             <span
