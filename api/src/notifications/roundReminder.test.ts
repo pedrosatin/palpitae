@@ -516,6 +516,22 @@ describe('sendRoundReminders', () => {
 })
 
 describe('formatBRT', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('renders a UTC instant in São Paulo time (UTC-3) regardless of local timezone (UTC)', () => {
+    vi.stubEnv('TZ', 'UTC')
+    const out = formatBRT('2026-06-20T22:00:00Z')
+    expect(out).toMatch(/sáb.*20\/06.*19:00/)
+  })
+
+  it('renders a UTC instant in São Paulo time (UTC-3) regardless of local timezone (America/New_York)', () => {
+    vi.stubEnv('TZ', 'America/New_York')
+    const out = formatBRT('2026-06-20T22:00:00Z')
+    expect(out).toMatch(/sáb.*20\/06.*19:00/)
+  })
+
   it('renders a UTC instant in São Paulo time (UTC-3)', () => {
     // 22:00Z → 19:00 BRT.
     const out = formatBRT('2026-06-20T22:00:00Z')
