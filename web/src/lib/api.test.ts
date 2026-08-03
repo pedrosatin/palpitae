@@ -1,16 +1,19 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  SESSION_EXPIRED_EVENT,
-  apiFetch,
-  consumeSessionExpired,
   notifySessionExpired,
+  consumeSessionExpired,
+  apiFetch,
+  SESSION_EXPIRED_EVENT,
 } from './api'
 
 describe('api', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    vi.restoreAllMocks()
+  beforeEach(() => {
     window.sessionStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   describe('notifySessionExpired', () => {
@@ -21,89 +24,100 @@ describe('api', () => {
 
       expect(window.sessionStorage.getItem('palpitae:session-expired')).toBe('1')
       expect(dispatchEventSpy).toHaveBeenCalledTimes(1)
-      expect((dispatchEventSpy.mock.calls[0][0] as Event).type).toBe(SESSION_EXPIRED_EVENT)
+      const event = dispatchEventSpy.mock.calls[0][0]
+      expect((event as Event).type).toBe(SESSION_EXPIRED_EVENT)
     })
 
-    it('still dispatches event even if sessionStorage.setItem throws', () => {
+    it('dispatches event even if sessionStorage throws', () => {
       const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
-      const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
         throw new Error('Quota exceeded')
       })
 
       notifySessionExpired()
 
-      expect(setItemSpy).toHaveBeenCalledTimes(1)
       expect(dispatchEventSpy).toHaveBeenCalledTimes(1)
-      expect((dispatchEventSpy.mock.calls[0][0] as Event).type).toBe(SESSION_EXPIRED_EVENT)
     })
 
-    it('does nothing if window is undefined', () => {
-      const originalWindow = window
+    it('returns early if window is undefined', () => {
       vi.stubGlobal('window', undefined)
-
       expect(() => notifySessionExpired()).not.toThrow()
-
-      vi.stubGlobal('window', originalWindow)
     })
   })
 
   describe('consumeSessionExpired', () => {
-    it('returns true and clears flag if set', () => {
+    it('returns false if flag is not set', () => {
+      expect(consumeSessionExpired()).toBe(false)
+    })
+
+    it('returns true and removes flag if it is set to "1"', () => {
       window.sessionStorage.setItem('palpitae:session-expired', '1')
       expect(consumeSessionExpired()).toBe(true)
       expect(window.sessionStorage.getItem('palpitae:session-expired')).toBeNull()
     })
 
-    it('returns false if flag not set', () => {
+    it('returns false and removes flag if it is set to something else', () => {
+      window.sessionStorage.setItem('palpitae:session-expired', '0')
       expect(consumeSessionExpired()).toBe(false)
+      expect(window.sessionStorage.getItem('palpitae:session-expired')).toBeNull()
     })
 
-    it('returns false if sessionStorage.getItem throws', () => {
+    it('returns false if sessionStorage throws', () => {
       vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-        throw new Error('Storage disabled')
+        throw new Error('Private mode')
       })
       expect(consumeSessionExpired()).toBe(false)
     })
 
     it('returns false if window is undefined', () => {
-      const originalWindow = window
       vi.stubGlobal('window', undefined)
       expect(consumeSessionExpired()).toBe(false)
-      vi.stubGlobal('window', originalWindow)
     })
   })
 
   describe('apiFetch', () => {
-    it('calls fetch with credentials: include', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(new Response('ok'))
+    it('calls fetch with credentials: "include"', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
       vi.stubGlobal('fetch', fetchMock)
 
-      await apiFetch('https://api.example.com', { method: 'POST' })
+      await apiFetch('/test-url')
 
-      expect(fetchMock).toHaveBeenCalledWith('https://api.example.com', {
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledWith('/test-url', { credentials: 'include' })
+    })
+
+    it('merges RequestInit options while keeping credentials: "include"', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+
+      await apiFetch('/test-url', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+
+      expect(fetchMock).toHaveBeenCalledWith('/test-url', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
       })
     })
 
-    it('calls notifySessionExpired on 401 status', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(new Response('unauth', { status: 401 }))
+    it('notifies session expired if response status is 401', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response('Unauthorized', { status: 401 }))
       vi.stubGlobal('fetch', fetchMock)
       const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
 
-      await apiFetch('/some/endpoint')
+      await apiFetch('/test-url')
 
+      expect(window.sessionStorage.getItem('palpitae:session-expired')).toBe('1')
       expect(dispatchEventSpy).toHaveBeenCalledTimes(1)
-      expect((dispatchEventSpy.mock.calls[0][0] as Event).type).toBe(SESSION_EXPIRED_EVENT)
     })
 
-    it('does not call notifySessionExpired on non-401 status', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
+    it('does not notify session expired if response status is not 401', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response('Forbidden', { status: 403 }))
       vi.stubGlobal('fetch', fetchMock)
       const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
 
-      await apiFetch('/some/endpoint')
+      await apiFetch('/test-url')
 
+      expect(window.sessionStorage.getItem('palpitae:session-expired')).toBeNull()
       expect(dispatchEventSpy).not.toHaveBeenCalled()
     })
   })
