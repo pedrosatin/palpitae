@@ -496,9 +496,7 @@ describe('MatchCard – Error state', () => {
 
     renderCard(makeMatch(), undefined)
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
     expect(await screen.findByText('Database timeout')).toBeInTheDocument()
@@ -512,9 +510,7 @@ describe('MatchCard – Error state', () => {
 
     renderCard(makeMatch(), undefined)
 
-    await userEvent.click(
-      screen.getByRole('button', { name: /Aumentar placar Brasil/i }),
-    )
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
     expect(await screen.findByText('Erro ao salvar palpite')).toBeInTheDocument()
@@ -540,5 +536,44 @@ describe('MatchCard – Score inputs', () => {
 
     expect(homeInput.value).toBe('3')
     expect(awayInput.value).toBe('2')
+  })
+})
+
+describe('MatchCard – jogo adiado (postponed)', () => {
+  const pastStart = new Date(Date.now() - 86_400_000).toISOString() // 1 dia atrás
+
+  it('mostra badge "adiado" e esconde a data original', () => {
+    renderCard(makeMatch({ start_time: pastStart, postponed: 1 }), undefined)
+
+    expect(screen.getByText(/adiado/i)).toBeInTheDocument()
+    expect(screen.getByText(/data a definir/i)).toBeInTheDocument()
+    expect(screen.queryByText(/bloqueado/i)).not.toBeInTheDocument()
+  })
+
+  it('mantém o palpite editável mesmo com start_time no passado', () => {
+    // Sem a flag, `new Date() >= start_time` travaria o card para sempre — o jogo
+    // ainda vai ser disputado, então os inputs precisam continuar ativos.
+    renderCard(makeMatch({ start_time: pastStart, postponed: 1 }), undefined)
+
+    const homeInput = screen.getByRole('spinbutton', { name: /Placar Brasil/i })
+    expect(homeInput).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: /Salvar/i })).toBeInTheDocument()
+  })
+
+  it('sem a flag, o mesmo jogo aparece bloqueado (controle)', () => {
+    renderCard(makeMatch({ start_time: pastStart }), undefined)
+
+    expect(screen.getByText(/bloqueado/i)).toBeInTheDocument()
+    expect(screen.queryByText(/adiado/i)).not.toBeInTheDocument()
+  })
+
+  it('jogo já encerrado ignora a flag e segue mostrando o resultado', () => {
+    renderCard(
+      makeMatch({ start_time: pastStart, status: 'finished', home_score: 2, away_score: 1 }),
+      undefined,
+    )
+
+    expect(screen.getByText(/encerrado/i)).toBeInTheDocument()
+    expect(screen.queryByText(/adiado/i)).not.toBeInTheDocument()
   })
 })
