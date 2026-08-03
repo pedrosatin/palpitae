@@ -29,6 +29,12 @@ describe('isMatchLocked', () => {
     expect(isMatchLocked({ start_time: PAST, postponed: null }, NOW)).toBe(true)
     expect(isMatchLocked({ start_time: FUTURE }, NOW)).toBe(false)
   })
+
+  it('lida com horários em formatos diferentes (com e sem milissegundos)', () => {
+    const startSemMilis = '2026-08-01T12:00:00Z'
+    const nowComMilis = '2026-08-01T12:00:00.123Z' // 123ms depois, deveria estar travado
+    expect(isMatchLocked({ start_time: startSemMilis, postponed: 0 }, nowComMilis)).toBe(true)
+  })
 })
 
 describe('lockedSql', () => {
