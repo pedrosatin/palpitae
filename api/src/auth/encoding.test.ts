@@ -72,6 +72,21 @@ describe('base64UrlDecode', () => {
     expect(() => base64UrlDecode('a===')).toThrow()
     expect(() => base64UrlDecode('a')).toThrow()
   })
+
+  it('correctly maps URL-safe characters (- and _) to standard base64 characters', () => {
+    // btoa(String.fromCharCode(251, 239, 191)) is '+++/'
+    // base64Url encoding maps this to '---_'
+    const decoded = base64UrlDecode('---_')
+    const bytes = new Uint8Array(decoded)
+    expect(bytes).toHaveLength(3)
+    expect(bytes[0]).toBe(251)
+    expect(bytes[1]).toBe(239)
+    expect(bytes[2]).toBe(191)
+  })
+
+  it('throws an error when decoding an invalid base64url string', () => {
+    expect(() => base64UrlDecode('invalid characters !!$$')).toThrowError()
+  })
 })
 
 describe('base64UrlEncode / base64UrlDecode roundtrip', () => {
