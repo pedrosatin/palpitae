@@ -179,6 +179,104 @@ describe('GET /metrics/overview', () => {
   })
 })
 
+/** D1 fake que despacha por trecho do SQL — evita depender de driver real. */
+function makeD1(rows: {
+  usersInGroup?: number
+  usersWhoPredicted?: number
+  usersTotal?: number
+  usersCreated?: number
+  groupsCreated?: number
+  membership?: { user_id: string; groups: number }[]
+  topCompetitions?: { competition: string; groups: number }[]
+}): D1Database {
+  const membership = rows.membership ?? []
+  const topCompetitions = rows.topCompetitions ?? []
+
+  function resultFor(sql: string) {
+    if (sql.includes('FROM group_members gm')) return { results: membership }
+    if (sql.includes('FROM groups g JOIN competitions')) return { results: topCompetitions }
+    if (sql.includes('FROM group_members')) return { n: rows.usersInGroup ?? 0 }
+    if (sql.includes('FROM predictions')) return { n: rows.usersWhoPredicted ?? 0 }
+    if (sql.includes('FROM users WHERE')) return { n: rows.usersCreated ?? 0 }
+    if (sql.includes('FROM users')) return { n: rows.usersTotal ?? 0 }
+    if (sql.includes('FROM groups WHERE')) return { n: rows.groupsCreated ?? 0 }
+    throw new Error(`SQL não mapeado no fake: ${sql}`)
+  }
+
+  return {
+    prepare: (sql: string) => {
+      const stmt = {
+        bind: () => stmt,
+        first: async () => resultFor(sql),
+        all: async () => resultFor(sql),
+      }
+      return stmt
+    },
+  } as unknown as D1Database
+}
+
+describe('GET /metrics/business', () => {
+  it('401 sem sessão', async () => {
+    const res = await makeApp().request('/metrics/business', {}, makeEnv({ DB: makeD1({}) }))
+    expect(res.status).toBe(401)
+  })
+
+  it('403 para usuário que não é o admin', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders('outra@pessoa.com') },
+      makeEnv({ DB: makeD1({}) }),
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it('happy path: KPIs do D1 e média/mediana de grupos por usuário', async () => {
+    const db = makeD1({
+      usersInGroup: 12,
+      usersWhoPredicted: 9,
+      usersTotal: 20,
+      usersCreated: 3,
+      groupsCreated: 2,
+      membership: [
+        { user_id: 'u1', groups: 1 },
+        { user_id: 'u2', groups: 2 },
+        { user_id: 'u3', groups: 3 },
+      ],
+      topCompetitions: [{ competition: 'Brasileirão', groups: 5 }],
+    })
+
+    const res = await makeApp().request(
+      '/metrics/business?days=7',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: db }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      days: number
+      usersTotal: number
+      usersInGroup: number
+      usersWhoPredicted: number
+      usersCreatedInPeriod: number
+      groupsCreatedInPeriod: number
+      avgGroupsPerUser: number
+      medianGroupsPerUser: number
+      topCompetitions: { competition: string; groups: number }[]
+    }
+    expect(body).toEqual({
+      days: 7,
+      usersTotal: 20,
+      usersInGroup: 12,
+      usersWhoPredicted: 9,
+      usersCreatedInPeriod: 3,
+      groupsCreatedInPeriod: 2,
+      avgGroupsPerUser: 2,
+      medianGroupsPerUser: 2,
+      topCompetitions: [{ competition: 'Brasileirão', groups: 5 }],
+    })
+  })
+})
+
 describe('GET /metrics/archive', () => {
   it('lista events/ inteiro paginando por cursor, com a contagem do customMetadata', async () => {
     // 1ª página truncada + 2ª final — o handler precisa seguir o cursor.

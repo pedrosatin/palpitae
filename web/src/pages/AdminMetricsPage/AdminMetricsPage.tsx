@@ -56,6 +56,19 @@ interface OverviewResponse {
   predictionsDaily: { day: string; users: string | number }[]
 }
 
+// KPIs de negócio a partir do D1 (estado real da base) — GET /metrics/business.
+interface BusinessResponse {
+  days: number
+  usersTotal: number
+  usersInGroup: number
+  usersWhoPredicted: number
+  usersCreatedInPeriod: number
+  groupsCreatedInPeriod: number
+  avgGroupsPerUser: number
+  medianGroupsPerUser: number
+  topCompetitions: { competition: string; groups: number }[]
+}
+
 interface ArchiveResponse {
   // `events` = contagem real do dia (customMetadata do export); null em
   // arquivo antigo que o backfill de metadata ainda não alcançou.
@@ -372,6 +385,58 @@ function OverviewKpisRow({
       <KpiCard label="logins" value={String(kpis.logins)} />
       <KpiCard label="cache hit" value={kpis.cacheHitRate} hint="GET /matches" />
     </div>
+  )
+}
+
+function BusinessSection({ business }: { business: BusinessResponse }) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Visão geral do produto</h2>
+      <div className={styles.kpiRow}>
+        <KpiCard label="usuários" value={String(business.usersTotal)} hint="total, lifetime" />
+        <KpiCard
+          label="usuários em algum grupo"
+          value={String(business.usersInGroup)}
+          hint="lifetime"
+        />
+        <KpiCard
+          label="usuários que já palpitaram"
+          value={String(business.usersWhoPredicted)}
+          hint="lifetime"
+        />
+        <KpiCard
+          label="contas criadas"
+          value={String(business.usersCreatedInPeriod)}
+          hint={`últimos ${business.days}d`}
+        />
+        <KpiCard
+          label="grupos criados"
+          value={String(business.groupsCreatedInPeriod)}
+          hint={`últimos ${business.days}d`}
+        />
+        <KpiCard
+          label="grupos por usuário"
+          value={business.avgGroupsPerUser.toFixed(1)}
+          hint={`mediana ${business.medianGroupsPerUser}`}
+        />
+      </div>
+
+      <h3 className={styles.subTitle}>Campeonatos com mais grupos ativos</h3>
+      {business.topCompetitions.length === 0 ? (
+        <p className={styles.hint}>Nenhum grupo ativo.</p>
+      ) : (
+        <table className={styles.table}>
+          <tbody>
+            {business.topCompetitions.map((c) => (
+              <tr key={c.competition}>
+                <td>{c.competition}</td>
+                <td className={styles.num}>{c.groups}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   )
 }
 
@@ -818,6 +883,7 @@ export default function AdminMetricsPage() {
 
   const [days, setDays] = useState<number>(30)
   const [overview, setOverview] = useState<OverviewResponse | null>(null)
+  const [business, setBusiness] = useState<BusinessResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
@@ -835,9 +901,10 @@ export default function AdminMetricsPage() {
     const params = new URLSearchParams({ days: String(days) })
     Promise.all([
       apiFetch(buildApiUrl('/metrics/overview', params)),
+      apiFetch(buildApiUrl('/metrics/business', params)),
       apiFetch(buildApiUrl('/metrics/archive')),
     ])
-      .then(async ([ovRes, arRes]) => {
+      .then(async ([ovRes, bizRes, arRes]) => {
         if (cancelled) return
         if (ovRes.status === 403) {
           setError('forbidden')
@@ -845,7 +912,8 @@ export default function AdminMetricsPage() {
         }
         if (!ovRes.ok) throw new Error(`overview ${ovRes.status}`)
         setOverview((await ovRes.json()) as OverviewResponse)
-        // Arquivo é secundário — falha nele não derruba a página inteira.
+        // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
+        if (bizRes.ok) setBusiness((await bizRes.json()) as BusinessResponse)
         if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
       })
       .catch(() => {
@@ -937,6 +1005,8 @@ export default function AdminMetricsPage() {
                 merece atenção.
               </p>
             )}
+
+            {business && <BusinessSection business={business} />}
 
             <EventsSection overview={overview} stacked={stacked} />
             <EngagementSection dauSeries={dauSeries} />
