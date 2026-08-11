@@ -178,6 +178,10 @@ function buildDauSeries(
   }))
 }
 
+function formatNumber(n: number): string {
+  return n.toLocaleString('pt-BR')
+}
+
 function formatBytes(size: number): string {
   if (size === 0) return '0 B (vazio)'
   if (size < 1024) return `${size} B`
@@ -235,10 +239,27 @@ function isStale(ts: string, staleAfterMin: number): boolean {
   return Date.now() - date.getTime() > staleAfterMin * 60_000
 }
 
-function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function KpiCard({
+  label,
+  value,
+  hint,
+  status,
+}: {
+  label: string
+  value: string
+  hint?: string
+  /** Cor do valor conforme severidade — 'ok' (default) é o verde de marca. */
+  status?: 'ok' | 'warn' | 'danger'
+}) {
+  const valueClass =
+    status === 'danger'
+      ? `${styles.kpiValue} ${styles.kpiValueDanger}`
+      : status === 'warn'
+        ? `${styles.kpiValue} ${styles.kpiValueWarn}`
+        : styles.kpiValue
   return (
     <div className={styles.kpi}>
-      <span className={styles.kpiValue}>{value}</span>
+      <span className={valueClass}>{value}</span>
       <span className={styles.kpiLabel}>{label}</span>
       {hint && <span className={styles.kpiHint}>{hint}</span>}
     </div>
@@ -305,6 +326,35 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     return { top1: shareOf(1), top5: shareOf(5) }
   }, [overview, kpis])
 
+  // Triagem rápida: o que precisa de atenção agora, pro topo da página.
+  const alerts = useMemo(() => {
+    if (!overview) return []
+    const list: { key: string; label: string; level: 'warn' | 'danger' }[] = []
+
+    for (const r of overview.lastRuns) {
+      const info = CRON_INFO[r.event_type]
+      if (info && isStale(r.last_run, info.staleAfterMin)) {
+        list.push({ key: `stale-${r.event_type}`, label: `${info.label} atrasado`, level: 'danger' })
+      }
+    }
+    if (overview.recentErrors.length > 0) {
+      list.push({
+        key: 'errors',
+        label: `${overview.recentErrors.length} erro(s) recente(s)`,
+        level: 'danger',
+      })
+    }
+    const emailFailed = Number(overview.emailHealth.failed)
+    if (emailFailed > 0) {
+      list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
+    }
+    const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
+    if (loginFailTotal > 0) {
+      list.push({ key: 'login', label: `${loginFailTotal} falha(s) de login`, level: 'warn' })
+    }
+    return list
+  }, [overview])
+
   // Verifica a integridade do export nos últimos 14 dias.
   const archiveDays = useMemo(() => {
     if (!archive || archive.files.length === 0) return []
@@ -359,9 +409,32 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     avgSample,
     isSampling,
     whaleShare,
+    alerts,
     archiveDays,
     archiveStats,
   }
+}
+
+function StatusStrip({ alerts }: { alerts: { key: string; label: string; level: 'warn' | 'danger' }[] }) {
+  if (alerts.length === 0) {
+    return (
+      <div className={styles.statusStrip}>
+        <span className={`${styles.statusChip} ${styles.statusChipOk}`}>Tudo normal</span>
+      </div>
+    )
+  }
+  return (
+    <div className={styles.statusStrip}>
+      {alerts.map((a) => (
+        <span
+          key={a.key}
+          className={`${styles.statusChip} ${a.level === 'danger' ? styles.statusChipDanger : styles.statusChipWarn}`}
+        >
+          {a.level === 'danger' ? '●' : '▲'} {a.label}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function OverviewKpisRow({
@@ -378,11 +451,11 @@ function OverviewKpisRow({
 }) {
   return (
     <div className={styles.kpiRow}>
-      <KpiCard label="usuários palpitando" value={String(kpis.activeUsers)} />
-      <KpiCard label="palpites salvos" value={String(kpis.predictions)} />
-      <KpiCard label="grupos criados" value={String(kpis.groupsCreated)} />
+      <KpiCard label="usuários palpitando" value={formatNumber(kpis.activeUsers)} />
+      <KpiCard label="palpites salvos" value={formatNumber(kpis.predictions)} />
+      <KpiCard label="grupos criados" value={formatNumber(kpis.groupsCreated)} />
       <KpiCard label="entradas por grupo" value={kpis.joinRate} hint="conversão de convite" />
-      <KpiCard label="logins" value={String(kpis.logins)} />
+      <KpiCard label="logins" value={formatNumber(kpis.logins)} />
       <KpiCard label="cache hit" value={kpis.cacheHitRate} hint="GET /matches" />
     </div>
   )
@@ -393,25 +466,29 @@ function BusinessSection({ business }: { business: BusinessResponse }) {
     <section className={styles.section}>
       <h2 className={styles.sectionTitle}>Visão geral do produto</h2>
       <div className={styles.kpiRow}>
-        <KpiCard label="usuários" value={String(business.usersTotal)} hint="total, lifetime" />
+        <KpiCard
+          label="usuários"
+          value={formatNumber(business.usersTotal)}
+          hint="total, lifetime"
+        />
         <KpiCard
           label="usuários em algum grupo"
-          value={String(business.usersInGroup)}
+          value={formatNumber(business.usersInGroup)}
           hint="lifetime"
         />
         <KpiCard
           label="usuários que já palpitaram"
-          value={String(business.usersWhoPredicted)}
+          value={formatNumber(business.usersWhoPredicted)}
           hint="lifetime"
         />
         <KpiCard
           label="contas criadas"
-          value={String(business.usersCreatedInPeriod)}
+          value={formatNumber(business.usersCreatedInPeriod)}
           hint={`últimos ${business.days}d`}
         />
         <KpiCard
           label="grupos criados"
-          value={String(business.groupsCreatedInPeriod)}
+          value={formatNumber(business.groupsCreatedInPeriod)}
           hint={`últimos ${business.days}d`}
         />
         <KpiCard
@@ -425,16 +502,23 @@ function BusinessSection({ business }: { business: BusinessResponse }) {
       {business.topCompetitions.length === 0 ? (
         <p className={styles.hint}>Nenhum grupo ativo.</p>
       ) : (
-        <table className={styles.table}>
-          <tbody>
-            {business.topCompetitions.map((c) => (
-              <tr key={c.competition}>
-                <td>{c.competition}</td>
-                <td className={styles.num}>{c.groups}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div>
+          {business.topCompetitions.map((c) => {
+            const max = business.topCompetitions[0].groups
+            const pct = max > 0 ? Math.round((c.groups / max) * 100) : 0
+            return (
+              <div key={c.competition} className={styles.miniBarRow}>
+                <span className={styles.miniBarLabel} title={c.competition}>
+                  {c.competition}
+                </span>
+                <span className={styles.miniBarTrack}>
+                  <span className={styles.miniBarFill} style={{ width: `${pct}%` }} />
+                </span>
+                <span className={styles.miniBarValue}>{formatNumber(c.groups)}</span>
+              </div>
+            )
+          })}
+        </div>
       )}
     </section>
   )
@@ -474,7 +558,7 @@ function EventsSection({
                   {/* title mantém o event_type cru — é a chave do esquema
                       posicional em docs/observability.md */}
                   <td title={t.event_type}>{eventLabel(t.event_type)}</td>
-                  <td className={styles.num}>{Number(t.count)}</td>
+                  <td className={styles.num}>{formatNumber(Number(t.count))}</td>
                 </tr>
               ))}
             </tbody>
@@ -536,7 +620,7 @@ function HealthSection({
                 <td className={p.status === 'error' ? styles.statusError : styles.statusOk}>
                   {p.status}
                 </td>
-                <td className={styles.num}>{Number(p.runs)}</td>
+                <td className={styles.num}>{formatNumber(Number(p.runs))}</td>
                 <td className={styles.num}>{formatDuration(Number(p.avg_duration_ms))}</td>
                 <td className={styles.num}>{formatDuration(Number(p.max_duration_ms))}</td>
               </tr>
@@ -591,7 +675,7 @@ function LatencySection({ overview }: { overview: OverviewResponse }) {
             {overview.latency.map((r) => (
               <tr key={r.route}>
                 <td className={styles.nowrap}>{r.route}</td>
-                <td className={styles.num}>{Number(r.requests)}</td>
+                <td className={styles.num}>{formatNumber(Number(r.requests))}</td>
                 <td className={styles.num}>{formatDuration(Number(r.avg_ms))}</td>
                 <td className={styles.num}>{formatDuration(Number(r.max_ms))}</td>
                 <td className={styles.num}>{formatDuration(Number(r.avg_db_ms))}</td>
@@ -618,18 +702,18 @@ function EmailSection({
         <tbody>
           <tr>
             <td>rodadas lembradas (cron)</td>
-            <td className={styles.num}>{Number(overview.emailHealth.rounds)}</td>
+            <td className={styles.num}>{formatNumber(Number(overview.emailHealth.rounds))}</td>
           </tr>
           <tr>
             <td>e-mails enviados</td>
-            <td className={styles.num}>{Number(overview.emailHealth.sent)}</td>
+            <td className={styles.num}>{formatNumber(Number(overview.emailHealth.sent))}</td>
           </tr>
           <tr>
             <td>falhas de envio</td>
             <td
               className={`${styles.num} ${Number(overview.emailHealth.failed) > 0 ? styles.statusError : ''}`}
             >
-              {Number(overview.emailHealth.failed)}
+              {formatNumber(Number(overview.emailHealth.failed))}
             </td>
           </tr>
           <tr>
@@ -676,7 +760,7 @@ function LoginFailuresSection({ overview }: { overview: OverviewResponse }) {
             {overview.loginFailures.map((f) => (
               <tr key={f.reason}>
                 <td>{f.reason}</td>
-                <td className={styles.num}>{Number(f.count)}</td>
+                <td className={styles.num}>{formatNumber(Number(f.count))}</td>
               </tr>
             ))}
           </tbody>
@@ -739,10 +823,10 @@ function ArchiveSection({
       ) : (
         <>
           <div className={styles.kpiRow}>
-            <KpiCard label="dias arquivados" value={String(archiveStats.totalDays)} />
+            <KpiCard label="dias arquivados" value={formatNumber(archiveStats.totalDays)} />
             <KpiCard
               label="eventos arquivados"
-              value={`${archiveStats.missingMeta > 0 ? '≥ ' : ''}${archiveStats.totalEvents}`}
+              value={`${archiveStats.missingMeta > 0 ? '≥ ' : ''}${formatNumber(archiveStats.totalEvents)}`}
             />
             <KpiCard label="tamanho total" value={formatBytes(archiveStats.totalBytes)} />
             <KpiCard label="desde" value={archiveStats.oldestDay} />
@@ -936,6 +1020,7 @@ export default function AdminMetricsPage() {
     avgSample,
     isSampling,
     whaleShare,
+    alerts,
     archiveDays,
     archiveStats,
   } = useMetricsData(overview, archive)
@@ -996,6 +1081,8 @@ export default function AdminMetricsPage() {
 
         {overview && kpis && !loading && (
           <>
+            <StatusStrip alerts={alerts} />
+
             <OverviewKpisRow kpis={kpis} />
 
             {isSampling && (
