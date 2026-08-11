@@ -67,6 +67,18 @@ const archive = {
   ],
 }
 
+const business = {
+  days: 30,
+  usersTotal: 20,
+  usersInGroup: 12,
+  usersWhoPredicted: 9,
+  usersCreatedInPeriod: 3,
+  groupsCreatedInPeriod: 2,
+  avgGroupsPerUser: 1.5,
+  medianGroupsPerUser: 1,
+  topCompetitions: [{ competition: 'Brasileirão', groups: 5 }],
+}
+
 const archiveQuery = {
   from: `${yesterday.slice(0, 7)}-01`,
   to: yesterday,
@@ -87,6 +99,9 @@ function mockFetch(overviewStatus = 200, overviewBody: unknown = overview) {
     }
     if (url.includes('/metrics/archive/query')) {
       return { ok: true, status: 200, json: async () => archiveQuery }
+    }
+    if (url.includes('/metrics/business')) {
+      return { ok: true, status: 200, json: async () => business }
     }
     return { ok: true, status: 200, json: async () => archive }
   })
@@ -171,7 +186,12 @@ describe('AdminMetricsPage', () => {
       vi.fn(async (url: string) => ({
         ok: true,
         status: 200,
-        json: async () => (url.includes('/metrics/overview') ? overview : gappyArchive),
+        json: async () =>
+          url.includes('/metrics/overview')
+            ? overview
+            : url.includes('/metrics/business')
+              ? business
+              : gappyArchive,
       })),
     )
     render(<AdminMetricsPage />)
