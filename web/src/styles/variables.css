@@ -27,6 +27,11 @@
   /** Text or icon placed on top of a primary-green background */
   --color-on-primary: #000000;
 
+  /** Attention/caution — degraded but not broken (e.g. sampling, backlog) */
+  --color-warning: #ffd43b;
+  /** Failure/broken state — needs action now */
+  --color-danger: #ff4d4f;
+
   /* ─── Backgrounds & Surfaces ────────────────────────────────────────────── */
 
   /** Deepest background layer — the page/body background */
