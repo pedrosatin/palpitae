@@ -233,6 +233,81 @@ metricsRouter.get('/overview', async (c) => {
 })
 
 /**
+ * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
+ * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
+ * base), não a janela de `days`; só contagens "criados no período" respeitam
+ * `days`. Ignora grupos soft-deleted (deleted_at) nas contagens de grupo.
+ */
+metricsRouter.get('/business', async (c) => {
+  const days = parseDays(c.req.query('days'))
+  const db = c.env.DB
+
+  const [
+    usersInGroup,
+    usersWhoPredicted,
+    usersTotal,
+    usersCreated,
+    groupsCreated,
+    groupMembership,
+    topCompetitions,
+  ] = await Promise.all([
+    db.prepare(`SELECT COUNT(DISTINCT user_id) AS n FROM group_members`).first(),
+    db.prepare(`SELECT COUNT(DISTINCT user_id) AS n FROM predictions`).first(),
+    db.prepare(`SELECT COUNT(*) AS n FROM users`).first(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM users WHERE created_at > datetime('now', ?)`,
+      )
+      .bind(`-${days} days`)
+      .first(),
+    db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM groups WHERE deleted_at IS NULL AND created_at > datetime('now', ?)`,
+      )
+      .bind(`-${days} days`)
+      .first(),
+    // Quantos grupos cada usuário integra — distribuição (média + mediana aprox via percentil).
+    db
+      .prepare(
+        `SELECT gm.user_id AS user_id, COUNT(*) AS groups ` +
+          `FROM group_members gm ` +
+          `JOIN groups g ON g.id = gm.group_id AND g.deleted_at IS NULL ` +
+          `GROUP BY gm.user_id`,
+      )
+      .all(),
+    // Campeonatos com mais grupos ativos.
+    db
+      .prepare(
+        `SELECT c.name AS competition, COUNT(*) AS groups ` +
+          `FROM groups g JOIN competitions c ON c.id = g.competition_id ` +
+          `WHERE g.deleted_at IS NULL ` +
+          `GROUP BY c.id ORDER BY groups DESC LIMIT 10`,
+      )
+      .all(),
+  ])
+
+  const groupCounts = (groupMembership.results as { user_id: string; groups: number }[])
+    .map((r) => r.groups)
+    .sort((a, b) => a - b)
+  const avgGroupsPerUser =
+    groupCounts.length > 0 ? groupCounts.reduce((s, n) => s + n, 0) / groupCounts.length : 0
+  const medianGroupsPerUser =
+    groupCounts.length > 0 ? groupCounts[Math.floor(groupCounts.length / 2)] : 0
+
+  return c.json({
+    days,
+    usersTotal: (usersTotal as { n: number } | null)?.n ?? 0,
+    usersInGroup: (usersInGroup as { n: number } | null)?.n ?? 0,
+    usersWhoPredicted: (usersWhoPredicted as { n: number } | null)?.n ?? 0,
+    usersCreatedInPeriod: (usersCreated as { n: number } | null)?.n ?? 0,
+    groupsCreatedInPeriod: (groupsCreated as { n: number } | null)?.n ?? 0,
+    avgGroupsPerUser,
+    medianGroupsPerUser,
+    topCompetitions: topCompetitions.results,
+  })
+})
+
+/**
  * Arquivo frio — lista os NDJSON diários no R2 (events/YYYY/MM/DD.ndjson).
  * Serve pra auditar o cold path (dia faltando = export falhou) e pra série
  * histórica do dashboard: `events` vem do customMetadata gravado pelo export
