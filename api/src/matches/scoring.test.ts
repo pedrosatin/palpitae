@@ -235,10 +235,7 @@ function buildFakeDb(
             })
           }
           return {
-            results: [...grouped.entries()].map(([user_id, v]) => ({
-              user_id,
-              ...v,
-            })) as unknown as T[],
+            results: [...grouped.values()] as unknown as T[],
           }
         }
         return { results: [] }
