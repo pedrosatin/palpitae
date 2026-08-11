@@ -1,16 +1,16 @@
-# Graph Report - palpitae  (2026-08-01)
+# Graph Report - palpitae  (2026-08-11)
 
 ## Corpus Check
-- 238 files · ~193,276 words
+- 240 files · ~196,428 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1886 nodes · 3822 edges · 137 communities (121 shown, 16 thin omitted)
+- 1929 nodes · 3894 edges · 143 communities (127 shown, 16 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 66 edges (avg confidence: 0.79)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `bf5a3840`
+- Built from commit: `d2028683`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -114,23 +114,29 @@
 - [[_COMMUNITY_Community 96|Community 96]]
 - [[_COMMUNITY_Community 97|Community 97]]
 - [[_COMMUNITY_Community 98|Community 98]]
-- [[_COMMUNITY_Community 128|Community 128]]
-- [[_COMMUNITY_Community 129|Community 129]]
-- [[_COMMUNITY_Community 130|Community 130]]
-- [[_COMMUNITY_Community 131|Community 131]]
-- [[_COMMUNITY_Community 132|Community 132]]
-- [[_COMMUNITY_Community 133|Community 133]]
+- [[_COMMUNITY_Community 99|Community 99]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 101|Community 101]]
+- [[_COMMUNITY_Community 102|Community 102]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 104|Community 104]]
 - [[_COMMUNITY_Community 134|Community 134]]
 - [[_COMMUNITY_Community 135|Community 135]]
 - [[_COMMUNITY_Community 136|Community 136]]
+- [[_COMMUNITY_Community 137|Community 137]]
+- [[_COMMUNITY_Community 138|Community 138]]
+- [[_COMMUNITY_Community 139|Community 139]]
+- [[_COMMUNITY_Community 140|Community 140]]
+- [[_COMMUNITY_Community 141|Community 141]]
+- [[_COMMUNITY_Community 142|Community 142]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `trackEvent()` - 55 edges
-2. `apiFetch()` - 41 edges
-3. `AppContext` - 40 edges
-4. `config` - 40 edges
+2. `config` - 41 edges
+3. `apiFetch()` - 41 edges
+4. `AppContext` - 40 edges
 5. `signJwt()` - 34 edges
-6. `scoreUnprocessedMatches()` - 29 edges
+6. `scoreUnprocessedMatches()` - 30 edges
 7. `syncFixtures()` - 27 edges
 8. `logEvent()` - 24 edges
 9. `🧠 Palpitae — Product Vision` - 23 edges
@@ -145,8 +151,8 @@
   web/src/components/GoogleLoginButton/index.ts → docs/analytics.md
 - `predictionsRouter` --references--> `Positional event schema`  [INFERRED]
   api/src/predictions/router.ts → docs/observability.md
-- `web config / buildApiUrl` --references--> `trackEvent client analytics`  [INFERRED]
-  web/src/config.ts → docs/analytics.md
+- `App (root component)` --references--> `ADR-005 Direct Google OAuth`  [INFERRED]
+  web/src/App.tsx → docs/architecture/decisions.md
 
 ## Hyperedges (group relationships)
 - **Cron scheduled dispatch** — index_scheduled, export_exportrecentdays, fixturediscovery_discoverfixtures, roundreminder_sendroundreminders, poller_pollactivematches [EXTRACTED 1.00]
@@ -170,123 +176,123 @@
 - **Authenticated app shell (Header + auth-gated pages)** —  [INFERRED 0.75]
 - **Unauthenticated funnel to Google login** —  [INFERRED 0.75]
 
-## Communities (137 total, 16 thin omitted)
+## Communities (143 total, 16 thin omitted)
 
 ### Community 0 - "Notifications & Observability"
 Cohesion: 0.05
-Nodes (83): HMAC_SHA256, importHmacKey(), base64UrlDecode(), base64UrlEncode(), buf, decoded, encoded, original (+75 more)
+Nodes (70): HMAC_SHA256, importHmacKey(), data, forgedData, base64UrlDecode(), base64UrlEncode(), buf, bytes (+62 more)
 
 ### Community 1 - "Architecture Decision Records"
-Cohesion: 0.05
-Nodes (79): ActiveCompetition, ae, buildFakeAe(), buildFakeDb(), db, errors, pointsOfType(), runs (+71 more)
+Cohesion: 0.06
+Nodes (59): authRouter, ActiveCompetition, discoverFixtures(), ActiveRound, pollActiveMatches(), logError(), backfillEventsMetadata(), dayBounds() (+51 more)
 
 ### Community 2 - "Penalties & Scoring API"
 Cohesion: 0.06
-Nodes (66): isMatchLocked(), lockedSql(), matchGoesToPenalties(), parsePenaltyPhases(), createMockDb(), db, calculatePenaltyBonus(), calculatePoints() (+58 more)
+Nodes (65): signJwt(), app, body, buildApp(), c, fakeEnv(), next, requestWithCookie() (+57 more)
 
 ### Community 3 - "Rounds & Round Reminders"
-Cohesion: 0.05
-Nodes (45): ConfirmModal(), ConfirmModalProps, cancelButton, confirmButton, defaultProps, ConfirmOptions, cancelButton, confirmButton (+37 more)
+Cohesion: 0.08
+Nodes (53): KNOCKOUT_LABELS, roundLabel(), EmailError, EmailMessage, sendEmail(), body, error, error1 (+45 more)
 
 ### Community 4 - "Feature Flags & Permissions"
-Cohesion: 0.08
-Nodes (48): ActiveCompetition, ActiveRound, KNOCKOUT_LABELS, roundLabel(), EmailError, EmailMessage, sendEmail(), body (+40 more)
+Cohesion: 0.05
+Nodes (45): Consent, getStoredConsent(), initGa(), setConsent(), consoleErrorSpy, getItemSpy, result, script (+37 more)
 
 ### Community 5 - "Groups Router"
-Cohesion: 0.05
-Nodes (42): Consent, getStoredConsent(), initGa(), setConsent(), consoleErrorSpy, getItemSpy, result, script (+34 more)
+Cohesion: 0.08
+Nodes (47): AdminMetricsPage(), ArchiveQueryResponse, ArchiveResponse, ArchiveSection(), buildApiCallsSeries(), buildDauSeries(), buildStackedSeries(), BusinessResponse (+39 more)
 
 ### Community 6 - "UI Primitives & API Cache"
-Cohesion: 0.08
-Nodes (46): AdminMetricsPage(), ArchiveQueryResponse, ArchiveResponse, ArchiveSection(), buildApiCallsSeries(), buildDauSeries(), buildStackedSeries(), ConcentrationSection() (+38 more)
+Cohesion: 0.06
+Nodes (47): FEATURE_KEYS, FeatureFlags, FeatureKey, getFeatureFlags(), hasFeatureAccess(), edgeCaseEmails, emails, expectedFlags (+39 more)
 
 ### Community 7 - "Auth/Groups Router Tests"
-Cohesion: 0.09
-Nodes (28): DashboardPage(), DashboardPageProps, EmptyState(), GroupsList(), User, mockApiFetch, mockGroups, { result } (+20 more)
+Cohesion: 0.06
+Nodes (33): ConfirmModal(), ConfirmModalProps, cancelButton, confirmButton, defaultProps, ConfirmOptions, cancelButton, confirmButton (+25 more)
 
 ### Community 8 - "Metrics Charts & Formatters"
-Cohesion: 0.07
-Nodes (39): InfoHint(), InfoHintProps, InfoSvg(), buttons, labelEl, onOpen, user, computeSelectedOutcome() (+31 more)
+Cohesion: 0.08
+Nodes (47): requireAuth, isMatchLocked(), lockedSql(), BulkBody, BulkPrediction, byMatch, checkGroupMembership(), eligible (+39 more)
 
 ### Community 9 - "Metrics Router"
 Cohesion: 0.05
 Nodes (52): EmailError, sendEmail, notifications/email.test, hashUserId, logEvent, observability/events.test, dayBounds, exportEventsToR2 (+44 more)
 
 ### Community 10 - "Group Picks & Leaderboard"
-Cohesion: 0.09
-Nodes (26): formatDate(), PredictionItem(), PredictionItemProps, useMemberPredictions(), LeaderboardTab(), LeaderboardTabProps, Member, UserPrediction (+18 more)
+Cohesion: 0.07
+Nodes (38): InfoHint(), InfoHintProps, InfoSvg(), buttons, labelEl, onOpen, user, computeSelectedOutcome() (+30 more)
 
 ### Community 11 - "GA4 Analytics & Consent"
-Cohesion: 0.08
-Nodes (20): trackEvent(), CreatedGroup, CreateGroupSuccessViewProps, VisibilityFieldProps, GoogleLoginButton(), GoogleLogo(), mockTrackEvent, GroupInviteSectionProps (+12 more)
-
-### Community 12 - "Create Group Modal & Presets"
-Cohesion: 0.08
-Nodes (36): getGroupMembership(), getGroupMembershipTimed(), { db, first }, { db, prepare, bind, first }, body, candidate, candidates, competition_id (+28 more)
-
-### Community 13 - "Match Card"
-Cohesion: 0.06
-Nodes (41): ADR-001 Cloudflare D1, ADR-003 Workers + Hono, ADR-004 Runtime prediction locking, ADR-005 Direct Google OAuth, ADR-006 Vite + React static site, ADR-007 Cron result poller, ADR-008 GET /matches caching, ADR-009 Round reminder e-mail (Resend) (+33 more)
-
-### Community 14 - "Crypto & OAuth Helpers"
-Cohesion: 0.14
-Nodes (28): FEATURE_KEYS, FeatureFlags, FeatureKey, getFeatureFlags(), hasFeatureAccess(), flags, flags1, flags2 (+20 more)
-
-### Community 15 - "API Cache Layer"
 Cohesion: 0.05
 Nodes (36): 🔐 Authentication, Backend (API), Competition, 📏 Constraints, 🧱 Core Product Concept, 🧠 Design Principles, ⚽ Domain Model, Excluded (future): (+28 more)
 
-### Community 16 - "Events Export to R2"
+### Community 12 - "Create Group Modal & Presets"
 Cohesion: 0.08
 Nodes (23): buildShareCardData(), drawShareCard(), fillTracked(), hline(), renderShareCardBlob(), ShareCardData, ShareCardEntry, stripScheme() (+15 more)
 
+### Community 13 - "Match Card"
+Cohesion: 0.11
+Nodes (18): GroupMember, GroupPicksResponse, GroupPicksTab(), GroupPicksTabProps, MatchPicksCard(), MemberPrediction, Member, UserPrediction (+10 more)
+
+### Community 14 - "Crypto & OAuth Helpers"
+Cohesion: 0.14
+Nodes (29): applyMatchResult(), CompetitionType, computeStandings(), emptyStanding(), FORM_GLYPHS, formatDay(), FormEntry, GroupMatchesModal() (+21 more)
+
+### Community 15 - "API Cache Layer"
+Cohesion: 0.13
+Nodes (15): { rerender }, { unmount }, useDocumentTitle(), apiFetch(), consumeSessionExpired(), notifySessionExpired(), dispatchEventSpy, fetchMock (+7 more)
+
+### Community 16 - "Events Export to R2"
+Cohesion: 0.11
+Nodes (26): buildMatchesQuery(), cacheKey, competitionId, dbStartedAt, fetchMatches(), fetchSyncNeeds(), handleGetMatches(), mapMatchesResponse() (+18 more)
+
 ### Community 17 - "Group Detail Page & Tabs"
+Cohesion: 0.09
+Nodes (13): trackEvent(), CreatedGroup, CreateGroupSuccessViewProps, VisibilityFieldProps, GoogleLoginButton(), GoogleLogo(), mockTrackEvent, GroupInviteSectionProps (+5 more)
+
+### Community 18 - "Matches Router Tests"
 Cohesion: 0.06
 Nodes (30): Click Analytics (trackEvent), Server-side Observability (logEvent), Prediction Locking (before match start), Ranking Tie-breakers, Scoring Rules (exact=3, outcome=1), CLAUDE.md Project Instructions, 0003 bracket picks, 0008 group scoring config (+22 more)
 
-### Community 18 - "Matches Router Tests"
+### Community 19 - "Group Picks Fixtures"
 Cohesion: 0.12
 Nodes (23): makeMatch(), match, MOCK_TIME, oneHourBefore, oneHourLater, GroupPicksResponse, li, matches (+15 more)
 
-### Community 19 - "Group Picks Fixtures"
+### Community 20 - "Google OAuth"
+Cohesion: 0.11
+Nodes (22): formatDate(), PredictionItem(), PredictionItemProps, useMemberPredictions(), LeaderboardTab(), LeaderboardTabProps, formatDate(), groupedByGroupName() (+14 more)
+
+### Community 21 - "Page Components & Titles"
 Cohesion: 0.12
 Nodes (20): fetchCachedJson, invalidateApiCache, Button, Button.test, Card, Card.test, buildApiUrl, ConfirmModal (+12 more)
 
-### Community 20 - "Google OAuth"
-Cohesion: 0.11
-Nodes (23): Analytics (GA4 click events), Pages API proxy onRequest, applyDefaultRound, BallIcon, click_<context>_<acao> naming, fetchCachedJson, GA4 Consent Mode v2, GoogleLoginButton (barrel) (+15 more)
+### Community 22 - "Auth Router & Cookies"
+Cohesion: 0.13
+Nodes (20): dialog, fetchSpy, mockResponse(), mockTrackEvent, user, AdminMetricsPage, App(), AuthStatus (+12 more)
 
-### Community 21 - "Page Components & Titles"
-Cohesion: 0.14
+### Community 23 - "Cookie Consent & GA Init"
+Cohesion: 0.15
+Nodes (15): DashboardPage(), DashboardPageProps, EmptyState(), GroupsList(), User, mockApiFetch, mockGroups, { result } (+7 more)
+
+### Community 24 - "Google Login Button"
+Cohesion: 0.15
 Nodes (15): ScoringRulesFieldProps, PRESET_LABELS, PRESET_VALUES, SCORING_HELP_TEXT, ScoringPreset, Competition, CreatedGroup, CreateGroupModal() (+7 more)
 
-### Community 22 - "Auth Router & Cookies"
+### Community 25 - "Match Poller"
 Cohesion: 0.14
 Nodes (22): importHmacKey, base64UrlDecode, base64UrlEncode, discoverFixtures, buildAuthUrl, exchangeCode, generatePkce, upsertUser (+14 more)
 
-### Community 23 - "Cookie Consent & GA Init"
-Cohesion: 0.31
-Nodes (14): backfillEventsMetadata(), dayBounds(), exportEventsToR2(), exportRecentDays(), dd, env, events, FetchFake (+6 more)
-
-### Community 24 - "Google Login Button"
-Cohesion: 0.28
-Nodes (11): authRouter, discoverFixtures(), pollActiveMatches(), metricsRouter, app, scheduled(), ctx, env (+3 more)
-
-### Community 25 - "Match Poller"
-Cohesion: 0.13
-Nodes (16): admin, byDay, byType, byTypeSorted, days, files, from, monthPrefixes (+8 more)
-
 ### Community 26 - "JWT Middleware"
-Cohesion: 0.16
-Nodes (9): GroupCard(), GroupCardProps, GroupWithStats, PodiumEntry, baseGroup, finishedGroup, mockTrackEvent, onClick (+1 more)
+Cohesion: 0.27
+Nodes (11): matchGoesToPenalties(), parsePenaltyPhases(), createMockDb(), db, calculatePenaltyBonus(), calculatePoints(), recalculateLeaderboard(), recalculateLeaderboards() (+3 more)
 
 ### Community 27 - "Fixture Discovery & Polling"
-Cohesion: 0.17
-Nodes (11): groupedRoundMatches(), PredictionMap, PredictionsTab(), PredictionsTabProps, usePredictionsActions(), PredictionMap, usePredictionsBulkSave(), usePredictionsFetch() (+3 more)
+Cohesion: 0.21
+Nodes (18): ApiCompetition, ApiMatch, ApiMatchesResponse, ApiTeam, buildMatchStatement(), COMP_TRANSLATIONS, isPostponed(), mapStatus() (+10 more)
 
 ### Community 28 - "Header Component"
-Cohesion: 0.22
-Nodes (13): BrowserFrame(), Cta(), Faq(), FaqItem(), FeatureRow(), Features(), Footer(), Header() (+5 more)
+Cohesion: 0.16
+Nodes (9): GroupCard(), GroupCardProps, GroupWithStats, PodiumEntry, baseGroup, finishedGroup, mockTrackEvent, onClick (+1 more)
 
 ### Community 29 - "Governance & Domain Rules"
 Cohesion: 0.11
@@ -305,238 +311,262 @@ Cohesion: 0.11
 Nodes (16): 1. Mesmo provider, mesma competição, 2. Regras de pontuação idênticas (validado em produção), 3. Usuários — todos existem no prod do Palpitae, 4. Volume no prod do bolão (2026-07-12), 5. Infra do Palpitae já é genérica por competição, code:block1 (bolao.predictions ──┐), code:sql (-- Divergência de pontos (bolão): 0 linhas divergentes), Consultas de validação usadas (read-only) (+8 more)
 
 ### Community 33 - "Observability Events Core"
-Cohesion: 0.18
-Nodes (13): authHeaders(), bodies, body, counting, env, fetchFake, fetchOk(), files (+5 more)
+Cohesion: 0.22
+Nodes (13): BrowserFrame(), Cta(), Faq(), FaqItem(), FeatureRow(), Features(), Footer(), Header() (+5 more)
 
 ### Community 34 - "Match Sync Tests"
-Cohesion: 0.21
-Nodes (10): GroupMember, GroupPicksResponse, GroupPicksTab(), GroupPicksTabProps, MatchPicksCard(), MemberPrediction, CacheEntry, fetchCachedJson() (+2 more)
+Cohesion: 0.3
+Nodes (14): ActiveRow, ae, buildFakeAe(), buildFakeDb(), consoleSpy, db, [earliestOver, stillRelevant], errors (+6 more)
 
 ### Community 35 - "Join Group Modal"
-Cohesion: 0.33
-Nodes (13): CompetitionType, computeStandings(), emptyStanding(), FORM_GLYPHS, formatDay(), FormEntry, GroupMatchesModal(), isLeagueTable() (+5 more)
-
-### Community 36 - "Base64 Encoding"
 Cohesion: 0.12
 Nodes (14): Analytics Engine — hot path (retenção ~3 meses), Arquitetura, As 3 camadas (não confundir), code:ts (import { hashUserId, logEvent } from '../observability'), Dashboard de métricas, Decisões descartadas — NÃO re-propor, Esquema e convenção de eventos, Esquema posicional por evento (+6 more)
 
+### Community 36 - "Base64 Encoding"
+Cohesion: 0.18
+Nodes (16): Positional event schema, exact_hits leaderboard inference, Per-group scoring config (immutable), Group scoring & visibility (docs), hashUserId (LGPD pseudonymization), Server-side instrumentation rule, logEvent / EventType, 1X2 mode (points_exact=0) (+8 more)
+
 ### Community 37 - "Landing Page"
-Cohesion: 0.24
-Nodes (14): alfa, beta, day(), finished(), leagueMatch(), makeMatch(), matches, matchItems (+6 more)
+Cohesion: 0.34
+Nodes (12): batchSpy, buildFakeDb(), db, eligible, FakeGroupConfig, FakeMatch, FakePrediction, matches (+4 more)
 
 ### Community 38 - "Predictions & Standings Tabs"
-Cohesion: 0.15
-Nodes (10): body, exampleEnv, fakeEnv(), headers, httpsEnv, localhostEnv, location, requestWithCookie() (+2 more)
-
-### Community 39 - "Unsubscribe Router"
 Cohesion: 0.13
 Nodes (13): Bônus de pênalti (`points_penalty`), Campos (tabela `groups`), Configuração de pontuação e visibilidade por grupo, `exact_hits` no leaderboard, Gate por `(competição, fase)` — fonte de verdade `competitions.penalty_phases`, Invariantes (validadas na API **e** no front), Modo 1X2 (`points_exact = 0`), Observabilidade (+5 more)
 
+### Community 39 - "Unsubscribe Router"
+Cohesion: 0.16
+Nodes (12): Analytics (GA4 click events), Pages API proxy onRequest, click_<context>_<acao> naming, GA4 Consent Mode v2, GoogleLoginButton (barrel), Header, JoinGroupModal, MembersTab (+4 more)
+
 ### Community 40 - "Group Card"
+Cohesion: 0.28
+Nodes (11): ActiveCompetition, ae, buildFakeAe(), buildFakeDb(), db, errors, pointsOfType(), runs (+3 more)
+
+### Community 41 - "App Routing"
+Cohesion: 0.38
+Nodes (10): buildFakeDb(), Captured, { db, captured }, { db, sqls }, m, match(), mockFetch(), postponedMatch() (+2 more)
+
+### Community 42 - "Settings Page"
 Cohesion: 0.15
 Nodes (5): ShareButtonsProps, mockTrackEvent, open, share, url
 
-### Community 41 - "App Routing"
-Cohesion: 0.23
-Nodes (6): competitions, result, router, app, competitions, AppContext
-
-### Community 42 - "Settings Page"
-Cohesion: 0.3
-Nodes (10): body, competitions, createdGroup, defaultProps, exact, fetchSpy, infoBtn, mockFetchCompetitions() (+2 more)
-
 ### Community 43 - "Cookie Consent GA"
+Cohesion: 0.3
+Nodes (10): baseGroup, baseUser, fetchSpy, input, mockGroupFetch(), mockGroupFetchSequence(), mockTrackEvent, renderPage() (+2 more)
+
+### Community 44 - "Router Test Helpers"
 Cohesion: 0.17
 Nodes (11): A. Ativar e verificar o GA4 em produção *(ação do dono — sem código)*, ⏸️ Adiado por design — só fazer quando o gatilho existir, B. Keyword research *(depende de tráfego acumular no Search Console)*, C. Bing Webmaster Tools *(ação do dono — sem código)*, context-seo.md — SEO, Performance & Analytics, Contexto do projeto (o que importa aqui), D. Link building *(ação do dono — sem código)*, ❌ Decisões descartadas — NÃO re-propor (+3 more)
 
-### Community 44 - "Router Test Helpers"
+### Community 45 - "Results API Script"
+Cohesion: 0.23
+Nodes (11): applyDefaultRound, BallIcon, fetchCachedJson, GroupPicksTab, InfoHint, InfoSvg, isGroupStageRound, LeaderboardTab (+3 more)
+
+### Community 46 - "Card Component"
 Cohesion: 0.35
 Nodes (9): here, lines, loadDevVars(), mapStatus(), q(), qn(), slugify(), status (+1 more)
 
-### Community 45 - "Results API Script"
-Cohesion: 0.33
-Nodes (9): requireAuth, body, confirmationPage(), router, row, token, unsubscribeByToken(), unsubscribeFormPage() (+1 more)
-
-### Community 46 - "Card Component"
+### Community 47 - "Modal Component"
 Cohesion: 0.18
 Nodes (9): Build Order, Current Status, Key rules encoded in schema, ~~Legacy SQL Draft~~, Next Steps, Open Decisions, Runtime Context, Schema (+1 more)
 
-### Community 47 - "Modal Component"
-Cohesion: 0.29
-Nodes (6): BallIcon(), PenaltyBadge(), PenaltyBadgeProps, button, icon, onActivate
-
 ### Community 48 - "Button Component"
-Cohesion: 0.2
-Nodes (9): baseProps, defaultProps, groupStageOptgroup, knockoutOptgroup, nextButton, prevButton, props, select (+1 more)
+Cohesion: 0.24
+Nodes (5): competitions, result, router, app, competitions
 
 ### Community 49 - "Confirm Modal"
 Cohesion: 0.2
-Nodes (9): API — Setup local, code:bash (cd api), code:bash (# Start local dev server (http://localhost:8787)), code:bash (# Set production secrets (one-time, stored encrypted in Clou), Deploying, First-time setup, Palpitae, Prerequisites (+1 more)
+Nodes (9): baseProps, defaultProps, groupStageOptgroup, knockoutOptgroup, nextButton, prevButton, props, select (+1 more)
 
 ### Community 50 - "Penalty Badge"
 Cohesion: 0.2
-Nodes (7): Analytics — eventos de clique (GA4, lado cliente), code:ts (import { trackEvent } from '../../analytics/ga'), Consentimento e LGPD, Convenções de nome, Eventos já mapeados, O que rastrear vs. ignorar, Regra
+Nodes (9): API — Setup local, code:bash (cd api), code:bash (# Start local dev server (http://localhost:8787)), code:bash (# Set production secrets (one-time, stored encrypted in Clou), Deploying, First-time setup, Palpitae, Prerequisites (+1 more)
 
 ### Community 51 - "Admin Metrics Charts"
-Cohesion: 0.31
-Nodes (3): Modal(), ModalProps, onClose
+Cohesion: 0.2
+Nodes (7): Analytics — eventos de clique (GA4, lado cliente), code:ts (import { trackEvent } from '../../analytics/ga'), Consentimento e LGPD, Convenções de nome, Eventos já mapeados, O que rastrear vs. ignorar, Regra
 
 ### Community 52 - "Wrangler Config Test"
+Cohesion: 0.33
+Nodes (6): Member, MemberItem(), MemberItemProps, MembersTab(), MembersTabProps, useMembers()
+
+### Community 53 - "Football-data Fetch"
+Cohesion: 0.29
+Nodes (6): BallIcon(), PenaltyBadge(), PenaltyBadgeProps, button, icon, onActivate
+
+### Community 54 - "Penalty Parsing"
+Cohesion: 0.24
+Nodes (10): ADR-006 Vite + React static site, Analytics Engine hot path, App (root component), exportRecentDays backfill, Grafana Cloud dashboard (not adopted), Native dashboard backlog, Native /admin/metricas dashboard, R2 cold path (NDJSON archive) (+2 more)
+
+### Community 55 - "SEO Assets"
 Cohesion: 0.22
 Nodes (5): Select(), SelectProps, onChange, select, user
 
-### Community 53 - "Football-data Fetch"
+### Community 56 - "Group Card Types"
 Cohesion: 0.25
 Nodes (9): fetchCachedJson, Modal, BallIcon, PenaltyBadge, PredictionsTab, applyDefaultRound, isGroupStageRound, StandingsTab (+1 more)
 
-### Community 54 - "Penalty Parsing"
-Cohesion: 0.36
-Nodes (3): Button(), ButtonProps, onClick
-
-### Community 55 - "SEO Assets"
-Cohesion: 0.43
-Nodes (6): fetchSpy, mockResponse(), mockTrackEvent, patchCall, renderPage(), user
-
-### Community 56 - "Group Card Types"
-Cohesion: 0.43
-Nodes (6): corsHeaders, dialog, editMenuText, leaveGroupBtn, method, url
-
 ### Community 57 - "Brand Logo SVGs"
-Cohesion: 0.25
-Nodes (8): ADR-007: Result Sync Strategy — Cron-Triggered Time-Window Poller, Alternatives Considered, code:block1 (First half:           45 min), code:sql (SELECT DISTINCT c.id AS comp_id, c.external_id, c.season, m.), Consequences, Context, Decision, Implementation
-
-### Community 58 - "Brand Logo Variants"
 Cohesion: 0.61
 Nodes (5): env, fetchMatches(), loadDevVars(), main(), summarizeMatches()
 
+### Community 58 - "Brand Logo Variants"
+Cohesion: 0.36
+Nodes (3): Button(), ButtonProps, onClick
+
 ### Community 59 - "App Icons & Social Card"
+Cohesion: 0.43
+Nodes (6): corsHeaders, dialog, editMenuText, leaveGroupBtn, method, url
+
+### Community 60 - "Community 60"
+Cohesion: 0.25
+Nodes (8): ADR-007: Result Sync Strategy — Cron-Triggered Time-Window Poller, Alternatives Considered, code:block1 (First half:           45 min), code:sql (SELECT DISTINCT c.id AS comp_id, c.external_id, c.season, m.), Consequences, Context, Decision, Implementation
+
+### Community 61 - "Community 61"
+Cohesion: 0.43
+Nodes (6): fetchSpy, mockResponse(), mockTrackEvent, patchCall, renderPage(), user
+
+### Community 62 - "Community 62"
+Cohesion: 0.43
+Nodes (6): PredictionMap, usePredictionsBulkSave(), usePredictionsFetch(), usePredictionsImport(), usePredictionsRounds(), usePredictionsTab()
+
+### Community 63 - "Community 63"
+Cohesion: 0.32
+Nodes (3): Modal(), ModalProps, onClose
+
+### Community 64 - "Community 64"
 Cohesion: 0.25
 Nodes (7): 1. 🧪 Testes Manuais (Checklist), 2. 🤖 Sugestão de Testes E2E (Playwright), A. Fluxo de Grupos (Create / View / Join), B. Fluxo de Palpites (Predictions), C. Sincronização e Matches no Background, Cenário 1: "Happy Path - Criar grupo, alterar rodada e fazer palpite", Test Plan Post-Refactoring
 
-### Community 60 - "Community 60"
+### Community 65 - "Community 65"
+Cohesion: 0.25
+Nodes (8): ADR-005 Direct Google OAuth, ADR-007 Cron result poller, ADR-008 GET /matches caching, ADR-009 Round reminder e-mail (Resend), ADR-010 Fixture discovery cron, Runtime context / stack decisions, Database schema (D1), System architecture (governance)
+
+### Community 66 - "Community 66"
 Cohesion: 0.48
 Nodes (5): dump, here, lines, perUser, USER_MAP
 
-### Community 61 - "Community 61"
-Cohesion: 0.48
-Nodes (5): app, body, buildApp(), fakeEnv(), requestWithCookie()
-
-### Community 62 - "Community 62"
+### Community 67 - "Community 67"
 Cohesion: 0.33
 Nodes (4): Card(), CardProps, { container }, div
 
-### Community 63 - "Community 63"
-Cohesion: 0.48
-Nodes (5): dialog, fetchSpy, mockResponse(), mockTrackEvent, user
-
-### Community 64 - "Community 64"
+### Community 68 - "Community 68"
 Cohesion: 0.38
 Nodes (3): ErrorState(), ErrorStateProps, { container }
 
-### Community 65 - "Community 65"
+### Community 69 - "Community 69"
 Cohesion: 0.29
 Nodes (5): Dashboard Nativo (Admin Metrics) — ideias futuras, Descartado — NÃO re-propor, Ideias pendentes, Linha de referência de quota da API Football, Mapa de calor por horário
 
-### Community 66 - "Community 66"
+### Community 70 - "Community 70"
 Cohesion: 0.29
-Nodes (5): ADR-008: Caching Strategy for `GET /matches` — Content-Derived TTL + Edge Cache API, Architecture Decision Records, Consequences, Context, Decision
+Nodes (5): ADR-004: Prediction Locking — Derived at Runtime, Architecture Decision Records, Consequences, Context, Decision
 
-### Community 67 - "Community 67"
+### Community 71 - "Community 71"
+Cohesion: 0.29
+Nodes (7): ADR-001 Cloudflare D1, ADR-003 Workers + Hono, ADR-004 Runtime prediction locking, Anti-abuse strategy (MVP), Default scoring (3/1/0), Palpitae product vision, Direction A: componentized private groups
+
+### Community 72 - "Community 72"
 Cohesion: 0.38
 Nodes (7): CookieConsent, CookieConsent.test, gaEnabled, getStoredConsent, initGa, setConsent, ga.test
 
-### Community 68 - "Community 68"
+### Community 73 - "Community 73"
 Cohesion: 0.6
 Nodes (5): addVary(), estimateTokens(), htmlToMarkdown(), onRequest(), yaml()
 
-### Community 69 - "Community 69"
+### Community 74 - "Community 74"
 Cohesion: 0.53
 Nodes (4): corsHeaders, inputs, tomorrow, url
 
-### Community 70 - "Community 70"
+### Community 75 - "Community 75"
 Cohesion: 0.53
 Nodes (4): corsHeaders, method, modal, url
 
-### Community 71 - "Community 71"
+### Community 76 - "Community 76"
 Cohesion: 0.53
 Nodes (4): corsHeaders, dialog, method, reminderLabel
 
-### Community 72 - "Community 72"
-Cohesion: 0.33
-Nodes (6): ADR-006: Frontend Stack — Vite + React (Static Site), Consequences, Context, Decision, Design Token System, Why not Next.js / Remix?
-
-### Community 73 - "Community 73"
+### Community 77 - "Community 77"
 Cohesion: 0.33
 Nodes (6): ADR-009: Round Reminder Notifications — Transactional E-mail via Resend, Alternatives Considered, Consequences, Context, Decision, Implementation
 
-### Community 74 - "Community 74"
+### Community 78 - "Community 78"
 Cohesion: 0.33
 Nodes (6): ADR-010: Fixture Discovery — Daily Full-Competition Sync Cron, Consequences, Context, Decision, Why a full sync (not "wait for the round to end"), Why not reuse the existing crons
 
-### Community 75 - "Community 75"
+### Community 79 - "Community 79"
+Cohesion: 0.33
+Nodes (6): ADR-006: Frontend Stack — Vite + React (Static Site), Consequences, Context, Decision, Design Token System, Why not Next.js / Remix?
+
+### Community 80 - "Community 80"
+Cohesion: 0.53
+Nodes (5): useMatchCard(), UseMatchCardProps, useMatchDraft(), useMatchPersistence(), useMatchStatus()
+
+### Community 81 - "Community 81"
 Cohesion: 0.6
 Nodes (3): btnEntrar, corsHeaders, googleBtn
 
-### Community 76 - "Community 76"
+### Community 82 - "Community 82"
 Cohesion: 0.6
 Nodes (3): Analytics — eventos de clique (obrigatório), graphify, Observabilidade — eventos server-side (obrigatório)
 
-### Community 77 - "Community 77"
+### Community 83 - "Community 83"
 Cohesion: 0.4
 Nodes (5): ADR-002: Migration Strategy — Wrangler D1 Migrations, Consequences, Context, Decision, Rules
 
-### Community 78 - "Community 78"
+### Community 84 - "Community 84"
 Cohesion: 0.4
 Nodes (5): ADR-005: Authentication — Direct Google OAuth 2.0, Consequences, Context, Decision, Security Requirements
 
-### Community 80 - "Community 80"
+### Community 87 - "Community 87"
 Cohesion: 0.5
 Nodes (3): Overview, System Architecture — Palpitae, Working with Architecture
 
-### Community 81 - "Community 81"
-Cohesion: 0.5
-Nodes (4): ADR-003: API Runtime — Cloudflare Workers + Hono, Consequences, Context, Decision
-
-### Community 82 - "Community 82"
-Cohesion: 0.5
-Nodes (4): ADR-011: Brasileirão Série A 2026 — Data Migration from bolao-brasileirao, Consequences, Context, Decision
-
-### Community 83 - "Community 83"
-Cohesion: 0.5
-Nodes (4): ADR-013: Postponed Matches — Dedicated Flag, Not a `status` Value, Consequences, Context, Decision
-
-### Community 84 - "Community 84"
+### Community 88 - "Community 88"
 Cohesion: 0.5
 Nodes (4): ADR-012: Standings Tab — Data-Driven Competition-Type Gate, Consequences, Context, Decision
 
-### Community 85 - "Community 85"
+### Community 89 - "Community 89"
 Cohesion: 0.5
-Nodes (4): ADR-004: Prediction Locking — Derived at Runtime, Consequences, Context, Decision
+Nodes (4): ADR-011: Brasileirão Série A 2026 — Data Migration from bolao-brasileirao, Consequences, Context, Decision
 
-### Community 86 - "Community 86"
+### Community 90 - "Community 90"
+Cohesion: 0.5
+Nodes (4): ADR-003: API Runtime — Cloudflare Workers + Hono, Consequences, Context, Decision
+
+### Community 91 - "Community 91"
 Cohesion: 0.5
 Nodes (4): ADR-001: Database Platform — Cloudflare D1, Consequences, Context, Decision
 
-### Community 88 - "Community 88"
+### Community 92 - "Community 92"
+Cohesion: 0.5
+Nodes (4): ADR-008: Caching Strategy for `GET /matches` — Content-Derived TTL + Edge Cache API, Consequences, Context, Decision
+
+### Community 93 - "Community 93"
+Cohesion: 0.5
+Nodes (4): ADR-013: Postponed Matches — Dedicated Flag, Not a `status` Value, Consequences, Context, Decision
+
+### Community 94 - "Community 94"
 Cohesion: 0.67
 Nodes (4): AdminMetricsPage, BarChart, StackedBarChart, useDocumentTitle
 
-### Community 90 - "Community 90"
+### Community 96 - "Community 96"
 Cohesion: 0.67
 Nodes (3): fetchMatches (football-data.org), test-results-api main, summarizeMatches
 
-### Community 91 - "Community 91"
+### Community 97 - "Community 97"
 Cohesion: 0.67
 Nodes (3): matchGoesToPenalties, parsePenaltyPhases, competitionsRouter
 
-### Community 94 - "Community 94"
+### Community 100 - "Community 100"
 Cohesion: 1.0
 Nodes (3): Palpitae Icon (green on black), Palpitae Icon (green on white), Palpitae Wordmark + Icon Logo
 
-### Community 95 - "Community 95"
+### Community 101 - "Community 101"
 Cohesion: 1.0
 Nodes (3): Palpitae App Icon, Palpitae Logo (Black variant), Palpitae Logo (Green variant)
 
-### Community 96 - "Community 96"
+### Community 102 - "Community 102"
 Cohesion: 1.0
 Nodes (3): Palpitae App Icon (Apple Touch Icon), Bracket View Screenshot (Chaveamento), Palpitae OG Social Share Card
 
@@ -551,7 +581,7 @@ Nodes (3): Palpitae App Icon (Apple Touch Icon), Bracket View Screenshot (Chavea
   web/src/components/StandingsTab/StandingsTab.tsx · relation: semantically_similar_to
 
 ## Knowledge Gaps
-- **448 isolated node(s):** `result`, `buf`, `encoded`, `decoded`, `original` (+443 more)
+- **468 isolated node(s):** `body`, `setCookie`, `location`, `setCookies`, `headers` (+463 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **16 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -566,9 +596,9 @@ _Questions this graph is uniquely positioned to answer:_
   _Edge tagged AMBIGUOUS (relation: semantically_similar_to) - confidence is low._
 - **What is the exact relationship between `PenaltyBadge` and `StandingsTab`?**
   _Edge tagged AMBIGUOUS (relation: semantically_similar_to) - confidence is low._
-- **Why does `trackEvent()` connect `GA4 Analytics & Consent` to `Match Sync Tests`, `Join Group Modal`, `Rounds & Round Reminders`, `Groups Router`, `UI Primitives & API Cache`, `Auth/Groups Router Tests`, `Group Card`, `Metrics Charts & Formatters`, `Group Picks & Leaderboard`, `Events Export to R2`, `Admin Metrics Charts`, `Page Components & Titles`, `JWT Middleware`, `Fixture Discovery & Polling`, `Header Component`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
-- **Why does `AppContext` connect `App Routing` to `Notifications & Observability`, `Architecture Decision Records`, `Penalties & Scoring API`, `Observability Events Core`, `Predictions & Standings Tabs`, `Create Group Modal & Presets`, `Results API Script`, `Crypto & OAuth Helpers`, `Google Login Button`, `Match Poller`, `Community 61`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
-- **Why does `apiFetch()` connect `Auth/Groups Router Tests` to `Match Sync Tests`, `Join Group Modal`, `Rounds & Round Reminders`, `UI Primitives & API Cache`, `Metrics Charts & Formatters`, `Group Picks & Leaderboard`, `GA4 Analytics & Consent`, `Page Components & Titles`, `Fixture Discovery & Polling`?**
-  _High betweenness centrality (0.011) - this node is a cross-community bridge._
+- **Why does `trackEvent()` connect `Group Detail Page & Tabs` to `Observability Events Core`, `Feature Flags & Permissions`, `Groups Router`, `Auth/Groups Router Tests`, `Settings Page`, `Group Picks & Leaderboard`, `Create Group Modal & Presets`, `Match Card`, `Crypto & OAuth Helpers`, `API Cache Layer`, `Community 80`, `Google OAuth`, `Wrangler Config Test`, `Cookie Consent & GA Init`, `Google Login Button`, `Header Component`, `Community 62`, `Community 63`?**
+  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+- **Why does `AppContext` connect `Penalties & Scoring API` to `Notifications & Observability`, `Architecture Decision Records`, `UI Primitives & API Cache`, `Metrics Charts & Formatters`, `Button Component`, `Events Export to R2`?**
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Why does `signJwt()` connect `Penalties & Scoring API` to `Notifications & Observability`, `Architecture Decision Records`?**
+  _High betweenness centrality (0.009) - this node is a cross-community bridge._
