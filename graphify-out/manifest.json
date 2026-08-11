@@ -287,13 +287,13 @@
     "mtime": 1785352375.5291266,
     "hash": "e0a24fc7a3f37439e68b0f9d750315bf"
   },
-  "/home/satin/Work/personal/palpitae/api/src/observability/metricsRouter.ts": {
-    "mtime": 1786440638.4468918,
-    "hash": "ae3b6518c1f0410d582e24df513f5b1d"
-  },
   "/home/satin/Work/personal/palpitae/api/src/observability/metricsRouter.test.ts": {
-    "mtime": 1786440744.7291956,
+    "mtime": 1786473482.9287376,
     "hash": "767e388e9cae5d3af77c8ba4661a2068"
+  },
+  "/home/satin/Work/personal/palpitae/api/src/observability/metricsRouter.ts": {
+    "mtime": 1786473482.9297378,
+    "hash": "ae3b6518c1f0410d582e24df513f5b1d"
   },
   "/home/satin/Work/personal/palpitae/api/src/notifications/email.ts": {
     "mtime": 1784394014.8470302,
@@ -839,17 +839,17 @@
     "mtime": 1784393949.8567677,
     "hash": "a0361576c5afd6c4cf53718d42394008"
   },
-  "/home/satin/Work/personal/palpitae/web/src/pages/AdminMetricsPage/AdminMetricsPage.test.tsx": {
-    "mtime": 1785352375.55388,
-    "hash": "6face2319006f19538702bc84c772ad1"
-  },
   "/home/satin/Work/personal/palpitae/web/src/pages/AdminMetricsPage/labels.ts": {
     "mtime": 1785352375.5541267,
     "hash": "0587395e6947a1b67a1ab7fccf7c3dc5"
   },
+  "/home/satin/Work/personal/palpitae/web/src/pages/AdminMetricsPage/AdminMetricsPage.test.tsx": {
+    "mtime": 1786473671.9249244,
+    "hash": "c86864be7e617ed96ee14eaffa19e6e4"
+  },
   "/home/satin/Work/personal/palpitae/web/src/pages/AdminMetricsPage/AdminMetricsPage.tsx": {
-    "mtime": 1786440665.1451128,
-    "hash": "dc23d2cae709aa0b1ff4b0d15069aa3a"
+    "mtime": 1786473687.4472752,
+    "hash": "2ab56ea054d729fbdf41ef3cb609a468"
   },
   "/home/satin/Work/personal/palpitae/web/src/analytics/ga.ts": {
     "mtime": 1785352375.5501268,
@@ -974,10 +974,6 @@
   "/home/satin/Work/personal/palpitae/web/playwright-report/index.html": {
     "mtime": 1784392384.2469602,
     "hash": "9062c686dc9d6023fbdd026b4c386608"
-  },
-  "/home/satin/Work/personal/palpitae/docs/pr-screenshots/239-groupcard-alignment.png": {
-    "mtime": 1786301329.723765,
-    "hash": "1ce20282b176e4ecd48746a8a7abbaf9"
   },
   "/home/satin/Work/personal/palpitae/web/public/logo-text.svg": {
     "mtime": 1777847756.8238344,
