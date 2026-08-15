@@ -4,17 +4,20 @@ import { describe, it, expect } from 'vitest'
 import { useState } from 'react'
 import { useConfirm } from './useConfirm'
 
-function TestComponent() {
+interface ConfirmOptions {
+  title?: string
+  message: string
+  confirmLabel?: string
+  cancelLabel?: string
+  danger?: boolean
+}
+
+function TestComponent({ options }: { options: ConfirmOptions }) {
   const { confirm, confirmDialog } = useConfirm()
   const [result, setResult] = useState<string>('idle')
 
   const handleConfirm = async () => {
-    const res = await confirm({
-      title: 'Test Title',
-      message: 'Test Message',
-      confirmLabel: 'Yes',
-      cancelLabel: 'No',
-    })
+    const res = await confirm(options)
     setResult(res ? 'confirmed' : 'canceled')
   }
 
@@ -28,15 +31,23 @@ function TestComponent() {
 }
 
 describe('useConfirm', () => {
+  const defaultOptions = {
+    title: 'Test Title',
+    message: 'Test Message',
+    confirmLabel: 'Yes',
+    cancelLabel: 'No',
+  }
+
   it('should initially not show the modal', () => {
-    render(<TestComponent />)
+    render(<TestComponent options={defaultOptions} />)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('should open the modal with provided options when confirm is triggered', async () => {
-    render(<TestComponent />)
+    const user = userEvent.setup({ delay: null })
+    render(<TestComponent options={defaultOptions} />)
     const triggerButton = screen.getByText('Trigger Confirm')
-    await userEvent.click(triggerButton)
+    await user.click(triggerButton)
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByText('Test Title')).toBeInTheDocument()
@@ -46,28 +57,52 @@ describe('useConfirm', () => {
   })
 
   it('should resolve with true and close modal when confirm button is clicked', async () => {
-    render(<TestComponent />)
+    const user = userEvent.setup({ delay: null })
+    render(<TestComponent options={defaultOptions} />)
 
-    await userEvent.click(screen.getByText('Trigger Confirm'))
+    await user.click(screen.getByText('Trigger Confirm'))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
 
     const confirmButton = screen.getByRole('button', { name: 'Yes' })
-    await userEvent.click(confirmButton)
+    await user.click(confirmButton)
 
     expect(screen.getByTestId('result')).toHaveTextContent('confirmed')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('should resolve with false and close modal when cancel button is clicked', async () => {
-    render(<TestComponent />)
+    const user = userEvent.setup({ delay: null })
+    render(<TestComponent options={defaultOptions} />)
 
-    await userEvent.click(screen.getByText('Trigger Confirm'))
+    await user.click(screen.getByText('Trigger Confirm'))
     expect(screen.getByRole('dialog')).toBeInTheDocument()
 
     const cancelButton = screen.getByRole('button', { name: 'No' })
-    await userEvent.click(cancelButton)
+    await user.click(cancelButton)
 
     expect(screen.getByTestId('result')).toHaveTextContent('canceled')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('should use default labels when only message is provided', async () => {
+    const user = userEvent.setup({ delay: null })
+    render(<TestComponent options={{ message: 'Just a message' }} />)
+
+    await user.click(screen.getByText('Trigger Confirm'))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Just a message')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirmar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancelar' })).toBeInTheDocument()
+  })
+
+  it('should apply the danger class to the confirm button when danger option is true', async () => {
+    const user = userEvent.setup({ delay: null })
+    render(<TestComponent options={{ message: 'Danger zone', danger: true, confirmLabel: 'Delete' }} />)
+
+    await user.click(screen.getByText('Trigger Confirm'))
+
+    const confirmButton = screen.getByRole('button', { name: 'Delete' })
+    expect(confirmButton.className).toContain('danger')
   })
 })
