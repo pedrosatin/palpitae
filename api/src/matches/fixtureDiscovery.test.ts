@@ -189,4 +189,29 @@ describe('discoverFixtures', () => {
     expect(fixturesUpdated).toBe(3)
     expect(apiCalls).toBe(2)
   })
+
+  it('respects concurrency limit of 5', async () => {
+    const competitions = Array.from({ length: 10 }, (_, i) => ({
+      id: `c${i}`,
+      external_id: `COMP${i}`,
+      season: '2026',
+    }))
+    const db = buildFakeDb(competitions)
+
+    let executingCount = 0
+    let maxExecutingCount = 0
+
+    syncFixturesMock.mockImplementation(async () => {
+      executingCount++
+      maxExecutingCount = Math.max(maxExecutingCount, executingCount)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      executingCount--
+      return undefined as never
+    })
+
+    await discoverFixtures(db as unknown as D1Database, 'key')
+
+    expect(syncFixturesMock).toHaveBeenCalledTimes(10)
+    expect(maxExecutingCount).toBeLessThanOrEqual(5)
+  })
 })
