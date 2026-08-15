@@ -119,6 +119,44 @@ export type SyncResult = {
   teams: number
 }
 
+export function resolveCanonicalScore(score: ApiMatch['score']): {
+  canonicalHome: number | null
+  canonicalAway: number | null
+} {
+  const isShootout = score.duration === 'PENALTY_SHOOTOUT'
+  let canonicalHome = score.fullTime.home ?? null
+  let canonicalAway = score.fullTime.away ?? null
+
+  if (isShootout) {
+    const rtHome = score.regularTime?.home
+    const rtAway = score.regularTime?.away
+    if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
+      // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
+      canonicalHome = rtHome + (score.extraTime?.home ?? 0)
+      canonicalAway = rtAway + (score.extraTime?.away ?? 0)
+    } else if (
+      canonicalHome !== null &&
+      canonicalAway !== null &&
+      canonicalHome !== canonicalAway
+    ) {
+      // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
+      canonicalHome -= score.penalties?.home ?? 0
+      canonicalAway -= score.penalties?.away ?? 0
+
+      // Sanity check: shootout implies a draw. If subtraction yields a non-draw or negative score,
+      // fallback to the most reasonable non-negative draw score.
+      if (canonicalHome < 0 || canonicalAway < 0 || canonicalHome !== canonicalAway) {
+        const drawScore = Math.max(0, Math.min(canonicalHome, canonicalAway))
+        canonicalHome = drawScore
+        canonicalAway = drawScore
+      }
+    }
+    // else: fullTime já é o placar do empate.
+  }
+
+  return { canonicalHome, canonicalAway }
+}
+
 /**
  * Maps football-data.org status to internal status.
  * Ref: https://www.football-data.org/documentation/quickstart
@@ -350,37 +388,9 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     //    de pênalti de fullTime. Essa heurística assume que o provider embutiu os pênaltis
     //    em fullTime — o que só acontece quando os valores são desiguais.
     // 3. fullTime igual: já é o placar do empate, não faz nada.
+    const { canonicalHome, canonicalAway } = resolveCanonicalScore(m.score)
+
     const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
-    let canonicalHome = m.score.fullTime.home ?? null
-    let canonicalAway = m.score.fullTime.away ?? null
-
-    if (isShootout) {
-      const rtHome = m.score.regularTime?.home
-      const rtAway = m.score.regularTime?.away
-      if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
-        // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
-        canonicalHome = rtHome + (m.score.extraTime?.home ?? 0)
-        canonicalAway = rtAway + (m.score.extraTime?.away ?? 0)
-      } else if (
-        canonicalHome !== null &&
-        canonicalAway !== null &&
-        canonicalHome !== canonicalAway
-      ) {
-        // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
-        canonicalHome -= m.score.penalties?.home ?? 0
-        canonicalAway -= m.score.penalties?.away ?? 0
-
-        // Sanity check: shootout implies a draw. If subtraction yields a non-draw or negative score,
-        // fallback to the most reasonable non-negative draw score.
-        if (canonicalHome < 0 || canonicalAway < 0 || canonicalHome !== canonicalAway) {
-          const drawScore = Math.max(0, Math.min(canonicalHome, canonicalAway))
-          canonicalHome = drawScore
-          canonicalAway = drawScore
-        }
-      }
-      // else: fullTime já é o placar do empate.
-    }
-
     const duration = m.score.duration ?? null
     // Vencedor dos pênaltis só faz sentido em PENALTY_SHOOTOUT (score.winner também
     // vem preenchido em jogos REGULAR, onde significa o vencedor no tempo normal).
