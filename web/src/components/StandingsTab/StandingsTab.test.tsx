@@ -199,6 +199,62 @@ describe('computeStandings', () => {
     const matches = [makeMatch({ id: 'm1', group_name: null })]
     expect(computeStandings(matches).size).toBe(0)
   })
+
+  it('sorts alphabetically by team name if points, goal difference, and goals scored are equal', () => {
+    const matches = [
+      makeMatch({
+        id: 'm1',
+        group_name: 'A',
+        status: 'finished',
+        home_team_id: 't2',
+        home_team_name: 'Zeta',
+        away_team_id: 't1',
+        away_team_name: 'Alfa',
+        home_score: 1,
+        away_score: 1,
+      }),
+    ]
+    const groupA = computeStandings(matches).get('A')!
+    expect(groupA.map((t) => t.team_name)).toEqual(['Alfa', 'Zeta'])
+  })
+
+  it('handles multiple groups independently', () => {
+    const matches = [
+      makeMatch({
+        id: 'm1',
+        group_name: 'A',
+        home_team_name: 'Team A1',
+        away_team_name: 'Team A2',
+      }),
+      makeMatch({
+        id: 'm2',
+        group_name: 'B',
+        home_team_name: 'Team B1',
+        away_team_name: 'Team B2',
+      }),
+    ]
+    const standings = computeStandings(matches)
+    expect(standings.has('A')).toBe(true)
+    expect(standings.has('B')).toBe(true)
+    expect(standings.get('A')).toHaveLength(2)
+    expect(standings.get('B')).toHaveLength(2)
+  })
+
+  it('ignores finished matches with null scores', () => {
+    const matches = [
+      makeMatch({
+        id: 'm1',
+        group_name: 'A',
+        status: 'finished',
+        home_score: null,
+        away_score: null,
+      }),
+    ]
+    const groupA = computeStandings(matches).get('A')!
+    for (const t of groupA) {
+      expect(t).toMatchObject({ p: 0, j: 0, gf: 0, ga: 0, sg: 0 })
+    }
+  })
 })
 
 // ─── Render ─────────────────────────────────────────────────────────────────
