@@ -131,8 +131,21 @@ export async function pollActiveMatches(
     }
   }
 
-  for (const compId of syncedComps) {
-    await scoreUnprocessedMatches(compId, db)
+  const scoreResults = await Promise.all(
+    Array.from(syncedComps).map(async (compId) => {
+      try {
+        await scoreUnprocessedMatches(compId, db)
+        return { success: true as const, compId }
+      } catch (err) {
+        return { success: false as const, compId, err }
+      }
+    }),
+  )
+
+  for (const res of scoreResults) {
+    if (!res.success) {
+      throw res.err
+    }
   }
 
   // matches_checked = nº de (comp, round) na janela ativa — proxy de quantos jogos
