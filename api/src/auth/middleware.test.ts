@@ -16,7 +16,9 @@ function buildMockContext(cookieHeader: string | null): Context<AppContext> {
     },
     env: { JWT_SECRET },
     set: vi.fn(),
-    json: vi.fn().mockImplementation((data, status) => new Response(JSON.stringify(data), { status })),
+    json: vi
+      .fn()
+      .mockImplementation((data, status) => new Response(JSON.stringify(data), { status })),
   } as unknown as Context<AppContext>
 }
 

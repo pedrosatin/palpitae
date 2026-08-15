@@ -17,7 +17,9 @@ vi.mock('./pages/DashboardPage', () => ({
   default: ({ onLogout }: { onLogout: () => void }) => (
     <div data-testid="dashboard-page">
       DashboardPage
-      <button onClick={onLogout} data-testid="logout-button">Logout</button>
+      <button onClick={onLogout} data-testid="logout-button">
+        Logout
+      </button>
     </div>
   ),
 }))
@@ -50,7 +52,7 @@ describe('App', () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     // Ensure the container is empty (returns null)
@@ -63,7 +65,7 @@ describe('App', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     // Wait for the LandingPage mock to render
@@ -77,13 +79,13 @@ describe('App', () => {
   it('renders authenticated route when /auth/me returns user data', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } })
+      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } }),
     })
 
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
@@ -94,13 +96,13 @@ describe('App', () => {
   it('responds to SESSION_EXPIRED_EVENT by clearing state and falling back to unauthenticated routes', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } })
+      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } }),
     })
 
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
@@ -124,7 +126,7 @@ describe('App', () => {
     // First, authenticate
     fetchMock.mockResolvedValueOnce({
       ok: true,
-      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } })
+      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } }),
     })
 
     // Setup fetch mock for logout call
@@ -133,7 +135,7 @@ describe('App', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {

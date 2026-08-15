@@ -255,9 +255,7 @@ metricsRouter.get('/business', async (c) => {
     db.prepare(`SELECT COUNT(DISTINCT user_id) AS n FROM predictions`).first(),
     db.prepare(`SELECT COUNT(*) AS n FROM users`).first(),
     db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM users WHERE created_at > datetime('now', ?)`,
-      )
+      .prepare(`SELECT COUNT(*) AS n FROM users WHERE created_at > datetime('now', ?)`)
       .bind(`-${days} days`)
       .first(),
     db
@@ -396,13 +394,22 @@ metricsRouter.get('/archive/query', async (c) => {
   const byDay: { day: string; count: number }[] = []
   let filesRead = 0
 
-  for (const day of days) {
+  const fetchPromises = days.map(async (day) => {
     const key = `events/${day.replaceAll('-', '/')}.ndjson`
     const obj = await bucket.get(key)
-    if (!obj) continue
-    filesRead++
+    if (!obj) return null
 
     const body = await obj.text()
+    return { day, body }
+  })
+
+  const results = await Promise.all(fetchPromises)
+
+  for (const res of results) {
+    if (!res) continue
+    filesRead++
+
+    const { day, body } = res
     let dayTotal = 0
     for (const line of body.split('\n')) {
       if (line.trim() === '') continue
