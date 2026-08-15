@@ -36,11 +36,18 @@ describe('roundLabel', () => {
     })
   })
 
+  describe('empty rounds', () => {
+    it.each([
+      ['', ''],
+      ['   ', '   '],
+    ])('returns empty string/whitespace as-is', (input, expected) => {
+      expect(roundLabel(input)).toBe(expected)
+    })
+  })
+
   describe('fallback behavior', () => {
     it.each([
       ['SOMETHING_NEW', 'SOMETHING_NEW'],
-      ['', ''],
-      ['   ', '   '],
       ['ROUND_1', 'ROUND_1'],
     ])('falls back to raw value %s for unknown stages/inputs', (input, expected) => {
       expect(roundLabel(input)).toBe(expected)
