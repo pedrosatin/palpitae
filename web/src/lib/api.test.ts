@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  notifySessionExpired,
-  consumeSessionExpired,
-  apiFetch,
-  SESSION_EXPIRED_EVENT,
-} from './api'
+import { notifySessionExpired, consumeSessionExpired, apiFetch, SESSION_EXPIRED_EVENT } from './api'
 
 describe('api', () => {
   beforeEach(() => {
@@ -90,12 +85,15 @@ describe('api', () => {
       const fetchMock = vi.fn().mockResolvedValue(new Response('ok', { status: 200 }))
       vi.stubGlobal('fetch', fetchMock)
 
-      await apiFetch('/test-url', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      await apiFetch('/test-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
 
       expect(fetchMock).toHaveBeenCalledWith('/test-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
+        credentials: 'include',
       })
     })
 
