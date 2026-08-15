@@ -1,7 +1,6 @@
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { usePredictionsTab } from './usePredictionsTab'
-import { config } from '../../config'
 import * as ga from '../../analytics/ga'
 import { makeMatch } from '../matchFixtures'
 
