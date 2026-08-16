@@ -10,7 +10,12 @@ vi.mock('../../analytics/ga', () => ({
 
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-function mockFetch(matches: ReturnType<typeof makeMatch>[], predictions: any[] = [], groups: any[] = [], defaultRound: string | null = null) {
+function mockFetch(
+  matches: ReturnType<typeof makeMatch>[],
+  predictions: any[] = [],
+  groups: any[] = [],
+  defaultRound: string | null = null,
+) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
     if (u.includes('/matches')) {
@@ -30,28 +35,28 @@ function mockFetch(matches: ReturnType<typeof makeMatch>[], predictions: any[] =
       )
     }
     if (u.includes('/groups')) {
-       return Promise.resolve(
-         new Response(JSON.stringify({ groups }), {
-           status: 200,
-           headers: { 'Content-Type': 'application/json' },
-         })
-       )
+      return Promise.resolve(
+        new Response(JSON.stringify({ groups }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
     }
     if (u.includes('/predictions/bulk')) {
       return Promise.resolve(
-         new Response(JSON.stringify({ saved: [] }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-         })
+        new Response(JSON.stringify({ saved: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
       )
     }
     if (u.includes('/predictions/import')) {
-       return Promise.resolve(
-          new Response(JSON.stringify({ imported: 1, locked_skipped: 0 }), {
-             status: 200,
-             headers: { 'Content-Type': 'application/json' },
-          })
-       )
+      return Promise.resolve(
+        new Response(JSON.stringify({ imported: 1, locked_skipped: 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
     }
     return Promise.reject(new Error(`Unhandled request: ${u}`))
   })
@@ -71,10 +76,17 @@ describe('usePredictionsTab', () => {
       makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
       makeMatch({ id: 'm2', round: '2', status: 'scheduled' }),
     ]
-    const preds = [{
-       id: 'p1', match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0,
-       locked: 0, updated_at: new Date().toISOString(), points_awarded: 0
-    }]
+    const preds = [
+      {
+        id: 'p1',
+        match_id: 'm1',
+        predicted_home_score: 1,
+        predicted_away_score: 0,
+        locked: 0,
+        updated_at: new Date().toISOString(),
+        points_awarded: 0,
+      },
+    ]
     mockFetch(matches, preds, [], '1')
 
     const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
@@ -120,9 +132,7 @@ describe('usePredictionsTab', () => {
   })
 
   it('handles draft changes and saving', async () => {
-    const matches = [
-      makeMatch({ id: 'm1', round: '1', status: 'scheduled' }),
-    ]
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches, [], [], '1')
     const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
 
@@ -148,16 +158,21 @@ describe('usePredictionsTab', () => {
         method: 'PUT',
         body: JSON.stringify({
           group_id: 'g1',
-          predictions: [{
-             match_id: 'm1',
-             predicted_home_score: 2,
-             predicted_away_score: 1,
-             predicted_penalty_winner: null,
-          }]
-        })
-      })
+          predictions: [
+            {
+              match_id: 'm1',
+              predicted_home_score: 2,
+              predicted_away_score: 1,
+              predicted_penalty_winner: null,
+            },
+          ],
+        }),
+      }),
     )
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_salvar_todos', { count: 1, round: '1' })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_salvar_todos', {
+      count: 1,
+      round: '1',
+    })
   })
 
   it('handles import', async () => {
@@ -169,7 +184,9 @@ describe('usePredictionsTab', () => {
       expect(result.current.otherGroups).toHaveLength(1)
     })
 
-    expect(result.current.otherGroups).toEqual([{ id: 'g2', name: 'Other Group', competition_id: 'c1' }])
+    expect(result.current.otherGroups).toEqual([
+      { id: 'g2', name: 'Other Group', competition_id: 'c1' },
+    ])
 
     act(() => {
       result.current.setImportSourceId('g2')
@@ -187,9 +204,9 @@ describe('usePredictionsTab', () => {
         method: 'POST',
         body: JSON.stringify({
           source_group_id: 'g2',
-          target_group_id: 'g1'
-        })
-      })
+          target_group_id: 'g1',
+        }),
+      }),
     )
     expect(result.current.importFeedback?.ok).toBe(true)
   })

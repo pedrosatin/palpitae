@@ -33,7 +33,8 @@ export function useGroupTabs(group: GroupDetail | null) {
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = parseTab(searchParams.get('tab'))
   const showStandings = group?.competition_type === 'league'
-  const activeTab = rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
+  const activeTab =
+    rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
 
   function setActiveTab(tab: Tab) {
     trackEvent('click_group_detail_tab', { tab })

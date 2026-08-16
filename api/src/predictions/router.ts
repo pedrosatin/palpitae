@@ -910,18 +910,18 @@ async function handleImportPost(c: Context<AppContext>) {
 
   const db = c.env.DB
 
-  const validationError = await verifyGroupsForImport(
-    db,
-    userId,
-    source_group_id,
-    target_group_id,
-  )
+  const validationError = await verifyGroupsForImport(db, userId, source_group_id, target_group_id)
   if (validationError) {
     return c.json({ error: validationError.error }, validationError.status as any)
   }
 
   const now = new Date().toISOString()
-  const { toImport, lockedSkipped } = await fetchPredictionsToImport(db, userId, source_group_id, now)
+  const { toImport, lockedSkipped } = await fetchPredictionsToImport(
+    db,
+    userId,
+    source_group_id,
+    now,
+  )
 
   if (toImport.length === 0) {
     return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })
