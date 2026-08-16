@@ -25,10 +25,13 @@ describe('permissions', () => {
       const email = 'test@example.com'
       const flags = getFeatureFlags(email)
 
-      const expectedFlags = FEATURE_KEYS.reduce((acc, key) => {
-        acc[key] = hasFeatureAccess(email, key)
-        return acc
-      }, {} as Record<string, boolean>)
+      const expectedFlags = FEATURE_KEYS.reduce(
+        (acc, key) => {
+          acc[key] = hasFeatureAccess(email, key)
+          return acc
+        },
+        {} as Record<string, boolean>,
+      )
 
       expect(flags).toEqual(expectedFlags)
     })
@@ -38,10 +41,13 @@ describe('permissions', () => {
 
       emails.forEach((email) => {
         const flags = getFeatureFlags(email)
-        const expectedFlags = FEATURE_KEYS.reduce((acc, key) => {
-          acc[key] = hasFeatureAccess(email, key)
-          return acc
-        }, {} as Record<string, boolean>)
+        const expectedFlags = FEATURE_KEYS.reduce(
+          (acc, key) => {
+            acc[key] = hasFeatureAccess(email, key)
+            return acc
+          },
+          {} as Record<string, boolean>,
+        )
 
         expect(flags).toEqual(expectedFlags)
       })
@@ -52,10 +58,13 @@ describe('permissions', () => {
 
       emails.forEach((email) => {
         const flags = getFeatureFlags(email)
-        const expectedFlags = FEATURE_KEYS.reduce((acc, key) => {
-          acc[key] = hasFeatureAccess(email, key)
-          return acc
-        }, {} as Record<string, boolean>)
+        const expectedFlags = FEATURE_KEYS.reduce(
+          (acc, key) => {
+            acc[key] = hasFeatureAccess(email, key)
+            return acc
+          },
+          {} as Record<string, boolean>,
+        )
 
         expect(flags).toEqual(expectedFlags)
       })

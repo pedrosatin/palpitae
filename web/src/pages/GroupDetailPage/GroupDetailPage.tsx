@@ -28,7 +28,10 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
   const { activeTab, showStandings, tabHref, handleTabClick } = useGroupTabs(group)
   const tabsOffset = useTabsOffset()
-  const { leaveGroup, leaving, deleteGroup, deleting, confirmDialog } = useGroupActions(groupId, user)
+  const { leaveGroup, leaving, deleteGroup, deleting, confirmDialog } = useGroupActions(
+    groupId,
+    user,
+  )
 
   const [renameOpen, setRenameOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)

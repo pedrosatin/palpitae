@@ -334,7 +334,11 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     for (const r of overview.lastRuns) {
       const info = CRON_INFO[r.event_type]
       if (info && isStale(r.last_run, info.staleAfterMin)) {
-        list.push({ key: `stale-${r.event_type}`, label: `${info.label} atrasado`, level: 'danger' })
+        list.push({
+          key: `stale-${r.event_type}`,
+          label: `${info.label} atrasado`,
+          level: 'danger',
+        })
       }
     }
     if (overview.recentErrors.length > 0) {
@@ -415,7 +419,11 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
   }
 }
 
-function StatusStrip({ alerts }: { alerts: { key: string; label: string; level: 'warn' | 'danger' }[] }) {
+function StatusStrip({
+  alerts,
+}: {
+  alerts: { key: string; label: string; level: 'warn' | 'danger' }[]
+}) {
   if (alerts.length === 0) {
     return (
       <div className={styles.statusStrip}>
