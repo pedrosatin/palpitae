@@ -1,66 +1,50 @@
-import { bench, describe, vi } from 'vitest'
+import { bench, describe } from 'vitest'
 import { scoreUnprocessedMatches } from './scoring'
 import type { D1Database } from '@cloudflare/workers-types'
 
-// Setup dummy db that will just do the bare minimum mock needed to return what scoreUnprocessedMatches expects
-const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
-  const matches = Array.from({ length: numMatches }, (_, i) => ({
-    id: `m${i}`,
-    home_score: 1,
-    away_score: 1,
-    penalty_winner: null,
-    phase: null,
-    penalty_phases: 'FINAL',
-  }))
-
-  const predictions = Array.from({ length: numPredictionsPerMatch * numMatches }, (_, i) => ({
-    id: `p${i}`,
-    match_id: `m${i % numMatches}`,
-    group_id: `g${i}`,
-    user_id: `u${i}`,
-    predicted_home_score: 1,
-    predicted_away_score: 1,
-    predicted_penalty_winner: null,
-    points_exact: 3,
-    points_winner: 1,
-    points_penalty: 0,
-  }))
-
-  const mockPrepare = vi.fn().mockImplementation((query: string) => {
-    return {
-      bind: vi.fn().mockImplementation(() => ({
-        all: vi.fn().mockImplementation(async () => {
-          if (query.includes('FROM matches')) {
-            return { results: matches }
-          }
-          if (query.includes('FROM predictions')) {
-            return { results: predictions }
-          }
-          if (query.includes('FROM leaderboard')) {
-            return {
-              results: [{ group_id: 'g1', user_id: 'u1', total_points: 10, exact_hits: 2 }],
-            }
-          }
-          return { results: [] }
-        }),
-        first: vi.fn().mockImplementation(async () => {
-          return { penalty_winner: null, phase: null, penalty_phases: 'FINAL' }
-        }),
-      })),
-    }
-  })
-
+// Mocking D1 DB
+function createMockDb(numUnscored: number, numStatements: number) {
+  let batchCalls = 0;
   return {
-    prepare: mockPrepare,
-    batch: vi.fn().mockResolvedValue(true),
+    prepare: (query: string) => {
+      const stmt = {
+        bind: (...args: any[]) => stmt,
+        all: () => {
+          if (query.includes('SELECT m.id')) {
+            const results = []
+            for (let i = 0; i < numUnscored; i++) {
+               results.push({ id: `m${i}`, home_score: 1, away_score: 1, penalty_winner: null, phase: 'group', penalty_phases: '[]'})
+            }
+            return Promise.resolve({ results })
+          }
+          if (query.includes('SELECT p.id')) {
+             const results = []
+             for (let i = 0; i < numUnscored; i++) {
+                results.push({ id: `p${i}`, match_id: `m${i}`, group_id: 'g1', user_id: 'u1', predicted_home_score: 1, predicted_away_score: 1, predicted_penalty_winner: null, points_exact: 3, points_winner: 1, points_penalty: 0 })
+             }
+             return Promise.resolve({ results })
+          }
+          if (query.includes('SELECT p.group_id')) {
+             return Promise.resolve({ results: [{ group_id: 'g1', user_id: 'u1', total_points: 3, exact_hits: 1 }]})
+          }
+          return Promise.resolve({ results: [] })
+        }
+      }
+      return stmt;
+    },
+    batch: async (statements: any[]) => {
+      batchCalls++;
+      // Simulate network delay
+      await new Promise(r => setTimeout(r, 1))
+      return statements.map(() => ({ success: true }))
+    },
+    getBatchCalls: () => batchCalls
   } as unknown as D1Database
 }
 
-describe('scoreUnprocessedMatches N+1 issue fixed', () => {
-  // Use a smaller number of matches for benchmark to prevent out-of-memory error
-  const db = createMockDb(10, 5)
-
-  bench('fixed implementation with bulk queries', async () => {
+describe('scoreUnprocessedMatches', () => {
+  bench('score matches with many statements', async () => {
+    const db = createMockDb(500, 500)
     await scoreUnprocessedMatches('c1', db)
-  })
+  }, { time: 1000 })
 })
