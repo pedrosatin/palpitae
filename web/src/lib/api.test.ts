@@ -73,6 +73,14 @@ describe('api', () => {
       vi.stubGlobal('window', undefined)
       expect(consumeSessionExpired()).toBe(false)
     })
+
+    it('returns false if accessing sessionStorage throws', () => {
+      const spy = vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+        throw new Error('SecurityError')
+      })
+      expect(consumeSessionExpired()).toBe(false)
+      spy.mockRestore()
+    })
   })
 
   describe('apiFetch', () => {
