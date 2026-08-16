@@ -1,7 +1,7 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import InfoHint from './InfoHint'
+import InfoHint, { TOOLTIP_TIMEOUT_MS } from './InfoHint'
 
 describe('InfoHint', () => {
   afterEach(() => {
@@ -44,7 +44,7 @@ describe('InfoHint', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('closes tooltip automatically after 4 seconds', () => {
+  it(`closes tooltip automatically after ${TOOLTIP_TIMEOUT_MS / 1000} seconds`, () => {
     vi.useFakeTimers()
     render(<InfoHint label="Help" text="This is a tooltip" />)
 
@@ -52,9 +52,9 @@ describe('InfoHint', () => {
     fireEvent.click(screen.getByText('Help'))
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 
-    // Advance timers by 4000ms
+    // Advance timers
     act(() => {
-      vi.advanceTimersByTime(4000)
+      vi.advanceTimersByTime(TOOLTIP_TIMEOUT_MS)
     })
 
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
