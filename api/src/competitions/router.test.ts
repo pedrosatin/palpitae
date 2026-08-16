@@ -41,7 +41,9 @@ describe('competitions router', () => {
       { id: '4', name: 'Comp 4', penalty_phases: 'invalid json' },
     ]
 
-    const token = await import('../auth/jwt').then(m => m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600))
+    const token = await import('../auth/jwt').then((m) =>
+      m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600),
+    )
     const response = await app.fetch(
       new Request('http://localhost/competitions', {
         headers: {
@@ -52,7 +54,9 @@ describe('competitions router', () => {
     )
 
     expect(response.status).toBe(200)
-    expect(response.headers.get('Cache-Control')).toBe('public, max-age=3600, stale-while-revalidate=86400')
+    expect(response.headers.get('Cache-Control')).toBe(
+      'public, max-age=3600, stale-while-revalidate=86400',
+    )
 
     const body = await response.json()
     expect(body).toEqual({
@@ -72,7 +76,9 @@ describe('competitions router', () => {
     const app = new Hono<AppContext>()
     app.route('/competitions', competitionsRouter)
 
-    const token = await import('../auth/jwt').then(m => m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600))
+    const token = await import('../auth/jwt').then((m) =>
+      m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600),
+    )
     const response = await app.fetch(
       new Request('http://localhost/competitions', {
         headers: {
