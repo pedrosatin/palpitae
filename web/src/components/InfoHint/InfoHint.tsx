@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import styles from './InfoHint.module.css'
 
+export const TOOLTIP_TIMEOUT_MS = 4000
+
 interface InfoHintProps {
   label: string
   text: string
@@ -41,7 +43,7 @@ export default function InfoHint({
 
   useEffect(() => {
     if (!open) return
-    const t = setTimeout(() => setOpen(false), 4000)
+    const t = setTimeout(() => setOpen(false), TOOLTIP_TIMEOUT_MS)
     return () => clearTimeout(t)
   }, [open])
 
