@@ -11,6 +11,7 @@ import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
 import { metricsRouter } from './observability/metricsRouter'
 import { predictionsRouter } from './predictions/router'
+import { syncRadar } from './radar/sync'
 import type { AppContext, Env } from './types'
 
 // Cron do cold path diário (deve bater com wrangler.toml). Os demais ticks rodam o poller.
@@ -20,6 +21,10 @@ const ROUND_REMINDER_CRON = '0 10 * * *'
 // Cron de descoberta de jogos (deve bater com wrangler.toml). 1x/dia de madrugada
 // (06:00 UTC = 03:00 BRT — sem jogos), busca novos confrontos das competições ativas.
 const FIXTURE_DISCOVERY_CRON = '0 6 * * *'
+// Cron do radar de competições (deve bater com wrangler.toml). 1x/dia às 07h UTC,
+// depois da descoberta de jogos e antes do horário comercial. Só alimenta o
+// dashboard admin — nada do produto depende dele.
+const RADAR_CRON = '0 7 * * *'
 
 const app = new Hono<AppContext>()
 
@@ -65,6 +70,15 @@ export default {
     if (controller.cron === FIXTURE_DISCOVERY_CRON) {
       // Descobre jogos novos (mata-mata, remarcações) das competições ativas.
       ctx.waitUntil(discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
+      return
+    }
+
+    if (controller.cron === RADAR_CRON) {
+      // Radar de competições — oferta (o que está rolando) + interesse do
+      // público brasileiro. Insumo do dashboard admin.
+      ctx.waitUntil(
+        syncRadar(env.DB, env.API_FOOTBALL_KEY ?? '', env.AE, new Date(controller.scheduledTime)),
+      )
       return
     }
 
