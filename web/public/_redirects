@@ -10,6 +10,7 @@
 /grupos/* / 200
 /configuracoes / 200
 /admin/metricas / 200
+/admin/oportunidades / 200
 
 # Unmatched paths: Cloudflare Pages automatically serves /404.html with a
 # real 404 status when the file exists in the build output — no rule needed.
