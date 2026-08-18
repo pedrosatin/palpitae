@@ -1,6 +1,10 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+// Importação `?raw` do Vite em vez de node:fs de propósito: o tsconfig do web
+// não inclui os tipos do Node, e o `type-check` do CI roda com `npm ci` apenas
+// dentro de web/ — usar `node:fs` aqui compila na máquina de quem tem
+// @types/node num node_modules acima e quebra o build no CI.
+import redirects from '../public/_redirects?raw'
+import appSource from './App.tsx?raw'
 
 /**
  * Guarda de roteamento do Cloudflare Pages.
@@ -14,23 +18,18 @@ import { describe, expect, it } from 'vitest'
  * Aconteceu com `/admin/oportunidades`. Este teste amarra os dois arquivos.
  */
 
-const root = join(import.meta.dirname, '..')
-const appSource = readFileSync(join(root, 'src/App.tsx'), 'utf8')
-const redirects = readFileSync(join(root, 'public/_redirects'), 'utf8')
-
 /** Rotas declaradas no App, fora as catch-all e a raiz (servida direto). */
 function declaredRoutes(): string[] {
   const paths = [...appSource.matchAll(/path="([^"]+)"/g)].map((m) => m[1])
   return [...new Set(paths)].filter((p) => p !== '/' && p !== '*')
 }
 
-/** Origens das regras de rewrite/proxy declaradas no `_redirects`. */
-function redirectSources(): string[] {
+/** Linhas úteis do `_redirects` (sem comentários nem linhas em branco). */
+function rules(): string[] {
   return redirects
     .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '' && !line.startsWith('#'))
-    .map((line) => line.split(/\s+/)[0])
+    .map((line: string) => line.trim())
+    .filter((line: string) => line !== '' && !line.startsWith('#'))
 }
 
 /**
@@ -47,7 +46,7 @@ function isCovered(route: string, sources: string[]): boolean {
 
 describe('rotas da SPA e _redirects do Pages', () => {
   it('toda rota do App tem regra de rewrite', () => {
-    const sources = redirectSources()
+    const sources = rules().map((rule) => rule.split(/\s+/)[0])
     const missing = declaredRoutes().filter((route) => !isCovered(route, sources))
 
     expect(missing, `sem regra em public/_redirects: ${missing.join(', ')}`).toEqual([])
@@ -56,12 +55,7 @@ describe('rotas da SPA e _redirects do Pages', () => {
   it('as regras apontam para "/" com status 200 (rewrite, não redirect)', () => {
     // Apontar para /index.html faz o Pages detectar loop e desligar a regra
     // silenciosamente; um 301/302 trocaria a URL na barra do usuário.
-    const spaRules = redirects
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '' && !line.startsWith('#') && !line.startsWith('/api/'))
-
-    for (const rule of spaRules) {
+    for (const rule of rules().filter((r) => !r.startsWith('/api/'))) {
       expect(rule, `regra de SPA malformada: ${rule}`).toMatch(/^\S+\s+\/\s+200$/)
     }
   })
