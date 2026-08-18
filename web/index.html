@@ -155,7 +155,17 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Conteúdo estático de SEO: o React (createRoot) substitui isto assim
+         que hidrata, mas é o que o robô do Google vê antes de o JS rodar.
+         Mantém as mesmas frases do Hero em LandingPage.tsx para não divergir
+         do que o visitante realmente vê. -->
+    <div id="root">
+      <h1>Bolões de futebol com seus amigos</h1>
+      <p>
+        Crie grupos privados, dê seus palpites rodada a rodada e dispute o
+        topo da classificação. Tudo em um só lugar.
+      </p>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
