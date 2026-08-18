@@ -45,6 +45,36 @@ interface User {
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
 /**
+ * Marca, em localStorage, que este dispositivo já teve uma sessão autenticada.
+ *
+ * O cookie de sessão é HttpOnly (invisível ao JS), então essa é a única pista
+ * que temos, antes de o `GET /auth/me` responder, sobre quem está chegando.
+ * Ela existe só para o LCP: um visitante anônimo em "/" recebe a landing no
+ * primeiro paint, sem esperar a rede; quem já logou aqui alguma vez continua
+ * vendo a tela escura até o auth resolver, para não piscar a página de
+ * marketing antes do dashboard. Perder a flag (storage limpo, aba anônima)
+ * apenas devolve o comportamento antigo — nunca quebra a navegação.
+ */
+const KNOWN_SESSION_KEY = 'palpitae:sessao-conhecida'
+
+function hasKnownSession(): boolean {
+  try {
+    return localStorage.getItem(KNOWN_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function setKnownSession(known: boolean) {
+  try {
+    if (known) localStorage.setItem(KNOWN_SESSION_KEY, '1')
+    else localStorage.removeItem(KNOWN_SESSION_KEY)
+  } catch {
+    // Storage indisponível (modo restrito): seguimos sem a otimização.
+  }
+}
+
+/**
  * Root application component.
  *
  * Resolves authentication state on mount by calling GET /auth/me.
@@ -69,8 +99,10 @@ export default function App() {
         if ('user' in data) {
           setUser(data.user)
           setStatus('authenticated')
+          setKnownSession(true)
         } else {
           setStatus('unauthenticated')
+          setKnownSession(false)
         }
       })
       .catch(() => setStatus('unauthenticated'))
@@ -100,17 +132,27 @@ export default function App() {
     })
   }
 
-  // While auth resolves, render nothing — the dark background painted inline in
-  // index.html keeps the screen calm (no white flash) until the route appears.
-  if (status === 'loading') return null
+  // Enquanto o auth resolve, a landing pública já pode ser pintada para quem
+  // nunca logou neste dispositivo: ela não depende de nenhum dado da sessão, e
+  // esperar o `GET /auth/me` era o que mais atrasava o LCP no mobile (a imagem
+  // do hero baixava em ~0,5 s, mas só era pintada ~1,9 s depois — "element
+  // render delay" no Lighthouse). As demais rotas continuam esperando, porque
+  // dependem de saber quem é o usuário.
+  const paintLandingEarly = status === 'loading' && !hasKnownSession()
 
-  if (status === 'unauthenticated')
+  // Sem a landing antecipada, seguimos com a tela escura pintada inline no
+  // index.html até a rota aparecer — nada de flash branco.
+  if (status === 'loading' && !paintLandingEarly) return null
+
+  if (status !== 'authenticated')
     return (
       <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/entrar" element={<LoginPage />} />
-          <Route path="*" element={<LoginPage />} />
+          {/* Durante o loading não sabemos ainda se estas rotas são do
+              visitante ou de um usuário logado, então elas não pintam nada. */}
+          <Route path="/entrar" element={paintLandingEarly ? null : <LoginPage />} />
+          <Route path="*" element={paintLandingEarly ? null : <LoginPage />} />
         </Routes>
       </Suspense>
     )
