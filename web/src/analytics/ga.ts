@@ -102,11 +102,32 @@ export function initGa(): void {
   window.gtag('js', new Date())
   window.gtag('config', config.gaMeasurementId)
 
-  // Carrega o gtag.js de forma assíncrona — não bloqueia o render
-  const script = document.createElement('script')
-  script.async = true
-  script.src = `https://www.googletagmanager.com/gtag/js?id=${config.gaMeasurementId}`
-  document.head.appendChild(script)
+  // Carrega o gtag.js fora do caminho crítico de renderização: o stub acima já
+  // enfileira os hits em dataLayer, então o script real pode chegar depois do
+  // load/idle sem perder nenhum evento — apenas adia ~165 KiB que não são
+  // necessários para pintar a página (reduz o "JS não utilizado" do PageSpeed).
+  loadGtagScript()
+}
+
+function loadGtagScript(): void {
+  const inject = () => {
+    const script = document.createElement('script')
+    script.async = true
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${config.gaMeasurementId}`
+    document.head.appendChild(script)
+  }
+
+  const scheduleIdle = () =>
+    typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(inject)
+      : setTimeout(inject, 0)
+
+  if (document.readyState === 'complete') {
+    scheduleIdle()
+    return
+  }
+
+  window.addEventListener('load', scheduleIdle, { once: true })
 }
 
 /** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */
