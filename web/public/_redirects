@@ -6,6 +6,15 @@
 # detection that silently disables the rule.
 # Static assets (/guias/*, sitemap.xml, og-image.png, …) are matched before
 # these rules, so they always win.
+#
+# Since the build pre-renders the landing page INTO index.html, these routes
+# receive HTML that already contains the marketing page. A second HTML entry
+# (an empty shell) was considered and rejected: Pages strips .html and /index
+# from URLs, and the loop detection described above makes any rule pointing at a
+# second HTML file a silent-failure risk in production, where a broken rule
+# means every private route 404s. Instead index.html discards the pre-rendered
+# markup, before the first paint, whenever the path is not "/" — see the two
+# inline scripts in web/index.html. No redirect change was needed.
 /entrar / 200
 /grupos/* / 200
 /configuracoes / 200
