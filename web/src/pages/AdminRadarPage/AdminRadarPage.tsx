@@ -52,6 +52,19 @@ const STATUS_LABEL: Record<RadarItem['status'], string> = {
   finished: 'Encerrada',
 }
 
+/**
+ * Recorte de status. "A começar" é uma pergunta de produto diferente de "está
+ * rolando": dá o tempo de preparação para entrar numa competição antes da bola
+ * rolar, que é quando o grupo se forma.
+ */
+const STATUS_FILTERS = [
+  { key: 'ongoing', label: 'Em andamento' },
+  { key: 'upcoming', label: 'A começar' },
+  { key: 'all', label: 'Todas' },
+] as const
+
+type StatusFilter = (typeof STATUS_FILTERS)[number]['key']
+
 /** Snapshot mais velho que isso = cron do radar provavelmente parado. */
 const STALE_AFTER_HOURS = 30
 
@@ -72,6 +85,21 @@ function formatTrend(trend: number | null): string {
 }
 
 /**
+ * "estreia em X dias" — a janela de preparação para entrar na competição antes
+ * da bola rolar. Null quando a data não é futura ou não é conhecida.
+ */
+function countdown(startsOn: string | null): string | null {
+  if (!startsOn) return null
+  const target = new Date(`${startsOn}T00:00:00Z`).getTime()
+  if (Number.isNaN(target)) return null
+  const days = Math.ceil((target - Date.now()) / 86_400_000)
+  if (days <= 0) return null
+  if (days === 1) return 'estreia amanhã'
+  if (days < 60) return `estreia em ${days} dias`
+  return `estreia em ${Math.round(days / 30)} meses`
+}
+
+/**
  * Veredito por competição — a leitura que a tela existe pra dar. Deliberadamente
  * grosseiro: é gatilho de investigação, não decisão automática.
  */
@@ -88,7 +116,7 @@ function verdict(item: RadarItem, medianInterest: number): { label: string; leve
   return null
 }
 
-type SortKey = 'interest' | 'matches' | 'name'
+type SortKey = 'interest' | 'matches' | 'name' | 'start'
 
 export default function AdminRadarPage() {
   useDocumentTitle('Radar de competições')
@@ -98,7 +126,7 @@ export default function AdminRadarPage() {
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
   const [sort, setSort] = useState<SortKey>('interest')
-  const [onlyOngoing, setOnlyOngoing] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ongoing')
   const [onlyUnsupported, setOnlyUnsupported] = useState(false)
   const [search, setSearch] = useState('')
 
@@ -147,7 +175,7 @@ export default function AdminRadarPage() {
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase()
     const list = (data?.items ?? []).filter((item) => {
-      if (onlyOngoing && item.status !== 'ongoing') return false
+      if (statusFilter !== 'all' && item.status !== statusFilter) return false
       if (onlyUnsupported && item.supported) return false
       if (term && !`${item.name} ${item.country ?? ''}`.toLowerCase().includes(term)) return false
       return true
@@ -156,14 +184,18 @@ export default function AdminRadarPage() {
     return [...list].sort((a, b) => {
       if (sort === 'name') return a.name.localeCompare(b.name, 'pt-BR')
       if (sort === 'matches') return b.matchesInPeriod - a.matchesInPeriod
+      // Estreia mais próxima primeiro; sem data conhecida vai pro fim.
+      if (sort === 'start') return (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')
       return (b.pageviewsAvg ?? -1) - (a.pageviewsAvg ?? -1)
     })
-  }, [data, onlyOngoing, onlyUnsupported, search, sort])
+  }, [data, statusFilter, onlyUnsupported, search, sort])
 
   // Sem artigo mapeado = sem sinal de interesse. É a fila de curadoria de
   // `api/src/radar/articles.ts`, por isso fica visível em vez de escondida.
+  // Inclui as que vão começar: competição não mapeada prestes a estrear é ainda
+  // mais urgente de medir do que uma já em curso.
   const unmapped = useMemo(
-    () => (data?.items ?? []).filter((i) => !i.wikiArticle && i.status === 'ongoing'),
+    () => (data?.items ?? []).filter((i) => !i.wikiArticle && i.status !== 'finished'),
     [data],
   )
 
@@ -233,17 +265,25 @@ export default function AdminRadarPage() {
                   onChange={(e) => setSearch(e.target.value)}
                   aria-label="Buscar competição"
                 />
-                <label className={styles.toggle}>
-                  <input
-                    type="checkbox"
-                    checked={onlyOngoing}
-                    onChange={(e) => {
-                      trackEvent('click_admin_radar_filtrar_em_andamento')
-                      setOnlyOngoing(e.target.checked)
-                    }}
-                  />
-                  Só em andamento
-                </label>
+                <div className={styles.statusFilters} role="group" aria-label="Filtrar por status">
+                  {STATUS_FILTERS.map((f) => (
+                    <button
+                      key={f.key}
+                      type="button"
+                      className={f.key === statusFilter ? styles.periodActive : styles.period}
+                      aria-pressed={f.key === statusFilter}
+                      onClick={() => {
+                        trackEvent('click_admin_radar_filtrar_status', { status: f.key })
+                        setStatusFilter(f.key)
+                        // "A começar" só faz sentido ordenado pela estreia; o
+                        // interesse volta a mandar ao sair desse recorte.
+                        setSort(f.key === 'upcoming' ? 'start' : 'interest')
+                      }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
                 <label className={styles.toggle}>
                   <input
                     type="checkbox"
@@ -265,7 +305,11 @@ export default function AdminRadarPage() {
                         Competição
                       </SortButton>
                     </th>
-                    <th>Status</th>
+                    <th>
+                      <SortButton current={sort} value="start" onSort={setSort}>
+                        Status
+                      </SortButton>
+                    </th>
                     <th className={styles.num}>
                       <SortButton current={sort} value="matches" onSort={setSort}>
                         Jogos
@@ -297,6 +341,9 @@ export default function AdminRadarPage() {
                           <span className={styles[`status_${item.status}`]}>
                             {STATUS_LABEL[item.status]}
                           </span>
+                          {item.status === 'upcoming' && countdown(item.startsOn) && (
+                            <span className={styles.countdown}>{countdown(item.startsOn)}</span>
+                          )}
                         </td>
                         <td className={styles.num}>
                           {formatNumber(item.matchesInPeriod)}

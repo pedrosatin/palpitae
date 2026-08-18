@@ -82,8 +82,8 @@ Radar de competições (`/admin/oportunidades`, AdminRadarPage):
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_admin_radar_periodo` | troca do período da análise (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
-| `click_admin_radar_ordenar` | troca da coluna de ordenação da tabela | `{ sort }` (`interest`/`matches`/`name`) |
-| `click_admin_radar_filtrar_em_andamento` | liga/desliga o filtro "só em andamento" | — |
+| `click_admin_radar_ordenar` | troca da coluna de ordenação da tabela | `{ sort }` (`interest`/`matches`/`name`/`start`) |
+| `click_admin_radar_filtrar_status` | recorte por status da competição | `{ status }` (`ongoing`/`upcoming`/`all`) |
 | `click_admin_radar_filtrar_nao_suportadas` | liga/desliga o filtro "só não suportadas" | — |
 
 Modal genérico (componente `Modal`):
