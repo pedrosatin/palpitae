@@ -36,15 +36,45 @@ describe('App', () => {
 
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)
+    localStorage.clear()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    localStorage.clear()
   })
 
-  it('renders nothing while authentication state is loading', () => {
+  it('renders nothing on private routes while authentication state is loading', () => {
     // Make fetch return a promise that doesn't resolve immediately
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/configuracoes']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    // Ensure the container is empty (returns null)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('paints the landing page at "/" while auth loads for a first-time visitor', () => {
+    // LCP: a landing não depende da sessão, então não espera o /auth/me.
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+  })
+
+  it('waits for auth at "/" when the device already had a session', () => {
+    // Quem já logou aqui vai para o dashboard: não pisca a landing antes.
+    localStorage.setItem('palpitae:sessao-conhecida', '1')
     fetchMock.mockImplementation(() => new Promise(() => {}))
 
     const { container } = render(
@@ -53,8 +83,37 @@ describe('App', () => {
       </MemoryRouter>
     )
 
-    // Ensure the container is empty (returns null)
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('records and clears the known-session flag from the /auth/me result', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(localStorage.getItem('palpitae:sessao-conhecida')).toBe('1')
+    })
+
+    unmount()
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ authenticated: false }) })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(localStorage.getItem('palpitae:sessao-conhecida')).toBeNull()
+    })
   })
 
   it('falls back to unauthenticated route when /auth/me is not ok', async () => {
