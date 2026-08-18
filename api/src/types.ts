@@ -18,10 +18,6 @@ export type Env = {
   FRONTEND_URL: string
   FOOTBALL_API_KEY: string
   RESEND_API_KEY: string
-  // Radar de competições (dashboard admin) — chave da API-Football
-  // (api-sports.io). Opcional: sem ela o cron do radar vira no-op e a
-  // dashboard mostra o último snapshot gravado. Não é usada pelo produto.
-  API_FOOTBALL_KEY?: string
 }
 
 export type Variables = {

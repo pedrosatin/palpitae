@@ -91,8 +91,10 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
 - Saúde: `poller_run` (ok/error + matches_checked, fixtures_updated, api_calls, duration_ms),
   `fixture_discovery_run` (ok/error + competitions, fixtures_updated, api_calls, duration_ms),
   `football_api_error`,
-  `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms),
-  `radar_sync_error`.
+  `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms)
+  e `radar_sync_error` — emitidos só quando a coleta do radar roda com um Analytics
+  Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
+  `logEvent` vira no-op e o registro fica no log do workflow.
 - Negócio: `prediction_saved` (single/bulk/import), `group_created`, `group_joined`,
   `group_renamed`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
   `oauth_error`, `matches_cache` (hit/miss).

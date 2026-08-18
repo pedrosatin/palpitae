@@ -1,0 +1,14 @@
+{
+  // Scripts que rodam em Node (GitHub Actions), não no Worker. Ficam num
+  // tsconfig à parte de propósito: adicionar os tipos do Node ao tsconfig
+  // principal faria o `tsc` aprovar `process`/`node:fs` dentro do código do
+  // Worker, onde eles não existem em runtime.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@cloudflare/workers-types"],
+    "module": "ESNext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["scripts/**/*", "src/radar/**/*"]
+}
