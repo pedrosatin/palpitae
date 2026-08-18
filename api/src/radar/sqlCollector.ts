@@ -69,11 +69,22 @@ export class SqlCollector {
     return this.collected.length
   }
 
-  /** Script pronto para `wrangler d1 execute --file`. */
+  /**
+   * Script pronto para `wrangler d1 execute --file`.
+   *
+   * **Sem `BEGIN TRANSACTION`/`COMMIT`**, por dois motivos que se somam:
+   * o D1 remoto rejeita transação explícita em SQL ("please use the
+   * state.storage.transaction() APIs instead of the SQL BEGIN TRANSACTION"),
+   * e ela seria redundante — o próprio `d1 execute --file` é atômico: "if the
+   * execution fails to complete, your DB will return to its original state".
+   *
+   * A atomicidade importa aqui: o `UPDATE is_current = 0` sem os `INSERT`s
+   * seguintes deixaria a dashboard sem nenhuma competição corrente.
+   *
+   * Cuidado ao testar: o D1 **local** aceita `BEGIN TRANSACTION` e o remoto
+   * não — validar só no local não pega esse erro.
+   */
   toSql(): string {
-    const lines = this.collected.map((s) => `${inlineParams(s.sql, s.params)};`)
-    // Tudo numa transação: um snapshot pela metade (competições sem os jogos,
-    // ou o UPDATE de is_current sem os INSERTs) é pior que nenhum snapshot.
-    return ['BEGIN TRANSACTION;', ...lines, 'COMMIT;', ''].join('\n')
+    return `${this.collected.map((s) => `${inlineParams(s.sql, s.params)};`).join('\n')}\n`
   }
 }
