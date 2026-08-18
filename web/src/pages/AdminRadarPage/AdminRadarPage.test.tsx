@@ -115,7 +115,7 @@ describe('AdminRadarPage', () => {
     expect(screen.queryByText('CONMEBOL Libertadores')).not.toBeInTheDocument()
   })
 
-  it('esconde competição encerrada por padrão e mostra ao desmarcar o filtro', async () => {
+  it('esconde competição encerrada por padrão e mostra ao ver todas', async () => {
     const encerrada = item({ id: 'x', name: 'Copa Antiga', status: 'finished' })
     vi.stubGlobal('fetch', mockFetch({ ...defaultBody, items: [item(), encerrada] }))
     render(<AdminRadarPage />)
@@ -123,9 +123,33 @@ describe('AdminRadarPage', () => {
 
     expect(screen.queryByText('Copa Antiga')).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByLabelText('Só em andamento'))
+    await userEvent.click(screen.getByRole('button', { name: 'Todas' }))
 
     expect(screen.getByText('Copa Antiga')).toBeInTheDocument()
+  })
+
+  it('lista as competições a começar com a contagem para a estreia', async () => {
+    const emTresDias = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+    const emSeisMeses = new Date(Date.now() + 180 * 86_400_000).toISOString().slice(0, 10)
+    const futuras = [
+      item({ id: 'p', name: 'Premier League', status: 'upcoming', startsOn: emTresDias }),
+      item({ id: 'n', name: 'Nations League', status: 'upcoming', startsOn: emSeisMeses }),
+    ]
+    vi.stubGlobal('fetch', mockFetch({ ...defaultBody, items: [item(), ...futuras] }))
+    render(<AdminRadarPage />)
+    await screen.findByText('CONMEBOL Libertadores')
+
+    // Em andamento por padrão: as futuras estão escondidas.
+    expect(screen.queryByText('Premier League')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'A começar' }))
+
+    expect(screen.getByText('estreia em 3 dias')).toBeInTheDocument()
+    expect(screen.getByText('estreia em 6 meses')).toBeInTheDocument()
+    // Em andamento sai de cena, e a estreia mais próxima manda na ordem.
+    expect(screen.queryByText('CONMEBOL Libertadores')).not.toBeInTheDocument()
+    const rows = screen.getAllByRole('row').slice(1) // pula o cabeçalho
+    expect(rows[0]).toHaveTextContent('Premier League')
   })
 
   it('lista as competições sem artigo mapeado como fila de curadoria', async () => {
