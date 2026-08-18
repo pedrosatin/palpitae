@@ -57,7 +57,7 @@ describe('App', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('falls back to unauthenticated route when /auth/me returns 401', async () => {
+  it('falls back to unauthenticated route when /auth/me is not ok', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false })
 
     render(
@@ -72,6 +72,25 @@ describe('App', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledWith(`${config.apiUrl}/auth/me`, { credentials: 'include' })
+  })
+
+  it('falls back to unauthenticated route when /auth/me returns 200 with authenticated: false', async () => {
+    // Visita anônima: o endpoint responde 200 (não 401) para não aparecer como
+    // erro no console do navegador — ver PAGESPEED_REPORT.md item 3.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ authenticated: false }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+    })
   })
 
   it('renders authenticated route when /auth/me returns user data', async () => {
