@@ -43,7 +43,7 @@ describe('inlineParams', () => {
 })
 
 describe('SqlCollector', () => {
-  it('serializa os statements dentro de uma transação', async () => {
+  it('serializa os statements na ordem em que foram preparados', async () => {
     const collector = new SqlCollector()
     collector.prepare('UPDATE competition_radar SET is_current = 0 WHERE provider = ?').bind('x')
     collector.prepare('INSERT INTO t (a) VALUES (?)').bind(1)
@@ -52,13 +52,22 @@ describe('SqlCollector', () => {
     expect(collector.size).toBe(2)
     expect(collector.toSql()).toBe(
       [
-        'BEGIN TRANSACTION;',
         "UPDATE competition_radar SET is_current = 0 WHERE provider = 'x';",
         'INSERT INTO t (a) VALUES (1);',
-        'COMMIT;',
         '',
       ].join('\n'),
     )
+  })
+
+  it('não emite transação explícita — o D1 remoto rejeita', () => {
+    // O D1 local aceita BEGIN TRANSACTION e o remoto responde
+    // "please use the state.storage.transaction() APIs instead", então este
+    // erro só apareceria em produção. `d1 execute --file` já é atômico.
+    const collector = new SqlCollector()
+    collector.prepare('INSERT INTO t (a) VALUES (?)').bind(1)
+
+    const sql = collector.toSql()
+    expect(sql).not.toMatch(/BEGIN TRANSACTION|COMMIT|SAVEPOINT/i)
   })
 
   it('aceita statement sem bind', () => {
