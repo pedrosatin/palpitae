@@ -59,22 +59,23 @@ describe('App', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('paints the landing page at "/" while auth loads for a first-time visitor', () => {
-    // LCP: a landing não depende da sessão, então não espera o /auth/me.
+  it('keeps the pre-rendered landing at "/" while auth loads', () => {
+    // LCP: a landing já está pintada no HTML do build e não depende da sessão,
+    // então o primeiro render precisa reproduzi-la — senão a hidratação diverge.
     fetchMock.mockImplementation(() => new Promise(() => {}))
 
     render(
       <MemoryRouter initialEntries={['/']}>
-        <App />
+        <App landingPrerenderizada />
       </MemoryRouter>
     )
 
     expect(screen.getByTestId('landing-page')).toBeInTheDocument()
   })
 
-  it('waits for auth at "/" when the device already had a session', () => {
-    // Quem já logou aqui vai para o dashboard: não pisca a landing antes.
-    localStorage.setItem('palpitae:sessao-conhecida', '1')
+  it('waits for auth at "/" when the pre-rendered landing was discarded', () => {
+    // Quem já logou aqui vai para o dashboard: o script inline do index.html
+    // descarta a landing, o App recebe false e não pisca a página de marketing.
     fetchMock.mockImplementation(() => new Promise(() => {}))
 
     const { container } = render(
