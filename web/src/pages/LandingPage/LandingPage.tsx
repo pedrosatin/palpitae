@@ -99,6 +99,7 @@ function Hero() {
           width={1100}
           height={590}
           loading="eager"
+          fetchPriority="high"
         />
       </BrowserFrame>
     </section>
@@ -261,8 +262,9 @@ function FaqItem({ q, a }: { q: string; a: string }) {
  * Product screenshot that prefers a WebP source (30-65% smaller) and falls
  * back to the original PNG on browsers without WebP support. The WebP path is
  * derived from the PNG path by extension, so both files share one source of
- * truth. The hero shot passes loading="eager" (it's the LCP element); the rest
- * lazy-load.
+ * truth. The hero shot passes loading="eager" and fetchPriority="high" (it's
+ * the LCP element, and the preload in index.html carries the same priority);
+ * the rest lazy-load.
  */
 function Shot({
   src,
@@ -270,18 +272,27 @@ function Shot({
   width,
   height,
   loading,
+  fetchPriority,
 }: {
   src: string
   alt: string
   width: number
   height: number
   loading: 'eager' | 'lazy'
+  fetchPriority?: 'high' | 'low' | 'auto'
 }) {
   const webp = src.replace(/\.png$/, '.webp')
   return (
     <picture>
       <source srcSet={webp} type="image/webp" />
-      <img src={src} alt={alt} width={width} height={height} loading={loading} />
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        loading={loading}
+        fetchPriority={fetchPriority}
+      />
     </picture>
   )
 }
