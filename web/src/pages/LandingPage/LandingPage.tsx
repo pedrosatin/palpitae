@@ -96,8 +96,8 @@ function Hero() {
         <Shot
           src="/screenshots/grupos.png"
           alt="Tela de grupos do Palpitae mostrando os bolões do usuário"
-          width={1336}
-          height={717}
+          width={1100}
+          height={590}
           loading="eager"
         />
       </BrowserFrame>
@@ -114,8 +114,8 @@ function Features() {
         description="Monte um bolão com a galera em segundos. Compartilhe um código ou link de convite e acompanhe membros, sua posição e seus pontos de cada grupo."
         shot="/screenshots/grupos.png"
         shotAlt="Lista de grupos com membros, posição e pontos"
-        shotWidth={1336}
-        shotHeight={717}
+        shotWidth={1100}
+        shotHeight={590}
       />
       <FeatureRow
         reversed
@@ -124,8 +124,8 @@ function Features() {
         description="Cravou o placar? Ajuste os números de cada jogo e salve um por um — ou de uma vez com 'Salvar todos'. Navegue entre as rodadas e palpite com antecedência."
         shot="/screenshots/palpites.png"
         shotAlt="Tela de previsões com cards de jogos e seletores de placar"
-        shotWidth={1297}
-        shotHeight={840}
+        shotWidth={1100}
+        shotHeight={712}
       />
     </section>
   )
