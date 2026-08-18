@@ -29,8 +29,11 @@ dataset = "palpitae_events"
 #    hoje. 1x/dia às 10h UTC (07h BRT). Idempotente por design (ver roundReminder.ts).
 #  - "0 6 * * *"    → fixture discovery: busca jogos novos (mata-mata, remarcações)
 #    das competições ativas. 1x/dia às 06h UTC (03h BRT), sem jogos. Ver fixtureDiscovery.ts.
+#  - "0 7 * * *"    → radar de competições: snapshot de oferta (API-Football) +
+#    interesse do público (pageviews pt.wikipedia). Só alimenta o dashboard admin
+#    /admin/oportunidades — nada do produto depende dele. Ver radar/sync.ts.
 [triggers]
-crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "0 6 * * *"]
+crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "0 6 * * *", "0 7 * * *"]
 
 # Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
 # Criar antes do deploy: wrangler r2 bucket create palpitae-events
@@ -50,4 +53,5 @@ FRONTEND_URL = "https://palpitae.com.br"
 #   wrangler secret put AE_SQL_TOKEN     # cold path: token Account Analytics:Read
 #   wrangler secret put RESEND_API_KEY   # round reminder: API key do Resend
 #   wrangler secret put ADMIN_EMAIL      # dashboard /metrics: e-mail do admin (403 sem ele)
+#   wrangler secret put API_FOOTBALL_KEY # radar admin: chave da API-Football (api-sports.io)
 # Local overrides go in .dev.vars (already has localhost values)

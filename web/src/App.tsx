@@ -24,6 +24,9 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 // Dashboard admin de métricas server-side — sem link de navegação (URL direta);
 // a API restringe ao ADMIN_EMAIL, aqui é só rota.
 const AdminMetricsPage = lazy(() => import('./pages/AdminMetricsPage'))
+// Radar de competições (admin) — inteligência de produto: o que está rolando no
+// futebol e quanto o público brasileiro se interessa. Mesmo gate na API.
+const AdminRadarPage = lazy(() => import('./pages/AdminRadarPage'))
 
 /**
  * Represents an authenticated user's basic profile.
@@ -125,6 +128,7 @@ export default function App() {
           element={<SettingsPage user={user!} onLogout={handleLogout} />}
         />
         <Route path="/admin/metricas" element={<AdminMetricsPage />} />
+        <Route path="/admin/oportunidades" element={<AdminRadarPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
