@@ -43,7 +43,10 @@ async function callApi<T>(path: string, apiKey: string): Promise<T> {
     headers: { 'x-apisports-key': apiKey },
   })
   if (!res.ok) {
-    throw new Error(`API-Football respondeu ${res.status} em ${path}`)
+    // Corpo junto: um 429 da API-Football pode ser quota diária, rate limit por
+    // minuto ou bloqueio de origem, e só a mensagem distingue os casos.
+    const body = (await res.text().catch(() => '')).slice(0, 200)
+    throw new Error(`API-Football respondeu ${res.status} em ${path}: ${body}`)
   }
   const payload = (await res.json()) as T & { errors?: unknown }
 
