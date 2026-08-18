@@ -49,21 +49,18 @@ type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
  *
  * O cookie de sessão é HttpOnly (invisível ao JS), então essa é a única pista
  * que temos, antes de o `GET /auth/me` responder, sobre quem está chegando.
- * Ela existe só para o LCP: um visitante anônimo em "/" recebe a landing no
- * primeiro paint, sem esperar a rede; quem já logou aqui alguma vez continua
- * vendo a tela escura até o auth resolver, para não piscar a página de
- * marketing antes do dashboard. Perder a flag (storage limpo, aba anônima)
- * apenas devolve o comportamento antigo — nunca quebra a navegação.
+ * Ela existe só para o LCP: um visitante anônimo em "/" recebe a landing já
+ * pré-renderizada no HTML; quem já logou aqui alguma vez continua vendo a tela
+ * escura até o auth resolver, para não piscar a página de marketing antes do
+ * dashboard.
+ *
+ * Quem LÊ a flag é o script inline no fim do `index.html`, antes de o React
+ * existir — é ele que decide manter ou descartar a landing pré-renderizada.
+ * Aqui só escrevemos. Perder a flag (storage limpo, aba anônima) faz a landing
+ * ser pintada por um instante antes do dashboard; nunca quebra a navegação.
+ * A chave é duplicada no `index.html`: se mudar aqui, mude lá também.
  */
 const KNOWN_SESSION_KEY = 'palpitae:sessao-conhecida'
-
-function hasKnownSession(): boolean {
-  try {
-    return localStorage.getItem(KNOWN_SESSION_KEY) === '1'
-  } catch {
-    return false
-  }
-}
 
 function setKnownSession(known: boolean) {
   try {
@@ -79,8 +76,13 @@ function setKnownSession(known: boolean) {
  *
  * Resolves authentication state on mount by calling GET /auth/me.
  * Renders the appropriate page based on the result.
+ *
+ * `landingPrerenderizada` é verdadeiro quando a landing já está pintada na tela
+ * pelo HTML gerado no build e o React está apenas hidratando (ver `main.tsx` e
+ * `scripts/prerender.mjs`). Nesse caso o primeiro render PRECISA ser a landing,
+ * senão a hidratação diverge do HTML e o React remonta a página inteira.
  */
-export default function App() {
+export default function App({ landingPrerenderizada = false }: { landingPrerenderizada?: boolean }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
 
@@ -132,13 +134,11 @@ export default function App() {
     })
   }
 
-  // Enquanto o auth resolve, a landing pública já pode ser pintada para quem
-  // nunca logou neste dispositivo: ela não depende de nenhum dado da sessão, e
-  // esperar o `GET /auth/me` era o que mais atrasava o LCP no mobile (a imagem
-  // do hero baixava em ~0,5 s, mas só era pintada ~1,9 s depois — "element
-  // render delay" no Lighthouse). As demais rotas continuam esperando, porque
-  // dependem de saber quem é o usuário.
-  const paintLandingEarly = status === 'loading' && !hasKnownSession()
+  // Enquanto o auth resolve, a landing continua na tela para quem chegou com
+  // ela pré-renderizada: ela não depende de nenhum dado da sessão, e esperar o
+  // `GET /auth/me` para pintá-la era parte do que atrasava o LCP no mobile. As
+  // demais rotas continuam esperando, porque dependem de saber quem é o usuário.
+  const paintLandingEarly = status === 'loading' && landingPrerenderizada
 
   // Sem a landing antecipada, seguimos com a tela escura pintada inline no
   // index.html até a rota aparecer — nada de flash branco.
