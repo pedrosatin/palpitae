@@ -259,4 +259,45 @@ describe('GET /metrics/radar', () => {
     expect(body.items.find((i) => i.name === 'Futura')?.status).toBe('upcoming')
     expect(body.items.find((i) => i.name === 'Encerrada')?.status).toBe('finished')
   })
+
+  it('mantém como em andamento o mata-mata cujo ends_on ficou pra trás mas ainda tem jogos', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`))
+
+    // Caso real: a Libertadores 2026 vinha com ends_on na data do jogo
+    // seguinte, porque o provider só conhece as datas já definidas.
+    const db = makeD1({
+      competitions: [competition({ ends_on: '2026-08-10' })],
+      daily: series('api-football:13:2026', [900, 1100, 1000], 4),
+    })
+
+    const res = await makeApp().request(
+      '/metrics/radar',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(db),
+    )
+    const body = (await res.json()) as { items: { status: string }[] }
+
+    expect(body.items[0].status).toBe('ongoing')
+  })
+
+  it('declara encerrada quando a janela passou e não há jogo recente', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`))
+
+    const db = makeD1({
+      competitions: [competition({ ends_on: '2026-08-10' })],
+      // Pageviews continuam chegando, mas sem nenhum jogo na janela.
+      daily: series('api-football:13:2026', [900, 1100, 1000]),
+    })
+
+    const res = await makeApp().request(
+      '/metrics/radar',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(db),
+    )
+    const body = (await res.json()) as { items: { status: string }[] }
+
+    expect(body.items[0].status).toBe('finished')
+  })
 })

@@ -555,4 +555,5 @@ Três fontes, uma tabela de snapshot diário (`competition_radar` + `competition
 - A liga é casada por `(país, nome)` normalizado, não por id numérico do provider. Ids não são documentados publicamente e não dava para verificá-los sem consumir quota; nome e país são legíveis e conferíveis na própria tela.
 - Guardamos só ligas de um recorte de países (Brasil, América do Sul, ligas europeias grandes, EUA/México/Arábia) mais as explicitamente curadas. Sem esse filtro seriam ~1.200 linhas/dia de ruído.
 - O modelo já nasce com coluna `sport`: incluir NBA/NFL/F1 depois é trocar de provider, não migrar schema.
+- `ends_on` do provider é um **piso**, não a data real de fim: em mata-mata ele só conhece as datas dos confrontos já definidos (mesmo fenômeno do ADR-010). Validado em produção — a Libertadores 2026, em plena fase final, reportava `ends_on` na data do jogo seguinte. Por isso `finished` exige janela vencida **e** nenhum jogo nos últimos 14 dias; na dúvida a competição fica `ongoing`.
 - Requer o secret `API_FOOTBALL_KEY`. Sem ele o cron vira no-op registrado (`radar_sync_run` com status `misconfig`) — nada quebra.
