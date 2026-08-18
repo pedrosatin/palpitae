@@ -548,7 +548,10 @@ Três fontes, uma tabela de snapshot diário (`competition_radar` + `competition
 
 ### Consequences
 
-- Novo cron `0 7 * * *` (`radar/sync.ts`), isolado dos demais. Falha nele não afeta nada do produto: a dashboard mostra o último snapshot e avisa quando ele está velho (>30h).
+- **A coleta NÃO roda no Worker.** A API-Football aplica rate limit **por IP**, e os IPs de saída dos Cloudflare Workers são compartilhados por milhares de clientes: do Worker a primeira chamada do dia volta `429 {"rateLimit":"Too many requests"}` com a quota da conta intacta (2/100 no dia), enquanto do IP de um runner do GitHub a mesma chamada devolve `200` com 1.232 ligas. Descoberto ao popular produção, não em teste local — localmente tudo passava porque o `wrangler dev` sem `--remote` sai pelo IP da máquina.
+- Por isso a coleta é um **GitHub Actions diário** (`.github/workflows/radar-sync.yml`, 07:00 UTC + `workflow_dispatch`). O mesmo `syncRadar` roda sem alteração: `SqlCollector` implementa a fatia da interface do D1 que ele usa e serializa os statements num `.sql`, aplicado com `wrangler d1 execute --remote --file`. Um `INSERT` por linha via REST API seriam ~1.500 requisições; o arquivo é uma chamada.
+- Separação de credenciais como consequência bem-vinda: o script só recebe `API_FOOTBALL_KEY`, e quem escreve no D1 é o wrangler com o token que o CI já usa. A chave da API-Football nunca toca no Cloudflare; o token do Cloudflare nunca toca na API-Football.
+- Falha na coleta não afeta nada do produto: a dashboard mostra o último snapshot e avisa quando ele está velho (>30h). O script sai com erro se não gerar nenhum statement — o workflow fica vermelho em vez de aplicar um arquivo vazio.
 - A curadoria de artigos (`api/src/radar/articles.ts`) é manual e é o gargalo do sinal de interesse. Competição sem artigo aparece na dashboard numa seção própria, como fila de trabalho — o sistema mostra o que não sabe medir em vez de esconder.
 - Artigos são gravados pelo **título canônico**, não pelo redirect: um redirect tem pageviews próprios quase zerados ("Campeonato Brasileiro de Futebol - Série A" marca ~20/dia; o destino real, ~880/dia). Errar isso faria a competição parecer irrelevante.
 - Usamos o artigo genérico da competição, não o da edição do ano. O da edição pega picos maiores, mas exige manutenção anual e às vezes nem existe a tempo (não havia artigo para o Brasileirão 2026 em agosto de 2026).
@@ -556,4 +559,4 @@ Três fontes, uma tabela de snapshot diário (`competition_radar` + `competition
 - Guardamos só ligas de um recorte de países (Brasil, América do Sul, ligas europeias grandes, EUA/México/Arábia) mais as explicitamente curadas. Sem esse filtro seriam ~1.200 linhas/dia de ruído.
 - O modelo já nasce com coluna `sport`: incluir NBA/NFL/F1 depois é trocar de provider, não migrar schema.
 - `ends_on` do provider é um **piso**, não a data real de fim: em mata-mata ele só conhece as datas dos confrontos já definidos (mesmo fenômeno do ADR-010). Validado em produção — a Libertadores 2026, em plena fase final, reportava `ends_on` na data do jogo seguinte. Por isso `finished` exige janela vencida **e** nenhum jogo nos últimos 14 dias; na dúvida a competição fica `ongoing`.
-- Requer o secret `API_FOOTBALL_KEY`. Sem ele o cron vira no-op registrado (`radar_sync_run` com status `misconfig`) — nada quebra.
+- Requer o secret `API_FOOTBALL_KEY` **no GitHub** (não no Worker). Sem ele o script sai com erro e o workflow falha, sem tocar no D1.
