@@ -82,9 +82,17 @@
     <!-- Cor do browser (mobile) -->
     <meta name="theme-color" content="#0d0d0d" />
 
-    <!-- Preload da imagem hero em WebP (melhora LCP); navegadores sem suporte
-         a WebP ignoram o preload e carregam o PNG via <picture> -->
-    <link rel="preload" as="image" href="/screenshots/grupos.webp" type="image/webp" />
+    <!-- Preload da imagem hero em WebP (é o elemento de LCP); navegadores sem
+         suporte a WebP ignoram o preload e carregam o PNG via <picture>.
+         fetchpriority=high tira a imagem da fila de prioridade baixa em que o
+         Chrome coloca preloads de imagem (auditoria lcp-discovery-insight). -->
+    <link
+      rel="preload"
+      as="image"
+      href="/screenshots/grupos.webp"
+      type="image/webp"
+      fetchpriority="high"
+    />
 
     <!-- JSON-LD: dados estruturados para o Google -->
     <script type="application/ld+json">
