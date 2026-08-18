@@ -38,11 +38,34 @@ type DailyRow = {
   pageviews: number | null
 }
 
-/** Status da temporada em relação a hoje, derivado da janela do provider. */
-function seasonStatus(startsOn: string | null, endsOn: string | null, today: string): string {
+/** Dias de histórico de jogos que ainda sustentam "a competição está viva". */
+const RECENT_MATCH_DAYS = 14
+
+/**
+ * Status da temporada. `ends_on` sozinho não serve: em torneio de mata-mata o
+ * provider só conhece as datas até onde os confrontos já foram definidos, então
+ * `ends_on` é um PISO, não a data real de fim — é o mesmo fenômeno que o
+ * ADR-010 trata na descoberta de jogos. A Libertadores 2026, em agosto, vinha
+ * com `ends_on` na data do jogo seguinte; confiar nele marcaria como
+ * "encerrada" uma competição em plena fase final.
+ *
+ * Por isso só declaramos `finished` quando a janela passou **e** não há jogo
+ * recente registrado. Na dúvida a competição fica como `ongoing`: sumir com uma
+ * competição viva da tela é bem pior do que manter uma encerrada por mais alguns
+ * dias — a tela existe pra revelar oportunidades, não pra escondê-las.
+ */
+function seasonStatus(
+  startsOn: string | null,
+  endsOn: string | null,
+  today: string,
+  daily: DailyRow[],
+): string {
   if (startsOn && today < startsOn) return 'upcoming'
-  if (endsOn && today > endsOn) return 'finished'
-  return 'ongoing'
+  if (!endsOn || today <= endsOn) return 'ongoing'
+
+  const cutoff = new Date(Date.now() - RECENT_MATCH_DAYS * 86_400_000).toISOString().slice(0, 10)
+  const hasRecentMatch = daily.some((d) => d.day >= cutoff && d.matches_today > 0)
+  return hasRecentMatch ? 'ongoing' : 'finished'
 }
 
 /** Média inteira de uma lista, ou null se não houver amostra. */
@@ -141,7 +164,7 @@ radarRouter.get('/', async (c) => {
       season: comp.season,
       startsOn: comp.starts_on,
       endsOn: comp.ends_on,
-      status: seasonStatus(comp.starts_on, comp.ends_on, today),
+      status: seasonStatus(comp.starts_on, comp.ends_on, today, series),
       wikiArticle: comp.wiki_article,
       matchesInPeriod: series.reduce((sum, p) => sum + (p.matches_today ?? 0), 0),
       matchesToday: series.find((p) => p.day === today)?.matches_today ?? 0,
