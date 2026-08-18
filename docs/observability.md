@@ -90,7 +90,9 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
 
 - Saúde: `poller_run` (ok/error + matches_checked, fixtures_updated, api_calls, duration_ms),
   `fixture_discovery_run` (ok/error + competitions, fixtures_updated, api_calls, duration_ms),
-  `football_api_error`.
+  `football_api_error`,
+  `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms),
+  `radar_sync_error`.
 - Negócio: `prediction_saved` (single/bulk/import), `group_created`, `group_joined`,
   `group_renamed`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
   `oauth_error`, `matches_cache` (hit/miss).
@@ -106,6 +108,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 |---|---|---|---|---|
 | `poller_run` | `status` (`ok`/`error`) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
 | `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
+| `radar_sync_run` | `status` (`ok`/`partial`/`error`/`misconfig`) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
+| `radar_sync_error` | `source` (`api-football`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `api-football` | `error_message` (só em `wikipedia`) | — |
 | `football_api_error` | `context` (`matches_background`/`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
