@@ -9,7 +9,7 @@
     "format:check": "oxfmt --check api web"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
+    "@types/node": "^24.13.3",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0"
   }
