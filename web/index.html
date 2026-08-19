@@ -97,7 +97,8 @@
     <meta name="theme-color" content="#0d0d0d" />
 
     <!-- Preload da imagem hero em WebP (é o elemento de LCP); navegadores sem
-         suporte a WebP ignoram o preload e carregam o PNG via <picture>.
+         suporte a WebP ignoram o preload e carregam o PNG pelo fallback do
+         elemento picture.
          fetchpriority=high tira a imagem da fila de prioridade baixa em que o
          Chrome coloca preloads de imagem (auditoria lcp-discovery-insight). -->
     <link
@@ -191,7 +192,7 @@
   <body>
     <!-- O build substitui este marcador pela landing renderizada em HTML (ver
          scripts/prerender.mjs). É o que um crawler sem JS lê e, principalmente,
-         é o que o navegador pinta antes de o bundle sequer chegar: a <img> do
+         é o que o navegador pinta antes de o bundle sequer chegar: a imagem do
          hero (elemento de LCP) passa a existir no primeiro paint. -->
     <div id="root"></div>
     <script>
