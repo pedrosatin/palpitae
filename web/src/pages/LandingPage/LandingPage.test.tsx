@@ -55,3 +55,18 @@ describe('LandingPage – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_landing_brand')
   })
 })
+
+describe('LandingPage – âncoras do nav', () => {
+  // Um #hash do nav sem a seção correspondente deixa o link "morto": foi o que
+  // aconteceu quando a seção de pontuação saiu junto com o chaveamento.
+  it('renders a section for every in-page nav anchor', () => {
+    const { container } = renderPage()
+    const hashes = [...container.querySelectorAll('a[href^="#"]')].map((a) =>
+      (a.getAttribute('href') as string).slice(1),
+    )
+    expect(hashes.length).toBeGreaterThan(0)
+    for (const hash of hashes) {
+      expect(container.querySelector(`#${hash}`), `sem seção para #${hash}`).not.toBeNull()
+    }
+  })
+})
