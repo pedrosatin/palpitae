@@ -20,6 +20,16 @@ on:
   # snapshot e para reprocessar um dia que falhou).
   workflow_dispatch:
 
+# Travado no versionamento: nenhum job aqui escreve no repositorio.
+permissions:
+  contents: read
+
+# NUNCA cancelar em andamento: o job grava no D1 de producao com
+# `wrangler d1 execute`, e abortar no meio deixaria o snapshot pela metade.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   sync:
     name: Coletar e gravar snapshot
