@@ -20,6 +20,7 @@ export default function LandingPage() {
       <main>
         <Hero />
         <Features />
+        <Scoring />
         <Faq />
         <Cta />
       </main>
@@ -129,6 +130,56 @@ function Features() {
         shotHeight={712}
       />
     </section>
+  )
+}
+
+function Scoring() {
+  return (
+    <section id="pontuacao" className={styles.scoring}>
+      <h2 className={styles.sectionTitle}>Cravou o placar, leva mais</h2>
+      <p className={styles.sectionLead}>
+        Cada jogo vale pontos conforme o quanto você chegou perto do resultado real.
+      </p>
+      <ul className={styles.scoringGrid}>
+        <ScoringCard
+          points="3"
+          title="Placar exato"
+          description="Você acertou os gols dos dois times, como em um 2 a 1 cravado."
+        />
+        <ScoringCard
+          points="1"
+          title="Resultado certo"
+          description="Errou o placar, mas acertou quem venceu — ou que o jogo terminaria empatado."
+        />
+        <ScoringCard
+          points="0"
+          title="Resultado errado"
+          description="O jogo terminou diferente do que você palpitou. Sem desconto: nunca fica negativo."
+        />
+      </ul>
+      <p className={styles.scoringNote}>
+        Esses são os valores padrão. O admin do grupo pode ajustar quanto vale cada acerto na
+        criação do bolão.
+      </p>
+    </section>
+  )
+}
+
+function ScoringCard({
+  points,
+  title,
+  description,
+}: {
+  points: string
+  title: string
+  description: string
+}) {
+  return (
+    <li className={styles.scoringCard}>
+      <span className={styles.scoringPoints}>{points}</span>
+      <h3 className={styles.scoringTitle}>{title}</h3>
+      <p className={styles.scoringDesc}>{description}</p>
+    </li>
   )
 }
 
