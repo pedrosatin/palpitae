@@ -8,6 +8,16 @@ on:
       - 'api/**'
       - '.github/workflows/deploy-api.yml'
 
+# Travado no versionamento: nenhum job aqui escreve no repositorio.
+permissions:
+  contents: read
+
+# Deploy so pra main: se dois pushes entrarem juntos, o mais novo cancela
+# o anterior e a producao termina no ultimo commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test
