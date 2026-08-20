@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { gaEnabled, getStoredConsent, setConsent } from '../../analytics/ga'
 import styles from './CookieConsent.module.css'
 
@@ -9,9 +9,20 @@ import styles from './CookieConsent.module.css'
  * escolha salva. "Aceitar" faz upgrade do Consent Mode para `granted`;
  * "Recusar" mantém o GA em modo sem cookie. A decisão persiste em localStorage,
  * então o banner não reaparece nas próximas visitas.
+ *
+ * A decisão de mostrar depende de `localStorage`, que não existe no build que
+ * pré-renderiza a landing (ver `src/entry-server.tsx`). Por isso ela sai de um
+ * efeito, e não do estado inicial: no primeiro render — o único que a hidratação
+ * compara com o HTML gerado no build — o banner é sempre ausente nos dois lados.
+ * Ler o storage durante o render devolveria valores diferentes no servidor e no
+ * navegador, que é a receita clássica de erro de hidratação.
  */
 export default function CookieConsent() {
-  const [visible, setVisible] = useState(() => gaEnabled && getStoredConsent() === null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (gaEnabled && getStoredConsent() === null) setVisible(true)
+  }, [])
 
   if (!visible) return null
 
