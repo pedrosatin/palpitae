@@ -289,7 +289,7 @@ describe('auth router', () => {
       return {
         ...fakeEnv(''),
         DB: {
-          prepare(sql: string) {
+          prepare(_sql: string) {
             return {
               bind() {
                 return {
