@@ -361,6 +361,24 @@ describe('auth router', () => {
     expect(body).toEqual({ error: 'User not found' })
   })
 
+  // Visita anônima é o caso comum (toda visita chama /auth/me). Responder 200
+  // em vez de 401 evita que o navegador logue essa checagem de rotina como
+  // erro no console (reprovava Best Practices no Lighthouse).
+  it('returns 200 with authenticated: false from me endpoint when there is no session cookie', async () => {
+    const res = await app.fetch(new Request('http://localhost/auth/me'), fakeEnv('user@example.com'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ authenticated: false })
+  })
+
+  it('returns 200 with authenticated: false from me endpoint for an invalid session token', async () => {
+    const headers = new Headers({ Cookie: 'session=not-a-valid-jwt' })
+    const res = await app.fetch(new Request('http://localhost/auth/me', { headers }), fakeEnv('user@example.com'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ authenticated: false })
+  })
+
   it('cookieDomain function tests through cookieOptions', async () => {
     const res = await app.fetch(
       new Request('http://localhost/auth/google'),
