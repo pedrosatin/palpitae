@@ -29,6 +29,10 @@ dataset = "palpitae_events"
 #    hoje. 1x/dia às 10h UTC (07h BRT). Idempotente por design (ver roundReminder.ts).
 #  - "0 6 * * *"    → fixture discovery: busca jogos novos (mata-mata, remarcações)
 #    das competições ativas. 1x/dia às 06h UTC (03h BRT), sem jogos. Ver fixtureDiscovery.ts.
+# O radar de competições (/admin/oportunidades) NÃO tem cron aqui: a
+# API-Football limita por IP e os IPs de saída dos Workers são compartilhados
+# (429 na 1ª chamada, com a quota intacta). A coleta roda no GitHub Actions —
+# .github/workflows/radar-sync.yml. Ver ADR-014.
 [triggers]
 crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "0 6 * * *"]
 
