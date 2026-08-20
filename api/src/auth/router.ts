@@ -10,8 +10,7 @@ import {
   verifyGoogleIdToken,
 } from './google'
 import { getFeatureFlags } from './permissions'
-import { signJwt } from './jwt'
-import { requireAuth } from './middleware'
+import { signJwt, verifyJwt } from './jwt'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
 
@@ -184,8 +183,24 @@ authRouter.post('/logout', (c) => {
 })
 
 // GET /auth/me — return authenticated user
-authRouter.get('/me', requireAuth, async (c) => {
-  const userId = c.get('userId')
+//
+// Não usa `requireAuth`: essa rota é chamada em toda visita (inclusive
+// anônima) só para checar se há sessão. Um 401 aqui é o estado normal de
+// "deslogado" — não um erro — mas o Chrome loga qualquer resposta 4xx/5xx de
+// fetch/XHR como erro no console, o que reprovava a auditoria de Best
+// Practices do Lighthouse. Retornar 200 com `{ authenticated: false }`
+// resolve isso sem mudar o comportamento percebido pelo usuário.
+authRouter.get('/me', async (c) => {
+  const token = getCookie(c, SESSION_COOKIE)
+  if (!token) return c.json({ authenticated: false }, 200)
+
+  let userId: string
+  try {
+    const payload = await verifyJwt(token, c.env.JWT_SECRET)
+    userId = payload.sub
+  } catch {
+    return c.json({ authenticated: false }, 200)
+  }
 
   const user = await c.env.DB.prepare(
     'SELECT u.id, u.email, p.nickname, p.avatar_url FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?',
