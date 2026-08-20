@@ -520,3 +520,43 @@ Três consequências no comportamento:
 - Jogo remarcado volta sozinho: o provider troca `POSTPONED` por `TIMED`/`SCHEDULED` com a data nova, o sync diário zera a flag e o `start_time` volta a ser atualizado.
 - **`default_round` não muda.** A query pega a primeira rodada com `MAX(start_time) > now`; como o adiado guarda o horário original (passado), a rodada 21 continua fora e o default segue na 22 — correto, já que 6 dos 10 jogos dela foram disputados. Isso cria um buraco de descoberta: o palpite reaberto fica numa rodada que o usuário não tem motivo para visitar. Resolvido com um marcador no seletor de rodadas (`Rodada 21 · 4 adiados`) e um aviso com atalho "Ver rodada" no `PredictionsTab`, ambos sumindo sozinhos quando a flag zera. O aviso mostra **uma** rodada — a adiada mais próxima *antes* da aberta — e não aparece quando a rodada aberta já tem adiado. Sem essas duas regras o Brasileirão encadeia: ele acumula adiados distantes (a rodada 4 tem um Flamengo×Mirassol parado desde fevereiro), então avisar do mais antigo primeiro jogava o usuário 17 rodadas pra trás, e de lá um novo aviso apontava para a 21. O seletor continua marcando todas. Forçar o default na rodada adiada foi descartado: abriria numa tela majoritariamente encerrada enquanto a ação real do usuário é a rodada seguinte.
 - Quando os jogos forem remarcados, o `ORDER BY MAX(start_time) ASC` mantém o comportamento correto: a rodada 21 só volta a ser default quando aqueles jogos forem de fato o próximo compromisso do calendário.
+
+---
+
+## ADR-014: Competition Radar — API-Football para oferta, Wikipedia Pageviews para demanda
+
+**Status:** Accepted
+**Date:** 2026-08-18
+
+### Context
+
+Decidir quais campeonatos incorporar ao Palpitae era palpite. Duas perguntas ficavam sem resposta: *o que está acontecendo agora* e *o que o público brasileiro acompanha*.
+
+O provider do produto não responde a primeira. O plano grátis da football-data.org cobre 12 competições (as ligas europeias grandes, Brasileirão Série A, UCL, Copa do Mundo, Euro). Libertadores, Sul-Americana, Copa do Brasil e estaduais **não existem** nele — ou seja, não dava nem para perguntar "vale a pena entrar na Libertadores?", porque a competição era invisível para o sistema.
+
+A segunda pergunta parecia ser trabalho do Google Trends. Não é, na prática: o `pytrends` foi arquivado em abril/2025, a API oficial anunciada em julho/2025 é alpha fechada por aplicação, e o resto do mercado (SerpApi, Glimpse, ScrapingBee) é pago. Nenhuma opção estável e grátis.
+
+### Decision
+
+Três fontes, uma tabela de snapshot diário (`competition_radar` + `competition_radar_daily`, migration 0014), consumidas por `/admin/oportunidades`:
+
+1. **Oferta — API-Football (api-sports.io), plano grátis.** ~1.200 ligas contra as 12 do football-data. Duas chamadas por dia, das 100 da quota: `/leagues?current=true` (catálogo do mundo inteiro) e `/fixtures?date=hoje` (jogos do dia, agregados por liga aqui). Nenhuma consulta é por liga — isso estouraria a quota na primeira execução.
+2. **Demanda — Wikimedia Pageviews API (pt.wikipedia).** Grátis, oficial, sem chave, série diária desde 2015. pt.wikipedia ≈ audiência brasileira, o que torna os números comparáveis entre competições. Uma chamada por competição curada (~40), a API não tem quota.
+3. **Demanda interna — D1.** Grupos ativos por competição já suportada, cruzados por prefixo de `slug`.
+
+**A API-Football não toca no produto.** Os jogos que alimentam palpites continuam vindo do football-data (ADR-007, ADR-010). O radar é ferramenta de decisão, não fonte de verdade — trocar o provider do produto é uma decisão separada, que este radar existe justamente para informar.
+
+### Consequences
+
+- **A coleta NÃO roda no Worker.** A API-Football aplica rate limit **por IP**, e os IPs de saída dos Cloudflare Workers são compartilhados por milhares de clientes: do Worker a primeira chamada do dia volta `429 {"rateLimit":"Too many requests"}` com a quota da conta intacta (2/100 no dia), enquanto do IP de um runner do GitHub a mesma chamada devolve `200` com 1.232 ligas. Descoberto ao popular produção, não em teste local — localmente tudo passava porque o `wrangler dev` sem `--remote` sai pelo IP da máquina.
+- Por isso a coleta é um **GitHub Actions diário** (`.github/workflows/radar-sync.yml`, 07:00 UTC + `workflow_dispatch`). O mesmo `syncRadar` roda sem alteração: `SqlCollector` implementa a fatia da interface do D1 que ele usa e serializa os statements num `.sql`, aplicado com `wrangler d1 execute --remote --file`. Um `INSERT` por linha via REST API seriam ~1.500 requisições; o arquivo é uma chamada.
+- Separação de credenciais como consequência bem-vinda: o script só recebe `API_FOOTBALL_KEY`, e quem escreve no D1 é o wrangler com o token que o CI já usa. A chave da API-Football nunca toca no Cloudflare; o token do Cloudflare nunca toca na API-Football.
+- Falha na coleta não afeta nada do produto: a dashboard mostra o último snapshot e avisa quando ele está velho (>30h). O script sai com erro se não gerar nenhum statement — o workflow fica vermelho em vez de aplicar um arquivo vazio.
+- A curadoria de artigos (`api/src/radar/articles.ts`) é manual e é o gargalo do sinal de interesse. Competição sem artigo aparece na dashboard numa seção própria, como fila de trabalho — o sistema mostra o que não sabe medir em vez de esconder.
+- Artigos são gravados pelo **título canônico**, não pelo redirect: um redirect tem pageviews próprios quase zerados ("Campeonato Brasileiro de Futebol - Série A" marca ~20/dia; o destino real, ~880/dia). Errar isso faria a competição parecer irrelevante.
+- Usamos o artigo genérico da competição, não o da edição do ano. O da edição pega picos maiores, mas exige manutenção anual e às vezes nem existe a tempo (não havia artigo para o Brasileirão 2026 em agosto de 2026).
+- A liga é casada por `(país, nome)` normalizado, não por id numérico do provider. Ids não são documentados publicamente e não dava para verificá-los sem consumir quota; nome e país são legíveis e conferíveis na própria tela.
+- Guardamos só ligas de um recorte de países (Brasil, América do Sul, ligas europeias grandes, EUA/México/Arábia) mais as explicitamente curadas. Sem esse filtro seriam ~1.200 linhas/dia de ruído.
+- O modelo já nasce com coluna `sport`: incluir NBA/NFL/F1 depois é trocar de provider, não migrar schema.
+- `ends_on` do provider é um **piso**, não a data real de fim: em mata-mata ele só conhece as datas dos confrontos já definidos (mesmo fenômeno do ADR-010). Validado em produção — a Libertadores 2026, em plena fase final, reportava `ends_on` na data do jogo seguinte. Por isso `finished` exige janela vencida **e** nenhum jogo nos últimos 14 dias; na dúvida a competição fica `ongoing`.
+- Requer o secret `API_FOOTBALL_KEY` **no GitHub** (não no Worker). Sem ele o script sai com erro e o workflow falha, sem tocar no D1.

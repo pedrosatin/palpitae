@@ -77,6 +77,15 @@ Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 | `click_admin_metrics_periodo` | troca do período dos gráficos (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
 | `click_admin_metrics_arquivo_mes` | seleção de um mês pra analisar o arquivo frio (R2) | `{ month }` (`YYYY-MM`) |
 
+Radar de competições (`/admin/oportunidades`, AdminRadarPage):
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_admin_radar_periodo` | troca do período da análise (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
+| `click_admin_radar_ordenar` | troca da coluna de ordenação da tabela | `{ sort }` (`interest`/`matches`/`name`/`start`) |
+| `click_admin_radar_filtrar_status` | recorte por status da competição | `{ status }` (`ongoing`/`upcoming`/`all`) |
+| `click_admin_radar_filtrar_nao_suportadas` | liga/desliga o filtro "só não suportadas" | — |
+
 Modal genérico (componente `Modal`):
 
 | Evento | Disparo | Params |

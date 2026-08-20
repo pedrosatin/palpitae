@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { radarRouter } from '../radar/router'
 import type { AppContext, Env } from '../types'
 
 /**
@@ -57,6 +58,10 @@ metricsRouter.use('*', async (c, next) => {
   }
   await next()
 })
+
+// Radar de competições (/metrics/radar) — inteligência de produto, mesmo gate
+// de admin. Ver api/src/radar/router.ts.
+metricsRouter.route('/radar', radarRouter)
 
 /**
  * Visão geral do período: totais por tipo, série diária, saúde do poller, KPIs
@@ -396,9 +401,15 @@ metricsRouter.get('/archive/query', async (c) => {
   const byDay: { day: string; count: number }[] = []
   let filesRead = 0
 
-  for (const day of days) {
+  const fetchPromises = days.map(async (day) => {
     const key = `events/${day.replaceAll('-', '/')}.ndjson`
     const obj = await bucket.get(key)
+    return { day, obj }
+  })
+
+  const results = await Promise.all(fetchPromises)
+
+  for (const { day, obj } of results) {
     if (!obj) continue
     filesRead++
 

@@ -37,6 +37,8 @@ describe('api', () => {
       notifySessionExpired()
 
       expect(dispatchEventSpy).toHaveBeenCalledTimes(1)
+      const event = dispatchEventSpy.mock.calls[0][0]
+      expect((event as Event).type).toBe(SESSION_EXPIRED_EVENT)
     })
 
     it('returns early if window is undefined', () => {
@@ -72,6 +74,14 @@ describe('api', () => {
     it('returns false if window is undefined', () => {
       vi.stubGlobal('window', undefined)
       expect(consumeSessionExpired()).toBe(false)
+    })
+
+    it('returns false if accessing sessionStorage throws', () => {
+      const spy = vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+        throw new Error('SecurityError')
+      })
+      expect(consumeSessionExpired()).toBe(false)
+      spy.mockRestore()
     })
   })
 
