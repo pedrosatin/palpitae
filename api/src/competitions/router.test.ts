@@ -70,8 +70,7 @@ describe('competitions router', () => {
   })
 
   it('returns 500 on database error', async () => {
-    const originalConsoleError = console.error
-    console.error = vi.fn() // Suppress error logging in test output
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {}) // Suppress error logging in test output
 
     const app = new Hono<AppContext>()
     app.route('/competitions', competitionsRouter)
@@ -93,6 +92,6 @@ describe('competitions router', () => {
     const body = await response.json()
     expect(body).toEqual({ error: 'Erro ao carregar competições' })
 
-    console.error = originalConsoleError
+    consoleSpy.mockRestore()
   })
 })
