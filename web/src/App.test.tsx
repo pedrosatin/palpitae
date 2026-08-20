@@ -36,19 +36,21 @@ describe('App', () => {
 
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)
+    localStorage.clear()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    localStorage.clear()
   })
 
-  it('renders nothing while authentication state is loading', () => {
+  it('renders nothing on private routes while authentication state is loading', () => {
     // Make fetch return a promise that doesn't resolve immediately
     fetchMock.mockImplementation(() => new Promise(() => {}))
 
     const { container } = render(
-      <MemoryRouter initialEntries={['/']}>
+      <MemoryRouter initialEntries={['/configuracoes']}>
         <App />
       </MemoryRouter>
     )
@@ -57,7 +59,65 @@ describe('App', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('falls back to unauthenticated route when /auth/me returns 401', async () => {
+  it('keeps the pre-rendered landing at "/" while auth loads', () => {
+    // LCP: a landing já está pintada no HTML do build e não depende da sessão,
+    // então o primeiro render precisa reproduzi-la — senão a hidratação diverge.
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App landingPrerenderizada />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+  })
+
+  it('waits for auth at "/" when the pre-rendered landing was discarded', () => {
+    // Quem já logou aqui vai para o dashboard: o script inline do index.html
+    // descarta a landing, o App recebe false e não pisca a página de marketing.
+    fetchMock.mockImplementation(() => new Promise(() => {}))
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('records and clears the known-session flag from the /auth/me result', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+
+    const { unmount } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(localStorage.getItem('palpitae:sessao-conhecida')).toBe('1')
+    })
+
+    unmount()
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ authenticated: false }) })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(localStorage.getItem('palpitae:sessao-conhecida')).toBeNull()
+    })
+  })
+
+  it('falls back to unauthenticated route when /auth/me is not ok', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false })
 
     render(
@@ -72,6 +132,25 @@ describe('App', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledWith(`${config.apiUrl}/auth/me`, { credentials: 'include' })
+  })
+
+  it('falls back to unauthenticated route when /auth/me returns 200 with authenticated: false', async () => {
+    // Visita anônima: o endpoint responde 200 (não 401) para não aparecer como
+    // erro no console do navegador — ver PAGESPEED_REPORT.md item 3.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ authenticated: false }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+    })
   })
 
   it('renders authenticated route when /auth/me returns user data', async () => {
