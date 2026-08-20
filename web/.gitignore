@@ -1,4 +1,6 @@
 dist/
+# saída intermediária do build de SSR usado no pré-render (scripts/prerender.mjs)
+dist-ssr/
 node_modules/
 .env
 coverage/
