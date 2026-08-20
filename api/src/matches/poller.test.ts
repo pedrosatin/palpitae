@@ -191,6 +191,24 @@ describe('pollActiveMatches', () => {
     expect(scoreMock).not.toHaveBeenCalled()
   })
 
+  it('returns success: false with err when syncFixtures fails', async () => {
+    const error = new Error('Sync failed')
+    syncFixturesMock.mockRejectedValue(error)
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' }])
+
+    await expect(pollActiveMatches(db as unknown as D1Database, 'key')).resolves.not.toThrow()
+  })
+
+  it('throws an error if scoring fails', async () => {
+    scoreMock.mockRejectedValue(new Error('Scoring failed'))
+    syncFixturesMock.mockResolvedValue({ matches: 1 } as never)
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' }])
+
+    await expect(pollActiveMatches(db as unknown as D1Database, 'key')).rejects.toThrow(
+      'Scoring failed',
+    )
+  })
+
   it('emits a poller_run with status ok and zeroed counters for an empty window', async () => {
     const ae = buildFakeAe()
     const db = buildFakeDb([])
