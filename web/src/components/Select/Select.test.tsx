@@ -9,7 +9,7 @@ describe('Select', () => {
       <Select>
         <option value="1">Option 1</option>
         <option value="2">Option 2</option>
-      </Select>
+      </Select>,
     )
     expect(screen.getByRole('combobox')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Option 1' })).toBeInTheDocument()
@@ -23,19 +23,21 @@ describe('Select', () => {
       <Select onChange={onChange}>
         <option value="1">Option 1</option>
         <option value="2">Option 2</option>
-      </Select>
+      </Select>,
     )
 
     await user.selectOptions(screen.getByRole('combobox'), '2')
     expect(onChange).toHaveBeenCalledTimes(1)
-    expect((screen.getByRole('option', { name: 'Option 2' }) as HTMLOptionElement).selected).toBe(true)
+    expect((screen.getByRole('option', { name: 'Option 2' }) as HTMLOptionElement).selected).toBe(
+      true,
+    )
   })
 
   it('applies custom className alongside default styles', () => {
     render(
       <Select className="custom-class">
         <option value="1">Option 1</option>
-      </Select>
+      </Select>,
     )
     expect(screen.getByRole('combobox')).toHaveClass('custom-class')
   })
@@ -44,7 +46,7 @@ describe('Select', () => {
     render(
       <Select disabled>
         <option value="1">Option 1</option>
-      </Select>
+      </Select>,
     )
     expect(screen.getByRole('combobox')).toBeDisabled()
   })
@@ -53,7 +55,7 @@ describe('Select', () => {
     render(
       <Select name="my-select" required>
         <option value="1">Option 1</option>
-      </Select>
+      </Select>,
     )
     const select = screen.getByRole('combobox')
     expect(select).toHaveAttribute('name', 'my-select')

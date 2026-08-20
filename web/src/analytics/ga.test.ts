@@ -9,7 +9,7 @@ describe('ga', () => {
 
     it('is true when gaMeasurementId is set', async () => {
       vi.doMock('../config', () => ({
-        config: { gaMeasurementId: 'G-123' }
+        config: { gaMeasurementId: 'G-123' },
       }))
       const { gaEnabled } = await import('./ga')
       expect(gaEnabled).toBe(true)
@@ -17,7 +17,7 @@ describe('ga', () => {
 
     it('is false when gaMeasurementId is not set', async () => {
       vi.doMock('../config', () => ({
-        config: { gaMeasurementId: '' }
+        config: { gaMeasurementId: '' },
       }))
       const { gaEnabled } = await import('./ga')
       expect(gaEnabled).toBe(false)
@@ -187,7 +187,11 @@ describe('ga', () => {
       window.gtag('event', 'test_event', { value: 1 })
 
       expect((window as any).dataLayer.length).toBe(1)
-      expect(Array.from((window as any).dataLayer[0])).toEqual(['event', 'test_event', { value: 1 }])
+      expect(Array.from((window as any).dataLayer[0])).toEqual([
+        'event',
+        'test_event',
+        { value: 1 },
+      ])
     })
   })
 
@@ -205,7 +209,10 @@ describe('ga', () => {
     it('should call gtag with the correct arguments when params are provided', () => {
       trackEvent('test_event', { custom_param: 'value', count: 1 })
 
-      expect(window.gtag).toHaveBeenCalledWith('event', 'test_event', { custom_param: 'value', count: 1 })
+      expect(window.gtag).toHaveBeenCalledWith('event', 'test_event', {
+        custom_param: 'value',
+        count: 1,
+      })
     })
 
     it('should call gtag with the correct arguments when params are omitted', () => {

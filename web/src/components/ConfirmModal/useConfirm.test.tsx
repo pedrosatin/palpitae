@@ -98,7 +98,9 @@ describe('useConfirm', () => {
 
   it('should apply the danger class to the confirm button when danger option is true', async () => {
     const user = userEvent.setup({ delay: null })
-    render(<TestComponent options={{ message: 'Danger zone', danger: true, confirmLabel: 'Delete' }} />)
+    render(
+      <TestComponent options={{ message: 'Danger zone', danger: true, confirmLabel: 'Delete' }} />,
+    )
 
     await user.click(screen.getByText('Trigger Confirm'))
 
