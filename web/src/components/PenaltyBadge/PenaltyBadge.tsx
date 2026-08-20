@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import styles from './PenaltyBadge.module.css'
 
+export const TOOLTIP_TIMEOUT_MS = 4000
+
 /** Shared shootout ball mark — used wherever a penalty winner is shown. */
 export function BallIcon({ className }: { className?: string }) {
   return (
@@ -41,7 +43,7 @@ export default function PenaltyBadge({
   // Auto-dismiss a tapped-open tooltip, mirroring InfoHint.
   useEffect(() => {
     if (!open) return
-    const t = setTimeout(() => setOpen(false), 4000)
+    const t = setTimeout(() => setOpen(false), TOOLTIP_TIMEOUT_MS)
     return () => clearTimeout(t)
   }, [open])
 

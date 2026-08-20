@@ -99,4 +99,21 @@ describe('JoinGroupModal', () => {
       expect(body.invite_code).toBe('ABC123')
     })
   })
+
+  it('normalises a non-URL string (plain invite code)', async () => {
+    const joinedGroup = { id: 'g1', name: 'Group 1' }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: joinedGroup }),
+    } as Response)
+
+    render(<JoinGroupModal {...defaultProps} />)
+    await userEvent.type(screen.getByRole('textbox'), '  abc-123  ')
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    await waitFor(() => {
+      const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
+      expect(body.invite_code).toBe('ABC-123')
+    })
+  })
 })
