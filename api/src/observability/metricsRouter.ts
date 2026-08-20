@@ -260,9 +260,7 @@ metricsRouter.get('/business', async (c) => {
     db.prepare(`SELECT COUNT(DISTINCT user_id) AS n FROM predictions`).first(),
     db.prepare(`SELECT COUNT(*) AS n FROM users`).first(),
     db
-      .prepare(
-        `SELECT COUNT(*) AS n FROM users WHERE created_at > datetime('now', ?)`,
-      )
+      .prepare(`SELECT COUNT(*) AS n FROM users WHERE created_at > datetime('now', ?)`)
       .bind(`-${days} days`)
       .first(),
     db

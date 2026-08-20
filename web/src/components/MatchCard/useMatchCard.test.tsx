@@ -60,7 +60,7 @@ describe('useMatchCard', () => {
         prediction: undefined,
         groupId: 'group-1',
         onSaved: vi.fn(),
-      })
+      }),
     )
 
     expect(result.current.home).toBe('0')
@@ -70,14 +70,18 @@ describe('useMatchCard', () => {
   })
 
   it('initializes with prediction values', () => {
-    const prediction = makePrediction({ predicted_home_score: 3, predicted_away_score: 1, predicted_penalty_winner: 'home' })
+    const prediction = makePrediction({
+      predicted_home_score: 3,
+      predicted_away_score: 1,
+      predicted_penalty_winner: 'home',
+    })
     const { result } = renderHook(() =>
       useMatchCard({
         match: makeMatch(),
         prediction,
         groupId: 'group-1',
         onSaved: vi.fn(),
-      })
+      }),
     )
 
     expect(result.current.home).toBe('3')
@@ -87,7 +91,11 @@ describe('useMatchCard', () => {
 
   it('updates score correctly and clears penalty winner if leaving draw', () => {
     const match = makeMatch({ decides_on_penalties: true })
-    const prediction = makePrediction({ predicted_home_score: 1, predicted_away_score: 1, predicted_penalty_winner: 'home' })
+    const prediction = makePrediction({
+      predicted_home_score: 1,
+      predicted_away_score: 1,
+      predicted_penalty_winner: 'home',
+    })
     const onDraftChange = vi.fn()
     const onPenaltyDraftChange = vi.fn()
 
@@ -99,7 +107,7 @@ describe('useMatchCard', () => {
         onSaved: vi.fn(),
         onDraftChange,
         onPenaltyDraftChange,
-      })
+      }),
     )
 
     expect(result.current.home).toBe('1')
@@ -123,28 +131,40 @@ describe('useMatchCard', () => {
         prediction: undefined,
         groupId: 'group-1',
         onSaved: vi.fn(),
-      })
+      }),
     )
 
     let updatedValue = ''
-    const updateFn = (v: string) => { updatedValue = v }
+    const updateFn = (v: string) => {
+      updatedValue = v
+    }
 
     // Valid inputs
-    act(() => { result.current.handleScoreInput('1', updateFn) })
+    act(() => {
+      result.current.handleScoreInput('1', updateFn)
+    })
     expect(updatedValue).toBe('1')
 
-    act(() => { result.current.handleScoreInput('12', updateFn) })
+    act(() => {
+      result.current.handleScoreInput('12', updateFn)
+    })
     expect(updatedValue).toBe('12')
 
-    act(() => { result.current.handleScoreInput('', updateFn) })
+    act(() => {
+      result.current.handleScoreInput('', updateFn)
+    })
     expect(updatedValue).toBe('')
 
     // Invalid inputs
     updatedValue = 'unchanged'
-    act(() => { result.current.handleScoreInput('123', updateFn) })
+    act(() => {
+      result.current.handleScoreInput('123', updateFn)
+    })
     expect(updatedValue).toBe('unchanged')
 
-    act(() => { result.current.handleScoreInput('a', updateFn) })
+    act(() => {
+      result.current.handleScoreInput('a', updateFn)
+    })
     expect(updatedValue).toBe('unchanged')
   })
 
@@ -156,7 +176,7 @@ describe('useMatchCard', () => {
         prediction: undefined,
         groupId: 'group-1',
         onSaved,
-      })
+      }),
     )
 
     act(() => {
@@ -169,16 +189,19 @@ describe('useMatchCard', () => {
       await result.current.handleSave()
     })
 
-    expect(mockFetch).toHaveBeenCalledWith('mockApiUrl/predictions', expect.objectContaining({
-      method: 'PUT',
-      body: JSON.stringify({
-        group_id: 'group-1',
-        match_id: 'match-1',
-        predicted_home_score: 1,
-        predicted_away_score: 0,
-        predicted_penalty_winner: null,
-      })
-    }))
+    expect(mockFetch).toHaveBeenCalledWith(
+      'mockApiUrl/predictions',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          group_id: 'group-1',
+          match_id: 'match-1',
+          predicted_home_score: 1,
+          predicted_away_score: 0,
+          predicted_penalty_winner: null,
+        }),
+      }),
+    )
 
     expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0, null)
   })
@@ -194,7 +217,7 @@ describe('useMatchCard', () => {
         groupId: 'group-1',
         onSaved,
         onDraftChange,
-      })
+      }),
     )
 
     await act(async () => {
@@ -206,7 +229,9 @@ describe('useMatchCard', () => {
     expect(result.current.selectedOutcome).toBe('home')
     expect(onDraftChange).toHaveBeenCalledWith('match-1', '1', '0')
 
-    expect(mockFetch).toHaveBeenCalledWith('mockApiUrl/predictions', expect.objectContaining({
+    expect(mockFetch).toHaveBeenCalledWith(
+      'mockApiUrl/predictions',
+      expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({
           group_id: 'group-1',
@@ -214,8 +239,9 @@ describe('useMatchCard', () => {
           predicted_home_score: 1,
           predicted_away_score: 0,
           predicted_penalty_winner: null,
-        })
-    }))
+        }),
+      }),
+    )
   })
 
   it('selectPenaltyWinner logic updates state and saves if outcomeOnly', async () => {
@@ -230,7 +256,7 @@ describe('useMatchCard', () => {
         outcomeOnly: true,
         onSaved,
         onPenaltyDraftChange,
-      })
+      }),
     )
 
     await act(async () => {
@@ -240,7 +266,9 @@ describe('useMatchCard', () => {
     expect(result.current.penaltyWinner).toBe('away')
     expect(onPenaltyDraftChange).toHaveBeenCalledWith('match-1', 'away')
 
-    expect(mockFetch).toHaveBeenCalledWith('mockApiUrl/predictions', expect.objectContaining({
+    expect(mockFetch).toHaveBeenCalledWith(
+      'mockApiUrl/predictions',
+      expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({
           group_id: 'group-1',
@@ -248,8 +276,9 @@ describe('useMatchCard', () => {
           predicted_home_score: 0,
           predicted_away_score: 0,
           predicted_penalty_winner: 'away',
-        })
-    }))
+        }),
+      }),
+    )
     expect(onSaved).toHaveBeenCalledWith('match-1', 0, 0, 'away')
   })
 
@@ -262,7 +291,7 @@ describe('useMatchCard', () => {
         prediction: undefined,
         groupId: 'group-1',
         onSaved,
-      })
+      }),
     )
 
     await act(async () => {

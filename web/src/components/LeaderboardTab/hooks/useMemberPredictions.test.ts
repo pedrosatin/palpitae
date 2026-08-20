@@ -47,7 +47,7 @@ describe('useMemberPredictions', () => {
     expect(result.current.modalRoundIndex).toBe(0)
     expect(fetchMock).toHaveBeenCalledWith(
       `${config.apiUrl}/predictions/user?group_id=${mockGroupId}&user_id=${mockUserId}`,
-      { credentials: 'include' }
+      { credentials: 'include' },
     )
   })
 

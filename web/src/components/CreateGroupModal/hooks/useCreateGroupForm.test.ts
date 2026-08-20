@@ -29,13 +29,13 @@ describe('useCreateGroupForm', () => {
 
   it('initializes with default state', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ competitions: [] }))
+      new Response(JSON.stringify({ competitions: [] })),
     )
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
-        expect(result.current.loadingCompetitions).toBe(false)
+      expect(result.current.loadingCompetitions).toBe(false)
     })
 
     expect(result.current.name).toBe('')
@@ -57,7 +57,7 @@ describe('useCreateGroupForm', () => {
       { id: 'c2', name: 'Comp 2', has_penalty_phases: true },
     ]
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions }))
+      new Response(JSON.stringify({ competitions })),
     )
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
@@ -79,7 +79,7 @@ describe('useCreateGroupForm', () => {
       { id: 'c2', name: 'Comp 2', has_penalty_phases: true },
     ]
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions }))
+      new Response(JSON.stringify({ competitions })),
     )
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
@@ -109,13 +109,13 @@ describe('useCreateGroupForm', () => {
 
   it('does not submit when points validations fail', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] }))
+      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
-        expect(result.current.competitions.length).toBe(1)
+      expect(result.current.competitions.length).toBe(1)
     })
 
     const e = { preventDefault: vi.fn() } as unknown as React.FormEvent
@@ -129,7 +129,9 @@ describe('useCreateGroupForm', () => {
     await act(async () => {
       await result.current.handleSubmit(e)
     })
-    expect(result.current.error).toBe('Pontos por placar exato deve ser maior ou igual a pontos por vencedor')
+    expect(result.current.error).toBe(
+      'Pontos por placar exato deve ser maior ou igual a pontos por vencedor',
+    )
 
     // pointsExact + pointsWinner === 0
     act(() => {
@@ -147,7 +149,7 @@ describe('useCreateGroupForm', () => {
 
   it('creates group successfully', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] }))
+      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
 
     const createdGroup = { id: 'g1', name: 'My Group' }
@@ -159,7 +161,7 @@ describe('useCreateGroupForm', () => {
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
-        expect(result.current.competitions.length).toBe(1)
+      expect(result.current.competitions.length).toBe(1)
     })
 
     act(() => {
@@ -184,7 +186,7 @@ describe('useCreateGroupForm', () => {
           points_penalty: 1,
           predictions_visibility: 'hidden',
         }),
-      })
+      }),
     )
 
     expect(mockTrackEvent).toHaveBeenCalledWith('submit_criar_grupo')
@@ -195,7 +197,7 @@ describe('useCreateGroupForm', () => {
 
   it('handles API error response on creation', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] }))
+      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
 
     mockApiFetch.mockResolvedValueOnce({
@@ -206,7 +208,7 @@ describe('useCreateGroupForm', () => {
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
-        expect(result.current.competitions.length).toBe(1)
+      expect(result.current.competitions.length).toBe(1)
     })
 
     const e = { preventDefault: vi.fn() } as unknown as React.FormEvent
@@ -222,7 +224,7 @@ describe('useCreateGroupForm', () => {
   it('handles fetch exception on creation', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] }))
+      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
 
     mockApiFetch.mockRejectedValueOnce(new Error('Network offline'))
@@ -230,7 +232,7 @@ describe('useCreateGroupForm', () => {
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
-        expect(result.current.competitions.length).toBe(1)
+      expect(result.current.competitions.length).toBe(1)
     })
 
     const e = { preventDefault: vi.fn() } as unknown as React.FormEvent
@@ -244,13 +246,13 @@ describe('useCreateGroupForm', () => {
 
   it('handles closing modal properly', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] }))
+      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
-        expect(result.current.competitions.length).toBe(1)
+      expect(result.current.competitions.length).toBe(1)
     })
 
     act(() => {
