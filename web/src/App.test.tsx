@@ -83,7 +83,7 @@ describe('App', () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     expect(container).toBeEmptyDOMElement()
@@ -111,7 +111,7 @@ describe('App', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
@@ -147,7 +147,7 @@ describe('App', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
