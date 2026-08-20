@@ -245,6 +245,67 @@
   font-weight: var(--font-weight-bold);
 }
 
+.scoring {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.sectionLead {
+  margin: var(--space-3) auto 0;
+  max-width: 560px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-relaxed, 1.6);
+}
+
+.scoringGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin: var(--space-10) 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.scoringCard {
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+}
+
+.scoringPoints {
+  display: block;
+  color: var(--color-primary);
+  font-size: var(--font-size-3xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
+}
+
+.scoringTitle {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+}
+
+.scoringDesc {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed, 1.6);
+}
+
+.scoringNote {
+  margin: var(--space-6) auto 0;
+  max-width: 560px;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-relaxed, 1.6);
+}
+
 /* ─── FAQ ─────────────────────────────────────────────────────────────── */
 
 .faq {
@@ -361,6 +422,10 @@
   .featureReversed .featureCopy,
   .featureReversed .featureShot {
     order: initial;
+  }
+
+  .scoringGrid {
+    grid-template-columns: 1fr;
   }
 }
 
