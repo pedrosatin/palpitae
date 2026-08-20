@@ -177,6 +177,30 @@ describe('exportRecentDays', () => {
     expect(fetchFake).not.toHaveBeenCalled()
   })
 
+  it('isola a falha no backfill de metadata de um dia — não trava os demais', async () => {
+    const fetchFake = vi.fn()
+    vi.stubGlobal('fetch', fetchFake)
+
+    const head = vi.fn(async () => ({})) // Sem customMetadata.events para forçar o backfill
+
+    let getCalls = 0
+    const get = vi.fn(async () => {
+      getCalls++
+      if (getCalls === 1) throw new Error('R2 get falhou')
+      return { text: async () => '{"_sample_interval": 1}\n' }
+    })
+    const put = vi.fn()
+    const env = makeEnv({ EVENTS: { head, get, put } as unknown as R2Bucket })
+
+    await exportRecentDays(env, new Date('2026-06-30T00:00:00Z'), 3)
+
+    // O erro no primeiro get foi isolado e o loop continuou.
+    // 3 head() -> todos caem em backfill. O primeiro falha no get().
+    // Sobram 2 que fazem get() e put()
+    expect(get).toHaveBeenCalledTimes(3)
+    expect(put).toHaveBeenCalledTimes(2)
+  })
+
   it('isola a falha de um dia — não trava o backfill dos demais', async () => {
     // 1ª chamada à SQL API lança; as seguintes funcionam. Loop não pode parar.
     let n = 0

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
-import MatchCard, { type Match, type Prediction } from './MatchCard'
+import MatchCard, { type Match, type Prediction, OUTCOMES } from './MatchCard'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -575,5 +575,15 @@ describe('MatchCard – jogo adiado (postponed)', () => {
 
     expect(screen.getByText(/encerrado/i)).toBeInTheDocument()
     expect(screen.queryByText(/adiado/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('OUTCOMES', () => {
+  it('preserves the expected mapping for home, draw, and away', () => {
+    expect(OUTCOMES).toEqual({
+      home: { home: 1, away: 0, label: 'Casa' },
+      draw: { home: 0, away: 0, label: 'Empate' },
+      away: { home: 0, away: 1, label: 'Fora' },
+    })
   })
 })
