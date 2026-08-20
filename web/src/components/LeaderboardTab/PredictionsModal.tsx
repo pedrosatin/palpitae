@@ -27,13 +27,8 @@ export function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPr
 }
 
 export default function PredictionsModal({ member, groupId, onClose }: PredictionsModalProps) {
-  const {
-    modalPredictions,
-    modalLoading,
-    modalError,
-    modalRoundIndex,
-    setModalRoundIndex,
-  } = useMemberPredictions(groupId, member.user_id)
+  const { modalPredictions, modalLoading, modalError, modalRoundIndex, setModalRoundIndex } =
+    useMemberPredictions(groupId, member.user_id)
 
   const modalByRound = new Map<string, UserPrediction[]>()
   for (const p of modalPredictions) {
