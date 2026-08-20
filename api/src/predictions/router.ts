@@ -1,4 +1,5 @@
 import { type Context, Hono } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
 import { isMatchLocked, lockedSql } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
@@ -814,7 +815,7 @@ async function verifyGroupsForImport(
   userId: string,
   sourceGroupId: string,
   targetGroupId: string,
-) {
+): Promise<{ error: string; status: ContentfulStatusCode } | null> {
   // Verify user is a member of both groups
   const memberships = await db
     .prepare(`SELECT group_id FROM group_members WHERE group_id IN (?, ?) AND user_id = ?`)
@@ -912,7 +913,7 @@ async function handleImportPost(c: Context<AppContext>) {
 
   const validationError = await verifyGroupsForImport(db, userId, source_group_id, target_group_id)
   if (validationError) {
-    return c.json({ error: validationError.error }, validationError.status as any)
+    return c.json({ error: validationError.error }, validationError.status)
   }
 
   const now = new Date().toISOString()
