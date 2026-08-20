@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { radarRouter } from '../radar/router'
 import type { AppContext, Env } from '../types'
 
 /**
@@ -57,6 +58,10 @@ metricsRouter.use('*', async (c, next) => {
   }
   await next()
 })
+
+// Radar de competições (/metrics/radar) — inteligência de produto, mesmo gate
+// de admin. Ver api/src/radar/router.ts.
+metricsRouter.route('/radar', radarRouter)
 
 /**
  * Visão geral do período: totais por tipo, série diária, saúde do poller, KPIs
