@@ -148,6 +148,10 @@ describe('ga', () => {
       expect((window as any).gtag).toBeDefined()
       expect((window as any).dataLayer.length).toBe(3) // js, config, and 1 for default consent
 
+      // O script real é adiado (load/idle) para não competir com o carregamento
+      // inicial da página — aguarda o macrotask que injeta a tag no <head>.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
       const script = document.head.querySelector('script')
       expect(script).not.toBeNull()
       expect(script?.src).toBe('https://www.googletagmanager.com/gtag/js?id=G-1234567890')
