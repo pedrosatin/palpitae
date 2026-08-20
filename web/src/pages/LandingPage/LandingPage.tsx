@@ -20,6 +20,7 @@ export default function LandingPage() {
       <main>
         <Hero />
         <Features />
+        <Scoring />
         <Faq />
         <Cta />
       </main>
@@ -96,9 +97,10 @@ function Hero() {
         <Shot
           src="/screenshots/grupos.png"
           alt="Tela de grupos do Palpitae mostrando os bolões do usuário"
-          width={1336}
-          height={717}
+          width={1100}
+          height={590}
           loading="eager"
+          fetchPriority="high"
         />
       </BrowserFrame>
     </section>
@@ -114,8 +116,8 @@ function Features() {
         description="Monte um bolão com a galera em segundos. Compartilhe um código ou link de convite e acompanhe membros, sua posição e seus pontos de cada grupo."
         shot="/screenshots/grupos.png"
         shotAlt="Lista de grupos com membros, posição e pontos"
-        shotWidth={1336}
-        shotHeight={717}
+        shotWidth={1100}
+        shotHeight={590}
       />
       <FeatureRow
         reversed
@@ -124,10 +126,60 @@ function Features() {
         description="Cravou o placar? Ajuste os números de cada jogo e salve um por um — ou de uma vez com 'Salvar todos'. Navegue entre as rodadas e palpite com antecedência."
         shot="/screenshots/palpites.png"
         shotAlt="Tela de previsões com cards de jogos e seletores de placar"
-        shotWidth={1297}
-        shotHeight={840}
+        shotWidth={1100}
+        shotHeight={712}
       />
     </section>
+  )
+}
+
+function Scoring() {
+  return (
+    <section id="pontuacao" className={styles.scoring}>
+      <h2 className={styles.sectionTitle}>Cravou o placar, leva mais</h2>
+      <p className={styles.sectionLead}>
+        Cada jogo vale pontos conforme o quanto você chegou perto do resultado real.
+      </p>
+      <ul className={styles.scoringGrid}>
+        <ScoringCard
+          points="3"
+          title="Placar exato"
+          description="Você acertou os gols dos dois times, como em um 2 a 1 cravado."
+        />
+        <ScoringCard
+          points="1"
+          title="Resultado certo"
+          description="Errou o placar, mas acertou quem venceu — ou que o jogo terminaria empatado."
+        />
+        <ScoringCard
+          points="0"
+          title="Resultado errado"
+          description="O jogo terminou diferente do que você palpitou. Sem desconto: nunca fica negativo."
+        />
+      </ul>
+      <p className={styles.scoringNote}>
+        Esses são os valores padrão. O admin do grupo pode ajustar quanto vale cada acerto na
+        criação do bolão.
+      </p>
+    </section>
+  )
+}
+
+function ScoringCard({
+  points,
+  title,
+  description,
+}: {
+  points: string
+  title: string
+  description: string
+}) {
+  return (
+    <li className={styles.scoringCard}>
+      <span className={styles.scoringPoints}>{points}</span>
+      <h3 className={styles.scoringTitle}>{title}</h3>
+      <p className={styles.scoringDesc}>{description}</p>
+    </li>
   )
 }
 
@@ -261,8 +313,9 @@ function FaqItem({ q, a }: { q: string; a: string }) {
  * Product screenshot that prefers a WebP source (30-65% smaller) and falls
  * back to the original PNG on browsers without WebP support. The WebP path is
  * derived from the PNG path by extension, so both files share one source of
- * truth. The hero shot passes loading="eager" (it's the LCP element); the rest
- * lazy-load.
+ * truth. The hero shot passes loading="eager" and fetchPriority="high" (it's
+ * the LCP element, and the preload in index.html carries the same priority);
+ * the rest lazy-load.
  */
 function Shot({
   src,
@@ -270,18 +323,34 @@ function Shot({
   width,
   height,
   loading,
+  fetchPriority,
 }: {
   src: string
   alt: string
   width: number
   height: number
   loading: 'eager' | 'lazy'
+  fetchPriority?: 'high' | 'low' | 'auto'
 }) {
   const webp = src.replace(/\.png$/, '.webp')
+  // O React 18 não conhece a prop `fetchPriority` em camelCase: ele avisa no
+  // console e descarta o atributo, então a dica de prioridade nunca chegava ao
+  // <img> (nem no navegador, nem no HTML gerado no build). Em minúsculas ele
+  // repassa o atributo como qualquer outro desconhecido, que é o que o
+  // navegador de fato lê. O cast existe só porque a tipagem do JSX descreve a
+  // grafia camelCase.
+  const priority = (fetchPriority ? { fetchpriority: fetchPriority } : {}) as object
   return (
     <picture>
       <source srcSet={webp} type="image/webp" />
-      <img src={src} alt={alt} width={width} height={height} loading={loading} />
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        loading={loading}
+        {...priority}
+      />
     </picture>
   )
 }
