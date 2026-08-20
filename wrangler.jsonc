@@ -1,3 +1,31 @@
+// ATENCAO: este arquivo hoje NAO tem efeito nenhum. Ele foi gerado
+// automaticamente pelo bot cloudflare-workers-and-pages em eb3e214,
+// quando o repositorio foi conectado a Cloudflare, e nunca foi ajustado.
+//
+// Por que e inerte: falta o campo `pages_build_output_dir`. Sem ele o
+// wrangler trata a config como "nao e um projeto Pages", emite o aviso
+// "We detected a configuration file at ... but it is missing the
+// pages_build_output_dir field ... Ignoring configuration file for now,
+// and proceeding with project deploy" e segue adiante. Quem define o
+// que sobe e a linha de comando do workflow:
+//
+//   npx wrangler pages deploy dist --project-name=palpitae-web --branch=main
+//
+// (.github/workflows/deploy-web.yml). Logo, `name`, `compatibility_date`,
+// `compatibility_flags` e `assets.directory` abaixo sao ignorados, e o
+// resto da configuracao do Pages vive no dashboard da Cloudflare.
+//
+// NAO basta acrescentar `pages_build_output_dir` para "consertar": o
+// `assets.directory` aponta para "web", que e o diretorio de codigo-fonte,
+// nao o `web/dist` gerado pelo build. Ativar o arquivo como esta faria o
+// deploy publicar o codigo-fonte.
+//
+// Recomendacao: apagar este arquivo depois de confirmar no dashboard da
+// Cloudflare que o projeto palpitae-web nao tem build automatico por
+// integracao Git apontando para a raiz do repositorio (o deploy real e
+// feito pelo GitHub Actions, nao pela Cloudflare). Ele foi mantido nesta
+// PR de proposito, porque essa confirmacao so pode ser feita no painel e
+// um erro aqui derruba producao.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "palpitae-web",
