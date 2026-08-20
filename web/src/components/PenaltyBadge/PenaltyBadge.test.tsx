@@ -1,6 +1,6 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import PenaltyBadge, { BallIcon } from './PenaltyBadge'
+import PenaltyBadge, { BallIcon, TOOLTIP_TIMEOUT_MS } from './PenaltyBadge'
 
 describe('BallIcon', () => {
   it('renders the ball icon', () => {
@@ -66,7 +66,7 @@ describe('PenaltyBadge', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('auto-dismisses tooltip after 4000ms', () => {
+  it(`auto-dismisses tooltip after ${TOOLTIP_TIMEOUT_MS}ms`, () => {
     render(<PenaltyBadge team="BRA" tooltip="Brazil won" />)
     const button = screen.getByRole('button')
 
@@ -74,7 +74,7 @@ describe('PenaltyBadge', () => {
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 
     act(() => {
-      vi.advanceTimersByTime(3999)
+      vi.advanceTimersByTime(TOOLTIP_TIMEOUT_MS - 1)
     })
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 
