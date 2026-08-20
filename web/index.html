@@ -10,7 +10,33 @@
       html {
         background-color: #0d0d0d;
       }
+
+      /* O build embute a landing dentro do #root (ver scripts/prerender.mjs).
+         Ela é o conteúdo certo só em "/" e só para quem nunca logou neste
+         dispositivo. Nos demais casos o script logo abaixo marca o <html> com
+         esta classe, e o #root fica invisível até o script no fim do body
+         esvaziá-lo. É um cinto de segurança: mesmo que o navegador resolva
+         pintar no meio do parse do HTML (acontece em conexões lentas, quando o
+         documento chega em pedaços), a landing nunca aparece numa rota
+         privada. As duas coisas são síncronas e acontecem antes de qualquer
+         paint, então não há piscada em nenhuma direção. */
+      .descartar-prerender #root {
+        visibility: hidden;
+      }
     </style>
+    <script>
+      // Roda antes de o body ser parseado — o #root ainda nem existe aqui.
+      ;(function () {
+        var landing = location.pathname === '/'
+        try {
+          // Mesma chave escrita por src/App.tsx (KNOWN_SESSION_KEY).
+          if (localStorage.getItem('palpitae:sessao-conhecida') === '1') landing = false
+        } catch (e) {
+          // Storage bloqueado: seguimos tratando como visitante novo.
+        }
+        if (!landing) document.documentElement.classList.add('descartar-prerender')
+      })()
+    </script>
 
     <!-- Aquece a conexão com a API (auth/me roda no boot, em outro domínio) -->
     <link rel="preconnect" href="https://api.palpitae.com.br" crossorigin />
@@ -70,9 +96,18 @@
     <!-- Cor do browser (mobile) -->
     <meta name="theme-color" content="#0d0d0d" />
 
-    <!-- Preload da imagem hero em WebP (melhora LCP); navegadores sem suporte
-         a WebP ignoram o preload e carregam o PNG via <picture> -->
-    <link rel="preload" as="image" href="/screenshots/grupos.webp" type="image/webp" />
+    <!-- Preload da imagem hero em WebP (é o elemento de LCP); navegadores sem
+         suporte a WebP ignoram o preload e carregam o PNG pelo fallback do
+         elemento picture.
+         fetchpriority=high tira a imagem da fila de prioridade baixa em que o
+         Chrome coloca preloads de imagem (auditoria lcp-discovery-insight). -->
+    <link
+      rel="preload"
+      as="image"
+      href="/screenshots/grupos.webp"
+      type="image/webp"
+      fetchpriority="high"
+    />
 
     <!-- JSON-LD: dados estruturados para o Google -->
     <script type="application/ld+json">
@@ -155,7 +190,38 @@
     </script>
   </head>
   <body>
+    <!-- O build substitui este marcador pela landing renderizada em HTML (ver
+         scripts/prerender.mjs). É o que um crawler sem JS lê e, principalmente,
+         é o que o navegador pinta antes de o bundle sequer chegar: a imagem do
+         hero (elemento de LCP) passa a existir no primeiro paint. -->
     <div id="root"></div>
+    <script>
+      // Roda com o #root já no DOM e antes de qualquer paint (o CSS externo
+      // ainda bloqueia a renderização neste ponto). Descarta a landing
+      // pré-renderizada quando ela não é o que o visitante deve ver:
+      //
+      //  - rotas privadas: /entrar, /grupos/*, /configuracoes e /admin/* são
+      //    reescritas para "/" pelo Cloudflare Pages (ver public/_redirects),
+      //    então elas recebem ESTE mesmo HTML, com a landing dentro. Sem este
+      //    descarte, um usuário logado indo para /grupos/123 veria a página de
+      //    marketing piscar antes do React montar;
+      //  - "/" em dispositivo que já teve sessão: vai para o dashboard, então
+      //    também não deve piscar a landing.
+      //
+      // Esvaziar o #root aqui, e não em main.tsx, é o que garante que nada
+      // disso chega à tela: main.tsx só roda depois de o bundle baixar.
+      // Remover o atributo data-prerender é o sinal para main.tsx usar
+      // createRoot em vez de hydrateRoot.
+      ;(function () {
+        if (!document.documentElement.classList.contains('descartar-prerender')) return
+        var root = document.getElementById('root')
+        if (root) {
+          root.textContent = ''
+          root.removeAttribute('data-prerender')
+        }
+        document.documentElement.classList.remove('descartar-prerender')
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
