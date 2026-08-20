@@ -37,6 +37,8 @@ describe('api', () => {
       notifySessionExpired()
 
       expect(dispatchEventSpy).toHaveBeenCalledTimes(1)
+      const event = dispatchEventSpy.mock.calls[0][0]
+      expect((event as Event).type).toBe(SESSION_EXPIRED_EVENT)
     })
 
     it('returns early if window is undefined', () => {
