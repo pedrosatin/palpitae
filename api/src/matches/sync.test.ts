@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { syncFixtures } from './sync'
+import { syncFixtures, resolveCanonicalScore } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -477,5 +477,104 @@ describe('syncFixtures — jogos adiados (POSTPONED)', () => {
     await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
 
     expect(captured.matches[0][START_TIME]).toBe(POSTPONED_PLACEHOLDER)
+  })
+})
+
+describe('resolveCanonicalScore', () => {
+  it('returns fullTime values for normal matches', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'REGULAR',
+        fullTime: { home: 2, away: 1 },
+        halfTime: { home: 1, away: 0 },
+        winner: 'HOME_TEAM',
+      })
+    ).toEqual({ canonicalHome: 2, canonicalAway: 1 })
+  })
+
+  it('returns null when fullTime data is missing', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'REGULAR',
+        fullTime: { home: null, away: null },
+        halfTime: { home: null, away: null },
+        winner: null,
+      })
+    ).toEqual({ canonicalHome: null, canonicalAway: null })
+  })
+
+  it('returns regularTime + extraTime for shootout matches with complete data', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 3, away: 4 },
+        regularTime: { home: 1, away: 1 },
+        extraTime: { home: 1, away: 1 },
+        penalties: { home: 1, away: 2 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'AWAY_TEAM',
+      })
+    ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
+  })
+
+  it('assumes extraTime is 0 if missing for shootout matches with regularTime', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 3, away: 4 },
+        regularTime: { home: 1, away: 1 },
+        penalties: { home: 2, away: 3 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'AWAY_TEAM',
+      })
+    ).toEqual({ canonicalHome: 1, canonicalAway: 1 })
+  })
+
+  it('subtracts penalties from fullTime when regularTime is missing and fullTime is not a draw', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 4, away: 5 },
+        penalties: { home: 2, away: 3 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'AWAY_TEAM',
+      })
+    ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
+  })
+
+  it('uses fullTime as is when regularTime is missing and fullTime is already a draw', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 2, away: 2 },
+        penalties: { home: 1, away: 2 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'AWAY_TEAM',
+      })
+    ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
+  })
+
+  it('falls back to drawing score when subtracting penalties results in a non-draw', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 5, away: 4 },
+        penalties: { home: 2, away: 3 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'HOME_TEAM',
+      })
+    ).toEqual({ canonicalHome: 1, canonicalAway: 1 })
+  })
+
+  it('falls back to 0 when subtracting penalties results in negative scores', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 1, away: 2 },
+        penalties: { home: 2, away: 3 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'AWAY_TEAM',
+      })
+    ).toEqual({ canonicalHome: 0, canonicalAway: 0 })
   })
 })
