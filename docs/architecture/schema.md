@@ -300,6 +300,39 @@ Payment records. One per group creation (admin pays).
 
 ---
 
+### `competition_radar` / `competition_radar_daily`
+
+Snapshot diário do radar de competições (migration 0014, ADR-014). **Fora do
+domínio do produto**: nada aqui alimenta grupos, jogos ou palpites — é insumo do
+dashboard admin `/admin/oportunidades`, e por isso não tem FK para
+`competitions`. Escrito pelo cron `radar/sync.ts`.
+
+`competition_radar` — uma linha por (provider, competição, temporada):
+
+| Column        | Type       | Notes                                                        |
+| ------------- | ---------- | ------------------------------------------------------------ |
+| `id`          | TEXT PK    | Determinístico: `provider:external_id:season`                 |
+| `sport`       | TEXT       | `football` hoje; a tabela já nasce multi-esporte              |
+| `provider`    | TEXT       | `api-football` (não é o provider do produto)                  |
+| `external_id` | TEXT       | Id da liga no provider                                        |
+| `name`        | TEXT       | Nome no provider (`CONMEBOL Libertadores`)                    |
+| `country`     | TEXT       | `World` para torneios internacionais                          |
+| `type`        | TEXT       | `League` \| `Cup`, como vem do provider                       |
+| `season`      | TEXT       | Ano da temporada corrente                                     |
+| `starts_on` / `ends_on` | TEXT | Janela do torneio (YYYY-MM-DD); deriva o status          |
+| `is_current`  | INTEGER    | Reconstruído a cada sync — saiu do catálogo, deixa de valer   |
+| `wiki_article`| TEXT       | Artigo canônico da pt.wikipedia; NULL = sem sinal de interesse |
+| `last_seen_at`| TEXT       | Frescor do snapshot (a UI avisa se passar de 30h)             |
+
+`competition_radar_daily` — série diária, PK `(radar_id, day)`:
+
+| Column          | Type    | Notes                                                    |
+| --------------- | ------- | -------------------------------------------------------- |
+| `matches_today` | INTEGER | Jogos da competição naquela data (oferta)                 |
+| `pageviews`     | INTEGER | Acessos ao artigo na pt.wikipedia (interesse); NULL se não coletado |
+
+---
+
 ## Scoring Rules (encoded in application logic)
 
 | Result                          | Points |
