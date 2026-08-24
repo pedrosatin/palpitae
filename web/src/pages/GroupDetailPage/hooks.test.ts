@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useGroupActions } from './hooks'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, NavigateFunction } from 'react-router-dom'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { trackEvent } from '../../analytics/ga'
@@ -35,26 +35,24 @@ vi.mock('../../components/ConfirmModal', () => ({
 
 const mockUser: User = {
   id: 'u1',
-  name: 'Test User',
-  initials: 'TU',
-  background_color: '#000',
-  member_role: 'member',
+  email: 'test@example.com',
+  nickname: 'Test User',
 }
 
 describe('useGroupActions', () => {
-  let mockNavigate: ReturnType<typeof vi.fn>
-  let mockConfirm: ReturnType<typeof vi.fn>
+  let mockNavigate: Mock
+  let mockConfirm: Mock
   let mockAlert: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     vi.clearAllMocks()
 
     mockNavigate = vi.fn()
-    vi.mocked(useNavigate).mockReturnValue(mockNavigate)
+    vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction)
 
     mockConfirm = vi.fn().mockResolvedValue(true)
     vi.mocked(useConfirm).mockReturnValue({
-      confirm: mockConfirm,
+      confirm: mockConfirm as unknown as ReturnType<typeof useConfirm>['confirm'],
       confirmDialog: null as any,
     })
 
