@@ -21,21 +21,19 @@ describe('apiFootball', () => {
             country: { name: 'Country 1' },
             seasons: [
               { year: 2022, current: false },
-              { year: 2023, start: '2023-01-01', end: '2023-12-31', current: true }
-            ]
+              { year: 2023, start: '2023-01-01', end: '2023-12-31', current: true },
+            ],
           },
           {
             league: { id: 2, name: 'League 2', type: 'Cup', logo: 'logo2.png' },
             country: { name: 'Country 2' },
-            seasons: [
-              { year: 2024, start: '2024-01-01', end: '2024-12-31', current: true }
-            ]
+            seasons: [{ year: 2024, start: '2024-01-01', end: '2024-12-31', current: true }],
           },
           {
             // Missing season
-            league: { id: 3, name: 'League 3' }
-          }
-        ]
+            league: { id: 3, name: 'League 3' },
+          },
+        ],
       }
 
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
@@ -43,7 +41,7 @@ describe('apiFootball', () => {
       const leagues = await fetchCurrentLeagues(mockApiKey)
 
       expect(fetch).toHaveBeenCalledWith('https://v3.football.api-sports.io/leagues?current=true', {
-        headers: { 'x-apisports-key': mockApiKey }
+        headers: { 'x-apisports-key': mockApiKey },
       })
 
       expect(leagues).toHaveLength(2)
@@ -55,7 +53,7 @@ describe('apiFootball', () => {
         logoUrl: 'logo1.png',
         season: '2023',
         startsOn: '2023-01-01',
-        endsOn: '2023-12-31'
+        endsOn: '2023-12-31',
       })
       expect(leagues[1]).toEqual({
         externalId: '2',
@@ -65,20 +63,18 @@ describe('apiFootball', () => {
         logoUrl: 'logo2.png',
         season: '2024',
         startsOn: '2024-01-01',
-        endsOn: '2024-12-31'
+        endsOn: '2024-12-31',
       })
     })
 
     it('should fall back to default country if missing', async () => {
-       const mockResponse = {
+      const mockResponse = {
         response: [
           {
             league: { id: 1, name: 'League 1' },
-            seasons: [
-              { year: 2023, current: true }
-            ]
-          }
-        ]
+            seasons: [{ year: 2023, current: true }],
+          },
+        ],
       }
 
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
@@ -88,13 +84,13 @@ describe('apiFootball', () => {
     })
 
     it('should fall back to default when item.league?.type or logo is null', async () => {
-       const mockResponse = {
+      const mockResponse = {
         response: [
           {
             league: { id: 1, name: 'League 1', type: null, logo: null },
-            seasons: [{ year: 2023, current: true }]
-          }
-        ]
+            seasons: [{ year: 2023, current: true }],
+          },
+        ],
       }
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
       const leagues = await fetchCurrentLeagues(mockApiKey)
@@ -104,7 +100,7 @@ describe('apiFootball', () => {
 
     it('should ignore items with missing league/season info', async () => {
       const mockResponse = {
-        response: [{}]
+        response: [{}],
       }
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
       const leagues = await fetchCurrentLeagues(mockApiKey)
@@ -113,7 +109,7 @@ describe('apiFootball', () => {
 
     it('should ignore if response is undefined', async () => {
       const mockResponse = {
-        response: undefined
+        response: undefined,
       }
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
       const leagues = await fetchCurrentLeagues(mockApiKey)
@@ -129,17 +125,20 @@ describe('apiFootball', () => {
           { league: { id: 1 } },
           { league: { id: 2 } },
           { league: { id: 1 } },
-          { league: { id: 3 } }
-        ]
+          { league: { id: 3 } },
+        ],
       }
 
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
 
       const counts = await fetchMatchCountByLeague(mockApiKey, '2023-10-15')
 
-      expect(fetch).toHaveBeenCalledWith('https://v3.football.api-sports.io/fixtures?date=2023-10-15', {
-        headers: { 'x-apisports-key': mockApiKey }
-      })
+      expect(fetch).toHaveBeenCalledWith(
+        'https://v3.football.api-sports.io/fixtures?date=2023-10-15',
+        {
+          headers: { 'x-apisports-key': mockApiKey },
+        },
+      )
 
       expect(counts.get('1')).toBe(3)
       expect(counts.get('2')).toBe(1)
@@ -149,11 +148,7 @@ describe('apiFootball', () => {
 
     it('should ignore fixtures without league id', async () => {
       const mockResponse = {
-        response: [
-          { league: { id: 1 } },
-          { league: {} },
-          { }
-        ]
+        response: [{ league: { id: 1 } }, { league: {} }, {}],
       }
 
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
@@ -176,7 +171,7 @@ describe('apiFootball', () => {
       vi.mocked(fetch).mockResolvedValueOnce(new Response('Rate limit exceeded', { status: 429 }))
 
       await expect(fetchCurrentLeagues(mockApiKey)).rejects.toThrowError(
-        'API-Football respondeu 429 em /leagues?current=true: Rate limit exceeded'
+        'API-Football respondeu 429 em /leagues?current=true: Rate limit exceeded',
       )
     })
 
@@ -184,40 +179,40 @@ describe('apiFootball', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         status: 500,
-        text: vi.fn().mockRejectedValue(new Error('Network Error'))
+        text: vi.fn().mockRejectedValue(new Error('Network Error')),
       } as unknown as Response)
 
       await expect(fetchCurrentLeagues(mockApiKey)).rejects.toThrowError(
-        'API-Football respondeu 500 em /leagues?current=true: '
+        'API-Football respondeu 500 em /leagues?current=true: ',
       )
     })
 
     it('should throw an error if JSON response contains array of errors', async () => {
       const mockResponse = {
-        errors: ['Invalid API Key']
+        errors: ['Invalid API Key'],
       }
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
 
       await expect(fetchCurrentLeagues(mockApiKey)).rejects.toThrowError(
-        'API-Football retornou erro em /leagues?current=true: ["Invalid API Key"]'
+        'API-Football retornou erro em /leagues?current=true: ["Invalid API Key"]',
       )
     })
 
     it('should throw an error if JSON response contains object of errors', async () => {
       const mockResponse = {
-        errors: { token: 'Error' }
+        errors: { token: 'Error' },
       }
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
 
       await expect(fetchCurrentLeagues(mockApiKey)).rejects.toThrowError(
-        'API-Football retornou erro em /leagues?current=true: {"token":"Error"}'
+        'API-Football retornou erro em /leagues?current=true: {"token":"Error"}',
       )
     })
 
     it('should not throw if errors is empty array', async () => {
       const mockResponse = {
         errors: [],
-        response: []
+        response: [],
       }
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
 
@@ -228,7 +223,7 @@ describe('apiFootball', () => {
     it('should not throw if errors is empty object', async () => {
       const mockResponse = {
         errors: {},
-        response: []
+        response: [],
       }
       vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(mockResponse)))
 

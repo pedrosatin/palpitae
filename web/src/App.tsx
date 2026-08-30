@@ -82,7 +82,11 @@ function setKnownSession(known: boolean) {
  * `scripts/prerender.mjs`). Nesse caso o primeiro render PRECISA ser a landing,
  * senão a hidratação diverge do HTML e o React remonta a página inteira.
  */
-export default function App({ landingPrerenderizada = false }: { landingPrerenderizada?: boolean }) {
+export default function App({
+  landingPrerenderizada = false,
+}: {
+  landingPrerenderizada?: boolean
+}) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
 

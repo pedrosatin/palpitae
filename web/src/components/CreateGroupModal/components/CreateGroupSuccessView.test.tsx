@@ -8,7 +8,9 @@ vi.mock('../../../analytics/ga', () => ({
 }))
 
 vi.mock('../../ShareButtons', () => ({
-  default: ({ shareLink }: { shareLink: string }) => <div data-testid="share-buttons">{shareLink}</div>,
+  default: ({ shareLink }: { shareLink: string }) => (
+    <div data-testid="share-buttons">{shareLink}</div>
+  ),
 }))
 
 const mockCreatedGroup = {
@@ -25,7 +27,7 @@ const defaultProps = {
 describe('CreateGroupSuccessView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    Object.defineProperty(navigator, "clipboard", {
+    Object.defineProperty(navigator, 'clipboard', {
       value: {
         writeText: vi.fn().mockResolvedValue(undefined),
       },

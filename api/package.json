@@ -3,9 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=24"
-  },
   "scripts": {
     "dev": "wrangler dev --config ./wrangler.toml --port 8787",
     "dev:cron": "wrangler dev --config ./wrangler.toml --test-scheduled --port 8787",
@@ -27,5 +24,8 @@
   },
   "overrides": {
     "esbuild": "0.28.1"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

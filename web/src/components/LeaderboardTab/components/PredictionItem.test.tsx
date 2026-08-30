@@ -69,7 +69,10 @@ describe('PredictionItem', () => {
     expect(screen.getByText('Resultado')).toBeInTheDocument()
     expect(screen.getAllByText('2 × 1').length).toBe(2)
     expect(screen.getByText('5 pt')).toBeInTheDocument()
-    expect(screen.getByText('5 pt')).toHaveAttribute('class', expect.stringMatching(/predPointsGreen/))
+    expect(screen.getByText('5 pt')).toHaveAttribute(
+      'class',
+      expect.stringMatching(/predPointsGreen/),
+    )
   })
 
   it('renders predicted score, actual score, and zero points for a finished match', () => {
@@ -88,6 +91,9 @@ describe('PredictionItem', () => {
     expect(screen.getByText('Resultado')).toBeInTheDocument()
     expect(screen.getByText('0 × 2')).toBeInTheDocument()
     expect(screen.getByText('0 pt')).toBeInTheDocument()
-    expect(screen.getByText('0 pt')).toHaveAttribute('class', expect.stringMatching(/predPointsZero/))
+    expect(screen.getByText('0 pt')).toHaveAttribute(
+      'class',
+      expect.stringMatching(/predPointsZero/),
+    )
   })
 })
