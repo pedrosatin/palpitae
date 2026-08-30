@@ -45,7 +45,7 @@ describe('charts', () => {
     it('skips ticks for many labels', () => {
       const days = Array.from({ length: 15 }).map((_, i) => ({
         label: `2023-10-${String(i + 1).padStart(2, '0')}`,
-        segments: [{ type: 'login_success', value: 5, color: '#49f21b' }]
+        segments: [{ type: 'login_success', value: 5, color: '#49f21b' }],
       }))
 
       render(<StackedBarChart days={days} ariaLabel="Many Days" />)
@@ -83,7 +83,7 @@ describe('charts', () => {
           series={series}
           ariaLabel="Custom Tick Chart"
           tickLabel={(l) => `Quarter: ${l}`}
-        />
+        />,
       )
 
       const text = document.querySelector('text')

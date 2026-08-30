@@ -64,7 +64,9 @@ describe('ScoringRulesField', () => {
 
   it('enables inputs and allows changes only in custom mode', async () => {
     const user = userEvent.setup({ delay: null })
-    const { rerender } = render(<ScoringRulesField {...defaultProps} scoringPreset="classic" showPenaltyField={true} />)
+    const { rerender } = render(
+      <ScoringRulesField {...defaultProps} scoringPreset="classic" showPenaltyField={true} />,
+    )
 
     let exactInput = screen.getByRole('spinbutton', { name: /placar exato/i })
     expect(exactInput).toBeDisabled()
