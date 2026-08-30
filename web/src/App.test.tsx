@@ -69,7 +69,7 @@ describe('App', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App landingPrerenderizada />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     expect(screen.getByTestId('landing-page')).toBeInTheDocument()
@@ -98,7 +98,7 @@ describe('App', () => {
     const { unmount } = render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
