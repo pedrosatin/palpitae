@@ -36,11 +36,17 @@ type PodiumEntry = {
  */
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no ambiguous chars (I, O, 0, 1)
+  const maxValid = 256 - (256 % chars.length)
+  let raw = ''
   const array = new Uint8Array(8)
-  crypto.getRandomValues(array)
-  const raw = Array.from(array)
-    .map((b) => chars[b % chars.length])
-    .join('')
+  while (raw.length < 8) {
+    crypto.getRandomValues(array)
+    for (let i = 0; i < array.length && raw.length < 8; i++) {
+      if (array[i] < maxValid) {
+        raw += chars[array[i] % chars.length]
+      }
+    }
+  }
   return `${raw.slice(0, 4)}-${raw.slice(4)}`
 }
 
