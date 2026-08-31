@@ -247,28 +247,24 @@ metricsRouter.get('/business', async (c) => {
   const days = parseDays(c.req.query('days'))
   const db = c.env.DB
 
-  const [
-    usersInGroup,
-    usersWhoPredicted,
-    usersTotal,
-    usersCreated,
-    groupsCreated,
-    groupMembership,
-    topCompetitions,
-  ] = await Promise.all([
-    db.prepare(`SELECT COUNT(DISTINCT user_id) AS n FROM group_members`).first(),
-    db.prepare(`SELECT COUNT(DISTINCT user_id) AS n FROM predictions`).first(),
-    db.prepare(`SELECT COUNT(*) AS n FROM users`).first(),
-    db
-      .prepare(`SELECT COUNT(*) AS n FROM users WHERE created_at > datetime('now', ?)`)
-      .bind(`-${days} days`)
-      .first(),
+  const [rollupCounts, groupMembership, topCompetitions] = await Promise.all([
     db
       .prepare(
-        `SELECT COUNT(*) AS n FROM groups WHERE deleted_at IS NULL AND created_at > datetime('now', ?)`,
+        `SELECT
+          (SELECT COUNT(DISTINCT user_id) FROM group_members) AS usersInGroup,
+          (SELECT COUNT(DISTINCT user_id) FROM predictions) AS usersWhoPredicted,
+          (SELECT COUNT(*) FROM users) AS usersTotal,
+          (SELECT COUNT(*) FROM users WHERE created_at > datetime('now', ?)) AS usersCreated,
+          (SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL AND created_at > datetime('now', ?)) AS groupsCreated`,
       )
-      .bind(`-${days} days`)
-      .first(),
+      .bind(`-${days} days`, `-${days} days`)
+      .first<{
+        usersInGroup: number
+        usersWhoPredicted: number
+        usersTotal: number
+        usersCreated: number
+        groupsCreated: number
+      }>(),
     // Quantos grupos cada usuário integra — distribuição (média + mediana aprox via percentil).
     db
       .prepare(
@@ -299,11 +295,11 @@ metricsRouter.get('/business', async (c) => {
 
   return c.json({
     days,
-    usersTotal: (usersTotal as { n: number } | null)?.n ?? 0,
-    usersInGroup: (usersInGroup as { n: number } | null)?.n ?? 0,
-    usersWhoPredicted: (usersWhoPredicted as { n: number } | null)?.n ?? 0,
-    usersCreatedInPeriod: (usersCreated as { n: number } | null)?.n ?? 0,
-    groupsCreatedInPeriod: (groupsCreated as { n: number } | null)?.n ?? 0,
+    usersTotal: rollupCounts?.usersTotal ?? 0,
+    usersInGroup: rollupCounts?.usersInGroup ?? 0,
+    usersWhoPredicted: rollupCounts?.usersWhoPredicted ?? 0,
+    usersCreatedInPeriod: rollupCounts?.usersCreated ?? 0,
+    groupsCreatedInPeriod: rollupCounts?.groupsCreated ?? 0,
     avgGroupsPerUser,
     medianGroupsPerUser,
     topCompetitions: topCompetitions.results,
