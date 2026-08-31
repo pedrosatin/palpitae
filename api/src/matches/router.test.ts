@@ -207,6 +207,28 @@ describe('matches router – GET /', () => {
     expect(syncFixturesSpy).toHaveBeenCalledTimes(1)
   })
 
+  it('returns 500 when database query fails', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/matches', matchesRouter)
+
+    const failingDb = {
+      prepare: () => {
+        throw new Error('Simulated DB error')
+      },
+      batch: () => Promise.reject(new Error('Simulated DB error')),
+    } as unknown as D1Database
+
+    const response = await app.fetch(
+      await authRequest('http://localhost/matches?competition_id=comp-1'),
+      fakeEnv(failingDb),
+      { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
+    )
+
+    expect(response.status).toBe(500)
+    await expect(response.json()).resolves.toEqual({ error: 'Erro ao carregar jogos' })
+
+  })
+
   describe('Cache-Control derived from response contents', () => {
     async function cacheHeaderFor(matchRows: { status: string }[]): Promise<string | null> {
       const app = new Hono<AppContext>()
