@@ -113,6 +113,36 @@ type GoogleIdTokenClaims = GoogleUserInfo & {
   nonce: string
 }
 
+export function clearJwksCacheForTest() {
+  cachedJwks = null
+  jwksCacheExp = 0
+}
+
+let cachedJwks: { keys: JwksKey[] } | null = null
+let jwksCacheExp = 0
+
+async function getGoogleJwks(): Promise<{ keys: JwksKey[] }> {
+  const now = Math.floor(Date.now() / 1000)
+  if (cachedJwks && now < jwksCacheExp) {
+    return cachedJwks
+  }
+
+  const jwksRes = await fetch(GOOGLE_JWKS_URL)
+  if (!jwksRes.ok) throw new Error('Failed to fetch Google JWKS')
+
+  const cacheControl = jwksRes.headers.get('Cache-Control')
+  let maxAge = 3600
+  if (cacheControl) {
+    const match = cacheControl.match(/max-age=(\d+)/)
+    if (match) maxAge = parseInt(match[1], 10)
+  }
+
+  cachedJwks = (await jwksRes.json()) as { keys: JwksKey[] }
+  jwksCacheExp = now + maxAge
+
+  return cachedJwks
+}
+
 export async function verifyGoogleIdToken(
   idToken: string,
   clientId: string,
@@ -143,10 +173,7 @@ export async function verifyGoogleIdToken(
   if (!claims.email_verified) throw new Error('Google email not verified')
 
   // Verify signature against Google's JWKS
-  // Workers fetch respects Cache-Control headers, so this is cached automatically
-  const jwksRes = await fetch(GOOGLE_JWKS_URL)
-  if (!jwksRes.ok) throw new Error('Failed to fetch Google JWKS')
-  const jwks = (await jwksRes.json()) as { keys: JwksKey[] }
+  const jwks = await getGoogleJwks()
 
   const jwk = jwks.keys.find((k) => k.kid === header.kid)
   if (!jwk) throw new Error('Signing key not found in Google JWKS')
