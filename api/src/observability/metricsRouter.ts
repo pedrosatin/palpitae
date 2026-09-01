@@ -409,9 +409,24 @@ metricsRouter.get('/archive/query', async (c) => {
 
     const body = await obj.text()
     let dayTotal = 0
-    for (const line of body.split('\n')) {
-      if (line.trim() === '') continue
-      const row = JSON.parse(line) as Record<string, unknown>
+
+    let lastIndex = 0
+    let nextIndex = body.indexOf('\n')
+    while (nextIndex !== -1) {
+      const line = body.substring(lastIndex, nextIndex)
+      lastIndex = nextIndex + 1
+      nextIndex = body.indexOf('\n', lastIndex)
+      if (line.trim() !== '') {
+        const row = JSON.parse(line) as Record<string, unknown>
+        const weight = Number(row._sample_interval ?? 1)
+        const type = String(row.blob1 ?? 'unknown')
+        byType.set(type, (byType.get(type) ?? 0) + weight)
+        dayTotal += weight
+      }
+    }
+    const lastLine = body.substring(lastIndex)
+    if (lastLine.trim() !== '') {
+      const row = JSON.parse(lastLine) as Record<string, unknown>
       const weight = Number(row._sample_interval ?? 1)
       const type = String(row.blob1 ?? 'unknown')
       byType.set(type, (byType.get(type) ?? 0) + weight)
