@@ -777,7 +777,11 @@ async function handleBulkPut(c: Context<AppContext>) {
   }
 
   if (statements.length > 0) {
-    await db.batch(statements)
+    const batches = []
+    for (let i = 0; i < statements.length; i += 100) {
+      batches.push(db.batch(statements.slice(i, i + 100)))
+    }
+    await Promise.all(batches)
     logEvent(c.env.AE, 'prediction_saved', {
       blobs: [group_id!, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
       doubles: [saved.length],
@@ -953,7 +957,11 @@ async function handleImportPost(c: Context<AppContext>) {
     ),
   )
 
-  await db.batch(importStatements)
+  const batches = []
+  for (let i = 0; i < importStatements.length; i += 100) {
+    batches.push(db.batch(importStatements.slice(i, i + 100)))
+  }
+  await Promise.all(batches)
 
   logEvent(c.env.AE, 'prediction_saved', {
     blobs: [target_group_id, '', await hashUserId(userId), 'import'],
