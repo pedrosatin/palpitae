@@ -7,8 +7,8 @@ import * as permissions from '../auth/permissions'
 import * as observability from '../observability'
 
 const { syncFixturesSpy, scoreUnprocessedMatchesSpy } = vi.hoisted(() => ({
-  scoreUnprocessedMatchesSpy: vi.fn(),
   syncFixturesSpy: vi.fn(),
+  scoreUnprocessedMatchesSpy: vi.fn(),
 }))
 
 vi.mock('./sync', () => ({
@@ -273,9 +273,50 @@ describe('matches router – GET /', () => {
 
     expect(response.status).toBe(500)
     await expect(response.json()).resolves.toEqual({ error: 'Erro ao carregar jogos' })
-
   })
 
+  it('logs an error when background sync (maybeSyncResults) fails', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/matches', matchesRouter)
+
+    syncFixturesSpy.mockResolvedValueOnce({
+      competition: 'WC',
+      competitionId: 'comp-1',
+      matches: 0,
+      teams: 0,
+    })
+    const simulatedError = new Error('Simulated D1/scoring error')
+    scoreUnprocessedMatchesSpy.mockRejectedValueOnce(simulatedError)
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const makeCtx = () => {
+      const pending: Promise<unknown>[] = []
+      return {
+        ctx: {
+          waitUntil: (p: Promise<unknown>) => pending.push(p),
+          passThroughOnException: vi.fn(),
+          props: {},
+        },
+        settle: () => Promise.all(pending),
+      }
+    }
+
+    const ctx = makeCtx()
+    const response = await app.fetch(
+      await authRequest('http://localhost/matches?competition_id=comp-1'),
+      fakeEnv(createMatchesDbMock()),
+      ctx.ctx,
+    )
+    expect(response.status).toBe(200)
+
+    await ctx.settle()
+
+    expect(scoreUnprocessedMatchesSpy).toHaveBeenCalledTimes(1)
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Background result sync falhou:', simulatedError)
+
+    consoleErrorSpy.mockRestore()
+  })
   describe('Cache-Control derived from response contents', () => {
     async function cacheHeaderFor(matchRows: { status: string }[]): Promise<string | null> {
       const app = new Hono<AppContext>()
