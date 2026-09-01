@@ -4,13 +4,19 @@ import { matchesRouter } from './router'
 import type { AppContext } from '../types'
 import { signJwt } from '../auth/jwt'
 import * as permissions from '../auth/permissions'
+import * as observability from '../observability'
 
-const { syncFixturesSpy } = vi.hoisted(() => ({
+const { syncFixturesSpy, scoreUnprocessedMatchesSpy } = vi.hoisted(() => ({
+  scoreUnprocessedMatchesSpy: vi.fn(),
   syncFixturesSpy: vi.fn(),
 }))
 
 vi.mock('./sync', () => ({
   syncFixtures: syncFixturesSpy,
+}))
+
+vi.mock('./scoring', () => ({
+  scoreUnprocessedMatches: scoreUnprocessedMatchesSpy,
 }))
 
 function fakeEnv(db: D1Database): AppContext['Bindings'] {
@@ -95,6 +101,47 @@ function createMatchesDbMock(
 
   return db as unknown as D1Database
 }
+
+
+describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
+  it('logs an error and returns false when syncFixtures throws', async () => {
+    const syncError = new Error('API Timeout')
+    syncFixturesSpy.mockRejectedValue(syncError)
+    const logErrorSpy = vi.spyOn(observability, 'logError').mockImplementation(() => {})
+
+    const db = createMatchesDbMock([{ status: 'scheduled' }])
+
+    const app = new Hono<AppContext>()
+    app.route('/matches', matchesRouter)
+
+    const waitUntil = vi.fn()
+    const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, 'secret', 3600)
+    const request = new Request('http://localhost/matches?competition_id=comp-1', {
+        headers: { Cookie: `session=${token}` }
+    })
+
+    const env = fakeEnv(db)
+    const response = await app.fetch(
+      request,
+      env,
+      { waitUntil, passThroughOnException: vi.fn(), props: {} },
+    )
+
+    expect(response.status).toBe(200)
+    expect(waitUntil).toHaveBeenCalled()
+
+    await waitUntil.mock.calls[0][0]
+
+    expect(scoreUnprocessedMatchesSpy).not.toHaveBeenCalled()
+    expect(logErrorSpy).toHaveBeenCalledWith(
+        env.AE,
+        'football_api_error',
+        'Background result sync (API Football) falhou:',
+        syncError,
+        { blobs: ['matches_background'] }
+    )
+  })
+})
 
 describe('matches router – GET /', () => {
   async function authRequest(url: string) {
