@@ -209,6 +209,26 @@ describe('pollActiveMatches', () => {
     )
   })
 
+  it('waits for all competitions to finish scoring even if one throws', async () => {
+    syncFixturesMock.mockResolvedValue({ matches: 1 } as never)
+
+    scoreMock.mockImplementation(async (compId) => {
+      if (compId === 'c1') {
+        throw new Error('Scoring c1 failed')
+      }
+    })
+
+    const db = buildFakeDb([
+      { comp_id: 'c1', external_id: 'WC', season: '2026', round: '1' },
+      { comp_id: 'c2', external_id: 'CL', season: '2026', round: '5' },
+    ])
+
+    await expect(pollActiveMatches(db as unknown as D1Database, 'key')).rejects.toThrow(
+      'Scoring c1 failed',
+    )
+    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
+  })
+
   it('emits a poller_run with status ok and zeroed counters for an empty window', async () => {
     const ae = buildFakeAe()
     const db = buildFakeDb([])
