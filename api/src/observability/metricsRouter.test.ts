@@ -195,11 +195,15 @@ function makeD1(rows: {
   function resultFor(sql: string) {
     if (sql.includes('FROM group_members gm')) return { results: membership }
     if (sql.includes('FROM groups g JOIN competitions')) return { results: topCompetitions }
-    if (sql.includes('FROM group_members')) return { n: rows.usersInGroup ?? 0 }
-    if (sql.includes('FROM predictions')) return { n: rows.usersWhoPredicted ?? 0 }
-    if (sql.includes('FROM users WHERE')) return { n: rows.usersCreated ?? 0 }
-    if (sql.includes('FROM users')) return { n: rows.usersTotal ?? 0 }
-    if (sql.includes('FROM groups WHERE')) return { n: rows.groupsCreated ?? 0 }
+    if (sql.includes('(SELECT COUNT(DISTINCT user_id) FROM group_members) AS usersInGroup')) {
+      return {
+        usersInGroup: rows.usersInGroup ?? 0,
+        usersWhoPredicted: rows.usersWhoPredicted ?? 0,
+        usersTotal: rows.usersTotal ?? 0,
+        usersCreated: rows.usersCreated ?? 0,
+        groupsCreated: rows.groupsCreated ?? 0,
+      }
+    }
     throw new Error(`SQL não mapeado no fake: ${sql}`)
   }
 
