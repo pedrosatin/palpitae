@@ -186,7 +186,12 @@ export async function syncRadar(
   )
 
   if (pageviewStatements.length > 0) {
-    await db.batch(pageviewStatements)
+    const batches = []
+    for (let i = 0; i < pageviewStatements.length; i += 100) {
+      const chunk = pageviewStatements.slice(i, i + 100)
+      batches.push(db.batch(chunk))
+    }
+    await Promise.all(batches)
   }
 
   logEvent(ae, 'radar_sync_run', {
