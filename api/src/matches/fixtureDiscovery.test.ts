@@ -190,6 +190,38 @@ describe('discoverFixtures', () => {
     expect(apiCalls).toBe(2)
   })
 
+  it('handles scoreUnprocessedMatches failure without losing fixturesUpdated count', async () => {
+    syncFixturesMock.mockResolvedValueOnce({ matches: 5 } as never)
+    scoreMock.mockRejectedValueOnce(new Error('Scoring Error'))
+
+    const db = buildFakeDb([{ id: 'c1', external_id: 'WC', season: '2026' }])
+    const ae = buildFakeAe()
+
+    await discoverFixtures(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
+
+    expect(syncFixturesMock).toHaveBeenCalledTimes(1)
+    expect(scoreMock).toHaveBeenCalledTimes(1)
+
+    const errors = pointsOfType(ae, 'football_api_error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].blobs?.[1]).toBe('fixture_discovery')
+    expect(errors[0].blobs?.[2]).toBe('c1')
+    expect(errors[0].blobs?.[3]).toBe('Scoring Error')
+
+    const runs = pointsOfType(ae, 'fixture_discovery_run')
+    expect(runs).toHaveLength(1)
+    expect(runs[0].blobs?.[1]).toBe('error')
+
+    const [competitions, fixturesUpdated, apiCalls] = runs[0].doubles ?? []
+    expect(competitions).toBe(1)
+    expect(fixturesUpdated).toBe(5) // Should retain the count from syncFixtures
+    expect(apiCalls).toBe(1)
+  })
+
   it('respects concurrency limit of 5', async () => {
     const competitions = Array.from({ length: 10 }, (_, i) => ({
       id: `c${i}`,
