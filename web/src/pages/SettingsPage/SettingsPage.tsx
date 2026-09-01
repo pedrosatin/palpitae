@@ -56,6 +56,10 @@ function useNotificationPreferences() {
     trackEvent('click_settings_confirmar_lembretes', { enabled: next })
 
     const previous = roundReminders
+    savePreference(next, previous)
+  }
+
+  function savePreference(next: boolean, previous: boolean | null) {
     setRoundReminders(next)
     setSaving(true)
     setError(null)
@@ -76,6 +80,7 @@ function useNotificationPreferences() {
       })
       .finally(() => setSaving(false))
   }
+
 
   return {
     roundReminders,
