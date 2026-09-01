@@ -305,4 +305,121 @@ describe('useMatchCard', () => {
     // fetch should NOT be called because penalty winner is not decided yet
     expect(mockFetch).not.toHaveBeenCalled()
   })
+
+  it('sets error when save fails', async () => {
+    const onSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        onSaved,
+      }),
+    )
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Mock error message' }),
+    } as Response)
+
+    act(() => {
+      result.current.updateHome('1')
+    })
+
+    await act(async () => {
+      await result.current.handleSave()
+    })
+
+    expect(result.current.error).toBe('Mock error message')
+    expect(result.current.saved).toBe(false)
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
+  it('reverts saved state after timeout', async () => {
+    vi.useFakeTimers()
+    const onSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        onSaved,
+      }),
+    )
+
+    act(() => {
+      result.current.updateHome('1')
+    })
+
+    await act(async () => {
+      await result.current.handleSave()
+    })
+
+    expect(result.current.saved).toBe(true)
+
+    act(() => {
+      vi.advanceTimersByTime(2500)
+    })
+
+    expect(result.current.saved).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('updateAway correctly updates state and clears penalty winner if leaving draw', () => {
+    const match = makeMatch({ decides_on_penalties: true })
+    const prediction = makePrediction({
+      predicted_home_score: 1,
+      predicted_away_score: 1,
+      predicted_penalty_winner: 'home',
+    })
+    const onDraftChange = vi.fn()
+    const onPenaltyDraftChange = vi.fn()
+
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match,
+        prediction,
+        groupId: 'group-1',
+        onSaved: vi.fn(),
+        onDraftChange,
+        onPenaltyDraftChange,
+      }),
+    )
+
+    act(() => {
+      result.current.updateAway('2')
+    })
+
+    expect(result.current.away).toBe('2')
+    expect(onDraftChange).toHaveBeenCalledWith('match-1', '1', '2')
+    expect(result.current.penaltyWinner).toBeNull()
+    expect(onPenaltyDraftChange).toHaveBeenCalledWith('match-1', null)
+  })
+
+  it('selectOutcome clears penaltyWinner when changing from draw to definitive outcome', async () => {
+    const match = makeMatch({ decides_on_penalties: true })
+    const prediction = makePrediction({
+      predicted_home_score: 1,
+      predicted_away_score: 1,
+      predicted_penalty_winner: 'home',
+    })
+    const onPenaltyDraftChange = vi.fn()
+
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match,
+        prediction,
+        groupId: 'group-1',
+        onSaved: vi.fn(),
+        onPenaltyDraftChange,
+      }),
+    )
+
+    await act(async () => {
+      await result.current.selectOutcome('home')
+    })
+
+    expect(result.current.penaltyWinner).toBeNull()
+    expect(onPenaltyDraftChange).toHaveBeenCalledWith('match-1', null)
+  })
 })
