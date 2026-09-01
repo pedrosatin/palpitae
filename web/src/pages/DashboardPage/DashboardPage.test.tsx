@@ -24,6 +24,18 @@ function mockResponse(body: unknown, ok = true) {
   } as Response
 }
 
+function mockGroupsResponse(groups: unknown[], matched_invite_group_id: string | null = null) {
+  return mockResponse({ groups, matched_invite_group_id })
+}
+
+function mockCompetitionsResponse(competitions: unknown[]) {
+  return mockResponse({ competitions })
+}
+
+function mockGroupCreatedResponse(group: unknown) {
+  return mockResponse({ group })
+}
+
 describe('DashboardPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -40,12 +52,7 @@ describe('DashboardPage', () => {
       authUrl: '/api',
     })
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({
-        groups: [],
-        matched_invite_group_id: null,
-      }),
-    )
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockGroupsResponse([]))
 
     render(
       <MemoryRouter initialEntries={['/?convite=inv123']}>
@@ -62,8 +69,8 @@ describe('DashboardPage', () => {
 
   it('does not open the join modal from convite query when the user already belongs to that group', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({
-        groups: [
+      mockGroupsResponse(
+        [
           {
             id: 'g1',
             name: 'Os Craques',
@@ -76,8 +83,8 @@ describe('DashboardPage', () => {
             user_points: 15,
           },
         ],
-        matched_invite_group_id: 'g1',
-      }),
+        'g1',
+      ),
     )
 
     render(
@@ -96,30 +103,26 @@ describe('DashboardPage', () => {
   it('shows the success screen after creation and closes on "Pronto"', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(mockResponse({ groups: [] }))
+      .mockResolvedValueOnce(mockGroupsResponse([]))
       .mockResolvedValueOnce(
-        mockResponse({
-          competitions: [
-            {
-              id: 'c1',
-              name: 'Copa 2026',
-              slug: 'copa-2026',
-              season: '2026',
-              status: 'upcoming',
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(
-        mockResponse({
-          group: {
-            id: 'g1',
-            name: 'Os Craques',
-            invite_code: 'INV123',
+        mockCompetitionsResponse([
+          {
+            id: 'c1',
+            name: 'Copa 2026',
+            slug: 'copa-2026',
+            season: '2026',
+            status: 'upcoming',
           },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        mockGroupCreatedResponse({
+          id: 'g1',
+          name: 'Os Craques',
+          invite_code: 'INV123',
         }),
       )
-      .mockResolvedValueOnce(mockResponse({ groups: [] }))
+      .mockResolvedValueOnce(mockGroupsResponse([]))
 
     render(
       <MemoryRouter>
@@ -166,9 +169,7 @@ describe('DashboardPage – analytics', () => {
   })
 
   it('fires click_dashboard_entrar_convite_empty when Entrar com convite is clicked in empty state', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({ groups: [], matched_invite_group_id: null }),
-    )
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockGroupsResponse([]))
     render(
       <MemoryRouter>
         <DashboardPage user={user} onLogout={vi.fn()} />
@@ -180,9 +181,7 @@ describe('DashboardPage – analytics', () => {
   })
 
   it('fires click_dashboard_criar_grupo_empty when Criar grupo is clicked in empty state', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({ groups: [], matched_invite_group_id: null }),
-    )
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockGroupsResponse([]))
     render(
       <MemoryRouter>
         <DashboardPage user={user} onLogout={vi.fn()} />
@@ -199,36 +198,33 @@ describe('DashboardPage – analytics', () => {
 
   it('splits ongoing and finished groups into separate sections', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({
-        groups: [
-          {
-            id: 'g1',
-            name: 'Bolão Ativo',
-            competition_id: 'c1',
-            competition_status: 'ongoing',
-            invite_code: 'INV001',
-            is_admin: false,
-            created_at: '2026-06-01T00:00:00Z',
-            member_count: 5,
-            user_position: 2,
-            user_points: 10,
-          },
-          {
-            id: 'g2',
-            name: 'Bolão Copa',
-            competition_id: 'c2',
-            competition_status: 'finished',
-            invite_code: 'INV002',
-            is_admin: false,
-            created_at: '2026-01-01T00:00:00Z',
-            member_count: 8,
-            user_position: 1,
-            user_points: 152,
-            podium: [{ position: 1, display: 'Você', points: 152, is_you: true }],
-          },
-        ],
-        matched_invite_group_id: null,
-      }),
+      mockGroupsResponse([
+        {
+          id: 'g1',
+          name: 'Bolão Ativo',
+          competition_id: 'c1',
+          competition_status: 'ongoing',
+          invite_code: 'INV001',
+          is_admin: false,
+          created_at: '2026-06-01T00:00:00Z',
+          member_count: 5,
+          user_position: 2,
+          user_points: 10,
+        },
+        {
+          id: 'g2',
+          name: 'Bolão Copa',
+          competition_id: 'c2',
+          competition_status: 'finished',
+          invite_code: 'INV002',
+          is_admin: false,
+          created_at: '2026-01-01T00:00:00Z',
+          member_count: 8,
+          user_position: 1,
+          user_points: 152,
+          podium: [{ position: 1, display: 'Você', points: 152, is_you: true }],
+        },
+      ]),
     )
     render(
       <MemoryRouter>
@@ -243,24 +239,21 @@ describe('DashboardPage – analytics', () => {
 
   it('fires click_dashboard_encerrados_toggle when the finished section is collapsed', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({
-        groups: [
-          {
-            id: 'g2',
-            name: 'Bolão Copa',
-            competition_id: 'c2',
-            competition_status: 'finished',
-            invite_code: 'INV002',
-            is_admin: false,
-            created_at: '2026-01-01T00:00:00Z',
-            member_count: 8,
-            user_position: 1,
-            user_points: 152,
-            podium: [{ position: 1, display: 'Você', points: 152, is_you: true }],
-          },
-        ],
-        matched_invite_group_id: null,
-      }),
+      mockGroupsResponse([
+        {
+          id: 'g2',
+          name: 'Bolão Copa',
+          competition_id: 'c2',
+          competition_status: 'finished',
+          invite_code: 'INV002',
+          is_admin: false,
+          created_at: '2026-01-01T00:00:00Z',
+          member_count: 8,
+          user_position: 1,
+          user_points: 152,
+          podium: [{ position: 1, display: 'Você', points: 152, is_you: true }],
+        },
+      ]),
     )
     render(
       <MemoryRouter>
@@ -276,23 +269,20 @@ describe('DashboardPage – analytics', () => {
 
   it('fires click_dashboard_grupo with group_id when a group card is clicked', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      mockResponse({
-        groups: [
-          {
-            id: 'g1',
-            name: 'Os Craques',
-            competition_id: 'c1',
-            invite_code: 'INV123',
-            is_admin: false,
-            created_at: '2026-01-01T00:00:00Z',
-            member_count: 5,
-            user_position: 2,
-            user_points: 10,
-            exact_hits: 1,
-          },
-        ],
-        matched_invite_group_id: null,
-      }),
+      mockGroupsResponse([
+        {
+          id: 'g1',
+          name: 'Os Craques',
+          competition_id: 'c1',
+          invite_code: 'INV123',
+          is_admin: false,
+          created_at: '2026-01-01T00:00:00Z',
+          member_count: 5,
+          user_position: 2,
+          user_points: 10,
+          exact_hits: 1,
+        },
+      ]),
     )
     render(
       <MemoryRouter>
