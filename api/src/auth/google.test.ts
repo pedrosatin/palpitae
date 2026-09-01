@@ -6,6 +6,7 @@ import {
   generateState,
   upsertUser,
   verifyGoogleIdToken,
+  clearJwksCacheForTest,
 } from './google'
 import { beforeAll, vi, beforeEach, afterEach } from 'vitest'
 import { base64UrlEncode } from './encoding'
@@ -252,6 +253,7 @@ describe('verifyGoogleIdToken', () => {
 
   beforeEach(() => {
     mockFetchJwks()
+    clearJwksCacheForTest()
   })
 
   afterEach(() => {
@@ -261,6 +263,7 @@ describe('verifyGoogleIdToken', () => {
   function mockFetchJwks(keys: any[] = [{ kid: 'test-kid', n: jwk.n, e: jwk.e }]) {
     vi.stubGlobal('fetch', async () => ({
       ok: true,
+      headers: new Headers({ 'Cache-Control': 'max-age=3600' }),
       json: async () => ({ keys }),
     }))
   }

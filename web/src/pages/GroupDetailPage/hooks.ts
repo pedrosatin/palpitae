@@ -84,20 +84,14 @@ export function useTabsOffset() {
 
     updateOffset()
 
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateOffset)
-
-    if (observer) {
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateOffset)
       observer.observe(header)
-    } else {
-      window.addEventListener('resize', updateOffset)
+      return () => observer.disconnect()
     }
 
-    return () => {
-      observer?.disconnect()
-      if (!observer) {
-        window.removeEventListener('resize', updateOffset)
-      }
-    }
+    window.addEventListener('resize', updateOffset)
+    return () => window.removeEventListener('resize', updateOffset)
   }, [])
 
   return tabsOffset

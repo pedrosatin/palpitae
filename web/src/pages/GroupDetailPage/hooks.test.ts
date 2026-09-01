@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, Mock } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { useGroupActions, useGroupDetail, useGroupTabs } from './hooks'
+import { useGroupActions, useGroupDetail, useGroupTabs, useTabsOffset } from './hooks'
 import { useNavigate, NavigateFunction, MemoryRouter } from 'react-router-dom'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
@@ -421,5 +421,77 @@ describe('useGroupDetail', () => {
     expect(result.current.group).toBeNull()
     expect(result.current.error).toBeNull()
     expect(mockApiFetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('useTabsOffset', () => {
+  let mockHeader: HTMLElement
+  const originalResizeObserver = window.ResizeObserver
+
+  beforeEach(() => {
+    mockHeader = document.createElement('header')
+    vi.spyOn(mockHeader, 'clientHeight', 'get').mockReturnValue(100)
+    document.body.appendChild(mockHeader)
+  })
+
+  afterEach(() => {
+    if (document.body.contains(mockHeader)) {
+      document.body.removeChild(mockHeader)
+    }
+    window.ResizeObserver = originalResizeObserver
+    vi.restoreAllMocks()
+  })
+
+  it('returns 0 if header is not found', () => {
+    if (document.body.contains(mockHeader)) {
+      document.body.removeChild(mockHeader)
+    }
+    const { result } = renderHook(() => useTabsOffset())
+    expect(result.current).toBe(0)
+  })
+
+  it('updates offset initially', () => {
+    const { result } = renderHook(() => useTabsOffset())
+    expect(result.current).toBe(100)
+  })
+
+  it('uses ResizeObserver when available', () => {
+    const mockObserve = vi.fn()
+    const mockDisconnect = vi.fn()
+    window.ResizeObserver = vi.fn().mockImplementation(function(this: any) {
+      this.observe = mockObserve
+      this.disconnect = mockDisconnect
+    }) as unknown as typeof ResizeObserver
+
+    const { unmount } = renderHook(() => useTabsOffset())
+
+    expect(window.ResizeObserver).toHaveBeenCalled()
+    expect(mockObserve).toHaveBeenCalledWith(mockHeader)
+
+    unmount()
+    expect(mockDisconnect).toHaveBeenCalled()
+  })
+
+  it('falls back to window resize event when ResizeObserver is not available', () => {
+    // @ts-ignore
+    delete (window as any).ResizeObserver
+
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
+    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
+
+    const { result, unmount } = renderHook(() => useTabsOffset())
+
+    expect(addEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function))
+
+    // Trigger resize
+    vi.spyOn(mockHeader, 'clientHeight', 'get').mockReturnValue(200)
+    act(() => {
+      window.dispatchEvent(new Event('resize'))
+    })
+
+    expect(result.current).toBe(200)
+
+    unmount()
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function))
   })
 })
