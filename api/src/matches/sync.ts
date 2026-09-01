@@ -314,7 +314,9 @@ async function upsertTeams(
   }
 
   if (teamStatements.length > 0) {
-    await db.batch(teamStatements)
+    for (let i = 0; i < teamStatements.length; i += 100) {
+      await db.batch(teamStatements.slice(i, i + 100))
+    }
   }
 
   const teamIds = new Map<number, string>()
@@ -455,7 +457,9 @@ async function upsertMatches(
   }
 
   if (matchStatements.length > 0) {
-    await db.batch(matchStatements)
+    for (let i = 0; i < matchStatements.length; i += 100) {
+      await db.batch(matchStatements.slice(i, i + 100))
+    }
   }
 
   return matchCount
