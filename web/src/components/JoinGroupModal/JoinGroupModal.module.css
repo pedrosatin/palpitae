@@ -9,14 +9,6 @@
   line-height: var(--line-height-relaxed);
 }
 
-.inputCode {
-  letter-spacing: 0.05em;
-}
-
-.inputCode::placeholder {
-  letter-spacing: normal;
-}
-
 .doneBtn {
   width: 100%;
   margin-top: var(--space-2);

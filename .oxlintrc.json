@@ -3,5 +3,5 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["dist/", "node_modules/", ".astro/", ".wrangler/"]
+  "ignorePatterns": ["dist/", "node_modules/", ".wrangler/"]
 }

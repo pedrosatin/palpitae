@@ -4,7 +4,6 @@
   "semi": false,
   "ignorePatterns": [
     "dist/",
-    ".astro/",
     ".wrangler/",
     "coverage/",
     "test-results/",

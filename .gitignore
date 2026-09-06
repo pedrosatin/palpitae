@@ -17,6 +17,8 @@ api/graphify-out/
 # Docs duráveis: docs/ (decisões em docs/architecture/decisions.md).
 /context.md
 /context-seo.md
+/PAGESPEED_REPORT.md
+/PR_REVIEW_LOG.md
 
 # TypeScript incremental build artifact
 web/tsconfig.tsbuildinfo
