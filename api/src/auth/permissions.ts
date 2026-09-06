@@ -1,4 +1,4 @@
-export const FEATURE_KEYS = ['create_group', 'sync_matches'] as const
+export const FEATURE_KEYS = ['create_group'] as const
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number]
 
@@ -11,6 +11,5 @@ export function hasFeatureAccess(_email: string, _feature: FeatureKey): boolean 
 export function getFeatureFlags(email: string): FeatureFlags {
   return {
     create_group: hasFeatureAccess(email, 'create_group'),
-    sync_matches: hasFeatureAccess(email, 'sync_matches'),
   }
 }
