@@ -28,7 +28,7 @@ export interface GroupDetail {
   exact_hits: number
 }
 
-export const TABS = ['predictions', 'standings', 'group-picks', 'leaderboard', 'members'] as const
+const TABS = ['predictions', 'standings', 'group-picks', 'leaderboard', 'members'] as const
 export type Tab = (typeof TABS)[number]
 export const DEFAULT_TAB: Tab = 'predictions'
 

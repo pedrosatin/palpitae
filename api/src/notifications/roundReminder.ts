@@ -438,7 +438,7 @@ function crestImg(url: string | null, alt: string): string {
   return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" width="20" height="20" style="vertical-align: middle; border: 0;">`
 }
 
-export interface EmailTemplateOptions {
+interface EmailTemplateOptions {
   competitionName: string
   round: string
   matches: MatchInfo[]

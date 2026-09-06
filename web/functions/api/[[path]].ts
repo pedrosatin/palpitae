@@ -1,4 +1,3 @@
-// fallow-ignore-file unused-file -- Cloudflare Pages function; invoked by the runtime, not via imports
 const API_BASE = 'https://api.palpitae.com.br'
 
 export async function onRequest(context: { request: Request }): Promise<Response> {
