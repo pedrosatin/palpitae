@@ -1,0 +1,47 @@
+/**
+ * Shared chrome for the admin dashboards (AdminMetricsPage, AdminRadarPage):
+ * page shell, title row and the pill button used for period / status
+ * selectors. Same idea as web/src/components/tab-shared.module.css.
+ * Page-specific bits (`.content` width, `.section`, tables) stay in each
+ * page's own module.
+ */
+
+.root {
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  padding: var(--space-8) var(--space-6);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.title {
+  margin: 0;
+}
+
+.periods {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.period,
+.periodActive {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  transition: var(--transition-fast);
+}
+
+.periodActive {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
