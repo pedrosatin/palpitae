@@ -2,7 +2,6 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
-import { hasFeatureAccess } from '../auth/permissions'
 import { logError, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
@@ -432,7 +431,13 @@ router.get('/', requireAuth, handleGetMatches)
  * Requires authentication.
  */
 router.post('/sync', requireAuth, async (c) => {
-  if (!hasFeatureAccess(c.get('userEmail'), 'sync_matches')) {
+  // Ferramenta manual de seed/backfill — só o admin. A atualização normal de
+  // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
+  // Comparação case-insensitive: o casing do e-mail no ID token do Google não
+  // é garantido, e um mismatch aqui trancaria o admin pra fora. Sem ADMIN_EMAIL
+  // configurado, responde 403 — fechado por padrão.
+  const admin = c.env.ADMIN_EMAIL?.toLowerCase()
+  if (!admin || c.get('userEmail')?.toLowerCase() !== admin) {
     return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
   }
 
