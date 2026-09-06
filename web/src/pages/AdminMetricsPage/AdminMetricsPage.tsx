@@ -4,6 +4,8 @@ import { buildApiUrl } from '../../config'
 import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import ErrorState from '../../components/ErrorState'
+import AdminPageShell from '../AdminPageShell'
+import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
 import { eventLabel } from './labels'
@@ -90,8 +92,6 @@ interface ArchiveQueryResponse {
   byType: { event_type: string; count: number }[]
   byDay: { day: string; count: number }[]
 }
-
-const PERIODS = [7, 30, 90] as const
 
 // Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
 const MAX_CHART_TYPES = SERIES_COLORS.length
@@ -926,12 +926,12 @@ function ArchiveQuerySection({
         Lê o corpo dos NDJSON de um mês e agrega por tipo — enxerga dados que já saíram dos ~3 meses
         do Analytics Engine.
       </p>
-      <div className={styles.periods}>
+      <div className={shared.periods}>
         {months.map((m) => (
           <button
             key={m.label}
             type="button"
-            className={m.label === selected ? styles.periodActive : styles.period}
+            className={m.label === selected ? shared.periodActive : shared.period}
             onClick={() => {
               trackEvent('click_admin_metrics_arquivo_mes', { month: m.label })
               onSelect(m.label)
@@ -1049,38 +1049,16 @@ export default function AdminMetricsPage() {
     }
   }
 
-  if (error === 'forbidden') {
-    return (
-      <div className={styles.root}>
-        <div className={styles.content}>
-          <ErrorState message="Acesso restrito ao administrador." />
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className={styles.root}>
-      <div className={styles.content}>
-        <div className={styles.titleRow}>
-          <h1 className={styles.title}>Métricas</h1>
-          <div className={styles.periods}>
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={p === days ? styles.periodActive : styles.period}
-                onClick={() => {
-                  trackEvent('click_admin_metrics_periodo', { days: p })
-                  setDays(p)
-                }}
-              >
-                {p}d
-              </button>
-            ))}
-          </div>
-        </div>
-
+    <AdminPageShell
+      title="Métricas"
+      days={days}
+      onDaysChange={setDays}
+      periodEventName="click_admin_metrics_periodo"
+      forbidden={error === 'forbidden'}
+      contentClassName={styles.content}
+    >
+      <>
         {error === 'failed' && (
           <ErrorState message="Falha ao carregar as métricas. Tente de novo." />
         )}
@@ -1126,7 +1104,7 @@ export default function AdminMetricsPage() {
             />
           </>
         )}
-      </div>
-    </div>
+      </>
+    </AdminPageShell>
   )
 }

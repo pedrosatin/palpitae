@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
-import { apiFetch } from '../../lib/api'
-import { fetchCachedJson } from '../../lib/api-cache'
+import { fetchCompetitionMatches } from '../../lib/competitionMatches'
 import ErrorState from '../ErrorState'
 import { type Match } from '../MatchCard'
 import Modal from '../Modal'
@@ -364,20 +362,7 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
   useEffect(() => {
     setLoading(true)
     setError(null)
-    fetchCachedJson(
-      `matches:${competitionId}`,
-      () =>
-        apiFetch(
-          `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-        ).then((r) => {
-          if (!r.ok) throw new Error('Erro ao carregar jogos')
-          return r.json() as Promise<{
-            matches: Match[]
-            default_round: string | null
-          }>
-        }),
-      30_000,
-    )
+    fetchCompetitionMatches(competitionId)
       .then((data) => setMatches(data.matches))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
