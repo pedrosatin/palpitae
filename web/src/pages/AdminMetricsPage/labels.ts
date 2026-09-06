@@ -3,7 +3,7 @@
  * O nome cru continua sendo a chave do esquema posicional em
  * docs/observability.md — a UI mostra o rótulo e mantém o cru no tooltip.
  */
-export const EVENT_LABELS: Record<string, string> = {
+const EVENT_LABELS: Record<string, string> = {
   // Negócio
   prediction_saved: 'Palpite salvo',
   group_created: 'Grupo criado',
