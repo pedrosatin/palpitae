@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { matchesRouter } from './router'
 import type { AppContext } from '../types'
 import { signJwt } from '../auth/jwt'
-import * as permissions from '../auth/permissions'
 import * as observability from '../observability'
 
 const { syncFixturesSpy, scoreUnprocessedMatchesSpy } = vi.hoisted(() => ({
@@ -19,7 +18,10 @@ vi.mock('./scoring', () => ({
   scoreUnprocessedMatches: scoreUnprocessedMatchesSpy,
 }))
 
-function fakeEnv(db: D1Database): AppContext['Bindings'] {
+function fakeEnv(
+  db: D1Database,
+  overrides: Partial<AppContext['Bindings']> = {},
+): AppContext['Bindings'] {
   return {
     JWT_SECRET: 'secret',
     GOOGLE_CLIENT_ID: 'cid',
@@ -29,6 +31,7 @@ function fakeEnv(db: D1Database): AppContext['Bindings'] {
     FOOTBALL_API_KEY: 'test-api-key',
     RESEND_API_KEY: 'test-resend-key',
     DB: db,
+    ...overrides,
   }
 }
 
@@ -405,12 +408,33 @@ describe('matches router – GET /', () => {
   })
 
   describe('POST /sync', () => {
-    it('returns 400 when body is invalid JSON', async () => {
-      vi.spyOn(permissions, 'hasFeatureAccess').mockReturnValue(true)
+    const ADMIN = 'admin@example.com'
 
+    const syncRequest = async (email: string) => {
+      const token = await signJwt({ sub: 'user-1', email }, 'secret', 3600)
+      return new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          Cookie: `session=${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ competition: 'WC', season: 2026 }),
+      })
+    }
+
+    const runSync = (req: Request, env: AppContext['Bindings']) =>
+      new Hono<AppContext>()
+        .route('/matches', matchesRouter)
+        .fetch(req, env, {
+          waitUntil: vi.fn(),
+          passThroughOnException: vi.fn(),
+          props: {},
+        })
+
+    it('returns 400 when body is invalid JSON', async () => {
       const app = new Hono<AppContext>()
       app.route('/matches', matchesRouter)
-      const token = await signJwt({ sub: 'admin-1', email: 'admin@example.com' }, 'secret', 3600)
+      const token = await signJwt({ sub: 'admin-1', email: ADMIN }, 'secret', 3600)
 
       const req = new Request('http://localhost/matches/sync', {
         method: 'POST',
@@ -421,11 +445,15 @@ describe('matches router – GET /', () => {
         body: 'not a valid json',
       })
 
-      const response = await app.fetch(req, fakeEnv(createMatchesDbMock()), {
-        waitUntil: vi.fn(),
-        passThroughOnException: vi.fn(),
-        props: {},
-      })
+      const response = await app.fetch(
+        req,
+        fakeEnv(createMatchesDbMock(), { ADMIN_EMAIL: ADMIN }),
+        {
+          waitUntil: vi.fn(),
+          passThroughOnException: vi.fn(),
+          props: {},
+        },
+      )
 
       expect(response.status).toBe(400)
       await expect(response.json()).resolves.toMatchObject({
@@ -433,58 +461,37 @@ describe('matches router – GET /', () => {
       })
     })
 
-    it('returns 403 when user does not have sync_matches access', async () => {
-      vi.spyOn(permissions, 'hasFeatureAccess').mockReturnValue(false)
-
-      const app = new Hono<AppContext>()
-      app.route('/matches', matchesRouter)
-      const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, 'secret', 3600)
-
-      const req = new Request('http://localhost/matches/sync', {
-        method: 'POST',
-        headers: {
-          Cookie: `session=${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ competition: 'WC', season: 2026 }),
-      })
-
-      const response = await app.fetch(req, fakeEnv(createMatchesDbMock()), {
-        waitUntil: vi.fn(),
-        passThroughOnException: vi.fn(),
-        props: {},
-      })
+    it('returns 403 when the caller is not the admin', async () => {
+      const response = await runSync(
+        await syncRequest('someone.else@example.com'),
+        fakeEnv(createMatchesDbMock(), { ADMIN_EMAIL: ADMIN }),
+      )
 
       expect(response.status).toBe(403)
       await expect(response.json()).resolves.toMatchObject({
         error: 'Você não tem permissão para sincronizar partidas',
       })
+      expect(syncFixturesSpy).not.toHaveBeenCalled()
     })
 
-    it('processes sync when user has sync_matches access', async () => {
-      vi.spyOn(permissions, 'hasFeatureAccess').mockReturnValue(true)
+    it('returns 403 when ADMIN_EMAIL is not configured (fechado por padrão)', async () => {
+      const response = await runSync(
+        await syncRequest(ADMIN),
+        fakeEnv(createMatchesDbMock(), { ADMIN_EMAIL: undefined }),
+      )
 
-      const app = new Hono<AppContext>()
-      app.route('/matches', matchesRouter)
-      const token = await signJwt({ sub: 'admin-1', email: 'admin@example.com' }, 'secret', 3600)
-
-      const req = new Request('http://localhost/matches/sync', {
-        method: 'POST',
-        headers: {
-          Cookie: `session=${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ competition: 'WC', season: 2026 }),
+      expect(response.status).toBe(403)
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'Você não tem permissão para sincronizar partidas',
       })
+      expect(syncFixturesSpy).not.toHaveBeenCalled()
+    })
 
+    it('processes sync for the admin (comparação case-insensitive)', async () => {
       const db = createMatchesDbMock()
-      const env = fakeEnv(db)
+      const env = fakeEnv(db, { ADMIN_EMAIL: 'Admin@Example.com' })
 
-      const response = await app.fetch(req, env, {
-        waitUntil: vi.fn(),
-        passThroughOnException: vi.fn(),
-        props: {},
-      })
+      const response = await runSync(await syncRequest(ADMIN), env)
 
       expect(response.status).toBe(200)
       expect(syncFixturesSpy).toHaveBeenCalledWith({
