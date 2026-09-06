@@ -3,7 +3,7 @@ import { config } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { apiFetch } from '../../../lib/api'
 import { ScoringPreset } from '../constants'
-import { Competition, CreatedGroup } from '../CreateGroupModal'
+import { Competition, CreatedGroup } from '../types'
 
 interface UseCreateGroupFormProps {
   isOpen: boolean

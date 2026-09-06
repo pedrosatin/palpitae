@@ -167,7 +167,7 @@ export const RADAR_COUNTRIES = new Set([
  * casing e hífens entre temporadas ("Copa Do Brasil" / "Copa do Brasil"), e um
  * mismatch aqui só custaria o sinal de interesse daquela competição.
  */
-export function matchKey(country: string, name: string): string {
+function matchKey(country: string, name: string): string {
   const norm = (s: string) =>
     s
       .normalize('NFD')
