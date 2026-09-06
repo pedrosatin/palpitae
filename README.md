@@ -2,9 +2,9 @@
 
 Sistema de palpites para campeonatos de futebol no mundo todo.
 
-Os usuários podem fazer login via google ou facebook, e fazer seus palpites para os jogos do campeonato. O sistema irá calcular a pontuação dos usuários com base nos resultados dos jogos, e exibir um ranking dos melhores palpites.
+Os usuários podem fazer login via google, e fazer seus palpites para os jogos do campeonato. O sistema irá calcular a pontuação dos usuários com base nos resultados dos jogos, e exibir um ranking dos melhores palpites.
 
-Todo usuário poderá comprar um plano para ter acesso ao cadastro de grupos de palpites, onde os usuários poderão criar grupos para competir entre si, e convidar seus amigos para participar.
+Todo usuário autenticado pode criar grupos de palpites para competir com amigos e convidá-los para participar.
 
 ---
 
@@ -14,7 +14,7 @@ The API runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/)
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 22+
+- [Node.js](https://nodejs.org/) 24+
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/): `npm install -g wrangler`
 - A Cloudflare account (`wrangler login`)
 
