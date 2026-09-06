@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
-import { type Match, type Prediction, OUTCOMES, type Outcome } from './MatchCard'
+import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
 export interface UseMatchCardProps {
   match: Match

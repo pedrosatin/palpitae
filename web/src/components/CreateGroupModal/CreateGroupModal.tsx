@@ -7,22 +7,9 @@ import CreateGroupSuccessView from './components/CreateGroupSuccessView'
 import ScoringRulesField from './components/ScoringRulesField'
 import VisibilityField from './components/VisibilityField'
 import { useCreateGroupForm } from './hooks/useCreateGroupForm'
+import type { CreatedGroup } from './types'
 
-export interface Competition {
-  id: string
-  name: string
-  slug: string
-  season: string | null
-  status: string
-  /** True when the competition has knockout phases that decide on penalties. */
-  has_penalty_phases?: boolean
-}
-
-export interface CreatedGroup {
-  id: string
-  name: string
-  invite_code: string
-}
+export type { Competition, CreatedGroup } from './types'
 
 interface CreateGroupModalProps {
   isOpen: boolean
