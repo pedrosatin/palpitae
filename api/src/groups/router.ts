@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { hasFeatureAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
@@ -42,6 +43,37 @@ function generateInviteCode(): string {
     .map((b) => chars[b % chars.length])
     .join('')
   return `${raw.slice(0, 4)}-${raw.slice(4)}`
+}
+
+/**
+ * Resolves `userId` / `groupId` / `db` from the request and checks that the
+ * user belongs to the `:id` group. Shared by the read handlers that gate on
+ * plain membership (`GET /:id`, `GET /:id/members`) so the "must be a member"
+ * rule and its 404 shape live in one place.
+ *
+ * On success returns the resolved context plus the membership row; on failure
+ * returns `{ error: c.json(...) }` with the uniform 404 the callers already
+ * used — the caller does `if ('error' in gate) return gate.error`.
+ */
+async function requireGroupMembership(c: Context<AppContext, '/:id'>): Promise<
+  | { error: Response }
+  | {
+      userId: string
+      groupId: string
+      db: D1Database
+      membership: { role: string }
+    }
+> {
+  const userId = c.get('userId')
+  const groupId = c.req.param('id')
+  const db = c.env.DB
+
+  const membership = await getGroupMembership(db, groupId, userId)
+  if (!membership) {
+    return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
+  }
+
+  return { userId, groupId, db, membership }
 }
 
 router.get('/', requireAuth, async (c) => {
@@ -438,13 +470,9 @@ router.post('/join', requireAuth, async (c) => {
  * { group: { id, name, competition_id, competition_name, is_admin, invite_code, created_at, member_count, user_position, user_points } }
  */
 router.get('/:id', requireAuth, async (c) => {
-  const userId = c.get('userId')
-  const groupId = c.req.param('id')
-  const db = c.env.DB
-
-  // Must be a member
-  const membership = await getGroupMembership(db, groupId, userId)
-  if (!membership) return c.json({ error: 'Grupo não encontrado' }, 404)
+  const gate = await requireGroupMembership(c)
+  if ('error' in gate) return gate.error
+  const { userId, groupId, db } = gate
 
   const group = await db
     .prepare(
@@ -615,12 +643,9 @@ router.delete('/:id', requireAuth, async (c) => {
  * { members: [{ user_id, display_name, avatar_url, role, joined_at, total_points, exact_hits }] }
  */
 router.get('/:id/members', requireAuth, async (c) => {
-  const userId = c.get('userId')
-  const groupId = c.req.param('id')
-  const db = c.env.DB
-
-  const membership = await getGroupMembership(db, groupId, userId)
-  if (!membership) return c.json({ error: 'Grupo não encontrado' }, 404)
+  const gate = await requireGroupMembership(c)
+  if ('error' in gate) return gate.error
+  const { groupId, db } = gate
 
   const members = await db
     .prepare(
