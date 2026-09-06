@@ -3,7 +3,8 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { fetchCachedJson } from '../../lib/api-cache'
-import { applyDefaultRound } from '../../lib/rounds'
+import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
+import { collectRoundDrafts } from '../../lib/predictionDrafts'
 import type { Match, Prediction } from '../MatchCard'
 
 type PredictionMap = Map<string, Prediction>
@@ -20,20 +21,7 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
     setError(null)
 
     Promise.all([
-      fetchCachedJson(
-        `matches:${competitionId}`,
-        () =>
-          apiFetch(
-            `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-          ).then((r) => {
-            if (!r.ok) throw new Error('Erro ao carregar jogos')
-            return r.json() as Promise<{
-              matches: Match[]
-              default_round: string | null
-            }>
-          }),
-        30_000,
-      ),
+      fetchCompetitionMatches(competitionId),
       apiFetch(`${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`).then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar palpites')
         return r.json() as Promise<{ predictions: Prediction[] }>
@@ -45,8 +33,7 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
         setPredictions(map)
 
-        const keys = [...new Set(matchesData.matches.map((m) => m.round))]
-        applyDefaultRound(matchesData.default_round, keys, setRoundIndex)
+        applyDefaultRoundFromMatches(matchesData.matches, matchesData.default_round, setRoundIndex)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -281,54 +268,12 @@ function usePredictionsBulkSave(
     })
   }
 
-  function isLocked(match: Match): boolean {
-    const p = predictions.get(match.id)
-    return Boolean(p?.locked) || new Date() >= new Date(match.start_time)
-  }
-
-  function collectRoundDrafts() {
-    const out: Array<{
-      match_id: string
-      predicted_home_score: number
-      predicted_away_score: number
-      predicted_penalty_winner?: 'home' | 'away' | null
-    }> = []
-    for (const m of roundMatches) {
-      if (isLocked(m)) continue
-      const d = drafts.get(m.id)
-      const hasPenaltyDraft = penaltyDrafts.has(m.id)
-      if (!d && !hasPenaltyDraft) continue
-      const p = predictions.get(m.id)
-      const homeStr = d?.home ?? (p ? String(p.predicted_home_score) : '0')
-      const awayStr = d?.away ?? (p ? String(p.predicted_away_score) : '0')
-      if (homeStr === '' || awayStr === '') continue
-      const home = Number(homeStr)
-      const away = Number(awayStr)
-
-      const eligibleDraw = home === away && Boolean(m.decides_on_penalties)
-      const penaltyWinner: 'home' | 'away' | null = eligibleDraw
-        ? hasPenaltyDraft
-          ? (penaltyDrafts.get(m.id) ?? null)
-          : (p?.predicted_penalty_winner ?? null)
-        : null
-      if (eligibleDraw && penaltyWinner === null) continue
-
-      const scoreChanged = !p || home !== p.predicted_home_score || away !== p.predicted_away_score
-      const penaltyChanged = penaltyWinner !== (p?.predicted_penalty_winner ?? null)
-      if (scoreChanged || penaltyChanged) {
-        out.push({
-          match_id: m.id,
-          predicted_home_score: home,
-          predicted_away_score: away,
-          predicted_penalty_winner: penaltyWinner,
-        })
-      }
-    }
-    return out
+  function pendingDrafts() {
+    return collectRoundDrafts({ roundMatches, drafts, penaltyDrafts, predictions })
   }
 
   async function handleSaveAll() {
-    const toSave = collectRoundDrafts()
+    const toSave = pendingDrafts()
     if (toSave.length === 0) return
     trackEvent('click_predictions_salvar_todos', {
       count: toSave.length,
@@ -374,7 +319,7 @@ function usePredictionsBulkSave(
     }
   }
 
-  const pendingCount = collectRoundDrafts().length
+  const pendingCount = pendingDrafts().length
 
   return {
     savingAll,

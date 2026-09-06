@@ -4,6 +4,8 @@ import ErrorState from '../../components/ErrorState'
 import { buildApiUrl } from '../../config'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { apiFetch } from '../../lib/api'
+import AdminPageShell from '../AdminPageShell'
+import shared from '../admin-shared.module.css'
 import styles from './AdminRadarPage.module.css'
 import { Sparkline } from './Sparkline'
 
@@ -43,8 +45,6 @@ interface RadarResponse {
   lastSync: string | null
   items: RadarItem[]
 }
-
-const PERIODS = [7, 30, 90] as const
 
 const STATUS_LABEL: Record<RadarItem['status'], string> = {
   ongoing: 'Em andamento',
@@ -206,38 +206,16 @@ export default function AdminRadarPage() {
     return Date.now() - at.getTime() > STALE_AFTER_HOURS * 3_600_000
   }, [data])
 
-  if (error === 'forbidden') {
-    return (
-      <div className={styles.root}>
-        <div className={styles.content}>
-          <ErrorState message="Acesso restrito ao administrador." />
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className={styles.root}>
-      <div className={styles.content}>
-        <div className={styles.titleRow}>
-          <h1 className={styles.title}>Radar de competições</h1>
-          <div className={styles.periods}>
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={p === days ? styles.periodActive : styles.period}
-                onClick={() => {
-                  trackEvent('click_admin_radar_periodo', { days: p })
-                  setDays(p)
-                }}
-              >
-                {p}d
-              </button>
-            ))}
-          </div>
-        </div>
-
+    <AdminPageShell
+      title="Radar de competições"
+      days={days}
+      onDaysChange={setDays}
+      periodEventName="click_admin_radar_periodo"
+      forbidden={error === 'forbidden'}
+      contentClassName={styles.content}
+    >
+      <>
         <p className={styles.hint}>
           Interesse = média de acessos diários ao artigo da competição na Wikipédia em português
           (proxy de audiência brasileira). Demanda = grupos ativos no Palpitae.
@@ -270,7 +248,7 @@ export default function AdminRadarPage() {
                     <button
                       key={f.key}
                       type="button"
-                      className={f.key === statusFilter ? styles.periodActive : styles.period}
+                      className={f.key === statusFilter ? shared.periodActive : shared.period}
                       aria-pressed={f.key === statusFilter}
                       onClick={() => {
                         trackEvent('click_admin_radar_filtrar_status', { status: f.key })
@@ -413,8 +391,8 @@ export default function AdminRadarPage() {
             )}
           </>
         )}
-      </div>
-    </div>
+      </>
+    </AdminPageShell>
   )
 }
 
