@@ -9,7 +9,7 @@ interface GroupInviteSectionProps {
   inviteCode: string
 }
 
-export function GroupInviteSection({ inviteCode }: GroupInviteSectionProps) {
+function GroupInviteSection({ inviteCode }: GroupInviteSectionProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function getShareLink() {
