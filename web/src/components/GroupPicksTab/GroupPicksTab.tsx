@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
-import { fetchCachedJson } from '../../lib/api-cache'
-import { applyDefaultRound } from '../../lib/rounds'
+import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import ErrorState from '../ErrorState'
 import type { Match } from '../MatchCard'
 import PenaltyBadge from '../PenaltyBadge'
@@ -145,20 +144,7 @@ export default function GroupPicksTab({ groupId, competitionId }: GroupPicksTabP
     setError(null)
 
     Promise.all([
-      fetchCachedJson(
-        `matches:${competitionId}`,
-        () =>
-          apiFetch(
-            `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`,
-          ).then((r) => {
-            if (!r.ok) throw new Error('Erro ao carregar jogos')
-            return r.json() as Promise<{
-              matches: Match[]
-              default_round: string | null
-            }>
-          }),
-        30_000,
-      ),
+      fetchCompetitionMatches(competitionId),
       apiFetch(`${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`).then(
         (r) => {
           if (!r.ok) throw new Error('Erro ao carregar palpites do grupo')
@@ -170,8 +156,7 @@ export default function GroupPicksTab({ groupId, competitionId }: GroupPicksTabP
         setMatches(matchesData.matches)
         setPicks(picksData)
 
-        const keys = [...new Set(matchesData.matches.map((m) => m.round))]
-        applyDefaultRound(matchesData.default_round, keys, setRoundIndex)
+        applyDefaultRoundFromMatches(matchesData.matches, matchesData.default_round, setRoundIndex)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
