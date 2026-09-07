@@ -105,7 +105,6 @@ function createMatchesDbMock(
   return db as unknown as D1Database
 }
 
-
 describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
   it('logs an error and returns false when syncFixtures throws', async () => {
     const syncError = new Error('API Timeout')
@@ -120,15 +119,15 @@ describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
     const waitUntil = vi.fn()
     const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, 'secret', 3600)
     const request = new Request('http://localhost/matches?competition_id=comp-1', {
-        headers: { Cookie: `session=${token}` }
+      headers: { Cookie: `session=${token}` },
     })
 
     const env = fakeEnv(db)
-    const response = await app.fetch(
-      request,
-      env,
-      { waitUntil, passThroughOnException: vi.fn(), props: {} },
-    )
+    const response = await app.fetch(request, env, {
+      waitUntil,
+      passThroughOnException: vi.fn(),
+      props: {},
+    })
 
     expect(response.status).toBe(200)
     expect(waitUntil).toHaveBeenCalled()
@@ -137,11 +136,11 @@ describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
 
     expect(scoreUnprocessedMatchesSpy).not.toHaveBeenCalled()
     expect(logErrorSpy).toHaveBeenCalledWith(
-        env.AE,
-        'football_api_error',
-        'Background result sync (API Football) falhou:',
-        syncError,
-        { blobs: ['matches_background'] }
+      env.AE,
+      'football_api_error',
+      'Background result sync (API Football) falhou:',
+      syncError,
+      { blobs: ['matches_background'] },
     )
   })
 })
@@ -423,13 +422,11 @@ describe('matches router – GET /', () => {
     }
 
     const runSync = (req: Request, env: AppContext['Bindings']) =>
-      new Hono<AppContext>()
-        .route('/matches', matchesRouter)
-        .fetch(req, env, {
-          waitUntil: vi.fn(),
-          passThroughOnException: vi.fn(),
-          props: {},
-        })
+      new Hono<AppContext>().route('/matches', matchesRouter).fetch(req, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      })
 
     it('returns 400 when body is invalid JSON', async () => {
       const app = new Hono<AppContext>()
@@ -504,6 +501,23 @@ describe('matches router – GET /', () => {
       await expect(response.json()).resolves.toMatchObject({
         ok: true,
       })
+    })
+
+    it('returns 500 and logs error when sync fails', async () => {
+      const db = createMatchesDbMock()
+      const env = fakeEnv(db, { ADMIN_EMAIL: ADMIN })
+      const simulatedError = new Error('Simulated sync error')
+      syncFixturesSpy.mockRejectedValueOnce(simulatedError)
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const response = await runSync(await syncRequest(ADMIN), env)
+
+      expect(response.status).toBe(500)
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'Erro ao sincronizar: Simulated sync error',
+      })
+      expect(consoleErrorSpy).not.toHaveBeenCalled() // Because it is mocked at the module level!
     })
   })
 })
