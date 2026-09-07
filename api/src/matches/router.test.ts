@@ -461,6 +461,31 @@ describe('matches router – GET /', () => {
       })
     })
 
+    it('returns 400 when competition or season are missing', async () => {
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+      const token = await signJwt({ sub: 'admin-1', email: ADMIN }, 'secret', 3600)
+
+      const req = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          Cookie: `session=${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ competition: 'WC' }),
+      })
+
+      const response = await app.fetch(
+        req,
+        fakeEnv(createMatchesDbMock(), { ADMIN_EMAIL: ADMIN }),
+      )
+
+      expect(response.status).toBe(400)
+      await expect(response.json()).resolves.toMatchObject({
+        error: 'competition e season são obrigatórios',
+      })
+    })
+
     it('returns 403 when the caller is not the admin', async () => {
       const response = await runSync(
         await syncRequest('someone.else@example.com'),
