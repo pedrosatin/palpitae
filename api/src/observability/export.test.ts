@@ -69,6 +69,31 @@ describe('dayBounds', () => {
 })
 
 describe('exportEventsToR2', () => {
+  it('lança erro se a SQL API responder com falha (!res.ok)', async () => {
+    const fetchFake = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      text: async () => 'Internal Server Error',
+    }))
+    vi.stubGlobal('fetch', fetchFake)
+    const env = makeEnv()
+
+    await expect(exportEventsToR2(env, new Date('2026-06-20T13:45:00Z'))).rejects.toThrow(
+      'AE SQL respondeu 500: Internal Server Error',
+    )
+  })
+
+  it('avisa se atingimos o teto (ROW_LIMIT)', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const events = Array.from({ length: 10000 }).map(() => ({ a: 1 }))
+    const fetchFake = fetchOk(events)
+    vi.stubGlobal('fetch', fetchFake)
+    const env = makeEnv()
+
+    await exportEventsToR2(env, new Date('2026-06-20T13:45:00Z'))
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('provável truncamento'))
+  })
+
   it('é no-op sem EVENTS/credenciais — não chama fetch nem put', async () => {
     const fetchFake = vi.fn()
     vi.stubGlobal('fetch', fetchFake)
