@@ -127,7 +127,7 @@ async function request(email: string, body: Record<string, unknown>) {
   )
 }
 
-async function requestGroupsList(email: string, inviteCode?: string) {
+async function requestGroupsList(email: string, inviteCode?: string, dbOverride?: any) {
   const token = await signJwt({ sub: 'user-1', email }, JWT_SECRET, 3600)
   const headers = new Headers({
     Cookie: `session=${token}`,
@@ -147,7 +147,7 @@ async function requestGroupsList(email: string, inviteCode?: string) {
     }),
     {
       ...fakeEnv(email),
-      DB: createGroupsListDbMock(),
+      DB: dbOverride || createGroupsListDbMock(),
     },
   )
 }
@@ -303,6 +303,20 @@ describe('groups router', () => {
     }
 
     expect(body.matched_invite_group_id).toBe('group-1')
+  })
+
+  it('returns 500 when fetching groups list fails', async () => {
+    const errorDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: () => { throw new Error('DB Error') }
+        })
+      })
+    } as any;
+
+    const res = await requestGroupsList('user@example.com', undefined, errorDb)
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: 'Erro ao carregar grupos' })
   })
 
   it('allows group creation for any authenticated user', async () => {
