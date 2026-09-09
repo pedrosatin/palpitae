@@ -28,11 +28,7 @@ app.use(
   cors({
     origin: (origin, c) => {
       if (!origin) return null
-      if (
-        origin === 'https://palpitae.com.br' ||
-        origin === 'http://localhost:5173' ||
-        origin === c.env.FRONTEND_URL
-      ) {
+      if (origin === c.env.FRONTEND_URL) {
         return origin
       }
       return null
