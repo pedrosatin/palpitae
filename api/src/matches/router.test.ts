@@ -105,7 +105,6 @@ function createMatchesDbMock(
   return db as unknown as D1Database
 }
 
-
 describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
   it('logs an error and returns false when syncFixtures throws', async () => {
     const syncError = new Error('API Timeout')
@@ -120,15 +119,15 @@ describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
     const waitUntil = vi.fn()
     const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, 'secret', 3600)
     const request = new Request('http://localhost/matches?competition_id=comp-1', {
-        headers: { Cookie: `session=${token}` }
+      headers: { Cookie: `session=${token}` },
     })
 
     const env = fakeEnv(db)
-    const response = await app.fetch(
-      request,
-      env,
-      { waitUntil, passThroughOnException: vi.fn(), props: {} },
-    )
+    const response = await app.fetch(request, env, {
+      waitUntil,
+      passThroughOnException: vi.fn(),
+      props: {},
+    })
 
     expect(response.status).toBe(200)
     expect(waitUntil).toHaveBeenCalled()
@@ -137,11 +136,11 @@ describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
 
     expect(scoreUnprocessedMatchesSpy).not.toHaveBeenCalled()
     expect(logErrorSpy).toHaveBeenCalledWith(
-        env.AE,
-        'football_api_error',
-        'Background result sync (API Football) falhou:',
-        syncError,
-        { blobs: ['matches_background'] }
+      env.AE,
+      'football_api_error',
+      'Background result sync (API Football) falhou:',
+      syncError,
+      { blobs: ['matches_background'] },
     )
   })
 })
@@ -423,13 +422,11 @@ describe('matches router – GET /', () => {
     }
 
     const runSync = (req: Request, env: AppContext['Bindings']) =>
-      new Hono<AppContext>()
-        .route('/matches', matchesRouter)
-        .fetch(req, env, {
-          waitUntil: vi.fn(),
-          passThroughOnException: vi.fn(),
-          props: {},
-        })
+      new Hono<AppContext>().route('/matches', matchesRouter).fetch(req, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      })
 
     it('returns 400 when body is invalid JSON', async () => {
       const app = new Hono<AppContext>()
@@ -504,6 +501,272 @@ describe('matches router – GET /', () => {
       await expect(response.json()).resolves.toMatchObject({
         ok: true,
       })
+    })
+  })
+
+  describe('matches router – POST /sync', () => {
+    let adminToken: string
+    let userToken: string
+
+    beforeEach(async () => {
+      vi.clearAllMocks()
+      adminToken = await signJwt({ sub: 'admin-1', email: 'admin@palpitae.test' }, 'secret', 3600)
+      userToken = await signJwt({ sub: 'user-1', email: 'user@example.com' }, 'secret', 3600)
+    })
+
+    it('returns 500 and logs error when syncFixtures fails', async () => {
+      const syncError = new Error('API Sync Failed')
+      syncFixturesSpy.mockRejectedValue(syncError)
+      const logErrorSpy = vi.spyOn(observability, 'logError').mockImplementation(() => {})
+
+      const db = createMatchesDbMock([])
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+
+      const request = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=' + adminToken,
+        },
+        body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+      })
+
+      const env = {
+        ...fakeEnv(db),
+        ADMIN_EMAIL: 'admin@palpitae.test',
+        FOOTBALL_API_KEY: 'fake-api-key',
+      }
+
+      const response = await app.fetch(request, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      } as any)
+
+      expect(response.status).toBe(500)
+      const body = await response.json()
+      expect(body).toEqual({ error: 'Erro ao sincronizar: API Sync Failed' })
+
+      expect(logErrorSpy).toHaveBeenCalledWith(
+        env.AE,
+        'football_api_error',
+        'Erro no sync:',
+        syncError,
+        { blobs: ['sync_endpoint'] },
+      )
+    })
+
+    it('returns 403 when user is not admin', async () => {
+      const db = createMatchesDbMock([])
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+
+      const request = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=' + userToken,
+        },
+        body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+      })
+
+      const env = {
+        ...fakeEnv(db),
+        ADMIN_EMAIL: 'admin@palpitae.test',
+        FOOTBALL_API_KEY: 'fake-api-key',
+      }
+
+      const response = await app.fetch(request, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      } as any)
+
+      expect(response.status).toBe(403)
+      const body = await response.json()
+      expect(body).toEqual({ error: 'Você não tem permissão para sincronizar partidas' })
+    })
+
+    it('returns 400 when body is invalid JSON', async () => {
+      const db = createMatchesDbMock([])
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+
+      const request = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=' + adminToken,
+        },
+        body: '{invalid json',
+      })
+
+      const env = {
+        ...fakeEnv(db),
+        ADMIN_EMAIL: 'admin@palpitae.test',
+        FOOTBALL_API_KEY: 'fake-api-key',
+      }
+
+      const response = await app.fetch(request, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      } as any)
+
+      expect(response.status).toBe(400)
+      const body = await response.json()
+      expect(body).toEqual({ error: 'Body JSON inválido' })
+    })
+
+    it('returns 400 when competition or season are missing', async () => {
+      const db = createMatchesDbMock([])
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+
+      const request = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=' + adminToken,
+        },
+        body: JSON.stringify({ competition: 'WC' }),
+      })
+
+      const env = {
+        ...fakeEnv(db),
+        ADMIN_EMAIL: 'admin@palpitae.test',
+        FOOTBALL_API_KEY: 'fake-api-key',
+      }
+
+      const response = await app.fetch(request, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      } as any)
+
+      expect(response.status).toBe(400)
+      const body = await response.json()
+      expect(body).toEqual({ error: 'competition e season são obrigatórios' })
+    })
+
+    it('returns 400 when season is not a number', async () => {
+      const db = createMatchesDbMock([])
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+
+      const request = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=' + adminToken,
+        },
+        body: JSON.stringify({ competition: 'WC', season: '2022' }),
+      })
+
+      const env = {
+        ...fakeEnv(db),
+        ADMIN_EMAIL: 'admin@palpitae.test',
+        FOOTBALL_API_KEY: 'fake-api-key',
+      }
+
+      const response = await app.fetch(request, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      } as any)
+
+      expect(response.status).toBe(400)
+      const body = await response.json()
+      expect(body).toEqual({ error: 'season deve ser um número' })
+    })
+
+    it('returns 500 when FOOTBALL_API_KEY is not set', async () => {
+      const db = createMatchesDbMock([])
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+
+      const request = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=' + adminToken,
+        },
+        body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+      })
+
+      const env = {
+        ...fakeEnv(db),
+        ADMIN_EMAIL: 'admin@palpitae.test',
+        FOOTBALL_API_KEY: '',
+      }
+
+      const response = await app.fetch(request, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      } as any)
+
+      expect(response.status).toBe(500)
+      const body = await response.json()
+      expect(body).toEqual({ error: 'FOOTBALL_API_KEY não configurada no servidor' })
+    })
+
+    it('returns 200 on successful sync', async () => {
+      syncFixturesSpy.mockResolvedValue({
+        competition: 'World Cup',
+        competitionId: 'comp-1',
+        matches: 10,
+        syncDurationMs: 100,
+      })
+      scoreUnprocessedMatchesSpy.mockResolvedValue(undefined)
+
+      const db = createMatchesDbMock([])
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+
+      const request = new Request('http://localhost/matches/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: 'session=' + adminToken,
+        },
+        body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+      })
+
+      const env = {
+        ...fakeEnv(db),
+        ADMIN_EMAIL: 'admin@palpitae.test',
+        FOOTBALL_API_KEY: 'fake-api-key',
+      }
+
+      const response = await app.fetch(request, env, {
+        waitUntil: vi.fn(),
+        passThroughOnException: vi.fn(),
+        props: {},
+      } as any)
+
+      expect(response.status).toBe(200)
+      const body = await response.json()
+      expect(body).toEqual({
+        ok: true,
+        synced: {
+          competition: 'World Cup',
+          competitionId: 'comp-1',
+          matches: 10,
+          syncDurationMs: 100,
+        },
+      })
+
+      expect(syncFixturesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          competitionCode: 'WC',
+          season: 2022,
+          matchday: 1,
+          apiKey: 'fake-api-key',
+        }),
+      )
+      expect(scoreUnprocessedMatchesSpy).toHaveBeenCalledWith('comp-1', db)
     })
   })
 })
