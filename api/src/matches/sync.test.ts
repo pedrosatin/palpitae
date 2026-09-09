@@ -21,9 +21,7 @@ function buildFakeDb() {
 
   const db = {
     async batch(statements: any[]) {
-      for (const stmt of statements) {
-        await stmt.run()
-      }
+      await Promise.all(statements.map((stmt) => stmt.run()))
     },
     prepare(sql: string) {
       let bound: unknown[] = []
@@ -488,7 +486,7 @@ describe('resolveCanonicalScore', () => {
         fullTime: { home: 2, away: 1 },
         halfTime: { home: 1, away: 0 },
         winner: 'HOME_TEAM',
-      })
+      }),
     ).toEqual({ canonicalHome: 2, canonicalAway: 1 })
   })
 
@@ -499,7 +497,7 @@ describe('resolveCanonicalScore', () => {
         fullTime: { home: null, away: null },
         halfTime: { home: null, away: null },
         winner: null,
-      })
+      }),
     ).toEqual({ canonicalHome: null, canonicalAway: null })
   })
 
@@ -513,7 +511,7 @@ describe('resolveCanonicalScore', () => {
         penalties: { home: 1, away: 2 },
         halfTime: { home: 0, away: 0 },
         winner: 'AWAY_TEAM',
-      })
+      }),
     ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
   })
 
@@ -526,7 +524,7 @@ describe('resolveCanonicalScore', () => {
         penalties: { home: 2, away: 3 },
         halfTime: { home: 0, away: 0 },
         winner: 'AWAY_TEAM',
-      })
+      }),
     ).toEqual({ canonicalHome: 1, canonicalAway: 1 })
   })
 
@@ -538,7 +536,7 @@ describe('resolveCanonicalScore', () => {
         penalties: { home: 2, away: 3 },
         halfTime: { home: 0, away: 0 },
         winner: 'AWAY_TEAM',
-      })
+      }),
     ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
   })
 
@@ -550,7 +548,7 @@ describe('resolveCanonicalScore', () => {
         penalties: { home: 1, away: 2 },
         halfTime: { home: 0, away: 0 },
         winner: 'AWAY_TEAM',
-      })
+      }),
     ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
   })
 
@@ -562,7 +560,7 @@ describe('resolveCanonicalScore', () => {
         penalties: { home: 2, away: 3 },
         halfTime: { home: 0, away: 0 },
         winner: 'HOME_TEAM',
-      })
+      }),
     ).toEqual({ canonicalHome: 1, canonicalAway: 1 })
   })
 
@@ -574,7 +572,7 @@ describe('resolveCanonicalScore', () => {
         penalties: { home: 2, away: 3 },
         halfTime: { home: 0, away: 0 },
         winner: 'AWAY_TEAM',
-      })
+      }),
     ).toEqual({ canonicalHome: 0, canonicalAway: 0 })
   })
 })
