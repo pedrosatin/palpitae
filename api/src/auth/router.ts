@@ -19,7 +19,7 @@ const STATE_COOKIE = 'oauth_state'
 const NONCE_COOKIE = 'oauth_nonce'
 const VERIFIER_COOKIE = 'oauth_verifier'
 const REDIRECT_COOKIE = 'oauth_redirect'
-const SESSION_TTL = 24 * 60 * 60 // 24 hours
+const SESSION_TTL = 30 * 24 * 60 * 60 // 30 days (1 month)
 
 // Conjunto conhecido de códigos de erro do Google OAuth. Limita a cardinalidade
 // do evento oauth_error — o parâmetro `error` do callback é público e arbitrário.

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import app from '../index'
 import type { AppContext } from '../types'
-import { signJwt } from './jwt'
+import { signJwt, verifyJwt } from './jwt'
 import * as googleAuth from './google'
 
 const JWT_SECRET = 'test-secret-auth-router'
@@ -235,6 +235,14 @@ describe('auth router', () => {
 
     const setCookies = res.headers.getSetCookie()
     expect(setCookies.some((c) => c.startsWith('session='))).toBe(true)
+    const sessionCookie = setCookies.find((c) => c.startsWith('session='))
+    expect(sessionCookie).toBeDefined()
+    expect(sessionCookie).toContain(`Max-Age=${30 * 24 * 60 * 60}`)
+
+    const tokenMatch = sessionCookie?.match(/^session=([^;]+)/)
+    expect(tokenMatch).not.toBeNull()
+    const payload = await verifyJwt(tokenMatch![1], JWT_SECRET)
+    expect(payload.exp - payload.iat).toBe(30 * 24 * 60 * 60)
 
     expect(googleAuth.exchangeCode).toHaveBeenCalledWith({
       code: '123',
