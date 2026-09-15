@@ -14,7 +14,7 @@ describe('competitionMatches', () => {
     it('should call fetchCachedJson with correct key, ttl, and delegate to apiFetch', async () => {
       // Mock fetchCachedJson to simply execute the loader
       const fetchCachedJsonSpy = vi.spyOn(apiCacheModule, 'fetchCachedJson').mockImplementation(
-        async (key, loader, ttl) => await loader()
+        async (_key, loader, _ttl) => await loader()
       )
 
       const mockResponse = { matches: [], default_round: null }
@@ -43,7 +43,7 @@ describe('competitionMatches', () => {
     it('should throw an error if apiFetch response is not ok', async () => {
       // Mock fetchCachedJson to simply execute the loader
       vi.spyOn(apiCacheModule, 'fetchCachedJson').mockImplementation(
-        async (key, loader, ttl) => await loader()
+        async (_key, loader, _ttl) => await loader()
       )
 
       // Mock apiFetch to return a failed response
