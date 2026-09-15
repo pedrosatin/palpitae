@@ -165,6 +165,26 @@ async function requestBulk(db: D1Database, body: unknown) {
   )
 }
 
+async function requestBulkRaw(db: D1Database, bodyRaw: string) {
+  const token = await signJwt({ sub: 'user-1', email: 'user@example.com' }, JWT_SECRET, 3600)
+  const headers = new Headers({
+    Cookie: `session=${token}`,
+    'Content-Type': 'application/json',
+  })
+
+  const app = new Hono<AppContext>()
+  app.route('/predictions', predictionsRouter)
+
+  return app.fetch(
+    new Request('http://localhost/predictions/bulk', {
+      method: 'PUT',
+      headers,
+      body: bodyRaw,
+    }),
+    fakeEnv(db),
+  )
+}
+
 describe('predictions router – PUT /bulk', () => {
   const future = '2999-01-01T00:00:00.000Z'
   const past = '2000-01-01T00:00:00.000Z'
@@ -174,6 +194,12 @@ describe('predictions router – PUT /bulk', () => {
       predictions: [{ match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0 }],
     })
     expect(res.status).toBe(400)
+  })
+
+  it('rejects invalid JSON body', async () => {
+    const res = await requestBulkRaw(createBulkDbMock(), 'invalid-json')
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'Body JSON inválido' })
   })
 
   it('rejects an empty predictions list', async () => {
