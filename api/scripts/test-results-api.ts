@@ -43,11 +43,9 @@ async function fetchMatches(params: Record<string, string> = {}) {
   url.searchParams.set('season', String(SEASON))
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
 
-  console.log(`\n→ GET ${url.toString()}`)
   const res = await fetch(url.toString(), {
     headers: { 'X-Auth-Token': API_KEY },
   })
-  console.log(`← HTTP ${res.status} ${res.statusText}`)
 
   const text = await res.text()
   let json: unknown
