@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { config } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { apiFetch } from '../../../lib/api'
@@ -29,8 +29,9 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
 
   // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
   // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
-  const showPenaltyField =
-    competitions.find((c) => c.id === competitionId)?.has_penalty_phases === true
+  const showPenaltyField = useMemo(() => {
+    return competitions.find((c) => c.id === competitionId)?.has_penalty_phases === true
+  }, [competitions, competitionId])
 
   useEffect(() => {
     if (!isOpen || competitions.length > 0) return
