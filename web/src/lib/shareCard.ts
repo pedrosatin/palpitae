@@ -111,26 +111,23 @@ function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return t + '…'
 }
 
-/**
- * Pinta o cartão inteiro no contexto. Coordenadas absolutas em 1080×1350.
- */
-export function drawShareCard(ctx: CanvasRenderingContext2D, data: ShareCardData): void {
-  const W = SHARE_CARD_WIDTH
-  const H = SHARE_CARD_HEIGHT
-  const P = 80
-
-  // Fundo
+function drawBackground(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.fillStyle = INK
-  ctx.fillRect(0, 0, W, H)
+  ctx.fillRect(0, 0, w, h)
+}
 
-  // ─── Eyebrow: wordmark + campeonato ───────────────────────────────────────
+function drawEyebrow(
+  ctx: CanvasRenderingContext2D,
+  competition: string,
+  w: number,
+  p: number,
+): void {
   ctx.textBaseline = 'alphabetic'
   ctx.textAlign = 'left'
   ctx.fillStyle = BONE
   ctx.font = `800 34px ${FONT}`
   ctx.save()
-  // wordmark com um leve tracking, desenhado a partir da margem esquerda
-  let wx = P
+  let wx = p
   for (const ch of 'PALPITAE') {
     ctx.fillText(ch, wx, 118)
     wx += ctx.measureText(ch).width + 4
@@ -140,27 +137,25 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, data: ShareCardData
   ctx.textAlign = 'right'
   ctx.fillStyle = ASH
   ctx.font = `600 28px ${FONT}`
-  ctx.fillText(truncate(ctx, data.competition.toUpperCase(), 460), W - P, 118)
+  ctx.fillText(truncate(ctx, competition.toUpperCase(), 460), w - p, 118)
 
-  // hairline
   ctx.strokeStyle = BORDER
   ctx.lineWidth = 2
-  hline(ctx, P, 158, W - P)
+  hline(ctx, p, 158, w - p)
+}
 
-  // ─── Coroa (só campeão) ───────────────────────────────────────────────────
+function drawHero(ctx: CanvasRenderingContext2D, data: ShareCardData, w: number, p: number): void {
   ctx.textAlign = 'center'
   if (data.isChampion) {
     ctx.font = `100px ${FONT}`
-    ctx.fillText('🏆', W / 2, 288)
+    ctx.fillText('🏆', w / 2, 288)
   }
 
-  // ─── Label ────────────────────────────────────────────────────────────────
   ctx.fillStyle = ASH
   ctx.font = `700 34px ${FONT}`
   const label = data.isChampion ? 'CAMPEÃO DO BOLÃO' : 'FIQUEI EM'
-  fillTracked(ctx, label, W / 2, data.isChampion ? 372 : 360, 8)
+  fillTracked(ctx, label, w / 2, data.isChampion ? 372 : 360, 8)
 
-  // ─── Herói: numeral de placar ─────────────────────────────────────────────
   const heroY = 556
   const numStr = String(data.position)
   ctx.textBaseline = 'middle'
@@ -170,31 +165,34 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, data: ShareCardData
   const nw = ctx.measureText(numStr).width
   ctx.font = `800 130px ${FONT}`
   const ow = ctx.measureText('º').width
-  const startX = (W - (nw + ow)) / 2
+  const startX = (w - (nw + ow)) / 2
   ctx.font = `800 360px ${FONT}`
   ctx.fillText(numStr, startX, heroY)
   ctx.font = `800 130px ${FONT}`
-  ctx.fillText('º', startX + nw, heroY - 95) // ordinal elevado, folha de estatística
+  ctx.fillText('º', startX + nw, heroY - 95)
 
-  // régua-base curta sob o numeral
   ctx.strokeStyle = LIME
   ctx.lineWidth = 6
-  hline(ctx, W / 2 - 110, heroY + 206, W / 2 + 110)
+  hline(ctx, w / 2 - 110, heroY + 206, w / 2 + 110)
 
-  // caption
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = ASH
   ctx.font = `500 40px ${FONT}`
-  ctx.fillText(`de ${data.total} no bolão`, W / 2, heroY + 280)
+  ctx.fillText(`de ${data.total} no bolão`, w / 2, heroY + 280)
 
-  // hairline
   ctx.strokeStyle = BORDER
   ctx.lineWidth = 2
-  hline(ctx, P, 900, W - P)
+  hline(ctx, p, 900, w - p)
+}
 
-  // ─── Classificação (top-3 + você) ─────────────────────────────────────────
-  const rows = data.standings.slice(0, 4)
+function drawStandings(
+  ctx: CanvasRenderingContext2D,
+  standings: ShareCardData['standings'],
+  w: number,
+  p: number,
+): void {
+  const rows = standings.slice(0, 4)
   const rowH = rows.length > 3 ? 68 : 82
   const startY = 968
   ctx.textBaseline = 'middle'
@@ -205,32 +203,45 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, data: ShareCardData
     const accent = row.isYou || champ
     ctx.fillStyle = accent ? LIME : BONE
 
-    // rank / coroa
     ctx.textAlign = 'left'
     ctx.font = `700 34px ${FONT}`
     ctx.fillStyle = champ ? LIME : row.isYou ? LIME : ASH
-    ctx.fillText(champ ? '🏆' : `${row.position}`, P + 8, y)
+    ctx.fillText(champ ? '🏆' : `${row.position}`, p + 8, y)
 
-    // nome
     ctx.fillStyle = accent ? LIME : BONE
     ctx.font = `${row.isYou ? 700 : 500} 38px ${FONT}`
-    ctx.fillText(truncate(ctx, row.display, 560), P + 90, y)
+    ctx.fillText(truncate(ctx, row.display, 560), p + 90, y)
 
-    // pontos
     ctx.textAlign = 'right'
     ctx.font = `700 38px ${FONT}`
-    ctx.fillText(`${row.points}`, W - P, y)
+    ctx.fillText(`${row.points}`, w - p, y)
   }
+}
 
-  // ─── Rodapé: tagline + link ───────────────────────────────────────────────
+function drawFooter(ctx: CanvasRenderingContext2D, domain: string, w: number, h: number): void {
   ctx.textAlign = 'center'
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = ASH
   ctx.font = `500 30px ${FONT}`
-  ctx.fillText('dispute o topo da classificação', W / 2, H - 100)
+  ctx.fillText('dispute o topo da classificação', w / 2, h - 100)
   ctx.fillStyle = LIME
   ctx.font = `700 44px ${FONT}`
-  ctx.fillText(data.domain, W / 2, H - 50)
+  ctx.fillText(domain, w / 2, h - 50)
+}
+
+/**
+ * Pinta o cartão inteiro no contexto. Coordenadas absolutas em 1080×1350.
+ */
+export function drawShareCard(ctx: CanvasRenderingContext2D, data: ShareCardData): void {
+  const W = SHARE_CARD_WIDTH
+  const H = SHARE_CARD_HEIGHT
+  const P = 80
+
+  drawBackground(ctx, W, H)
+  drawEyebrow(ctx, data.competition, W, P)
+  drawHero(ctx, data, W, P)
+  drawStandings(ctx, data.standings, W, P)
+  drawFooter(ctx, data.domain, W, H)
 }
 
 function hline(ctx: CanvasRenderingContext2D, x1: number, y: number, x2: number): void {
