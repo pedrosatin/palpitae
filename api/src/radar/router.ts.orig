@@ -142,19 +142,7 @@ radarRouter.get('/', async (c) => {
     seriesByRadar.set(row.radar_id, list)
   }
 
-  const groupsByPrefix = new Map<string, { slug: string; groups: number }[]>()
-  for (const g of internalGroups.results) {
-    // O slug carrega o ano (ex: campeonato-brasileiro-serie-a-2026).
-    // Extraímos o prefixo para agrupar (corta os últimos 5 caracteres "-YYYY")
-    let prefix = g.slug
-    const lastDash = g.slug.lastIndexOf('-')
-    if (lastDash !== -1 && g.slug.length - lastDash === 5) {
-      prefix = g.slug.substring(0, lastDash)
-    }
-    const list = groupsByPrefix.get(prefix) ?? []
-    list.push(g)
-    groupsByPrefix.set(prefix, list)
-  }
+  const groupsBySlug = internalGroups.results
 
   const items = competitions.results.map((comp) => {
     const series = seriesByRadar.get(comp.id) ?? []
@@ -163,7 +151,9 @@ radarRouter.get('/', async (c) => {
     // Suportado = existe competição no Palpitae cujo slug casa com o prefixo
     // curado (o slug carrega o ano, ex. `...-serie-a-2026`).
     const entry = findEntry(comp.country ?? '', comp.name)
-    const supportedSlugs = entry?.palpitaeSlug ? (groupsByPrefix.get(entry.palpitaeSlug) ?? []) : []
+    const supportedSlugs = entry?.palpitaeSlug
+      ? groupsBySlug.filter((g) => g.slug.startsWith(entry.palpitaeSlug as string))
+      : []
 
     return {
       id: comp.id,
