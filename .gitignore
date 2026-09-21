@@ -7,6 +7,9 @@ dist/
 # graphify roda na raiz — saída acidental dentro de api/ não entra no repo
 api/graphify-out/
 
+# graphify AST cache — regenerável, não precisa ir pro repo
+graphify-out/cache/
+
 # wrangler files
 .wrangler
 .dev.vars*
