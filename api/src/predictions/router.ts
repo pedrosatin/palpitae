@@ -1,7 +1,7 @@
 import { type Context, Hono } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
-import { isMatchLocked, lockedSql } from '../matches/locking'
+import { isMatchLocked } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { roundLabel } from '../matches/rounds'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
@@ -79,7 +79,7 @@ router.get('/', requireAuth, async (c) => {
       p.penalty_points,
       p.created_at,
       p.updated_at,
-      CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
+      CASE WHEN (m.start_time <= ? AND m.postponed = 0) THEN 1 ELSE 0 END AS locked
     FROM predictions p
     JOIN matches m ON m.id = p.match_id
     WHERE p.user_id = ? AND p.group_id = ?
@@ -195,7 +195,7 @@ router.get('/user', requireAuth, async (c) => {
          JOIN teams ht ON ht.id = m.home_team_id
          JOIN teams at ON at.id = m.away_team_id
          LEFT JOIN predictions p
-           ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND ${lockedSql()}
+           ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND (m.start_time <= ? AND m.postponed = 0)
          ORDER BY CAST(m.round AS INTEGER) ASC, m.group_name ASC NULLS LAST, m.start_time ASC`,
       )
       .bind(groupId, groupId, targetUserId, now),
@@ -342,7 +342,7 @@ router.get('/group', requireAuth, async (c) => {
              pr.predicted_penalty_winner,
              pr.points_awarded,
              pr.penalty_points,
-             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
+             CASE WHEN (m.start_time <= ? AND m.postponed = 0) THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
@@ -365,14 +365,14 @@ router.get('/group', requireAuth, async (c) => {
              pr.predicted_penalty_winner,
              pr.points_awarded,
              pr.penalty_points,
-             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
+             CASE WHEN (m.start_time <= ? AND m.postponed = 0) THEN 1 ELSE 0 END AS locked
            FROM predictions pr
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.group_id = ?
              AND (
-               ${lockedSql()}
+               (m.start_time <= ? AND m.postponed = 0)
                OR pr.match_id IN (
                  SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
                )
@@ -872,7 +872,7 @@ async function fetchPredictionsToImport(
       `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}`,
+       WHERE p.user_id = ? AND p.group_id = ? AND NOT (m.start_time <= ? AND m.postponed = 0)`,
     )
     .bind(userId, sourceGroupId, now)
     .all<{

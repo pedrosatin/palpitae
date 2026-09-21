@@ -13,11 +13,6 @@
  * semanas depois com todo mundo preso ao palpite antigo.
  */
 
-/** Fragmento SQL. Consome UM parâmetro posicional: o `now` em ISO 8601. */
-export function lockedSql(alias = 'm'): string {
-  return `(${alias}.start_time <= ? AND ${alias}.postponed = 0)`
-}
-
 /**
  * Equivalente em TS, para os caminhos de escrita que já têm a linha em mãos.
  *

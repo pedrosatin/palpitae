@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isMatchLocked, lockedSql } from './locking'
+import { isMatchLocked } from './locking'
 
 const NOW = '2026-08-01T12:00:00Z'
 const PAST = '2026-07-29T22:30:00Z'
@@ -34,19 +34,5 @@ describe('isMatchLocked', () => {
     const startSemMilis = '2026-08-01T12:00:00Z'
     const nowComMilis = '2026-08-01T12:00:00.123Z' // 123ms depois, deveria estar travado
     expect(isMatchLocked({ start_time: startSemMilis, postponed: 0 }, nowComMilis)).toBe(true)
-  })
-})
-
-describe('lockedSql', () => {
-  it('consome exatamente um parâmetro posicional', () => {
-    expect(lockedSql().match(/\?/g)).toHaveLength(1)
-  })
-
-  it('usa o alias pedido', () => {
-    expect(lockedSql('pr')).toBe('(pr.start_time <= ? AND pr.postponed = 0)')
-  })
-
-  it('default é o alias `m`', () => {
-    expect(lockedSql()).toBe('(m.start_time <= ? AND m.postponed = 0)')
   })
 })
