@@ -87,7 +87,7 @@ describe('RenameGroupModal', () => {
     const user = userEvent.setup({ delay: null })
     vi.mocked(apiFetch).mockResolvedValueOnce({
       ok: false,
-      json: async () => ({ error: 'Custom API error' })
+      json: async () => ({ error: 'Custom API error' }),
     } as any)
 
     render(<RenameGroupModal {...defaultProps} />)

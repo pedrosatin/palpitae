@@ -87,9 +87,12 @@ describe('api-cache', () => {
 
   it('does not remove cache entry if loader throws an error but cache was already overwritten', async () => {
     let rejectPromise: (reason?: any) => void
-    const slowLoader = vi.fn(() => new Promise((_, reject) => {
-      rejectPromise = reject
-    }))
+    const slowLoader = vi.fn(
+      () =>
+        new Promise((_, reject) => {
+          rejectPromise = reject
+        }),
+    )
 
     const firstCall = fetchCachedJson('overwrite-test', slowLoader)
 

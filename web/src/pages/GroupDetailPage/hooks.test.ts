@@ -458,7 +458,7 @@ describe('useTabsOffset', () => {
   it('uses ResizeObserver when available', () => {
     const mockObserve = vi.fn()
     const mockDisconnect = vi.fn()
-    window.ResizeObserver = vi.fn().mockImplementation(function(this: any) {
+    window.ResizeObserver = vi.fn().mockImplementation(function (this: any) {
       this.observe = mockObserve
       this.disconnect = mockDisconnect
     }) as unknown as typeof ResizeObserver

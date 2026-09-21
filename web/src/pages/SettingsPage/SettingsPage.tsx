@@ -81,7 +81,6 @@ function useNotificationPreferences() {
       .finally(() => setSaving(false))
   }
 
-
   return {
     roundReminders,
     pending,

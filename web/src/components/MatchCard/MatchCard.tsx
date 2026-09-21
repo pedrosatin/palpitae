@@ -2,6 +2,7 @@ import InfoHint from '../InfoHint/InfoHint'
 import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
 import styles from './MatchCard.module.css'
 import { useMatchCard } from './useMatchCard'
+import { ScoreStepper } from './ScoreStepper'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
 // Re-exported for backwards compatibility with consumers importing from './MatchCard'.
@@ -39,7 +40,6 @@ function formatDate(iso: string): string {
     timeZone: 'America/Sao_Paulo',
   })
 }
-
 
 export default function MatchCard(props: MatchCardProps) {
   const { match, prediction, outcomeOnly = false } = props
@@ -354,75 +354,25 @@ function ScoreInputView({
 }) {
   return (
     <div className={styles.inputRow}>
-      <div className={styles.stepper}>
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnDec}`}
-          onClick={() => updateHome(String(Math.max(0, (home === '' ? 0 : Number(home)) - 1)))}
-          disabled={locked}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Diminuir placar ${match.home_team_name}`}
-        >
-          −
-        </button>
-        <input
-          className={styles.scoreInput}
-          type="number"
-          id={`home-score-${match.id}`}
-          name={`home-score-${match.id}`}
-          min={0}
-          max={99}
-          placeholder="0"
-          value={home}
-          onChange={(e) => handleScoreInput(e.target.value, updateHome)}
-          aria-label={`Placar ${match.home_team_name}`}
-        />
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnInc}`}
-          onClick={() => updateHome(String(Math.min(99, (home === '' ? 0 : Number(home)) + 1)))}
-          disabled={locked}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Aumentar placar ${match.home_team_name}`}
-        >
-          +
-        </button>
-      </div>
+      <ScoreStepper
+        teamName={match.home_team_name}
+        score={home}
+        locked={locked}
+        matchId={match.id}
+        prefix="home"
+        updateScore={updateHome}
+        handleScoreInput={handleScoreInput}
+      />
       <span className={styles.inputSep}>×</span>
-      <div className={styles.stepper}>
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnDec}`}
-          onClick={() => updateAway(String(Math.max(0, (away === '' ? 0 : Number(away)) - 1)))}
-          disabled={locked}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Diminuir placar ${match.away_team_name}`}
-        >
-          −
-        </button>
-        <input
-          className={styles.scoreInput}
-          type="number"
-          id={`away-score-${match.id}`}
-          name={`away-score-${match.id}`}
-          min={0}
-          max={99}
-          placeholder="0"
-          value={away}
-          onChange={(e) => handleScoreInput(e.target.value, updateAway)}
-          aria-label={`Placar ${match.away_team_name}`}
-        />
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnInc}`}
-          onClick={() => updateAway(String(Math.min(99, (away === '' ? 0 : Number(away)) + 1)))}
-          disabled={locked}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Aumentar placar ${match.away_team_name}`}
-        >
-          +
-        </button>
-      </div>
+      <ScoreStepper
+        teamName={match.away_team_name}
+        score={away}
+        locked={locked}
+        matchId={match.id}
+        prefix="away"
+        updateScore={updateAway}
+        handleScoreInput={handleScoreInput}
+      />
       {penaltyInline}
       <button
         className={`${styles.saveBtn} ${saved ? styles.saveBtnSaved : ''}`}

@@ -33,7 +33,9 @@ describe('permissions', () => {
       const emails = ['user1@example.com', 'admin@example.com']
 
       emails.forEach((email) => {
-        expect(getFeatureFlags(email)).toEqual({ create_group: hasFeatureAccess(email, 'create_group') })
+        expect(getFeatureFlags(email)).toEqual({
+          create_group: hasFeatureAccess(email, 'create_group'),
+        })
       })
     })
 

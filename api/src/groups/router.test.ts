@@ -309,10 +309,12 @@ describe('groups router', () => {
     const errorDb = {
       prepare: () => ({
         bind: () => ({
-          all: () => { throw new Error('DB Error') }
-        })
-      })
-    } as any;
+          all: () => {
+            throw new Error('DB Error')
+          },
+        }),
+      }),
+    } as any
 
     const res = await requestGroupsList('user@example.com', undefined, errorDb)
     expect(res.status).toBe(500)
