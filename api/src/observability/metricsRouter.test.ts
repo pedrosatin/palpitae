@@ -165,6 +165,19 @@ describe('GET /metrics/overview', () => {
     expect(((await res.json()) as { days: number }).days).toBe(90)
   })
 
+  it('502 quando o fetch para a SQL API falha (exceção/timeout)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Promise.reject(new Error('fetch failed'))),
+    )
+    const res = await makeApp().request(
+      '/metrics/overview',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+    expect(res.status).toBe(502)
+  })
+
   it('502 quando a SQL API falha', async () => {
     vi.stubGlobal(
       'fetch',
