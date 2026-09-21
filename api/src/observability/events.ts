@@ -50,6 +50,25 @@ export type EventDims = {
   doubles?: number[]
 }
 
+function sanitizeError(error: unknown): unknown {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      ...('cause' in error ? { cause: sanitizeError((error as any).cause) } : {})
+    }
+  }
+  if (typeof error === 'object' && error !== null) {
+    try {
+      return `[Object: ${error.constructor?.name ?? 'Object'}]`
+    } catch {
+      return '[Object]'
+    }
+  }
+  return error
+}
+
 /**
  * Registra um erro de negócio/integração. Emite no console com a stack trace original,
  * e salva um evento no Analytics Engine com a mensagem extraída para monitoramento.
@@ -61,7 +80,7 @@ export function logError(
   error: unknown,
   dims: EventDims = {},
 ): void {
-  console.error(consoleMessage, error)
+  console.error(consoleMessage, sanitizeError(error))
   const message = error instanceof Error ? error.message : String(error)
   logEvent(ae, type, {
     blobs: [...(dims.blobs ?? []), message],

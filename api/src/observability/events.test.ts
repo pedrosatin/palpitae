@@ -58,7 +58,11 @@ describe('logError', () => {
 
     logError(ae, 'football_api_error', 'Sync failed:', err, { blobs: ['comp-1'] })
 
-    expect(consoleSpy).toHaveBeenCalledWith('Sync failed:', err)
+    expect(consoleSpy).toHaveBeenCalledWith('Sync failed:', {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    })
     expect(calls).toHaveLength(1)
     expect(calls[0].blobs).toEqual(['football_api_error', 'comp-1', 'Test error'])
   })
