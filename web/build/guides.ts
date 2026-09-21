@@ -505,11 +505,13 @@ function render404(): string {
 `
 }
 
+const guidesByPath = new Map<string, Guide>(guides.map((g) => [`/guias/${g.slug}`, g]))
+
 /** Resolve a request path to a guide page's HTML, or null if it's not a guide. */
 function guideHtmlFor(reqUrl: string): string | null {
   const path = (reqUrl.split('?')[0] || '').replace(/\/+$/, '') // strip query + trailing /
   if (path === '/guias') return renderIndex()
-  const g = guides.find((g) => `/guias/${g.slug}` === path)
+  const g = guidesByPath.get(path)
   return g ? renderGuide(g) : null
 }
 
