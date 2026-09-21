@@ -10,7 +10,7 @@ vi.mock('./api', () => ({
 }))
 
 vi.mock('./api-cache', () => ({
-  fetchCachedJson: vi.fn((key, loader) => loader()),
+  fetchCachedJson: vi.fn((_key, loader) => loader()),
 }))
 
 vi.mock('./rounds', () => ({
