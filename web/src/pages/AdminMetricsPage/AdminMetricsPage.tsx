@@ -266,7 +266,7 @@ function KpiCard({
   )
 }
 
-function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
+function useOverviewSeries(overview: OverviewResponse | null) {
   const stacked = useMemo(
     () =>
       overview
@@ -285,7 +285,11 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     [overview],
   )
 
-  const kpis = useMemo(() => {
+  return { stacked, apiCallsSeries, dauSeries }
+}
+
+function useOverviewKpis(overview: OverviewResponse | null) {
+  return useMemo(() => {
     if (!overview) return null
     const totalOf = (type: string) =>
       Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
@@ -306,28 +310,26 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
       emailResubs: totalOf('email_resubscribed'),
     }
   }, [overview])
+}
 
-  // Sampling do AE: média > 1 significa amostragem — números viram estimativa.
-  const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
-  const isSampling = avgSample > 1.01
-
-  // Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
-  const whaleShare = useMemo(() => {
-    if (!overview || !kpis || kpis.predictions === 0 || overview.whales.length === 0) return null
+function useWhaleShare(overview: OverviewResponse | null, predictions: number | undefined) {
+  return useMemo(() => {
+    if (!overview || !predictions || overview.whales.length === 0) return null
     const shareOf = (n: number) =>
       Math.min(
         100,
         Math.round(
           (overview.whales.slice(0, n).reduce((sum, w) => sum + Number(w.predictions), 0) /
-            kpis.predictions) *
+            predictions) *
             100,
         ),
       )
     return { top1: shareOf(1), top5: shareOf(5) }
-  }, [overview, kpis])
+  }, [overview, predictions])
+}
 
-  // Triagem rápida: o que precisa de atenção agora, pro topo da página.
-  const alerts = useMemo(() => {
+function useAlerts(overview: OverviewResponse | null) {
+  return useMemo(() => {
     if (!overview) return []
     const list: { key: string; label: string; level: 'warn' | 'danger' }[] = []
 
@@ -358,8 +360,9 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     }
     return list
   }, [overview])
+}
 
-  // Verifica a integridade do export nos últimos 14 dias.
+function useArchiveStats(archive: ArchiveResponse | null) {
   const archiveDays = useMemo(() => {
     if (!archive || archive.files.length === 0) return []
     const byDay = new Map(
@@ -375,8 +378,6 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
       })
   }, [archive])
 
-  // Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
-  // enxerga além da janela de ~3 meses do Analytics Engine.
   const archiveStats = useMemo(() => {
     if (!archive || archive.files.length === 0) return null
     const totalBytes = archive.files.reduce((sum, f) => sum + f.size, 0)
@@ -404,6 +405,19 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
       monthly,
     }
   }, [archive])
+
+  return { archiveDays, archiveStats }
+}
+
+function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
+  const { stacked, apiCallsSeries, dauSeries } = useOverviewSeries(overview)
+  const kpis = useOverviewKpis(overview)
+  const whaleShare = useWhaleShare(overview, kpis?.predictions)
+  const alerts = useAlerts(overview)
+  const { archiveDays, archiveStats } = useArchiveStats(archive)
+
+  const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
+  const isSampling = avgSample > 1.01
 
   return {
     stacked,
