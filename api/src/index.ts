@@ -27,11 +27,7 @@ app.use(
   '*',
   cors({
     origin: (origin, c) => {
-      if (!origin) return null
-      if (origin === c.env.FRONTEND_URL) {
-        return origin
-      }
-      return null
+      return c.env.FRONTEND_URL
     },
     credentials: true,
   }),
