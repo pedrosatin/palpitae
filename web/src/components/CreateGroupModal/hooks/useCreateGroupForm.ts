@@ -11,6 +11,35 @@ interface UseCreateGroupFormProps {
   onCreated: (group: CreatedGroup) => void
 }
 
+export function validateScoringRules(pointsExact: number, pointsWinner: number): string | null {
+  if (pointsExact > 0 && pointsExact < pointsWinner) {
+    return 'Pontos por placar exato deve ser maior ou igual a pontos por vencedor'
+  }
+  if (pointsExact + pointsWinner === 0) {
+    return 'Pelo menos um tipo de pontuação deve ser maior que zero'
+  }
+  return null
+}
+
+export function buildGroupPayload(params: {
+  name: string
+  competitionId: string
+  pointsExact: number
+  pointsWinner: number
+  pointsPenalty: number
+  showPenaltyField: boolean
+  predictionsVisibility: 'hidden' | 'public'
+}) {
+  return {
+    name: params.name.trim(),
+    competition_id: params.competitionId,
+    points_exact: params.pointsExact,
+    points_winner: params.pointsWinner,
+    points_penalty: params.showPenaltyField ? params.pointsPenalty : 1,
+    predictions_visibility: params.predictionsVisibility,
+  }
+}
+
 export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGroupFormProps) {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [loadingCompetitions, setLoadingCompetitions] = useState(false)
@@ -68,12 +97,9 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (pointsExact > 0 && pointsExact < pointsWinner) {
-      setError('Pontos por placar exato deve ser maior ou igual a pontos por vencedor')
-      return
-    }
-    if (pointsExact + pointsWinner === 0) {
-      setError('Pelo menos um tipo de pontuação deve ser maior que zero')
+    const validationError = validateScoringRules(pointsExact, pointsWinner)
+    if (validationError) {
+      setError(validationError)
       return
     }
 
@@ -81,17 +107,20 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
     setSubmitting(true)
 
     try {
+      const payload = buildGroupPayload({
+        name,
+        competitionId,
+        pointsExact,
+        pointsWinner,
+        pointsPenalty,
+        showPenaltyField,
+        predictionsVisibility,
+      })
+
       const res = await apiFetch(`${config.apiUrl}/groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          competition_id: competitionId,
-          points_exact: pointsExact,
-          points_winner: pointsWinner,
-          points_penalty: showPenaltyField ? pointsPenalty : 1,
-          predictions_visibility: predictionsVisibility,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = (await res.json()) as {

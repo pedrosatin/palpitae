@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useCreateGroupForm } from './useCreateGroupForm'
+import { useCreateGroupForm, validateScoringRules, buildGroupPayload } from './useCreateGroupForm'
 import { apiFetch } from '../../../lib/api'
 import { trackEvent } from '../../../analytics/ga'
 import { act } from '@testing-library/react'
@@ -21,6 +21,58 @@ const defaultProps = {
   onClose: vi.fn(),
   onCreated: vi.fn(),
 }
+
+describe('validateScoringRules', () => {
+  it('returns error if pointsExact is less than pointsWinner and greater than 0', () => {
+    expect(validateScoringRules(1, 2)).toBe('Pontos por placar exato deve ser maior ou igual a pontos por vencedor')
+  })
+
+  it('returns error if both points are 0', () => {
+    expect(validateScoringRules(0, 0)).toBe('Pelo menos um tipo de pontuação deve ser maior que zero')
+  })
+
+  it('returns null for valid scoring rules', () => {
+    expect(validateScoringRules(3, 1)).toBeNull()
+    expect(validateScoringRules(0, 1)).toBeNull()
+  })
+})
+
+describe('buildGroupPayload', () => {
+  it('trims name and sets correctly fields when showPenaltyField is true', () => {
+    const params = {
+      name: '  My Group  ',
+      competitionId: 'c1',
+      pointsExact: 3,
+      pointsWinner: 1,
+      pointsPenalty: 2,
+      showPenaltyField: true,
+      predictionsVisibility: 'public' as const
+    }
+    const payload = buildGroupPayload(params)
+    expect(payload).toEqual({
+      name: 'My Group',
+      competition_id: 'c1',
+      points_exact: 3,
+      points_winner: 1,
+      points_penalty: 2,
+      predictions_visibility: 'public'
+    })
+  })
+
+  it('sets points_penalty to 1 when showPenaltyField is false', () => {
+    const params = {
+      name: 'Group 2',
+      competitionId: 'c2',
+      pointsExact: 3,
+      pointsWinner: 1,
+      pointsPenalty: 5,
+      showPenaltyField: false,
+      predictionsVisibility: 'hidden' as const
+    }
+    const payload = buildGroupPayload(params)
+    expect(payload.points_penalty).toBe(1)
+  })
+})
 
 describe('useCreateGroupForm', () => {
   beforeEach(() => {
