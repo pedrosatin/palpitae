@@ -1,16 +1,37 @@
 # Palpitae
 
-Sistema de palpites para campeonatos de futebol no mundo todo.
+A prediction game for football tournaments worldwide.
 
-Os usuários podem fazer login via google, e fazer seus palpites para os jogos do campeonato. O sistema irá calcular a pontuação dos usuários com base nos resultados dos jogos, e exibir um ranking dos melhores palpites.
+Users sign in with Google and submit predictions for a competition's matches. The
+system scores each prediction against the real results and ranks users on a
+leaderboard. Any authenticated user can create a prediction group and invite
+friends to compete against each other.
 
-Todo usuário autenticado pode criar grupos de palpites para competir com amigos e convidá-los para participar.
+## Stack
 
----
+The API runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/)
+with [Hono](https://hono.dev/), backed by [D1](https://developers.cloudflare.com/d1/)
+(SQLite) and scheduled crons that handle fixture discovery, live-match polling,
+scoring, and round reminder emails. The web app is [React](https://react.dev/)
+and [React Router](https://reactrouter.com/) on [Vite](https://vitejs.dev/),
+deployed to Cloudflare Pages with server-rendered prerendering.
 
-## API — Setup local
+Auth is Google OAuth 2.0 (PKCE) with HMAC-signed JWT session cookies.
+Observability is split between server-side events sent to Cloudflare Analytics
+Engine (`logEvent`) and client-side click tracking through GA4 (`trackEvent`).
 
-The API runs on [Cloudflare Workers](https://developers.cloudflare.com/workers/) with [Hono](https://hono.dev/) and [D1](https://developers.cloudflare.com/d1/) (SQLite).
+Architecture decisions are recorded as ADRs in
+[`docs/architecture/decisions.md`](docs/architecture/decisions.md).
+
+## Repository layout
+
+```
+api/    Cloudflare Worker (Hono): REST API, D1 migrations, cron jobs
+web/    React app (Vite): UI, Cloudflare Pages functions
+docs/   Architecture decisions, schema, observability and analytics conventions
+```
+
+## API setup
 
 ### Prerequisites
 
@@ -65,3 +86,44 @@ wrangler d1 migrations apply palpitae --remote
 # Deploy the Worker
 npm run deploy
 ```
+
+## Web setup
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 24+
+
+### First-time setup
+
+```bash
+cd web
+npm install
+```
+
+### Running
+
+```bash
+# Start local dev server
+npm run dev
+
+# Run tests
+npm test
+
+# Type-check
+npm run type-check
+```
+
+### Building and deploying
+
+```bash
+# Builds the client bundle, an SSR bundle for prerendering, and prerenders
+# static routes into dist/
+npm run build
+```
+
+The `dist/` output, together with the Pages functions under `web/functions/`,
+is deployed to Cloudflare Pages via Wrangler.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
