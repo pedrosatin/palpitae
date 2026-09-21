@@ -169,6 +169,29 @@ describe('predictions router – PUT /bulk', () => {
   const future = '2999-01-01T00:00:00.000Z'
   const past = '2000-01-01T00:00:00.000Z'
 
+  it('returns 400 when body is invalid JSON', async () => {
+    const token = await signJwt({ sub: 'user-1', email: 'user@example.com' }, JWT_SECRET, 3600)
+    const headers = new Headers({
+      Cookie: `session=${token}`,
+      'Content-Type': 'application/json',
+    })
+
+    const app = new Hono<AppContext>()
+    app.route('/predictions', predictionsRouter)
+
+    const res = await app.fetch(
+      new Request('http://localhost/predictions/bulk', {
+        method: 'PUT',
+        headers,
+        body: 'invalid-json',
+      }),
+      fakeEnv(createBulkDbMock()),
+    )
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'Body JSON inválido' })
+  })
+
   it('requires group_id', async () => {
     const res = await requestBulk(createBulkDbMock(), {
       predictions: [{ match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0 }],
