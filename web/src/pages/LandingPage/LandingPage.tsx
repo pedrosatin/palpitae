@@ -333,13 +333,6 @@ function Shot({
   fetchPriority?: 'high' | 'low' | 'auto'
 }) {
   const webp = src.replace(/\.png$/, '.webp')
-  // O React 18 não conhece a prop `fetchPriority` em camelCase: ele avisa no
-  // console e descarta o atributo, então a dica de prioridade nunca chegava ao
-  // <img> (nem no navegador, nem no HTML gerado no build). Em minúsculas ele
-  // repassa o atributo como qualquer outro desconhecido, que é o que o
-  // navegador de fato lê. O cast existe só porque a tipagem do JSX descreve a
-  // grafia camelCase.
-  const priority = (fetchPriority ? { fetchpriority: fetchPriority } : {}) as object
   return (
     <picture>
       <source srcSet={webp} type="image/webp" />
@@ -349,7 +342,7 @@ function Shot({
         width={width}
         height={height}
         loading={loading}
-        {...priority}
+        fetchPriority={fetchPriority}
       />
     </picture>
   )
