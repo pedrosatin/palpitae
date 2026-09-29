@@ -1,14 +1,21 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 
-export function calculatePoints(
-  actualHome: number,
-  actualAway: number,
-  predictedHome: number,
-  predictedAway: number,
+export function calculatePoints({
+  actualHome,
+  actualAway,
+  predictedHome,
+  predictedAway,
   pointsExact = 3,
   pointsWinner = 1,
-): number {
+}: {
+  actualHome: number
+  actualAway: number
+  predictedHome: number
+  predictedAway: number
+  pointsExact?: number
+  pointsWinner?: number
+}): number {
   // pointsExact === 0 is the "winner only" / 1X2 mode: there is no exact-score bonus,
   // so we never short-circuit here — otherwise a 1X2 pick stored as (1,0)/(0,0)/(0,1)
   // would accidentally score the exact value when the real score happens to match.
@@ -192,14 +199,14 @@ export async function scoreUnprocessedMatches(
       eligibleCache.set(p.match_id, eligible)
     }
 
-    const points = calculatePoints(
-      matchCtx.home_score,
-      matchCtx.away_score,
-      p.predicted_home_score,
-      p.predicted_away_score,
-      p.points_exact,
-      p.points_winner,
-    )
+    const points = calculatePoints({
+      actualHome: matchCtx.home_score,
+      actualAway: matchCtx.away_score,
+      predictedHome: p.predicted_home_score,
+      predictedAway: p.predicted_away_score,
+      pointsExact: p.points_exact,
+      pointsWinner: p.points_winner,
+    })
 
     const penaltyPoints = calculatePenaltyBonus(
       p.predicted_home_score,
