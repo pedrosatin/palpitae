@@ -285,52 +285,60 @@ async function dispatchBatch(
       }),
     )
 
-    for (const {
-      recipient: { email, groups: recipientGroups },
-      hashedId,
-      unsubToken,
-      tokenError,
-    } of preparedRecipients) {
-      try {
-        if (tokenError) throw tokenError
-        const unsubUrl = unsubToken
-          ? `${apiBaseUrl}/notifications/unsubscribe?token=${unsubToken}`
-          : undefined
+    const chunkSize = 50
+    for (let i = 0; i < preparedRecipients.length; i += chunkSize) {
+      const chunk = preparedRecipients.slice(i, i + chunkSize)
+      await Promise.all(
+        chunk.map(
+          async ({
+            recipient: { email, groups: recipientGroups },
+            hashedId,
+            unsubToken,
+            tokenError,
+          }) => {
+            try {
+              if (tokenError) throw tokenError
+              const unsubUrl = unsubToken
+                ? `${apiBaseUrl}/notifications/unsubscribe?token=${unsubToken}`
+                : undefined
 
-        const options: EmailTemplateOptions = {
-          competitionName,
-          round,
-          matches,
-          appUrl,
-          groups: recipientGroups,
-          unsubUrl,
-        }
-        const html = buildEmailHtml(options)
-        const text = buildEmailText(options)
-        // RFC 8058 one-click unsubscribe — Gmail/Apple show a native button.
-        const headers = unsubUrl
-          ? {
-              'List-Unsubscribe': `<${unsubUrl}>`,
-              'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              const options: EmailTemplateOptions = {
+                competitionName,
+                round,
+                matches,
+                appUrl,
+                groups: recipientGroups,
+                unsubUrl,
+              }
+              const html = buildEmailHtml(options)
+              const text = buildEmailText(options)
+              // RFC 8058 one-click unsubscribe — Gmail/Apple show a native button.
+              const headers = unsubUrl
+                ? {
+                    'List-Unsubscribe': `<${unsubUrl}>`,
+                    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                  }
+                : undefined
+
+              await sendWithRetry(resendApiKey, {
+                to: email,
+                subject,
+                html,
+                text,
+                headers,
+              })
+              sent++
+              // user_hash do id (não o e-mail cru — PII, regra LGPD).
+              logEvent(ae, 'email_reminder_sent', {
+                blobs: [hashedId, competitionName, round],
+              })
+            } catch (err) {
+              failed++
+              console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
             }
-          : undefined
-
-        await sendWithRetry(resendApiKey, {
-          to: email,
-          subject,
-          html,
-          text,
-          headers,
-        })
-        sent++
-        // user_hash do id (não o e-mail cru — PII, regra LGPD).
-        logEvent(ae, 'email_reminder_sent', {
-          blobs: [hashedId, competitionName, round],
-        })
-      } catch (err) {
-        failed++
-        console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
-      }
+          },
+        ),
+      )
     }
   }
   return { sent, failed }
