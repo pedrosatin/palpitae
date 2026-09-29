@@ -38,7 +38,7 @@ describe('competitionMatches', () => {
     })
 
     it('should throw an error if the apiFetch response is not ok', async () => {
-      vi.mocked(apiCacheModule.fetchCachedJson).mockImplementation(async (key, loader, ttl) => {
+      vi.mocked(apiCacheModule.fetchCachedJson).mockImplementation(async (_key, loader, _ttl) => {
         return loader()
       })
 
