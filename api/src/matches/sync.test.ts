@@ -575,4 +575,32 @@ describe('resolveCanonicalScore', () => {
       }),
     ).toEqual({ canonicalHome: 0, canonicalAway: 0 })
   })
+
+  it('handles partial extraTime (home null, away not null) correctly', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 2, away: 2 },
+        regularTime: { home: 1, away: 1 },
+        extraTime: { home: null, away: 1 },
+        penalties: { home: 3, away: 4 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'AWAY_TEAM',
+      }),
+    ).toEqual({ canonicalHome: 1, canonicalAway: 2 })
+  })
+
+  it('handles partial regularTime (falls back to fullTime logic)', () => {
+    expect(
+      resolveCanonicalScore({
+        duration: 'PENALTY_SHOOTOUT',
+        fullTime: { home: 3, away: 4 },
+        regularTime: { home: null, away: 1 },
+        extraTime: { home: 1, away: 1 },
+        penalties: { home: 1, away: 2 },
+        halfTime: { home: 0, away: 0 },
+        winner: 'AWAY_TEAM',
+      }),
+    ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
+  })
 })
