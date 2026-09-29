@@ -10,6 +10,16 @@ const router = new Hono<AppContext>()
  * Minimal HTML confirmation page returned to the unsubscribe link click. Kept
  * self-contained (no app shell) because it's opened straight from an e-mail.
  */
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
 function confirmationPage(message: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -20,7 +30,7 @@ function confirmationPage(message: string): string {
 </head>
 <body style="margin: 0; font-family: sans-serif; background: #f3f4f6;">
   <div style="max-width: 480px; margin: 64px auto; padding: 32px; background: white; border-radius: 12px; text-align: center;">
-    <h1 style="font-size: 20px;">${message}</h1>
+    <h1 style="font-size: 20px;">${escapeHtml(message)}</h1>
     <p style="color: #6b7280;">Você pode reativar os lembretes a qualquer momento nas configurações do Palpitae.</p>
     <a href="https://palpitae.com.br" style="display: inline-block; margin-top: 16px; color: #16a34a; font-weight: bold; text-decoration: none;">Ir para o Palpitae</a>
   </div>
@@ -46,7 +56,7 @@ function unsubscribeFormPage(token: string): string {
   <div style="max-width: 480px; margin: 64px auto; padding: 32px; background: white; border-radius: 12px; text-align: center;">
     <h1 style="font-size: 20px;">Cancelar lembretes de rodada?</h1>
     <p style="color: #6b7280;">Você não receberá mais e-mails de lembrete do Palpitae.</p>
-    <form method="POST" action="/notifications/unsubscribe?token=${token}" style="margin-top: 24px;">
+    <form method="POST" action="/notifications/unsubscribe?token=${escapeHtml(token)}" style="margin-top: 24px;">
       <button type="submit" style="background: #dc2626; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold;">Confirmar cancelamento</button>
     </form>
     <a href="https://palpitae.com.br" style="display: inline-block; margin-top: 16px; color: #6b7280; font-size: 14px;">Voltar ao Palpitae</a>
