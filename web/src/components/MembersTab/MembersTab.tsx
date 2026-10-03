@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { useGroupMembers, type GroupMember } from '../../hooks/useGroupMembers'
 import { apiFetch } from '../../lib/api'
 import { useConfirm } from '../ConfirmModal'
 import Button from '../Button'
@@ -13,35 +14,10 @@ interface MembersTabProps {
   onMemberRemoved?: (userId: string) => void
 }
 
-interface Member {
-  user_id: string
-  display_name: string
-  avatar_url: string | null
-  role: string
-  joined_at: string
-  total_points: number
-  exact_hits: number
-}
-
 function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void) {
-  const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { members, setMembers, loading, error } = useGroupMembers(groupId)
   const [removing, setRemoving] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
-
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    apiFetch(`${config.apiUrl}/groups/${groupId}/members`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar membros')
-        return r.json() as Promise<{ members: Member[] }>
-      })
-      .then((data) => setMembers(data.members))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [groupId])
 
   async function removeMember(targetUserId: string, displayName: string) {
     trackEvent('click_members_remover')
@@ -74,7 +50,7 @@ function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void)
 }
 
 interface MemberItemProps {
-  member: Member
+  member: GroupMember
   currentUserId: string
   removing: string | null
   onRemove: (userId: string, displayName: string) => void
