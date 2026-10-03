@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import ErrorState from '../ErrorState'
@@ -162,6 +163,12 @@ export default function GroupPicksTab({ groupId, competitionId }: GroupPicksTabP
       .finally(() => setLoading(false))
   }, [groupId, competitionId])
 
+  const { roundKeys, safeIndex, selectedRound, roundMatches, labelFor, prev, next } =
+    useMatchRounds(matches, roundIndex, setRoundIndex, {
+      prev: 'click_group_picks_rodada_anterior',
+      next: 'click_group_picks_proxima_rodada',
+    })
+
   if (loading) {
     return <p className={styles.loading}>Carregando palpites do grupo...</p>
   }
@@ -179,34 +186,6 @@ export default function GroupPicksTab({ groupId, competitionId }: GroupPicksTabP
   for (const p of picks.predictions) {
     if (!picksByMatch.has(p.match_id)) picksByMatch.set(p.match_id, [])
     picksByMatch.get(p.match_id)!.push(p)
-  }
-
-  // Group matches by round
-  const rounds = new Map<string, Match[]>()
-  for (const m of matches) {
-    if (!rounds.has(m.round)) rounds.set(m.round, [])
-    rounds.get(m.round)!.push(m)
-  }
-
-  const roundKeys = Array.from(rounds.keys())
-  const safeIndex = Math.min(roundIndex, roundKeys.length - 1)
-  const selectedRound = roundKeys[safeIndex]
-  const roundMatches = rounds.get(selectedRound) ?? []
-
-  const labelFor = (r: string) => rounds.get(r)?.[0]?.round_label ?? r
-
-  function prev() {
-    trackEvent('click_group_picks_rodada_anterior', {
-      round: roundKeys[Math.max(0, safeIndex - 1)],
-    })
-    setRoundIndex((i) => Math.max(0, i - 1))
-  }
-
-  function next() {
-    trackEvent('click_group_picks_proxima_rodada', {
-      round: roundKeys[Math.min(roundKeys.length - 1, safeIndex + 1)],
-    })
-    setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
   }
 
   return (
