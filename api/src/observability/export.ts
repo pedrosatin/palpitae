@@ -1,4 +1,5 @@
 import type { Env } from '../types'
+import { runAeSql } from './aeSql'
 
 /**
  * Cold path — arquiva um dia de eventos do Analytics Engine no R2 como NDJSON,
@@ -72,21 +73,7 @@ export async function exportEventsToR2(env: Env, day: Date): Promise<void> {
     `ORDER BY timestamp ASC ` +
     `LIMIT ${ROW_LIMIT}`
 
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.AE_SQL_TOKEN}` },
-      body: sql,
-    },
-  )
-
-  if (!res.ok) {
-    throw new Error(`AE SQL respondeu ${res.status}: ${await res.text()}`)
-  }
-
-  const payload = (await res.json()) as { data?: Record<string, unknown>[] }
-  const rows = payload.data ?? []
+  const rows = await runAeSql(env, sql)
 
   if (rows.length === 0) {
     // Grava um marcador vazio mesmo sem eventos: marca o dia como exportado pro

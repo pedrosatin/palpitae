@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { radarRouter } from '../radar/router'
-import type { AppContext, Env } from '../types'
+import type { AppContext } from '../types'
+import { runAeSql } from './aeSql'
 
 /**
  * Métricas para o dashboard admin — proxy autenticado da SQL API do Analytics
@@ -20,23 +21,6 @@ import type { AppContext, Env } from '../types'
 const DATASET = 'palpitae_events'
 
 const MAX_DAYS = 90 // janela de retenção do Analytics Engine (~3 meses)
-
-/** Executa uma query na SQL API do Analytics Engine e devolve as linhas. */
-async function runAeSql(env: Env, sql: string): Promise<Record<string, unknown>[]> {
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.AE_SQL_TOKEN}` },
-      body: sql,
-    },
-  )
-  if (!res.ok) {
-    throw new Error(`AE SQL respondeu ${res.status}: ${await res.text()}`)
-  }
-  const payload = (await res.json()) as { data?: Record<string, unknown>[] }
-  return payload.data ?? []
-}
 
 /** Janela em dias vinda da query string, saneada (1..MAX_DAYS; default 30). */
 function parseDays(raw: string | undefined): number {
