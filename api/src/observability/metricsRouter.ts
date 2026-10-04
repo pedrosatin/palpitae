@@ -382,16 +382,17 @@ metricsRouter.get('/archive/query', async (c) => {
   const fetchPromises = days.map(async (day) => {
     const key = `events/${day.replaceAll('-', '/')}.ndjson`
     const obj = await bucket.get(key)
-    return { day, obj }
+    if (!obj) return { day, obj: null, body: null }
+    const body = await obj.text()
+    return { day, obj, body }
   })
 
   const results = await Promise.all(fetchPromises)
 
-  for (const { day, obj } of results) {
-    if (!obj) continue
+  for (const { day, obj, body } of results) {
+    if (!obj || body === null) continue
     filesRead++
 
-    const body = await obj.text()
     let dayTotal = 0
 
     let lastIndex = 0
