@@ -7,54 +7,192 @@ import { calculatePenaltyBonus, calculatePoints, scoreUnprocessedMatches } from 
 
 describe('calculatePoints', () => {
   describe('exact score → 3 points', () => {
-    it('home win exact', () => expect(calculatePoints(2, 0, 2, 0)).toBe(3))
-    it('away win exact', () => expect(calculatePoints(0, 3, 0, 3)).toBe(3))
-    it('draw exact', () => expect(calculatePoints(1, 1, 1, 1)).toBe(3))
-    it('0-0 exact', () => expect(calculatePoints(0, 0, 0, 0)).toBe(3))
+    it('home win exact', () =>
+      expect(
+        calculatePoints({ actualHome: 2, actualAway: 0, predictedHome: 2, predictedAway: 0 }),
+      ).toBe(3))
+    it('away win exact', () =>
+      expect(
+        calculatePoints({ actualHome: 0, actualAway: 3, predictedHome: 0, predictedAway: 3 }),
+      ).toBe(3))
+    it('draw exact', () =>
+      expect(
+        calculatePoints({ actualHome: 1, actualAway: 1, predictedHome: 1, predictedAway: 1 }),
+      ).toBe(3))
+    it('0-0 exact', () =>
+      expect(
+        calculatePoints({ actualHome: 0, actualAway: 0, predictedHome: 0, predictedAway: 0 }),
+      ).toBe(3))
   })
 
   describe('correct outcome but wrong score → 1 point', () => {
-    it('predicted home win, different margin', () => expect(calculatePoints(2, 0, 3, 1)).toBe(1))
-    it('predicted away win, different margin', () => expect(calculatePoints(0, 1, 0, 2)).toBe(1))
-    it('predicted draw, different score', () => expect(calculatePoints(0, 0, 2, 2)).toBe(1))
+    it('predicted home win, different margin', () =>
+      expect(
+        calculatePoints({ actualHome: 2, actualAway: 0, predictedHome: 3, predictedAway: 1 }),
+      ).toBe(1))
+    it('predicted away win, different margin', () =>
+      expect(
+        calculatePoints({ actualHome: 0, actualAway: 1, predictedHome: 0, predictedAway: 2 }),
+      ).toBe(1))
+    it('predicted draw, different score', () =>
+      expect(
+        calculatePoints({ actualHome: 0, actualAway: 0, predictedHome: 2, predictedAway: 2 }),
+      ).toBe(1))
     it('predicted draw, different score (1-1 vs 2-2)', () =>
-      expect(calculatePoints(1, 1, 2, 2)).toBe(1))
+      expect(
+        calculatePoints({ actualHome: 1, actualAway: 1, predictedHome: 2, predictedAway: 2 }),
+      ).toBe(1))
   })
 
   describe('wrong outcome → 0 points', () => {
-    it('predicted home win, actual away win', () => expect(calculatePoints(0, 1, 1, 0)).toBe(0))
-    it('predicted away win, actual home win', () => expect(calculatePoints(1, 0, 0, 1)).toBe(0))
-    it('predicted draw, actual home win', () => expect(calculatePoints(2, 0, 1, 1)).toBe(0))
-    it('predicted home win, actual draw', () => expect(calculatePoints(0, 0, 1, 0)).toBe(0))
-    it('predicted away win, actual draw', () => expect(calculatePoints(0, 0, 0, 1)).toBe(0))
+    it('predicted home win, actual away win', () =>
+      expect(
+        calculatePoints({ actualHome: 0, actualAway: 1, predictedHome: 1, predictedAway: 0 }),
+      ).toBe(0))
+    it('predicted away win, actual home win', () =>
+      expect(
+        calculatePoints({ actualHome: 1, actualAway: 0, predictedHome: 0, predictedAway: 1 }),
+      ).toBe(0))
+    it('predicted draw, actual home win', () =>
+      expect(
+        calculatePoints({ actualHome: 2, actualAway: 0, predictedHome: 1, predictedAway: 1 }),
+      ).toBe(0))
+    it('predicted home win, actual draw', () =>
+      expect(
+        calculatePoints({ actualHome: 0, actualAway: 0, predictedHome: 1, predictedAway: 0 }),
+      ).toBe(0))
+    it('predicted away win, actual draw', () =>
+      expect(
+        calculatePoints({ actualHome: 0, actualAway: 0, predictedHome: 0, predictedAway: 1 }),
+      ).toBe(0))
   })
 
   describe('custom scoring (points_exact / points_winner)', () => {
     it('uses custom exact points on exact hit', () =>
-      expect(calculatePoints(2, 0, 2, 0, 5, 2)).toBe(5))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 0,
+          predictedHome: 2,
+          predictedAway: 0,
+          pointsExact: 5,
+          pointsWinner: 2,
+        }),
+      ).toBe(5))
     it('uses custom winner points on correct outcome', () =>
-      expect(calculatePoints(2, 0, 3, 1, 5, 2)).toBe(2))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 0,
+          predictedHome: 3,
+          predictedAway: 1,
+          pointsExact: 5,
+          pointsWinner: 2,
+        }),
+      ).toBe(2))
     it('wrong outcome still scores 0 with custom points', () =>
-      expect(calculatePoints(0, 1, 1, 0, 5, 2)).toBe(0))
+      expect(
+        calculatePoints({
+          actualHome: 0,
+          actualAway: 1,
+          predictedHome: 1,
+          predictedAway: 0,
+          pointsExact: 5,
+          pointsWinner: 2,
+        }),
+      ).toBe(0))
     it('"só placar exato" (3,0): correct outcome scores 0', () =>
-      expect(calculatePoints(2, 0, 3, 1, 3, 0)).toBe(0))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 0,
+          predictedHome: 3,
+          predictedAway: 1,
+          pointsExact: 3,
+          pointsWinner: 0,
+        }),
+      ).toBe(0))
     it('"só placar exato" (3,0): exact still scores 3', () =>
-      expect(calculatePoints(2, 0, 2, 0, 3, 0)).toBe(3))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 0,
+          predictedHome: 2,
+          predictedAway: 0,
+          pointsExact: 3,
+          pointsWinner: 0,
+        }),
+      ).toBe(3))
     it('"só vencedor" (1,1): exact hit scores the winner value', () =>
-      expect(calculatePoints(2, 0, 2, 0, 1, 1)).toBe(1))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 0,
+          predictedHome: 2,
+          predictedAway: 0,
+          pointsExact: 1,
+          pointsWinner: 1,
+        }),
+      ).toBe(1))
     it('"só vencedor" (1,1): correct outcome scores 1', () =>
-      expect(calculatePoints(2, 0, 3, 1, 1, 1)).toBe(1))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 0,
+          predictedHome: 3,
+          predictedAway: 1,
+          pointsExact: 1,
+          pointsWinner: 1,
+        }),
+      ).toBe(1))
   })
 
   describe('1X2 mode (points_exact = 0): exact-score bonus disabled', () => {
     // Picks are stored as casa=(1,0), empate=(0,0), fora=(0,1).
     it('correct winner scores the winner value', () =>
-      expect(calculatePoints(2, 0, 1, 0, 0, 1)).toBe(1))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 0,
+          predictedHome: 1,
+          predictedAway: 0,
+          pointsExact: 0,
+          pointsWinner: 1,
+        }),
+      ).toBe(1))
     it('a coincidental exact match still scores only the winner value, never 0', () =>
-      expect(calculatePoints(1, 0, 1, 0, 0, 1)).toBe(1))
+      expect(
+        calculatePoints({
+          actualHome: 1,
+          actualAway: 0,
+          predictedHome: 1,
+          predictedAway: 0,
+          pointsExact: 0,
+          pointsWinner: 1,
+        }),
+      ).toBe(1))
     it('correct draw scores the winner value', () =>
-      expect(calculatePoints(2, 2, 0, 0, 0, 1)).toBe(1))
-    it('wrong outcome scores 0', () => expect(calculatePoints(0, 1, 1, 0, 0, 1)).toBe(0))
+      expect(
+        calculatePoints({
+          actualHome: 2,
+          actualAway: 2,
+          predictedHome: 0,
+          predictedAway: 0,
+          pointsExact: 0,
+          pointsWinner: 1,
+        }),
+      ).toBe(1))
+    it('wrong outcome scores 0', () =>
+      expect(
+        calculatePoints({
+          actualHome: 0,
+          actualAway: 1,
+          predictedHome: 1,
+          predictedAway: 0,
+          pointsExact: 0,
+          pointsWinner: 1,
+        }),
+      ).toBe(0))
   })
 })
 
