@@ -68,6 +68,12 @@ describe('base64UrlDecode', () => {
     expect(decoded).toBe(original)
   })
 
+  it('throws an error for invalid base64 payload lengths (length % 4 === 1)', () => {
+    // A base64 string cannot have an unpadded length of 1, 5, 9, etc.
+    expect(() => base64UrlDecode('abcde')).toThrow()
+    expect(() => base64UrlDecode('abcdefghi')).toThrow()
+  })
+
   it('throws an error when decoding malformed strings', () => {
     expect(() => base64UrlDecode('a===')).toThrow()
     expect(() => base64UrlDecode('a')).toThrow()
