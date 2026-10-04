@@ -75,4 +75,9 @@ describe('SqlCollector', () => {
     collector.prepare('DELETE FROM t')
     expect(collector.toSql()).toContain('DELETE FROM t;')
   })
+
+  it('batch resolve sem fazer nada para satisfazer a interface', async () => {
+    const collector = new SqlCollector()
+    await expect(collector.batch()).resolves.toBeUndefined()
+  })
 })
