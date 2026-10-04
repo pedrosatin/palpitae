@@ -98,7 +98,7 @@ authRouter.get('/callback', async (c) => {
   if (error) {
     const errorCode = KNOWN_OAUTH_ERRORS.has(error) ? error : 'other'
     logEvent(c.env.AE, 'oauth_error', { blobs: [errorCode] })
-    return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(error)}`)
+    return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(errorCode)}`)
   }
 
   const storedState = getCookie(c, STATE_COOKIE)
