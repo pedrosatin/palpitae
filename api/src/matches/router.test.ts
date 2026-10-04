@@ -1,3 +1,4 @@
+import type { ExecutionContext } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { matchesRouter } from './router'
@@ -542,7 +543,7 @@ describe('matches router – GET /', () => {
         waitUntil: vi.fn(),
         passThroughOnException: vi.fn(),
         props: {},
-      } as any)
+      } as unknown as ExecutionContext)
 
       expect(response.status).toBe(500)
       const body = await response.json()
@@ -581,7 +582,7 @@ describe('matches router – GET /', () => {
         waitUntil: vi.fn(),
         passThroughOnException: vi.fn(),
         props: {},
-      } as any)
+      } as unknown as ExecutionContext)
 
       expect(response.status).toBe(403)
       const body = await response.json()
@@ -612,7 +613,7 @@ describe('matches router – GET /', () => {
         waitUntil: vi.fn(),
         passThroughOnException: vi.fn(),
         props: {},
-      } as any)
+      } as unknown as ExecutionContext)
 
       expect(response.status).toBe(400)
       const body = await response.json()
@@ -643,7 +644,7 @@ describe('matches router – GET /', () => {
         waitUntil: vi.fn(),
         passThroughOnException: vi.fn(),
         props: {},
-      } as any)
+      } as unknown as ExecutionContext)
 
       expect(response.status).toBe(400)
       const body = await response.json()
@@ -674,7 +675,7 @@ describe('matches router – GET /', () => {
         waitUntil: vi.fn(),
         passThroughOnException: vi.fn(),
         props: {},
-      } as any)
+      } as unknown as ExecutionContext)
 
       expect(response.status).toBe(400)
       const body = await response.json()
@@ -705,7 +706,7 @@ describe('matches router – GET /', () => {
         waitUntil: vi.fn(),
         passThroughOnException: vi.fn(),
         props: {},
-      } as any)
+      } as unknown as ExecutionContext)
 
       expect(response.status).toBe(500)
       const body = await response.json()
@@ -744,7 +745,7 @@ describe('matches router – GET /', () => {
         waitUntil: vi.fn(),
         passThroughOnException: vi.fn(),
         props: {},
-      } as any)
+      } as unknown as ExecutionContext)
 
       expect(response.status).toBe(200)
       const body = await response.json()
