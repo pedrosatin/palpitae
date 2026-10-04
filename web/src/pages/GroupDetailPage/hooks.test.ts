@@ -300,7 +300,7 @@ describe('useGroupTabs', () => {
   })
 
   it('falls back to default if standings tab is requested but group competition is not league', () => {
-    const nonLeagueGroup = { ...mockGroup, competition_type: 'cup' as any }
+    const nonLeagueGroup: GroupDetail = { ...mockGroup, competition_type: 'cup' }
     const { result } = renderHook(() => useGroupTabs(nonLeagueGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/?tab=standings'] }, children),
