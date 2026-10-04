@@ -8,6 +8,11 @@ describe('sqlLiteral', () => {
     expect(sqlLiteral("O''Brien")).toBe("'O''''Brien'")
   })
 
+  it('emite booleanos como 1 ou 0', () => {
+    expect(sqlLiteral(true)).toBe('1')
+    expect(sqlLiteral(false)).toBe('0')
+  })
+
   it('trata null e undefined como NULL', () => {
     expect(sqlLiteral(null)).toBe('NULL')
     expect(sqlLiteral(undefined)).toBe('NULL')
@@ -74,5 +79,10 @@ describe('SqlCollector', () => {
     const collector = new SqlCollector()
     collector.prepare('DELETE FROM t')
     expect(collector.toSql()).toContain('DELETE FROM t;')
+  })
+
+  it('implementa batch() como no-op para satisfazer interface', async () => {
+    const collector = new SqlCollector()
+    await expect(collector.batch()).resolves.toBeUndefined()
   })
 })
