@@ -154,11 +154,12 @@ export async function scoreUnprocessedMatches(
   const matchIds = unscored.results.map((m) => m.id)
   const CHUNK_SIZE = 90 // Safe limit under 100 for D1 IN clauses
 
+  const fetchPromises = []
   for (let i = 0; i < matchIds.length; i += CHUNK_SIZE) {
     const chunkIds = matchIds.slice(i, i + CHUNK_SIZE)
     const placeholders = chunkIds.map(() => '?').join(',')
 
-    const chunkPredictions = await db
+    const chunkPromise = db
       .prepare(
         `SELECT p.id, p.match_id, p.group_id, p.user_id,
                 p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner,
@@ -170,6 +171,11 @@ export async function scoreUnprocessedMatches(
       .bind(...chunkIds)
       .all<(typeof allPredictions)[number]>()
 
+    fetchPromises.push(chunkPromise)
+  }
+
+  const chunkResults = await Promise.all(fetchPromises)
+  for (const chunkPredictions of chunkResults) {
     allPredictions.push(...chunkPredictions.results)
   }
 
