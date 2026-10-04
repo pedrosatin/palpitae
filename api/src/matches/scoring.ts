@@ -89,6 +89,14 @@ async function recalculateLeaderboards(groupIds: string[], db: D1Database): Prom
       .bind(row.group_id, row.user_id, row.total_points, row.exact_hits, now),
   )
 
+  await runStatementBatches(db, statements)
+}
+
+/** Run D1 statements in parallel chunks of 100 (D1 batch limit). */
+async function runStatementBatches(
+  db: D1Database,
+  statements: ReturnType<D1Database['prepare']>[],
+): Promise<void> {
   const batches = []
   for (let i = 0; i < statements.length; i += 100) {
     const chunk = statements.slice(i, i + 100)
@@ -222,12 +230,7 @@ export async function scoreUnprocessedMatches(
   }
 
   // 6. Execute updates in chunks of 100 to avoid D1 limits
-  const batches = []
-  for (let i = 0; i < statements.length; i += 100) {
-    const chunk = statements.slice(i, i + 100)
-    batches.push(db.batch(chunk))
-  }
-  await Promise.all(batches)
+  await runStatementBatches(db, statements)
 
   // 7. Deduplicated recalculate leaderboard
   await recalculateLeaderboards(Array.from(affectedGroups), db)
