@@ -181,7 +181,7 @@ describe('auth router', () => {
     )
     expect(res.status).toBe(302)
     const location = res.headers.get('Location')
-    expect(location).toBe('http://localhost:5173?auth_error=unknown_error')
+    expect(location).toBe('http://localhost:5173?auth_error=other')
   })
 
   it('callback redirects with session_expired if cookies are missing', async () => {

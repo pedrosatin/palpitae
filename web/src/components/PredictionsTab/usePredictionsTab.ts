@@ -1,6 +1,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
 import { fetchCachedJson } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
@@ -138,62 +139,6 @@ function usePredictionsImport(
   }
 }
 
-function usePredictionsRounds(
-  matches: Match[],
-  roundIndex: number,
-  setRoundIndex: Dispatch<SetStateAction<number>>,
-) {
-  // Group matches by round
-  const rounds = new Map<string, Match[]>()
-  for (const m of matches) {
-    const key = m.round
-    if (!rounds.has(key)) rounds.set(key, [])
-    rounds.get(key)!.push(m)
-  }
-
-  const roundKeys = Array.from(rounds.keys())
-  const labelFor = (r: string) => rounds.get(r)?.[0]?.round_label ?? r
-
-  // Rodadas com jogo adiado. Elas ficam fora do default_round (a API escolhe a
-  // primeira rodada com jogo futuro, e um adiado guarda o horário original, que
-  // já passou), então o palpite reaberto ficaria invisível sem um marcador —
-  // o usuário abre na rodada seguinte e não tem como saber que ainda dá pra
-  // editar aqueles jogos. Ver ADR-013.
-  const postponedByRound = new Map<string, number>()
-  for (const [round, roundList] of rounds) {
-    const count = roundList.filter((m) => Boolean(m.postponed)).length
-    if (count > 0) postponedByRound.set(round, count)
-  }
-  const safeIndex = Math.min(roundIndex, roundKeys.length - 1)
-  const selectedRound = roundKeys[safeIndex]
-  const roundMatches = rounds.get(selectedRound) ?? []
-
-  function prev() {
-    trackEvent('click_predictions_rodada_anterior', {
-      round: roundKeys[Math.max(0, safeIndex - 1)],
-    })
-    setRoundIndex((i) => Math.max(0, i - 1))
-  }
-
-  function next() {
-    trackEvent('click_predictions_proxima_rodada', {
-      round: roundKeys[Math.min(roundKeys.length - 1, safeIndex + 1)],
-    })
-    setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
-  }
-
-  return {
-    roundKeys,
-    safeIndex,
-    selectedRound,
-    roundMatches,
-    labelFor,
-    postponedByRound,
-    prev,
-    next,
-  }
-}
-
 export function usePredictionsTab(groupId: string, competitionId: string) {
   const { matches, predictions, setPredictions, loading, error, roundIndex, setRoundIndex } =
     usePredictionsFetch(groupId, competitionId)
@@ -216,7 +161,10 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     postponedByRound,
     prev,
     next,
-  } = usePredictionsRounds(matches, roundIndex, setRoundIndex)
+  } = useMatchRounds(matches, roundIndex, setRoundIndex, {
+    prev: 'click_predictions_rodada_anterior',
+    next: 'click_predictions_proxima_rodada',
+  })
 
   const {
     savingAll,
