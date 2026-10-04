@@ -6,7 +6,7 @@ import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
 // Re-exported for backwards compatibility with consumers importing from './MatchCard'.
 export { OUTCOMES }
-export type { Match, Prediction, Outcome }
+export type { Match, Prediction }
 
 interface MatchCardProps {
   match: Match

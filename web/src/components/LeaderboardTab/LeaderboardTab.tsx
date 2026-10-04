@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
-import { config } from '../../config'
+import { useCallback, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
-import { apiFetch } from '../../lib/api'
+import { useGroupMembers } from '../../hooks/useGroupMembers'
 import ErrorState from '../ErrorState'
 import PredictionsModal from './PredictionsModal'
 import styles from './LeaderboardTab.module.css'
@@ -13,24 +12,8 @@ interface LeaderboardTabProps {
 }
 
 export default function LeaderboardTab({ groupId, currentUserId }: LeaderboardTabProps) {
-  const [members, setMembers] = useState<Member[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
+  const { members, loading, error } = useGroupMembers(groupId)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
-
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    apiFetch(`${config.apiUrl}/groups/${groupId}/members`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar membros')
-        return r.json() as Promise<{ members: Member[] }>
-      })
-      .then((data) => setMembers(data.members))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [groupId])
 
   const openMemberModal = useCallback((member: Member) => {
     trackEvent('click_leaderboard_ver_palpites')
