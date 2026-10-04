@@ -1,12 +1,6 @@
-export interface Member {
-  user_id: string
-  display_name: string
-  avatar_url: string | null
-  role: string
-  joined_at: string
-  total_points: number
-  exact_hits: number
-}
+import type { GroupMember } from '../../hooks/useGroupMembers'
+
+export type Member = GroupMember
 
 export interface UserPrediction {
   match_id: string

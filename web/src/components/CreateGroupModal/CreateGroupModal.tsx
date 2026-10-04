@@ -9,8 +9,6 @@ import VisibilityField from './components/VisibilityField'
 import { useCreateGroupForm } from './hooks/useCreateGroupForm'
 import type { CreatedGroup } from './types'
 
-export type { Competition, CreatedGroup } from './types'
-
 interface CreateGroupModalProps {
   isOpen: boolean
   onClose: () => void
