@@ -433,8 +433,14 @@ function mapMatchUpsertRow(
   }
 }
 
-const MATCH_UPSERT_SQL = `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, phase, round, group_name, duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const MATCH_UPSERT_SQL = `INSERT INTO matches (
+       id, competition_id, external_id, provider, home_team_id, away_team_id,
+       start_time, status, home_score, away_score, phase, round, group_name,
+       duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed
+     )
+     VALUES (
+       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+     )
      ON CONFLICT (external_id, provider) DO UPDATE SET
        status             = excluded.status,
        postponed          = excluded.postponed,
