@@ -636,6 +636,9 @@ function buildBulkPutStatements(
   const invalidPenalty: string[] = []
   const statements: D1PreparedStatement[] = []
 
+  // Cache to avoid re-parsing the penalty_phases JSON string on every prediction loop iteration.
+  const penaltyPhasesCache = new Map<string, string[]>()
+
   const insertStmt = db.prepare(
     `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -664,7 +667,12 @@ function buildBulkPutStatements(
     // Same penalty validation as PUT /: required for a draw in an eligible phase,
     // nulled out otherwise.
     const isDraw = home === away
-    const eligible = matchGoesToPenalties(parsePenaltyPhases(info.penalty_phases), info.phase)
+    let parsedPhases = penaltyPhasesCache.get(info.penalty_phases)
+    if (!parsedPhases) {
+      parsedPhases = parsePenaltyPhases(info.penalty_phases)
+      penaltyPhasesCache.set(info.penalty_phases, parsedPhases)
+    }
+    const eligible = matchGoesToPenalties(parsedPhases, info.phase)
     let penaltyWinner: 'home' | 'away' | null = null
 
     if (isDraw && eligible) {
