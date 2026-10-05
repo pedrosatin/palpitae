@@ -1,18 +1,23 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Mock the two collaborators — pollActiveMatches only orchestrates them.
+// Mock the three collaborators — pollActiveMatches only orchestrates them.
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
 vi.mock('./scoring', () => ({
   scoreUnprocessedMatches: vi.fn(async () => undefined),
 }))
+vi.mock('./espnFallback', () => ({
+  scoreWindowFromEspn: vi.fn(async () => new Map<string, number>()),
+}))
 
+import { scoreWindowFromEspn } from './espnFallback'
 import { pollActiveMatches } from './poller'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
 const syncFixturesMock = vi.mocked(syncFixtures)
 const scoreMock = vi.mocked(scoreUnprocessedMatches)
+const espnFallbackMock = vi.mocked(scoreWindowFromEspn)
 
 type ActiveRow = {
   comp_id: string
@@ -71,10 +76,12 @@ describe('pollActiveMatches', () => {
   beforeEach(() => {
     syncFixturesMock.mockReset()
     scoreMock.mockReset()
+    espnFallbackMock.mockReset()
     // Restore the happy-path defaults from the vi.mock factory after the reset,
     // so a persistent mockRejectedValue in one test can't leak into the next.
     syncFixturesMock.mockResolvedValue(undefined as never)
     scoreMock.mockResolvedValue(undefined)
+    espnFallbackMock.mockResolvedValue(new Map<string, number>())
   })
 
   it('does nothing when no matches are in the active window', async () => {
@@ -189,6 +196,65 @@ describe('pollActiveMatches', () => {
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
     expect(scoreMock).not.toHaveBeenCalled()
+  })
+
+  it('runs the ESPN results fallback for competitions whose sync failed', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('API down'))
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'BSA', season: '2026', round: '30' }])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key')
+
+    expect(espnFallbackMock).toHaveBeenCalledTimes(1)
+    expect(espnFallbackMock).toHaveBeenCalledWith(
+      db,
+      undefined,
+      ['c1'],
+      expect.objectContaining({ now: expect.any(Number) }),
+    )
+  })
+
+  it('does not run the fallback when every sync succeeds', async () => {
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'BSA', season: '2026', round: '30' }])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key')
+
+    expect(espnFallbackMock).not.toHaveBeenCalled()
+  })
+
+  it('scores a competition the fallback rescued (fallback updated ≥1 match)', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('API down'))
+    espnFallbackMock.mockResolvedValue(new Map([['c1', 2]]))
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'BSA', season: '2026', round: '30' }])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key')
+
+    expect(scoreMock).toHaveBeenCalledTimes(1)
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+  })
+
+  it('does not score a competition the fallback could not rescue (0 updates)', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('API down'))
+    espnFallbackMock.mockResolvedValue(new Map([['c1', 0]]))
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'BSA', season: '2026', round: '30' }])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key')
+
+    expect(scoreMock).not.toHaveBeenCalled()
+  })
+
+  it('a fallback rejection never breaks the poller', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('API down'))
+    espnFallbackMock.mockRejectedValue(new Error('ESPN down too'))
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'BSA', season: '2026', round: '30' }])
+
+    await expect(pollActiveMatches(db as unknown as D1Database, 'key')).resolves.not.toThrow()
+    expect(scoreMock).not.toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[poller] Fallback ESPN falhou:',
+      expect.objectContaining({ message: 'ESPN down too' }),
+    )
+    consoleSpy.mockRestore()
   })
 
   it('returns success: false with err when syncFixtures fails', async () => {

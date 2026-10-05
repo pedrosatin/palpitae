@@ -20,6 +20,8 @@ export type EventType =
   | 'poller_run'
   | 'fixture_discovery_run'
   | 'football_api_error'
+  // Fallback de resultados via ESPN (ADR-016)
+  | 'match_results_fallback'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'
