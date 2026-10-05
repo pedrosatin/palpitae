@@ -6,8 +6,10 @@ import * as miniflare from 'miniflare'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   API_TIMEOUT_MS,
+  API_CACHE_TTL_S,
   buildInviteMeta,
   fetchInvitePreview,
+  isPreviewCrawler,
   normalizeInviteCode,
 } from '../../functions/convite/[code]'
 
@@ -33,8 +35,41 @@ describe('normalizeInviteCode', () => {
     expect(normalizeInviteCode(['ABCD-EF23'])).toBe('ABCD-EF23')
   })
 
-  it.each([undefined, '', 'ABC', 'ABCDEFGH', 'ABCD-EF2<', '../../etc'])('rejects %s', (raw) => {
-    expect(normalizeInviteCode(raw)).toBeNull()
+  it.each([undefined, '', 'ABC', 'ABCDEFGH', 'ABCD-EF2<', '../../etc', 'ABCD-EF01', 'IOAB-CD23'])(
+    'rejects %s',
+    (raw) => {
+      expect(normalizeInviteCode(raw)).toBeNull()
+    },
+  )
+})
+
+describe('isPreviewCrawler', () => {
+  it.each([
+    'WhatsApp/2.23.20.0 A',
+    'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+    'Mozilla/5.0 (compatible; Twitterbot/1.0)',
+    'TelegramBot (like TwitterBot)',
+    'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)',
+    'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)',
+    'LinkedInBot/1.0 (compatible; Mozilla/5.0)',
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Applebot/0.1',
+    'Mozilla/5.0 (compatible; Embedly/0.2)',
+    'SkypeUriPreview Preview/0.5',
+    'Iframely/1.3.1 (+https://iframely.com/docs/about)',
+    'Mozilla/5.0 (compatible; SomeNewBot/1.0)',
+  ])('detects %s', (ua) => {
+    expect(isPreviewCrawler(ua)).toBe(true)
+  })
+
+  it.each([
+    null,
+    '',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0',
+  ])('treats %s as a person', (ua) => {
+    expect(isPreviewCrawler(ua)).toBe(false)
   })
 })
 
@@ -47,7 +82,7 @@ describe('buildInviteMeta', () => {
         memberCount: 7,
       }),
     ).toEqual({
-      title: 'Entre no bolão Os Craques no Palpitae',
+      title: 'Entra no bolão "Os Craques" no Palpitae',
       description: 'Brasileirão 2026 · 7 participantes · grátis, sem apostas',
     })
   })
@@ -71,7 +106,10 @@ describe('fetchInvitePreview', () => {
 
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://api.test/public/invites/ABCD-EF23',
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        cf: { cacheTtl: API_CACHE_TTL_S, cacheEverything: true },
+      }),
     )
     expect(preview).toEqual({
       groupName: 'Os Craques',
@@ -187,9 +225,15 @@ describe('onRequest (workerd)', () => {
     await mf?.dispose()
   })
 
-  async function get(path: string) {
+  const WHATSAPP_UA = 'WhatsApp/2.23.20.0 A'
+  const BROWSER_UA =
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+
+  async function get(path: string, userAgent: string = WHATSAPP_UA) {
     apiCalls.length = 0
-    const res = await mf.dispatchFetch(`https://palpitae.com.br${path}`)
+    const res = await mf.dispatchFetch(`https://palpitae.com.br${path}`, {
+      headers: { 'User-Agent': userAgent },
+    })
     return { res, html: await res.text() }
   }
 
@@ -205,16 +249,16 @@ describe('onRequest (workerd)', () => {
 
     expect(res.status).toBe(200)
     expect(apiCalls).toEqual(['https://api.test/public/invites/ABCD-EF23'])
-    const title = 'Entre no bolão Os Craques no Palpitae'
+    const title = 'Entra no bolão "Os Craques" no Palpitae'
     const description = 'Brasileirão 2026 · 7 participantes · grátis, sem apostas'
     expect(html).toContain(`<title>${title}</title>`)
     expect(metaContent(html, 'name', 'description')).toBe(description)
-    expect(metaContent(html, 'property', 'og:title')).toBe(title)
+    expect(metaContent(html, 'property', 'og:title')).toBe(title.replaceAll('"', '&quot;'))
     expect(metaContent(html, 'property', 'og:description')).toBe(description)
     expect(metaContent(html, 'property', 'og:url')).toBe(
       'https://palpitae.com.br/convite/ABCD-EF23',
     )
-    expect(metaContent(html, 'name', 'twitter:title')).toBe(title)
+    expect(metaContent(html, 'name', 'twitter:title')).toBe(title.replaceAll('"', '&quot;'))
     expect(metaContent(html, 'name', 'twitter:description')).toBe(description)
     // Imagem continua a genérica.
     expect(metaContent(html, 'property', 'og:image')).toBe('https://palpitae.com.br/og-image.png')
@@ -246,10 +290,10 @@ describe('onRequest (workerd)', () => {
     // virar &quot;. Fora dos atributos, nenhuma tag nova pode aparecer.
     expect(html.replace(/content="[^"]*"/g, '')).not.toContain('<script>x</script>')
     expect(html).toContain(
-      '<title>Entre no bolão &lt;script&gt;x&lt;/script&gt;" no Palpitae</title>',
+      '<title>Entra no bolão "&lt;script&gt;x&lt;/script&gt;"" no Palpitae</title>',
     )
     expect(metaContent(html, 'property', 'og:title')).toBe(
-      'Entre no bolão <script>x</script>&quot; no Palpitae',
+      'Entra no bolão &quot;<script>x</script>&quot;&quot; no Palpitae',
     )
   })
 
@@ -284,6 +328,19 @@ describe('onRequest (workerd)', () => {
     expect(Date.now() - started).toBeLessThan(API_TIMEOUT_MS + 900)
     expect(html).toContain(`<title>${GENERIC_TITLE}</title>`)
   }, 10_000)
+
+  it('serves a person the original HTML without calling the API (still noindex)', async () => {
+    apiHandler = () => apiJson(OK_BODY)
+
+    const { res, html } = await get('/convite/ABCD-EF23', BROWSER_UA)
+
+    expect(res.status).toBe(200)
+    expect(apiCalls).toEqual([])
+    expect(html).toContain(`<title>${GENERIC_TITLE}</title>`)
+    expect(metaContent(html, 'property', 'og:title')).toBe(GENERIC_TITLE)
+    expect(metaContent(html, 'name', 'robots')).toBe('noindex')
+    expect(res.headers.get('X-Robots-Tag')).toBe('noindex')
+  })
 
   it('does not call the API for a malformed code', async () => {
     apiHandler = () => apiJson(OK_BODY)

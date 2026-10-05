@@ -87,17 +87,24 @@ describe('GET /public/invites/:code', () => {
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=60')
   })
 
-  it.each(['ABC', 'ABCDEFGH', 'ABCD_EF23', "ABCD-EF2'", 'ABCD-EF23-XX', '%27%20OR%201%3D1'])(
-    'rejects malformed code %s with 404 without querying the database',
-    async (code) => {
-      const { db, prepare } = createDbMock(VALID)
+  it.each([
+    'ABC',
+    'ABCDEFGH',
+    'ABCD_EF23',
+    "ABCD-EF2'",
+    'ABCD-EF23-XX',
+    '%27%20OR%201%3D1',
+    // Fora do alfabeto do gerador (sem I, O, 0 e 1).
+    'ABCD-EF01',
+    'IOAB-CD23',
+  ])('rejects malformed code %s with 404 without querying the database', async (code) => {
+    const { db, prepare } = createDbMock(VALID)
 
-      const res = await request(`/public/invites/${code}`, db)
+    const res = await request(`/public/invites/${code}`, db)
 
-      expect(res.status).toBe(404)
-      expect(prepare).not.toHaveBeenCalled()
-    },
-  )
+    expect(res.status).toBe(404)
+    expect(prepare).not.toHaveBeenCalled()
+  })
 
   it('falls back to null competition and numeric member count', async () => {
     const { db } = createDbMock({

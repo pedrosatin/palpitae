@@ -45,7 +45,7 @@ app.route('/matches', matchesRouter)
 app.route('/predictions', predictionsRouter)
 app.route('/notifications', notificationsRouter)
 app.route('/metrics', metricsRouter)
-// Sem autenticação: só dados que quem tem o link já poderia ver (ver public/router.ts).
+// Rotas sem autenticação. Devolvem só o que quem tem o link já vê (ver public/router.ts).
 app.route('/public', publicRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))

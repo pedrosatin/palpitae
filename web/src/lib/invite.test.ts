@@ -35,7 +35,18 @@ describe('parseInviteCode', () => {
     ['https://palpitae.com.br/convite/ABCD-EF23/', 'ABCD-EF23'],
     ['https://palpitae.com.br/?convite=abcd-ef23', 'ABCD-EF23'],
     ['https://palpitae.com.br?convite=ABCD-EF23', 'ABCD-EF23'],
+    // Link sem https://, que o new URL() não aceita.
+    ['palpitae.com.br/convite/abcd-ef23', 'ABCD-EF23'],
+    // Mensagem do WhatsApp colada inteira: vale a última ocorrência.
+    [
+      'Entra no meu bolão "WXYZ-2345" no Palpitae: https://palpitae.com.br/convite/abcd-ef23',
+      'ABCD-EF23',
+    ],
   ])('extracts %s → %s', (raw, expected) => {
     expect(parseInviteCode(raw)).toBe(expected)
+  })
+
+  it('keeps unknown text as typed, in upper case', () => {
+    expect(parseInviteCode('codigo-errado')).toBe('CODIGO-ERRADO')
   })
 })

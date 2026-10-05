@@ -88,13 +88,15 @@ recomendados do GA4.
 
 | Evento | Disparo | Params |
 |---|---|---|
-| `login` | volta do OAuth com sessão válida, só quando a aba saiu por "Entrar com Google" (marca em `sessionStorage`, consumida no `/auth/me`) | `{ method }` (`google`) |
+| `login` | Volta do OAuth com sessão válida. O clique em "Entrar com Google" grava uma marca no `sessionStorage`, e o `/auth/me` a consome. | `{ method }` (`google`) |
 | `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
-| `join_group` | `POST /groups/join` respondeu 200 (dispara junto com o `submit_entrar_grupo`, que segue para manter o histórico) | `{ source, group_id }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado) |
+| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ source, group_id }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado ou colado no modal) |
 
 O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
 `web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo) e a SPA
 redireciona para `/?convite=<CODE>`. Links antigos com `?convite=` continuam funcionando.
+Só crawlers de preview (pelo `User-Agent`) disparam a busca em `GET /public/invites/:code`,
+cacheada por 5 min no edge. Visitas de pessoas não chamam a API nem contam como evento.
 
 Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 

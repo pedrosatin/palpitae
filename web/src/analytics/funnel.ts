@@ -36,7 +36,7 @@ export function markLoginStarted(): void {
   try {
     sessionStorage.setItem(LOGIN_PENDING_KEY, 'google')
   } catch {
-    // Storage indisponível: o evento de login se perde, o login não.
+    // Sem sessionStorage, o login segue normal e o evento `login` não é enviado.
   }
 }
 

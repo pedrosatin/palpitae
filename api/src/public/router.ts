@@ -7,13 +7,13 @@ import type { AppContext } from '../types'
  */
 const router = new Hono<AppContext>()
 
-// Formato gerado por `generateInviteCode` (groups/router.ts): XXXX-XXXX. Validar
-// antes de consultar evita bater no D1 com lixo e limita o que um scanner pode
-// testar por requisição.
-const INVITE_CODE_RE = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/
+// Formato e alfabeto de `generateInviteCode` (groups/router.ts): XXXX-XXXX sem
+// I, O, 0 e 1. Validar antes de consultar evita bater no D1 com lixo e limita o
+// que um scanner pode testar por requisição.
+const INVITE_CODE_RE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/
 
-// Cache curto: o preview do convite tolera dados com alguns minutos de atraso, e
-// o cache na borda segura picos de crawler (WhatsApp, Telegram) sem chegar ao D1.
+// O preview tolera dados com até 5 min de atraso. A Function busca esta rota com
+// cacheTtl de 5 min no edge, então picos de crawler não chegam ao D1.
 const CACHE_OK = 'public, max-age=300'
 const CACHE_MISS = 'public, max-age=60'
 
