@@ -124,6 +124,13 @@ npm run build
 The `dist/` output, together with the Pages functions under `web/functions/`,
 is deployed to Cloudflare Pages via Wrangler.
 
+## Contributing
+
+Found a bug or have a suggestion? Open an issue at
+[github.com/pedrosatin/palpitae/issues](https://github.com/pedrosatin/palpitae/issues).
+
+Criado por [@pedrosatin](https://github.com/pedrosatin)
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
