@@ -1,20 +1,23 @@
 import { useState } from 'react'
+import { trackShareInvite } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
+import { buildInviteMessage } from '../../lib/invite'
 import styles from './ShareButtons.module.css'
 
 interface ShareButtonsProps {
-  /** URL do convite já pronta (ex: origin?convite=ABC). */
+  /** URL do convite já pronta (ex: origin/convite/ABCD-EF23, ver lib/invite). */
   shareLink: string
   /**
    * Prefixo do contexto para os eventos de clique (GA4).
    * Ex: 'group_detail' → dispara click_group_detail_compartilhar etc.
+   * Também vai como `context` no evento `share_invite`.
    */
   eventContext: string
-  /** Frase que acompanha o link no WhatsApp / X. */
+  /** Frase que acompanha o link no WhatsApp / X (ver buildInviteMessage). */
   message?: string
 }
 
-const DEFAULT_MESSAGE = 'Bora palpitar? Entra no meu bolão no Palpitae:'
+const DEFAULT_MESSAGE = buildInviteMessage()
 
 /**
  * Botões de compartilhamento do link de convite.
@@ -44,6 +47,7 @@ export default function ShareButtons({
   async function copyLinkFallback() {
     try {
       await navigator.clipboard.writeText(shareLink)
+      trackShareInvite('copy_link', eventContext)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -56,6 +60,7 @@ export default function ShareButtons({
     if (canWebShare) {
       try {
         await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
+        trackShareInvite('native', eventContext)
       } catch (err) {
         // Cancelar o menu (AbortError) é no-op. Qualquer outra falha (permissão,
         // contexto não-seguro...) cai para copiar o link, senão o usuário fica sem nada.
@@ -70,6 +75,9 @@ export default function ShareButtons({
 
   function openExternal(url: string, action: 'whatsapp' | 'twitter') {
     trackEvent(`click_${eventContext}_${action}`)
+    // Não há como saber se a mensagem foi enviada; abrir o app com o texto
+    // pronto é o mais perto de "compartilhou" que o navegador deixa medir.
+    trackShareInvite(action, eventContext)
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 

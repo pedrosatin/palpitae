@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { trackLoginIfPending } from './analytics/funnel'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
 import LandingPage from './pages/LandingPage'
@@ -27,6 +28,18 @@ const AdminMetricsPage = lazy(() => import('./pages/AdminMetricsPage'))
 // Radar de competições (admin) — inteligência de produto: o que está rolando no
 // futebol e quanto o público brasileiro se interessa. Mesmo gate na API.
 const AdminRadarPage = lazy(() => import('./pages/AdminRadarPage'))
+
+/**
+ * `/convite/:code` é o link compartilhado (a Pages Function de mesmo caminho
+ * cuida do preview no WhatsApp). Na SPA ele vira `/?convite=CODE`, que já leva
+ * ao fluxo de entrada: o Dashboard abre o modal com o código, e a landing
+ * preserva a query no login com Google para o modal abrir na volta.
+ */
+function InviteRedirect() {
+  const { code = '' } = useParams()
+  const search = code ? `?${new URLSearchParams({ convite: code })}` : ''
+  return <Navigate to={`/${search}`} replace />
+}
 
 /**
  * Represents an authenticated user's basic profile.
@@ -82,7 +95,11 @@ function setKnownSession(known: boolean) {
  * `scripts/prerender.mjs`). Nesse caso o primeiro render PRECISA ser a landing,
  * senão a hidratação diverge do HTML e o React remonta a página inteira.
  */
-export default function App({ landingPrerenderizada = false }: { landingPrerenderizada?: boolean }) {
+export default function App({
+  landingPrerenderizada = false,
+}: {
+  landingPrerenderizada?: boolean
+}) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
 
@@ -102,12 +119,17 @@ export default function App({ landingPrerenderizada = false }: { landingPrerende
           setUser(data.user)
           setStatus('authenticated')
           setKnownSession(true)
+          trackLoginIfPending(true)
         } else {
           setStatus('unauthenticated')
           setKnownSession(false)
+          trackLoginIfPending(false)
         }
       })
-      .catch(() => setStatus('unauthenticated'))
+      .catch(() => {
+        setStatus('unauthenticated')
+        trackLoginIfPending(false)
+      })
   }, [])
 
   // Any apiFetch call that hits a 401 broadcasts this event. Drop auth state so the
@@ -149,6 +171,7 @@ export default function App({ landingPrerenderizada = false }: { landingPrerende
       <Suspense fallback={null}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/convite/:code" element={<InviteRedirect />} />
           {/* Durante o loading não sabemos ainda se estas rotas são do
               visitante ou de um usuário logado, então elas não pintam nada. */}
           <Route path="/entrar" element={paintLandingEarly ? null : <LoginPage />} />
@@ -161,6 +184,7 @@ export default function App({ landingPrerenderizada = false }: { landingPrerende
     <Suspense fallback={null}>
       <Routes>
         <Route path="/" element={<DashboardPage user={user!} onLogout={handleLogout} />} />
+        <Route path="/convite/:code" element={<InviteRedirect />} />
         <Route
           path="/grupos/:groupId"
           element={<GroupDetailPage user={user!} onLogout={handleLogout} />}

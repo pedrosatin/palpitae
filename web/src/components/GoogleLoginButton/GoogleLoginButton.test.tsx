@@ -41,4 +41,13 @@ describe('GoogleLoginButton – analytics', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_login_google')
   })
+
+  it('marks the tab so the App can count the completed login on return', async () => {
+    sessionStorage.clear()
+    render(<GoogleLoginButton />)
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
+    expect(sessionStorage.getItem('palpitae:login-pendente')).toBe('google')
+    // O evento `login` só sai na volta, com a sessão confirmada.
+    expect(mockTrackEvent).not.toHaveBeenCalledWith('login', expect.anything())
+  })
 })
