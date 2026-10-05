@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { secureHeaders } from 'hono/secure-headers'
 import { authRouter } from './auth/router'
 import { competitionsRouter } from './competitions/router'
 import { groupsRouter } from './groups/router'
@@ -23,6 +24,8 @@ const ROUND_REMINDER_CRON = '0 10 * * *'
 const FIXTURE_DISCOVERY_CRON = '0 6 * * *'
 
 const app = new Hono<AppContext>()
+
+app.use('*', secureHeaders())
 
 app.use(
   '*',

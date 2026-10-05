@@ -106,7 +106,8 @@ authRouter.get('/callback', async (c) => {
   const codeVerifier = getCookie(c, VERIFIER_COOKIE)
 
   // Clear temp cookies regardless of outcome
-  const clearOpts = { path: '/' }
+  const domain = cookieDomain(c.env.BASE_URL)
+  const clearOpts = { path: '/', ...(domain && { domain }) }
   deleteCookie(c, STATE_COOKIE, clearOpts)
   deleteCookie(c, NONCE_COOKIE, clearOpts)
   deleteCookie(c, VERIFIER_COOKIE, clearOpts)
@@ -178,7 +179,8 @@ authRouter.get('/callback', async (c) => {
 
 // POST /auth/logout
 authRouter.post('/logout', (c) => {
-  deleteCookie(c, SESSION_COOKIE, { path: '/' })
+  const domain = cookieDomain(c.env.BASE_URL)
+  deleteCookie(c, SESSION_COOKIE, { path: '/', ...(domain && { domain }) })
   return c.json({ ok: true })
 })
 
