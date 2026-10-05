@@ -1,15 +1,16 @@
 /**
  * Coleta do radar de competições, fora do Worker.
  *
- * Roda no GitHub Actions (ver `.github/workflows/radar-sync.yml`) porque a
- * API-Football aplica rate limit por IP e os IPs de saída dos Cloudflare
- * Workers são compartilhados — do Worker a primeira chamada do dia já volta
- * 429 com a quota intacta. Ver ADR-014.
+ * Roda no GitHub Actions (ver `.github/workflows/radar-sync.yml`) por escolha
+ * de arquitetura: o modelo "script gera SQL + wrangler aplica" mantém as
+ * credenciais separadas — quem escreve no D1 é só o wrangler, com o token que
+ * o CI já usa para deploy e migrações. O provedor da coleta (ESPN) não tem
+ * chave nem política por IP, então nada impede que um dia volte a rodar dentro
+ * do Worker; o motivo original (rate limit por IP da API-Football, ADR-014)
+ * deixou de existir com a troca de provedor (ADR-015).
  *
  * Não escreve no banco: gera o `.sql` que o workflow aplica com
- * `wrangler d1 execute --remote --file`. Assim a única credencial que este
- * script precisa é a da API-Football; o acesso ao D1 continua sendo do
- * wrangler, com o token que o CI já usa para deploy e migrações.
+ * `wrangler d1 execute --remote --file`.
  *
  * Uso: tsx scripts/radarSync.ts <arquivo-de-saída.sql>
  */
@@ -24,17 +25,11 @@ if (!outputPath) {
   process.exit(1)
 }
 
-const apiKey = process.env.API_FOOTBALL_KEY
-if (!apiKey) {
-  console.error('API_FOOTBALL_KEY não definida.')
-  process.exit(1)
-}
-
 const collector = new SqlCollector()
 
-// O mesmo syncRadar que rodava no cron do Worker, sem alteração: o coletor
-// implementa a fatia da interface do D1 que ele usa.
-await syncRadar(collector as never, apiKey)
+// O mesmo syncRadar de sempre, sem alteração: o coletor implementa a fatia da
+// interface do D1 que ele usa.
+await syncRadar(collector as never)
 
 if (collector.size === 0) {
   // Sem statements = a coleta falhou (a própria syncRadar já logou o motivo).

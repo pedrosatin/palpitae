@@ -305,7 +305,8 @@ Payment records. One per group creation (admin pays).
 Snapshot diário do radar de competições (migration 0014, ADR-014). **Fora do
 domínio do produto**: nada aqui alimenta grupos, jogos ou palpites — é insumo do
 dashboard admin `/admin/oportunidades`, e por isso não tem FK para
-`competitions`. Escrito pelo cron `radar/sync.ts`.
+`competitions`. Escrito pelo sync diário do radar (`radar/sync.ts`, coletado no
+GitHub Actions e aplicado via wrangler — ADR-015).
 
 `competition_radar` — uma linha por (provider, competição, temporada):
 
@@ -313,7 +314,7 @@ dashboard admin `/admin/oportunidades`, e por isso não tem FK para
 | ------------- | ---------- | ------------------------------------------------------------ |
 | `id`          | TEXT PK    | Determinístico: `provider:external_id:season`                 |
 | `sport`       | TEXT       | `football` hoje; a tabela já nasce multi-esporte              |
-| `provider`    | TEXT       | `api-football` (não é o provider do produto)                  |
+| `provider`    | TEXT       | `espn` (não é o provider do produto; ver ADR-015)             |
 | `external_id` | TEXT       | Id da liga no provider                                        |
 | `name`        | TEXT       | Nome no provider (`CONMEBOL Libertadores`)                    |
 | `country`     | TEXT       | `World` para torneios internacionais                          |
