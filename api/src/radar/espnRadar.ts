@@ -68,6 +68,7 @@ export const ESPN_LEAGUES: EspnLeagueRef[] = [
   { slug: 'uefa.europa', name: 'UEFA Europa League', country: 'World', type: 'Cup' },
   { slug: 'uefa.europa.conf', name: 'UEFA Europa Conference League', country: 'World', type: 'Cup' },
   { slug: 'uefa.euro', name: 'Euro Championship', country: 'World', type: 'Cup' },
+  { slug: 'uefa.nations', name: 'UEFA Nations League', country: 'World', type: 'Cup' },
   // Seleções
   { slug: 'fifa.world', name: 'World Cup', country: 'World', type: 'Cup' },
   {
