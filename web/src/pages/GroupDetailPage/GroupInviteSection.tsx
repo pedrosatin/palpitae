@@ -1,24 +1,29 @@
 import { useState } from 'react'
+import { trackShareInvite } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import Button from '../../components/Button'
 import ShareButtons from '../../components/ShareButtons'
+import { buildInviteLink, buildInviteMessage } from '../../lib/invite'
 import styles from './GroupDetailPage.module.css'
 import shared from '../../components/modal-shared.module.css'
 
 interface GroupInviteSectionProps {
   inviteCode: string
+  /** Nome do grupo, usado na mensagem que acompanha o link. */
+  groupName?: string
 }
 
-function GroupInviteSection({ inviteCode }: GroupInviteSectionProps) {
+function GroupInviteSection({ inviteCode, groupName }: GroupInviteSectionProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function getShareLink() {
-    return `${window.location.origin}?convite=${inviteCode}`
+    return buildInviteLink(inviteCode)
   }
 
   async function copyCode() {
     await navigator.clipboard.writeText(inviteCode)
     trackEvent('click_group_detail_copiar_codigo')
+    trackShareInvite('copy_code', 'group_detail')
     setCopied('code')
     setTimeout(() => setCopied(null), 2000)
   }
@@ -26,6 +31,7 @@ function GroupInviteSection({ inviteCode }: GroupInviteSectionProps) {
   async function copyLink() {
     await navigator.clipboard.writeText(getShareLink())
     trackEvent('click_group_detail_copiar_link')
+    trackShareInvite('copy_link', 'group_detail')
     setCopied('link')
     setTimeout(() => setCopied(null), 2000)
   }
@@ -53,7 +59,11 @@ function GroupInviteSection({ inviteCode }: GroupInviteSectionProps) {
           </div>
         </div>
       </div>
-      <ShareButtons shareLink={getShareLink()} eventContext="group_detail" />
+      <ShareButtons
+        shareLink={getShareLink()}
+        eventContext="group_detail"
+        message={buildInviteMessage(groupName)}
+      />
     </div>
   )
 }

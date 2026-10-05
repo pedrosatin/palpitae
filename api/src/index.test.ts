@@ -92,3 +92,12 @@ describe('scheduled handler routing', () => {
     expect(discoverFixtures).not.toHaveBeenCalled()
   })
 })
+
+describe('public routes', () => {
+  it('mounts the invite preview under /public without requiring auth', async () => {
+    const res = await worker.fetch(new Request('https://api.test/public/invites/nope'), env, ctx)
+
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'Convite não encontrado' })
+  })
+})

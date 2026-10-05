@@ -27,6 +27,29 @@
     <script>
       // Roda antes de o body ser parseado — o #root ainda nem existe aqui.
       ;(function () {
+        // O link de convite /convite/CODE vira /?convite=CODE já aqui, antes do
+        // primeiro paint. Assim o convite segue a regra de "/" (landing
+        // pré-renderizada para visitante novo, dashboard para sessão conhecida)
+        // sem esperar o bundle. O InviteRedirect do App.tsx continua como rede
+        // de segurança. Testado em src/indexHtml.test.ts.
+        var convite = location.pathname.match(/^\/convite\/([A-Za-z0-9-]+)\/?$/)
+        if (convite) {
+          try {
+            var resto = new URLSearchParams(location.search)
+            resto.delete('convite')
+            var extra = resto.toString()
+            history.replaceState(
+              null,
+              '',
+              '/?convite=' +
+                encodeURIComponent(convite[1]) +
+                (extra ? '&' + extra : '') +
+                location.hash,
+            )
+          } catch (e) {
+            // Sem history API: o InviteRedirect resolve depois que o React montar.
+          }
+        }
         var landing = location.pathname === '/'
         try {
           // Mesma chave escrita por src/App.tsx (KNOWN_SESSION_KEY).

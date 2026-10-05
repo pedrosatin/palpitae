@@ -1,10 +1,20 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import * as ga from './analytics/ga'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
+
+vi.mock('./analytics/ga', () => ({ trackEvent: vi.fn() }))
+const mockTrackEvent = vi.mocked(ga.trackEvent)
+
+/** Mostra a URL atual, para conferir redirecionamentos client-side. */
+function LocationProbe() {
+  const location = useLocation()
+  return <span data-testid="location">{location.pathname + location.search}</span>
+}
 
 // Mock page components
 vi.mock('./pages/LandingPage', () => ({
@@ -39,12 +49,111 @@ describe('App', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)
     localStorage.clear()
+    sessionStorage.clear()
+    mockTrackEvent.mockClear()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  it('sends a visitor on /convite/:code to the landing with ?convite=CODE', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ authenticated: false }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/convite/ABCD-EF23']}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('location')).toHaveTextContent('/?convite=ABCD-EF23')
+  })
+
+  it('sends a logged-in user on /convite/:code to the dashboard with ?convite=CODE', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/convite/ABCD-EF23']}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dashboard-page')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('location')).toHaveTextContent('/?convite=ABCD-EF23')
+  })
+
+  it('tracks login once when returning from the Google sign-in with a session', async () => {
+    sessionStorage.setItem('palpitae:login-pendente', 'google')
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(mockTrackEvent).toHaveBeenCalledWith('login', { method: 'google' })
+    })
+    expect(mockTrackEvent).toHaveBeenCalledTimes(1)
+    expect(sessionStorage.getItem('palpitae:login-pendente')).toBeNull()
+  })
+
+  it('does not track login for a session restored without a sign-in click', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ user: { id: '1', email: 'test@example.com' } }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dashboard-page')).toBeInTheDocument()
+    })
+    expect(mockTrackEvent).not.toHaveBeenCalledWith('login', expect.anything())
+  })
+
+  it('clears the pending login without tracking when the sign-in failed', async () => {
+    sessionStorage.setItem('palpitae:login-pendente', 'google')
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ authenticated: false }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+    })
+    expect(mockTrackEvent).not.toHaveBeenCalledWith('login', expect.anything())
+    expect(sessionStorage.getItem('palpitae:login-pendente')).toBeNull()
   })
 
   it('renders nothing on private routes while authentication state is loading', () => {
@@ -69,7 +178,7 @@ describe('App', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App landingPrerenderizada />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     expect(screen.getByTestId('landing-page')).toBeInTheDocument()
@@ -98,7 +207,7 @@ describe('App', () => {
     const { unmount } = render(
       <MemoryRouter initialEntries={['/']}>
         <App />
-      </MemoryRouter>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {

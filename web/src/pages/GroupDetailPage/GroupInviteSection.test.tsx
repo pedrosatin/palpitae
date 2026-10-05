@@ -9,14 +9,17 @@ vi.mock('../../analytics/ga', () => ({
 }))
 
 vi.mock('../../components/ShareButtons', () => ({
-  default: ({ shareLink }: { shareLink: string }) => (
-    <div data-testid="share-buttons">{shareLink}</div>
+  default: ({ shareLink, message }: { shareLink: string; message?: string }) => (
+    <div data-testid="share-buttons" data-message={message}>
+      {shareLink}
+    </div>
   ),
 }))
 
 describe('GroupInviteSection', () => {
   const defaultProps = {
     inviteCode: 'TEST1234',
+    groupName: 'Os Craques',
   }
 
   beforeEach(() => {
@@ -40,10 +43,14 @@ describe('GroupInviteSection', () => {
     expect(screen.getByText('Convidar membros')).toBeInTheDocument()
     expect(screen.getByText('TEST1234')).toBeInTheDocument()
 
-    const expectedLink = `${window.location.origin}?convite=TEST1234`
+    const expectedLink = `${window.location.origin}/convite/TEST1234`
     const linkElements = screen.getAllByText(expectedLink)
     expect(linkElements.length).toBeGreaterThan(0)
     expect(screen.getByTestId('share-buttons')).toHaveTextContent(expectedLink)
+    expect(screen.getByTestId('share-buttons')).toHaveAttribute(
+      'data-message',
+      'Entra no meu bolão "Os Craques" no Palpitae:',
+    )
   })
 
   it('copies invite code and tracks event', async () => {
@@ -58,6 +65,10 @@ describe('GroupInviteSection', () => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('TEST1234')
     })
     expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_copiar_codigo')
+    expect(ga.trackEvent).toHaveBeenCalledWith('share_invite', {
+      method: 'copy_code',
+      context: 'group_detail',
+    })
 
     expect(screen.getByRole('button', { name: 'Copiado!' })).toBeInTheDocument()
 
@@ -79,11 +90,15 @@ describe('GroupInviteSection', () => {
       fireEvent.click(copyLinkButton)
     })
 
-    const expectedLink = `${window.location.origin}?convite=TEST1234`
+    const expectedLink = `${window.location.origin}/convite/TEST1234`
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expectedLink)
     })
     expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_copiar_link')
+    expect(ga.trackEvent).toHaveBeenCalledWith('share_invite', {
+      method: 'copy_link',
+      context: 'group_detail',
+    })
 
     expect(screen.getByRole('button', { name: 'Copiado!' })).toBeInTheDocument()
 

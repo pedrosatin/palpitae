@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { config } from '../../config'
+import { trackJoinGroup } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
+import { parseInviteCode } from '../../lib/invite'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './JoinGroupModal.module.css'
@@ -18,18 +20,6 @@ interface JoinGroupModalProps {
   onJoined: (group: JoinedGroup) => void
   /** Pre-fill the invite code (e.g. from a share link) */
   initialCode?: string
-}
-
-/** Normalise the code — strip the share link if someone pastes it */
-function normaliseCode(raw: string): string {
-  try {
-    const url = new URL(raw)
-    const param = url.searchParams.get('convite')
-    if (param) return param.toUpperCase()
-  } catch {
-    // not a URL — fall through
-  }
-  return raw.trim().toUpperCase()
 }
 
 export default function JoinGroupModal({
@@ -60,7 +50,7 @@ export default function JoinGroupModal({
     setError(null)
     setSubmitting(true)
 
-    const invite_code = normaliseCode(code)
+    const invite_code = parseInviteCode(code)
 
     try {
       const res = await apiFetch(`${config.apiUrl}/groups/join`, {
@@ -77,6 +67,10 @@ export default function JoinGroupModal({
       }
 
       trackEvent('submit_entrar_grupo')
+      // Veio pelo link quando o código enviado é o mesmo que chegou na URL;
+      // se o usuário apagou e digitou outro, conta como código.
+      const fromLink = initialCode !== '' && parseInviteCode(initialCode) === invite_code
+      trackJoinGroup(fromLink ? 'convite_link' : 'codigo', data.group!.id)
       setJoined(data.group!)
       onJoined(data.group!)
     } catch {

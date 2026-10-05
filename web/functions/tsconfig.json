@@ -1,0 +1,6 @@
+{
+  // Type-check das Pages Functions (npm run type-check). O tsconfig do app
+  // inclui só src/; as Functions declaram localmente os tipos do runtime.
+  "extends": "../tsconfig.json",
+  "include": ["."]
+}

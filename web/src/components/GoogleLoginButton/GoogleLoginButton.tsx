@@ -1,4 +1,5 @@
 import { config } from '../../config'
+import { markLoginStarted } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import styles from './GoogleLoginButton.module.css'
 
@@ -15,6 +16,7 @@ import styles from './GoogleLoginButton.module.css'
 export default function GoogleLoginButton() {
   function handleClick() {
     trackEvent('click_login_google')
+    markLoginStarted()
     const redirect =
       window.location.search || window.location.pathname !== '/' ? window.location.search : ''
     const url = new URL(`${config.authUrl}/auth/google`)

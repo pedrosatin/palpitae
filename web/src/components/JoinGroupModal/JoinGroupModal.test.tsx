@@ -116,4 +116,68 @@ describe('JoinGroupModal', () => {
       expect(body.invite_code).toBe('ABC-123')
     })
   })
+
+  it('extracts the code from the new /convite/CODE link', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: { id: 'g1', name: 'Group 1' } }),
+    } as Response)
+
+    render(<JoinGroupModal {...defaultProps} />)
+    await userEvent.type(screen.getByRole('textbox'), 'https://palpitae.com.br/convite/abcd-ef23')
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    await waitFor(() => {
+      const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
+      expect(body.invite_code).toBe('ABCD-EF23')
+    })
+  })
+
+  it('tracks join_group with source convite_link when the code came from the link', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: { id: 'g1', name: 'Group 1' } }),
+    } as Response)
+
+    render(<JoinGroupModal {...defaultProps} initialCode="abcd-ef23" />)
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    await waitFor(() => {
+      expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
+        source: 'convite_link',
+        group_id: 'g1',
+      })
+    })
+  })
+
+  it('tracks join_group with source codigo when the code was typed', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ group: { id: 'g2', name: 'Group 2' } }),
+    } as Response)
+
+    render(<JoinGroupModal {...defaultProps} />)
+    await userEvent.type(screen.getByRole('textbox'), 'ABCD-EF23')
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    await waitFor(() => {
+      expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
+        source: 'codigo',
+        group_id: 'g2',
+      })
+    })
+  })
+
+  it('does not track join_group when the API refuses the code', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: false,
+      json: async () => ({ error: 'Código de convite inválido' }),
+    } as Response)
+
+    render(<JoinGroupModal {...defaultProps} initialCode="ABCD-EF23" />)
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    await screen.findByText('Código de convite inválido')
+    expect(mockTrackEvent).not.toHaveBeenCalledWith('join_group', expect.anything())
+  })
 })
