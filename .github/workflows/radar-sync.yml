@@ -2,15 +2,11 @@ name: Radar Sync
 
 # Coleta diária do radar de competições (/admin/oportunidades).
 #
-# Roda aqui, e não num Cron Trigger do Worker, porque a API-Football aplica
-# rate limit POR IP e os IPs de saída dos Cloudflare Workers são compartilhados
-# por milhares de clientes: do Worker a primeira chamada do dia já volta 429
-# com a quota da conta intacta (2/100), enquanto de um runner do GitHub a mesma
-# chamada devolve 200. Ver ADR-014.
-#
-# O script só gera SQL; quem escreve no D1 é o wrangler, com o mesmo token que
-# o CI já usa para deploy e migrações — a chave da API-Football nunca toca no
-# Cloudflare e o token do Cloudflare nunca toca na API-Football.
+# Hoje o provedor é a ESPN (sem chave, sem política por IP — ADR-015), então
+# não é mais rate limit que impede rodar no Worker. Continua no Actions por
+# escolha de arquitetura (herdada da ADR-014): o script só gera SQL, e quem
+# escreve no D1 é o wrangler, com o mesmo token que o CI já usa para deploy e
+# migrações. Nenhuma credencial de coleta existe — só a do Cloudflare.
 
 on:
   schedule:
@@ -51,8 +47,6 @@ jobs:
 
       - name: Coletar oferta e interesse
         run: npx tsx scripts/radarSync.ts radar.sql
-        env:
-          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
 
       - name: Aplicar snapshot no D1
         run: npx wrangler d1 execute palpitae --remote --config ./wrangler.toml --file=radar.sql
