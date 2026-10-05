@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import GoogleLoginButton from '../../components/GoogleLoginButton'
 import { trackEvent } from '../../analytics/ga'
 import styles from './LandingPage.module.css'
+import { LANDING_GUIDE_LINKS } from './guideLinks'
 
 /**
  * Public landing page — the marketing/preview face of Palpitae shown to
@@ -22,6 +23,7 @@ export default function LandingPage() {
         <Features />
         <Scoring />
         <Faq />
+        <Guides />
         <Cta />
       </main>
       <Footer />
@@ -212,9 +214,44 @@ function Faq() {
         />
         <FaqItem
           q="Quais campeonatos tem no Palpitae?"
-          a="Brasileirão Série A 2026 e Copa do Mundo 2026. Você pode criar um grupo para cada campeonato, e novos torneios serão adicionados."
+          a="Hoje o Palpitae tem o Brasileirão Série A 2026. A Copa do Mundo 2026 também teve bolões no app e já terminou. Cada grupo acompanha um campeonato."
         />
       </dl>
+    </section>
+  )
+}
+
+/**
+ * Links para os guias estáticos (/guias/*). São páginas fora da SPA, então usam
+ * <a> nativo: o react-router não tem essas rotas.
+ */
+function Guides() {
+  return (
+    <section id="guias" className={styles.guides} aria-labelledby="guias-titulo">
+      <h2 id="guias-titulo" className={styles.sectionTitle}>
+        Guias para montar seu bolão
+      </h2>
+      <ul className={styles.guideList}>
+        {LANDING_GUIDE_LINKS.map((g) => (
+          <li key={g.slug} className={styles.guideItem}>
+            <a
+              href={`/guias/${g.slug}/`}
+              className={styles.guideLink}
+              onClick={() => trackEvent('click_landing_guia', { guia: g.slug })}
+            >
+              {g.label}
+            </a>
+            <p className={styles.guideDesc}>{g.description}</p>
+          </li>
+        ))}
+      </ul>
+      <a
+        href="/guias/"
+        className={styles.guidesAll}
+        onClick={() => trackEvent('click_landing_guias')}
+      >
+        Ver todos os guias de bolão
+      </a>
     </section>
   )
 }

@@ -6,7 +6,7 @@
  * no auth gate. Crawlers don't execute JS (see context-seo.md / ADR-006), so
  * the only way a content page reliably indexes is as a real .html file. Each
  * guide is emitted at /guias/<slug>/index.html, plus an index at /guias/, and
- * every URL is added to sitemap.xml.
+ * every URL is added to sitemap.xml and to /llms.txt.
  *
  * On Cloudflare Pages static assets are served before the SPA fallback in
  * _redirects (`/* /index.html 200`), so these files win over the React app.
@@ -16,6 +16,8 @@ import type { Connect, Plugin } from 'vite'
 import { analyticsHead, consentBanner, CONSENT_CSS, normalizeGaId } from './analytics'
 
 const SITE_URL = 'https://palpitae.com.br'
+/** Shared 1200x630 social image: og:image and the Article `image`. */
+const OG_IMAGE_URL = `${SITE_URL}/og-image.png`
 /** Where the CTAs send visitors: the login page (Google sign-in → create pool). */
 const LOGIN_PATH = '/entrar'
 
@@ -58,13 +60,25 @@ interface Guide {
    * JSON-LD so search engines and answer engines can quote it.
    */
   faq?: GuideFaq[]
-  /** ISO date (YYYY-MM-DD) for sitemap <lastmod> and Article dates. */
+  /**
+   * ISO date (YYYY-MM-DD) the guide first went live: Article `datePublished`.
+   * Fixed forever. Taken from the commit on main that introduced the slug
+   * (`git log --reverse --format=%as -S "slug: '<slug>'" -- web/build/guides.ts`).
+   * A new guide uses the date of the commit that adds it.
+   */
+  published: string
+  /**
+   * ISO date (YYYY-MM-DD) of the last content edit: sitemap <lastmod> and
+   * Article `dateModified`. Bump it whenever the guide's text changes; never
+   * earlier than `published`.
+   */
   updated: string
 }
 
 /**
- * The evergreen guide catalog. Topics are intentionally timeless (no "2026" in
- * the body) so they keep ranking across seasons and tournaments. Add new guides
+ * The evergreen guide catalog. Topics are intentionally timeless so they keep
+ * ranking across seasons and tournaments: a specific edition (e.g. "Copa do
+ * Mundo 2026") only appears in the past tense, never as the current season. Add new guides
  * here and they flow into the HTML output and the sitemap automatically.
  */
 export const guides: Guide[] = [
@@ -107,6 +121,7 @@ export const guides: Guide[] = [
         ],
       },
     ],
+    published: '2026-06-20',
     updated: '2026-06-20',
   },
   {
@@ -148,6 +163,7 @@ export const guides: Guide[] = [
         ],
       },
     ],
+    published: '2026-06-20',
     updated: '2026-10-04',
   },
   {
@@ -177,7 +193,9 @@ export const guides: Guide[] = [
       {
         heading: 'Casos especiais: prorrogação e pênaltis',
         body: [
-          'Defina antes se o palpite vale pelo placar do tempo normal ou incluindo a prorrogação. O mais comum é considerar os 90 minutos para o placar e, no mata-mata, usar quem se classificou para a fase seguinte.',
+          'Defina antes se o palpite vale pelo placar dos 90 minutos ou pelo placar ao fim da prorrogação. Os dois formatos aparecem em bolões.',
+          'No Palpitae vale o placar ao fim da prorrogação, somando tempo normal e prorrogação, sem os gols da disputa de pênaltis. Um jogo que termina 1 a 1 depois dos 120 minutos e vai para os pênaltis conta como empate de 1 a 1 para o palpite.',
+          'Nas fases de jogo único que o campeonato decide nos pênaltis, quem palpitou empate também escolhe quem vence a disputa. Acertar o vencedor dá um bônus de 1 ponto por padrão, e quem cria o grupo pode ajustar esse valor de 0 a 10. Errar o vencedor dos pênaltis não tira pontos do palpite.',
           'Combinar isso no início evita discussão quando um jogo for decidido nos pênaltis.',
         ],
       },
@@ -189,7 +207,8 @@ export const guides: Guide[] = [
         ],
       },
     ],
-    updated: '2026-06-20',
+    published: '2026-06-20',
+    updated: '2026-10-05',
   },
   {
     slug: 'bolao-do-brasileirao',
@@ -247,6 +266,7 @@ export const guides: Guide[] = [
           'No Palpitae, jogo adiado não trava o palpite. Ele continua aberto para edição até a nova data e só pontua quando a partida acontece.',
       },
     ],
+    published: '2026-07-12',
     updated: '2026-10-04',
   },
   {
@@ -276,19 +296,21 @@ export const guides: Guide[] = [
       {
         heading: 'Como pontuar no mata-mata',
         body: [
-          'No mata-mata o jogo pode ir para prorrogação e pênaltis. O mais comum é considerar o placar dos 90 minutos para definir se o palpite foi de placar exato ou só de resultado, independente de prorrogação.',
+          'No mata-mata o jogo pode ir para prorrogação e pênaltis. Combine antes se o palpite vale pelo placar dos 90 minutos ou pelo placar ao fim da prorrogação. No Palpitae vale o placar ao fim da prorrogação, sem os gols da disputa de pênaltis. Um 2 a 2 depois de 120 minutos conta como empate de 2 a 2.',
+          'Nos jogos eliminatórios de partida única, quem palpitou empate no Palpitae também escolhe quem vence nos pênaltis. Acertar dá um bônus de 1 ponto por padrão, e quem cria o grupo pode ajustar esse valor de 0 a 10.',
           'Alguns grupos dão mais pontos nas fases finais, já que os jogos ficam mais decisivos. Uma opção simples: manter a pontuação igual em todas as fases e fazer as semifinais e a final valerem em dobro. Cria tensão no fim sem complicar as regras.',
         ],
       },
       {
-        heading: 'Monte seu bolão da Copa no Palpitae',
+        heading: 'Bolão da Copa no Palpitae',
         body: [
           'No Palpitae você cria um grupo privado gratuito e convida os amigos por link. Cada um dá seus palpites antes de cada jogo, e a pontuação é calculada automaticamente a cada resultado. A classificação do grupo atualiza sozinha.',
-          'O Palpitae suporta a Copa do Mundo com fase de grupos e chaveamento completo do mata-mata. Dá para acompanhar quem está na frente e comparar os palpites com os amigos rodada a rodada.',
+          'A Copa do Mundo 2026 teve bolões no Palpitae, com fase de grupos, chaveamento do mata-mata e palpite de pênaltis, e já terminou. Hoje o campeonato com jogos em andamento no app é o Brasileirão Série A.',
         ],
       },
     ],
-    updated: '2026-07-26',
+    published: '2026-08-02',
+    updated: '2026-10-05',
   },
   {
     slug: 'bolao-de-empresa',
@@ -366,7 +388,8 @@ export const guides: Guide[] = [
           'Não, e o Palpitae não movimenta dinheiro. O app registra palpites e calcula pontos. Qualquer prêmio fica por conta do grupo, e em empresa os prêmios simbólicos evitam cobrança e conflito com regras internas.',
       },
     ],
-    updated: '2026-10-04',
+    published: '2026-10-05',
+    updated: '2026-10-05',
   },
   {
     slug: 'bolao-online-gratis',
@@ -430,7 +453,7 @@ export const guides: Guide[] = [
       {
         question: 'Quais campeonatos estão disponíveis?',
         answer:
-          'O Palpitae cobre o Brasileirão Série A e a Copa do Mundo. Ao criar o grupo, o app mostra os campeonatos disponíveis naquele momento.',
+          'Hoje o Palpitae tem o Brasileirão Série A 2026. A Copa do Mundo 2026 também teve bolões no app e já terminou.',
       },
       {
         question: 'Dá para mudar o palpite depois de enviado?',
@@ -438,7 +461,8 @@ export const guides: Guide[] = [
           'Sim, até o horário de início do jogo. Depois disso o palpite trava e não pode mais ser alterado.',
       },
     ],
-    updated: '2026-10-04',
+    published: '2026-10-05',
+    updated: '2026-10-05',
   },
   {
     slug: 'planilha-de-bolao',
@@ -506,7 +530,8 @@ export const guides: Guide[] = [
           'Depende do app. No Palpitae, criar grupos, convidar participantes e acompanhar a classificação é gratuito.',
       },
     ],
-    updated: '2026-10-04',
+    published: '2026-10-05',
+    updated: '2026-10-05',
   },
   {
     slug: 'dicas-para-acertar-palpites',
@@ -579,7 +604,8 @@ export const guides: Guide[] = [
           'Depende da configuração do grupo. No Palpitae, quem cria o grupo escolhe se os palpites aparecem em tempo real ou ficam ocultos até você registrar o seu palpite naquele jogo. Depois que a partida começa, todos ficam visíveis.',
       },
     ],
-    updated: '2026-10-04',
+    published: '2026-10-05',
+    updated: '2026-10-05',
   },
 ]
 
@@ -661,7 +687,7 @@ function head(
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:url" content="${canonical}" />
     <meta property="og:locale" content="pt_BR" />
-    <meta property="og:image" content="${SITE_URL}/og-image.png" />
+    <meta property="og:image" content="${OG_IMAGE_URL}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="theme-color" content="#0d0d0d" />
@@ -716,8 +742,9 @@ export function renderGuide(g: Guide, gaId = ''): string {
     headline: g.title,
     description: g.description,
     inLanguage: 'pt-BR',
-    datePublished: g.updated,
+    datePublished: g.published,
     dateModified: g.updated,
+    image: OG_IMAGE_URL,
     mainEntityOfPage: `${SITE_URL}${path}`,
     author: { '@type': 'Organization', name: 'Palpitae' },
     publisher: {
@@ -828,6 +855,62 @@ ${head(path, 'Guias de bolão de futebol', 'Guias para organizar bolão de futeb
 }
 
 /**
+ * Render /llms.txt (https://llmstxt.org): a Markdown summary of the site for
+ * answer engines. The guide list comes from the catalog above, so a new guide
+ * shows up here without touching this function. Text is PT-BR, like the site.
+ */
+export function renderLlmsTxt(): string {
+  const guideLines = guides
+    .map((g) => `- [${g.title}](${SITE_URL}${guidePath(g.slug)}): ${g.description}`)
+    .join('\n')
+  return `# Palpitae
+
+> Palpitae é um app web gratuito de bolão de futebol entre amigos. Você cria um
+> grupo privado, dá palpites de placar rodada a rodada e acompanha a
+> classificação do grupo. Funciona no navegador do celular ou do computador,
+> com login pela conta Google.
+
+## Resumo
+
+- O Palpitae é um app de bolão de futebol gratuito. Criar grupo, palpitar e ver a classificação não custa nada.
+- O Palpitae não é casa de apostas. O app não recebe depósitos, não usa odds e não paga prêmios em dinheiro.
+- Cada bolão é um grupo privado de até 50 pessoas, e só entra quem recebe o link ou o código de convite.
+- O campeonato com jogos em andamento no Palpitae é o Brasileirão Série A 2026. A Copa do Mundo 2026 também teve bolões no app e já terminou.
+- A pontuação padrão dá 3 pontos pelo placar exato e 1 ponto pelo resultado, e quem cria o grupo pode mudar esses valores.
+
+## Campeonatos
+
+- Brasileirão Série A 2026, em pontos corridos, com 20 times e 38 rodadas ao longo da temporada.
+- Copa do Mundo 2026, encerrada. Os grupos criados para ela continuam com a classificação final.
+
+## Como funciona
+
+- Crie um grupo privado e convide amigos por link ou código.
+- Dê seus palpites de placar até o horário de início de cada jogo.
+- Os resultados entram automaticamente e a classificação do grupo é recalculada a cada partida.
+- No mata-mata vale o placar ao fim da prorrogação, sem os gols da disputa de pênaltis.
+- Em fases de jogo único decididas nos pênaltis, quem palpitou empate escolhe o vencedor da disputa e ganha um bônus se acertar. O bônus vale 1 ponto por padrão e pode ser ajustado de 0 a 10.
+
+## Guias
+
+${guideLines}
+
+## Links
+
+- [Site oficial](${SITE_URL}/): página inicial com apresentação e perguntas frequentes.
+- [Guias de bolão](${SITE_URL}/guias/): índice de todos os guias.
+- [Sitemap](${SITE_URL}/sitemap.xml): URLs públicas indexáveis.
+- [robots.txt](${SITE_URL}/robots.txt): regras de rastreamento.
+
+## Observações
+
+- Páginas públicas indexáveis: \`/\` (página inicial) e \`/guias/*\` (guias de bolão).
+- As telas de grupos, palpites e painel exigem login e não são indexáveis.
+- Idioma: português do Brasil (pt-BR).
+`
+}
+
+/**
  * Render the static 404 page. Cloudflare Pages serves /404.html (with a real 404
  * status) for any URL not matched by a static asset or a _redirects rule. It's
  * `noindex` so a crawler that lands on a stale link doesn't index an error page.
@@ -882,6 +965,11 @@ export function guidesPlugin(): Plugin {
   // config.env, so production builds get the id and local dev stays GA-free.
   let gaId = ''
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
+    if ((req.originalUrl ?? '').split('?')[0] === '/llms.txt') {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      res.end(renderLlmsTxt())
+      return
+    }
     const html = guideHtmlFor(req.originalUrl ?? '', gaId)
     if (html === null) return next()
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -913,6 +1001,12 @@ export function guidesPlugin(): Plugin {
           source: renderGuide(g, gaId),
         })
       }
+      // /llms.txt lists every guide, so it is generated from the same catalog.
+      this.emitFile({
+        type: 'asset',
+        fileName: 'llms.txt',
+        source: renderLlmsTxt(),
+      })
       // Static 404 page served by Cloudflare Pages for unmatched URLs.
       this.emitFile({
         type: 'asset',

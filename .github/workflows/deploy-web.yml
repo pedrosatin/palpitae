@@ -70,3 +70,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Avisa os buscadores do IndexNow (Bing, Yandex) que as URLs do sitemap
+      # mudaram. Roda depois do deploy de produção, com o sitemap já publicado.
+      # Falha aqui não derruba o deploy.
+      - name: Notify IndexNow
+        continue-on-error: true
+        run: node scripts/indexnow.mjs

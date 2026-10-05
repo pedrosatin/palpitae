@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { LANDING_GUIDE_LINKS } from '../src/pages/LandingPage/guideLinks'
 import { normalizeGaId } from './analytics'
-import { guides, renderGuide, renderIndex } from './guides'
+import { guides, renderGuide, renderIndex, renderLlmsTxt } from './guides'
+import { extractLocs, HOST, KEY, KEY_LOCATION } from '../scripts/indexnow.mjs'
 
 const GA_ID = 'G-TEST123'
 const CONSENT_KEY = 'palpitae:analytics-consent'
@@ -69,6 +72,111 @@ describe('guide catalog', () => {
   it('lists every guide on the /guias/ index', () => {
     const html = renderIndex()
     for (const g of guides) expect(html).toContain(`href="/guias/${g.slug}/"`)
+  })
+  it('separates published from updated, with published never after updated', () => {
+    for (const g of guides) {
+      expect(g.published).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(g.published <= g.updated, g.slug).toBe(true)
+    }
+  })
+
+  it('emits an Article with datePublished <= dateModified and an absolute image', () => {
+    for (const g of guides) {
+      const article = jsonLdBlocks(renderGuide(g)).find((o) => o['@type'] === 'Article')
+      expect(article).toBeDefined()
+      expect(article!.datePublished).toBe(g.published)
+      expect(article!.dateModified).toBe(g.updated)
+      expect((article!.datePublished as string) <= (article!.dateModified as string)).toBe(true)
+      expect(article!.image).toBe('https://palpitae.com.br/og-image.png')
+    }
+  })
+})
+
+describe('llms.txt', () => {
+  it('lists every guide as a Markdown link with absolute URL and summary', () => {
+    const txt = renderLlmsTxt()
+    for (const g of guides) {
+      expect(txt).toContain(
+        `- [${g.title}](https://palpitae.com.br/guias/${g.slug}/): ${g.description}`,
+      )
+    }
+  })
+
+  it('states what Palpitae is and is not', () => {
+    const txt = renderLlmsTxt()
+    expect(txt).toContain('gratuito')
+    expect(txt).toContain('não é casa de apostas')
+    expect(txt).toContain('grupo privado')
+    expect(txt).toContain('Brasileirão Série A')
+    expect(txt).not.toMatch(/maio|dezembro/i)
+  })
+})
+
+describe('landing guide links', () => {
+  it('points only to guides that exist in the catalog', () => {
+    const slugs = new Set(guides.map((g) => g.slug))
+    expect(LANDING_GUIDE_LINKS.length).toBeGreaterThanOrEqual(3)
+    for (const link of LANDING_GUIDE_LINKS) expect(slugs.has(link.slug), link.slug).toBe(true)
+  })
+})
+
+/**
+ * A Copa do Mundo 2026 terminou. Texto público que cita essa edição precisa
+ * estar no passado, e nenhum texto pode apresentar a Copa como campeonato
+ * disponível no app.
+ */
+describe('Copa do Mundo 2026 no passado', () => {
+  const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
+  const catalogText = guides
+    .flatMap((g) => [
+      g.title,
+      g.teaser,
+      g.description,
+      g.intro,
+      ...g.sections.flatMap((s) => [s.heading, ...s.body]),
+      ...(g.faq ?? []).flatMap((f) => [f.question, f.answer]),
+    ])
+    .join('\n')
+  const sources: [string, string][] = [
+    ['guides catalog', catalogText],
+    ['llms.txt', renderLlmsTxt()],
+    ['index.html', read('../index.html')],
+    ['LandingPage.tsx', read('../src/pages/LandingPage/LandingPage.tsx')],
+    ['site.webmanifest', read('../public/site.webmanifest')],
+  ]
+
+  it.each(sources)('%s não trata a Copa 2026 como atual', (_name, text) => {
+    const sentences = text.split(/(?<=[.!?])\s+|\n/)
+    for (const sentence of sentences) {
+      if (/Copa( do Mundo)? 2026/.test(sentence)) {
+        expect(sentence, sentence).toMatch(/terminou|encerrad/)
+      }
+      expect(sentence, sentence).not.toMatch(
+        /(Palpitae|app)\b[^.]*\b(cobre|suporta|tem)\b[^.]*Copa/i,
+      )
+      expect(sentence, sentence).not.toMatch(/Copa[^.]*(disponíve(l|is)|em andamento)/i)
+    }
+  })
+})
+
+describe('IndexNow', () => {
+  it('publishes the key file with the key as its only content', () => {
+    expect(KEY).toMatch(/^[0-9a-f]{32}$/)
+    // Caminho numa variável: o Vite reescreve `new URL(`...${x}`, import.meta.url)`
+    // literal como import de asset, e a leitura apontaria para outro lugar.
+    const keyFile = `../public/${KEY}.txt`
+    expect(readFileSync(new URL(keyFile, import.meta.url), 'utf8').trim()).toBe(KEY)
+    expect(KEY_LOCATION).toBe(`https://${HOST}/${KEY}.txt`)
+  })
+
+  it('extracts unique same-host <loc> URLs from the sitemap', () => {
+    const xml = `<urlset>
+      <url><loc>https://palpitae.com.br/</loc></url>
+      <url><loc> https://palpitae.com.br/guias/ </loc></url>
+      <url><loc>https://palpitae.com.br/</loc></url>
+      <url><loc>https://outro.example/</loc></url>
+    </urlset>`
+    expect(extractLocs(xml)).toEqual(['https://palpitae.com.br/', 'https://palpitae.com.br/guias/'])
   })
 })
 
