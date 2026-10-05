@@ -207,6 +207,10 @@ function Faq() {
           a="Não. O Palpitae funciona direto no navegador, no celular ou no computador."
         />
         <FaqItem
+          q="O Palpitae é site de apostas?"
+          a="Não. O Palpitae é um bolão de palpites entre amigos e não envolve dinheiro. Ninguém deposita, aposta ou recebe prêmio pelo app."
+        />
+        <FaqItem
           q="Quais campeonatos tem no Palpitae?"
           a="Brasileirão Série A 2026 e Copa do Mundo 2026. Você pode criar um grupo para cada campeonato, e novos torneios serão adicionados."
         />
