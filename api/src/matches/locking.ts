@@ -15,7 +15,7 @@
 
 /** Fragmento SQL. Consome UM parâmetro posicional: o `now` em ISO 8601. */
 export function lockedSql(alias = 'm'): string {
-  return `(${alias}.start_time <= ? AND ${alias}.postponed = 0)`
+  return `(${alias}.status IN ('live', 'finished') OR (${alias}.start_time <= ? AND ${alias}.postponed = 0))`
 }
 
 /**
@@ -24,10 +24,12 @@ export function lockedSql(alias = 'm'): string {
  * Compara com `!== 1` (e não `=== 0`) de propósito: fail-closed. Se a coluna vier
  * ausente/nula por qualquer motivo, o jogo é tratado como NÃO adiado e o lock
  * normal por horário continua valendo. O contrário deixaria a escrita aberta.
+ * Se o jogo já estiver ao vivo ('live') ou encerrado ('finished'), trava imediatamente.
  */
 export function isMatchLocked(
-  match: { start_time: string; postponed?: number | null },
+  match: { start_time: string; status?: string | null; postponed?: number | null },
   now: string,
 ): boolean {
+  if (match.status === 'live' || match.status === 'finished') return true
   return match.postponed !== 1 && new Date(now).getTime() >= new Date(match.start_time).getTime()
 }

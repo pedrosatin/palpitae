@@ -308,7 +308,7 @@ router.get('/group', requireAuth, async (c) => {
   const membersStartedAt = Date.now()
   const membersResult = await db
     .prepare(
-      `SELECT u.id AS user_id, COALESCE(p.nickname, u.email) AS display
+      `SELECT u.id AS user_id, COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display
        FROM group_members gm
        JOIN users u ON u.id = gm.user_id
        LEFT JOIN profiles p ON p.user_id = u.id
@@ -336,7 +336,7 @@ router.get('/group', requireAuth, async (c) => {
           `SELECT
              pr.match_id,
              pr.user_id,
-             COALESCE(p.nickname, u.email) AS user_display,
+             COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS user_display,
              pr.predicted_home_score,
              pr.predicted_away_score,
              pr.predicted_penalty_winner,
@@ -359,7 +359,7 @@ router.get('/group', requireAuth, async (c) => {
           `SELECT
              pr.match_id,
              pr.user_id,
-             COALESCE(p.nickname, u.email) AS user_display,
+             COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS user_display,
              pr.predicted_home_score,
              pr.predicted_away_score,
              pr.predicted_penalty_winner,
@@ -479,7 +479,7 @@ router.put('/', requireAuth, async (c) => {
   // (phase + competition.penalty_phases) so we can validate the shootout pick.
   const match = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.postponed, m.round, m.phase, c.penalty_phases
+      `SELECT m.id, m.start_time, m.status, m.postponed, m.round, m.phase, c.penalty_phases
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
@@ -489,6 +489,7 @@ router.put('/', requireAuth, async (c) => {
     .first<{
       id: string
       start_time: string
+      status: string
       postponed: number
       round: string
       phase: string | null
@@ -623,6 +624,7 @@ function buildBulkPutStatements(
     {
       id: string
       start_time: string
+      status?: string
       postponed: number
       phase: string | null
       penalty_phases: string
@@ -744,7 +746,7 @@ async function handleBulkPut(c: Context<AppContext>) {
   const placeholders = matchIds.map(() => '?').join(', ')
   const matchRows = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.postponed, m.phase, c.penalty_phases
+      `SELECT m.id, m.start_time, m.status, m.postponed, m.phase, c.penalty_phases
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
@@ -754,6 +756,7 @@ async function handleBulkPut(c: Context<AppContext>) {
     .all<{
       id: string
       start_time: string
+      status: string
       postponed: number
       phase: string | null
       penalty_phases: string

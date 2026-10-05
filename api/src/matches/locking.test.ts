@@ -35,6 +35,17 @@ describe('isMatchLocked', () => {
     const nowComMilis = '2026-08-01T12:00:00.123Z' // 123ms depois, deveria estar travado
     expect(isMatchLocked({ start_time: startSemMilis, postponed: 0 }, nowComMilis)).toBe(true)
   })
+  it('trava imediatamente jogo ao vivo (live) mesmo se adiado ou futuro', () => {
+    expect(isMatchLocked({ start_time: FUTURE, status: 'live', postponed: 1 }, NOW)).toBe(true)
+  })
+
+  it('trava imediatamente jogo finalizado (finished) mesmo se adiado ou futuro', () => {
+    expect(isMatchLocked({ start_time: FUTURE, status: 'finished', postponed: 1 }, NOW)).toBe(true)
+  })
+
+  it('não trava jogo futuro agendado (scheduled)', () => {
+    expect(isMatchLocked({ start_time: FUTURE, status: 'scheduled', postponed: 0 }, NOW)).toBe(false)
+  })
 })
 
 describe('lockedSql', () => {
@@ -43,10 +54,14 @@ describe('lockedSql', () => {
   })
 
   it('usa o alias pedido', () => {
-    expect(lockedSql('pr')).toBe('(pr.start_time <= ? AND pr.postponed = 0)')
+    expect(lockedSql('pr')).toBe(
+      "(pr.status IN ('live', 'finished') OR (pr.start_time <= ? AND pr.postponed = 0))",
+    )
   })
 
   it('default é o alias `m`', () => {
-    expect(lockedSql()).toBe('(m.start_time <= ? AND m.postponed = 0)')
+    expect(lockedSql()).toBe(
+      "(m.status IN ('live', 'finished') OR (m.start_time <= ? AND m.postponed = 0))",
+    )
   })
 })

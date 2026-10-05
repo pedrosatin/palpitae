@@ -421,4 +421,29 @@ describe('auth router', () => {
     expect(setCookies.some((c) => c.includes('Secure'))).toBe(true)
     expect(setCookies.some((c) => c.includes('Domain='))).toBe(false)
   })
+
+  it('logout clears session cookie with domain in production HTTPS', async () => {
+    const httpsEnv = { ...fakeEnv('user@example.com'), BASE_URL: 'https://api.palpitae.com.br' }
+    const res = await app.fetch(
+      new Request('https://api.palpitae.com.br/auth/logout', { method: 'POST' }),
+      httpsEnv,
+    )
+    expect(res.status).toBe(200)
+    const setCookies = res.headers.getSetCookie()
+    const sessionCookie = setCookies.find((c) => c.startsWith('session='))
+    expect(sessionCookie).toBeDefined()
+    expect(sessionCookie).toContain('Domain=.palpitae.com.br')
+  })
+
+  it('logout clears session cookie without domain in localhost HTTP', async () => {
+    const res = await app.fetch(
+      new Request('http://localhost:8787/auth/logout', { method: 'POST' }),
+      fakeEnv('user@example.com'),
+    )
+    expect(res.status).toBe(200)
+    const setCookies = res.headers.getSetCookie()
+    const sessionCookie = setCookies.find((c) => c.startsWith('session='))
+    expect(sessionCookie).toBeDefined()
+    expect(sessionCookie).not.toContain('Domain=')
+  })
 })

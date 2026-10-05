@@ -176,7 +176,7 @@ router.get('/', requireAuth, async (c) => {
             SELECT
               l.group_id AS group_id,
               l.user_id AS user_id,
-              COALESCE(p.nickname, u.email) AS display,
+              COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display,
               l.total_points AS points,
               ROW_NUMBER() OVER (
                 PARTITION BY l.group_id
@@ -653,7 +653,7 @@ router.get('/:id/members', requireAuth, async (c) => {
          gm.user_id,
          gm.role,
          gm.joined_at,
-         COALESCE(p.nickname, u.email) AS display_name,
+         COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display_name,
          p.avatar_url,
          COALESCE(l.total_points, 0) AS total_points,
          COALESCE(l.exact_hits, 0) AS exact_hits
