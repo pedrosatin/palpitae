@@ -33,9 +33,8 @@
   "observability": {
     "enabled": true
   },
-  "pages_build_output_dir": "web/dist",
   "assets": {
-    "directory": "web/dist"
+    "directory": "web"
   },
   "compatibility_flags": [
     "nodejs_compat"
