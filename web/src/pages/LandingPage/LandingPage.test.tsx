@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import LandingPage from './LandingPage'
+import { LANDING_GUIDE_LINKS } from './guideLinks'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -68,5 +69,35 @@ describe('LandingPage – âncoras do nav', () => {
     for (const hash of hashes) {
       expect(container.querySelector(`#${hash}`), `sem seção para #${hash}`).not.toBeNull()
     }
+  })
+})
+
+describe('LandingPage – links para os guias', () => {
+  beforeEach(() => mockTrackEvent.mockClear())
+
+  it('links each featured guide with its search-term anchor, plus the /guias/ index', () => {
+    renderPage()
+    const section = screen.getByRole('region', { name: 'Guias para montar seu bolão' })
+    for (const g of LANDING_GUIDE_LINKS) {
+      const link = within(section).getByRole('link', { name: g.label })
+      expect(link).toHaveAttribute('href', `/guias/${g.slug}/`)
+    }
+    expect(within(section).getByRole('link', { name: /todos os guias/i })).toHaveAttribute(
+      'href',
+      '/guias/',
+    )
+    expect(LANDING_GUIDE_LINKS.map((g) => g.label)).toEqual(
+      expect.arrayContaining(['Bolão do Brasileirão', 'Bolão online grátis']),
+    )
+  })
+
+  it('fires click_landing_guia with the guide slug', async () => {
+    renderPage()
+    const [first] = LANDING_GUIDE_LINKS
+    const link = screen.getByRole('link', { name: first.label })
+    // jsdom não navega; impede o aviso de navegação não implementada.
+    link.addEventListener('click', (e) => e.preventDefault())
+    await userEvent.click(link)
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_landing_guia', { guia: first.slug })
   })
 })

@@ -1,7 +1,7 @@
 {
   "name": "Palpitae",
   "short_name": "Palpitae",
-  "description": "Bolões de futebol para a Copa do Mundo 2026.",
+  "description": "Bolão de futebol grátis com os amigos, em grupos privados.",
   "start_url": "/",
   "display": "standalone",
   "lang": "pt-BR",
