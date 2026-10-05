@@ -1,10 +1,10 @@
 /**
- * Avisa o IndexNow (Bing, Yandex, Seznam, Naver) de que as URLs do site mudaram.
+ * Avisa o IndexNow de que as URLs do site mudaram.
  *
  * Roda no workflow `deploy-web.yml`, logo depois do `wrangler pages deploy` de
  * produção. Lê o `sitemap.xml` publicado e envia todas as URLs dele num único
- * POST para https://api.indexnow.org/indexnow. Com uma dezena de URLs não vale
- * a pena descobrir quais mudaram: o protocolo aceita até 10.000 por envio.
+ * POST para https://api.indexnow.org/indexnow. O sitemap tem uma dezena de
+ * URLs e o protocolo aceita até 10.000 por envio, então o script manda todas.
  *
  * O buscador valida a chave baixando `keyLocation`. Por isso o script espera o
  * arquivo da chave responder com o conteúdo certo antes do envio; no primeiro
@@ -13,8 +13,8 @@
  * Uso manual: `node scripts/indexnow.mjs` (de dentro de `web/`). O sitemap pode
  * ser trocado com `INDEXNOW_SITEMAP_URL`, útil para testar contra um preview.
  *
- * Qualquer falha termina com código 1, mas o passo do workflow tem
- * `continue-on-error`: o deploy não depende do IndexNow.
+ * Qualquer falha termina com código 1. O passo do workflow usa
+ * `continue-on-error`, então o deploy segue.
  */
 
 import { pathToFileURL } from 'node:url'
@@ -40,7 +40,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 async function waitForKeyFile() {
   for (let attempt = 1; attempt <= KEY_ATTEMPTS; attempt++) {
     try {
-      const res = await fetch(KEY_LOCATION, { cache: 'no-store' })
+      const res = await fetch(KEY_LOCATION, { cache: 'no-store', signal: AbortSignal.timeout(15_000) })
       if (res.ok && (await res.text()).trim() === KEY) return
       console.log(`IndexNow: chave ainda não publicada (HTTP ${res.status}), tentativa ${attempt}.`)
     } catch (error) {
@@ -54,7 +54,7 @@ async function waitForKeyFile() {
 async function main() {
   await waitForKeyFile()
 
-  const sitemap = await fetch(SITEMAP_URL, { cache: 'no-store' })
+  const sitemap = await fetch(SITEMAP_URL, { cache: 'no-store', signal: AbortSignal.timeout(15_000) })
   if (!sitemap.ok) throw new Error(`sitemap respondeu HTTP ${sitemap.status}`)
   const urlList = extractLocs(await sitemap.text())
   if (urlList.length === 0) throw new Error('sitemap sem URLs')
@@ -63,6 +63,7 @@ async function main() {
     method: 'POST',
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify({ host: HOST, key: KEY, keyLocation: KEY_LOCATION, urlList }),
+    signal: AbortSignal.timeout(15_000),
   })
   // 200 = aceito; 202 = aceito, validação da chave pendente.
   if (res.status !== 200 && res.status !== 202) {

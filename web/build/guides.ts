@@ -193,8 +193,8 @@ export const guides: Guide[] = [
       {
         heading: 'Casos especiais: prorrogação e pênaltis',
         body: [
-          'Defina antes se o palpite vale pelo placar dos 90 minutos ou pelo placar ao fim da prorrogação. Os dois formatos aparecem em bolões.',
-          'No Palpitae vale o placar ao fim da prorrogação, somando tempo normal e prorrogação, sem os gols da disputa de pênaltis. Um jogo que termina 1 a 1 depois dos 120 minutos e vai para os pênaltis conta como empate de 1 a 1 para o palpite.',
+          'Defina antes se o palpite vale pelo placar dos 90 minutos ou pelo placar ao fim da prorrogação.',
+          'No Palpitae vale o placar do tempo normal somado à prorrogação, sem os gols da disputa de pênaltis. Um jogo que termina 1 a 1 depois dos 120 minutos e vai para os pênaltis conta como empate de 1 a 1 para o palpite.',
           'Nas fases de jogo único que o campeonato decide nos pênaltis, quem palpitou empate também escolhe quem vence a disputa. Acertar o vencedor dá um bônus de 1 ponto por padrão, e quem cria o grupo pode ajustar esse valor de 0 a 10. Errar o vencedor dos pênaltis não tira pontos do palpite.',
           'Combinar isso no início evita discussão quando um jogo for decidido nos pênaltis.',
         ],
@@ -305,7 +305,7 @@ export const guides: Guide[] = [
         heading: 'Bolão da Copa no Palpitae',
         body: [
           'No Palpitae você cria um grupo privado gratuito e convida os amigos por link. Cada um dá seus palpites antes de cada jogo, e a pontuação é calculada automaticamente a cada resultado. A classificação do grupo atualiza sozinha.',
-          'A Copa do Mundo 2026 teve bolões no Palpitae, com fase de grupos, chaveamento do mata-mata e palpite de pênaltis, e já terminou. Hoje o campeonato com jogos em andamento no app é o Brasileirão Série A.',
+          'A Copa do Mundo 2026 terminou. Os bolões dela no Palpitae tiveram fase de grupos, chaveamento do mata-mata e palpite de pênaltis. Hoje o campeonato com jogos em andamento no app é o Brasileirão Série A.',
         ],
       },
     ],
@@ -453,7 +453,7 @@ export const guides: Guide[] = [
       {
         question: 'Quais campeonatos estão disponíveis?',
         answer:
-          'Hoje o Palpitae tem o Brasileirão Série A 2026. A Copa do Mundo 2026 também teve bolões no app e já terminou.',
+          'O campeonato com jogos em andamento no Palpitae é o Brasileirão Série A 2026. A Copa do Mundo 2026 terminou, e os grupos dela mostram a classificação final.',
       },
       {
         question: 'Dá para mudar o palpite depois de enviado?',
@@ -875,7 +875,7 @@ export function renderLlmsTxt(): string {
 - O Palpitae é um app de bolão de futebol gratuito. Criar grupo, palpitar e ver a classificação não custa nada.
 - O Palpitae não é casa de apostas. O app não recebe depósitos, não usa odds e não paga prêmios em dinheiro.
 - Cada bolão é um grupo privado de até 50 pessoas, e só entra quem recebe o link ou o código de convite.
-- O campeonato com jogos em andamento no Palpitae é o Brasileirão Série A 2026. A Copa do Mundo 2026 também teve bolões no app e já terminou.
+- O campeonato com jogos em andamento no Palpitae é o Brasileirão Série A 2026. A Copa do Mundo 2026 terminou, e os grupos dela mostram a classificação final.
 - A pontuação padrão dá 3 pontos pelo placar exato e 1 ponto pelo resultado, e quem cria o grupo pode mudar esses valores.
 
 ## Campeonatos

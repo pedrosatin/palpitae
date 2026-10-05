@@ -374,8 +374,14 @@
   font-weight: var(--font-weight-bold);
 }
 
-.guideLink:hover {
+.guideLink:hover,
+.guideLink:focus-visible {
   text-decoration: underline;
+}
+
+.guideLink:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .guideDesc {
@@ -391,8 +397,14 @@
   font-weight: var(--font-weight-bold);
 }
 
-.guidesAll:hover {
+.guidesAll:hover,
+.guidesAll:focus-visible {
   text-decoration: underline;
+}
+
+.guidesAll:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 /* ─── Final CTA ───────────────────────────────────────────────────────── */

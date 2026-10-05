@@ -124,6 +124,10 @@ describe('landing guide links', () => {
  * A Copa do Mundo 2026 terminou. Texto público que cita essa edição precisa
  * estar no passado, e nenhum texto pode apresentar a Copa como campeonato
  * disponível no app.
+ *
+ * A regex `terminou|encerrad` é intencional: toda frase que cita a Copa 2026
+ * precisa conter um desses verbos no passado. Ao reescrever esses textos,
+ * mantenha um deles na mesma frase ou atualize a regex junto.
  */
 describe('Copa do Mundo 2026 no passado', () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')

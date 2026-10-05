@@ -3,7 +3,7 @@
  * `build/guides.ts` (fora do bundle do app), então a lista fica aqui e o teste
  * `build/guides.test.ts` confere que cada slug existe no catálogo.
  *
- * O `label` é o texto da âncora: usa o termo de busca que o guia mira.
+ * O `label` é o texto da âncora e repete o termo de busca do guia.
  */
 export interface LandingGuideLink {
   slug: string
@@ -20,16 +20,16 @@ export const LANDING_GUIDE_LINKS: LandingGuideLink[] = [
   {
     slug: 'bolao-online-gratis',
     label: 'Bolão online grátis',
-    description: 'Convite por link, palpite pelo celular e pontos calculados a cada jogo.',
+    description: 'Crie o grupo, mande o link e palpite pelo celular.',
   },
   {
     slug: 'como-organizar-um-bolao',
     label: 'Como organizar um bolão',
-    description: 'Campeonato, regras de pontuação e convite da galera, em ordem.',
+    description: 'Passo a passo para escolher o campeonato e a pontuação.',
   },
   {
     slug: 'bolao-de-empresa',
     label: 'Bolão na empresa',
-    description: 'Quem organiza, que regras usar e por que deixar o dinheiro de fora.',
+    description: 'Prêmio simbólico em vez de dinheiro, e um grupo por área.',
   },
 ]

@@ -60,6 +60,13 @@ function Header() {
         >
           Pontuação
         </a>
+        <a
+          href="#guias"
+          className={styles.navLink}
+          onClick={() => trackEvent('click_nav_guias')}
+        >
+          Guias
+        </a>
         <a href="#faq" className={styles.navLink} onClick={() => trackEvent('click_nav_faq')}>
           Dúvidas
         </a>
@@ -214,7 +221,7 @@ function Faq() {
         />
         <FaqItem
           q="Quais campeonatos tem no Palpitae?"
-          a="Hoje o Palpitae tem o Brasileirão Série A 2026. A Copa do Mundo 2026 também teve bolões no app e já terminou. Cada grupo acompanha um campeonato."
+          a="O campeonato com jogos em andamento no Palpitae é o Brasileirão Série A 2026. A Copa do Mundo 2026 terminou, e os grupos dela mostram a classificação final. Cada grupo acompanha um campeonato."
         />
       </dl>
     </section>
@@ -222,8 +229,8 @@ function Faq() {
 }
 
 /**
- * Links para os guias estáticos (/guias/*). São páginas fora da SPA, então usam
- * <a> nativo: o react-router não tem essas rotas.
+ * Links para os guias estáticos (/guias/*), páginas fora da SPA.
+ * Usa <a> nativo porque o react-router não tem as rotas /guias/*.
  */
 function Guides() {
   return (
