@@ -137,7 +137,7 @@ describe('fetchEspnLeaguesAndCounts', () => {
     scoreboardMock.mockRejectedValue(new Error('DNS de sumiço'))
 
     await expect(fetchEspnLeaguesAndCounts('2026-10-07')).rejects.toThrow(
-      'ESPN falhou em todos os 38 slugs do recorte',
+      'ESPN falhou em todos os 39 slugs do recorte',
     )
   })
 })
@@ -173,6 +173,9 @@ describe('ESPN_LEAGUES (lista curada)', () => {
     )
     expect(findEntry('World', bySlug.get('fifa.cwc')!.name)?.article).toBe(
       'Copa do Mundo de Clubes da FIFA',
+    )
+    expect(findEntry('World', bySlug.get('uefa.nations')!.name)?.article).toBe(
+      'Liga das Nações da UEFA',
     )
     // País tem que bater exatamente com o Set (sem normalização).
     expect(RADAR_COUNTRIES.has(bySlug.get('ksa.1')!.country)).toBe(true)
