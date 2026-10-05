@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
+import { scoreWindowFromEspn } from './espnFallback'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -24,6 +25,12 @@ type ActiveRound = {
  * Only numeric rounds (group-stage matchdays) get a `matchday` filter so the API
  * call is scoped to the active round. Non-numeric rounds (knockout phases) fall
  * back to a full-competition fetch.
+ *
+ * Failover de resultados (ADR-016): quando o syncFixtures de uma competição
+ * falha, o placar dos jogos da janela vem da ESPN não-oficial
+ * (`scoreWindowFromEspn`) — só placar/status de jogos já existentes, nunca
+ * criação de entidades. Competições onde o fallback atualizou ≥1 jogo seguem
+ * para o scoreUnprocessedMatches como se o sync tivesse funcionado.
  */
 export async function pollActiveMatches(
   db: D1Database,
@@ -111,6 +118,7 @@ export async function pollActiveMatches(
   )
 
   const syncedComps = new Set<string>()
+  const failedCompIds = new Set<string>()
 
   for (const res of syncResults) {
     footballApiCalls++ // cada syncFixtures faz exatamente 1 fetch à API Football
@@ -119,6 +127,7 @@ export async function pollActiveMatches(
       syncedComps.add(res.comp.comp_id)
     } else {
       hadError = true
+      failedCompIds.add(res.comp.comp_id)
       logError(
         ae,
         'football_api_error',
@@ -128,6 +137,20 @@ export async function pollActiveMatches(
           blobs: [res.comp.comp_id, res.round],
         },
       )
+    }
+  }
+
+  // Failover de resultados (ADR-016): o primário caiu, a ESPN tenta preencher o
+  // placar dos jogos da janela que já existem no D1. Falha aqui NUNCA quebra o
+  // poller — o próximo run volta a tentar pelo caminho primário.
+  if (failedCompIds.size > 0) {
+    try {
+      const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(failedCompIds), { now })
+      for (const [compId, updated] of updatedByComp) {
+        if (updated > 0) syncedComps.add(compId)
+      }
+    } catch (err) {
+      logError(ae, 'match_results_fallback', '[poller] Fallback ESPN falhou:', err)
     }
   }
 
