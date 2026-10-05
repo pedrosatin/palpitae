@@ -36,9 +36,9 @@ inline equivalente no `<head>` de cada guia e do índice: registra o `consent de
 (tudo `denied`) antes de `js`/`config`, restaura o `granted` salvo, carrega o gtag.js no
 idle depois do `load` e mostra o mesmo banner quando não há escolha salva. Chave e formato
 do `localStorage` são os mesmos do app, então a escolha feita num guia vale na landing e
-vice-versa. Sem `VITE_GA_MEASUREMENT_ID`, nada é emitido. Mudou a lógica em `ga.ts` ou no
-`CookieConsent`? Atualize o `build/analytics.ts` junto (os testes em
-`web/build/guides.test.ts` cobrem a ordem do consent e a persistência).
+vice-versa. Sem `VITE_GA_MEASUREMENT_ID`, nada é emitido. Qualquer mudança em `ga.ts` ou no
+`CookieConsent` precisa ser replicada em `build/analytics.ts`. Os testes de
+`web/build/guides.test.ts` não comparam os dois.
 
 ## Convenções de nome
 

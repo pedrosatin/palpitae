@@ -20,9 +20,27 @@
 const CONSENT_KEY = 'palpitae:analytics-consent'
 const DENIED_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
 
+const GA_ID_RE = /^G-[A-Z0-9]+$/
+
+/**
+ * Normalizes the measurement id from the env: trims it and returns '' unless it
+ * is a well-formed GA4 id, so only a safe value reaches the inline script.
+ * A non-empty id that fails the check is reported through `warn` (the Vite
+ * plugin passes `this.warn`), so a typo in the env doesn't silently drop GA.
+ */
+export function normalizeGaId(raw: string, warn: (msg: string) => void = console.warn): string {
+  const id = raw.trim()
+  if (id === '') return ''
+  if (GA_ID_RE.test(id)) return id
+  warn(
+    `VITE_GA_MEASUREMENT_ID inválido (${JSON.stringify(id)}): GA e banner de cookies omitidos dos guias.`,
+  )
+  return ''
+}
+
 /** Only a well-formed GA4 id is embedded in the inline script. */
 function validId(gaId: string): boolean {
-  return /^G-[A-Z0-9]+$/.test(gaId)
+  return GA_ID_RE.test(gaId)
 }
 
 /** Banner styles, mirroring components/CookieConsent with the app's tokens. */

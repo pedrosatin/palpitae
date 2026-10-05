@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { normalizeGaId } from './analytics'
 import { guides, renderGuide, renderIndex } from './guides'
 
 const GA_ID = 'G-TEST123'
@@ -9,6 +10,15 @@ function jsonLdBlocks(html: string): Record<string, unknown>[] {
   return [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map(
     (m) => JSON.parse(m[1]) as Record<string, unknown>,
   )
+}
+
+/** Same escaping the renderer applies to visible text. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 /** Loads a rendered page into the jsdom document and runs its inline scripts. */
@@ -39,8 +49,20 @@ describe('guide catalog', () => {
       const html = renderGuide(g)
       const faq = jsonLdBlocks(html).find((o) => o['@type'] === 'FAQPage')
       expect(faq).toBeDefined()
-      expect((faq!.mainEntity as unknown[]).length).toBe(g.faq!.length)
+      const entities = faq!.mainEntity as {
+        '@type': string
+        name: string
+        acceptedAnswer: { '@type': string; text: string }
+      }[]
+      expect(entities.length).toBe(g.faq!.length)
       expect(html).toContain('<h2>Perguntas frequentes</h2>')
+      g.faq!.forEach((f, i) => {
+        expect(entities[i]['@type']).toBe('Question')
+        expect(entities[i].name).toBe(f.question)
+        expect(entities[i].acceptedAnswer).toEqual({ '@type': 'Answer', text: f.answer })
+        expect(html).toContain(`<h3>${escapeHtml(f.question)}</h3>`)
+        expect(html).toContain(`<p>${escapeHtml(f.answer)}</p>`)
+      })
     }
   })
 
@@ -64,6 +86,26 @@ describe('guide analytics (Consent Mode v2)', () => {
     const html = renderGuide(guides[0])
     expect(html).not.toContain('googletagmanager')
     expect(html).not.toContain('cookie-consent')
+  })
+
+  it('emits nothing for a malformed or malicious measurement id', () => {
+    for (const id of ["G-X';alert(1)//", 'UA-12345-1', 'g-test123', 'G-TEST123 ']) {
+      const html = renderGuide(guides[0], id)
+      expect(html).not.toContain('googletagmanager')
+      expect(html).not.toContain('cookie-consent')
+      expect(html).not.toContain('alert(1)')
+      expect(renderIndex(id)).not.toContain('googletagmanager')
+    }
+  })
+
+  it('normalizes the env id: trims it and warns when it is not a GA4 id', () => {
+    const warn = vi.fn()
+    expect(normalizeGaId('  G-TEST123\n', warn)).toBe('G-TEST123')
+    expect(normalizeGaId('', warn)).toBe('')
+    expect(normalizeGaId('   ', warn)).toBe('')
+    expect(warn).not.toHaveBeenCalled()
+    expect(normalizeGaId("G-X';alert(1)//", warn)).toBe('')
+    expect(warn).toHaveBeenCalledOnce()
   })
 
   it('registers the denied consent default before js/config, then shows the banner', () => {
@@ -113,5 +155,38 @@ describe('guide analytics (Consent Mode v2)', () => {
     loadPage(renderGuide(guides[0], GA_ID))
     expect(document.getElementById('cookie-consent')!.hidden).toBe(false)
     expect(localStorage.getItem(CONSENT_KEY)).toBeNull()
+  })
+  it('keeps the banner hidden for the legacy plain "denied" value', () => {
+    localStorage.setItem(CONSENT_KEY, 'denied')
+    loadPage(renderGuide(guides[0], GA_ID))
+    expect(document.getElementById('cookie-consent')!.hidden).toBe(true)
+    expect(localStorage.getItem(CONSENT_KEY)).toBe('denied')
+  })
+
+  it('keeps the banner hidden while a denial is younger than 30 days', () => {
+    const value = `denied:${Date.now() - 29 * 24 * 60 * 60 * 1000}`
+    localStorage.setItem(CONSENT_KEY, value)
+    loadPage(renderGuide(guides[0], GA_ID))
+    expect(document.getElementById('cookie-consent')!.hidden).toBe(true)
+    expect(localStorage.getItem(CONSENT_KEY)).toBe(value)
+  })
+
+  it('shows the banner without throwing when localStorage is unavailable', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError')
+    })
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('SecurityError')
+    })
+    try {
+      expect(() => loadPage(renderGuide(guides[0], GA_ID))).not.toThrow()
+      const banner = document.getElementById('cookie-consent')!
+      expect(banner.hidden).toBe(false)
+      expect(() => (banner.querySelector('.accept') as HTMLButtonElement).click()).not.toThrow()
+      expect(banner.hidden).toBe(true)
+    } finally {
+      get.mockRestore()
+      set.mockRestore()
+    }
   })
 })
