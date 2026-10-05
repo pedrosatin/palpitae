@@ -2,15 +2,17 @@
  * Coletor de SQL — implementa o mínimo da interface do D1 (`prepare`/`bind`/
  * `batch`) e, em vez de executar, serializa os statements num script `.sql`.
  *
- * Existe porque a coleta do radar não pode rodar dentro do Worker: a
- * API-Football aplica rate limit **por IP**, e os IPs de saída dos Cloudflare
- * Workers são compartilhados por milhares de clientes — a primeira chamada do
- * dia já volta 429 mesmo com a quota da conta intacta (2/100). Do IP de um
- * runner do GitHub a mesma chamada devolve 200. Ver ADR-014.
+ * Nasceu de um rate limit: a API-Football (provedor original do radar,
+ * ADR-014) limita **por IP**, e os IPs de saída dos Cloudflare Workers são
+ * compartilhados por milhares de clientes — a primeira chamada do dia já
+ * voltava 429 mesmo com a quota intacta. Do IP de um runner do GitHub a mesma
+ * chamada devolvia 200.
  *
- * Com isto, `syncRadar` roda **sem nenhuma alteração** fora do Worker: o script
- * do cron passa este coletor no lugar do D1, e o workflow aplica o SQL gerado
- * com `wrangler d1 execute --remote --file`. Um `INSERT` por linha seria ~1.500
+ * O provedor hoje é a ESPN (ADR-015), sem chave e sem política por IP, então
+ * esse motivo específico não existe mais — mas o desenho permanece **por
+ * escolha de arquitetura**: `syncRadar` roda sem alteração dentro ou fora do
+ * Worker, e o snapshot inteiro vira uma única chamada
+ * `wrangler d1 execute --remote --file`. Um `INSERT` por linha seria ~1.500
  * requisições HTTP na REST API do D1; um arquivo é uma chamada só.
  */
 

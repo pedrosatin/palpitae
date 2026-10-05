@@ -1,10 +1,13 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
-import { fetchCurrentLeagues, fetchMatchCountByLeague, type ProviderLeague } from './apiFootball'
 import { findEntry, RADAR_COUNTRIES } from './articles'
+import { fetchEspnLeaguesAndCounts, type ProviderLeague } from './espnRadar'
 import { fetchPageviews } from './wikipedia'
 
-const PROVIDER = 'api-football'
+const PROVIDER = 'espn'
+
+/** Provedor anterior do radar (ADR-014) — conta suspensa, linhas órfãs. */
+const LEGACY_PROVIDER = 'api-football'
 
 /**
  * Dias de pageviews recoletados a cada execução. Não basta pegar "ontem": a
@@ -32,7 +35,8 @@ function radarId(externalId: string, season: string): string {
 /**
  * Uma liga interessa ao radar se está num país do recorte OU se foi mapeada
  * explicitamente na curadoria (uma competição de fora da lista de países pode
- * ter sido incluída de propósito).
+ * ter sido incluída de propósito). O recorte curado da ESPN já respeita isso —
+ * o filtro fica como trava contra edição descuidada da lista.
  */
 function isRelevant(league: ProviderLeague): boolean {
   return RADAR_COUNTRIES.has(league.country) || findEntry(league.country, league.name) !== undefined
@@ -59,36 +63,59 @@ async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promis
  * Não toca em nada do produto: escreve só em `competition_radar*`. Se falhar,
  * o snapshot do dia anterior continua valendo e a dashboard segue de pé.
  *
- * Custo por execução: 2 chamadas à API-Football (de 100/dia no plano grátis) e
- * ~1 chamada à Wikimedia por competição mapeada (API pública, sem quota).
+ * Custo por execução: ~35 chamadas à ESPN (uma por slug do recorte curado —
+ * sem chave, sem quota conhecida; ver ADR-015) e ~1 chamada à Wikimedia por
+ * competição mapeada (API pública, sem quota). Não existe chamada de catálogo:
+ * a lista de slugs é estática e a temporada vem no próprio scoreboard.
  */
 export async function syncRadar(
   db: D1Database,
-  apiKey: string,
   ae?: AnalyticsEngineDataset,
   now: Date = new Date(),
 ): Promise<void> {
   const startedAt = Date.now()
-
-  if (!apiKey) {
-    console.warn('[radar] API_FOOTBALL_KEY ausente — sync ignorado.')
-    logEvent(ae, 'radar_sync_run', { blobs: ['misconfig'], doubles: [0, 0, 0, 0] })
-    return
-  }
 
   let leagues: ProviderLeague[]
   let matchCounts: Map<string, number>
   const today = isoDay(now)
 
   try {
-    // Sequencial de propósito: se o catálogo falhar (quota, chave inválida),
-    // a segunda chamada seria desperdício de quota.
-    leagues = (await fetchCurrentLeagues(apiKey)).filter(isRelevant)
-    matchCounts = await fetchMatchCountByLeague(apiKey, today)
+    const fetched = await fetchEspnLeaguesAndCounts(today)
+    leagues = fetched.leagues.filter(isRelevant)
+    matchCounts = fetched.counts
+    if (fetched.failed.length > 0) {
+      // Falha parcial não derruba o snapshot: os slugs que responderam seguem,
+      // os falhos ficam registrados para investigar no log do Actions.
+      logError(
+        ae,
+        'radar_sync_error',
+        `[radar] ${fetched.failed.length} slug(s) da ESPN falharam — seguindo com os demais:`,
+        new Error(fetched.failed.join(',')),
+        { blobs: ['espn'] },
+      )
+    }
   } catch (err) {
-    logError(ae, 'radar_sync_error', '[radar] Falha ao consultar a API-Football:', err, {
-      blobs: ['api-football'],
+    logError(ae, 'radar_sync_error', '[radar] Falha ao consultar a ESPN:', err, {
+      blobs: ['espn'],
     })
+    logEvent(ae, 'radar_sync_run', {
+      blobs: ['error'],
+      doubles: [0, 0, 0, Date.now() - startedAt],
+    })
+    return
+  }
+
+  if (leagues.length === 0) {
+    // Nenhuma liga corrente é indistinguível de coleta quebrada (ex.: a ESPN
+    // mudou o formato da resposta). Gravar aqui seria aplicar um snapshot
+    // vazio por cima do bom — o mesmo fail-closed da falha geral.
+    logError(
+      ae,
+      'radar_sync_error',
+      '[radar] ESPN não reportou nenhuma liga corrente — snapshot anterior preservado.',
+      new Error('empty-snapshot'),
+      { blobs: ['espn'] },
+    )
     logEvent(ae, 'radar_sync_run', {
       blobs: ['error'],
       doubles: [0, 0, 0, Date.now() - startedAt],
@@ -99,6 +126,14 @@ export async function syncRadar(
   // `is_current` é reconstruído a cada execução: uma temporada que saiu do
   // catálogo tem que parar de aparecer como "acontecendo agora".
   const statements = [
+    // Migração de provedor (ADR-015): fora as linhas órfãs da API-Football,
+    // cuja conta foi suspensa. Idempotente — depois da primeira execução os
+    // DELETEs não removem nada. O `daily` vem primeiro: sem FK garantida em
+    // runtime, a linha filha órfã não pode sobrar.
+    db.prepare(`DELETE FROM competition_radar_daily WHERE radar_id LIKE ?`).bind(
+      `${LEGACY_PROVIDER}:%`,
+    ),
+    db.prepare(`DELETE FROM competition_radar WHERE provider = ?`).bind(LEGACY_PROVIDER),
     db.prepare(`UPDATE competition_radar SET is_current = 0 WHERE provider = ?`).bind(PROVIDER),
   ]
 
