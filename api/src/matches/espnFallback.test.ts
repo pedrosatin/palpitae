@@ -175,6 +175,7 @@ describe('scoreWindowFromEspn', () => {
 
     expect(fetchMock.mock.calls[0][0]).toContain('/soccer/uefa.champions/scoreboard')
     expect(FOOTBALL_DATA_TO_ESPN.EL).toBe('uefa.europa')
+    expect(FOOTBALL_DATA_TO_ESPN.EC).toBe('uefa.euro')
     expect(FOOTBALL_DATA_TO_ESPN.BSA).toBe('bra.1')
   })
 
@@ -275,6 +276,11 @@ describe('scoreWindowFromEspn', () => {
     // Guard contra corrida com o caminho primário: só regrava jogo não-finalizado.
     expect(captured.updateSql).toContain("SET home_score = ?, away_score = ?, status = 'finished'")
     expect(captured.updateSql).toContain("AND status != 'finished'")
+    // O fallback só grava placar+status: scored_at fica NULL (a pontuação vem
+    // depois) e pênaltis ficam para o primário. Nenhum INSERT aqui.
+    expect(captured.updateSql).not.toContain('scored_at')
+    expect(captured.updateSql).not.toContain('penalty')
+    expect(captured.updateSql).not.toMatch(/INSERT/i)
     expect(captured.updates).toHaveLength(1)
     // A query de janela replica a semântica do poller.
     expect(captured.windowSql).toContain("status != 'finished'")
