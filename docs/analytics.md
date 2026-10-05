@@ -28,6 +28,18 @@ O status da permissão é salvo no `localStorage`:
 - **Aceitar:** Modo passa para `granted`, tags são disparadas e o consentimento é armazenado indefinidamente.
 - **Recusar:** Modo fica como `denied` e as tags respeitam a falta de cookies. A recusa é salva com um *timestamp* e **expira após 30 dias**. Quando expira, o banner reaparece na próxima visita. Isso garante que não pratiquemos *Consent Fatigue* (re-pedir insistentemente em poucos dias), respeitando a LGPD, mas permitindo re-converter usuários antigos.
 
+### Páginas estáticas (`/guias/`)
+
+Os guias são HTML gerado no build (`web/build/guides.ts`), sem o bundle React, então não
+chamam `initGa()` nem montam o `CookieConsent`. O `web/build/analytics.ts` injeta um script
+inline equivalente no `<head>` de cada guia e do índice: registra o `consent default`
+(tudo `denied`) antes de `js`/`config`, restaura o `granted` salvo, carrega o gtag.js no
+idle depois do `load` e mostra o mesmo banner quando não há escolha salva. Chave e formato
+do `localStorage` são os mesmos do app, então a escolha feita num guia vale na landing e
+vice-versa. Sem `VITE_GA_MEASUREMENT_ID`, nada é emitido. Qualquer mudança em `ga.ts` ou no
+`CookieConsent` precisa ser replicada em `build/analytics.ts`. Os testes de
+`web/build/guides.test.ts` não comparam os dois.
+
 ## Convenções de nome
 
 - snake_case; prefixo `click_` para cliques, `submit_` para envios de formulário bem-sucedidos

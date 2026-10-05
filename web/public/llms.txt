@@ -21,6 +21,7 @@
 - Gratuito: basta entrar com a conta Google, sem pagamento.
 - Sem instalação: roda no navegador, no celular ou no computador.
 - Idioma: português do Brasil (pt-BR).
+- Não é casa de apostas: o app não recebe depósitos, não usa odds e não paga prêmios em dinheiro.
 
 ## Links
 

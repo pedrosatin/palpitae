@@ -13,6 +13,7 @@
  */
 import { execSync } from 'node:child_process'
 import type { Connect, Plugin } from 'vite'
+import { analyticsHead, consentBanner, CONSENT_CSS, normalizeGaId } from './analytics'
 
 const SITE_URL = 'https://palpitae.com.br'
 /** Where the CTAs send visitors: the login page (Google sign-in → create pool). */
@@ -34,6 +35,12 @@ interface GuideSection {
   body: string[]
 }
 
+interface GuideFaq {
+  question: string
+  /** Plain-text answer; rendered on the page and in the FAQPage JSON-LD. */
+  answer: string
+}
+
 interface Guide {
   /** URL slug; page is served at /guias/<slug>/. */
   slug: string
@@ -46,6 +53,11 @@ interface Guide {
   /** Lead paragraph shown under the <h1>. */
   intro: string
   sections: GuideSection[]
+  /**
+   * Optional FAQ block rendered after the sections, mirrored in a FAQPage
+   * JSON-LD so search engines and answer engines can quote it.
+   */
+  faq?: GuideFaq[]
   /** ISO date (YYYY-MM-DD) for sitemap <lastmod> and Article dates. */
   updated: string
 }
@@ -55,7 +67,7 @@ interface Guide {
  * the body) so they keep ranking across seasons and tournaments. Add new guides
  * here and they flow into the HTML output and the sitemap automatically.
  */
-const guides: Guide[] = [
+export const guides: Guide[] = [
   {
     slug: 'o-que-e-bolao-de-futebol',
     title: 'O que é bolão de futebol e como funciona',
@@ -103,7 +115,7 @@ const guides: Guide[] = [
     teaser:
       'Clique aqui e veja o passo a passo para montar um bolão: escolher o campeonato, combinar as regras, chamar a galera e acompanhar a classificação sem dor de cabeça.',
     description:
-      'Quer montar um bolão da rodada ou do campeonato? Veja o passo a passo para organizar um bolão com os amigos: escolher o campeonato, definir as regras, convidar a galera e somar os pontos.',
+      'Passo a passo para organizar um bolão com os amigos: escolher o campeonato, definir as regras de pontuação, convidar a galera e acompanhar a classificação.',
     intro:
       'Organizar um bolão é simples, mas alguns cuidados no começo evitam confusão lá na frente, principalmente na hora de definir regras e somar pontos. Veja um passo a passo para montar o seu bolão com os amigos.',
     sections: [
@@ -136,7 +148,7 @@ const guides: Guide[] = [
         ],
       },
     ],
-    updated: '2026-06-20',
+    updated: '2026-10-04',
   },
   {
     slug: 'regras-e-pontuacao-de-bolao',
@@ -185,9 +197,9 @@ const guides: Guide[] = [
     teaser:
       'Clique aqui e veja como montar um bolão do Brasileirão com os amigos: 38 rodadas de palpites, pontuação automática e classificação atualizada o ano inteiro.',
     description:
-      'Monte um bolão do Brasileirão Série A com seus amigos: como funciona um bolão de pontos corridos, quais regras usar nas 38 rodadas e como manter o grupo engajado a temporada inteira.',
+      'Monte um bolão do Brasileirão Série A com os amigos: regras de pontuação para 38 rodadas, trava dos palpites e como manter o grupo engajado na temporada.',
     intro:
-      'O Brasileirão é o campeonato perfeito para bolão: são 38 rodadas de maio a dezembro, jogo importante quase toda semana e reviravolta até a última rodada. Veja como montar o seu, que regras usar e como manter a disputa viva a temporada inteira.',
+      'O Brasileirão é o campeonato perfeito para bolão: são 38 rodadas ao longo do ano, jogo importante quase toda semana e reviravolta até a última rodada. Veja como montar o seu, que regras usar e como manter a disputa viva a temporada inteira.',
     sections: [
       {
         heading: 'Por que o Brasileirão dá um ótimo bolão',
@@ -218,7 +230,24 @@ const guides: Guide[] = [
         ],
       },
     ],
-    updated: '2026-07-12',
+    faq: [
+      {
+        question: 'Quantos jogos tem o Brasileirão Série A?',
+        answer:
+          'São 380 jogos. Os 20 times se enfrentam em turno e returno, num total de 38 rodadas.',
+      },
+      {
+        question: 'Dá para começar um bolão do Brasileirão com o campeonato em andamento?',
+        answer:
+          'Sim. Você pode criar ou entrar num grupo a qualquer momento e palpitar nos jogos que ainda não começaram. Contam pontos os jogos em que você deu palpite.',
+      },
+      {
+        question: 'O que acontece com jogo adiado no bolão?',
+        answer:
+          'No Palpitae, jogo adiado não trava o palpite. Ele continua aberto para edição até a nova data e só pontua quando a partida acontece.',
+      },
+    ],
+    updated: '2026-10-04',
   },
   {
     slug: 'bolao-copa-do-mundo',
@@ -260,6 +289,297 @@ const guides: Guide[] = [
       },
     ],
     updated: '2026-07-26',
+  },
+  {
+    slug: 'bolao-de-empresa',
+    title: 'Como fazer um bolão na empresa com os colegas de trabalho',
+    teaser:
+      'Clique aqui e veja como montar um bolão entre colegas de trabalho: quem organiza, que regras usar, como evitar atrito e como manter o clima leve até o fim do campeonato.',
+    description:
+      'Como organizar um bolão grátis entre colegas de trabalho sem planilha: pontuação, convite da equipe e prêmio sem dinheiro.',
+    intro:
+      'Bolão no trabalho vira assunto no grupo da equipe toda segunda. Para dar certo, alguém precisa organizar, as regras precisam estar claras desde o primeiro jogo e ninguém deveria passar a semana somando pontos em planilha.',
+    sections: [
+      {
+        heading: 'Por que fazer um bolão na empresa',
+        body: [
+          'Um bolão aproxima gente de áreas que quase não conversam. A pessoa do financeiro e a do suporte passam a discutir o mesmo jogo, e a classificação vira assunto em qualquer intervalo. Em equipes remotas o efeito é parecido. O bolão dá um motivo leve para o grupo trocar mensagens que não sejam sobre trabalho.',
+          'O formato também funciona para quem não acompanha futebol. Num bolão de pontos, um palpite dado no chute às vezes vence o de quem assiste a todos os jogos, e isso deixa a disputa aberta para todo mundo.',
+        ],
+      },
+      {
+        heading: 'Escolha quem organiza e qual campeonato',
+        body: [
+          'Defina uma pessoa responsável. Ela cria o grupo, envia o convite, tira dúvidas sobre as regras e decide os casos que ninguém previu. Não precisa ser alguém da liderança. Costuma funcionar melhor com quem gosta de futebol e tem paciência para lembrar a turma de palpitar.',
+          'Depois escolha o campeonato. A Copa do Mundo concentra muitos jogos em poucas semanas e atrai até quem ignora futebol no resto do ano. O Brasileirão tem 38 rodadas ao longo do ano, com jogo quase toda semana, e serve para um bolão que acompanha o ano inteiro. Para um primeiro bolão de empresa, um torneio curto é mais fácil de levar até o fim.',
+        ],
+      },
+      {
+        heading: 'Escreva as regras antes do primeiro jogo',
+        body: [
+          'No trabalho, regra ambígua vira desconforto entre colegas. Antes do primeiro jogo, deixe por escrito quanto vale cada acerto, até quando dá para mudar o palpite e o que acontece com jogo adiado. O modelo mais usado dá 3 pontos para o placar exato e 1 ponto para quem acerta só o resultado.',
+          'Se parte da equipe nunca participou de bolão, use só o resultado: vitória do mandante, empate ou vitória do visitante. Fica fácil de explicar e qualquer pessoa palpita em poucos segundos.',
+          'Decida também se os palpites dos colegas ficam visíveis antes do jogo. Esconder os palpites até cada pessoa registrar o seu impede que alguém copie o palpite de quem está liderando.',
+        ],
+      },
+      {
+        heading: 'Cuidado com prêmio em dinheiro',
+        body: [
+          'Bolão de empresa funciona bem sem dinheiro. Um prêmio simbólico basta, como escolher o restaurante do próximo almoço da equipe. Quando entra dinheiro, alguém precisa cobrar e guardar o valor, e o bolão pode esbarrar nas regras internas.',
+          'Se a empresa tiver política sobre jogos, rifas ou sorteios entre funcionários, consulte o RH antes de anunciar o bolão.',
+        ],
+      },
+      {
+        heading: 'Mantenha a equipe engajada',
+        body: [
+          'Bolão de empresa costuma morrer por esquecimento. Quem perde uma rodada fica para trás e desanima. Lembrete antes da rodada e classificação fácil de consultar seguram a participação.',
+          'Títulos paralelos, como melhor da rodada ou mais placares exatos, mantêm palpitando quem já não briga pelo topo.',
+        ],
+      },
+      {
+        heading: 'Como montar o bolão da empresa no Palpitae',
+        body: [
+          'No Palpitae cada pessoa entra com a conta Google e o organizador cria um grupo privado gratuito. Na criação ele escolhe a pontuação: clássica (3 pontos pelo placar exato e 1 pelo resultado), só placar exato, só vencedor ou valores personalizados. Também define se os palpites dos outros aparecem em tempo real ou ficam ocultos até cada participante registrar o próprio palpite naquele jogo. Essas regras ficam fixas depois que o grupo é criado, então ninguém muda a pontuação no meio do campeonato.',
+          'O convite vai por link ou código, que dá para colar no canal da equipe. Cada grupo aceita até 50 participantes. Em empresas maiores, dá para criar um grupo por área. Cada palpite trava no horário de início do jogo, os resultados entram sozinhos e a classificação se atualiza a cada partida. O app manda um lembrete por e-mail na manhã da rodada para quem ainda não palpitou, e cada pessoa pode desligar o aviso nas configurações.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Precisa pagar para fazer o bolão da empresa no Palpitae?',
+        answer:
+          'Não. Criar o grupo, convidar os colegas, palpitar e acompanhar a classificação é gratuito.',
+      },
+      {
+        question: 'Quantas pessoas cabem em um grupo?',
+        answer:
+          'Até 50 participantes por grupo. Para equipes maiores, crie um grupo por área ou por time e compare os líderes de cada um.',
+      },
+      {
+        question: 'Colegas que não entendem de futebol conseguem participar?',
+        answer:
+          'Sim. No modo só vencedor, o palpite é um clique entre mandante, empate e visitante. O app mostra os jogos da rodada com data e horário.',
+      },
+      {
+        question: 'O bolão precisa ter prêmio em dinheiro?',
+        answer:
+          'Não, e o Palpitae não movimenta dinheiro. O app registra palpites e calcula pontos. Qualquer prêmio fica por conta do grupo, e em empresa os prêmios simbólicos evitam cobrança e conflito com regras internas.',
+      },
+    ],
+    updated: '2026-10-04',
+  },
+  {
+    slug: 'bolao-online-gratis',
+    title: 'Como funciona um bolão online grátis',
+    teaser:
+      'Clique aqui e entenda como funciona um bolão online grátis: convite por link, palpites pelo celular e pontuação automática, sem planilha e sem conta de cabeça.',
+    description:
+      'Como funciona um bolão de futebol online e grátis: criar o grupo, convidar amigos por link, palpitar pelo celular e ver a pontuação calculada a cada jogo.',
+    intro:
+      'Bolão online é o bolão de sempre com a parte chata automatizada. Os palpites ficam registrados com horário, os resultados entram sozinhos e a classificação se atualiza depois de cada jogo.',
+    sections: [
+      {
+        heading: 'O que muda em relação ao bolão no papel',
+        body: [
+          'No bolão tradicional, alguém recolhe os palpites por mensagem, copia tudo para uma planilha e, depois da rodada, confere placar por placar. Cada etapa depende dessa pessoa, e uma semana de férias dela deixa a rodada sem pontuação. Também fica difícil provar que um palpite chegou antes do início do jogo.',
+          'Num bolão online, cada participante registra os próprios palpites. O sistema guarda o horário, bloqueia alterações quando a partida começa e calcula os pontos com a regra combinada. O organizador só cria o grupo e convida as pessoas.',
+        ],
+      },
+      {
+        heading: 'Passo a passo de um bolão online',
+        body: [
+          'O processo segue a mesma ordem em quase toda plataforma. Alguém cria o grupo e escolhe o campeonato. Em seguida define a regra de pontuação e manda o convite. Cada participante entra, vê a lista de jogos e preenche os placares antes de cada partida.',
+          'Quando o jogo termina, o placar oficial entra no sistema e os pontos de cada palpite são calculados. A classificação do grupo é refeita na hora, e todo mundo vê quem subiu e quem caiu na rodada.',
+          'Para quem participa, o trabalho se resume a abrir o app antes da rodada e preencher os jogos. Para quem organiza, termina no envio do convite.',
+        ],
+      },
+      {
+        heading: 'O que conferir num bolão grátis',
+        body: [
+          'Alguns sites anunciam bolão grátis e cobram por recursos como mais participantes. Antes de convidar o grupo, confira se o limite de pessoas atende, se a pontuação é calculada sem custo e se o cadastro pede dados além do necessário.',
+          'Confira também se o site é mesmo um bolão. Um bolão entre amigos é uma disputa de palpites em que cada acerto vale pontos. Uma casa de apostas recebe dinheiro e paga conforme as odds de cada jogo. Se a página pede depósito, cartão ou Pix para você palpitar, você está numa casa de apostas.',
+        ],
+      },
+      {
+        heading: 'Regras de pontuação mais usadas',
+        body: [
+          'A regra clássica dá 3 pontos para quem acerta o placar exato e 1 ponto para quem acerta só o resultado (vitória, empate ou derrota). Ela premia quem arrisca o placar e ainda recompensa quem acertou o vencedor.',
+          'Há variações. Alguns grupos contam só o vencedor, o que deixa o palpite mais rápido. Outros contam só o placar exato, o que deixa a disputa mais difícil. Num bolão online a regra fica registrada no grupo e vale igual para todos, sem conta manual.',
+        ],
+      },
+      {
+        heading: 'Como o Palpitae funciona',
+        body: [
+          'O Palpitae é um app de bolão gratuito que roda no navegador do celular ou do computador, sem instalar nada. O login usa a conta Google. Você cria um grupo privado, escolhe a regra de pontuação e convida os amigos por link ou código. Cada grupo aceita até 50 pessoas.',
+          'Os jogos e resultados são sincronizados automaticamente a partir de um provedor de dados de futebol. Cada palpite trava no horário de início do próprio jogo, e os pontos entram assim que a partida termina. A classificação do grupo fica ao lado da tabela do campeonato. O app manda um lembrete por e-mail na manhã da rodada para quem ainda não palpitou.',
+          'O Palpitae registra palpites e calcula pontos, sem depósito, odds ou prêmio em dinheiro.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'O Palpitae é uma casa de apostas?',
+        answer:
+          'Não. O Palpitae é um bolão de palpites entre amigos, gratuito e sem depósito. Ninguém aposta dinheiro no app, e o site não paga prêmios.',
+      },
+      {
+        question: 'Preciso baixar aplicativo para participar?',
+        answer:
+          'Não. O Palpitae funciona no navegador do celular ou do computador. Basta abrir o link de convite e entrar com a conta Google.',
+      },
+      {
+        question: 'Quais campeonatos estão disponíveis?',
+        answer:
+          'O Palpitae cobre o Brasileirão Série A e a Copa do Mundo. Ao criar o grupo, o app mostra os campeonatos disponíveis naquele momento.',
+      },
+      {
+        question: 'Dá para mudar o palpite depois de enviado?',
+        answer:
+          'Sim, até o horário de início do jogo. Depois disso o palpite trava e não pode mais ser alterado.',
+      },
+    ],
+    updated: '2026-10-04',
+  },
+  {
+    slug: 'planilha-de-bolao',
+    title: 'Quando trocar a planilha de bolão por um app',
+    teaser:
+      'Clique aqui e compare a planilha de bolão com um app de bolão: quanto trabalho cada um dá, onde surgem os erros de pontuação e quando a planilha ainda faz sentido.',
+    description:
+      'Planilha de bolão no Excel ou no Google Sheets, ou app de bolão online? Compare o trabalho de cada formato, os erros de pontuação e a trava dos palpites.',
+    intro:
+      'A planilha é o jeito clássico de organizar bolão: uma aba com os jogos, uma coluna por participante e fórmulas para somar os pontos. A planilha dá conta de grupos pequenos. Com grupo grande ou campeonato de dezenas de rodadas, a manutenção pesa.',
+    sections: [
+      {
+        heading: 'Como funciona uma planilha de bolão',
+        body: [
+          'Uma planilha de bolão típica tem os jogos nas linhas, os palpites de cada participante ao lado do placar real e uma fórmula que compara os dois. Com o palpite nas colunas C e D e o placar real em E e F, a fórmula =SE(E(C2=E2;D2=F2);3;SE(SINAL(C2-D2)=SINAL(E2-F2);1;0)) dá 3 pontos pelo placar exato, 1 pelo resultado e 0 no resto. A função E confere se os gols dos dois times batem. A função SINAL devolve 1, 0 ou -1 conforme o mandante vence, empata ou perde, então comparar os dois sinais confere o resultado.',
+          'Uma aba de classificação soma os pontos de cada participante e ordena a lista.',
+          'Montar a primeira versão leva uma tarde. Depois disso, o organizador precisa recolher os palpites antes de cada rodada, copiar para a planilha, digitar os placares oficiais e conferir se as fórmulas pegaram todas as linhas.',
+          'Planilhas prontas baixadas da internet já trazem a tabela do campeonato e as fórmulas. Elas poupam a montagem. O recolhimento dos palpites e a digitação dos placares continuam manuais, rodada após rodada.',
+        ],
+      },
+      {
+        heading: 'Onde a planilha costuma dar problema',
+        body: [
+          'Palpite que chega por mensagem não tem horário confiável. Alguém sempre manda depois do apito inicial, e o organizador precisa decidir se aceita. Sem horário registrado, a discussão fica na palavra de cada um.',
+          'Um placar lançado na linha errada ou uma fórmula arrastada só até a metade da coluna muda a classificação, e o erro só aparece quando alguém reclama. Num campeonato de pontos corridos com 380 jogos, são centenas de células para conferir.',
+          'A planilha só anda quando o organizador atualiza. Se ele perde o interesse no meio da temporada, a classificação congela na última rodada que ele lançou.',
+        ],
+      },
+      {
+        heading: 'O que um app de bolão faz no lugar da planilha',
+        body: [
+          'Num app de bolão, cada participante preenche os próprios palpites. O sistema guarda o horário, trava o palpite quando o jogo começa e busca o placar oficial sozinho. A pontuação segue a regra definida na criação do grupo e é aplicada igual para todos.',
+          'O organizador deixa de ser digitador. Ele cria o grupo, manda o convite e palpita como os outros. A classificação fica disponível a qualquer hora, sem esperar ninguém atualizar o arquivo.',
+        ],
+      },
+      {
+        heading: 'Quando a planilha ainda faz sentido',
+        body: [
+          'A planilha funciona bem em grupos muito pequenos, com poucos jogos, ou quando a regra é tão específica que nenhum app oferece, como pontuar artilheiro, campeão e vice antes do torneio. Também serve para quem gosta de montar fórmulas e acompanhar estatísticas próprias.',
+          'Num campeonato de 38 rodadas, o organizador digita 380 placares. Nesses casos um app economiza horas do organizador e encerra a discussão sobre palpite atrasado.',
+        ],
+      },
+      {
+        heading: 'Trocar a planilha pelo Palpitae',
+        body: [
+          'No Palpitae você cria o grupo de graça e escolhe a regra de pontuação: clássica (3 pontos pelo placar exato e 1 pelo resultado), só placar exato, só vencedor ou valores personalizados de 0 a 10. Depois manda o link de convite no mesmo grupo de WhatsApp onde a planilha circulava.',
+          'Os resultados chegam automaticamente, cada palpite trava no início do próprio jogo e a classificação se atualiza a cada partida. O app conta os placares exatos de cada participante, que na planilha exigem uma coluna extra de fórmula.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Qual fórmula usar para pontuar uma planilha de bolão?',
+        answer:
+          'Com o palpite nas colunas C e D e o placar real em E e F, use =SE(E(C2=E2;D2=F2);3;SE(SINAL(C2-D2)=SINAL(E2-F2);1;0)) para a pontuação clássica de 3 pontos pelo placar exato, 1 pelo resultado e 0 no resto. A função E confere se os gols dos dois times batem. A função SINAL devolve 1, 0 ou -1 conforme o mandante vence, empata ou perde, então comparar os dois sinais confere o resultado.',
+      },
+      {
+        question: 'Dá para importar a planilha antiga para o Palpitae?',
+        answer:
+          'Não. No Palpitae cada participante registra os próprios palpites a partir do momento em que entra no grupo. Com o campeonato em andamento, o mais simples é começar o grupo na rodada seguinte.',
+      },
+      {
+        question: 'Quanto custa usar um app de bolão?',
+        answer:
+          'Depende do app. No Palpitae, criar grupos, convidar participantes e acompanhar a classificação é gratuito.',
+      },
+    ],
+    updated: '2026-10-04',
+  },
+  {
+    slug: 'dicas-para-acertar-palpites',
+    title: 'Dicas para acertar mais palpites no bolão',
+    teaser:
+      'Clique aqui e veja dicas para palpitar melhor no bolão: quais placares mais saem, quando arriscar o empate e como a regra de pontuação muda a estratégia.',
+    description:
+      'Dicas para acertar mais palpites no bolão de futebol: placares mais comuns, peso do mando de campo, quando arriscar o empate e como a regra de pontuação muda a estratégia.',
+    intro:
+      'Ninguém acerta todos os placares, e é isso que deixa o bolão divertido. Alguns hábitos aumentam a média de pontos ao longo do campeonato. As dicas abaixo valem para qualquer bolão que pontua placar exato e resultado.',
+    sections: [
+      {
+        heading: 'Entenda o que a regra de pontuação premia',
+        body: [
+          'Antes de palpitar, leia a regra do grupo. No sistema clássico, o placar exato vale 3 pontos e o resultado vale 1. Um placar exato vale três acertos de resultado. Errar o vencedor zera o palpite, então escolha o resultado primeiro.',
+          'Se o grupo pontua só o vencedor, esqueça os gols e pense apenas em quem ganha. Se pontua só o placar exato, vale escolher sempre os placares que mais acontecem.',
+        ],
+      },
+      {
+        heading: 'Placares baixos saem mais',
+        body: [
+          'A maioria dos jogos de futebol termina com poucos gols. Placares como 1 a 0, 1 a 1, 2 a 1 e 0 a 0 aparecem com mais frequência do que 3 a 2 ou 4 a 1. Na dúvida, um placar baixo coerente com o vencedor que você espera tem mais chance de cravar.',
+          'O 3 a 0 para o favorito sai menos que 1 a 0 ou 2 a 0. Se o vencedor estiver certo, você leva o ponto de resultado com qualquer um dos três, e o placar mais modesto tem mais chance de valer os 3 pontos.',
+        ],
+      },
+      {
+        heading: 'Mando de campo e momento dos times',
+        body: [
+          'Em campeonatos nacionais, o mandante vence com mais frequência do que o visitante. Quando dois times estão próximos na tabela, o mando serve de critério de desempate.',
+          'Olhe também os últimos jogos, os desfalques anunciados e o calendário. Um time que jogou no meio da semana por outra competição costuma poupar titulares no fim de semana, e isso muda o favoritismo.',
+          'Desconfie da paixão pelo seu time. Palpitar sempre a favor dele, ou sempre contra o rival, tira pontos. Quando a dúvida for grande, palpite o que a tabela indica.',
+        ],
+      },
+      {
+        heading: 'Quando arriscar o empate',
+        body: [
+          'O empate é o resultado mais difícil de prever, e muita gente evita palpitar nele. Por isso um empate acertado costuma valer pontos que pouca gente no grupo fez. Jogos entre times do mesmo nível, clássicos regionais e partidas em que o empate serve aos dois lados são bons candidatos.',
+          'Em campeonatos de pontos corridos, boa parte dos jogos termina empatada. Quem nunca palpita empate abre mão desses pontos a temporada inteira.',
+        ],
+      },
+      {
+        heading: 'No mata-mata, pense no contexto do confronto',
+        body: [
+          'Em jogos de ida e volta, o time que venceu a ida por boa vantagem costuma jogar a volta com mais cautela, e o placar tende a ser baixo.',
+          'No Palpitae vale o placar ao fim da prorrogação, sem contar a disputa de pênaltis. Nos jogos eliminatórios de partida única, quem palpita empate também escolhe quem vence nos pênaltis e ganha pontos extras se acertar.',
+        ],
+      },
+      {
+        heading: 'Consistência ganha bolão longo',
+        body: [
+          'Em campeonatos longos, como o Brasileirão com 38 rodadas, quem lidera no fim costuma ser quem palpitou em todos os jogos. Um palpite esquecido vale zero. Preencha a rodada com antecedência e ajuste perto do jogo se surgir alguma notícia.',
+          'No Palpitae dá para editar cada palpite até o apito inicial, o app manda um lembrete por e-mail na manhã da rodada para quem ainda não palpitou e a classificação mostra também quantos placares exatos cada participante acertou.',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Qual é o placar mais comum no futebol?',
+        answer:
+          'Na maioria das ligas, 1 a 0 e 1 a 1 estão entre os placares mais frequentes, seguidos de 2 a 1, 2 a 0 e 0 a 0. Jogos com cinco gols ou mais são raros.',
+      },
+      {
+        question: 'Vale mais arriscar o placar exato ou garantir o resultado?',
+        answer:
+          'No sistema clássico (3 pontos pelo placar, 1 pelo resultado), o placar exato só pontua se o vencedor estiver certo. Escolha primeiro o resultado mais provável e, dentro dele, o placar mais comum.',
+      },
+      {
+        question: 'Posso ver os palpites dos outros antes de palpitar?',
+        answer:
+          'Depende da configuração do grupo. No Palpitae, quem cria o grupo escolhe se os palpites aparecem em tempo real ou ficam ocultos até você registrar o seu palpite naquele jogo. Depois que a partida começa, todos ficam visíveis.',
+      },
+    ],
+    updated: '2026-10-04',
   },
 ]
 
@@ -310,11 +630,19 @@ nav.related{margin:44px 0 8px;padding-top:8px;border-top:1px solid #2a2a2a}
 nav.related h2{font-size:1.125rem;margin:24px 0 12px}
 nav.related ul{list-style:none;display:flex;flex-direction:column;gap:10px}
 nav.related a{color:#49f21b;font-weight:500}
+section.faq h3{font-size:1.0625rem;line-height:1.35;margin:24px 0 8px}
 @media (prefers-reduced-motion:reduce){a.card{transition:none}a.card:hover{transform:none}}
+${CONSENT_CSS}
 `.trim()
 
 /** Shared <head> tags for a page given its canonical path, title, description. */
-function head(path: string, title: string, description: string, jsonLd: object[]): string {
+function head(
+  path: string,
+  title: string,
+  description: string,
+  jsonLd: object[],
+  gaId: string,
+): string {
   const canonical = `${SITE_URL}${path}`
   const ld = jsonLd
     .map((o) => `<script type="application/ld+json">${JSON.stringify(o)}</script>`)
@@ -338,6 +666,7 @@ function head(path: string, title: string, description: string, jsonLd: object[]
     <meta property="og:image:height" content="630" />
     <meta name="theme-color" content="#0d0d0d" />
     <style>${PAGE_CSS}</style>
+    ${analyticsHead(gaId)}
     ${ld}`
 }
 
@@ -362,8 +691,24 @@ const breadcrumb = (path: string, name: string) => ({
   ],
 })
 
-/** Render one guide to a complete static HTML document. */
-function renderGuide(g: Guide): string {
+/** FAQPage JSON-LD for a guide's FAQ block. */
+function faqJsonLd(faq: GuideFaq[]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map((f) => ({
+      '@type': 'Question',
+      name: f.question,
+      acceptedAnswer: { '@type': 'Answer', text: f.answer },
+    })),
+  }
+}
+
+/**
+ * Render one guide to a complete static HTML document. `gaId` is the GA4
+ * measurement id; empty disables analytics and the cookie banner, as in the app.
+ */
+export function renderGuide(g: Guide, gaId = ''): string {
   const path = guidePath(g.slug)
   const article = {
     '@context': 'https://schema.org',
@@ -387,6 +732,13 @@ function renderGuide(g: Guide): string {
         `<h2>${escapeHtml(s.heading)}</h2>\n${s.body.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n')}`,
     )
     .join('\n')
+  const faqHtml = g.faq?.length
+    ? `<section class="faq"><h2>Perguntas frequentes</h2>\n${g.faq
+        .map((f) => `<h3>${escapeHtml(f.question)}</h3>\n<p>${escapeHtml(f.answer)}</p>`)
+        .join('\n')}</section>`
+    : ''
+  const jsonLd: object[] = [breadcrumb(path, g.title), article]
+  if (g.faq?.length) jsonLd.push(faqJsonLd(g.faq))
   // Contextual internal links to the sibling guides — strengthens the topic
   // cluster for SEO and keeps the other pages from being orphaned.
   const related = guides.filter((o) => o.slug !== g.slug)
@@ -398,7 +750,7 @@ function renderGuide(g: Guide): string {
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
-${head(path, g.title, g.description, [breadcrumb(path, g.title), article])}
+${head(path, g.title, g.description, jsonLd, gaId)}
   </head>
   <body>
     <div class="wrap">
@@ -408,6 +760,7 @@ ${head(path, g.title, g.description, [breadcrumb(path, g.title), article])}
         <h1>${escapeHtml(g.title)}</h1>
         <p class="intro">${escapeHtml(g.intro)}</p>
         ${sections}
+        ${faqHtml}
       </article>
       <div class="cta">
         <strong>Pronto para começar?</strong>
@@ -417,13 +770,14 @@ ${head(path, g.title, g.description, [breadcrumb(path, g.title), article])}
       ${relatedHtml}
       ${SITE_FOOTER}
     </div>
+    ${consentBanner(gaId)}
   </body>
 </html>
 `
 }
 
 /** Render the /guias/ index that lists every guide. */
-function renderIndex(): string {
+export function renderIndex(gaId = ''): string {
   const path = '/guias/'
   const jsonLd = [
     {
@@ -454,7 +808,7 @@ function renderIndex(): string {
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
-${head(path, 'Guias de bolão de futebol', 'Guias e dicas para organizar e disputar bolões de futebol com os amigos: como funciona, regras de pontuação e como começar.', jsonLd)}
+${head(path, 'Guias de bolão de futebol', 'Guias para organizar bolão de futebol online com amigos ou colegas de trabalho: regras de pontuação, Brasileirão, Copa do Mundo, planilha e dicas de palpite.', jsonLd, gaId)}
   </head>
   <body>
     <div class="wrap">
@@ -467,6 +821,7 @@ ${head(path, 'Guias de bolão de futebol', 'Guias e dicas para organizar e dispu
       </ul>
       ${SITE_FOOTER}
     </div>
+    ${consentBanner(gaId)}
   </body>
 </html>
 `
@@ -506,11 +861,11 @@ function render404(): string {
 }
 
 /** Resolve a request path to a guide page's HTML, or null if it's not a guide. */
-function guideHtmlFor(reqUrl: string): string | null {
+function guideHtmlFor(reqUrl: string, gaId: string): string | null {
   const path = (reqUrl.split('?')[0] || '').replace(/\/+$/, '') // strip query + trailing /
-  if (path === '/guias') return renderIndex()
+  if (path === '/guias') return renderIndex(gaId)
   const g = guides.find((g) => `/guias/${g.slug}` === path)
-  return g ? renderGuide(g) : null
+  return g ? renderGuide(g, gaId) : null
 }
 
 /**
@@ -523,14 +878,22 @@ function guideHtmlFor(reqUrl: string): string | null {
  * (Cloudflare Pages serves the static /guias/<slug>/index.html files directly).
  */
 export function guidesPlugin(): Plugin {
+  // Same env var the SPA reads (src/config.ts). Vite loads .env.<mode> into
+  // config.env, so production builds get the id and local dev stays GA-free.
+  let gaId = ''
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
-    const html = guideHtmlFor(req.originalUrl ?? '')
+    const html = guideHtmlFor(req.originalUrl ?? '', gaId)
     if (html === null) return next()
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.end(html)
   }
   return {
     name: 'palpitae-guides',
+    configResolved(config) {
+      gaId = normalizeGaId(String(config.env.VITE_GA_MEASUREMENT_ID ?? ''), (msg) =>
+        config.logger.warn(msg),
+      )
+    },
     configureServer(server) {
       server.middlewares.use(middleware)
     },
@@ -541,13 +904,13 @@ export function guidesPlugin(): Plugin {
       this.emitFile({
         type: 'asset',
         fileName: 'guias/index.html',
-        source: renderIndex(),
+        source: renderIndex(gaId),
       })
       for (const g of guides) {
         this.emitFile({
           type: 'asset',
           fileName: `guias/${g.slug}/index.html`,
-          source: renderGuide(g),
+          source: renderGuide(g, gaId),
         })
       }
       // Static 404 page served by Cloudflare Pages for unmatched URLs.
