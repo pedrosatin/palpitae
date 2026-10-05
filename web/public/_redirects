@@ -20,6 +20,10 @@
 /configuracoes / 200
 /admin/metricas / 200
 /admin/oportunidades / 200
+# /convite/* é atendido pela Pages Function functions/convite/[code].ts (preview
+# do convite no WhatsApp); regras do _redirects não se aplicam a rotas com
+# Function. A linha fica como rede de segurança caso a Function não suba.
+/convite/* / 200
 
 # Unmatched paths: Cloudflare Pages automatically serves /404.html with a
 # real 404 status when the file exists in the build output — no rule needed.

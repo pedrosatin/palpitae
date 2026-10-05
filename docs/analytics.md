@@ -82,6 +82,20 @@ O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal d
 | `click_<contexto>_whatsapp` | ícone WhatsApp (abre wa.me com texto + link) | — |
 | `click_<contexto>_twitter` | ícone X/Twitter (abre intent/tweet com texto + link) | — |
 
+Eventos de sucesso do funil de convite (`web/src/analytics/funnel.ts`). Os `click_*` acima
+medem a tentativa; estes medem a ação concluída. `login` e `join_group` são eventos
+recomendados do GA4.
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `login` | volta do OAuth com sessão válida, só quando a aba saiu por "Entrar com Google" (marca em `sessionStorage`, consumida no `/auth/me`) | `{ method }` (`google`) |
+| `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
+| `join_group` | `POST /groups/join` respondeu 200 (dispara junto com o `submit_entrar_grupo`, que segue para manter o histórico) | `{ source, group_id }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado) |
+
+O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
+`web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo) e a SPA
+redireciona para `/?convite=<CODE>`. Links antigos com `?convite=` continuam funcionando.
+
 Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 
 | Evento | Disparo | Params |

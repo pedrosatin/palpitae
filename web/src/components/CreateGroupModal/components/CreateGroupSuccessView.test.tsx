@@ -8,7 +8,11 @@ vi.mock('../../../analytics/ga', () => ({
 }))
 
 vi.mock('../../ShareButtons', () => ({
-  default: ({ shareLink }: { shareLink: string }) => <div data-testid="share-buttons">{shareLink}</div>,
+  default: ({ shareLink, message }: { shareLink: string; message?: string }) => (
+    <div data-testid="share-buttons" data-message={message}>
+      {shareLink}
+    </div>
+  ),
 }))
 
 const mockCreatedGroup = {
@@ -25,7 +29,7 @@ const defaultProps = {
 describe('CreateGroupSuccessView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    Object.defineProperty(navigator, "clipboard", {
+    Object.defineProperty(navigator, 'clipboard', {
       value: {
         writeText: vi.fn().mockResolvedValue(undefined),
       },
@@ -43,7 +47,11 @@ describe('CreateGroupSuccessView', () => {
     expect(screen.getByText('Grupo criado!')).toBeInTheDocument()
     expect(screen.getByText('Test Group')).toBeInTheDocument()
     expect(screen.getByText('TEST1234')).toBeInTheDocument()
-    expect(screen.getAllByText(`${window.location.origin}?convite=TEST1234`)[0]).toBeInTheDocument()
+    expect(screen.getAllByText(`${window.location.origin}/convite/TEST1234`)[0]).toBeInTheDocument()
+    expect(screen.getByTestId('share-buttons')).toHaveAttribute(
+      'data-message',
+      'Entra no meu bolão "Test Group" no Palpitae:',
+    )
   })
 
   it('copies invite code and tracks event', async () => {
@@ -56,6 +64,10 @@ describe('CreateGroupSuccessView', () => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith('TEST1234')
     })
     expect(ga.trackEvent).toHaveBeenCalledWith('click_create_group_copiar_codigo')
+    expect(ga.trackEvent).toHaveBeenCalledWith('share_invite', {
+      method: 'copy_code',
+      context: 'create_group',
+    })
 
     const copiedButtons = screen.getAllByRole('button', { name: 'Copiado!' })
     expect(copiedButtons.length).toBeGreaterThan(0)
@@ -74,11 +86,15 @@ describe('CreateGroupSuccessView', () => {
 
     fireEvent.click(copyLinkButton)
 
-    const expectedLink = `${window.location.origin}?convite=TEST1234`
+    const expectedLink = `${window.location.origin}/convite/TEST1234`
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expectedLink)
     })
     expect(ga.trackEvent).toHaveBeenCalledWith('click_create_group_copiar_link')
+    expect(ga.trackEvent).toHaveBeenCalledWith('share_invite', {
+      method: 'copy_link',
+      context: 'create_group',
+    })
 
     const copiedButtons = screen.getAllByRole('button', { name: 'Copiado!' })
     expect(copiedButtons.length).toBeGreaterThan(0)

@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { trackShareInvite } from '../../../analytics/funnel'
 import { trackEvent } from '../../../analytics/ga'
+import { buildInviteLink, buildInviteMessage } from '../../../lib/invite'
 import Button from '../../Button'
 import ShareButtons from '../../ShareButtons'
 import styles from '../CreateGroupModal.module.css'
@@ -19,20 +21,18 @@ interface CreateGroupSuccessViewProps {
 export default function CreateGroupSuccessView({ created, onClose }: CreateGroupSuccessViewProps) {
   const [copied, setCopied] = useState(false)
 
-  function getShareLink(invite_code: string) {
-    return `${window.location.origin}?convite=${invite_code}`
-  }
-
   async function handleCopyCode(invite_code: string) {
     await navigator.clipboard.writeText(invite_code)
     trackEvent('click_create_group_copiar_codigo')
+    trackShareInvite('copy_code', 'create_group')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   async function handleCopyLink(invite_code: string) {
-    await navigator.clipboard.writeText(getShareLink(invite_code))
+    await navigator.clipboard.writeText(buildInviteLink(invite_code))
     trackEvent('click_create_group_copiar_link')
+    trackShareInvite('copy_link', 'create_group')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -52,13 +52,17 @@ export default function CreateGroupSuccessView({ created, onClose }: CreateGroup
       </div>
 
       <div className={styles.linkRow}>
-        <span className={shared.linkText}>{getShareLink(created.invite_code)}</span>
+        <span className={shared.linkText}>{buildInviteLink(created.invite_code)}</span>
         <Button variant="outline" size="sm" onClick={() => handleCopyLink(created.invite_code)}>
           {copied ? 'Copiado!' : 'Copiar link'}
         </Button>
       </div>
 
-      <ShareButtons shareLink={getShareLink(created.invite_code)} eventContext="create_group" />
+      <ShareButtons
+        shareLink={buildInviteLink(created.invite_code)}
+        eventContext="create_group"
+        message={buildInviteMessage(created.name)}
+      />
 
       <Button variant="primary" className={styles.doneBtn} onClick={onClose}>
         Pronto

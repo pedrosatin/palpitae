@@ -11,6 +11,7 @@ import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
 import { metricsRouter } from './observability/metricsRouter'
 import { predictionsRouter } from './predictions/router'
+import { publicRouter } from './public/router'
 import type { AppContext, Env } from './types'
 
 // Cron do cold path diário (deve bater com wrangler.toml). Os demais ticks rodam o poller.
@@ -44,6 +45,8 @@ app.route('/matches', matchesRouter)
 app.route('/predictions', predictionsRouter)
 app.route('/notifications', notificationsRouter)
 app.route('/metrics', metricsRouter)
+// Sem autenticação: só dados que quem tem o link já poderia ver (ver public/router.ts).
+app.route('/public', publicRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
