@@ -39,7 +39,11 @@ export default function GroupTabContent({
         />
       )}
       {activeTab === 'group-picks' && (
-        <GroupPicksTab groupId={groupId} competitionId={group.competition_id} />
+        <GroupPicksTab
+          groupId={groupId}
+          competitionId={group.competition_id}
+          predictionsVisibility={group.predictions_visibility}
+        />
       )}
       {activeTab === 'leaderboard' && <LeaderboardTab groupId={groupId} currentUserId={userId} />}
       {activeTab === 'members' && isAdmin && (

@@ -6,7 +6,7 @@ import { fetchEspnScoreboard, type EspnScoreboard } from '../providers/espn'
 import bra1ScoreboardJson from './__fixtures__/espn-bra1-scoreboard.json'
 import espnCatalogJson from './__fixtures__/espn-catalog.json'
 import { findEntry, RADAR_COUNTRIES } from './articles'
-import { ESPN_LEAGUES, fetchEspnLeaguesAndCounts, type ProviderLeague } from './espnRadar'
+import { ESPN_LEAGUES, fetchEspnLeaguesAndCounts } from './espnRadar'
 
 const scoreboardMock = vi.mocked(fetchEspnScoreboard)
 
@@ -27,7 +27,11 @@ function board(over: {
       {
         name: 'Nome ESPN (ignorado — vale o da curadoria)',
         logos: [{ href: 'https://a.espncdn.com/i/leaguelogos/soccer/500/85.png' }],
-        season: over.season ?? { year: 2026, startDate: '2026-01-01T05:05Z', endDate: '2026-12-31T04:59Z' },
+        season: over.season ?? {
+          year: 2026,
+          startDate: '2026-01-01T05:05Z',
+          endDate: '2026-12-31T04:59Z',
+        },
       },
     ],
   }

@@ -23,7 +23,7 @@ function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void)
     trackEvent('click_members_remover')
     const ok = await confirm({
       title: 'Remover membro',
-      message: `Remover "${displayName}" do grupo?`,
+      message: `Remover "${displayName}" do grupo? A pessoa não poderá entrar de novo, nem com o convite.`,
       confirmLabel: 'Remover',
       danger: true,
     })

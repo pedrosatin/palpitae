@@ -107,7 +107,11 @@ describe('pollActiveMatches', () => {
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
-    const [earliestOver, stillRelevant] = db._captured.params as [string, string]
+    const [earliestOver, rescueFloor, stillRelevant] = db._captured.params as [
+      string,
+      string,
+      string,
+    ]
     // Must be ISO with T and Z — a space-separated SQLite datetime() string would
     // string-compare wrong against stored "2026-06-16T22:00:00Z" values.
     const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
@@ -118,6 +122,9 @@ describe('pollActiveMatches', () => {
     // The gap between the bounds is exactly 85 minutes.
     const gapMs = Date.parse(earliestOver) - Date.parse(stillRelevant)
     expect(gapMs).toBe(85 * 60 * 1000)
+    // The rescue floor reaches back 24 h from now (115 min before earliestOver's now).
+    expect(rescueFloor).toMatch(isoRe)
+    expect(Date.parse(earliestOver) - Date.parse(rescueFloor)).toBe((24 * 60 - 115) * 60 * 1000)
   })
 
   it('passes matchday for numeric rounds (group stage)', async () => {

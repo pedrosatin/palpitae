@@ -427,6 +427,12 @@ router.post('/join', requireAuth, async (c) => {
     return c.json({ error: 'Código de convite inválido' }, 404)
   }
 
+  const banned = await db
+    .prepare('SELECT user_id FROM group_bans WHERE group_id = ? AND user_id = ?')
+    .bind(group.id, userId)
+    .first()
+  if (banned) return c.json({ error: 'Acesso revogado pelo administrador' }, 403)
+
   // Already a member?
   const existing = await db
     .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
@@ -537,7 +543,7 @@ router.get('/:id', requireAuth, async (c) => {
       competition_name: group.competition_name,
       competition_type: group.competition_type ?? null,
       is_admin: group.admin_id === userId,
-      invite_code: group.invite_code,
+      invite_code: group.admin_id === userId ? group.invite_code : null,
       created_at: group.created_at,
       points_exact: group.points_exact,
       points_winner: group.points_winner,
@@ -693,7 +699,7 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
   const db = c.env.DB
 
   const group = await db
-    .prepare('SELECT owner_user_id FROM groups WHERE id = ?')
+    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
     .bind(groupId)
     .first<{ owner_user_id: string }>()
 
@@ -718,10 +724,19 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     return c.json({ error: 'Membro não encontrado no grupo' }, 404)
   }
 
-  await db
+  const removal = db
     .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
     .bind(groupId, targetUserId)
-    .run()
+  if (targetUserId !== userId) {
+    await db.batch([
+      db
+        .prepare('INSERT OR IGNORE INTO group_bans (group_id, user_id) VALUES (?, ?)')
+        .bind(groupId, targetUserId),
+      removal,
+    ])
+  } else {
+    await removal.run()
+  }
 
   logEvent(c.env.AE, 'member_removed', {
     // 'self' = saiu sozinho; 'admin' = removido pelo dono do grupo.

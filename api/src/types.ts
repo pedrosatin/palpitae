@@ -1,3 +1,5 @@
+import type { JwtPayload } from './auth/jwt'
+
 export type Env = {
   DB: D1Database
   // Analytics Engine — opcional: não existe em dev local / testes (writeDataPoint
@@ -18,11 +20,19 @@ export type Env = {
   FRONTEND_URL: string
   FOOTBALL_API_KEY: string
   RESEND_API_KEY: string
+  // Segredo compartilhado com o proxy do Pages (web/functions/api). Com ele, a API
+  // confia no IP do visitante repassado pelo proxy. Ver docs/security.md.
+  PROXY_SHARED_SECRET?: string
 }
+
+// Resultado da verificação do cookie de sessão, guardado no contexto para que o
+// limitador e o requireAuth consultem `revoked_sessions` uma vez só.
+export type SessionState = { payload: JwtPayload } | { error: unknown }
 
 export type Variables = {
   userId: string
   userEmail: string
+  session?: SessionState
 }
 
 export type AppContext = {

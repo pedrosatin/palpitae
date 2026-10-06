@@ -137,7 +137,9 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         />
 
         {/* Admin: invite section */}
-        {isAdmin && <GroupInviteSection inviteCode={group.invite_code} groupName={group.name} />}
+        {isAdmin && group.invite_code && (
+          <GroupInviteSection inviteCode={group.invite_code} groupName={group.name} />
+        )}
 
         {/* Tabs */}
         <GroupTabs

@@ -68,6 +68,7 @@ function createMatchesDbMock(
               return resultsFor(sql)
             },
             async first() {
+              if (sql.includes('FROM revoked_sessions')) return null
               if (sql.includes('FROM competitions WHERE id = ?')) {
                 return {
                   external_id: 'WC',
@@ -105,46 +106,6 @@ function createMatchesDbMock(
 
   return db as unknown as D1Database
 }
-
-describe('maybeSyncResults / runSyncIfNeeded error handling', () => {
-  it('logs an error and returns false when syncFixtures throws', async () => {
-    const syncError = new Error('API Timeout')
-    syncFixturesSpy.mockRejectedValue(syncError)
-    const logErrorSpy = vi.spyOn(observability, 'logError').mockImplementation(() => {})
-
-    const db = createMatchesDbMock([{ status: 'scheduled' }])
-
-    const app = new Hono<AppContext>()
-    app.route('/matches', matchesRouter)
-
-    const waitUntil = vi.fn()
-    const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, 'secret', 3600)
-    const request = new Request('http://localhost/matches?competition_id=comp-1', {
-      headers: { Cookie: `session=${token}` },
-    })
-
-    const env = fakeEnv(db)
-    const response = await app.fetch(request, env, {
-      waitUntil,
-      passThroughOnException: vi.fn(),
-      props: {},
-    })
-
-    expect(response.status).toBe(200)
-    expect(waitUntil).toHaveBeenCalled()
-
-    await waitUntil.mock.calls[0][0]
-
-    expect(scoreUnprocessedMatchesSpy).not.toHaveBeenCalled()
-    expect(logErrorSpy).toHaveBeenCalledWith(
-      env.AE,
-      'football_api_error',
-      'Background result sync (API Football) falhou:',
-      syncError,
-      { blobs: ['matches_background'] },
-    )
-  })
-})
 
 describe('matches router – GET /', () => {
   async function authRequest(url: string) {
@@ -237,7 +198,7 @@ describe('matches router – GET /', () => {
     expect(body.matches[0]).not.toHaveProperty('penalty_phases') // raw gate stripped
   })
 
-  it('returns immediately and delegates first sync to waitUntil when no matches are cached locally', async () => {
+  it('returns empty matches without scheduling external sync', async () => {
     const app = new Hono<AppContext>()
     app.route('/matches', matchesRouter)
 
@@ -253,8 +214,8 @@ describe('matches router – GET /', () => {
       matches: [],
       default_round: null,
     })
-    expect(waitUntil).toHaveBeenCalledTimes(1)
-    expect(syncFixturesSpy).toHaveBeenCalledTimes(1)
+    expect(waitUntil).not.toHaveBeenCalled()
+    expect(syncFixturesSpy).not.toHaveBeenCalled()
   })
 
   it('returns 500 when database query fails', async () => {
@@ -262,7 +223,9 @@ describe('matches router – GET /', () => {
     app.route('/matches', matchesRouter)
 
     const failingDb = {
-      prepare: () => {
+      prepare: (sql: string) => {
+        if (sql.includes('FROM revoked_sessions'))
+          return { bind: () => ({ first: async () => null }) }
         throw new Error('Simulated DB error')
       },
       batch: () => Promise.reject(new Error('Simulated DB error')),
@@ -278,48 +241,6 @@ describe('matches router – GET /', () => {
     await expect(response.json()).resolves.toEqual({ error: 'Erro ao carregar jogos' })
   })
 
-  it('logs an error when background sync (maybeSyncResults) fails', async () => {
-    const app = new Hono<AppContext>()
-    app.route('/matches', matchesRouter)
-
-    syncFixturesSpy.mockResolvedValueOnce({
-      competition: 'WC',
-      competitionId: 'comp-1',
-      matches: 0,
-      teams: 0,
-    })
-    const simulatedError = new Error('Simulated D1/scoring error')
-    scoreUnprocessedMatchesSpy.mockRejectedValueOnce(simulatedError)
-
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    const makeCtx = () => {
-      const pending: Promise<unknown>[] = []
-      return {
-        ctx: {
-          waitUntil: (p: Promise<unknown>) => pending.push(p),
-          passThroughOnException: vi.fn(),
-          props: {},
-        },
-        settle: () => Promise.all(pending),
-      }
-    }
-
-    const ctx = makeCtx()
-    const response = await app.fetch(
-      await authRequest('http://localhost/matches?competition_id=comp-1'),
-      fakeEnv(createMatchesDbMock()),
-      ctx.ctx,
-    )
-    expect(response.status).toBe(200)
-
-    await ctx.settle()
-
-    expect(scoreUnprocessedMatchesSpy).toHaveBeenCalledTimes(1)
-    expect(consoleErrorSpy).toHaveBeenCalledWith('Background result sync falhou:', simulatedError)
-
-    consoleErrorSpy.mockRestore()
-  })
   describe('Cache-Control derived from response contents', () => {
     async function cacheHeaderFor(matchRows: { status: string }[]): Promise<string | null> {
       const app = new Hono<AppContext>()

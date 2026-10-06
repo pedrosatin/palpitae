@@ -13,6 +13,7 @@ import styles from './GroupPicksTab.module.css'
 interface GroupPicksTabProps {
   groupId: string
   competitionId: string
+  predictionsVisibility?: string
 }
 
 interface GroupMember {
@@ -42,14 +43,19 @@ function MatchPicksCard({
   match,
   memberPicks,
   selfUserId,
+  hidden,
 }: {
   match: Match
   memberPicks: MemberPrediction[]
   selfUserId: string
+  hidden: boolean
 }) {
   const revealed = memberPicks.length > 0
   const isFinished = match.status === 'finished'
-  const isLocked = isFinished || new Date() >= new Date(match.start_time)
+  const isLocked =
+    isFinished ||
+    match.status === 'live' ||
+    (!match.postponed && new Date() >= new Date(match.start_time))
 
   return (
     <div className={styles.matchCard}>
@@ -124,16 +130,25 @@ function MatchPicksCard({
         </ul>
       ) : (
         <p className={styles.hidden}>
-          {isLocked
+          {isLocked || !hidden
             ? '📭 Nenhum palpite foi feito para este jogo.'
-            : '🔒 Faça seu palpite na aba Palpitar para ver os palpites dos outros membros.'}
+            : '🔒 Os palpites dos outros membros aparecem quando o jogo começar.'}
+        </p>
+      )}
+      {revealed && hidden && !isLocked && (
+        <p className={styles.hidden}>
+          Os palpites dos outros membros aparecem quando o jogo começar.
         </p>
       )}
     </div>
   )
 }
 
-export default function GroupPicksTab({ groupId, competitionId }: GroupPicksTabProps) {
+export default function GroupPicksTab({
+  groupId,
+  competitionId,
+  predictionsVisibility = 'hidden',
+}: GroupPicksTabProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [picks, setPicks] = useState<GroupPicksResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -211,6 +226,7 @@ export default function GroupPicksTab({ groupId, competitionId }: GroupPicksTabP
             match={match}
             memberPicks={picksByMatch.get(match.id) ?? []}
             selfUserId={picks.self_user_id}
+            hidden={predictionsVisibility === 'hidden'}
           />
         ))}
       </div>

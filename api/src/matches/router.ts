@@ -26,135 +26,6 @@ function matchesCacheControl(matches: { status: string }[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers for maybeSyncResults
-// ---------------------------------------------------------------------------
-
-interface SyncNeeds {
-  needsInitialSync: boolean
-  needsSync: boolean
-  needsScoring: boolean
-}
-
-/**
- * Runs the three cheap COUNT queries that decide whether background sync /
- * scoring work is required. Kept separate so maybeSyncResults stays linear.
- */
-async function fetchSyncNeeds(competitionId: string, db: D1Database): Promise<SyncNeeds> {
-  const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-
-  const localMatches = await db
-    .prepare(`SELECT COUNT(*) AS count FROM matches WHERE competition_id = ?`)
-    .bind(competitionId)
-    .first<{ count: number }>()
-
-  const needsInitialSync = (localMatches?.count ?? 0) === 0
-
-  // `postponed = 0` é essencial: um jogo adiado tem start_time no passado e nunca
-  // vira 'finished', então sem esse filtro ele deixaria `needsSync` verdadeiro para
-  // sempre — todo GET /matches dispararia um sync em background e queimaria a quota
-  // da football-data indefinidamente.
-  const pending = await db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM matches
-       WHERE competition_id = ? AND start_time <= ? AND status != 'finished'
-         AND postponed = 0`,
-    )
-    .bind(competitionId, threeHoursAgo)
-    .first<{ count: number }>()
-
-  const needsSync = (pending?.count ?? 0) > 0
-
-  // Also check for finished matches not yet scored (e.g. from a previous sync)
-  const unscoredCheck = await db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM matches
-       WHERE competition_id = ? AND status = 'finished' AND scored_at IS NULL
-         AND home_score IS NOT NULL AND away_score IS NOT NULL`,
-    )
-    .bind(competitionId)
-    .first<{ count: number }>()
-
-  const needsScoring = (unscoredCheck?.count ?? 0) > 0
-
-  return { needsInitialSync, needsSync, needsScoring }
-}
-
-/**
- * Calls syncFixtures when needsInitialSync or needsSync is true.
- * Returns false if the sync step failed (caller should skip scoring).
- * Returns true when no sync was needed or sync succeeded.
- */
-async function runSyncIfNeeded(
-  needsInitialSync: boolean,
-  needsSync: boolean,
-  competitionId: string,
-  db: D1Database,
-  apiKey: string,
-  ae?: AnalyticsEngineDataset,
-): Promise<boolean> {
-  if (!needsInitialSync && !needsSync) return true
-
-  const competition = await db
-    .prepare(`SELECT external_id, provider, season FROM competitions WHERE id = ?`)
-    .bind(competitionId)
-    .first<{ external_id: string; provider: string; season: string }>()
-
-  if (!competition || competition.provider !== 'football-data') return false
-
-  try {
-    await syncFixtures({
-      competitionCode: competition.external_id,
-      season: Number(competition.season),
-      apiKey,
-      db,
-    })
-    return true
-  } catch (err) {
-    // football_api_error é só pra falha da API externa — não para erros de D1/
-    // scoring (esses caem no catch externo, sem virar "erro de API").
-    logError(ae, 'football_api_error', 'Background result sync (API Football) falhou:', err, {
-      blobs: ['matches_background'],
-    })
-    return false // não pontua se o sync falhou
-  }
-}
-
-async function maybeSyncResults(
-  competitionId: string,
-  db: D1Database,
-  apiKey: string,
-  ae?: AnalyticsEngineDataset,
-): Promise<void> {
-  const startedAt = Date.now()
-  try {
-    const { needsInitialSync, needsSync, needsScoring } = await fetchSyncNeeds(competitionId, db)
-
-    if (!needsInitialSync && !needsSync && !needsScoring) return
-
-    const syncOk = await runSyncIfNeeded(needsInitialSync, needsSync, competitionId, db, apiKey, ae)
-    if (!syncOk) return // não pontua se o sync falhou
-
-    await scoreUnprocessedMatches(competitionId, db)
-
-    console.info(
-      '[perf]',
-      JSON.stringify({
-        route: 'waitUntil maybeSyncResults',
-        competition_id: competitionId,
-        total_ms: Date.now() - startedAt,
-        initial_sync: needsInitialSync,
-        result_sync: needsSync,
-        scoring: needsScoring,
-      }),
-    )
-  } catch (err) {
-    // Erro inesperado (D1/scoring) — não é falha da API Football, então não emite
-    // football_api_error; só registra nos Workers Logs.
-    console.error('Background result sync falhou:', err)
-  }
-}
-
-// ---------------------------------------------------------------------------
 // GET /matches handler
 // ---------------------------------------------------------------------------
 
@@ -325,7 +196,12 @@ async function handleGetMatches(c: Context<AppContext>) {
   // CacheStorage type, which only knows the standard open()/match() surface.
   const cache =
     typeof caches !== 'undefined' ? (caches as unknown as { default: Cache }).default : undefined
-  const cacheKey = new Request(c.req.url)
+  const cacheUrl = new URL(c.req.url)
+  cacheUrl.search = ''
+  cacheUrl.searchParams.set('competition_id', competitionId)
+  if (round) cacheUrl.searchParams.set('round', round)
+  if (status) cacheUrl.searchParams.set('status', status)
+  const cacheKey = new Request(cacheUrl)
   if (cache) {
     const cached = await cache.match(cacheKey)
     if (cached) {
@@ -377,15 +253,6 @@ async function handleGetMatches(c: Context<AppContext>) {
       c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
     }
 
-    // Background result sync: fire-and-forget after response is sent.
-    // Checks for matches that started >3h ago but aren't finished in our DB.
-    // At most 1 API call per competition per trigger — naturally self-cooling
-    // because once a match is 'finished' + scored_at is set, it never triggers again.
-    const apiKey = c.env.FOOTBALL_API_KEY
-    if (apiKey) {
-      c.executionCtx.waitUntil(maybeSyncResults(competitionId, db, apiKey, c.env.AE))
-    }
-
     // Cap dimension cardinality: only real competitions (response had games)
     // get their id; random junk competition_id from anon flooding all collapse
     // into one 'unknown' bucket.
@@ -401,7 +268,6 @@ async function handleGetMatches(c: Context<AppContext>) {
         competition_id: competitionId,
         has_round_filter: Boolean(round),
         status_filter: status ?? 'all',
-        scheduled_result_sync: Boolean(apiKey),
       },
     })
 

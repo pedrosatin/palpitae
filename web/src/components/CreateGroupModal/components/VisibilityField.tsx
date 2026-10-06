@@ -30,9 +30,9 @@ export default function VisibilityField({
           onClick={() => handleVisibility('hidden')}
           aria-pressed={predictionsVisibility === 'hidden'}
         >
-          <span className={styles.visibilityTitle}>Oculto até palpitar</span>
+          <span className={styles.visibilityTitle}>Oculto até o jogo começar</span>
           <span className={styles.visibilityDesc}>
-            Outros palpites só aparecem depois que você palpitar ou o jogo começar
+            Outros palpites só aparecem quando o jogo começar
           </span>
         </button>
         <button

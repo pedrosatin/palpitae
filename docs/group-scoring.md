@@ -100,9 +100,9 @@ manual.
 
 ## Visibilidade
 
-- `hidden` (default): anti-cópia — o palpite alheio para um jogo só aparece depois que o
-  usuário palpitou naquele jogo **ou** o jogo começou. Enforçada server-side em
-  `GET /predictions/group`.
+- `hidden` (default): o palpite alheio aparece somente quando o jogo está bloqueado
+  por horário ou status. O usuário continua vendo e editando o próprio palpite antes
+  do bloqueio. O servidor aplica a regra em `GET /predictions/group`.
 - `public`: todos veem todos em tempo real, sem filtro (opt-in explícito do criador).
 
 A visibilidade é sempre resolvida no servidor a partir do banco — o front nunca decide o que

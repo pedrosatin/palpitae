@@ -14,7 +14,8 @@ function buildMockContext(cookieHeader: string | null): Context<AppContext> {
         headers: cookieHeader ? { Cookie: cookieHeader } : {},
       }),
     },
-    env: { JWT_SECRET },
+    env: { JWT_SECRET, DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } },
+    get: vi.fn(),
     set: vi.fn(),
     json: vi
       .fn()

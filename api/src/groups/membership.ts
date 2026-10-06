@@ -9,7 +9,9 @@ export async function getGroupMembership(
   userId: string,
 ): Promise<{ role: string } | null> {
   return db
-    .prepare('SELECT role FROM group_members WHERE group_id = ? AND user_id = ?')
+    .prepare(`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?
+      AND EXISTS (SELECT 1 FROM groups WHERE id = group_id AND deleted_at IS NULL)
+      AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = group_members.group_id AND b.user_id = group_members.user_id)`)
     .bind(groupId, userId)
     .first<{ role: string }>()
 }
