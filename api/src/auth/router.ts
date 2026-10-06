@@ -11,8 +11,9 @@ import {
 } from './google'
 import { getFeatureFlags } from './permissions'
 import { signJwt } from './jwt'
-import { revokeSession, SessionStorageError, verifySession } from './session'
-import { hashUserId, logEvent } from '../observability'
+import { resolveSession } from './middleware'
+import { revokeSession, SessionStorageError } from './session'
+import { hashUserId, logError, logEvent } from '../observability'
 import type { AppContext } from '../types'
 
 const SESSION_COOKIE = 'session'
@@ -181,9 +182,19 @@ authRouter.get('/callback', async (c) => {
 // POST /auth/logout
 authRouter.post('/logout', async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
-  if (token) await revokeSession(token, c.env.JWT_SECRET, c.env.DB)
   const domain = cookieDomain(c.env.BASE_URL)
+  // O cookie sai do navegador mesmo se a revogação no D1 falhar.
   deleteCookie(c, SESSION_COOKIE, { path: '/', ...(domain && { domain }) })
+  if (token) {
+    try {
+      await revokeSession(token, c.env.JWT_SECRET, c.env.DB)
+    } catch (error) {
+      logError(c.env.AE, 'security_storage_error', '[auth] Revogação no logout falhou:', error, {
+        blobs: ['logout'],
+      })
+      return c.json({ error: 'Não foi possível encerrar a sessão no servidor' }, 503)
+    }
+  }
   return c.json({ ok: true })
 })
 
@@ -199,14 +210,14 @@ authRouter.get('/me', async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
   if (!token) return c.json({ authenticated: false }, 200)
 
-  let userId: string
-  try {
-    const payload = await verifySession(token, c.env.JWT_SECRET, c.env.DB)
-    userId = payload.sub
-  } catch (error) {
-    if (error instanceof SessionStorageError) return c.json({ error: 'Sessão indisponível' }, 503)
+  const session = await resolveSession(c)
+  if (!session || 'error' in session) {
+    if (session?.error instanceof SessionStorageError) {
+      return c.json({ error: 'Sessão indisponível' }, 503)
+    }
     return c.json({ authenticated: false }, 200)
   }
+  const userId = session.payload.sub
 
   const user = await c.env.DB.prepare(
     'SELECT u.id, u.email, p.nickname, p.avatar_url FROM users u LEFT JOIN profiles p ON p.user_id = u.id WHERE u.id = ?',

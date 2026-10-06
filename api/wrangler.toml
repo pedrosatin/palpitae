@@ -23,6 +23,7 @@ dataset = "palpitae_events"
 # Crons (o handler `scheduled` distingue pelo controller.cron):
 #  - "0,30 * * * *" → result poller: resultados da janela ativa + pontuação (ADR-007).
 #    A cada 30 min; janela ativa = 85 min ⇒ no máx. 1 tick de atraso até pontuar.
+#    Jogos sem resultado ou sem pontuação seguem na consulta por até 24 h (resgate).
 #  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
 #    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
 #  - "0 10 * * *"   → round reminder: e-mail de lembrete para rodadas que começam
@@ -54,4 +55,5 @@ FRONTEND_URL = "https://palpitae.com.br"
 #   wrangler secret put AE_SQL_TOKEN     # cold path: token Account Analytics:Read
 #   wrangler secret put RESEND_API_KEY   # round reminder: API key do Resend
 #   wrangler secret put ADMIN_EMAIL      # dashboard /metrics: e-mail do admin (403 sem ele)
+#   wrangler secret put PROXY_SHARED_SECRET # mesmo valor do Pages; ver docs/security.md
 # Local overrides go in .dev.vars (already has localhost values)

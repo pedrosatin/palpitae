@@ -341,7 +341,7 @@ export const guides: Guide[] = [
         body: [
           'No trabalho, regra ambígua vira desconforto entre colegas. Antes do primeiro jogo, deixe por escrito quanto vale cada acerto, até quando dá para mudar o palpite e o que acontece com jogo adiado. O modelo mais usado dá 3 pontos para o placar exato e 1 ponto para quem acerta só o resultado.',
           'Se parte da equipe nunca participou de bolão, use só o resultado: vitória do mandante, empate ou vitória do visitante. Fica fácil de explicar e qualquer pessoa palpita em poucos segundos.',
-          'Decida também se os palpites dos colegas ficam visíveis antes do jogo. Esconder os palpites até cada pessoa registrar o seu impede que alguém copie o palpite de quem está liderando.',
+          'Decida também se os palpites dos colegas ficam visíveis antes do jogo. Esconder os palpites até o jogo começar impede que alguém copie o palpite de quem está liderando.',
         ],
       },
       {
@@ -361,7 +361,7 @@ export const guides: Guide[] = [
       {
         heading: 'Como montar o bolão da empresa no Palpitae',
         body: [
-          'No Palpitae cada pessoa entra com a conta Google e o organizador cria um grupo privado gratuito. Na criação ele escolhe a pontuação: clássica (3 pontos pelo placar exato e 1 pelo resultado), só placar exato, só vencedor ou valores personalizados. Também define se os palpites dos outros aparecem em tempo real ou ficam ocultos até cada participante registrar o próprio palpite naquele jogo. Essas regras ficam fixas depois que o grupo é criado, então ninguém muda a pontuação no meio do campeonato.',
+          'No Palpitae cada pessoa entra com a conta Google e o organizador cria um grupo privado gratuito. Na criação ele escolhe a pontuação: clássica (3 pontos pelo placar exato e 1 pelo resultado), só placar exato, só vencedor ou valores personalizados. Também define se os palpites dos outros aparecem em tempo real ou ficam ocultos até o jogo começar. Essas regras ficam fixas depois que o grupo é criado, então ninguém muda a pontuação no meio do campeonato.',
           'O convite vai por link ou código, que dá para colar no canal da equipe. Cada grupo aceita até 50 participantes. Em empresas maiores, dá para criar um grupo por área. Cada palpite trava no horário de início do jogo, os resultados entram sozinhos e a classificação se atualiza a cada partida. O app manda um lembrete por e-mail na manhã da rodada para quem ainda não palpitou, e cada pessoa pode desligar o aviso nas configurações.',
         ],
       },
@@ -601,7 +601,7 @@ export const guides: Guide[] = [
       {
         question: 'Posso ver os palpites dos outros antes de palpitar?',
         answer:
-          'Depende da configuração do grupo. No Palpitae, quem cria o grupo escolhe se os palpites aparecem em tempo real ou ficam ocultos até você registrar o seu palpite naquele jogo. Depois que a partida começa, todos ficam visíveis.',
+          'Depende da configuração do grupo. No Palpitae, quem cria o grupo escolhe se os palpites aparecem em tempo real ou ficam ocultos. Nos grupos com palpites ocultos, os palpites dos outros aparecem quando o jogo começa.',
       },
     ],
     published: '2026-10-05',

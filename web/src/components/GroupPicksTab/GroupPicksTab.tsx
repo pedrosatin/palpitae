@@ -54,7 +54,7 @@ function MatchPicksCard({
   const isFinished = match.status === 'finished'
   const isLocked =
     isFinished ||
-    String(match.status) === 'live' ||
+    match.status === 'live' ||
     (!match.postponed && new Date() >= new Date(match.start_time))
 
   return (

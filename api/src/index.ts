@@ -11,6 +11,7 @@ import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
 import { sendRoundReminders } from './notifications/roundReminder'
+import { logError } from './observability/events'
 import { exportRecentDays } from './observability/export'
 import { metricsRouter } from './observability/metricsRouter'
 import { predictionsRouter } from './predictions/router'
@@ -69,7 +70,17 @@ export default {
 
   // Cron Triggers (ver wrangler.toml). O controller.cron diz qual agendamento disparou.
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(clearExpiredSecurityRecords(env.DB))
+    ctx.waitUntil(
+      clearExpiredSecurityRecords(env.DB).catch((error: unknown) =>
+        logError(
+          env.AE,
+          'security_storage_error',
+          '[limits] Limpeza de registros expirados falhou:',
+          error,
+          { blobs: ['cleanup'] },
+        ),
+      ),
+    )
     if (controller.cron === DAILY_EXPORT_CRON) {
       // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))

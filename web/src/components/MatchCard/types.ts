@@ -1,7 +1,7 @@
 export interface Match {
   id: string
   start_time: string
-  status: 'scheduled' | 'finished'
+  status: 'scheduled' | 'live' | 'finished'
   /**
    * Jogo adiado pelo provider. O `start_time` continua sendo o horário original
    * (que já passou), então o card não pode se guiar só pela data — sem essa flag

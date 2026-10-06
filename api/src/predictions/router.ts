@@ -6,7 +6,7 @@ import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { roundLabel } from '../matches/rounds'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
-import { getGroupMembershipTimed } from '../groups/membership'
+import { getGroupMembership, getGroupMembershipTimed } from '../groups/membership'
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -818,14 +818,11 @@ async function verifyGroupsForImport(
   sourceGroupId: string,
   targetGroupId: string,
 ): Promise<{ error: string; status: ContentfulStatusCode } | null> {
-  // Verify user is a member of both groups
-  const memberships = await db
-    .prepare(`SELECT group_id FROM group_members WHERE group_id IN (?, ?) AND user_id = ?`)
-    .bind(sourceGroupId, targetGroupId, userId)
-    .all<{ group_id: string }>()
-
-  const sourceMembership = memberships.results.find((m) => m.group_id === sourceGroupId)
-  const targetMembership = memberships.results.find((m) => m.group_id === targetGroupId)
+  // Verify user is an active member of both groups (same rule as every group route)
+  const [sourceMembership, targetMembership] = await Promise.all([
+    getGroupMembership(db, sourceGroupId, userId),
+    getGroupMembership(db, targetGroupId, userId),
+  ])
 
   if (!sourceMembership) {
     return { error: 'Acesso negado ao grupo de origem', status: 403 }
