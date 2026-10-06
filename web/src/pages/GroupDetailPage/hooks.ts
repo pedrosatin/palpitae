@@ -101,6 +101,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
   const navigate = useNavigate()
   const [leaving, setLeaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [rotatingInvite, setRotatingInvite] = useState(false)
   const { confirm, confirmDialog } = useConfirm()
 
   async function leaveGroup() {
@@ -170,5 +171,48 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     }
   }
 
-  return { leaveGroup, leaving, deleteGroup, deleting, confirmDialog }
+  /** Troca o código de convite (só o dono). O código antigo para de funcionar. */
+  async function rotateInvite(onRotated: (inviteCode: string) => void) {
+    if (!groupId) return
+    trackEvent('click_group_detail_trocar_convite')
+
+    const ok = await confirm({
+      title: 'Trocar código de convite',
+      message:
+        'O código e o link atuais deixam de funcionar. Quem já está no grupo continua nele. Deseja gerar um novo código?',
+      confirmLabel: 'Trocar código',
+      danger: true,
+    })
+    if (!ok) return
+
+    setRotatingInvite(true)
+
+    try {
+      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/invite/rotate`, {
+        method: 'POST',
+      })
+      const body = (await res.json()) as { invite_code?: string; error?: string }
+
+      if (!res.ok || !body.invite_code) {
+        throw new Error(body.error ?? 'Erro ao trocar o código de convite')
+      }
+
+      invalidateApiCache('groups:')
+      onRotated(body.invite_code)
+    } catch (e: unknown) {
+      window.alert(e instanceof Error ? e.message : 'Erro ao trocar o código de convite')
+    } finally {
+      setRotatingInvite(false)
+    }
+  }
+
+  return {
+    leaveGroup,
+    leaving,
+    deleteGroup,
+    deleting,
+    rotateInvite,
+    rotatingInvite,
+    confirmDialog,
+  }
 }

@@ -36,6 +36,7 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
       m.start_time,
       m.status,
       m.postponed,
+      m.locked_at,
       m.home_score,
       m.away_score,
       m.phase,

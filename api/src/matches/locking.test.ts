@@ -43,8 +43,25 @@ describe('isMatchLocked', () => {
     expect(isMatchLocked({ start_time: FUTURE, status: 'finished', postponed: 1 }, NOW)).toBe(true)
   })
 
+  it('trava para sempre jogo que o sync viu iniciado, mesmo adiado ou remarcado depois', () => {
+    expect(
+      isMatchLocked(
+        { start_time: FUTURE, status: 'scheduled', postponed: 1, locked_at: PAST },
+        NOW,
+      ),
+    ).toBe(true)
+    expect(
+      isMatchLocked(
+        { start_time: FUTURE, status: 'scheduled', postponed: 0, locked_at: PAST },
+        NOW,
+      ),
+    ).toBe(true)
+  })
+
   it('não trava jogo futuro agendado (scheduled)', () => {
-    expect(isMatchLocked({ start_time: FUTURE, status: 'scheduled', postponed: 0 }, NOW)).toBe(false)
+    expect(isMatchLocked({ start_time: FUTURE, status: 'scheduled', postponed: 0 }, NOW)).toBe(
+      false,
+    )
   })
 })
 
@@ -55,13 +72,13 @@ describe('lockedSql', () => {
 
   it('usa o alias pedido', () => {
     expect(lockedSql('pr')).toBe(
-      "(pr.status IN ('live', 'finished') OR (pr.start_time <= ? AND pr.postponed = 0))",
+      "(pr.locked_at IS NOT NULL OR pr.status IN ('live', 'finished') OR (pr.start_time <= ? AND pr.postponed = 0))",
     )
   })
 
   it('default é o alias `m`', () => {
     expect(lockedSql()).toBe(
-      "(m.status IN ('live', 'finished') OR (m.start_time <= ? AND m.postponed = 0))",
+      "(m.locked_at IS NOT NULL OR m.status IN ('live', 'finished') OR (m.start_time <= ? AND m.postponed = 0))",
     )
   })
 })

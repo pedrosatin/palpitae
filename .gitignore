@@ -37,3 +37,8 @@ docs/runtime/contex.md
 
 # Local workflow and generated artifacts
 PAGESPEED_REPORT.md
+
+# Migração do bolão: dump, mapa de participantes e SQL gerado têm dados pessoais
+docs/bolao-migration/bolao-predictions-export.json
+docs/bolao-migration/bolao-user-map.json
+docs/bolao-migration/sql/03-import-predictions.sql

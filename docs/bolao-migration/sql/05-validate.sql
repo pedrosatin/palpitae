@@ -10,8 +10,8 @@ SELECT COUNT(*) AS bsa_matches FROM matches
 SELECT COUNT(*) AS imported FROM predictions
  WHERE group_id = '<GROUP_ID>';
 
--- Totais por jogador (esperado: WEEGEE/Gustavo 106·155, Chu 98·158, satin 88·160,
--- Isa 61·113, PDR 54·100, FABRE 42·87)
+-- Totais por jogador (esperado, pontos·palpites: E 106·155, B 98·158, A 88·160,
+-- F 61·113, D 54·100, C 42·87)
 SELECT COALESCE(pr.nickname, u.email) AS jogador,
        COUNT(*)                        AS palpites,
        SUM(p.points_awarded)           AS pontos

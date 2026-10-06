@@ -28,10 +28,15 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
   const { activeTab, showStandings, tabHref, handleTabClick } = useGroupTabs(group)
   const tabsOffset = useTabsOffset()
-  const { leaveGroup, leaving, deleteGroup, deleting, confirmDialog } = useGroupActions(
-    groupId,
-    user,
-  )
+  const {
+    leaveGroup,
+    leaving,
+    deleteGroup,
+    deleting,
+    rotateInvite,
+    rotatingInvite,
+    confirmDialog,
+  } = useGroupActions(groupId, user)
 
   const [renameOpen, setRenameOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
@@ -138,7 +143,16 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
 
         {/* Admin: invite section */}
         {isAdmin && group.invite_code && (
-          <GroupInviteSection inviteCode={group.invite_code} groupName={group.name} />
+          <GroupInviteSection
+            inviteCode={group.invite_code}
+            groupName={group.name}
+            rotating={rotatingInvite}
+            onRotate={() =>
+              rotateInvite((inviteCode) =>
+                setGroup((prev) => (prev ? { ...prev, invite_code: inviteCode } : prev)),
+              )
+            }
+          />
         )}
 
         {/* Tabs */}

@@ -41,6 +41,18 @@ describe('useMatchRounds', () => {
     expect(result.current.labelFor('2')).toBe('Rodada 2')
   })
 
+  it('leaves postponed matches already seen started out of the open-pick hint', () => {
+    const { result } = renderHook(() =>
+      useHarness([
+        makeMatch({ id: 'm1', round: '1', postponed: 1, locked_at: '2026-08-01T20:00:00Z' }),
+        makeMatch({ id: 'm2', round: '1', postponed: 1 }),
+        makeMatch({ id: 'm3', round: '2', postponed: 1, locked_at: '2026-08-01T20:00:00Z' }),
+      ]),
+    )
+    expect(result.current.postponedByRound.get('1')).toBe(1)
+    expect(result.current.postponedByRound.has('2')).toBe(false)
+  })
+
   it('counts postponed matches per round', () => {
     const matches = [
       makeMatch({ id: 'm1', round: '1', postponed: 1 }),
@@ -56,10 +68,7 @@ describe('useMatchRounds', () => {
   })
 
   it('navigates with the configured analytics events', () => {
-    const matches = [
-      makeMatch({ id: 'm1', round: '1' }),
-      makeMatch({ id: 'm2', round: '2' }),
-    ]
+    const matches = [makeMatch({ id: 'm1', round: '1' }), makeMatch({ id: 'm2', round: '2' })]
 
     const { result } = renderHook(() => useHarness(matches))
 

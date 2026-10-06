@@ -35,6 +35,7 @@ export type EventType =
   | 'group_joined'
   | 'member_removed'
   | 'group_renamed'
+  | 'group_invite_rotated'
   | 'group_deleted'
   | 'login_success'
   | 'login_failure'

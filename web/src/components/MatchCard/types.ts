@@ -8,6 +8,12 @@ export interface Match {
    * ele mostraria "bloqueado / aguardando resultado" para sempre.
    */
   postponed?: number | boolean
+  /**
+   * Instante em que o sync viu o jogo iniciado pela primeira vez (não é o horário
+   * em que a bola rolou). Preenchido, o palpite fica travado mesmo que o jogo seja
+   * suspenso ou remarcado depois (espelha api/src/matches/locking.ts).
+   */
+  locked_at?: string | null
   home_score: number | null
   away_score: number | null
   phase: string

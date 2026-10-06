@@ -35,7 +35,9 @@ export function useMatchRounds(
 
   const postponedByRound = new Map<string, number>()
   for (const [round, roundList] of rounds) {
-    const count = roundList.filter((m) => Boolean(m.postponed)).length
+    // Jogo adiado que o sync já viu iniciado (`locked_at`) está travado: não entra
+    // na dica de "palpite segue aberto".
+    const count = roundList.filter((m) => Boolean(m.postponed) && !m.locked_at).length
     if (count > 0) postponedByRound.set(round, count)
   }
 

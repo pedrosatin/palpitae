@@ -1,6 +1,5 @@
 /// <reference types="node" />
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
-import { readdirSync, readFileSync } from 'node:fs'
+import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
 import { signJwt } from '../auth/jwt'
@@ -11,51 +10,15 @@ import {
   CLIENT_IP_HEADER,
   clearExpiredSecurityRecords,
   consumeLimit,
+  ipBucketIdentity,
   PROXY_SECRET_HEADER,
 } from './limits'
 import type { Env } from '../types'
+import { createSqliteD1 } from '../testing/sqliteD1'
 
 // Exercise the production SQL against SQLite, including constraints and batches.
 function database() {
-  const sqlite = new DatabaseSync(':memory:')
-  const migrations = new URL('../../migrations/', import.meta.url)
-  for (const file of readdirSync(migrations)
-    .filter((f) => f.endsWith('.sql'))
-    .sort()) {
-    sqlite.exec(readFileSync(new URL(file, migrations), 'utf8'))
-  }
-  function prepare(sql: string, values: SQLInputValue[] = []) {
-    return {
-      bind(...args: SQLInputValue[]) {
-        return prepare(sql, args)
-      },
-      async first() {
-        return sqlite.prepare(sql).get(...values) ?? null
-      },
-      async all() {
-        return { results: sqlite.prepare(sql).all(...values), success: true }
-      },
-      async run() {
-        const result = sqlite.prepare(sql).run(...values)
-        return { success: true, meta: { changes: Number(result.changes) } }
-      },
-    }
-  }
-  const db = {
-    prepare,
-    async batch(statements: ReturnType<typeof prepare>[]) {
-      sqlite.exec('BEGIN')
-      try {
-        const results = []
-        for (const statement of statements) results.push(await statement.all())
-        sqlite.exec('COMMIT')
-        return results
-      } catch (error) {
-        sqlite.exec('ROLLBACK')
-        throw error
-      }
-    },
-  } as unknown as D1Database
+  const { sqlite, db } = createSqliteD1()
   sqlite.exec(`
     INSERT INTO users (id,email,provider,provider_id) VALUES
       ('owner','owner@example.com','google','1'),
@@ -377,7 +340,7 @@ describe('access controls with a real SQL database', () => {
     expect((await viaProxy('198.51.100.7')).status).toBe(429)
     expect((await viaProxy('198.51.100.8')).status).toBe(404)
     expect(await hits('read:ip:198.51.100.8')).toBe(1)
-    expect(await hits('read:proxy:anonymous')).toBe(0)
+    expect(await hits('read:proxy:anonymous:frontend')).toBe(0)
   })
 
   it('ignores a forged client IP header without the shared secret', async () => {
@@ -396,8 +359,8 @@ describe('access controls with a real SQL database', () => {
     expect(
       (await anonymous('/public/invites/nope', { ...WORKER_SUBREQUEST, ...forged })).status,
     ).toBe(404)
-    expect(await hits('read:proxy:anonymous')).toBe(1)
-    await exhaust('read:proxy:anonymous', 3000)
+    expect(await hits('read:proxy:anonymous:frontend')).toBe(1)
+    await exhaust('read:proxy:anonymous:frontend', 3000)
     expect(
       (await anonymous('/public/invites/nope', { ...WORKER_SUBREQUEST, ...forged })).status,
     ).toBe(429)
@@ -440,5 +403,200 @@ describe('access controls with a real SQL database', () => {
     await clearExpiredSecurityRecords(db)
     expect(sqlite.prepare('SELECT * FROM request_limits').all()).toEqual([])
     expect(sqlite.prepare('SELECT * FROM revoked_sessions').all()).toEqual([])
+  })
+})
+
+describe('follow-up security controls with a real SQL database', () => {
+  const pick = (score: number) => ({
+    group_id: 'group',
+    match_id: 'future',
+    predicted_home_score: score,
+    predicted_away_score: 0,
+  })
+
+  it('keeps a pick locked once the sync saw the match started, even if postponed later', async () => {
+    const { request, sqlite } = await fixture()
+    sqlite.exec(
+      "UPDATE matches SET start_time = '2020-06-01T00:00:00Z', status = 'scheduled', postponed = 1 WHERE id = 'future'",
+    )
+    // Adiado sem ter começado: segue aberto.
+    expect((await request('/predictions', 'member', 'PUT', pick(2))).status).toBe(200)
+    // O sync viu o jogo iniciado: travado para sempre, mesmo adiado e com horário futuro.
+    sqlite.exec(
+      "UPDATE matches SET locked_at = '2020-06-01T00:10:00Z', start_time = '2099-01-01T00:00:00Z' WHERE id = 'future'",
+    )
+    expect((await request('/predictions', 'member', 'PUT', pick(3))).status).toBe(422)
+    const bulk = await request('/predictions/bulk', 'member', 'PUT', {
+      group_id: 'group',
+      predictions: [{ match_id: 'future', predicted_home_score: 4, predicted_away_score: 0 }],
+    })
+    expect(((await bulk.json()) as { locked: string[] }).locked).toEqual(['future'])
+    // E os palpites dos outros continuam revelados no grupo oculto.
+    const feed = await request('/predictions/group?group_id=group')
+    const body = (await feed.json()) as { predictions: { user_id: string; match_id: string }[] }
+    expect(body.predictions.map((p) => `${p.user_id}:${p.match_id}`)).toContain('other:future')
+  })
+
+  it('caps predicted scores at 99', async () => {
+    const { request } = await fixture()
+    expect((await request('/predictions', 'member', 'PUT', pick(99))).status).toBe(200)
+    expect((await request('/predictions', 'member', 'PUT', pick(100))).status).toBe(400)
+    const bulk = await request('/predictions/bulk', 'member', 'PUT', {
+      group_id: 'group',
+      predictions: [{ match_id: 'future', predicted_home_score: 1000, predicted_away_score: 0 }],
+    })
+    expect(bulk.status).toBe(400)
+  })
+
+  it('drops picks of removed members from the group feed', async () => {
+    const { request } = await fixture()
+    expect((await request('/groups/group/members/other', 'owner', 'DELETE')).status).toBe(200)
+    const feed = await request('/predictions/group?group_id=group', 'owner')
+    const body = (await feed.json()) as { predictions: { user_id: string }[] }
+    expect(body.predictions.map((p) => p.user_id)).not.toContain('other')
+  })
+
+  it('lets only the owner rotate the invite and invalidates the old code', async () => {
+    const { request, sqlite } = await fixture()
+    expect((await request('/groups/group/invite/rotate', 'member', 'POST')).status).toBe(403)
+    expect((await request('/groups/nope/invite/rotate', 'owner', 'POST')).status).toBe(404)
+
+    const rotated = await request('/groups/group/invite/rotate', 'owner', 'POST')
+    expect(rotated.status).toBe(200)
+    const { invite_code } = (await rotated.json()) as { invite_code: string }
+    expect(invite_code).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/)
+    expect(invite_code).not.toBe('ABCD-EFGH')
+    expect(
+      (
+        sqlite.prepare("SELECT invite_code FROM groups WHERE id = 'group'").get() as {
+          invite_code: string
+        }
+      ).invite_code,
+    ).toBe(invite_code)
+
+    // Members stay; the old code no longer admits anyone.
+    expect((await request('/groups/group')).status).toBe(200)
+    expect((await request('/groups/group/members/member', 'member', 'DELETE')).status).toBe(200)
+    expect(
+      (await request('/groups/join', 'member', 'POST', { invite_code: 'ABCD-EFGH' })).status,
+    ).toBe(404)
+    expect((await request('/groups/join', 'member', 'POST', { invite_code })).status).toBe(200)
+  })
+
+  it('handles an invite code collision on rotation instead of failing with an unhandled error', async () => {
+    const { request, env, db } = await fixture()
+    let failures = 1
+    const collide = (sql: string) =>
+      sql.startsWith('UPDATE groups SET invite_code') && failures-- > 0
+    env.DB = {
+      ...db,
+      prepare(sql: string) {
+        const statement = db.prepare(sql)
+        if (!sql.startsWith('UPDATE groups SET invite_code')) return statement
+        return {
+          bind(...args: unknown[]) {
+            const bound = statement.bind(...args)
+            return {
+              ...bound,
+              async run() {
+                if (collide(sql))
+                  throw new Error('D1_ERROR: UNIQUE constraint failed: groups.invite_code')
+                return bound.run()
+              },
+            }
+          },
+        }
+      },
+    } as unknown as D1Database
+    expect((await request('/groups/group/invite/rotate', 'owner', 'POST')).status).toBe(200)
+
+    failures = 10
+    const exhausted = await request('/groups/group/invite/rotate', 'owner', 'POST')
+    expect(exhausted.status).toBe(503)
+    expect(await exhausted.json()).toEqual({ error: 'Erro interno ao gerar convite' })
+  })
+
+  it('never lets concurrent joins exceed the member cap', async () => {
+    const { request, sqlite, tokens, env } = await fixture()
+    sqlite.exec(`
+      INSERT INTO users (id,email,provider,provider_id) VALUES
+        ('new1','new1@example.com','google','4'),('new2','new2@example.com','google','5');
+      UPDATE groups SET max_members = 4 WHERE id = 'group';
+    `)
+    for (const id of ['new1', 'new2']) {
+      tokens[id] = await signJwt(
+        { sub: id, email: `${id}@example.com`, jti: crypto.randomUUID() },
+        env.JWT_SECRET,
+        3600,
+      )
+    }
+    const statuses = await Promise.all(
+      ['new1', 'new2'].map(
+        async (id) =>
+          (await request('/groups/join', id, 'POST', { invite_code: 'ABCD-EFGH' })).status,
+      ),
+    )
+    expect(statuses.sort()).toEqual([200, 409])
+    expect(
+      (
+        sqlite
+          .prepare("SELECT COUNT(*) AS n FROM group_members WHERE group_id = 'group'")
+          .get() as {
+          n: number
+        }
+      ).n,
+    ).toBe(4)
+  })
+
+  it('does not write to the database once a bucket is full', async () => {
+    const { db, sqlite } = await fixture()
+    const changes = () => (sqlite.prepare('SELECT total_changes() AS n').get() as { n: number }).n
+    expect(await consumeLimit(db, 'full', 2, 120)).toBe(true)
+    expect(await consumeLimit(db, 'full', 2, 120)).toBe(true)
+    const before = changes()
+    for (let i = 0; i < 5; i++) expect(await consumeLimit(db, 'full', 2, 130)).toBe(false)
+    expect(changes()).toBe(before)
+    expect(
+      (
+        sqlite.prepare("SELECT hits FROM request_limits WHERE bucket_key = 'full'").get() as {
+          hits: number
+        }
+      ).hits,
+    ).toBe(2)
+    // A new window writes again.
+    expect(await consumeLimit(db, 'full', 2, 180)).toBe(true)
+    expect(changes()).toBe(before + 1)
+  })
+
+  it('groups IPv6 clients by /64', async () => {
+    expect(ipBucketIdentity('2001:db8:1:2:aaaa:bbbb:cccc:dddd')).toBe('2001:db8:1:2::/64')
+    expect(ipBucketIdentity('2001:0DB8:0001:0002::1')).toBe('2001:db8:1:2::/64')
+    expect(ipBucketIdentity('2001:db8::1')).toBe('2001:db8:0:0::/64')
+    expect(ipBucketIdentity('::ffff:192.0.2.9')).toBe('192.0.2.9')
+    expect(ipBucketIdentity('192.0.2.9')).toBe('192.0.2.9')
+    expect(ipBucketIdentity('not-an-ip')).toBe('not-an-ip')
+
+    const { anonymous, exhaust, hits } = await fixture()
+    await exhaust('read:ip:2001:db8:1:2::/64', 300)
+    expect(
+      (await anonymous('/public/invites/nope', { 'CF-Connecting-IP': '2001:db8:1:2::9999' }))
+        .status,
+    ).toBe(429)
+    expect(
+      (await anonymous('/public/invites/nope', { 'CF-Connecting-IP': '2001:db8:1:3::1' })).status,
+    ).toBe(404)
+    expect(await hits('read:ip:2001:db8:1:3::/64')).toBe(1)
+  })
+
+  it('keeps third-party Workers out of the frontend shared bucket', async () => {
+    const { anonymous, exhaust, hits } = await fixture()
+    const thirdParty = {
+      'CF-Worker': 'attacker.example',
+      'CF-Connecting-IP': '2a06:98c0:3600::103',
+    }
+    await exhaust('read:proxy:anonymous:worker', 3000)
+    expect((await anonymous('/public/invites/nope', thirdParty)).status).toBe(429)
+    expect((await anonymous('/public/invites/nope', WORKER_SUBREQUEST)).status).toBe(404)
+    expect(await hits('read:proxy:anonymous:frontend')).toBe(1)
   })
 })

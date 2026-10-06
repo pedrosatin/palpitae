@@ -46,6 +46,25 @@ function generateInviteCode(): string {
 }
 
 /**
+ * Sorteia 5 códigos e devolve o primeiro que ainda não existe, ou null se todos
+ * colidirem. Usado na criação do grupo e na troca de convite.
+ */
+async function pickUniqueInviteCode(db: D1Database): Promise<string | null> {
+  const candidates = Array.from({ length: 5 }, () => generateInviteCode())
+  const placeholders = candidates.map(() => '?').join(',')
+  const existing = await db
+    .prepare(`SELECT invite_code FROM groups WHERE invite_code IN (${placeholders})`)
+    .bind(...candidates)
+    .all<{ invite_code: string }>()
+  const existingSet = new Set(existing.results.map((r) => r.invite_code))
+  return candidates.find((c) => !existingSet.has(c)) ?? null
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message)
+}
+
+/**
  * Resolves `userId` / `groupId` / `db` from the request and checks that the
  * user belongs to the `:id` group. Shared by the read handlers that gate on
  * plain membership (`GET /:id`, `GET /:id/members`) so the "must be a member"
@@ -337,17 +356,7 @@ router.post('/', requireAuth, async (c) => {
   }
 
   // Generate a unique invite code (retry up to 5 times on collision)
-  let invite_code: string = ''
-  const candidates = Array.from({ length: 5 }, () => generateInviteCode())
-  const placeholders = candidates.map(() => '?').join(',')
-
-  const existing = await db
-    .prepare(`SELECT invite_code FROM groups WHERE invite_code IN (${placeholders})`)
-    .bind(...candidates)
-    .all<{ invite_code: string }>()
-
-  const existingSet = new Set(existing.results.map((r) => r.invite_code))
-  invite_code = candidates.find((c) => !existingSet.has(c)) || ''
+  const invite_code = await pickUniqueInviteCode(db)
 
   if (!invite_code) {
     return c.json({ error: 'Erro interno ao gerar convite' }, 500)
@@ -443,21 +452,28 @@ router.post('/join', requireAuth, async (c) => {
     return c.json({ error: 'Você já é membro deste grupo' }, 409)
   }
 
-  // Check member cap
-  const countResult = await db
-    .prepare('SELECT COUNT(*) as count FROM group_members WHERE group_id = ?')
-    .bind(group.id)
-    .first<{ count: number }>()
+  // Limite de membros checado no próprio INSERT: um SELECT COUNT separado deixaria
+  // duas entradas simultâneas passarem do limite. O D1 serializa as escritas, então
+  // a contagem dentro do INSERT já vê a linha da outra requisição.
+  const memberId = crypto.randomUUID()
+  const inserted = await db
+    .prepare(
+      `INSERT INTO group_members (id, group_id, user_id, role)
+       SELECT ?, ?, ?, 'member'
+        WHERE (SELECT COUNT(*) FROM group_members WHERE group_id = ?) < ?
+       ON CONFLICT DO NOTHING`,
+    )
+    .bind(memberId, group.id, userId, group.id, group.max_members)
+    .run()
 
-  if ((countResult?.count ?? 0) >= group.max_members) {
+  if (!inserted.meta.changes) {
+    const again = await db
+      .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
+      .bind(group.id, userId)
+      .first()
+    if (again) return c.json({ error: 'Você já é membro deste grupo' }, 409)
     return c.json({ error: 'Este grupo atingiu o limite de membros' }, 409)
   }
-
-  const memberId = crypto.randomUUID()
-  await db
-    .prepare(`INSERT INTO group_members (id, group_id, user_id, role) VALUES (?, ?, ?, 'member')`)
-    .bind(memberId, group.id, userId)
-    .run()
 
   logEvent(c.env.AE, 'group_joined', {
     blobs: [group.id, await hashUserId(userId)],
@@ -601,6 +617,57 @@ router.patch('/:id', requireAuth, async (c) => {
   })
 
   return c.json({ group: { id: groupId, name } })
+})
+
+/**
+ * POST /groups/:id/invite/rotate
+ *
+ * Gera um novo código de convite e invalida o anterior. Só o dono do grupo.
+ * Quem já é membro continua no grupo; o código antigo deixa de permitir entradas.
+ *
+ * Response: { invite_code }
+ */
+router.post('/:id/invite/rotate', requireAuth, async (c) => {
+  const userId = c.get('userId')
+  const groupId = c.req.param('id')
+  const db = c.env.DB
+
+  const group = await db
+    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
+    .bind(groupId)
+    .first<{ owner_user_id: string }>()
+
+  if (!group) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
+  if (group.owner_user_id !== userId) {
+    return c.json({ error: 'Apenas o administrador pode trocar o convite' }, 403)
+  }
+
+  // Outra troca ou criação pode gravar o mesmo código entre o SELECT e o UPDATE.
+  // O UNIQUE de invite_code barra a duplicata; tenta de novo com outro sorteio.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const inviteCode = await pickUniqueInviteCode(db)
+    if (!inviteCode) continue
+    try {
+      await db
+        .prepare('UPDATE groups SET invite_code = ? WHERE id = ? AND deleted_at IS NULL')
+        .bind(inviteCode, groupId)
+        .run()
+    } catch (error) {
+      if (isUniqueViolation(error)) continue
+      throw error
+    }
+
+    logEvent(c.env.AE, 'group_invite_rotated', {
+      blobs: [groupId, await hashUserId(userId)],
+    })
+
+    return c.json({ invite_code: inviteCode })
+  }
+
+  return c.json({ error: 'Erro interno ao gerar convite' }, 503)
 })
 
 /**

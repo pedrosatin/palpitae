@@ -3,6 +3,10 @@
 -- Config espelha o bolão antigo: 3 exato / 1 resultado, sem bônus de pênalti (liga),
 -- visibilidade 'hidden' (= regra anti-cópia; equivale ao cutoff do bolão).
 --
+-- Os valores entre <...> são placeholders: os IDs reais e o código de convite
+-- ficam fora do repositório. Gere o convite no formato XXXX-XXXX (o mesmo de
+-- generateInviteCode em api/src/groups/router.ts).
+--
 -- Aplicar com:
 --   npx wrangler d1 execute palpitae --remote --file docs/bolao-migration/sql/02-create-group.sql
 
@@ -12,15 +16,15 @@ VALUES (
   '<GROUP_ID>',
   'Bolão Brasileirão',
   '06baa1de-01c3-4e71-ac6e-a850fa690ec1',
-  '<USER_ID_A>',  -- Jogador A (owner)
+  '<USER_ID_A>',  -- dono do grupo (Jogador A)
   '<INVITE_CODE>',
   3, 1, 0, 'hidden'
 );
 
 INSERT INTO group_members (id, group_id, user_id, role) VALUES
-  ('<MEMBER_ID_0>', '<GROUP_ID>', '<USER_ID_A>', 'owner'),   -- Jogador A (owner)
-  ('<MEMBER_ID_1>', '<GROUP_ID>', '<USER_ID_B>', 'member'),  -- Jogador B
-  ('<MEMBER_ID_2>', '<GROUP_ID>', '<USER_ID_C>', 'member'),  -- Jogador C
-  ('<MEMBER_ID_3>', '<GROUP_ID>', '<USER_ID_D>', 'member'),  -- Jogador D
-  ('<MEMBER_ID_4>', '<GROUP_ID>', '<USER_ID_E>', 'member'),  -- Jogador E
-  ('<MEMBER_ID_5>', '<GROUP_ID>', '<USER_ID_F>', 'member'); -- Jogador F
+  (lower(hex(randomblob(16))), '<GROUP_ID>', '<USER_ID_A>', 'owner'),   -- Jogador A
+  (lower(hex(randomblob(16))), '<GROUP_ID>', '<USER_ID_B>', 'member'),  -- Jogador B
+  (lower(hex(randomblob(16))), '<GROUP_ID>', '<USER_ID_C>', 'member'),  -- Jogador C
+  (lower(hex(randomblob(16))), '<GROUP_ID>', '<USER_ID_D>', 'member'),  -- Jogador D
+  (lower(hex(randomblob(16))), '<GROUP_ID>', '<USER_ID_E>', 'member'),  -- Jogador E
+  (lower(hex(randomblob(16))), '<GROUP_ID>', '<USER_ID_F>', 'member'); -- Jogador F
