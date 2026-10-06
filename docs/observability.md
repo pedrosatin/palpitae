@@ -96,7 +96,7 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
   `logEvent` vira no-op e o registro fica no log do workflow.
 - Negócio: `prediction_saved` (single/bulk/import), `group_created`, `group_joined`,
-  `group_renamed`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
+  `group_renamed`, `group_invite_rotated`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
   `oauth_error`, `matches_cache` (hit/miss).
 
 ### Esquema posicional por evento
@@ -117,6 +117,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
 | `group_joined` | `group_id` | `user_hash` | — | — |
 | `group_renamed` | `group_id` | `user_hash` | — | — |
+| `group_invite_rotated` | `group_id` | `user_hash` | — | — |
 | `group_deleted` | `group_id` | `user_hash` | — | — |
 | `member_removed` | `group_id` | `user_hash` (do removido) | `reason` (`self`=saiu sozinho / `admin`=removido pelo dono) | — |
 | `login_success` | `user_hash` | — | — | — |

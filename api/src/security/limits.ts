@@ -12,8 +12,10 @@ type Category = 'read' | 'write' | 'oauth'
 // Limites por minuto de cada identidade (um usuário logado ou um IP).
 export const LIMITS: Record<Category, number> = { read: 300, write: 60, oauth: 30 }
 
-// Teto do balde anônimo compartilhado: tráfego que chega pelo proxy do Pages
-// sem o segredo válido, quando não há como saber o IP do visitante.
+// Teto do balde anônimo compartilhado: tráfego que chega por um Worker sem o
+// segredo válido, quando não há como saber o IP do visitante. Há um balde para o
+// próprio front (CF-Worker da zona do FRONTEND_URL) e outro para os demais Workers,
+// para que um Worker de terceiros não esgote a quota de quem usa o site.
 export const SHARED_PROXY_LIMITS: Record<Category, number> = {
   read: 3000,
   write: 600,
@@ -33,6 +35,11 @@ const IP_PATTERN = /^[0-9a-fA-F:.]{2,45}$/
 
 // D1 serializes the upsert, including requests from different Worker instances.
 // `key` should already be an opaque hash (see bucketKey).
+//
+// O WHERE do DO UPDATE impede a escrita quando o balde da janela atual já está
+// cheio: a requisição recusada só lê a linha, não grava nada, e o RETURNING volta
+// vazio. Assim um cliente insistente recebendo 429 não vira uma escrita no D1 por
+// requisição.
 export async function consumeLimit(
   db: D1Database,
   key: string,
@@ -45,14 +52,67 @@ export async function consumeLimit(
       VALUES (?, ?, 1, ?)
       ON CONFLICT (bucket_key) DO UPDATE SET
         hits = CASE WHEN request_limits.window_start >= excluded.window_start
-          THEN MIN(request_limits.hits + 1, ?) ELSE 1 END,
+          THEN request_limits.hits + 1 ELSE 1 END,
         window_start = MAX(request_limits.window_start, excluded.window_start),
         expires_at = MAX(request_limits.expires_at, excluded.expires_at)
+      WHERE request_limits.window_start < excluded.window_start
+         OR request_limits.hits < ?
       RETURNING hits`)
-    .bind(key, windowStart, windowStart + WINDOW_SECONDS, limit + 1)
+    .bind(key, windowStart, windowStart + WINDOW_SECONDS, limit)
     .first<{ hits: number }>()
-  if (!result) throw new Error('Request limit unavailable')
-  return result.hits <= limit
+  return result !== null && result.hits <= limit
+}
+
+/**
+ * Normaliza o IP usado como identidade anônima. IPv4 fica como está. IPv6 é
+ * agrupado pelo prefixo /64, que é o que um único cliente costuma receber: contar
+ * por endereço completo daria 2^64 baldes a quem controla um /64. Endereço
+ * IPv4-mapped (::ffff:a.b.c.d) vira o IPv4. Valor que não parece IPv6 volta igual.
+ */
+export function ipBucketIdentity(ip: string): string {
+  const value = ip.trim().toLowerCase()
+  if (!value.includes(':')) return value
+  const mapped = value.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/)
+  if (mapped) return mapped[1]
+  const hextets = expandIpv6(value)
+  if (!hextets) return value
+  return `${hextets
+    .slice(0, 4)
+    .map((h) => parseInt(h, 16).toString(16))
+    .join(':')}::/64`
+}
+
+function expandIpv6(value: string): string[] | null {
+  const halves = value.split('::')
+  if (halves.length > 2) return null
+  const toHextets = (part: string): string[] | null => {
+    if (!part) return []
+    const out: string[] = []
+    for (const piece of part.split(':')) {
+      if (piece.includes('.')) {
+        // IPv4 embutido no fim: vira dois hextets.
+        const octets = piece.split('.').map(Number)
+        if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
+          return null
+        out.push(
+          ((octets[0] << 8) | octets[1]).toString(16),
+          ((octets[2] << 8) | octets[3]).toString(16),
+        )
+      } else if (/^[0-9a-f]{1,4}$/.test(piece)) {
+        out.push(piece)
+      } else {
+        return null
+      }
+    }
+    return out
+  }
+  const head = toHextets(halves[0])
+  const tail = halves.length === 2 ? toHextets(halves[1]) : []
+  if (!head || !tail) return null
+  if (halves.length === 1) return head.length === 8 ? head : null
+  const missing = 8 - head.length - tail.length
+  if (missing < 1) return null
+  return [...head, ...Array<string>(missing).fill('0'), ...tail]
 }
 
 async function hmacHex(secret: string, value: string): Promise<string> {
@@ -81,8 +141,12 @@ async function sameSecret(provided: string, expected: string): Promise<boolean> 
  *
  * - Proxy com segredo válido: IP do visitante repassado pelo proxy.
  * - Subrequest de Worker sem segredo válido: balde anônimo compartilhado, porque
- *   o CF-Connecting-IP é o endereço de saída da Cloudflare, igual para todos.
+ *   o CF-Connecting-IP é o endereço de saída da Cloudflare, igual para todos. O
+ *   balde é separado por origem: o próprio front (`frontend`) ou qualquer outro
+ *   Worker (`worker`).
  * - Acesso direto: CF-Connecting-IP. Headers do proxy sem o segredo são ignorados.
+ *
+ * IPv6 conta pelo prefixo /64 (ver ipBucketIdentity).
  */
 export async function anonymousIdentity(
   c: Context<AppContext>,
@@ -97,14 +161,33 @@ export async function anonymousIdentity(
     IP_PATTERN.test(forwardedIp) &&
     (await sameSecret(providedSecret, secret))
   ) {
-    return { identity: `ip:${forwardedIp}`, shared: false }
+    return { identity: `ip:${ipBucketIdentity(forwardedIp)}`, shared: false }
   }
   const connectingIp = c.req.header('CF-Connecting-IP')
-  if (c.req.header('CF-Worker') || connectingIp === WORKER_EGRESS_IP) {
-    return { identity: 'proxy:anonymous', shared: true }
+  const workerZone = c.req.header('CF-Worker')
+  if (workerZone || connectingIp === WORKER_EGRESS_IP) {
+    const source = isFrontendZone(workerZone, c.env.FRONTEND_URL) ? 'frontend' : 'worker'
+    return { identity: `proxy:anonymous:${source}`, shared: true }
   }
   // Local requests share a dev bucket.
-  return { identity: `ip:${connectingIp ?? 'local'}`, shared: false }
+  return {
+    identity: `ip:${connectingIp ? ipBucketIdentity(connectingIp) : 'local'}`,
+    shared: false,
+  }
+}
+
+// O CF-Worker traz a zona do Worker que fez o subrequest. É do próprio front quando
+// a zona é o host do FRONTEND_URL ou um domínio pai dele.
+function isFrontendZone(zone: string | undefined, frontendUrl: string | undefined): boolean {
+  if (!zone || !frontendUrl) return false
+  let host: string
+  try {
+    host = new URL(frontendUrl).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  const value = zone.trim().toLowerCase()
+  return value === host || host.endsWith(`.${value}`)
 }
 
 export const requestLimits = createMiddleware<AppContext>(async (c, next) => {

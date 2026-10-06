@@ -205,11 +205,13 @@ A game between two teams within a competition.
 | `away_score`     | INTEGER | `NULL` until finished                            |
 | `phase`          | TEXT    | `group` \| `round_of_16` \| `quarter_final` etc. |
 | `round`          | TEXT    | e.g., `'Rodada 5'`, `'Matchday 3'`               |
+| `postponed`      | INTEGER | `1` while the provider reports the match as postponed, suspended or cancelled (migration 0013) |
+| `locked_at`      | TEXT    | `NULL` until the sync first sees the match started (migration 0016); never cleared. It is the sync time, not the actual kickoff |
 | `created_at`     | TEXT    | ISO 8601 UTC                                     |
 
 Unique constraint: `(external_id, provider)`
 
-> **Prediction lock rule:** A prediction for this match is editable only while `now() < start_time`. No `locked_at` column is stored on `predictions` (ADR-004).
+> **Prediction lock rule:** A prediction for this match is locked when `matches.locked_at` is set, when `status` is `live` or `finished`, or when `now() >= start_time` and `postponed = 0` (`api/src/matches/locking.ts`). `matches.locked_at` is written only when the sync sees the match started (provider status `IN_PLAY`, `PAUSED`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED`, or local status `live`/`finished`), so a match suspended after starting stays locked, while a match postponed before starting reopens. No lock column is stored on `predictions` (ADR-004).
 
 ---
 

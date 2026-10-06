@@ -8,15 +8,21 @@
 ## Execução (2026-07-12)
 
 Todas as fases de dados aplicadas em prod via `wrangler d1 execute --remote` com os SQLs
-de [`sql/`](sql/) (idempotentes; ordem 01 → 01b → 02 → 03 → 04; validação: 05):
+de [`sql/`](sql/) (idempotentes; ordem 01 → 01b → 02 → 03 → 04; validação: 05).
+
+Os SQLs versionados usam placeholders (`<GROUP_ID>`, `<USER_ID_*>`, `<INVITE_CODE>`)
+no lugar dos IDs de produção e do código de convite. O dump de palpites do bolão e o
+`sql/03-import-predictions.sql` gerado a partir dele têm dados pessoais e não são
+versionados; `bolao-predictions-export.example.json` mostra o formato com dados
+sintéticos.
 
 | Fase | Resultado |
 |---|---|
 | 01 — competição | `06baa1de-01c3-4e71-ac6e-a850fa690ec1`, slug `campeonato-brasileiro-serie-a-2026` |
 | 01b — times/jogos | 20 times, 380 jogos (seed manual; cron de discovery reconcilia por cima) |
-| 02 — grupo | "Bolão Brasileirão" `d79438a7-a324-48d0-a245-950aff4d5849`, 6 membros, 3/1/0/`hidden`, invite `69TL-RH2U` |
+| 02 — grupo | "Bolão Brasileirão" (`<GROUP_ID>`), 6 membros, 3/1/0/`hidden`, convite `<INVITE_CODE>` |
 | 03 — palpites | 773/773 importados (todo `api_match_id` resolveu) |
-| 04/05 — leaderboard | Idêntico ao bolão: WEEGEE 106 · Chu 98 · satin 88 · Isa 61 · PDR 54 · FABRE 42; 0 inconsistências |
+| 04/05 — leaderboard | Idêntico ao bolão: E 106 · B 98 · A 88 · F 61 · D 54 · C 42; 0 inconsistências |
 
 Nota pós-execução: ~21 jogos terminaram depois do último sync do bolão; o cron pontua
 esses palpites (`scored_at IS NULL`) e os totais sobem — comportamento correto.
@@ -69,17 +75,22 @@ partidas é join direto, sem heurística de nome/data.
 
 ### 3. Usuários — todos existem no prod do Palpitae
 
-| Bolão (`participant_name`) | Palpitae `users.email` | `users.id` |
-|---|---|---|
-| satin | pedro5satin@gmail.com | `7c13016e-5ae7-4e35-acc2-f6115dc94c1c` |
-| Chu | caaio.sperez@gmail.com | `69478023-3b14-480f-b999-adc02c99816a` |
-| FABRE | fabreduarte@gmail.com | `e1072bec-d62d-439f-9e49-31ea92c02ce4` |
-| PDR | pedrolucas.ac10@gmail.com | `d34b5d2e-00ee-4802-bff4-2272b03380e9` |
-| WEEGEE **e** WEEGGE | gustavokl1996@gmail.com | `482b2145-dc50-4a8e-8e15-293ea6af4e60` |
-| Isa | itngodoy@gmail.com | `15473f3c-bb85-4315-9c13-4e716746a47d` |
+Cada `participant_name` do bolão foi ligado a um `users.id` do Palpitae pelo e-mail
+da conta. O de-para real (apelidos, e-mails e IDs) fica fora do repositório, no
+arquivo local `bolao-user-map.json` lido por `generate-import.mjs`. Aqui os
+jogadores aparecem como A a F:
 
-WEEGEE/WEEGGE são grafias do mesmo jogador: **0 partidas em comum** entre as duas →
-fusão segura (145+10 = 155 palpites, 103+3 = 106 pts).
+| Bolão (`participant_name`) | Palpitae `users.id` |
+|---|---|
+| Jogador A (dono do grupo) | `<USER_ID_A>` |
+| Jogador B | `<USER_ID_B>` |
+| Jogador C | `<USER_ID_C>` |
+| Jogador D | `<USER_ID_D>` |
+| Jogador E (duas grafias do apelido) | `<USER_ID_E>` |
+| Jogador F | `<USER_ID_F>` |
+
+As duas grafias do Jogador E são o mesmo jogador: **0 partidas em comum** entre as
+duas → fusão segura (145+10 = 155 palpites, 103+3 = 106 pts).
 
 ### 4. Volume no prod do bolão (2026-07-12)
 
@@ -124,15 +135,15 @@ predictions (`recalculateLeaderboard`). Serve só como fonte de validação.
    discovery não cria competição nova, só atualiza existentes). Resultado: competição
    `campeonato-brasileiro-serie-a-2026`, ~20 times, 380 partidas. Crons assumem daí em diante.
 2. **Grupo** — criar grupo (nome a definir com o dono) com `points_exact=3`,
-   `points_winner=1`, `points_penalty=0`, owner satin; inserir os 6 `group_members`.
+   `points_winner=1`, `points_penalty=0`, dono Jogador A; inserir os 6 `group_members`.
    Decidir `predictions_visibility` (`public` replica o comportamento do bolão antigo).
 3. **Importar palpites** — script gera SQL com as 773 predictions (mapeamento acima),
    aplicado via `wrangler d1 execute --remote --file`. Palpites de jogos futuros entram
    com `points_awarded=0` e serão pontuados pelo poller normalmente.
 4. **Leaderboard + validação** — rodar recálculo do grupo (mesma query de
    `recalculateLeaderboard`) e conferir totais esperados:
-   Chu 98 · satin 88 (WEEGEE 106 fundido) · Isa 61 · PDR 54 · FABRE 42
-   (ordem final: WEEGEE 106, Chu 98, satin 88, Isa 61, PDR 54, FABRE 42).
+   B 98 · A 88 (E 106 fundido) · F 61 · D 54 · C 42
+   (ordem final: E 106, B 98, A 88, F 61, D 54, C 42).
    Spot-check de uma rodada inteira contra a UI do bolão.
 5. **Cutover** — grupo passa a ser usado nas próximas rodadas; bolão antigo vira
    read-only e depois é desligado (fora de escopo desta fase).
@@ -177,7 +188,7 @@ SELECT COUNT(*) FROM scores s WHERE s.points_total !=
   (SELECT COALESCE(SUM(p.points),0) FROM predictions p
    WHERE p.round_id=s.round_id AND p.participant_name=s.participant_name);
 
--- Sobreposição WEEGEE/WEEGGE: 0
+-- Sobreposição entre as duas grafias do Jogador E: 0
 SELECT COUNT(*) FROM predictions a JOIN predictions b ON a.match_id=b.match_id
- AND a.participant_name='WEEGEE' AND b.participant_name='WEEGGE';
+ AND a.participant_name='<GRAFIA_1>' AND b.participant_name='<GRAFIA_2>';
 ```

@@ -16,9 +16,15 @@
  * o HTML original com `noindex`, e a SPA leva direto ao convite sem esperar a
  * API. A busca usa `cf.cacheTtl` para o edge guardar a resposta por 5 min.
  *
+ * Com `PROXY_SHARED_SECRET` configurado, a busca repassa o IP do crawler e o
+ * segredo, como o proxy de `/api/*`. Assim a API conta a quota pelo IP de quem pediu
+ * o preview, e não pelo balde anônimo compartilhado dos Workers.
+ *
  * og:image segue a genérica (/og-image.png); imagem dinâmica por grupo fica
  * para depois.
  */
+
+import { CLIENT_IP_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
 
 // Tipos mínimos do runtime de Pages/Workers. A pasta functions/ não entra no
 // tsconfig do app (que usa os tipos do DOM), então declaramos só o que é usado.
@@ -30,6 +36,14 @@ export interface Env {
   ASSETS: AssetsFetcher
   /** Base da API. Opcional; o padrão é a API de produção. */
   API_URL?: string
+  /** Mesmo valor configurado no Worker da API. Sem ele, o IP não é repassado. */
+  PROXY_SHARED_SECRET?: string
+}
+
+/** IP do visitante e segredo do proxy, repassados à API para a quota por IP. */
+export interface ForwardedClient {
+  clientIp: string
+  secret: string
 }
 
 interface PagesContext {
@@ -103,13 +117,19 @@ export async function fetchInvitePreview(
   apiUrl: string,
   fetchImpl: typeof fetch = fetch,
   timeoutMs: number = API_TIMEOUT_MS,
+  forward?: ForwardedClient,
 ): Promise<InvitePreview | null> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const base = apiUrl.replace(/\/+$/, '')
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    if (forward) {
+      headers[CLIENT_IP_HEADER] = forward.clientIp
+      headers[PROXY_SECRET_HEADER] = forward.secret
+    }
     const init: CfRequestInit = {
-      headers: { Accept: 'application/json' },
+      headers,
       signal: controller.signal,
       // Cache de verdade no edge. O Cache-Control da API sozinho não basta,
       // porque subrequests de um Worker só passam pelo cache com `cf`.
@@ -217,8 +237,21 @@ export async function onRequest(context: PagesContext): Promise<Response> {
   try {
     const code = normalizeInviteCode(params.code)
     const crawler = isPreviewCrawler(request.headers.get('User-Agent'))
+    const clientIp = request.headers.get('CF-Connecting-IP')
+    const forward =
+      env.PROXY_SHARED_SECRET && clientIp
+        ? { clientIp, secret: env.PROXY_SHARED_SECRET }
+        : undefined
     const preview =
-      code && crawler ? await fetchInvitePreview(code, env.API_URL || DEFAULT_API_URL) : null
+      code && crawler
+        ? await fetchInvitePreview(
+            code,
+            env.API_URL || DEFAULT_API_URL,
+            fetch,
+            API_TIMEOUT_MS,
+            forward,
+          )
+        : null
     const pageUrl = code ? `${SITE_URL}/convite/${code}` : `${SITE_URL}/`
     return rewriteInviteHtml(shell, buildInviteMeta(preview), pageUrl)
   } catch {

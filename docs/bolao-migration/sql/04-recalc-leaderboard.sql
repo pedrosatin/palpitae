@@ -13,7 +13,7 @@ SELECT p.group_id,
        SUM(CASE WHEN p.points_awarded = 3 THEN 1 ELSE 0 END),
        datetime('now')
   FROM predictions p
- WHERE p.group_id = 'd79438a7-a324-48d0-a245-950aff4d5849'
+ WHERE p.group_id = '<GROUP_ID>'
  GROUP BY p.user_id
 ON CONFLICT (group_id, user_id) DO UPDATE SET
   total_points = excluded.total_points,

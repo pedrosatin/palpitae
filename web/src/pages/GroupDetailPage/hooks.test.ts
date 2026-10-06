@@ -161,6 +161,58 @@ describe('useGroupActions', () => {
     })
   })
 
+  describe('rotateInvite', () => {
+    it('does not call the API when the owner cancels', async () => {
+      mockConfirm.mockResolvedValueOnce(false)
+      const onRotated = vi.fn()
+      const { result } = renderHook(() => useGroupActions('g1', mockUser))
+
+      await act(async () => {
+        await result.current.rotateInvite(onRotated)
+      })
+
+      expect(trackEvent).toHaveBeenCalledWith('click_group_detail_trocar_convite')
+      expect(apiFetch).not.toHaveBeenCalled()
+      expect(onRotated).not.toHaveBeenCalled()
+    })
+
+    it('posts the rotation and hands the new code back', async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ invite_code: 'NEWC-ODE2' }),
+      } as unknown as Response)
+      const onRotated = vi.fn()
+      const { result } = renderHook(() => useGroupActions('g1', mockUser))
+
+      await act(async () => {
+        await result.current.rotateInvite(onRotated)
+      })
+
+      expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups/g1/invite/rotate'), {
+        method: 'POST',
+      })
+      expect(invalidateApiCache).toHaveBeenCalledWith('groups:')
+      expect(onRotated).toHaveBeenCalledWith('NEWC-ODE2')
+      expect(result.current.rotatingInvite).toBe(false)
+    })
+
+    it('alerts the API error and keeps the current code', async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce({
+        ok: false,
+        json: vi.fn().mockResolvedValue({ error: 'Apenas o administrador pode trocar o convite' }),
+      } as unknown as Response)
+      const onRotated = vi.fn()
+      const { result } = renderHook(() => useGroupActions('g1', mockUser))
+
+      await act(async () => {
+        await result.current.rotateInvite(onRotated)
+      })
+
+      expect(mockAlert).toHaveBeenCalledWith('Apenas o administrador pode trocar o convite')
+      expect(onRotated).not.toHaveBeenCalled()
+    })
+  })
+
   describe('deleteGroup', () => {
     it('returns early if groupId is undefined', async () => {
       const { result } = renderHook(() => useGroupActions(undefined, mockUser))
@@ -458,7 +510,7 @@ describe('useTabsOffset', () => {
   it('uses ResizeObserver when available', () => {
     const mockObserve = vi.fn()
     const mockDisconnect = vi.fn()
-    window.ResizeObserver = vi.fn().mockImplementation(function(this: any) {
+    window.ResizeObserver = vi.fn().mockImplementation(function (this: any) {
       this.observe = mockObserve
       this.disconnect = mockDisconnect
     }) as unknown as typeof ResizeObserver

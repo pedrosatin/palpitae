@@ -110,6 +110,8 @@ export type SyncOptions = {
   matchday?: number
   apiKey: string
   db: D1Database
+  /** Instante do sync (ISO 8601). Padrão: agora. Usado para gravar `locked_at`. */
+  now?: string
 }
 
 export type SyncResult = {
@@ -176,6 +178,28 @@ const POSTPONED_STATUSES = new Set(['POSTPONED', 'SUSPENDED', 'CANCELLED'])
 
 function isPostponed(status: string): boolean {
   return POSTPONED_STATUSES.has(status)
+}
+
+/**
+ * Status em que o jogo já começou (ou terminou). SUSPENDED entra aqui: o jogo foi
+ * interrompido depois do início e o placar parcial já é conhecido, então o palpite
+ * tem que continuar travado mesmo com `postponed = 1`.
+ */
+const STARTED_STATUSES = new Set(['IN_PLAY', 'PAUSED', 'LIVE', 'SUSPENDED', 'FINISHED', 'AWARDED'])
+
+/**
+ * `locked_at` proposto para a linha: o instante do sync quando o provider indica
+ * que o jogo começou. Horário vencido sozinho não conta: um adiamento visto depois
+ * do horário original, sem o jogo ter começado, ainda reabre o palpite. O upsert
+ * nunca apaga um `locked_at` existente (ver MATCH_UPSERT_SQL).
+ */
+export function resolveLockedAt(providerStatus: string, now: string): string | null {
+  return STARTED_STATUSES.has(providerStatus) ? now : null
+}
+
+/** ISO 8601 sem milissegundos, no mesmo formato de `start_time`. */
+function isoSeconds(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
 function slugify(str: string): string {
@@ -358,6 +382,7 @@ type MatchUpsertRow = {
   homePenaltyGoals: number | null
   awayPenaltyGoals: number | null
   postponed: 0 | 1
+  lockedAt: string | null
 }
 
 /**
@@ -406,6 +431,7 @@ function mapRound(matchday: number | null, stage: string): string {
 function mapMatchUpsertRow(
   m: ApiMatch,
   teamIds: Map<number, string>,
+  now: string,
 ): MatchUpsertRow | null {
   const homeTeamId = teamIds.get(m.homeTeam?.id)
   const awayTeamId = teamIds.get(m.awayTeam?.id)
@@ -430,18 +456,29 @@ function mapMatchUpsertRow(
     homePenaltyGoals: isShootout ? (m.score.penalties?.home ?? null) : null,
     awayPenaltyGoals: isShootout ? (m.score.penalties?.away ?? null) : null,
     postponed: isPostponed(m.status) ? 1 : 0,
+    lockedAt: resolveLockedAt(m.status, now),
   }
 }
 
 const MATCH_UPSERT_SQL = `INSERT INTO matches (
        id, competition_id, external_id, provider, home_team_id, away_team_id,
        start_time, status, home_score, away_score, phase, round, group_name,
-       duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed
+       duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed,
+       locked_at
      )
      VALUES (
-       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
      )
      ON CONFLICT (external_id, provider) DO UPDATE SET
+       -- Travamento permanente: uma vez preenchido, locked_at não volta a NULL. É
+       -- preenchido na primeira vez que o sync vê o jogo iniciado: status local
+       -- anterior 'live'/'finished' ou status de início vindo do provider. No
+       -- DO UPDATE, matches.* são os valores antigos da linha.
+       locked_at          = COALESCE(
+                              matches.locked_at,
+                              CASE WHEN matches.status IN ('live', 'finished') THEN ? END,
+                              excluded.locked_at
+                            ),
        status             = excluded.status,
        postponed          = excluded.postponed,
        home_score         = excluded.home_score,
@@ -478,12 +515,13 @@ async function upsertMatches(
   competitionId: string,
   matches: ApiMatch[],
   teamIds: Map<number, string>,
+  now: string,
 ): Promise<number> {
   const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
   const matchStatements = []
 
   for (const m of matches) {
-    const row = mapMatchUpsertRow(m, teamIds)
+    const row = mapMatchUpsertRow(m, teamIds, now)
     if (!row) continue
 
     matchStatements.push(
@@ -506,6 +544,8 @@ async function upsertMatches(
         row.homePenaltyGoals,
         row.awayPenaltyGoals,
         row.postponed,
+        row.lockedAt,
+        now,
       ),
     )
   }
@@ -536,7 +576,8 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   const competition = await upsertCompetition(db, apiComp, competitionName, season)
   const { teamMap, teamIds } = await upsertTeams(db, matches)
-  const matchCount = await upsertMatches(db, competition.id, matches, teamIds)
+  const now = opts.now ?? isoSeconds(new Date())
+  const matchCount = await upsertMatches(db, competition.id, matches, teamIds, now)
 
   return {
     competition: competitionName,
