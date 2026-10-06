@@ -46,6 +46,7 @@ function makeD1(rows: {
   lastSync?: string | null
 }): D1Database {
   function resultFor(sql: string) {
+    if (sql.includes('FROM revoked_sessions')) return null
     if (sql.includes('FROM competition_radar_daily')) return { results: rows.daily ?? [] }
     if (sql.includes('MAX(last_seen_at)')) return { last_sync: rows.lastSync ?? null }
     if (sql.includes('FROM competition_radar')) return { results: rows.competitions ?? [] }

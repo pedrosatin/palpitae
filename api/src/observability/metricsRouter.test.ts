@@ -16,6 +16,7 @@ function makeApp() {
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     JWT_SECRET,
+    DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } as unknown as D1Database,
     ADMIN_EMAIL: ADMIN,
     CF_ACCOUNT_ID: 'acct',
     AE_SQL_TOKEN: 'tok',
@@ -193,6 +194,7 @@ function makeD1(rows: {
   const topCompetitions = rows.topCompetitions ?? []
 
   function resultFor(sql: string) {
+    if (sql.includes('FROM revoked_sessions')) return null
     if (sql.includes('FROM group_members gm')) return { results: membership }
     if (sql.includes('FROM groups g JOIN competitions')) return { results: topCompetitions }
     if (sql.includes('(SELECT COUNT(DISTINCT user_id) FROM group_members) AS usersInGroup')) {

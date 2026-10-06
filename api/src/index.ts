@@ -1,4 +1,6 @@
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
+import { requestLimits, clearExpiredSecurityRecords } from './security/limits'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { authRouter } from './auth/router'
@@ -41,6 +43,15 @@ app.use(
   }),
 )
 
+app.use(
+  '*',
+  bodyLimit({
+    maxSize: 64 * 1024,
+    onError: (c) => c.json({ error: 'Body excede o limite de 64 KiB' }, 413),
+  }),
+)
+app.use('*', requestLimits)
+
 app.route('/auth', authRouter)
 app.route('/competitions', competitionsRouter)
 app.route('/groups', groupsRouter)
@@ -58,6 +69,7 @@ export default {
 
   // Cron Triggers (ver wrangler.toml). O controller.cron diz qual agendamento disparou.
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(clearExpiredSecurityRecords(env.DB))
     if (controller.cron === DAILY_EXPORT_CRON) {
       // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))

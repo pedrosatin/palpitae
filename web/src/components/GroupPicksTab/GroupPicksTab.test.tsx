@@ -105,7 +105,9 @@ describe('GroupPicksTab', () => {
     render(<GroupPicksTab groupId="g1" competitionId="c1" />)
 
     await waitFor(() => {
-      expect(screen.getByText(/Faça seu palpite/i)).toBeInTheDocument()
+      expect(
+        screen.getByText(/palpites dos outros membros aparecem quando o jogo começar/i),
+      ).toBeInTheDocument()
     })
     expect(screen.queryByText('(você)')).not.toBeInTheDocument()
   })

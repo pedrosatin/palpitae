@@ -1,6 +1,6 @@
 import { createMiddleware } from 'hono/factory'
 import { getCookie } from 'hono/cookie'
-import { verifyJwt } from './jwt'
+import { SessionStorageError, verifySession } from './session'
 import type { AppContext } from '../types'
 
 export const requireAuth = createMiddleware<AppContext>(async (c, next) => {
@@ -8,11 +8,12 @@ export const requireAuth = createMiddleware<AppContext>(async (c, next) => {
   if (!token) return c.json({ error: 'Unauthorized' }, 401)
 
   try {
-    const payload = await verifyJwt(token, c.env.JWT_SECRET)
+    const payload = await verifySession(token, c.env.JWT_SECRET, c.env.DB)
     c.set('userId', payload.sub)
     c.set('userEmail', payload.email)
-    await next()
-  } catch {
+  } catch (error) {
+    if (error instanceof SessionStorageError) return c.json({ error: 'Sessão indisponível' }, 503)
     return c.json({ error: 'Unauthorized' }, 401)
   }
+  await next()
 })

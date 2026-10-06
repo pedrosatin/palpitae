@@ -17,7 +17,7 @@ export interface GroupDetail {
   competition_name: string | null
   competition_type: CompetitionType | null
   is_admin: boolean
-  invite_code: string
+  invite_code: string | null
   created_at: string
   points_exact: number
   points_winner: number

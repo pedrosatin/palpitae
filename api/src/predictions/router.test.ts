@@ -387,7 +387,8 @@ describe('predictions router – GET /group', () => {
     const predSql = capturedSql.find((s) => s.includes('FROM predictions pr'))
     expect(predSql).toBeDefined()
     expect(predSql).toContain('m.start_time <= ?')
-    expect(predSql).toContain('SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?')
+    expect(predSql).toContain('OR pr.user_id = ?')
+    expect(predSql).not.toContain('SELECT match_id FROM predictions')
   })
 
   it('public groups skip the anti-copy filter (no own-prediction subquery)', async () => {

@@ -18,7 +18,9 @@ function fakeEnv(db: D1Database): AppContext['Bindings'] {
 
 function createDbMock(competitions: Record<string, unknown>[], throwError = false): D1Database {
   return {
-    prepare: vi.fn().mockImplementation(() => {
+    prepare: vi.fn().mockImplementation((sql: string) => {
+      if (sql.includes('FROM revoked_sessions'))
+        return { bind: () => ({ first: async () => null }) }
       if (throwError) {
         throw new Error('Database connection failed')
       }

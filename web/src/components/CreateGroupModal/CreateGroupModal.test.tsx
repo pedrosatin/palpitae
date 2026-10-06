@@ -195,7 +195,7 @@ describe('CreateGroupModal – analytics', () => {
     await userEvent.click(screen.getByRole('button', { name: /Sempre visível/ }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_create_group_visibilidade_publica')
 
-    await userEvent.click(screen.getByRole('button', { name: /Oculto até palpitar/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Oculto até o jogo começar/ }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_create_group_visibilidade_oculta')
   })
 })

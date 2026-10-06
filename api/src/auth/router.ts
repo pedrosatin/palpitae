@@ -10,7 +10,8 @@ import {
   verifyGoogleIdToken,
 } from './google'
 import { getFeatureFlags } from './permissions'
-import { signJwt, verifyJwt } from './jwt'
+import { signJwt } from './jwt'
+import { revokeSession, SessionStorageError, verifySession } from './session'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
 
@@ -149,7 +150,7 @@ authRouter.get('/callback', async (c) => {
     })
 
     const sessionToken = await signJwt(
-      { sub: user.id, email: user.email },
+      { sub: user.id, email: user.email, jti: crypto.randomUUID() },
       c.env.JWT_SECRET,
       SESSION_TTL,
     )
@@ -178,7 +179,9 @@ authRouter.get('/callback', async (c) => {
 })
 
 // POST /auth/logout
-authRouter.post('/logout', (c) => {
+authRouter.post('/logout', async (c) => {
+  const token = getCookie(c, SESSION_COOKIE)
+  if (token) await revokeSession(token, c.env.JWT_SECRET, c.env.DB)
   const domain = cookieDomain(c.env.BASE_URL)
   deleteCookie(c, SESSION_COOKIE, { path: '/', ...(domain && { domain }) })
   return c.json({ ok: true })
@@ -198,9 +201,10 @@ authRouter.get('/me', async (c) => {
 
   let userId: string
   try {
-    const payload = await verifyJwt(token, c.env.JWT_SECRET)
+    const payload = await verifySession(token, c.env.JWT_SECRET, c.env.DB)
     userId = payload.sub
-  } catch {
+  } catch (error) {
+    if (error instanceof SessionStorageError) return c.json({ error: 'Sessão indisponível' }, 503)
     return c.json({ authenticated: false }, 200)
   }
 

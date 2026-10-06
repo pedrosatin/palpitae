@@ -251,12 +251,8 @@ router.get('/user', requireAuth, async (c) => {
  * Returns the predictions of ALL members of a group — for the social/tracking
  * view ("Palpites do grupo").
  *
- * Visibility rule (anti-copy): a member's prediction for a given match is only
- * revealed once the requesting user has submitted their OWN prediction for that
- * same match OR the match has already started (start_time <= now). Locked/past
- * matches are always revealed — the user can no longer predict, so hiding picks
- * would serve no purpose. Future matches where the requester hasn't predicted
- * yet are simply omitted — the frontend shows them as "hidden".
+ * Hidden groups reveal another member's prediction only once the match is locked.
+ * The requester can always see and edit their own unlocked prediction.
  *
  * The `locked` field is derived from match.start_time at runtime (ADR-004).
  *
@@ -319,15 +315,6 @@ router.get('/group', requireAuth, async (c) => {
     .all<{ user_id: string; display: string }>()
   const membersMs = Date.now() - membersStartedAt
 
-  // All members' predictions — revealed according to the anti-copy rule:
-  //   • For future/unlocked matches: only shown if the requester has already
-  //     submitted their own prediction for that match.
-  //   • For past/locked matches (start_time <= now e não adiado): always revealed,
-  //     even if the requester never predicted — they can no longer predict, so
-  //     hiding others' picks would be pointless.
-  // A condição de revelação é a MESMA do campo `locked` (locking.ts) de propósito:
-  // se um jogo adiado revelasse os palpites alheios enquanto ainda aceita edição,
-  // daria pra copiar.
   const predictionsStartedAt = Date.now()
   const predictionsResult = isPublic
     ? // Public group: every member's picks are visible in real time, no anti-copy filter.
@@ -352,8 +339,7 @@ router.get('/group', requireAuth, async (c) => {
         )
         .bind(now, groupId)
         .all()
-    : // Hidden group (default): a member's pick for a match is only revealed once the
-      // requester has predicted that same match OR the match has already started.
+    : // Hidden group: only the requester or a locked match can reveal a pick.
       await db
         .prepare(
           `SELECT
@@ -373,13 +359,11 @@ router.get('/group', requireAuth, async (c) => {
            WHERE pr.group_id = ?
              AND (
                ${lockedSql()}
-               OR pr.match_id IN (
-                 SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?
-               )
+               OR pr.user_id = ?
              )
            ORDER BY m.start_time ASC, user_display ASC`,
         )
-        .bind(now, groupId, now, groupId, userId)
+        .bind(now, groupId, now, userId)
         .all()
   const predictionsMs = Date.now() - predictionsStartedAt
 
@@ -596,6 +580,9 @@ function validateBulkPutPayload(body: BulkBody): string | null {
 
   if (!Array.isArray(body.predictions) || body.predictions.length === 0) {
     return 'predictions deve ser uma lista não-vazia'
+  }
+  if (body.predictions.length > 100) {
+    return 'Máximo de 100 palpites por requisição'
   }
 
   for (const p of body.predictions) {

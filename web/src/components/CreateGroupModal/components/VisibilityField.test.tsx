@@ -15,13 +15,13 @@ describe('VisibilityField', () => {
   it('renders correctly', () => {
     render(<VisibilityField predictionsVisibility="hidden" setPredictionsVisibility={vi.fn()} />)
     expect(screen.getByText('Visibilidade dos palpites')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /oculto até palpitar/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /oculto até o jogo começar/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sempre visível/i })).toBeInTheDocument()
   })
 
   it('highlights the hidden option when active', () => {
     render(<VisibilityField predictionsVisibility="hidden" setPredictionsVisibility={vi.fn()} />)
-    const hiddenBtn = screen.getByRole('button', { name: /oculto até palpitar/i })
+    const hiddenBtn = screen.getByRole('button', { name: /oculto até o jogo começar/i })
     const publicBtn = screen.getByRole('button', { name: /sempre visível/i })
 
     expect(hiddenBtn).toHaveAttribute('aria-pressed', 'true')
@@ -32,7 +32,7 @@ describe('VisibilityField', () => {
 
   it('highlights the public option when active', () => {
     render(<VisibilityField predictionsVisibility="public" setPredictionsVisibility={vi.fn()} />)
-    const hiddenBtn = screen.getByRole('button', { name: /oculto até palpitar/i })
+    const hiddenBtn = screen.getByRole('button', { name: /oculto até o jogo começar/i })
     const publicBtn = screen.getByRole('button', { name: /sempre visível/i })
 
     expect(hiddenBtn).toHaveAttribute('aria-pressed', 'false')
@@ -50,7 +50,7 @@ describe('VisibilityField', () => {
       />,
     )
 
-    const hiddenBtn = screen.getByRole('button', { name: /oculto até palpitar/i })
+    const hiddenBtn = screen.getByRole('button', { name: /oculto até o jogo começar/i })
     fireEvent.click(hiddenBtn)
 
     expect(setPredictionsVisibility).toHaveBeenCalledWith('hidden')
