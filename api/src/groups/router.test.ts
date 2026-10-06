@@ -162,6 +162,9 @@ function createRemoveMemberDbMock({
   const deleteRun = vi.fn().mockResolvedValue({ success: true })
 
   const db = {
+    async batch(statements: { run: () => Promise<unknown> }[]) {
+      return Promise.all(statements.map((s) => s.run()))
+    },
     prepare(sql: string) {
       return {
         bind() {
@@ -309,10 +312,13 @@ describe('groups router', () => {
     const errorDb = {
       prepare: () => ({
         bind: () => ({
-          all: () => { throw new Error('DB Error') }
-        })
-      })
-    } as any;
+          first: async () => null,
+          all: () => {
+            throw new Error('DB Error')
+          },
+        }),
+      }),
+    } as any
 
     const res = await requestGroupsList('user@example.com', undefined, errorDb)
     expect(res.status).toBe(500)

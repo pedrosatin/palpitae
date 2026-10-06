@@ -76,3 +76,35 @@ Dois detalhes da ESPN validados ao vivo que moldaram a implementação:
 - O fallback não conhece `postponed` — irrelevante na prática: jogo adiado não acontece no horário original, o evento ESPN correspondente não termina ('post') dentro da janela, e a tolerância de ±150 min rejeita remarcações para outro dia. O ADR-013 continua sendo a via de resgate desses jogos.
 - Nomes de seleções são traduzidos no sync primário ('Brazil' → 'Brasil', `TEAM_TRANSLATIONS` em `sync.ts`) e a ESPN usa o nome em inglês ('Brazil') — o casamento por conter/contido não casa 'Brasil'×'Brazil'. Hoje isso só afetaria Copa do Mundo/Eurocopa; aceitável como limitação conhecida (fail-closed: o jogo só fica sem placar até o primário voltar).
 - A ESPN não-oficial não tem SLA nem schema versionado; o código trata payload ausente/inesperado como não-casamento (fail-closed), não como erro.
+
+## ADR-017: Controle de acesso e persistência de limites
+
+### Contexto
+
+Revelar palpites após o primeiro envio permite copiar os demais e editar antes
+do início da partida. Remover apenas a participação permite reentrar com um
+convite salvo. Sessões JWT copiadas também permanecem válidas após o logout.
+
+### Decisão
+
+Grupos ocultos revelam palpites alheios somente após o bloqueio da partida. O
+próprio palpite segue editável até esse bloqueio. A remoção feita pelo dono revoga
+a participação e a reentrada no grupo; a saída voluntária preserva a reentrada.
+Grupos excluídos deixam de autorizar consultas e gravações.
+
+O D1 guarda os bloqueios de membros, os hashes das sessões revogadas até sua
+expiração e os contadores atômicos de requisições. Requisições com sessão válida
+contam por usuário; as anônimas, por IP do visitante. Atrás do proxy do Pages, o
+IP chega num header autenticado por `PROXY_SHARED_SECRET`, porque o
+`CF-Connecting-IP` de um subrequest de Worker é o endereço de saída da Cloudflare.
+Os crons limpam os contadores e revogações expirados. Leituras de partidas
+consultam os dados locais; cron e sync administrativo atualizam os provedores
+externos, e o poller resgata jogos sem resultado por até 24 horas.
+
+### Consequências
+
+A migração precisa preceder a publicação do Worker. Cada requisição fora de
+`/health` faz uma escrita no D1 (contador) e, com cookie de sessão, uma leitura
+em `revoked_sessions`. Leituras seguem sem contador se o D1 falhar; escritas e
+OAuth respondem 503. Os limites e a política de acesso estão em
+[Controle de acesso e limites da API](../security.md).

@@ -27,6 +27,8 @@ export type EventType =
   | 'radar_sync_error'
   // Performance / latência de request
   | 'request_perf'
+  // Falha de D1 nos controles de acesso (contador de requisições, revogação, limpeza)
+  | 'security_storage_error'
   // Negócio (server-side, nos routers)
   | 'prediction_saved'
   | 'group_created'

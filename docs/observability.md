@@ -112,7 +112,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
 | `radar_sync_run` | `status` (`ok`/`partial`/`error`) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
-| `football_api_error` | `context` (`matches_background`/`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
+| `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
 | `group_joined` | `group_id` | `user_hash` | — | — |
@@ -123,6 +123,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`) | `error_message` (só em `exchange_failed`) | — | — |
 | `oauth_error` | `error_code` | — | — | — |
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
+| `security_storage_error` | `source` (`request_limits`/`logout`/`cleanup`) | `category` (`read`/`write`/`oauth`) em `request_limits`; `error_message` nos demais | `error_message` (só em `request_limits`) | — |
 | `request_perf` | `route` (`GET /matches`, ...) | `status` (HTTP, string) | — | `double1`=total_ms, `double2`=db_ms (0 se ausente), `double3`=rows (0 se ausente) |
 | `email_reminder_sent` | `user_hash` | `competition_name` | `round` | — |
 | `cron_round_reminder` | — | — | — | `double1`=rounds, `double2`=sent, `double3`=failed |
@@ -132,9 +133,9 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 
 Observação sobre `football_api_error`: tem **três formas** de chamada. No poller
 (`matches/poller.ts`) é `[comp_id, round, error_message]`; nos endpoints de matches
-(`matches/router.ts`) é `[context, error_message]`; na descoberta de jogos
+(`POST /matches/sync` em `matches/router.ts`) é `[context, error_message]`; na descoberta de jogos
 (`matches/fixtureDiscovery.ts`) é `[context='fixture_discovery', comp_id, error_message]`.
-Distinga pelo blob2: `matches_background`/`sync_endpoint` ⇒ forma de endpoint;
+Distinga pelo blob2: `sync_endpoint` ⇒ forma de endpoint;
 `fixture_discovery` ⇒ forma de descoberta (comp_id em blob3); senão ⇒ poller.
 
 Observação sobre `prediction_saved`: o `kind` (single/bulk/import) cai em **blob5** porque o

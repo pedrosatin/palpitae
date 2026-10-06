@@ -21,7 +21,10 @@ import { exportRecentDays } from './observability/export'
 import type { Env } from './types'
 
 const env = {
-  DB: {} as never,
+  DB: {
+    prepare: () => ({ bind: () => ({ first: async () => ({ hits: 1 }) }) }),
+    batch: vi.fn(async () => []),
+  } as never,
   AE: { writeDataPoint: vi.fn() } as never,
   RESEND_API_KEY: 'rk',
   FOOTBALL_API_KEY: 'fk',

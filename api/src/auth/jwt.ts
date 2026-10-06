@@ -12,6 +12,7 @@ const importKey = importHmacKey
 export interface JwtPayload {
   sub: string
   email: string
+  jti?: string
   iat: number
   exp: number
 }
@@ -62,7 +63,10 @@ export async function verifyJwt(token: string, secret: string): Promise<JwtPaylo
   const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(body))) as JwtPayload
 
   const now = Math.floor(Date.now() / 1000)
-  if (payload.exp < now) throw new Error('JWT expired')
+  if (!Number.isFinite(payload.exp) || payload.exp <= now) throw new Error('JWT expired')
+  if (typeof payload.sub !== 'string' || !payload.sub || typeof payload.email !== 'string') {
+    throw new Error('Invalid JWT claims')
+  }
 
   return payload
 }

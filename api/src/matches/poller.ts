@@ -4,6 +4,9 @@ import { scoreWindowFromEspn } from './espnFallback'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
+// Até quando o poller ainda busca resultado de um jogo que passou da janela ativa.
+const RESCUE_WINDOW_MS = 24 * 60 * 60 * 1000
+
 type ActiveRound = {
   comp_id: string
   external_id: string
@@ -21,6 +24,13 @@ type ActiveRound = {
  * 115 min = 45 + 5 (stoppage) + 15 (interval) + 45 + 5 (stoppage) — the earliest
  * a match can realistically be over. 200 min upper bound covers knockout extra
  * time + penalties, and stops polling matches that never resolve (abnormal cases).
+ *
+ * Resgate (até 24 h após o início): jogos que saíram da janela ativa sem status
+ * final (resultado atrasado no provedor, falha nos dois ticks) e jogos finalizados
+ * ainda sem pontuação continuam entrando na consulta. Jogos adiados
+ * (`postponed = 1`) ficam de fora do resgate, para não gastar quota da
+ * football-data com partidas que não terminam. O failover da ESPN cobre só a
+ * janela ativa.
  *
  * Only numeric rounds (group-stage matchdays) get a `matchday` filter so the API
  * call is scoped to the active round. Non-numeric rounds (knockout phases) fall
@@ -46,6 +56,7 @@ export async function pollActiveMatches(
   const now = Date.now()
   const earliestOver = new Date(now - 115 * 60 * 1000).toISOString() // started ≥ 115 min ago
   const stillRelevant = new Date(now - 200 * 60 * 1000).toISOString() // started ≤ 200 min ago
+  const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString() // started ≤ 24 h ago
 
   const rows = await db
     .prepare(
@@ -58,10 +69,14 @@ export async function pollActiveMatches(
        JOIN competitions c ON c.id = m.competition_id
        WHERE m.start_time <= ?
          AND m.start_time >= ?
-         AND m.status != 'finished'
-         AND c.provider = 'football-data'`,
+         AND c.provider = 'football-data'
+         AND (
+           (m.status != 'finished' AND (m.start_time >= ? OR m.postponed = 0))
+           OR (m.status = 'finished' AND m.scored_at IS NULL
+               AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL)
+         )`,
     )
-    .bind(earliestOver, stillRelevant)
+    .bind(earliestOver, rescueFloor, stillRelevant)
     .all<ActiveRound>()
 
   if (rows.results.length === 0) {
