@@ -111,4 +111,20 @@ describe('GroupInviteSection', () => {
       expect(copyLinkButtons.length).toBeGreaterThan(0)
     })
   })
+
+  it('hides the rotate button without a handler', () => {
+    render(<GroupInviteSection {...defaultProps} />)
+    expect(screen.queryByRole('button', { name: 'Trocar código' })).not.toBeInTheDocument()
+  })
+
+  it('calls onRotate and disables the button while rotating', () => {
+    const onRotate = vi.fn()
+    const { rerender } = render(<GroupInviteSection {...defaultProps} onRotate={onRotate} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trocar código' }))
+    expect(onRotate).toHaveBeenCalledTimes(1)
+
+    rerender(<GroupInviteSection {...defaultProps} onRotate={onRotate} rotating />)
+    expect(screen.getByRole('button', { name: 'Trocando...' })).toBeDisabled()
+  })
 })

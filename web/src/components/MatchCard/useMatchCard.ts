@@ -22,10 +22,12 @@ export interface UseMatchCardProps {
 function useMatchStatus(match: Match, prediction: Prediction | undefined) {
   // Jogo adiado nunca trava: o `start_time` guardado ainda é o horário original
   // (já passou), então a checagem por data sozinha travaria o palpite para sempre.
+  // Exceção: jogo que o sync já viu iniciado (`locked_at`) trava mesmo se adiado.
   // Espelha a regra do servidor em api/src/matches/locking.ts.
   const isPostponed = Boolean(match.postponed)
   const locked =
-    !isPostponed && (Boolean(prediction?.locked) || new Date() >= new Date(match.start_time))
+    Boolean(match.locked_at) ||
+    (!isPostponed && (Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)))
   const isFinished = match.status === 'finished'
   const hasPrediction = prediction !== undefined
 

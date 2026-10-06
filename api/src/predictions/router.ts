@@ -253,6 +253,8 @@ router.get('/user', requireAuth, async (c) => {
  *
  * Hidden groups reveal another member's prediction only once the match is locked.
  * The requester can always see and edit their own unlocked prediction.
+ * Only current members' picks are listed: picks of someone who left or was removed
+ * stay in the database but leave the feed, like the roster.
  *
  * The `locked` field is derived from match.start_time at runtime (ADR-004).
  *
@@ -331,6 +333,7 @@ router.get('/group', requireAuth, async (c) => {
              pr.penalty_points,
              CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
            FROM predictions pr
+           JOIN group_members gm ON gm.group_id = pr.group_id AND gm.user_id = pr.user_id
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
@@ -353,6 +356,7 @@ router.get('/group', requireAuth, async (c) => {
              pr.penalty_points,
              CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
            FROM predictions pr
+           JOIN group_members gm ON gm.group_id = pr.group_id AND gm.user_id = pr.user_id
            JOIN users u ON u.id = pr.user_id
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
@@ -394,8 +398,9 @@ router.get('/group', requireAuth, async (c) => {
  * Prediction locking rules (ADR-004):
  *   - Predictions can be submitted or edited freely BEFORE match.start_time
  *   - Once match.start_time is reached, predictions are LOCKED — no edits allowed
- *   - If a match is rescheduled, the lock/unlock follows the new start_time automatically
- *   - Jogo adiado (`postponed = 1`) NÃO trava, mesmo com start_time no passado
+ *   - If a match is rescheduled before it starts, the lock follows the new start_time
+ *   - Jogo adiado (`postponed = 1`) que não começou NÃO trava, mesmo com start_time no passado
+ *   - Jogo que o sync viu iniciado (`locked_at`) fica travado para sempre
  *
  * Body: { group_id, match_id, predicted_home_score, predicted_away_score }
  *
@@ -441,13 +446,8 @@ router.put('/', requireAuth, async (c) => {
     )
   }
 
-  if (
-    !Number.isInteger(predicted_home_score) ||
-    predicted_home_score < 0 ||
-    !Number.isInteger(predicted_away_score) ||
-    predicted_away_score < 0
-  ) {
-    return c.json({ error: 'Placar deve ser um inteiro não-negativo' }, 400)
+  if (!isValidScore(predicted_home_score) || !isValidScore(predicted_away_score)) {
+    return c.json({ error: `Placar deve ser um inteiro entre 0 e ${MAX_SCORE}` }, 400)
   }
 
   const db = c.env.DB
@@ -463,7 +463,7 @@ router.put('/', requireAuth, async (c) => {
   // (phase + competition.penalty_phases) so we can validate the shootout pick.
   const match = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.status, m.postponed, m.round, m.phase, c.penalty_phases
+      `SELECT m.id, m.start_time, m.status, m.postponed, m.locked_at, m.round, m.phase, c.penalty_phases
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
@@ -475,6 +475,7 @@ router.put('/', requireAuth, async (c) => {
       start_time: string
       status: string
       postponed: number
+      locked_at: string | null
       round: string
       phase: string | null
       penalty_phases: string
@@ -561,6 +562,13 @@ router.put('/', requireAuth, async (c) => {
  *   400 — missing/invalid fields
  *   403 — user not in group
  */
+/** Teto do placar de um palpite. Evita números absurdos no feed e no card de compartilhar. */
+export const MAX_SCORE = 99
+
+function isValidScore(value: unknown): boolean {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= MAX_SCORE
+}
+
 type BulkPrediction = {
   match_id?: string
   predicted_home_score?: number
@@ -589,12 +597,10 @@ function validateBulkPutPayload(body: BulkBody): string | null {
     if (
       !p ||
       typeof p.match_id !== 'string' ||
-      !Number.isInteger(p.predicted_home_score) ||
-      (p.predicted_home_score as number) < 0 ||
-      !Number.isInteger(p.predicted_away_score) ||
-      (p.predicted_away_score as number) < 0
+      !isValidScore(p.predicted_home_score) ||
+      !isValidScore(p.predicted_away_score)
     ) {
-      return 'Cada palpite precisa de match_id e placares inteiros não-negativos'
+      return `Cada palpite precisa de match_id e placares inteiros entre 0 e ${MAX_SCORE}`
     }
   }
 
@@ -613,6 +619,7 @@ function buildBulkPutStatements(
       start_time: string
       status?: string
       postponed: number
+      locked_at?: string | null
       phase: string | null
       penalty_phases: string
     }
@@ -733,7 +740,7 @@ async function handleBulkPut(c: Context<AppContext>) {
   const placeholders = matchIds.map(() => '?').join(', ')
   const matchRows = await db
     .prepare(
-      `SELECT m.id, m.start_time, m.status, m.postponed, m.phase, c.penalty_phases
+      `SELECT m.id, m.start_time, m.status, m.postponed, m.locked_at, m.phase, c.penalty_phases
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
@@ -745,6 +752,7 @@ async function handleBulkPut(c: Context<AppContext>) {
       start_time: string
       status: string
       postponed: number
+      locked_at: string | null
       phase: string | null
       penalty_phases: string
     }>()

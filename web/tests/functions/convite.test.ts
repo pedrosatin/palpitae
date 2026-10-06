@@ -118,6 +118,25 @@ describe('fetchInvitePreview', () => {
     })
   })
 
+  it('forwards the visitor IP and the proxy secret only when given', async () => {
+    const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => apiJson(OK_BODY))
+
+    await fetchInvitePreview('ABCD-EF23', 'https://api.test', fetchImpl, API_TIMEOUT_MS, {
+      clientIp: '198.51.100.7',
+      secret: 'proxy-secret',
+    })
+    await fetchInvitePreview('ABCD-EF23', 'https://api.test', fetchImpl)
+
+    const [withForward, without] = fetchImpl.mock.calls.map(
+      ([, init]) => init?.headers as Record<string, string>,
+    )
+    expect(withForward).toMatchObject({
+      'X-Palpitae-Client-IP': '198.51.100.7',
+      'X-Palpitae-Proxy-Secret': 'proxy-secret',
+    })
+    expect(without).toEqual({ Accept: 'application/json' })
+  })
+
   it.each([
     ['404', () => apiJson({ error: 'Convite não encontrado' }, 404)],
     ['500', () => apiJson({ error: 'x' }, 500)],

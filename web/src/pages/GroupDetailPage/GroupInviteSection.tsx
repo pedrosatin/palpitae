@@ -11,9 +11,18 @@ interface GroupInviteSectionProps {
   inviteCode: string
   /** Nome do grupo, usado na mensagem que acompanha o link. */
   groupName?: string
+  /** Troca o código de convite. Sem ele, o botão não aparece. */
+  onRotate?: () => void
+  /** Troca em andamento. */
+  rotating?: boolean
 }
 
-function GroupInviteSection({ inviteCode, groupName }: GroupInviteSectionProps) {
+function GroupInviteSection({
+  inviteCode,
+  groupName,
+  onRotate,
+  rotating,
+}: GroupInviteSectionProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
   function getShareLink() {
@@ -64,6 +73,16 @@ function GroupInviteSection({ inviteCode, groupName }: GroupInviteSectionProps) 
         eventContext="group_detail"
         message={buildInviteMessage(groupName)}
       />
+      {onRotate && (
+        <div className={styles.inviteRotateRow}>
+          <span className={styles.inviteRotateHint}>
+            Se o código vazou, gere outro. O atual deixa de funcionar.
+          </span>
+          <Button variant="ghost" size="sm" onClick={onRotate} disabled={rotating}>
+            {rotating ? 'Trocando...' : 'Trocar código'}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
