@@ -72,10 +72,15 @@ revogação falha; nesse caso a resposta é 503 e a falha vai para o evento
 
 ## Content-Security-Policy do site
 
-O `web/public/_headers` envia `Content-Security-Policy-Report-Only` em todas as
-páginas do Pages, inclusive no HTML devolvido pela Function de convite. Nesse modo o
-navegador não bloqueia nada: só registra as violações no console. A política não
-tem endpoint de relatório; a revisão é manual, no console do navegador.
+O `web/public/_headers` envia `Content-Security-Policy` em todas as páginas do
+Pages, inclusive no HTML devolvido pela Function de convite. O navegador bloqueia o
+que a política não libera e registra a violação no console. A política não tem
+endpoint de relatório.
+
+A política passou de Report-Only para enforcing depois de uma navegação logada sem
+nenhuma violação: home, três grupos (abas Palpitar, Tabela, Ranking e rodada),
+configurações, convite e páginas de admin. Os 68 escudos em `teams.logo_url`
+vinham de `crests.football-data.org`, já liberado em `img-src`.
 
 | Diretiva | Fontes | De onde vêm |
 |---|---|---|
@@ -87,7 +92,7 @@ tem endpoint de relatório; a revisão é manual, no console do navegador.
 | `frame-src`, `worker-src`, `object-src` | `'none'` | nada usa iframe, worker ou plugin |
 | `base-uri` | `'self'` |  |
 | `form-action` | `'self'` | os formulários são tratados em JS; o login Google é navegação por link para `api.palpitae.com.br/auth/google`, que `form-action` não cobre |
-| `frame-ancestors` | `'none'` | o navegador ignora essa diretiva no modo Report-Only; até o enforcing, o `X-Frame-Options: DENY` continua valendo |
+| `frame-ancestors` | `'none'` | impede o site em iframe; o `X-Frame-Options: DENY` continua como reforço para navegadores antigos |
 
 O front não chama `https://api.palpitae.com.br` por `fetch`: em produção
 `VITE_API_URL` é `/api`. O `preconnect` para esse host no `index.html` não depende de
@@ -110,19 +115,12 @@ tem atributo `style` ou handler `on…`, quando faltam `object-src 'none'`,
 um script inline do `index.html`, o script do GA dos guias, o `VITE_GA_MEASUREMENT_ID`
 ou o CSS inline exige atualizar o hash no `_headers`.
 
-Para passar ao modo enforcing:
-
-1. Depois do deploy, navegue pela landing, guias, 404, login, dashboard, grupo,
-   compartilhamento de resultado, configurações e páginas de admin, com o
-   consentimento de cookies aceito e recusado, e confira o console. Repita em
-   Chrome, Firefox e Safari no celular.
-2. Confira no D1 de produção os hosts reais de `teams.logo_url` (por exemplo, com
-   `SELECT DISTINCT substr(logo_url, 1, instr(substr(logo_url, 9), '/') + 8) FROM teams`)
-   e compare com o `img-src`. Ajuste a política para cada violação legítima. O
-   consent mode do GA pode chamar `www.google.com` e `*.g.doubleclick.net`, que
-   hoje não estão na política.
-3. Troque o nome do header para `Content-Security-Policy` no `_headers`. O
-   `csp:verify` aceita os dois nomes.
+Se algo deixar de carregar depois de uma mudança, procure no console a mensagem
+"Content Security Policy" com a diretiva violada e ajuste a origem no `_headers`.
+Para testar uma mudança arriscada sem bloquear, troque temporariamente o nome do
+header para `Content-Security-Policy-Report-Only`; o `csp:verify` aceita os dois
+nomes. O consent mode do GA pode chamar `www.google.com` e `*.g.doubleclick.net`,
+que não estão na política: se isso aparecer, só as medições do GA são afetadas.
 4. Acompanhe o console e o Web Analytics nos primeiros dias; para voltar atrás,
    basta reverter o nome do header.
 
