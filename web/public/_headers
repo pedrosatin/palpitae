@@ -1,7 +1,7 @@
-# A CSP está em modo Report-Only: o navegador só registra as violações no
-# console. Os hashes cobrem os scripts e <style> inline do index.html, dos guias
+# A CSP está em modo enforcing: o navegador bloqueia o que a política não
+# libera. Os hashes cobrem os scripts e <style> inline do index.html, dos guias
 # e do 404; `npm run csp:verify` confere a política contra o build e roda no
-# deploy. Origens e passo para o modo enforcing em docs/security.md.
+# deploy. Origens e como ajustar em docs/security.md.
 
 # Força HTTPS em toda visita futura, mesmo que alguém digite http:// direto.
 /*
@@ -10,4 +10,4 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'sha256-d7lGYtnaLNj25nBP3gx7lSxIuqHYjO6W1HgdR8mAb5U=' 'sha256-m9LNak7+IocEKhY1YDqBHTPBpX7XcPYTn2WPxbseAFM=' 'sha256-ijqujgftNZXBl/IIy5DLEx3SEI7PdMfD+pMIqXP40Og=' https://static.cloudflareinsights.com https://www.googletagmanager.com; style-src 'self' 'sha256-5TDRfYqewrlfZFqMvZ6w5rWlm5ugnIwaHWkxendIkz0=' 'sha256-aEPwRy+hbfer/lJdHfi8gr+9HmQaG52FDvAI+m4CyVM=' 'sha256-XWz6hzczHOghlgBovPB0pYtDg+5d/WEFgfIq20bTy7s='; img-src 'self' data: blob: https://crests.football-data.org https://*.googleusercontent.com https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; connect-src 'self' https://cloudflareinsights.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; manifest-src 'self'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-d7lGYtnaLNj25nBP3gx7lSxIuqHYjO6W1HgdR8mAb5U=' 'sha256-m9LNak7+IocEKhY1YDqBHTPBpX7XcPYTn2WPxbseAFM=' 'sha256-ijqujgftNZXBl/IIy5DLEx3SEI7PdMfD+pMIqXP40Og=' https://static.cloudflareinsights.com https://www.googletagmanager.com; style-src 'self' 'sha256-5TDRfYqewrlfZFqMvZ6w5rWlm5ugnIwaHWkxendIkz0=' 'sha256-aEPwRy+hbfer/lJdHfi8gr+9HmQaG52FDvAI+m4CyVM=' 'sha256-XWz6hzczHOghlgBovPB0pYtDg+5d/WEFgfIq20bTy7s='; img-src 'self' data: blob: https://crests.football-data.org https://*.googleusercontent.com https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; connect-src 'self' https://cloudflareinsights.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; manifest-src 'self'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
