@@ -68,6 +68,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Falha se um script ou <style> inline do build não tiver hash na CSP de
+      # dist/_headers, ou se um script externo vier de origem fora da política.
+      - name: Verify CSP
+        run: npm run csp:verify
+
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy dist --project-name=palpitae-web --branch=main
         env:

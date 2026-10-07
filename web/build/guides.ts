@@ -926,12 +926,13 @@ function render404(): string {
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#0d0d0d" />
-    <style>${PAGE_CSS}</style>
+    <style>${PAGE_CSS}
+.not-found{padding:56px 0 0}</style>
   </head>
   <body>
     <div class="wrap">
       ${siteHeader('404_header')}
-      <article style="padding:56px 0 0">
+      <article class="not-found">
         <h1>Página não encontrada</h1>
         <p class="intro">A página que você procura não existe ou foi movida.</p>
         <p><a href="/">← Voltar ao início</a> &nbsp;·&nbsp; <a href="/guias/">Ver os guias</a></p>

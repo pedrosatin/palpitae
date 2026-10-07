@@ -39,6 +39,7 @@ export type EventType =
   | 'group_deleted'
   | 'login_success'
   | 'login_failure'
+  | 'logout_all'
   | 'oauth_error'
   | 'matches_cache'
   // Notificações por e-mail

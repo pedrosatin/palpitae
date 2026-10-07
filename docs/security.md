@@ -49,11 +49,79 @@ vale para tokens emitidos antes do identificador de sessão. Dois desses tokens
 antigos, emitidos no mesmo segundo para o mesmo usuário, são idênticos, então o
 logout de um derruba o outro.
 
-Cada requisição consulta `revoked_sessions` uma vez: o limitador verifica o cookie
-e guarda o resultado no contexto, e o `requireAuth` e o `/auth/me` o reaproveitam.
-Se o D1 não responder nessa consulta, rotas autenticadas e `/auth/me` respondem 503.
-No logout, o cookie é apagado na resposta mesmo quando a revogação falha; nesse
-caso a resposta é 503 e a falha vai para o evento `security_storage_error`.
+Em Configurações, o botão "Sair de todos os dispositivos" pede confirmação e chama
+`POST /auth/logout-all`. A rota exige sessão válida (sem sessão, 401) e passa pela
+mesma checagem de Origin das outras mutações (Origin de fora, 403). Ela grava o
+instante atual, em segundos, em `users.sessions_valid_after` (migração
+`0017_sessions_valid_after.sql`), apaga o cookie na resposta e registra o evento
+`logout_all`. A partir daí, todo token do usuário com `iat` menor ou igual a esse
+valor é rejeitado, inclusive o da sessão que fez o pedido; sessões de outros
+usuários não mudam. O `iat` tem resolução de segundos, então um login concluído no
+mesmo segundo do pedido também cai e precisa ser refeito. Se a gravação falhar, a
+rota responde 503, mantém o cookie para o usuário tentar de novo e registra
+`security_storage_error` com origem `logout_all`; a tela mostra o erro e o usuário
+continua logado.
+
+Cada requisição faz uma consulta ao D1 para validar a sessão: o mesmo `SELECT` lê a
+revogação em `revoked_sessions` e o corte em `users.sessions_valid_after`. O
+limitador verifica o cookie e guarda o resultado no contexto, e o `requireAuth` e o
+`/auth/me` o reaproveitam. Se o D1 não responder nessa consulta, rotas autenticadas
+e `/auth/me` respondem 503. No logout, o cookie é apagado na resposta mesmo quando a
+revogação falha; nesse caso a resposta é 503 e a falha vai para o evento
+`security_storage_error`.
+
+## Content-Security-Policy do site
+
+O `web/public/_headers` envia `Content-Security-Policy-Report-Only` em todas as
+páginas do Pages, inclusive no HTML devolvido pela Function de convite. Nesse modo o
+navegador não bloqueia nada: só registra as violações no console. A política não
+tem endpoint de relatório; a revisão é manual, no console do navegador.
+
+| Diretiva | Fontes | De onde vêm |
+|---|---|---|
+| `script-src` | `'self'`, 3 hashes, `https://static.cloudflareinsights.com`, `https://www.googletagmanager.com` | bundle do Vite; os dois scripts inline do `index.html` e o script do GA nos guias (`build/analytics.ts`); beacon do Cloudflare Web Analytics que a borda injeta no HTML; `gtag.js` carregado por `src/analytics/ga.ts` e pelos guias |
+| `style-src` | `'self'`, 3 hashes | CSS do bundle; `<style>` inline do `index.html`, dos guias e do 404 |
+| `img-src` | `'self'`, `data:`, `blob:`, `https://crests.football-data.org`, `https://*.googleusercontent.com`, `https://*.google-analytics.com`, `https://*.googletagmanager.com` | ícones locais; SVG em `data:` no CSS; prévia do cartão de compartilhamento (`URL.createObjectURL`); escudos dos times (`teams.logo_url`, vindo da football-data.org); foto do perfil Google; pixels do GA4 |
+| `connect-src` | `'self'`, `https://cloudflareinsights.com`, `https://*.google-analytics.com`, `https://*.analytics.google.com`, `https://*.googletagmanager.com` | API pelo proxy `/api` (mesma origem); envio do Web Analytics; coleta do GA4 |
+| `font-src`, `manifest-src` | `'self'` | o site usa fontes do sistema; `site.webmanifest` |
+| `frame-src`, `worker-src`, `object-src` | `'none'` | nada usa iframe, worker ou plugin |
+| `base-uri` | `'self'` |  |
+| `form-action` | `'self'` | os formulários são tratados em JS; o login Google é navegação por link para `api.palpitae.com.br/auth/google`, que `form-action` não cobre |
+| `frame-ancestors` | `'none'` | o navegador ignora essa diretiva no modo Report-Only; até o enforcing, o `X-Frame-Options: DENY` continua valendo |
+
+O front não chama `https://api.palpitae.com.br` por `fetch`: em produção
+`VITE_API_URL` é `/api`. O `preconnect` para esse host no `index.html` não depende de
+`connect-src`. Os blocos `application/ld+json` não executam e ficam fora de
+`script-src`.
+
+Os scripts inline são estáticos (a landing é pré-renderizada no build, sem SSR por
+requisição), então a política usa hash sha256 e não precisa de nonce nem de
+`'unsafe-inline'`. O 404 trocou o atributo `style` por uma classe para o
+`style-src` também dispensar `'unsafe-inline'`. Estilos aplicados pelo React em
+runtime usam o CSSOM e não são afetados pela CSP.
+
+`npm run csp:verify` (`web/scripts/csp-verify.mjs`) roda no workflow de deploy do
+web, depois do build e antes do `wrangler pages deploy`. Ele falha quando um script
+ou `<style>` inline do `dist/` não tem hash na política, quando um `<script src>` ou
+um script injetado por código aponta para origem fora de `script-src`, quando o HTML
+tem atributo `style` ou handler `on…`, quando faltam `object-src 'none'`,
+`base-uri 'self'` ou `frame-ancestors 'none'`, ou quando `script-src` libera
+`'unsafe-eval'` ou `'unsafe-inline'`. A mensagem de erro traz o hash certo. Mudar
+um script inline do `index.html`, o script do GA dos guias, o `VITE_GA_MEASUREMENT_ID`
+ou o CSS inline exige atualizar o hash no `_headers`.
+
+Para passar ao modo enforcing:
+
+1. Depois do deploy, navegue pela landing, guias, 404, login, dashboard, grupo,
+   compartilhamento de resultado, configurações e páginas de admin, com o
+   consentimento de cookies aceito e recusado, e confira o console. Repita em
+   Chrome, Firefox e Safari no celular.
+2. Ajuste a política para cada violação legítima (por exemplo, um domínio de
+   coleta do GA que só aparece com Google Signals).
+3. Troque o nome do header para `Content-Security-Policy` no `_headers`. O
+   `csp:verify` aceita os dois nomes.
+4. Acompanhe o console e o Web Analytics nos primeiros dias; para voltar atrás,
+   basta reverter o nome do header.
 
 ## Consumo de recursos
 
@@ -119,33 +187,31 @@ descoberta (06:00 UTC).
 
 O limitador da API roda depois que a requisição chega ao Worker e ainda faz uma
 leitura no D1 por requisição recusada. Para cortar rajadas antes disso, configure
-uma regra de Rate Limiting na zona da API:
+uma regra de Rate Limiting na zona `palpitae.com.br`. No plano Free, o da zona,
+há uma regra só, a expressão aceita apenas o caminho (Path) e Verified Bot, a
+contagem é por IP, o período é 10 segundos e o bloqueio dura 10 segundos
+([documentação](https://developers.cloudflare.com/waf/rate-limiting-rules/)).
+O campo `http.host` não está disponível nesse plano.
 
 1. No painel da Cloudflare, abra a zona `palpitae.com.br` e vá em
    **Security > WAF > Rate limiting rules > Create rule**.
-2. Nome: `api-por-ip`. Em **If incoming requests match**, use a expressão
-   `(http.host eq "api.palpitae.com.br" and not http.request.uri.path eq "/health")`.
-   O plano Free aceita menos campos na expressão; se o painel recusar, restrinja
-   pelo caminho e pelo host disponíveis no plano.
-3. Em **With the same characteristics**, escolha **IP** (no plano gratuito é a
-   única opção).
-4. Em **When rate exceeds**, use um teto acima da quota da API, para a borda só
-   pegar abuso claro: por exemplo 600 requisições a cada 1 minuto (no plano
-   gratuito o período é 10 segundos; use 100 a cada 10 segundos).
-5. **Then take action**: **Block**, com duração de 1 minuto (no plano gratuito a
-   duração é fixa em 10 segundos).
+2. Nome: `api-proxy-por-ip`. Em **If incoming requests match**, use a expressão
+   `starts_with(http.request.uri.path, "/api/")`.
+3. Em **With the same characteristics**, fica **IP** (única opção no plano).
+4. Em **When rate exceeds**: 100 requisições a cada 10 segundos.
+5. **Then take action**: **Block**, por 10 segundos.
 6. Salve com **Deploy** e acompanhe em **Security > Events** por alguns dias. Se
-   aparecer bloqueio de tráfego legítimo, aumente o teto antes de reduzir a duração.
+   aparecer bloqueio de tráfego legítimo, aumente o teto.
 
-O tráfego do proxy do Pages chega à API pelo endereço de saída dos Workers, igual
-para todos os visitantes, então uma regra por IP na zona da API também contaria
-esse tráfego junto. Para não bloquear o próprio front, acrescente à expressão
-`and not cf.worker.upstream_zone eq "palpitae.com.br"`, ou crie uma regra
-equivalente na zona do front para `/api/*`, onde o IP é o do visitante. Para barrar
-subrequests de Workers de outras contas, uma regra de WAF Custom com
-`(http.host eq "api.palpitae.com.br" and cf.worker.upstream_zone ne "" and cf.worker.upstream_zone ne "palpitae.com.br")`
-e ação **Block** resolve na borda. Confira no painel se os campos estão disponíveis
-no plano da zona antes de salvar.
+A expressão só casa com o proxy do front (`palpitae.com.br/api/*`), onde o IP
+contado é o do visitante. As rotas do host `api.palpitae.com.br` não começam com
+`/api/`, porque o proxy remove o prefixo, então os subrequests do proxy, que chegam
+à API com o IP de saída da Cloudflare, não entram na mesma contagem.
+
+Para barrar subrequests de Workers de outras contas, uma regra de WAF Custom com
+`(cf.worker.upstream_zone ne "" and cf.worker.upstream_zone ne "palpitae.com.br")`
+e ação **Block** resolveria na borda, mas a disponibilidade desse campo no plano
+Free não foi confirmada. Confira no painel antes de contar com ela.
 
 ## Segredo do proxy
 
@@ -177,6 +243,12 @@ valor sem 429 em massa, atualize os dois lados em sequência; durante a troca o
 tráfego anônimo cai no balde compartilhado.
 
 ## Migrações
+
+A migração `0017_sessions_valid_after.sql` adiciona `users.sessions_valid_after`
+(inteiro, vazio por padrão), usada por "Sair de todos os dispositivos". O workflow
+de deploy da API aplica a migração antes de publicar o Worker. Sem ela, a consulta
+de sessão falha e as rotas autenticadas respondem 503, por isso a ordem do
+workflow importa.
 
 A migração `0016_match_locked_at.sql` cria `matches.locked_at` e a preenche só nos
 jogos com status `live` ou `finished`, pela mesma regra do sync. O workflow de

@@ -251,6 +251,102 @@ describe('access controls with a real SQL database', () => {
     expect(await (await request('/auth/me')).json()).toEqual({ authenticated: false })
   })
 
+  it('logs out every session of the user on logout-all, including the current one', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-06T12:00:00Z'))
+    try {
+      const { tokens, db, env, ctx, sqlite, request } = await fixture()
+      const otherDevice = await signJwt(
+        { sub: 'member', email: 'member@example.com', jti: crypto.randomUUID() },
+        env.JWT_SECRET,
+        3600,
+      )
+      vi.setSystemTime(new Date('2026-10-06T12:00:05Z'))
+      const response = await worker.fetch(
+        new Request('https://api.palpitae.com.br/auth/logout-all', {
+          method: 'POST',
+          headers: { Origin: env.FRONTEND_URL, Cookie: `session=${tokens.member}` },
+        }),
+        env,
+        ctx,
+      )
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Set-Cookie')).toMatch(
+        /session=;.*Max-Age=0.*Domain=\.palpitae\.com\.br/,
+      )
+      expect(
+        sqlite.prepare("SELECT sessions_valid_after FROM users WHERE id = 'member'").get(),
+      ).toEqual({ sessions_valid_after: Date.parse('2026-10-06T12:00:05Z') / 1000 })
+
+      // Current and other-device tokens of the user are rejected afterwards.
+      await expect(verifySession(tokens.member, env.JWT_SECRET, db)).rejects.toThrow(
+        'Session revoked',
+      )
+      await expect(verifySession(otherDevice, env.JWT_SECRET, db)).rejects.toThrow(
+        'Session revoked',
+      )
+      expect((await request('/groups')).status).toBe(401)
+      expect(await (await request('/auth/me')).json()).toEqual({ authenticated: false })
+
+      // Other users keep their sessions.
+      expect((await request('/groups', 'owner')).status).toBe(200)
+      await expect(verifySession(tokens.other, env.JWT_SECRET, db)).resolves.toHaveProperty(
+        'sub',
+        'other',
+      )
+
+      // A login issued after the cutoff is accepted.
+      vi.setSystemTime(new Date('2026-10-06T12:00:06Z'))
+      tokens.member = await signJwt(
+        { sub: 'member', email: 'member@example.com', jti: crypto.randomUUID() },
+        env.JWT_SECRET,
+        3600,
+      )
+      await expect(verifySession(tokens.member, env.JWT_SECRET, db)).resolves.toHaveProperty(
+        'sub',
+        'member',
+      )
+      expect((await request('/groups')).status).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects logout-all from a foreign Origin and without a session', async () => {
+    const { env, tokens, ctx, sqlite, anonymous } = await fixture()
+    const foreign = await worker.fetch(
+      new Request('https://api.palpitae.com.br/auth/logout-all', {
+        method: 'POST',
+        headers: { Origin: 'https://evil.example', Cookie: `session=${tokens.member}` },
+      }),
+      env,
+      ctx,
+    )
+    expect(foreign.status).toBe(403)
+    expect(foreign.headers.get('Set-Cookie')).toBeNull()
+    expect((await anonymous('/auth/logout-all', {}, 'POST')).status).toBe(401)
+    expect(
+      sqlite
+        .prepare('SELECT COUNT(*) AS n FROM users WHERE sessions_valid_after IS NOT NULL')
+        .get(),
+    ).toEqual({ n: 0 })
+    await expect(verifySession(tokens.member, env.JWT_SECRET, env.DB)).resolves.toHaveProperty(
+      'sub',
+      'member',
+    )
+  })
+
+  it('keeps the cookie and answers 503 when logout-all cannot write the cutoff', async () => {
+    const { request, sqlite } = await fixture()
+    sqlite.exec(
+      "CREATE TRIGGER block_cutoff BEFORE UPDATE OF sessions_valid_after ON users BEGIN SELECT RAISE(ABORT, 'down'); END",
+    )
+    const response = await request('/auth/logout-all', 'member', 'POST')
+    expect(response.status).toBe(503)
+    expect(response.headers.get('Set-Cookie')).toBeNull()
+    expect((await request('/groups')).status).toBe(200)
+  })
+
   it('canonicalizes the cache and never calls an external provider on GET', async () => {
     const { request, waitUntil } = await fixture()
     const match = vi.fn(async (_key: Request) => undefined)

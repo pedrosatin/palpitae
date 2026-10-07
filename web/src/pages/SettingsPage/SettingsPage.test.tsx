@@ -15,13 +15,20 @@ function mockResponse(body: unknown, ok = true) {
   return { ok, json: async () => body } as Response
 }
 
-function renderPage() {
+function renderPage(onLogoutAll = vi.fn()) {
   return render(
     <MemoryRouter>
-      <SettingsPage user={user} onLogout={vi.fn()} />
+      <SettingsPage user={user} onLogout={vi.fn()} onLogoutAll={onLogoutAll} />
     </MemoryRouter>,
   )
 }
+
+function mockStatus(status: number) {
+  return { ok: status >= 200 && status < 300, status, json: async () => ({}) } as Response
+}
+
+const isLogoutAll = (call: unknown[]) =>
+  String(call[0]).endsWith('/auth/logout-all') && (call[1] as RequestInit)?.method === 'POST'
 
 describe('SettingsPage', () => {
   beforeEach(() => {
@@ -175,5 +182,66 @@ describe('SettingsPage', () => {
 
     await waitFor(() => expect(toggle).toBeChecked())
     expect(await screen.findByText(/Falha ao salvar/i)).toBeInTheDocument()
+  })
+
+  describe('Sair de todos os dispositivos', () => {
+    it('asks for confirmation, POSTs logout-all and leaves the authenticated state', async () => {
+      const onLogoutAll = vi.fn()
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+        .mockResolvedValueOnce(mockStatus(200))
+
+      renderPage(onLogoutAll)
+      await userEvent.click(await screen.findByRole('button', { name: 'Sair de todos' }))
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog).toHaveTextContent(/inclusive neste/i)
+      expect(fetchSpy.mock.calls.filter(isLogoutAll)).toHaveLength(0)
+
+      const buttons = screen.getAllByRole('button', { name: 'Sair de todos' })
+      await userEvent.click(buttons[buttons.length - 1])
+
+      await waitFor(() => expect(onLogoutAll).toHaveBeenCalledTimes(1))
+      const call = fetchSpy.mock.calls.find(isLogoutAll)!
+      expect(String(call[0])).toBe('http://localhost:8787/auth/logout-all')
+      expect((call[1] as RequestInit).credentials).toBe('include')
+      expect(mockTrackEvent).toHaveBeenCalledWith('click_settings_sair_todos')
+    })
+
+    it('does nothing when the confirmation is cancelled', async () => {
+      const onLogoutAll = vi.fn()
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+
+      renderPage(onLogoutAll)
+      await userEvent.click(await screen.findByRole('button', { name: 'Sair de todos' }))
+      await screen.findByRole('dialog')
+      await userEvent.click(screen.getByRole('button', { name: /cancelar/i }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(fetchSpy.mock.calls.filter(isLogoutAll)).toHaveLength(0)
+      expect(onLogoutAll).not.toHaveBeenCalled()
+    })
+
+    it('keeps the user signed in and shows an error when the server fails', async () => {
+      const onLogoutAll = vi.fn()
+      vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+        .mockResolvedValueOnce(mockStatus(503))
+
+      renderPage(onLogoutAll)
+      await userEvent.click(await screen.findByRole('button', { name: 'Sair de todos' }))
+      await screen.findByRole('dialog')
+      const buttons = screen.getAllByRole('button', { name: 'Sair de todos' })
+      await userEvent.click(buttons[buttons.length - 1])
+
+      expect(
+        await screen.findByText(/não foi possível sair de todos os dispositivos/i),
+      ).toBeInTheDocument()
+      expect(onLogoutAll).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Sair de todos' })).toBeEnabled()
+    })
   })
 })

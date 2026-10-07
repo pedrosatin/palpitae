@@ -24,6 +24,10 @@
         visibility: hidden;
       }
     </style>
+    <!-- Os scripts e o <style> inline desta página têm hash na CSP de
+         public/_headers. Ao mudar qualquer um deles (inclusive comentários
+         dentro do bloco), rode `npm run build && npm run csp:verify`: a falha
+         mostra o hash novo para colar lá. -->
     <script>
       // Roda antes de o body ser parseado — o #root ainda nem existe aqui.
       ;(function () {
