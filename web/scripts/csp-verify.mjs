@@ -100,8 +100,8 @@ export function scanHtml(html) {
   const externalScripts = []
   for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
     const attrs = match[1]
-    const src = /\bsrc\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)
-    const type = (/\btype\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1] ?? '').toLowerCase()
+    const src = /(?:^|\s)src\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)
+    const type = (/(?:^|\s)type\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1] ?? '').toLowerCase()
     if (src) externalScripts.push(src[1])
     else if (EXECUTABLE_TYPES.has(type)) inlineScripts.push(match[2])
   }

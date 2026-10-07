@@ -100,8 +100,8 @@ requisição), então a política usa hash sha256 e não precisa de nonce nem de
 `style-src` também dispensar `'unsafe-inline'`. Estilos aplicados pelo React em
 runtime usam o CSSOM e não são afetados pela CSP.
 
-`npm run csp:verify` (`web/scripts/csp-verify.mjs`) roda no workflow de deploy do
-web, depois do build e antes do `wrangler pages deploy`. Ele falha quando um script
+`npm run csp:verify` (`web/scripts/csp-verify.mjs`) roda no workflow do web, na PR e
+depois do build, antes do `wrangler pages deploy`. Ele falha quando um script
 ou `<style>` inline do `dist/` não tem hash na política, quando um `<script src>` ou
 um script injetado por código aponta para origem fora de `script-src`, quando o HTML
 tem atributo `style` ou handler `on…`, quando faltam `object-src 'none'`,
@@ -116,8 +116,11 @@ Para passar ao modo enforcing:
    compartilhamento de resultado, configurações e páginas de admin, com o
    consentimento de cookies aceito e recusado, e confira o console. Repita em
    Chrome, Firefox e Safari no celular.
-2. Ajuste a política para cada violação legítima (por exemplo, um domínio de
-   coleta do GA que só aparece com Google Signals).
+2. Confira no D1 de produção os hosts reais de `teams.logo_url` (por exemplo, com
+   `SELECT DISTINCT substr(logo_url, 1, instr(substr(logo_url, 9), '/') + 8) FROM teams`)
+   e compare com o `img-src`. Ajuste a política para cada violação legítima. O
+   consent mode do GA pode chamar `www.google.com` e `*.g.doubleclick.net`, que
+   hoje não estão na política.
 3. Troque o nome do header para `Content-Security-Policy` no `_headers`. O
    `csp:verify` aceita os dois nomes.
 4. Acompanhe o console e o Web Analytics nos primeiros dias; para voltar atrás,
@@ -187,9 +190,9 @@ descoberta (06:00 UTC).
 
 O limitador da API roda depois que a requisição chega ao Worker e ainda faz uma
 leitura no D1 por requisição recusada. Para cortar rajadas antes disso, configure
-uma regra de Rate Limiting na zona `palpitae.com.br`. No plano Free, o da zona,
-há uma regra só, a expressão aceita apenas o caminho (Path) e Verified Bot, a
-contagem é por IP, o período é 10 segundos e o bloqueio dura 10 segundos
+uma regra de Rate Limiting na zona `palpitae.com.br`. A zona está no plano Free,
+que permite uma regra só. A expressão aceita apenas os campos de caminho (Path) e
+Verified Bot. A contagem é por IP, e o período e o bloqueio duram 10 segundos
 ([documentação](https://developers.cloudflare.com/waf/rate-limiting-rules/)).
 O campo `http.host` não está disponível nesse plano.
 

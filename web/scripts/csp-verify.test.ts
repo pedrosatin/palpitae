@@ -122,6 +122,14 @@ describe('csp-verify', () => {
     ).toBe(false)
   })
 
+  it('does not mistake data-src or data-type for src or type', () => {
+    const scan = scanHtml(
+      '<script data-src="/x.js" data-type="application/ld+json">a()</script><script type="module" data-src="/y.js">b()</script>',
+    )
+    expect(scan.externalScripts).toEqual([])
+    expect(scan.inlineScripts).toEqual(['a()', 'b()'])
+  })
+
   it('separates executable scripts from data blocks', () => {
     const scan = scanHtml(
       '<script type="application/ld+json">{}</script><script>a()</script><script type="module">b()</script>',
@@ -136,7 +144,9 @@ describe('csp-verify', () => {
     const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8')
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
     const committed = extractPolicy(headers)
-    expect(committed?.header).toBe('Content-Security-Policy-Report-Only')
+    expect(['Content-Security-Policy', 'Content-Security-Policy-Report-Only']).toContain(
+      committed?.header,
+    )
     const errors = verifyPolicy(committed!.value, [{ path: 'index.html', content: html }])
     // O Vite reescreve o <style> inline no build; esse hash só o csp:verify confere.
     expect(errors.filter((error) => !error.includes('<style>'))).toEqual([])
