@@ -11,8 +11,8 @@ import {
 } from './google'
 import { getFeatureFlags } from './permissions'
 import { signJwt } from './jwt'
-import { resolveSession } from './middleware'
-import { revokeSession, SessionStorageError } from './session'
+import { requireAuth, resolveSession } from './middleware'
+import { revokeAllSessions, revokeSession, SessionStorageError } from './session'
 import { hashUserId, logError, logEvent } from '../observability'
 import type { AppContext } from '../types'
 
@@ -195,6 +195,33 @@ authRouter.post('/logout', async (c) => {
       return c.json({ error: 'Não foi possível encerrar a sessão no servidor' }, 503)
     }
   }
+  return c.json({ ok: true })
+})
+
+// POST /auth/logout-all — encerra todas as sessões do usuário, inclusive esta.
+//
+// Grava o corte em `users.sessions_valid_after`; a verificação de sessão rejeita
+// tokens emitidos até esse instante. Se o D1 falhar, o cookie fica no navegador
+// para o usuário tentar de novo, porque as outras sessões continuam válidas.
+authRouter.post('/logout-all', requireAuth, async (c) => {
+  const userId = c.get('userId')
+  try {
+    await revokeAllSessions(userId, c.env.DB)
+  } catch (error) {
+    logError(
+      c.env.AE,
+      'security_storage_error',
+      '[auth] Saída de todas as sessões falhou:',
+      error,
+      {
+        blobs: ['logout_all'],
+      },
+    )
+    return c.json({ error: 'Não foi possível encerrar as sessões no servidor' }, 503)
+  }
+  const domain = cookieDomain(c.env.BASE_URL)
+  deleteCookie(c, SESSION_COOKIE, { path: '/', ...(domain && { domain }) })
+  logEvent(c.env.AE, 'logout_all', { blobs: [await hashUserId(userId)] })
   return c.json({ ok: true })
 })
 

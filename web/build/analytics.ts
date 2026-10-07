@@ -15,6 +15,10 @@
  *
  * With an empty measurement id nothing is emitted (no script, no banner), same
  * as the app in local dev.
+ *
+ * The inline script and the guides' <style> are allowed by sha256 hash in the CSP
+ * of public/_headers. Any change to them (or to the measurement id) needs a new
+ * hash there; `npm run csp:verify` after the build prints it.
  */
 
 const CONSENT_KEY = 'palpitae:analytics-consent'

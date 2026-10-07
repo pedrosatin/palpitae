@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { trackEvent } from '../../analytics/ga'
 import Button from '../../components/Button'
+import { useConfirm } from '../../components/ConfirmModal'
 import ErrorState from '../../components/ErrorState'
 import Header from '../../components/Header'
 import Modal from '../../components/Modal'
@@ -81,7 +82,6 @@ function useNotificationPreferences() {
       .finally(() => setSaving(false))
   }
 
-
   return {
     roundReminders,
     pending,
@@ -95,12 +95,57 @@ function useNotificationPreferences() {
   }
 }
 
+const LOGOUT_ALL_ERROR = 'Não foi possível sair de todos os dispositivos. Tente de novo.'
+
+/**
+ * "Sair de todos os dispositivos": confirma, chama `POST /auth/logout-all` e,
+ * com sucesso, avisa o App para voltar ao estado deslogado. Em erro a sessão
+ * continua válida no servidor, então a página mostra o erro e o usuário pode
+ * tentar de novo.
+ */
+function useLogoutAll(onLoggedOut: () => void) {
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
+
+  async function logoutAll() {
+    if (loggingOut) return
+    trackEvent('click_settings_sair_todos')
+    const ok = await confirm({
+      title: 'Sair de todos os dispositivos',
+      message:
+        'Você vai sair do Palpitae em todos os navegadores e celulares, inclusive neste. Para voltar, entre de novo com o Google.',
+      confirmLabel: 'Sair de todos',
+      danger: true,
+    })
+    if (!ok) return
+    setLoggingOut(true)
+    setError(null)
+    try {
+      const res = await apiFetch(buildApiUrl('/auth/logout-all'), { method: 'POST' })
+      // 401: o apiFetch já avisou o App, que leva ao login.
+      if (res.status === 401) return
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      trackEvent('settings_sair_todos_concluido')
+      onLoggedOut()
+    } catch {
+      setError(LOGOUT_ALL_ERROR)
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
+  return { loggingOut, error, logoutAll, confirmDialog }
+}
+
 interface SettingsPageProps {
   user: User
   onLogout: () => void
+  /** Chamado depois que `POST /auth/logout-all` encerrou todas as sessões. */
+  onLogoutAll: () => void
 }
 
-export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
+export default function SettingsPage({ user, onLogout, onLogoutAll }: SettingsPageProps) {
   useDocumentTitle('Configurações')
   const navigate = useNavigate()
 
@@ -115,6 +160,7 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
     handleCancel,
     handleConfirm,
   } = useNotificationPreferences()
+  const logoutAll = useLogoutAll(onLogoutAll)
 
   return (
     <>
@@ -168,6 +214,30 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
           </section>
 
           {success && <div className={styles.successMessage}>Configuração salva com sucesso.</div>}
+
+          <section className={`${styles.section} ${styles.accountSection}`}>
+            <h2 className={styles.sectionTitle}>Conta</h2>
+
+            {logoutAll.error && <ErrorState>{logoutAll.error}</ErrorState>}
+
+            <div className={styles.row}>
+              <span className={styles.rowText}>
+                <span className={styles.rowLabel}>Sair de todos os dispositivos</span>
+                <span className={styles.rowHint}>
+                  Encerra a sessão em todos os navegadores e celulares, inclusive neste.
+                </span>
+              </span>
+              <Button
+                variant="danger"
+                size="sm"
+                type="button"
+                onClick={logoutAll.logoutAll}
+                disabled={logoutAll.loggingOut}
+              >
+                {logoutAll.loggingOut ? 'Saindo…' : 'Sair de todos'}
+              </Button>
+            </div>
+          </section>
         </div>
       </main>
 
@@ -190,6 +260,8 @@ export default function SettingsPage({ user, onLogout }: SettingsPageProps) {
           </Button>
         </div>
       </Modal>
+
+      {logoutAll.confirmDialog}
     </>
   )
 }
