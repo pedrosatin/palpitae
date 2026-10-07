@@ -156,6 +156,12 @@ export default function App({
     })
   }
 
+  // "Sair de todos os dispositivos" já apagou o cookie e as sessões no servidor.
+  function handleLoggedOutEverywhere() {
+    setUser(null)
+    setStatus('unauthenticated')
+  }
+
   // Enquanto o auth resolve, a landing continua na tela para quem chegou com
   // ela pré-renderizada: ela não depende de nenhum dado da sessão, e esperar o
   // `GET /auth/me` para pintá-la era parte do que atrasava o LCP no mobile. As
@@ -191,7 +197,13 @@ export default function App({
         />
         <Route
           path="/configuracoes"
-          element={<SettingsPage user={user!} onLogout={handleLogout} />}
+          element={
+            <SettingsPage
+              user={user!}
+              onLogout={handleLogout}
+              onLogoutAll={handleLoggedOutEverywhere}
+            />
+          }
         />
         <Route path="/admin/metricas" element={<AdminMetricsPage />} />
         <Route path="/admin/oportunidades" element={<AdminRadarPage />} />

@@ -36,6 +36,10 @@
   margin: 0 0 var(--space-4);
 }
 
+.accountSection {
+  margin-top: var(--space-6);
+}
+
 .row {
   display: flex;
   align-items: center;

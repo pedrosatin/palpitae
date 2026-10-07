@@ -1,6 +1,10 @@
 name: Deploy Web
 
 on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-web.yml'
   push:
     branches:
       - main
@@ -8,6 +12,7 @@ on:
       - 'web/**'
       - '.github/workflows/deploy-web.yml'
 
+# Na PR roda so o job de testes (inclui build e csp:verify); o deploy so no push.
 # Travado no versionamento: nenhum job aqui escreve no repositorio.
 permissions:
   contents: read
@@ -43,10 +48,20 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Build
+        run: npm run build
+
+      # Falha se um script ou <style> inline do build não tiver hash na CSP de
+      # dist/_headers, ou se um script externo vier de origem fora da política.
+      # Roda na PR para o hash esquecido não aparecer só no main.
+      - name: Verify CSP
+        run: npm run csp:verify
+
   deploy:
     name: Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
     needs: test
+    if: github.event_name == 'push'
     defaults:
       run:
         working-directory: web
