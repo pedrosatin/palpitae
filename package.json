@@ -6,7 +6,12 @@
     "lint": "oxlint api web",
     "lint:fix": "oxlint --fix api web",
     "format": "oxfmt api web",
-    "format:check": "oxfmt --check api web"
+    "format:check": "oxfmt --check api web",
+    "test:api": "npm --prefix api test",
+    "test:web": "npm --prefix web test",
+    "test": "npm run test:api && npm run test:web",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix web run type-check",
+    "check": "npm run lint && npm run typecheck && npm test"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
