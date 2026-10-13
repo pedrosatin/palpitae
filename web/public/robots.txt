@@ -1,9 +1,9 @@
 User-agent: *
-Allow: /$
-Allow: /guias/
-Allow: /og-image.png
-Allow: /screenshots/
 Disallow: /grupos/
 Disallow: /entrar
+Disallow: /configuracoes
+Disallow: /admin/
+Disallow: /api/
+Disallow: /convite/
 
 Sitemap: https://palpitae.com.br/sitemap.xml
