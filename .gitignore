@@ -29,8 +29,6 @@ web/tsconfig.tsbuildinfo
 # Local workflow and generated artifacts
 graphify-out/
 .fallowrc.json
-AGENTS.md
-CLAUDE.md
 .github/agents/
 docs/runtime/context.md
 docs/runtime/contex.md
