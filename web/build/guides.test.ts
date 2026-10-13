@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { LANDING_GUIDE_LINKS } from '../src/pages/LandingPage/guideLinks'
 import { normalizeGaId } from './analytics'
 import { guides, renderGuide, renderIndex, renderLlmsTxt } from './guides'
@@ -117,6 +118,42 @@ describe('landing guide links', () => {
     const slugs = new Set(guides.map((g) => g.slug))
     expect(LANDING_GUIDE_LINKS.length).toBeGreaterThanOrEqual(3)
     for (const link of LANDING_GUIDE_LINKS) expect(slugs.has(link.slug), link.slug).toBe(true)
+  })
+
+  it('lists every catalog guide on the landing', () => {
+    expect(LANDING_GUIDE_LINKS.map((l) => l.slug).sort()).toEqual(guides.map((g) => g.slug).sort())
+  })
+})
+
+describe('guide social meta', () => {
+  it('emits Twitter Cards and article og:type on guide pages', () => {
+    const html = renderGuide(guides[0])
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />')
+    expect(html).toContain(`<meta name="twitter:title" content="${escapeHtml(guides[0].title)}" />`)
+    expect(html).toContain(
+      '<meta name="twitter:image" content="https://palpitae.com.br/og-image.png" />',
+    )
+    expect(html).toContain('<meta property="og:type" content="article" />')
+  })
+
+  it('uses website og:type on the /guias/ index', () => {
+    const html = renderIndex()
+    expect(html).toContain('<meta property="og:type" content="website" />')
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />')
+  })
+
+  it('declares screenshots on the WebApplication schema', () => {
+    const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8')
+    const blocks = [
+      ...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((m) => JSON.parse(m[1]) as Record<string, unknown>)
+    const app = blocks.find((o) => o['@type'] === 'WebApplication')
+    expect(app).toBeDefined()
+    expect(app!.screenshot).toEqual([
+      'https://palpitae.com.br/screenshots/grupos.webp',
+      'https://palpitae.com.br/screenshots/palpites.webp',
+      'https://palpitae.com.br/screenshots/chaveamento.webp',
+    ])
   })
 })
 
