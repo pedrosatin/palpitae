@@ -32,4 +32,29 @@ export const LANDING_GUIDE_LINKS: LandingGuideLink[] = [
     label: 'Bolão na empresa',
     description: 'Prêmio simbólico em vez de dinheiro, e um grupo por área.',
   },
+  {
+    slug: 'o-que-e-bolao-de-futebol',
+    label: 'O que é bolão de futebol',
+    description: 'Como funciona um bolão e o que define antes de começar.',
+  },
+  {
+    slug: 'regras-e-pontuacao-de-bolao',
+    label: 'Regras e pontuação de bolão',
+    description: 'Pontos por placar exato, acerto de vencedor e desempate.',
+  },
+  {
+    slug: 'bolao-copa-do-mundo',
+    label: 'Bolão da Copa do Mundo',
+    description: 'Mata-mata, chaveamento e pontuação para a Copa.',
+  },
+  {
+    slug: 'planilha-de-bolao',
+    label: 'Planilha de bolão',
+    description: 'Quando a planilha deixa de dar conta do bolão.',
+  },
+  {
+    slug: 'dicas-para-acertar-palpites',
+    label: 'Dicas para acertar palpites',
+    description: 'Critérios para palpitar além do time do coração.',
+  },
 ]

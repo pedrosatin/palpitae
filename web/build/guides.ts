@@ -692,7 +692,7 @@ function head(
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${escapeHtml(title)} — Palpitae" />
+    <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <meta name="twitter:image" content="${OG_IMAGE_URL}" />
     <meta name="theme-color" content="#0d0d0d" />
