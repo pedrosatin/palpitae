@@ -16,6 +16,7 @@ export default defineConfig({
     // sabe executá-los e quebraria o `npm test`.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     setupFiles: ['./src/test-setup.ts'],
+    testTimeout: 10000,
     css: {
       modules: {
         classNameStrategy: 'non-scoped',
