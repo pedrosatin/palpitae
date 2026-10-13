@@ -669,6 +669,7 @@ function head(
   jsonLd: object[],
   gaId: string,
   ogType: 'website' | 'article' = 'article',
+  imageUrl = OG_IMAGE_URL,
 ): string {
   const canonical = `${SITE_URL}${path}`
   const ld = jsonLd
@@ -688,13 +689,13 @@ function head(
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:url" content="${canonical}" />
     <meta property="og:locale" content="pt_BR" />
-    <meta property="og:image" content="${OG_IMAGE_URL}" />
+    <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
-    <meta name="twitter:image" content="${OG_IMAGE_URL}" />
+    <meta name="twitter:image" content="${imageUrl}" />
     <meta name="theme-color" content="#0d0d0d" />
     <style>${PAGE_CSS}</style>
     ${analyticsHead(gaId)}
@@ -749,7 +750,7 @@ export function renderGuide(g: Guide, gaId = ''): string {
     inLanguage: 'pt-BR',
     datePublished: g.published,
     dateModified: g.updated,
-    image: OG_IMAGE_URL,
+    image: `${SITE_URL}/og/guias/${g.slug}.png`,
     mainEntityOfPage: `${SITE_URL}${path}`,
     author: { '@type': 'Organization', name: 'Palpitae' },
     publisher: {
@@ -782,7 +783,7 @@ export function renderGuide(g: Guide, gaId = ''): string {
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
-${head(path, g.title, g.description, jsonLd, gaId)}
+${head(path, g.title, g.description, jsonLd, gaId, 'article', `${SITE_URL}/og/guias/${g.slug}.png`)}
   </head>
   <body>
     <div class="wrap">
