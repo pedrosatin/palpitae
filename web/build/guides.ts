@@ -645,6 +645,7 @@ p{margin:0 0 16px}
 .cta a.btn{display:inline-block;margin-top:12px;padding:12px 24px;background:#49f21b;color:#000;font-weight:600;border-radius:9999px}
 .cta a.btn:hover{background:#3dd617;text-decoration:none}
 footer.site{margin-top:48px;padding-top:24px;border-top:1px solid #2a2a2a;color:#a3a3a3;font-size:.875rem}
+footer.site a{text-decoration:underline;text-underline-offset:3px}
 ul.guides{list-style:none;display:flex;flex-direction:column;gap:16px;margin-top:12px}
 a.card{display:block;padding:20px 22px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;transition:border-color 120ms ease,box-shadow 120ms ease,transform 120ms ease}
 a.card:hover{border-color:#49f21b;box-shadow:0 0 24px rgb(73 242 27 / .12);transform:translateY(-2px);text-decoration:none}

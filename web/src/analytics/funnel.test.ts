@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as ga from './ga'
 import { markLoginStarted, trackJoinGroup, trackLoginIfPending, trackShareInvite } from './funnel'
+import { captureGuideOrigin } from './guideOrigin'
 
 vi.mock('./ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -11,6 +12,18 @@ beforeEach(() => {
 })
 
 describe('funnel events', () => {
+  it('attributes a completed login to its guide without tracking failed login', () => {
+    captureGuideOrigin('?from=guia_planilha-de-bolao')
+    markLoginStarted()
+    trackLoginIfPending(false)
+    expect(mockTrackEvent).not.toHaveBeenCalled()
+    markLoginStarted()
+    trackLoginIfPending(true)
+    expect(mockTrackEvent).toHaveBeenCalledWith('login', {
+      method: 'google',
+      origem: 'guia_planilha-de-bolao',
+    })
+  })
   it('trackShareInvite sends share_invite with method and context', () => {
     trackShareInvite('whatsapp', 'create_group')
     expect(mockTrackEvent).toHaveBeenCalledWith('share_invite', {

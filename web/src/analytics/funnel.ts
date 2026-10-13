@@ -7,6 +7,7 @@
  * padrão sem configuração extra. Ver docs/analytics.md.
  */
 import { trackEvent } from './ga'
+import { getGuideOrigin } from './guideOrigin'
 
 export type ShareInviteMethod = 'whatsapp' | 'twitter' | 'copy_link' | 'copy_code' | 'native'
 
@@ -53,5 +54,8 @@ export function trackLoginIfPending(authenticated: boolean): void {
   } catch {
     return
   }
-  if (authenticated && method) trackEvent('login', { method })
+  if (authenticated && method) {
+    const origem = getGuideOrigin()
+    trackEvent('login', { method, ...(origem ? { origem } : {}) })
+  }
 }

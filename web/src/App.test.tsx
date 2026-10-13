@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { StrictMode } from 'react'
+import { captureGuideOrigin, getGuideOrigin } from './analytics/guideOrigin'
 import * as ga from './analytics/ga'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
@@ -58,6 +60,55 @@ describe('App', () => {
     vi.restoreAllMocks()
     localStorage.clear()
     sessionStorage.clear()
+  })
+
+  it('records guide arrival once before redirecting an already authenticated visitor', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={['/entrar?from=guia_planilha-de-bolao']}>
+          <App />
+        </MemoryRouter>
+      </StrictMode>,
+    )
+    await screen.findByTestId('dashboard-page')
+    expect(mockTrackEvent.mock.calls.filter(([name]) => name === 'entrar_origem')).toEqual([
+      ['entrar_origem', { origem: 'guia_planilha-de-bolao' }],
+    ])
+    expect(getGuideOrigin()).toBe('guia_planilha-de-bolao')
+    fetchMock.mockReset()
+  })
+
+  it('attributes OAuth completion without recording another arrival', async () => {
+    captureGuideOrigin('?from=guia_planilha-de-bolao')
+    sessionStorage.setItem('palpitae:login-pendente', 'google')
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+    render(
+      <MemoryRouter initialEntries={['/?from=guia_planilha-de-bolao']}>
+        <App />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('dashboard-page')
+    expect(mockTrackEvent.mock.calls).toEqual([
+      ['login', { method: 'google', origem: 'guia_planilha-de-bolao' }],
+    ])
+  })
+
+  it('records guide arrival for an anonymous visitor', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ authenticated: false }) })
+    render(
+      <MemoryRouter initialEntries={['/entrar?from=guias_header']}>
+        <App />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('login-page')
+    expect(mockTrackEvent).toHaveBeenCalledWith('entrar_origem', { origem: 'guias_header' })
   })
 
   it('sends a visitor on /convite/:code to the landing with ?convite=CODE', async () => {
@@ -309,6 +360,7 @@ describe('App', () => {
   })
 
   it('handles logout and falls back to unauthenticated routes', async () => {
+    captureGuideOrigin('?from=guia_planilha-de-bolao')
     const user = userEvent.setup({ delay: null })
 
     // First, authenticate
@@ -345,5 +397,6 @@ describe('App', () => {
       expect(screen.getByTestId('landing-page')).toBeInTheDocument()
     })
     expect(screen.queryByTestId('dashboard-page')).not.toBeInTheDocument()
+    expect(getGuideOrigin()).toBeUndefined()
   })
 })

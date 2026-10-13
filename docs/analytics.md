@@ -40,6 +40,33 @@ vice-versa. Sem `VITE_GA_MEASUREMENT_ID`, nada é emitido. Qualquer mudança em 
 `CookieConsent` precisa ser replicada em `build/analytics.ts`. Os testes de
 `web/build/guides.test.ts` não comparam os dois.
 
+### Origem dos guias no funil
+
+Os CTAs enviam `from=guia_<slug>`, `guia_<slug>_header` ou `guias_header` na URL
+de `/entrar`. O App captura esse token antes de resolver a autenticação, inclusive
+para quem já está logado e será redirecionado para o dashboard. A chegada a
+`/entrar` gera `entrar_origem` uma vez por navegação. O retorno do OAuth em `/`
+preserva a atribuição e não gera outra chegada.
+
+`web/src/analytics/guideOrigin.ts` aceita apenas esses formatos, com slug em
+minúsculas, letras ASCII, números e hífens, até 12 partes e 100 caracteres no
+token completo. Essa validação limita valores vindos da URL sem importar o código
+de build no app. Ela valida o formato, sem confirmar a existência do guia.
+Parâmetro duplicado ou inválido apaga a origem anterior.
+
+A origem fica em `sessionStorage` por uma hora desde a última URL com token
+válido. Esse prazo permite concluir o OAuth e criar o bolão sem atribuir outras
+visitas na mesma aba indefinidamente. Navegação sem `from` mantém a origem dentro
+desse prazo. Logout e logout de todos os dispositivos apagam a atribuição.
+Storage bloqueado permite navegar normalmente, com atribuição de conversão
+indisponível. O Consent Mode continua controlando a coleta pelo GA4.
+
+`login` e `submit_criar_grupo` incluem `{ origem }` quando há atribuição válida.
+A criação só gera evento após sucesso da API. Os nomes dos eventos anteriores
+foram preservados. Para segmentar relatórios por `origem`, confira a dimensão
+personalizada correspondente na propriedade GA4. A implementação local não
+comprova sua configuração ou o recebimento dos eventos em produção.
+
 ## Convenções de nome
 
 - snake_case; prefixo `click_` para cliques, `submit_` para envios de formulário bem-sucedidos
