@@ -88,7 +88,10 @@ describe('guide catalog', () => {
       expect(article!.datePublished).toBe(g.published)
       expect(article!.dateModified).toBe(g.updated)
       expect((article!.datePublished as string) <= (article!.dateModified as string)).toBe(true)
-      expect(article!.image).toBe('https://palpitae.com.br/og-image.png')
+      expect(article!.image).toBe(`https://palpitae.com.br/og/guias/${g.slug}.png`)
+      const image = readFileSync(join(process.cwd(), 'public', 'og', 'guias', `${g.slug}.png`))
+      expect(image.readUInt32BE(16)).toBe(1200)
+      expect(image.readUInt32BE(20)).toBe(630)
     }
   })
 })
@@ -131,7 +134,7 @@ describe('guide social meta', () => {
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />')
     expect(html).toContain(`<meta name="twitter:title" content="${escapeHtml(guides[0].title)}" />`)
     expect(html).toContain(
-      '<meta name="twitter:image" content="https://palpitae.com.br/og-image.png" />',
+      `<meta name="twitter:image" content="https://palpitae.com.br/og/guias/${guides[0].slug}.png" />`,
     )
     expect(html).toContain('<meta property="og:type" content="article" />')
   })
