@@ -26,7 +26,6 @@ npm --prefix web test
 ### Issue tracker
 Local tracking in Markdown files under `.scratch/<feature>/`.
 Interactive dashboard at `.scratch/index.html`.
-See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
-Single-context convention (`docs/`). See `docs/agents/domain.md`.
+Single-context convention (`docs/`).
