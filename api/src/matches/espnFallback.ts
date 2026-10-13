@@ -176,19 +176,21 @@ export async function scoreWindowFromEspn(
   const earliestOver = new Date(now - 115 * 60 * 1000).toISOString()
   const stillRelevant = new Date(now - 200 * 60 * 1000).toISOString()
 
-  for (const compId of compIds) {
-    try {
-      const updated = await scoreCompetitionWindow(db, ae, compId, earliestOver, stillRelevant)
-      updatedByComp.set(compId, updated)
-    } catch (err) {
-      // Erro de fetch/parsing isola a competição — as demais continuam. Devolve
-      // 0 para o mapa cobrir todas as comps pedidas (0 = nada atualizado).
-      updatedByComp.set(compId, 0)
-      logError(ae, 'match_results_fallback', `[espn-fallback] Falhou comp=${compId}:`, err, {
-        blobs: [compId],
-      })
-    }
-  }
+  await Promise.all(
+    compIds.map(async (compId) => {
+      try {
+        const updated = await scoreCompetitionWindow(db, ae, compId, earliestOver, stillRelevant)
+        updatedByComp.set(compId, updated)
+      } catch (err) {
+        // Erro de fetch/parsing isola a competição — as demais continuam. Devolve
+        // 0 para o mapa cobrir todas as comps pedidas (0 = nada atualizado).
+        updatedByComp.set(compId, 0)
+        logError(ae, 'match_results_fallback', `[espn-fallback] Falhou comp=${compId}:`, err, {
+          blobs: [compId],
+        })
+      }
+    })
+  )
 
   return updatedByComp
 }
