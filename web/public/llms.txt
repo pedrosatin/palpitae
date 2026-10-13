@@ -1,0 +1,32 @@
+# Palpitae — llms.txt
+
+> Palpitae (https://palpitae.com.br): plataforma web de bolões de futebol entre amigos e colegas de trabalho, com apuração automática de palpites e classificação em tempo real.
+
+## O que é o Palpitae
+
+O Palpitae permite criar grupos privados de bolão para campeonatos de futebol (como Brasileirão Série A, Série B e torneios internacionais). Os participantes entram com login social (Google), enviam seus palpites de placar para as rodadas e disputam o ranking geral com regras configuráveis de pontuação (placar exato, resultado, saldo de gols e gols do vencedor).
+
+## Principais Recursos
+
+- **Grupos Privados:** Crie seu bolão e convide amigos por link direto ou código de acesso.
+- **Login sem senha:** Acesso rápido e seguro com Google OAuth, sem cadastro de senhas.
+- **Apuração Automática:** Resultados de partidas sincronizados e computados automaticamente após o apito final.
+- **Critérios de Pontuação:** Configuração de pontos por placar exato, saldo, vencedor e empates.
+- **Responsivo:** Funciona diretamente no navegador do celular ou computador, sem necessidade de instalar aplicativos.
+
+## Guias e Tutoriais (Web)
+
+- [Hub de Guias](https://palpitae.com.br/guias/): Central de guias e artigos sobre bolões de futebol.
+- [O que é Bolão de Futebol](https://palpitae.com.br/guias/o-que-e-bolao-de-futebol/): Conceitos básicos, história e dinâmica de bolões.
+- [Como Organizar um Bolão](https://palpitae.com.br/guias/como-organizar-um-bolao/): Passo a passo para organizar um bolão entre amigos ou no trabalho.
+- [Regras e Pontuação de Bolão](https://palpitae.com.br/guias/regras-e-pontuacao-de-bolao/): Modelos de pontuação, penalidades e critérios de desempate.
+- [Bolão do Brasileirão](https://palpitae.com.br/guias/bolao-do-brasileirao/): Como disputar bolões ao longo das 38 rodadas do campeonato brasileiro.
+- [Bolão da Copa do Mundo](https://palpitae.com.br/guias/bolao-copa-do-mundo/): Formato para fases de grupos e mata-mata em torneios curtos.
+- [Bolão de Empresa](https://palpitae.com.br/guias/bolao-de-empresa/): Dicas para engajar times corporativos com segurança e sem atritos.
+- [Bolão Online Grátis](https://palpitae.com.br/guias/bolao-online-gratis/): Por que migrar do papel ou mensagens de WhatsApp para um app web.
+- [Planilha de Bolão de Futebol](https://palpitae.com.br/guias/planilha-de-bolao/): Comparativo entre planilhas Excel/Google Sheets e apuração automática.
+- [Dicas para Acertar Palpites](https://palpitae.com.br/guias/dicas-para-acertar-palpites/): Análise estatística, histórico de confrontos e gestão de riscos.
+
+## Tecnologia e Privacidade
+
+A plataforma roda na borda com Cloudflare Workers e armazenamento local com foco na privacidade dos participantes. As páginas públicas e guias são estáticos ou pré-renderizados para alta performance e acessibilidade.
