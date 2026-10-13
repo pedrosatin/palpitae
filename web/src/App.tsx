@@ -1,6 +1,8 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { trackLoginIfPending } from './analytics/funnel'
+import { trackEvent } from './analytics/ga'
+import { captureGuideOrigin, clearGuideOrigin } from './analytics/guideOrigin'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
 import LandingPage from './pages/LandingPage'
@@ -102,6 +104,15 @@ export default function App({
 }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
+  const location = useLocation()
+  const capturedLocation = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (capturedLocation.current === location.key) return
+    capturedLocation.current = location.key
+    const origem = captureGuideOrigin(location.search)
+    if (location.pathname === '/entrar' && origem) trackEvent('entrar_origem', { origem })
+  }, [location.key, location.pathname, location.search])
 
   useEffect(() => {
     // Raw fetch on purpose: an anonymous visit is the normal logged-out state,
@@ -145,6 +156,7 @@ export default function App({
   }, [])
 
   function handleLogout() {
+    clearGuideOrigin()
     // Raw fetch on purpose: the user is leaving deliberately — a 401 from an
     // already-dead session must not trigger the "sessão expirou" notice.
     fetch(`${config.apiUrl}/auth/logout`, {
@@ -158,6 +170,7 @@ export default function App({
 
   // "Sair de todos os dispositivos" já apagou o cookie e as sessões no servidor.
   function handleLoggedOutEverywhere() {
+    clearGuideOrigin()
     setUser(null)
     setStatus('unauthenticated')
   }
