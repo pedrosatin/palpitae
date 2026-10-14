@@ -4,6 +4,7 @@ import { useCreateGroupForm } from './useCreateGroupForm'
 import { apiFetch } from '../../../lib/api'
 import { trackEvent } from '../../../analytics/ga'
 import { act } from '@testing-library/react'
+import { captureGuideOrigin } from '../../../analytics/guideOrigin'
 
 vi.mock('../../../lib/api', () => ({
   apiFetch: vi.fn(),
@@ -25,6 +26,8 @@ const defaultProps = {
 describe('useCreateGroupForm', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+    sessionStorage.clear()
   })
 
   it('initializes with default state', async () => {
@@ -148,6 +151,7 @@ describe('useCreateGroupForm', () => {
   })
 
   it('creates group successfully', async () => {
+    captureGuideOrigin('?from=guia_planilha-de-bolao')
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
@@ -189,13 +193,16 @@ describe('useCreateGroupForm', () => {
       }),
     )
 
-    expect(mockTrackEvent).toHaveBeenCalledWith('submit_criar_grupo')
+    expect(mockTrackEvent).toHaveBeenCalledWith('submit_criar_grupo', {
+      origem: 'guia_planilha-de-bolao',
+    })
     expect(defaultProps.onCreated).toHaveBeenCalledWith(createdGroup)
     expect(result.current.created).toEqual(createdGroup)
     expect(result.current.error).toBeNull()
   })
 
   it('handles API error response on creation', async () => {
+    captureGuideOrigin('?from=guia_planilha-de-bolao')
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
@@ -219,6 +226,7 @@ describe('useCreateGroupForm', () => {
 
     expect(result.current.error).toBe('Nome já existe')
     expect(result.current.created).toBeNull()
+    expect(mockTrackEvent).not.toHaveBeenCalled()
   })
 
   it('handles fetch exception on creation', async () => {
@@ -242,6 +250,7 @@ describe('useCreateGroupForm', () => {
     })
 
     expect(result.current.error).toBe('Erro de conexão. Tente novamente.')
+    expect(mockTrackEvent).not.toHaveBeenCalled()
   })
 
   it('handles closing modal properly', async () => {
