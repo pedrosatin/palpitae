@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import Card from '../../components/Card'
 import ErrorState from '../../components/ErrorState'
@@ -23,14 +23,6 @@ export default function LoginPage() {
   // Set once if we got here because a 401 dropped the session (read-and-clear,
   // so a manual refresh of /entrar doesn't keep showing the notice).
   const [sessionExpired] = useState(consumeSessionExpired)
-
-  // Attribution for the static guide pages: they link here with ?from=guia_<slug>.
-  // The click can't be tracked there (JS-less static HTML), so we fire the event
-  // on arrival instead. Lets us see which content drove people to sign in.
-  useEffect(() => {
-    const from = new URLSearchParams(window.location.search).get('from')
-    if (from) trackEvent('entrar_origem', { origem: from })
-  }, [])
 
   return (
     <main className={styles.root}>

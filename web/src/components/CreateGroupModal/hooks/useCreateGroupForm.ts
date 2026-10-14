@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { config } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
+import { getGuideOrigin } from '../../../analytics/guideOrigin'
 import { apiFetch } from '../../../lib/api'
 import { ScoringPreset } from '../constants'
 import { Competition, CreatedGroup } from '../types'
@@ -104,7 +105,9 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
         return
       }
 
-      trackEvent('submit_criar_grupo')
+      const origem = getGuideOrigin()
+      if (origem) trackEvent('submit_criar_grupo', { origem })
+      else trackEvent('submit_criar_grupo')
       setCreated(data.group!)
       onCreated(data.group!)
     } catch (err) {
