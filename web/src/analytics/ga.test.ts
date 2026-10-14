@@ -52,6 +52,27 @@ describe('ga', () => {
       expect(getStoredConsent()).toBeNull()
     })
 
+
+    it('returns "denied" when localStorage has a recent denied timestamp', () => {
+      vi.useFakeTimers()
+      const now = Date.now()
+      vi.setSystemTime(now)
+      localStorage.setItem('palpitae:analytics-consent', `denied:${now - 1000}`)
+      expect(getStoredConsent()).toBe('denied')
+      vi.useRealTimers()
+    })
+
+    it('returns null and clears storage when localStorage has an expired denied timestamp', () => {
+      vi.useFakeTimers()
+      const now = Date.now()
+      vi.setSystemTime(now)
+      const EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
+      localStorage.setItem('palpitae:analytics-consent', `denied:${now - EXPIRY_MS - 1000}`)
+      expect(getStoredConsent()).toBeNull()
+      expect(localStorage.getItem('palpitae:analytics-consent')).toBeNull()
+      vi.useRealTimers()
+    })
+
     it('returns null when localStorage throws an error', () => {
       vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
         throw new Error('localStorage is disabled')
