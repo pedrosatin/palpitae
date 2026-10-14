@@ -14,13 +14,22 @@ interface PredictionsModalProps {
 
 export function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPrediction[]][] {
   const result: [string | null, UserPrediction[]][] = []
-  for (const m of ms) {
+
+  if (ms.length === 0) return result
+
+  let currentGroup = ms[0].group_name ?? null
+  let currentArray = [ms[0]]
+  result.push([currentGroup, currentArray])
+
+  for (let i = 1; i < ms.length; i++) {
+    const m = ms[i]
     const key = m.group_name ?? null
-    const last = result[result.length - 1]
-    if (last && last[0] === key) {
-      last[1].push(m)
+    if (key === currentGroup) {
+      currentArray.push(m)
     } else {
-      result.push([key, [m]])
+      currentGroup = key
+      currentArray = [m]
+      result.push([currentGroup, currentArray])
     }
   }
   return result
