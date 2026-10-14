@@ -645,6 +645,7 @@ p{margin:0 0 16px}
 .cta a.btn{display:inline-block;margin-top:12px;padding:12px 24px;background:#49f21b;color:#000;font-weight:600;border-radius:9999px}
 .cta a.btn:hover{background:#3dd617;text-decoration:none}
 footer.site{margin-top:48px;padding-top:24px;border-top:1px solid #2a2a2a;color:#a3a3a3;font-size:.875rem}
+footer.site a{text-decoration:underline;text-underline-offset:3px}
 ul.guides{list-style:none;display:flex;flex-direction:column;gap:16px;margin-top:12px}
 a.card{display:block;padding:20px 22px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;transition:border-color 120ms ease,box-shadow 120ms ease,transform 120ms ease}
 a.card:hover{border-color:#49f21b;box-shadow:0 0 24px rgb(73 242 27 / .12);transform:translateY(-2px);text-decoration:none}
@@ -668,6 +669,8 @@ function head(
   description: string,
   jsonLd: object[],
   gaId: string,
+  ogType: 'website' | 'article' = 'article',
+  imageUrl = OG_IMAGE_URL,
 ): string {
   const canonical = `${SITE_URL}${path}`
   const ld = jsonLd
@@ -681,15 +684,19 @@ function head(
     <link rel="canonical" href="${canonical}" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta property="og:type" content="article" />
+    <meta property="og:type" content="${ogType}" />
     <meta property="og:site_name" content="Palpitae" />
     <meta property="og:title" content="${escapeHtml(title)}" />
     <meta property="og:description" content="${escapeHtml(description)}" />
     <meta property="og:url" content="${canonical}" />
     <meta property="og:locale" content="pt_BR" />
-    <meta property="og:image" content="${OG_IMAGE_URL}" />
+    <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(title)}" />
+    <meta name="twitter:description" content="${escapeHtml(description)}" />
+    <meta name="twitter:image" content="${imageUrl}" />
     <meta name="theme-color" content="#0d0d0d" />
     <style>${PAGE_CSS}</style>
     ${analyticsHead(gaId)}
@@ -744,7 +751,7 @@ export function renderGuide(g: Guide, gaId = ''): string {
     inLanguage: 'pt-BR',
     datePublished: g.published,
     dateModified: g.updated,
-    image: OG_IMAGE_URL,
+    image: `${SITE_URL}/og/guias/${g.slug}.png`,
     mainEntityOfPage: `${SITE_URL}${path}`,
     author: { '@type': 'Organization', name: 'Palpitae' },
     publisher: {
@@ -777,7 +784,7 @@ export function renderGuide(g: Guide, gaId = ''): string {
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
-${head(path, g.title, g.description, jsonLd, gaId)}
+${head(path, g.title, g.description, jsonLd, gaId, 'article', `${SITE_URL}/og/guias/${g.slug}.png`)}
   </head>
   <body>
     <div class="wrap">
@@ -835,7 +842,7 @@ export function renderIndex(gaId = ''): string {
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
-${head(path, 'Guias de bolão de futebol', 'Guias para organizar bolão de futebol online com amigos ou colegas de trabalho: regras de pontuação, Brasileirão, Copa do Mundo, planilha e dicas de palpite.', jsonLd, gaId)}
+${head(path, 'Guias de bolão de futebol', 'Guias para organizar bolão de futebol online com amigos ou colegas de trabalho: regras de pontuação, Brasileirão, Copa do Mundo, planilha e dicas de palpite.', jsonLd, gaId, 'website')}
   </head>
   <body>
     <div class="wrap">
