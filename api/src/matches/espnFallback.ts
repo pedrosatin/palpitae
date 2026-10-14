@@ -114,7 +114,10 @@ async function fetchEspnScoreboard(slug: string, yyyymmdd: string): Promise<Espn
   return data.events ?? []
 }
 
-function espnCompetitors(ev: EspnEvent): { home: EspnCompetitor | undefined; away: EspnCompetitor | undefined } {
+function espnCompetitors(ev: EspnEvent): {
+  home: EspnCompetitor | undefined
+  away: EspnCompetitor | undefined
+} {
   const competitors = ev.competitions?.[0]?.competitors ?? []
   return {
     home: competitors.find((c) => c.homeAway === 'home'),
@@ -238,13 +241,18 @@ async function scoreCompetitionWindow(
   for (const m of results) {
     const day = m.start_time.slice(0, 10)
     dates.add(day.replaceAll('-', ''))
-    dates.add(new Date(Date.parse(`${day}T00:00:00Z`) - DAY_MS).toISOString().slice(0, 10).replaceAll('-', ''))
+    dates.add(
+      new Date(Date.parse(`${day}T00:00:00Z`) - DAY_MS)
+        .toISOString()
+        .slice(0, 10)
+        .replaceAll('-', ''),
+    )
   }
 
-  const events: EspnEvent[] = []
-  for (const date of dates) {
-    events.push(...(await fetchEspnScoreboard(slug, date)))
-  }
+  const eventsArrays = await Promise.all(
+    Array.from(dates).map((date) => fetchEspnScoreboard(slug, date)),
+  )
+  const events = eventsArrays.flat()
 
   let updated = 0
   let skipped = 0
