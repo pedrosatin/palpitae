@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { syncFixtures, resolveCanonicalScore } from './sync'
+import { syncFixtures, resolveCanonicalScore, resolveLockedAt } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -602,5 +602,23 @@ describe('resolveCanonicalScore', () => {
         winner: 'AWAY_TEAM',
       }),
     ).toEqual({ canonicalHome: 2, canonicalAway: 2 })
+  })
+})
+
+describe('resolveLockedAt', () => {
+  const now = '2026-07-29T12:00:00Z'
+
+  it('returns now for started statuses', () => {
+    const startedStatuses = ['IN_PLAY', 'PAUSED', 'LIVE', 'SUSPENDED', 'FINISHED', 'AWARDED']
+    for (const status of startedStatuses) {
+      expect(resolveLockedAt(status, now)).toBe(now)
+    }
+  })
+
+  it('returns null for non-started statuses', () => {
+    const nonStartedStatuses = ['SCHEDULED', 'TIMED', 'POSTPONED', 'CANCELLED', 'UNKNOWN', '']
+    for (const status of nonStartedStatuses) {
+      expect(resolveLockedAt(status, now)).toBeNull()
+    }
   })
 })
