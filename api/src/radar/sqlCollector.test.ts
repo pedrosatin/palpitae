@@ -45,6 +45,14 @@ describe('inlineParams', () => {
     expect(() => inlineParams('VALUES (?, ?)', ['só-um'])).toThrow(/Menos parâmetros/)
     expect(() => inlineParams('VALUES (?)', ['a', 'b'])).toThrow(/sem placeholder/)
   })
+
+  it('não substitui placeholders recursivamente se o parâmetro contiver ?', () => {
+    expect(inlineParams('SELECT ?, ?', ['a?b', '?'])).toBe("SELECT 'a?b', '?'")
+  })
+
+  it('funciona corretamente quando não há placeholders', () => {
+    expect(inlineParams('SELECT 1', [])).toBe('SELECT 1')
+  })
 })
 
 describe('SqlCollector', () => {
