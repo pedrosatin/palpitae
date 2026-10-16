@@ -274,6 +274,13 @@ async function requestGroupMutation(
 }
 
 describe('groups router', () => {
+  it('does not store account-specific groups in the browser HTTP cache', async () => {
+    const res = await requestGroupsList('user@example.com')
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store')
+  })
+
   it('returns the total member count for the groups list', async () => {
     const res = await requestGroupsList('user@example.com')
 

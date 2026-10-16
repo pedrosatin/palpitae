@@ -5,6 +5,7 @@ import { trackEvent } from './analytics/ga'
 import { captureGuideOrigin, clearGuideOrigin } from './analytics/guideOrigin'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
+import { invalidateApiCache } from './lib/api-cache'
 import LandingPage from './pages/LandingPage'
 
 /**
@@ -115,6 +116,7 @@ export default function App({
   }, [location.key, location.pathname, location.search])
 
   useEffect(() => {
+    invalidateApiCache()
     // Raw fetch on purpose: an anonymous visit is the normal logged-out state,
     // not an expired session — apiFetch would flag "sessão expirou" for every
     // visitor. The endpoint answers 200 either way (`{ user }` or
@@ -148,6 +150,7 @@ export default function App({
   // "erro ao carregar" with no data. LoginPage reads the flag to explain why.
   useEffect(() => {
     const onExpired = () => {
+      invalidateApiCache()
       setUser(null)
       setStatus('unauthenticated')
     }
@@ -163,6 +166,7 @@ export default function App({
       method: 'POST',
       credentials: 'include',
     }).finally(() => {
+      invalidateApiCache()
       setUser(null)
       setStatus('unauthenticated')
     })
@@ -171,6 +175,7 @@ export default function App({
   // "Sair de todos os dispositivos" já apagou o cookie e as sessões no servidor.
   function handleLoggedOutEverywhere() {
     clearGuideOrigin()
+    invalidateApiCache()
     setUser(null)
     setStatus('unauthenticated')
   }

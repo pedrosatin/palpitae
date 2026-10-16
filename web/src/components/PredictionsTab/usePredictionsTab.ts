@@ -60,7 +60,7 @@ function usePredictionsImport(
     fetchCachedJson(
       'groups:list',
       () =>
-        apiFetch(`${config.apiUrl}/groups`).then((r) => {
+        apiFetch(`${config.apiUrl}/groups`, { cache: 'no-store' }).then((r) => {
           if (!r.ok) throw new Error('Erro ao carregar grupos')
           return r.json() as Promise<{
             groups: Array<{
