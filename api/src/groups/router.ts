@@ -102,7 +102,8 @@ router.get('/', requireAuth, async (c) => {
 
   const db = c.env.DB
   try {
-    c.header('Cache-Control', 'private, max-age=30, stale-while-revalidate=300')
+    // A sessão pode mudar no mesmo navegador entre duas consultas.
+    c.header('Cache-Control', 'private, no-store')
 
     const dbStartedAt = Date.now()
     const groups = await db

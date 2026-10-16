@@ -36,6 +36,7 @@ const mockGroups = [
 describe('useDashboardGroups', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    mockApiFetch.mockReset()
     invalidateApiCache()
   })
 
@@ -47,7 +48,7 @@ describe('useDashboardGroups', () => {
       }),
     )
 
-    const { result } = renderHook(() => useDashboardGroups({}), {
+    const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
       wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
     })
 
@@ -61,13 +62,38 @@ describe('useDashboardGroups', () => {
     expect(result.current.groups).toEqual(mockGroups)
     expect(result.current.error).toBeNull()
     expect(result.current.joinOpen).toBe(false)
-    expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups'), undefined)
+    expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups'), {
+      cache: 'no-store',
+    })
+  })
+
+  it('isolates cached groups between accounts while reusing them within one account', async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      mockResponse({ groups: mockGroups, matched_invite_group_id: null }),
+    )
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <MemoryRouter>{children}</MemoryRouter>
+    )
+    const first = renderHook(() => useDashboardGroups({ userId: 'u1' }), { wrapper })
+    await waitFor(() => expect(first.result.current.groups).toEqual(mockGroups))
+    first.unmount()
+
+    const sameAccount = renderHook(() => useDashboardGroups({ userId: 'u1' }), { wrapper })
+    await waitFor(() => expect(sameAccount.result.current.groups).toEqual(mockGroups))
+    expect(mockApiFetch).toHaveBeenCalledTimes(1)
+    sameAccount.unmount()
+
+    mockApiFetch.mockResolvedValueOnce(mockResponse({ groups: [], matched_invite_group_id: null }))
+    const second = renderHook(() => useDashboardGroups({ userId: 'u2' }), { wrapper })
+    await waitFor(() => expect(second.result.current.loading).toBe(false))
+    expect(second.result.current.groups).toEqual([])
+    expect(mockApiFetch).toHaveBeenCalledTimes(2)
   })
 
   it('handles API errors correctly', async () => {
     mockApiFetch.mockResolvedValueOnce(mockResponse({ error: 'Server Error' }, false))
 
-    const { result } = renderHook(() => useDashboardGroups({}), {
+    const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
       wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
     })
 
@@ -88,7 +114,7 @@ describe('useDashboardGroups', () => {
     )
 
     const { result } = renderHook(
-      () => useDashboardGroups({ normalizedPendingInvite: 'some-code' }),
+      () => useDashboardGroups({ userId: 'u1', normalizedPendingInvite: 'some-code' }),
       {
         wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
       },
@@ -99,10 +125,9 @@ describe('useDashboardGroups', () => {
     })
 
     expect(result.current.joinOpen).toBe(true)
-    expect(mockApiFetch).toHaveBeenCalledWith(
-      expect.stringContaining('invite_code=some-code'),
-      undefined,
-    )
+    expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining('invite_code=some-code'), {
+      cache: 'no-store',
+    })
   })
 
   it('sets joinOpen to false if normalizedPendingInvite has a matched group', async () => {
@@ -114,7 +139,7 @@ describe('useDashboardGroups', () => {
     )
 
     const { result } = renderHook(
-      () => useDashboardGroups({ normalizedPendingInvite: 'some-code' }),
+      () => useDashboardGroups({ userId: 'u1', normalizedPendingInvite: 'some-code' }),
       {
         wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
       },
@@ -135,7 +160,7 @@ describe('useDashboardGroups', () => {
       }),
     )
 
-    const { result } = renderHook(() => useDashboardGroups({}), {
+    const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
       wrapper: ({ children }) => (
         <MemoryRouter initialEntries={[{ pathname: '/', state: { refreshGroups: true } }]}>
           {children}

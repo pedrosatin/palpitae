@@ -6,10 +6,11 @@ import { apiFetch } from '../../../lib/api'
 import { fetchCachedJson, invalidateApiCache } from '../../../lib/api-cache'
 
 interface UseDashboardGroupsParams {
+  userId: string
   normalizedPendingInvite?: string
 }
 
-export function useDashboardGroups({ normalizedPendingInvite }: UseDashboardGroupsParams) {
+export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashboardGroupsParams) {
   const location = useLocation()
   const [groups, setGroups] = useState<GroupWithStats[]>([])
   const [loading, setLoading] = useState(true)
@@ -24,7 +25,7 @@ export function useDashboardGroups({ normalizedPendingInvite }: UseDashboardGrou
       }
 
       fetchCachedJson(
-        `groups:list:${normalizedPendingInvite ?? 'default'}`,
+        `groups:list:${userId}:${normalizedPendingInvite ?? 'default'}`,
         () => {
           const searchParams = new URLSearchParams()
 
@@ -32,16 +33,15 @@ export function useDashboardGroups({ normalizedPendingInvite }: UseDashboardGrou
             searchParams.set('invite_code', normalizedPendingInvite)
           }
 
-          return apiFetch(
-            buildApiUrl('/groups', searchParams),
-            forceRefresh ? { cache: 'no-store' } : undefined,
-          ).then((res) => {
-            if (!res.ok) throw new Error('Falha ao carregar grupos')
-            return res.json() as Promise<{
-              groups: GroupWithStats[]
-              matched_invite_group_id: string | null
-            }>
-          })
+          return apiFetch(buildApiUrl('/groups', searchParams), { cache: 'no-store' }).then(
+            (res) => {
+              if (!res.ok) throw new Error('Falha ao carregar grupos')
+              return res.json() as Promise<{
+                groups: GroupWithStats[]
+                matched_invite_group_id: string | null
+              }>
+            },
+          )
         },
         30_000,
       )
@@ -57,7 +57,7 @@ export function useDashboardGroups({ normalizedPendingInvite }: UseDashboardGrou
           setLoading(false)
         })
     },
-    [normalizedPendingInvite],
+    [userId, normalizedPendingInvite],
   )
 
   useEffect(() => {
