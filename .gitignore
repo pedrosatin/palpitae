@@ -27,6 +27,7 @@ graphify-out/cache/
 web/tsconfig.tsbuildinfo
 
 # Local workflow and generated artifacts
+/.metrics/
 graphify-out/
 .fallowrc.json
 .github/agents/

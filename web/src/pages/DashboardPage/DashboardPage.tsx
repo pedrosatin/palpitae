@@ -157,6 +157,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const canCreateGroup = user.feature_flags?.create_group ?? false
 
   const { groups, loading, error, joinOpen, setJoinOpen, fetchGroups } = useDashboardGroups({
+    userId: user.id,
     normalizedPendingInvite,
   })
 

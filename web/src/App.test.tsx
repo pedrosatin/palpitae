@@ -8,6 +8,7 @@ import { captureGuideOrigin, getGuideOrigin } from './analytics/guideOrigin'
 import * as ga from './analytics/ga'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
+import { fetchCachedJson, invalidateApiCache } from './lib/api-cache'
 
 vi.mock('./analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -39,7 +40,12 @@ vi.mock('./pages/GroupDetailPage', () => ({
   default: () => <div data-testid="group-detail-page">GroupDetailPage</div>,
 }))
 vi.mock('./pages/SettingsPage', () => ({
-  default: () => <div data-testid="settings-page">SettingsPage</div>,
+  default: ({ onLogoutAll }: { onLogoutAll: () => void }) => (
+    <div data-testid="settings-page">
+      SettingsPage
+      <button onClick={onLogoutAll}>Logout everywhere</button>
+    </div>
+  ),
 }))
 vi.mock('./pages/AdminMetricsPage', () => ({
   default: () => <div data-testid="admin-metrics-page">AdminMetricsPage</div>,
@@ -49,9 +55,11 @@ describe('App', () => {
   const fetchMock = vi.fn()
 
   beforeEach(() => {
+    fetchMock.mockReset()
     vi.stubGlobal('fetch', fetchMock)
     localStorage.clear()
     sessionStorage.clear()
+    invalidateApiCache()
     mockTrackEvent.mockClear()
   })
 
@@ -358,6 +366,39 @@ describe('App', () => {
     })
     expect(screen.queryByTestId('dashboard-page')).not.toBeInTheDocument()
   })
+
+  it.each(['logout', 'logout-all', 'expired'])(
+    'discards cached groups after %s',
+    async (reason) => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ user: { id: '1', email: 'test@example.com' } }),
+      })
+      fetchMock.mockResolvedValueOnce({ ok: true })
+      render(
+        <MemoryRouter initialEntries={[reason === 'logout-all' ? '/configuracoes' : '/']}>
+          <App />
+        </MemoryRouter>,
+      )
+      await screen.findByTestId(reason === 'logout-all' ? 'settings-page' : 'dashboard-page')
+      await fetchCachedJson('groups:list', async () => ({ groups: ['old-account-group'] }))
+
+      if (reason === 'expired') {
+        await waitFor(() => window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)))
+      } else {
+        await userEvent
+          .setup({ delay: null })
+          .click(
+            reason === 'logout-all'
+              ? screen.getByText('Logout everywhere')
+              : screen.getByTestId('logout-button'),
+          )
+      }
+      await screen.findByTestId(reason === 'logout-all' ? 'login-page' : 'landing-page')
+      const nextAccount = await fetchCachedJson('groups:list', async () => ({ groups: [] }))
+      expect(nextAccount.groups).toEqual([])
+    },
+  )
 
   it('handles logout and falls back to unauthenticated routes', async () => {
     captureGuideOrigin('?from=guia_planilha-de-bolao')
