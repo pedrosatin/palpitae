@@ -167,16 +167,27 @@ describe('scoreWindowFromEspn', () => {
     expect(calledDates).toEqual(['20261004', '20261005'])
   })
 
-  it('usa o slug ESPN mapeado do código football-data da competição', async () => {
-    const fetchMock = mockFetch({})
-    const { db } = buildFakeDb([row({ comp_code: 'CL' })])
+  it('usa o slug ESPN mapeado do código ou id numérico football-data da competição', async () => {
+    for (const [compCode, slug] of [
+      ['CL', 'uefa.champions'],
+      ['2001', 'uefa.champions'],
+      ['PL', 'eng.1'],
+      ['2021', 'eng.1'],
+    ] as const) {
+      vi.unstubAllGlobals()
+      const fetchMock = mockFetch({})
+      const { db } = buildFakeDb([row({ comp_code: compCode })])
 
-    await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+      await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
 
-    expect(fetchMock.mock.calls[0][0]).toContain('/soccer/uefa.champions/scoreboard')
+      expect(fetchMock.mock.calls[0][0]).toContain(`/soccer/${slug}/scoreboard`)
+    }
     expect(FOOTBALL_DATA_TO_ESPN.EL).toBe('uefa.europa')
+    expect(FOOTBALL_DATA_TO_ESPN['2146']).toBe('uefa.europa')
     expect(FOOTBALL_DATA_TO_ESPN.EC).toBe('uefa.euro')
+    expect(FOOTBALL_DATA_TO_ESPN['2018']).toBe('uefa.euro')
     expect(FOOTBALL_DATA_TO_ESPN.BSA).toBe('bra.1')
+    expect(FOOTBALL_DATA_TO_ESPN['2013']).toBe('bra.1')
   })
 
   it('tolera kickoff até ±150min entre start_time interno e date do evento', async () => {

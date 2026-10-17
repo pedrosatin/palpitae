@@ -61,6 +61,7 @@ const COMP_TRANSLATIONS: Record<string, string> = {
   'World Cup': 'Copa do Mundo FIFA',
   'European Championship': 'Eurocopa',
   'Copa América': 'Copa América',
+  'Champions League': 'Liga dos Campeões',
 }
 
 type ApiTeam = {
@@ -412,7 +413,18 @@ function mapGroupName(group: string | null): string | null {
   return group ? group.replace(/^GROUP_/, '') : null
 }
 
+const KNOCKOUT_STAGES = new Set([
+  'PLAYOFFS',
+  'LAST_32',
+  'LAST_16',
+  'QUARTER_FINALS',
+  'SEMI_FINALS',
+  'THIRD_PLACE',
+  'FINAL',
+])
+
 function mapRound(matchday: number | null, stage: string): string {
+  if (KNOCKOUT_STAGES.has(stage)) return stage
   return matchday !== null ? String(matchday) : stage
 }
 
