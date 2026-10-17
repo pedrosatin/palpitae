@@ -155,7 +155,9 @@ function resolveStartTime(rawDate: unknown): string | null {
 function extractValidEvent(ev: EspnScoreboardEvent, season: number): ValidEspnEvent | null {
   const id = typeof ev.id === 'string' ? ev.id.trim() : ''
   if (!id) return null
-  if (typeof ev.season?.year === 'number' && ev.season.year !== season) return null
+  // O scoreboard pode responder com outra edição ao consultar datas futuras.
+  // Só o ano explícito do evento autoriza importá-lo para a temporada pedida.
+  if (ev.season?.year !== season) return null
 
   const stage = ev.season?.slug ? ESPN_STAGE_MAP[ev.season.slug] : undefined
   const startTime = resolveStartTime(ev.date)
