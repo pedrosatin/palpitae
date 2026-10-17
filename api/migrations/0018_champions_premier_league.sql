@@ -6,6 +6,8 @@ VALUES
   ('20010000-0000-4000-8000-000000002026', 'Liga dos Campeões', 'uefa-champions-league-2026', '2001', 'football-data', '2026', 'ongoing', 'cup', '["FINAL"]'),
   ('20210000-0000-4000-8000-000000002026', 'Premier League', 'premier-league-2026', '2021', 'football-data', '2026', 'ongoing', 'league', '[]')
 ON CONFLICT (slug) DO UPDATE SET
+  name           = excluded.name,
+  external_id    = excluded.external_id,
   type           = excluded.type,
   penalty_phases = excluded.penalty_phases,
   status         = excluded.status;

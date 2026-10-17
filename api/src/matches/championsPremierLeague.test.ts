@@ -147,7 +147,7 @@ function stubFootballDataApi(finished: boolean) {
     'fetch',
     vi.fn(async (input: string | URL | Request) => {
       const url = String(input)
-      if (url.includes('/competitions/CL/matches')) {
+      if (url.includes('/competitions/CL/matches') || url.includes('/competitions/2001/matches')) {
         return new Response(
           JSON.stringify({
             competition: { id: 2001, name: 'UEFA Champions League', code: 'CL' },
@@ -156,7 +156,7 @@ function stubFootballDataApi(finished: boolean) {
           { status: 200, headers: { 'Content-Type': 'application/json' } },
         )
       }
-      if (url.includes('/competitions/PL/matches')) {
+      if (url.includes('/competitions/PL/matches') || url.includes('/competitions/2021/matches')) {
         return new Response(
           JSON.stringify({
             competition: { id: 2021, name: 'Premier League', code: 'PL' },
@@ -225,7 +225,7 @@ describe('Liga dos Campeões e Premier League ponta a ponta', () => {
 
     // 2. Sincroniza jogos agendados de CL e PL duas vezes seguidas e verifica ausência de duplicatas.
     stubFootballDataApi(false)
-    for (const code of ['CL', 'PL', 'CL', 'PL']) {
+    for (const code of ['CL', 'PL', '2001', '2021']) {
       const syncRes = await request('/matches/sync', {
         method: 'POST',
         body: JSON.stringify({ competition: code, season: 2026 }),
