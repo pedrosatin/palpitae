@@ -17,7 +17,7 @@ import { analyticsHead, consentBanner, CONSENT_CSS, normalizeGaId } from './anal
 
 const SITE_URL = 'https://palpitae.com.br'
 /** Shared 1200x630 social image: og:image and the Article `image`. */
-const OG_IMAGE_URL = `${SITE_URL}/og-image.png`
+const OG_IMAGE_URL = `${SITE_URL}/og-image-brasileirao-2026.png`
 /** Where the CTAs send visitors: the login page (Google sign-in → create pool). */
 const LOGIN_PATH = '/entrar'
 
