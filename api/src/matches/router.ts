@@ -44,6 +44,7 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
       m.phase,
       m.round,
       m.group_name,
+      m.leg,
       m.duration,
       m.penalty_winner,
       m.home_penalty_goals,
