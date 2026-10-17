@@ -106,6 +106,7 @@ type ValidEspnEvent = {
   id: string
   startTime: string
   stage: string
+  leg: 1 | 2 | null
   groupName: string | null
   state: string | undefined
   statusName: string
@@ -167,10 +168,13 @@ function extractValidEvent(ev: EspnScoreboardEvent, season: number): ValidEspnEv
   if (!home || !away || home.team.id === away.team.id) return null
 
   const statusType = comp.status?.type ?? ev.status?.type
+  const rawLeg = comp.leg?.value
+  const leg: 1 | 2 | null = rawLeg === 1 || rawLeg === 2 ? rawLeg : null
   return {
     id,
     startTime,
     stage,
+    leg,
     groupName: parseGroupName(comp.group?.name),
     state: statusType?.state,
     statusName: statusType?.name ?? '',
@@ -383,6 +387,7 @@ function mapEspnEventToRow(
     phase: ev.stage,
     round: ev.stage,
     groupName: ev.groupName,
+    leg: ev.leg,
     ...outcome,
     postponed: ESPN_POSTPONED_STATUSES.has(ev.statusName) ? 1 : 0,
     lockedAt: resolveEspnLockedAt(ev, now),
@@ -424,6 +429,7 @@ async function upsertEspnMatches(
         row.awayPenaltyGoals,
         row.postponed,
         row.lockedAt,
+        row.leg,
         now,
       ),
     )

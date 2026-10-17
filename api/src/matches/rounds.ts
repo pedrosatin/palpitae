@@ -37,3 +37,13 @@ export function roundLabel(round: string): string {
   if (/^\d+$/.test(round)) return `Rodada ${round}`
   return KNOCKOUT_LABELS[round] ?? round
 }
+
+/**
+ * Fase eliminatória (mata-mata): qualquer fase conhecida do mapa acima, menos a
+ * fase de grupos. Rodadas numéricas, GROUP_STAGE, LEAGUE_STAGE, REGULAR_SEASON e
+ * fases desconhecidas ficam de fora (fail-closed).
+ */
+export function isKnockoutPhase(phase: string | null | undefined): boolean {
+  if (!phase || phase === 'GROUP_STAGE') return false
+  return Object.hasOwn(KNOCKOUT_LABELS, phase)
+}
