@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import { hasFeatureAccess } from '../auth/permissions'
+import { hasFeatureAccess, hasPilotAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
@@ -92,6 +92,21 @@ async function requireGroupMembership(c: Context<AppContext, '/:id'>): Promise<
     return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
   }
 
+  if (!hasPilotAccess(c.get('userEmail'), c.env)) {
+    const groupComp = await db
+      .prepare(
+        `SELECT c.visibility
+         FROM groups g
+         LEFT JOIN competitions c ON g.competition_id = c.id
+         WHERE g.id = ? AND g.deleted_at IS NULL`,
+      )
+      .bind(groupId)
+      .first<{ visibility?: string | null }>()
+    if (groupComp?.visibility === 'pilot') {
+      return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
+    }
+  }
+
   return { userId, groupId, db, membership }
 }
 
@@ -104,6 +119,9 @@ router.get('/', requireAuth, async (c) => {
   try {
     // A sessão pode mudar no mesmo navegador entre duas consultas.
     c.header('Cache-Control', 'private, no-store')
+
+    const canSeePilot = hasPilotAccess(c.get('userEmail'), c.env)
+    const pilotFilter = canSeePilot ? '' : "AND (c.visibility IS NULL OR c.visibility != 'pilot')"
 
     const dbStartedAt = Date.now()
     const groups = await db
@@ -167,6 +185,7 @@ router.get('/', requireAuth, async (c) => {
         LEFT JOIN competitions c ON g.competition_id = c.id
         LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
         WHERE g.deleted_at IS NULL
+          ${pilotFilter}
         GROUP BY g.id
         ORDER BY g.created_at DESC
         `,
@@ -346,13 +365,13 @@ router.post('/', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  // Validate competition exists
+  // Valida que a competição existe e que o usuário tem acesso caso esteja em piloto
   const competition = await db
-    .prepare('SELECT id FROM competitions WHERE id = ?')
+    .prepare('SELECT id, visibility FROM competitions WHERE id = ?')
     .bind(competition_id)
-    .first()
+    .first<{ id: string; visibility?: string | null }>()
 
-  if (!competition) {
+  if (!competition || (competition.visibility === 'pilot' && !hasPilotAccess(userEmail, c.env))) {
     return c.json({ error: 'Competição não encontrada' }, 404)
   }
 
@@ -428,12 +447,23 @@ router.post('/join', requireAuth, async (c) => {
 
   const group = await db
     .prepare(
-      'SELECT id, name, max_members FROM groups WHERE invite_code = ? AND deleted_at IS NULL',
+      `SELECT g.id, g.name, g.max_members, c.visibility AS competition_visibility
+       FROM groups g
+       LEFT JOIN competitions c ON g.competition_id = c.id
+       WHERE g.invite_code = ? AND g.deleted_at IS NULL`,
     )
     .bind(invite_code)
-    .first<{ id: string; name: string; max_members: number }>()
+    .first<{
+      id: string
+      name: string
+      max_members: number
+      competition_visibility?: string | null
+    }>()
 
-  if (!group) {
+  if (
+    !group ||
+    (group.competition_visibility === 'pilot' && !hasPilotAccess(c.get('userEmail'), c.env))
+  ) {
     return c.json({ error: 'Código de convite inválido' }, 404)
   }
 
