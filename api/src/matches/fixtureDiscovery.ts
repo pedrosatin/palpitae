@@ -42,7 +42,7 @@ export async function discoverFixtures(
       `SELECT id, external_id, season
          FROM competitions
         WHERE status != 'finished'
-          AND provider = 'football-data'
+          AND provider IN ('football-data', 'espn')
           AND external_id IS NOT NULL`,
     )
     .all<ActiveCompetition>()

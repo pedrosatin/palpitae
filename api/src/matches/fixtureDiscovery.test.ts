@@ -88,7 +88,7 @@ describe('discoverFixtures', () => {
     await discoverFixtures(db as unknown as D1Database, 'key')
 
     expect(db._captured.sql).toContain("status != 'finished'")
-    expect(db._captured.sql).toContain("provider = 'football-data'")
+    expect(db._captured.sql).toContain("provider IN ('football-data', 'espn')")
     expect(db._captured.sql).toContain('external_id IS NOT NULL')
   })
 

@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 
 const PROVIDER = 'football-data'
 const API_BASE = 'https://api.football-data.org/v4'
@@ -104,12 +105,14 @@ type ApiMatchesResponse = {
 }
 
 export type SyncOptions = {
-  /** Competition code, e.g. "WC" for FIFA World Cup */
+  /** Competition code, e.g. "WC" for FIFA World Cup or "conmebol.libertadores" for ESPN */
   competitionCode: string
   season: number
   /** Optional matchday filter, e.g. 1 for round 1 */
   matchday?: number
-  apiKey: string
+  /** Optional compact dates filter YYYYMMDD (ESPN primary only) */
+  dates?: string[]
+  apiKey?: string
   db: D1Database
   /** Instante do sync (ISO 8601). Padrão: agora. Usado para gravar `locked_at`. */
   now?: string
@@ -199,11 +202,11 @@ export function resolveLockedAt(providerStatus: string, now: string): string | n
 }
 
 /** ISO 8601 sem milissegundos, no mesmo formato de `start_time`. */
-function isoSeconds(date: Date): string {
+export function isoSeconds(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
-function slugify(str: string): string {
+export function slugify(str: string): string {
   return str
     .toLowerCase()
     .normalize('NFD')
@@ -298,7 +301,7 @@ async function upsertCompetition(
   return competition
 }
 
-async function batchStatements(db: D1Database, statements: D1PreparedStatement[]): Promise<void> {
+export async function batchStatements(db: D1Database, statements: D1PreparedStatement[]): Promise<void> {
   const batches = []
   for (let i = 0; i < statements.length; i += 100) {
     batches.push(db.batch(statements.slice(i, i + 100)))
@@ -369,7 +372,7 @@ async function upsertTeams(
   return { teamMap, teamIds }
 }
 
-type MatchUpsertRow = {
+export type MatchUpsertRow = {
   externalId: string
   homeTeamId: string
   awayTeamId: string
@@ -474,7 +477,7 @@ function mapMatchUpsertRow(
   }
 }
 
-const MATCH_UPSERT_SQL = `INSERT INTO matches (
+export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        id, competition_id, external_id, provider, home_team_id, away_team_id,
        start_time, status, home_score, away_score, phase, round, group_name,
        duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed,
@@ -572,7 +575,20 @@ async function upsertMatches(
 }
 
 export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
+  if (isEspnPrimaryCompetition(opts.competitionCode)) {
+    return syncEspnFixtures({
+      competitionCode: opts.competitionCode,
+      season: opts.season,
+      dates: opts.dates,
+      db: opts.db,
+      now: opts.now,
+    })
+  }
+
   const { competitionCode, season, matchday, apiKey, db } = opts
+  if (!apiKey) {
+    throw new Error("FOOTBALL_API_KEY não configurada no servidor")
+  }
 
   const data = await fetchMatchesFromApi(competitionCode, season, matchday, apiKey)
   const { competition: apiComp, matches } = data

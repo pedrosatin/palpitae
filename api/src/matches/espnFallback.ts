@@ -228,6 +228,7 @@ async function scoreCompetitionWindow(
          JOIN teams ta ON ta.id = m.away_team_id
          JOIN competitions c ON c.id = m.competition_id
         WHERE m.competition_id = ?
+          AND c.provider = 'football-data'
           AND m.start_time <= ?
           AND m.start_time >= ?
           AND m.status != 'finished'`,

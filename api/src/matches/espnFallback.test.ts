@@ -294,6 +294,7 @@ describe('scoreWindowFromEspn', () => {
     expect(captured.updateSql).not.toMatch(/INSERT/i)
     expect(captured.updates).toHaveLength(1)
     // A query de janela replica a semântica do poller.
+    expect(captured.windowSql).toContain("c.provider = 'football-data'")
     expect(captured.windowSql).toContain("status != 'finished'")
     expect(captured.windowParams[0]).toBe('c1')
   })
