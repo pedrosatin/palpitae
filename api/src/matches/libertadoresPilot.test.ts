@@ -619,6 +619,10 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       );
     `)
 
+    const espnTotalBefore = sqlite
+      .prepare(`SELECT COUNT(*) AS total FROM competitions WHERE provider = 'espn'`)
+      .get() as { total: number }
+
     stubEspnApi(LIBERTADORES_BOARD)
 
     const first = await syncFixtures({
@@ -653,9 +657,13 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       .prepare(`SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`)
       .all()
     expect(compCounts).toEqual([
-      { provider: 'espn', total: 2 },
+      { provider: 'espn', total: espnTotalBefore.total },
       { provider: 'football-data', total: 3 }, // Champions, Premier League da migration 0018 e Brasileirão
     ])
+    const libertaSlugCount = sqlite
+      .prepare(`SELECT COUNT(*) AS total FROM competitions WHERE slug = 'conmebol-libertadores-2026'`)
+      .get() as { total: number }
+    expect(libertaSlugCount.total).toBe(1)
 
     const teamCounts = sqlite
       .prepare(`SELECT provider, COUNT(*) AS total FROM teams GROUP BY provider ORDER BY provider`)
