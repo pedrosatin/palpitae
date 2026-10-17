@@ -298,9 +298,11 @@ async function upsertCompetition(
 }
 
 async function batchStatements(db: D1Database, statements: D1PreparedStatement[]): Promise<void> {
+  const batches = []
   for (let i = 0; i < statements.length; i += 100) {
-    await db.batch(statements.slice(i, i + 100))
+    batches.push(db.batch(statements.slice(i, i + 100)))
   }
+  await Promise.all(batches)
 }
 
 async function upsertTeams(
