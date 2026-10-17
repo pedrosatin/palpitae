@@ -27,17 +27,29 @@ import { logError, logEvent } from '../observability/events'
  */
 export const FOOTBALL_DATA_TO_ESPN: Record<string, string> = {
   BSA: 'bra.1',
+  '2013': 'bra.1',
   WC: 'fifa.world',
+  '2000': 'fifa.world',
   EC: 'uefa.euro',
+  '2018': 'uefa.euro',
   PL: 'eng.1',
+  '2021': 'eng.1',
   PD: 'esp.1',
+  '2014': 'esp.1',
   SA: 'ita.1',
+  '2019': 'ita.1',
   BL1: 'ger.1',
+  '2002': 'ger.1',
   FL1: 'fra.1',
+  '2015': 'fra.1',
   DED: 'ned.1',
+  '2003': 'ned.1',
   PPL: 'por.1',
+  '2017': 'por.1',
   CL: 'uefa.champions',
+  '2001': 'uefa.champions',
   EL: 'uefa.europa',
+  '2146': 'uefa.europa',
 }
 
 const ESPN_API_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'

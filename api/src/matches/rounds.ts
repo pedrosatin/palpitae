@@ -9,6 +9,7 @@
  * o mapa vive aqui, no back, e não duplicado no front.
  */
 const KNOCKOUT_LABELS: Record<string, string> = {
+  PLAYOFFS: 'Playoffs',
   LAST_32: 'Rodada de 32',
   LAST_16: 'Oitavas de final',
   QUARTER_FINALS: 'Quartas de final',

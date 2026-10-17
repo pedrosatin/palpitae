@@ -102,7 +102,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
   { country: 'World', name: 'FIFA Club World Cup', article: 'Copa do Mundo de Clubes da FIFA' },
 
   // Uefa — clubes
-  { country: 'World', name: 'UEFA Champions League', article: 'Liga dos Campeões da UEFA' },
+  {
+    country: 'World',
+    name: 'UEFA Champions League',
+    article: 'Liga dos Campeões da UEFA',
+    palpitaeSlug: 'uefa-champions-league',
+  },
   { country: 'World', name: 'UEFA Europa League', article: 'Liga Europa da UEFA' },
   {
     country: 'World',
@@ -112,7 +117,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
   },
 
   // Ligas nacionais de fora
-  { country: 'England', name: 'Premier League', article: 'Premier League' },
+  {
+    country: 'England',
+    name: 'Premier League',
+    article: 'Premier League',
+    palpitaeSlug: 'premier-league',
+  },
   { country: 'Spain', name: 'La Liga', article: 'La Liga' },
   { country: 'Italy', name: 'Serie A', article: 'Campeonato Italiano de Futebol – Série A' },
   { country: 'Germany', name: 'Bundesliga', article: 'Bundesliga' },

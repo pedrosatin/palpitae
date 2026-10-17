@@ -23,12 +23,10 @@ function buildFakeDb() {
     async batch(statements: any[]) {
       await Promise.all(statements.map((stmt) => stmt.run()))
     },
-    prepare(sql: string) {
-      let bound: unknown[] = []
+    prepare(sql: string, bound: unknown[] = []) {
       const stmt = {
         bind(...args: unknown[]) {
-          bound = args
-          return stmt
+          return db.prepare(sql, args)
         },
         async run() {
           if (sql.includes('INSERT INTO competitions')) captured.competition.push(bound)
@@ -133,6 +131,8 @@ const START_TIME = 6
 const STATUS = 7
 const HOME = 8
 const AWAY = 9
+const PHASE = 10
+const ROUND = 11
 const DURATION = 13
 const PEN_WINNER = 14
 const PEN_HOME = 15
@@ -389,6 +389,55 @@ describe('syncFixtures — competition translation & stable slug (Decision 7/8)'
     const comp = captured.competition[0]
     expect(comp[1]).toBe('Copa do Mundo FIFA') // fuzzy-translated display name
     expect(comp[2]).toBe('fifa-world-cup-2026') // slug from raw name, stays stable
+  })
+
+  it('traduz UEFA Champions League para Liga dos Campeões e mantém Premier League e slugs estáveis', async () => {
+    mockFetch(
+      [match(108, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 0, away: 0 } })],
+      'UEFA Champions League',
+    )
+    const clDb = buildFakeDb()
+    await syncFixtures({ competitionCode: 'CL', season: 2026, apiKey: 'k', db: clDb.db })
+    expect(clDb.captured.competition[0][1]).toBe('Liga dos Campeões')
+    expect(clDb.captured.competition[0][2]).toBe('uefa-champions-league-2026')
+
+    mockFetch(
+      [match(109, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 0, away: 0 } })],
+      'Premier League',
+    )
+    const plDb = buildFakeDb()
+    await syncFixtures({ competitionCode: 'PL', season: 2026, apiKey: 'k', db: plDb.db })
+    expect(plDb.captured.competition[0][1]).toBe('Premier League')
+    expect(plDb.captured.competition[0][2]).toBe('premier-league-2026')
+  })
+
+  it('mapeia matchday numérico na fase de liga e usa stage no mata-mata mesmo com matchday de ida e volta', async () => {
+    mockFetch(
+      [
+        { ...match(201, {}, 'LEAGUE_STAGE'), matchday: 1 },
+        { ...match(202, {}, 'LEAGUE_STAGE'), matchday: 8 },
+        { ...match(203, {}, 'PLAYOFFS'), matchday: 1 },
+        { ...match(204, {}, 'PLAYOFFS'), matchday: 2 },
+        { ...match(205, {}, 'LAST_16'), matchday: 1 },
+        { ...match(206, {}, 'QUARTER_FINALS'), matchday: 2 },
+        { ...match(207, {}, 'SEMI_FINALS'), matchday: 1 },
+        { ...match(208, {}, 'FINAL'), matchday: 1 },
+      ],
+      'UEFA Champions League',
+    )
+    const { db, captured } = buildFakeDb()
+    await syncFixtures({ competitionCode: 'CL', season: 2026, apiKey: 'k', db })
+
+    expect(captured.matches.map((r) => [r[PHASE], r[ROUND]])).toEqual([
+      ['LEAGUE_STAGE', '1'],
+      ['LEAGUE_STAGE', '8'],
+      ['PLAYOFFS', 'PLAYOFFS'],
+      ['PLAYOFFS', 'PLAYOFFS'],
+      ['LAST_16', 'LAST_16'],
+      ['QUARTER_FINALS', 'QUARTER_FINALS'],
+      ['SEMI_FINALS', 'SEMI_FINALS'],
+      ['FINAL', 'FINAL'],
+    ])
   })
 })
 

@@ -25,6 +25,7 @@ describe('roundLabel', () => {
 
   describe('known knockout stages', () => {
     it.each([
+      ['PLAYOFFS', 'Playoffs'],
       ['LAST_32', 'Rodada de 32'],
       ['LAST_16', 'Oitavas de final'],
       ['QUARTER_FINALS', 'Quartas de final'],
