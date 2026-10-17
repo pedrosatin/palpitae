@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { calculatePenaltyBonus, calculatePoints, scoreUnprocessedMatches } from './scoring'
+import {
+  calculateClassifiedBonus,
+  calculatePenaltyBonus,
+  calculatePoints,
+  resolveSingleMatchClassified,
+  resolveTwoLegClassified,
+  scoreUnprocessedMatches,
+} from './scoring'
 
 // ---------------------------------------------------------------------------
 // calculatePoints — pure function, no mocks needed
@@ -235,6 +242,7 @@ type FakePrediction = {
   predicted_away_score: number
   points_awarded: number
   penalty_points?: number
+  classified_points?: number
   predicted_penalty_winner?: 'home' | 'away' | null
 }
 
@@ -246,6 +254,9 @@ type FakeMatch = {
   away_score: number | null
   scored_at: string | null
   phase?: string | null
+  leg?: 1 | 2 | null
+  home_team_id?: string
+  away_team_id?: string
   penalty_winner?: 'home' | 'away' | null
 }
 
@@ -253,6 +264,7 @@ type FakeGroupConfig = {
   points_exact: number
   points_winner: number
   points_penalty?: number
+  points_classified?: number
 }
 
 function buildFakeDb(
@@ -268,6 +280,7 @@ function buildFakeDb(
     points_exact: 3,
     points_winner: 1,
     points_penalty: 1,
+    points_classified: 0,
   }
   const groupConfig = (groupId: string): Required<FakeGroupConfig> => ({
     ...defaultConfig,
@@ -336,6 +349,23 @@ function buildFakeDb(
             })) as unknown as T[]
           return { results }
         }
+        // Jogos de mata-mata usados para montar os confrontos (ties.ts).
+        if (
+          sql.includes('FROM matches') &&
+          sql.includes('phase IN (SELECT value FROM json_each(?))')
+        ) {
+          const [compId, phasesJson] = params as [string, string]
+          const phases = JSON.parse(phasesJson) as string[]
+          const results = matches
+            .filter((m) => m.competition_id === compId && m.phase && phases.includes(m.phase))
+            .map((m) => ({ start_time: '', leg: null, ...m })) as unknown as T[]
+          return { results }
+        }
+        if (sql.includes('FROM predictions') && sql.includes('WHERE match_id IN')) {
+          const matchIds = params as string[]
+          const results = predictions.filter((p) => matchIds.includes(p.match_id)) as unknown as T[]
+          return { results }
+        }
         if (sql.includes('FROM predictions') && sql.includes('WHERE p.match_id IN')) {
           const matchIds = params as string[]
           const results = predictions
@@ -356,7 +386,8 @@ function buildFakeDb(
           for (const p of predictions.filter((p) => groupIds.includes(p.group_id))) {
             const cfg = groupConfig(p.group_id)
             const pts = updatedPredictions[p.id]?.points_awarded ?? p.points_awarded
-            const penPts = updatedPredictions[p.id]?.penalty_points ?? 0
+            const penPts = updatedPredictions[p.id]?.penalty_points ?? p.penalty_points ?? 0
+            const clsPts = updatedPredictions[p.id]?.classified_points ?? p.classified_points ?? 0
             const key = p.group_id + ':' + p.user_id
             const cur = grouped.get(key) ?? {
               group_id: p.group_id,
@@ -368,7 +399,8 @@ function buildFakeDb(
             grouped.set(key, {
               group_id: p.group_id,
               user_id: p.user_id,
-              total_points: cur.total_points + (pts as number) + (penPts as number),
+              total_points:
+                cur.total_points + (pts as number) + (penPts as number) + (clsPts as number),
               exact_hits: cur.exact_hits + (isExact ? 1 : 0),
             })
           }
@@ -435,10 +467,16 @@ function buildFakeDb(
         const sql = (s as unknown as { _sql: string })._sql
         const params = (s as unknown as { _params: unknown[] })._params
         if (sql?.startsWith('UPDATE predictions SET points_awarded')) {
-          const [points, penaltyPoints, id] = params as [number, number, string]
+          const [points, penaltyPoints, classifiedPoints, id] = params as [
+            number,
+            number,
+            number,
+            string,
+          ]
           updatedPredictions[id] = {
             points_awarded: points,
             penalty_points: penaltyPoints,
+            classified_points: classifiedPoints,
           }
         }
         if (sql?.startsWith('UPDATE matches SET scored_at')) {
@@ -1029,5 +1067,74 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
     expect(db._updatedPredictions['p1']?.points_awarded).toBe(1) // correct outcome (draw)
     expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
     expect(db._leaderboardUpserts.find((r) => r.user_id === 'u1')?.total_points).toBe(2)
+  })
+})
+
+describe('resolveSingleMatchClassified', () => {
+  it('devolve home quando o mandante vence no tempo normal', () => {
+    expect(resolveSingleMatchClassified(2, 1, null)).toBe('home')
+  })
+
+  it('devolve away quando o visitante vence no tempo normal', () => {
+    expect(resolveSingleMatchClassified(0, 1, null)).toBe('away')
+  })
+
+  it('usa o vencedor dos pênaltis quando há empate', () => {
+    expect(resolveSingleMatchClassified(1, 1, 'away')).toBe('away')
+    expect(resolveSingleMatchClassified(0, 0, 'home')).toBe('home')
+    expect(resolveSingleMatchClassified(1, 1, null)).toBeNull()
+  })
+})
+
+describe('resolveTwoLegClassified', () => {
+  it('calcula o agregado invertendo mandante e visitante entre ida e volta', () => {
+    expect(
+      resolveTwoLegClassified(
+        { homeScore: 2, awayScore: 0 },
+        { homeScore: 1, awayScore: 0, penaltyWinner: null },
+      ),
+    ).toBe('away')
+    expect(
+      resolveTwoLegClassified(
+        { homeScore: 0, awayScore: 2 },
+        { homeScore: 0, awayScore: 1, penaltyWinner: null },
+      ),
+    ).toBe('home')
+  })
+
+  it('desempata pelos pênaltis da volta quando o agregado empata', () => {
+    expect(
+      resolveTwoLegClassified(
+        { homeScore: 2, awayScore: 0 },
+        { homeScore: 2, awayScore: 0, penaltyWinner: 'home' },
+      ),
+    ).toBe('home')
+    expect(
+      resolveTwoLegClassified(
+        { homeScore: 1, awayScore: 1 },
+        { homeScore: 1, awayScore: 1, penaltyWinner: 'away' },
+      ),
+    ).toBe('away')
+    expect(
+      resolveTwoLegClassified(
+        { homeScore: 2, awayScore: 0 },
+        { homeScore: 2, awayScore: 0, penaltyWinner: null },
+      ),
+    ).toBeNull()
+  })
+})
+
+describe('calculateClassifiedBonus', () => {
+  it('credita os pontos configurados quando o classificado previsto bate com o real', () => {
+    expect(calculateClassifiedBonus('home', 'home', 2, true)).toBe(2)
+    expect(calculateClassifiedBonus('away', 'away', 3, true)).toBe(3)
+  })
+
+  it('devolve zero quando erra o classificado, fase não é elegível ou configuração está zerada', () => {
+    expect(calculateClassifiedBonus('home', 'away', 2, true)).toBe(0)
+    expect(calculateClassifiedBonus('home', 'home', 0, true)).toBe(0)
+    expect(calculateClassifiedBonus('home', 'home', 2, false)).toBe(0)
+    expect(calculateClassifiedBonus(null, 'home', 2, true)).toBe(0)
+    expect(calculateClassifiedBonus('home', null, 2, true)).toBe(0)
   })
 })
