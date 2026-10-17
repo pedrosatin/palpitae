@@ -1,6 +1,8 @@
+/// <reference types="node" />
 import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createSqliteD1 } from '../testing/sqliteD1'
 import { signJwt } from '../auth/jwt'
 import { metricsRouter } from '../observability/metricsRouter'
 import type { AppContext, Env } from '../types'
@@ -50,7 +52,7 @@ function makeD1(rows: {
     if (sql.includes('FROM competition_radar_daily')) return { results: rows.daily ?? [] }
     if (sql.includes('MAX(last_seen_at)')) return { last_sync: rows.lastSync ?? null }
     if (sql.includes('FROM competition_radar')) return { results: rows.competitions ?? [] }
-    if (sql.includes('FROM groups g JOIN competitions')) return { results: rows.groups ?? [] }
+    if (sql.includes('FROM competitions c')) return { results: rows.groups ?? [] }
     throw new Error(`SQL não mapeado no fake: ${sql}`)
   }
 
@@ -163,7 +165,7 @@ describe('GET /metrics/radar', () => {
     const liberta = body.items.find((i) => i.name === 'CONMEBOL Libertadores')
     expect(liberta?.pageviewsAvg).toBe(1000) // (900 + 1100 + 1000) / 3
     expect(liberta?.matchesToday).toBe(4)
-    // Libertadores não é suportada hoje — é exatamente o caso de uso da tela.
+    // Sem cadastro interno correspondente, a competição continua candidata.
     expect(liberta?.supported).toBe(false)
     expect(liberta?.internalGroups).toBe(0)
 
@@ -171,6 +173,70 @@ describe('GET /metrics/radar', () => {
     expect(brasileirao?.supported).toBe(true)
     expect(brasileirao?.internalGroups).toBe(7)
     expect(brasileirao?.status).toBe('ongoing')
+  })
+
+  it('reconhece as três copas cadastradas sem grupos e soma só grupos não excluídos entre temporadas', async () => {
+    const { sqlite, db } = createSqliteD1()
+    try {
+      const refs = [
+        ['lib', 'CONMEBOL Libertadores', 'World', 'conmebol-libertadores'],
+        ['sul', 'CONMEBOL Sudamericana', 'World', 'conmebol-sudamericana'],
+        ['cdb', 'Copa do Brasil', 'Brazil', 'copa-do-brasil'],
+      ]
+      for (const [id, name, country] of refs) {
+        sqlite
+          .prepare(`INSERT INTO competition_radar
+          (id, provider, external_id, name, country, season, is_current)
+          VALUES (?, 'espn', ?, ?, ?, '2027', 1)`)
+          .run(id, id, name, country)
+      }
+      const read = async () => {
+        const res = await makeApp().request(
+          '/metrics/radar',
+          { headers: await authHeaders(ADMIN) },
+          makeEnv(db),
+        )
+        expect(res.status).toBe(200)
+        return (
+          (await res.json()) as {
+            items: { id: string; supported: boolean; internalGroups: number }[]
+          }
+        ).items
+      }
+      expect(await read()).toEqual(
+        expect.arrayContaining(
+          refs.map(([id]) =>
+            expect.objectContaining({
+              id,
+              supported: true,
+              internalGroups: 0,
+            }),
+          ),
+        ),
+      )
+      sqlite.exec(`
+        INSERT INTO users (id, email, provider, provider_id) VALUES ('owner', 'owner@test.com', 'google', 'owner');
+        INSERT INTO competitions (id, name, slug, season, status) VALUES
+          ('lib2027', 'Libertadores', 'conmebol-libertadores-2027', '2027', 'upcoming');
+        INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, deleted_at) VALUES
+          ('active', 'Ativo', '07830000-0000-4000-8000-000000002026', 'owner', 'active', NULL),
+          ('deleted', 'Excluído', 'lib2027', 'owner', 'deleted', '2026-10-17T00:00:00Z');
+      `)
+      expect((await read()).find((item) => item.id === 'lib')).toMatchObject({
+        supported: true,
+        internalGroups: 1,
+      })
+      // Um prefixo semelhante não constitui cadastro da competição mapeada.
+      sqlite.exec("DELETE FROM competitions WHERE slug = 'conmebol-sudamericana-2026'")
+      sqlite.exec(`INSERT INTO competitions (id, name, slug, season, status) VALUES
+        ('other', 'Outra', 'conmebol-sudamericanaextra-2027', '2027', 'upcoming')`)
+      expect((await read()).find((item) => item.id === 'sul')).toMatchObject({
+        supported: false,
+        internalGroups: 0,
+      })
+    } finally {
+      sqlite.close()
+    }
   })
 
   it('ordena por interesse e joga competição sem sinal pro fim', async () => {
