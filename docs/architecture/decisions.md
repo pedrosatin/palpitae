@@ -108,3 +108,27 @@ A migração precisa preceder a publicação do Worker. Cada requisição fora d
 em `revoked_sessions`. Leituras seguem sem contador se o D1 falhar; escritas e
 OAuth respondem 503. Os limites e a política de acesso estão em
 [Controle de acesso e limites da API](../security.md).
+
+## ADR-018: ESPN como provider primário nas competições fora do free tier
+
+**Status:** Accepted
+**Date:** 2026-10-17
+
+### Context
+
+O produto jogável tem só Copa do Mundo 2026 e Brasileirão Série A 2026. As competições de maior interesse BR fora do produto — Libertadores, Copa do Brasil e Sul-Americana — estão no football-data.org apenas em planos pagos, e a regra do lote é usar só fontes grátis, sem upgrade de plano. A ESPN cobre as três de graça, mas a ADR-016 proíbe a ESPN de criar jogos: lá ela é só fallback de resultados, e a descoberta é exclusiva do football-data.org.
+
+### Decision
+
+Modelo multi-provider por competição, mantendo custo zero:
+
+- football-data.org (free tier) segue primário onde cobre, ex.: Champions (`CL`) e Premier League (`PL`); nelas a ESPN continua só fallback de placar.
+- A ESPN vira provider primário — descobre e cria times e jogos — só nas competições fora do free tier que entrarem no produto, a começar por Libertadores, Copa do Brasil e Sul-Americana.
+- Campeonato sem fonte grátis validada não entra. Antes do cadastro, um spike precisa confirmar jogos, datas, fases, placares, vencedor de pênaltis e vínculo ida/volta no slug ESPN.
+- Esta ADR supersede a ADR-016 apenas na frase "a descoberta de jogos permanece exclusiva do football-data.org". Todo o resto da ADR-016 (fallback fail-closed, casamento de jogos, observabilidade) segue válido para competições do football-data.
+
+### Consequences
+
+- A ESPN é API não oficial, sem SLA: competição ESPN-primária nasce com risco de mudança de formato, mitigado pelo spike de entrada e por testes de contrato com payload mockado.
+- O discovery diário e o poller, hoje restritos a `provider='football-data'`, passam a incluir competições `provider='espn'`. O fallback ESPN precisa ignorar competições em que a ESPN já é primária, para não duplicar jogos.
+- Estaduais seguem fora do roadmap mesmo com ESPN disponível: janela curta e decisão de produto, não limitação de fonte.
