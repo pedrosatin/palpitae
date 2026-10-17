@@ -58,20 +58,30 @@ type FixtureBoard = {
   events?: FixtureEvent[]
 }
 
-const BOARDS: { slug: string; board: FixtureBoard }[] = [
-  { slug: 'conmebol.libertadores', board: libertadoresJson as unknown as FixtureBoard },
-  { slug: 'conmebol.sudamericana', board: sudamericanaJson as unknown as FixtureBoard },
-  { slug: 'bra.copa_do_brazil', board: copaJson as unknown as FixtureBoard },
-]
+type Slug = 'conmebol.libertadores' | 'conmebol.sudamericana' | 'bra.copa_do_brazil'
+
+const FIXTURES = {
+  'conmebol.libertadores': libertadoresJson,
+  'conmebol.sudamericana': sudamericanaJson,
+  'bra.copa_do_brazil': copaJson,
+} as unknown as Record<Slug, FixtureBoard>
+
+/** Fases por competição em `leagues[0].calendar[0].entries`, como o relatório descreve. */
+const CALENDAR_SIZE: Record<Slug, number> = {
+  'conmebol.libertadores': 8,
+  'conmebol.sudamericana': 7,
+  'bra.copa_do_brazil': 9,
+}
+
+const BOARDS = (Object.keys(FIXTURES) as Slug[]).map((slug) => ({ slug, board: FIXTURES[slug] }))
+
+/** Team id da ESPN para o Atlético-MG, conferido na fixture da Sul-Americana. */
+const ATLETICO_MG_ID = '7632'
 
 function comp(event: FixtureEvent): FixtureCompetition {
   const competition = event.competitions?.[0]
   if (!competition) throw new Error(`evento ${event.id} sem competitions[0]`)
   return competition
-}
-
-function teamIds(event: FixtureEvent): string[] {
-  return (comp(event).competitors ?? []).map((c) => c.team?.id ?? '')
 }
 
 function finished(events: FixtureEvent[]): FixtureEvent[] {
@@ -82,18 +92,40 @@ function shootouts(events: FixtureEvent[]): FixtureEvent[] {
   return events.filter((e) => comp(e).status?.type?.name === 'STATUS_FINAL_PEN')
 }
 
-/** Par ida/volta: mesmo par de times, fases iguais, mandos invertidos. */
+function teamIdBySide(event: FixtureEvent, side: 'home' | 'away'): string | undefined {
+  return comp(event).competitors?.find((c) => c.homeAway === side)?.team?.id
+}
+
+/**
+ * Par ida/volta da fase: procura, entre todas as idas, uma que tenha a volta na
+ * fixture com o mando invertido (o mandante da ida é o visitante da volta).
+ */
+function findTiePair(
+  events: FixtureEvent[],
+  phaseSlug: string,
+): [FixtureEvent, FixtureEvent] | undefined {
+  const legs = events.filter((e) => e.season?.slug === phaseSlug)
+  for (const leg1 of legs.filter((e) => comp(e).leg?.value === 1)) {
+    const leg2 = legs.find(
+      (e) =>
+        comp(e).leg?.value === 2 &&
+        teamIdBySide(e, 'away') === teamIdBySide(leg1, 'home') &&
+        teamIdBySide(e, 'home') === teamIdBySide(leg1, 'away'),
+    )
+    if (leg2) return [leg1, leg2]
+  }
+  return undefined
+}
+
 function tiePair(events: FixtureEvent[], phaseSlug: string): [FixtureEvent, FixtureEvent] {
-  const legs = events.filter((e) => e.season?.slug === phaseSlug && comp(e).leg)
-  const leg1 = legs.find((e) => comp(e).leg?.value === 1)
-  const leg2 = legs.find(
-    (e) =>
-      comp(e).leg?.value === 2 &&
-      leg1 &&
-      teamIds(e).slice().sort().join(',') === teamIds(leg1).slice().sort().join(','),
-  )
-  if (!leg1 || !leg2) throw new Error(`par ida/volta não encontrado para ${phaseSlug}`)
-  return [leg1, leg2]
+  const pair = findTiePair(events, phaseSlug)
+  if (!pair) throw new Error(`par ida/volta não encontrado para ${phaseSlug}`)
+  return pair
+}
+
+/** "Round of 16" vira "round-of-16", no formato de `season.slug`. */
+function slugify(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, '-')
 }
 
 describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
@@ -102,7 +134,7 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
     expect(league?.slug).toBe(slug)
     expect(league?.season?.year).toBe(2026)
     const labels = league?.calendar?.[0]?.entries?.map((entry) => entry.label) ?? []
-    expect(labels.length).toBeGreaterThanOrEqual(7)
+    expect(labels).toHaveLength(CALENDAR_SIZE[slug])
   })
 
   it('todo evento tem data, fase, mandante e visitante com placar numérico ao encerrar', () => {
@@ -118,15 +150,73 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
       expect(competitors).toHaveLength(2)
       expect(competitors.map((c) => c.homeAway).sort()).toEqual(['away', 'home'])
       for (const competitor of competitors) {
-        expect(competitor.team?.id).toBeTruthy()
+        expect(competitor.team?.id).toMatch(/^\d+$/)
         expect(competitor.team?.displayName).toBeTruthy()
       }
     }
     for (const event of finished(board.events ?? [])) {
       for (const competitor of comp(event).competitors ?? []) {
-        expect(Number.isFinite(Number(competitor.score))).toBe(true)
+        expect(competitor.score).toMatch(/^\d+$/)
       }
+      expect(['STATUS_FULL_TIME', 'STATUS_FINAL_PEN']).toContain(comp(event).status?.type?.name)
       expect(['FT', 'FT-Pens']).toContain(comp(event).status?.type?.detail)
+    }
+  })
+
+  it('altGameNote repete o grupo no jogo de grupo e a fase no mata-mata', () => {
+    for (const event of board.events ?? []) {
+      const note = comp(event).altGameNote ?? ''
+      const phase = note.split(',').at(-1) ?? ''
+      if (event.season?.slug === 'group-stage') {
+        expect(phase.trim()).toBe(comp(event).group?.name)
+      } else {
+        expect(slugify(phase)).toBe(event.season?.slug)
+      }
+    }
+  })
+
+  it('jogo agendado traz placar "0" nos dois competidores', () => {
+    const scheduled = (board.events ?? []).filter((e) => comp(e).status?.type?.state === 'pre')
+    // Só a fixture da Copa do Brasil guarda um jogo futuro, a semifinal de 1 de novembro.
+    expect(scheduled).toHaveLength(slug === 'bra.copa_do_brazil' ? 1 : 0)
+    for (const event of scheduled) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.score).toBe('0')
+      }
+    }
+  })
+
+  it('jogo de mata-mata não tem group', () => {
+    const knockout = (board.events ?? []).filter((e) => e.season?.slug !== 'group-stage')
+    expect(knockout.length).toBeGreaterThanOrEqual(1)
+    for (const event of knockout) {
+      expect(comp(event).group ?? null).toBeNull()
+    }
+  })
+
+  it('ida não traz aggregateScore em competitors nem em series', () => {
+    const firstLegs = (board.events ?? []).filter((e) => comp(e).leg?.value === 1)
+    expect(firstLegs.length).toBeGreaterThanOrEqual(1)
+    for (const event of firstLegs) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.aggregateScore).toBeUndefined()
+      }
+      for (const competitor of comp(event).series?.competitors ?? []) {
+        expect(competitor.aggregateScore).toBeUndefined()
+      }
+      expect(comp(event).series?.completed).toBe(false)
+    }
+  })
+
+  it('jogo encerrado sem pênaltis não traz shootoutScore', () => {
+    const regular = finished(board.events ?? []).filter(
+      (e) => comp(e).status?.type?.name === 'STATUS_FULL_TIME',
+    )
+    expect(regular.length).toBeGreaterThanOrEqual(1)
+    for (const event of regular) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.shootoutScore).toBeUndefined()
+      }
     }
   })
 
@@ -147,14 +237,7 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
 
   it('confronto de ida e volta liga as pernas por leg e series, com agregado na volta', () => {
     const phases = [...new Set((board.events ?? []).map((e) => e.season?.slug ?? ''))]
-    const tiedPhase = phases.find((phase) => {
-      try {
-        tiePair(board.events ?? [], phase)
-        return true
-      } catch {
-        return false
-      }
-    })
+    const tiedPhase = phases.find((phase) => findTiePair(board.events ?? [], phase))
     expect(tiedPhase).toBeTruthy()
     const [leg1, leg2] = tiePair(board.events ?? [], tiedPhase ?? '')
 
@@ -167,9 +250,8 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
     expect(comp(leg2).series?.completed).toBe(true)
 
     // O mando inverte entre a ida e a volta.
-    const leg1Home = comp(leg1).competitors?.find((c) => c.homeAway === 'home')?.team?.id
-    const leg2Away = comp(leg2).competitors?.find((c) => c.homeAway === 'away')?.team?.id
-    expect(leg1Home).toBe(leg2Away)
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
 
     // Agregado estruturado na volta, igual em competitors e em series.competitors.
     const seriesByTeam = new Map(
@@ -211,7 +293,7 @@ describe('amostras decisivas do spike', () => {
     // agregado 3 x 3 e Palmeiras vencedor dos pênaltis por 4 x 3. O vencedor do
     // jogo e o classificado são times diferentes; só shootoutScore e winner
     // separam os dois papéis.
-    const event = (libertadoresJson as unknown as FixtureBoard).events?.find(
+    const event = FIXTURES['conmebol.libertadores'].events?.find(
       (e) => e.id === '401912525',
     )
     expect(event).toBeTruthy()
@@ -224,19 +306,27 @@ describe('amostras decisivas do spike', () => {
   })
 
   it('Sul-Americana: a volta das quartas entre Atlético-MG e Santos fecha o confronto nos pênaltis', () => {
-    const [leg1, leg2] = tiePair(
-      (sudamericanaJson as unknown as FixtureBoard).events ?? [],
-      'quarterfinals',
-    )
+    const [leg1, leg2] = tiePair(FIXTURES['conmebol.sudamericana'].events ?? [], 'quarterfinals')
     expect(leg1.date?.slice(0, 10)).toBe('2026-09-09')
     expect(leg2.date?.slice(0, 10)).toBe('2026-09-16')
     expect(comp(leg2).status?.type?.name).toBe('STATUS_FINAL_PEN')
-    const classified = (comp(leg2).series?.competitors ?? []).find((c) => c.winner)
-    expect(classified?.aggregateScore).toBe(4)
+
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified.map((c) => c.id)).toEqual([ATLETICO_MG_ID])
+
+    const competitors = comp(leg2).competitors ?? []
+    const atletico = competitors.find((c) => c.team?.id === ATLETICO_MG_ID)
+    const santos = competitors.find((c) => c.team?.id !== ATLETICO_MG_ID)
+    expect(atletico?.team?.displayName).toBe('Atlético-MG')
+    expect(santos?.team?.displayName).toBe('Santos')
+    expect(atletico?.shootoutScore).toBe(3)
+    expect(santos?.shootoutScore).toBe(1)
+    expect(atletico?.winner).toBe(true)
+    expect(santos?.winner).toBe(false)
   })
 
   it('Copa do Brasil: as rodadas iniciais são jogo único e decidem nos pênaltis sem leg nem series', () => {
-    const board = copaJson as unknown as FixtureBoard
+    const board = FIXTURES['bra.copa_do_brazil']
     const singleLeg = (board.events ?? []).filter((e) =>
       ['first-round', 'third-round'].includes(e.season?.slug ?? ''),
     )
@@ -253,7 +343,7 @@ describe('amostras decisivas do spike', () => {
   })
 
   it('Copa do Brasil: a semifinal futura já vem como pre com leg e series montados', () => {
-    const board = copaJson as unknown as FixtureBoard
+    const board = FIXTURES['bra.copa_do_brazil']
     const upcoming = (board.events ?? []).find((e) => comp(e).status?.type?.state === 'pre')
     expect(upcoming).toBeTruthy()
     expect(upcoming?.season?.slug).toBe('semifinals')
@@ -261,12 +351,12 @@ describe('amostras decisivas do spike', () => {
     expect(comp(upcoming as FixtureEvent).series?.completed).toBe(false)
   })
 
-  it('as fases amostradas cobrem o calendário de cada competição', () => {
+  it('as fixtures guardam estas fases por competição', () => {
     const phases = (board: FixtureBoard) => new Set((board.events ?? []).map((e) => e.season?.slug))
-    expect(phases(libertadoresJson as unknown as FixtureBoard)).toEqual(
+    expect(phases(FIXTURES['conmebol.libertadores'])).toEqual(
       new Set(['first-stage', 'group-stage', 'round-of-16', 'quarterfinals', 'semifinals']),
     )
-    expect(phases(sudamericanaJson as unknown as FixtureBoard)).toEqual(
+    expect(phases(FIXTURES['conmebol.sudamericana'])).toEqual(
       new Set([
         'first-stage',
         'group-stage',
@@ -275,7 +365,7 @@ describe('amostras decisivas do spike', () => {
         'quarterfinals',
       ]),
     )
-    expect(phases(copaJson as unknown as FixtureBoard)).toEqual(
+    expect(phases(FIXTURES['bra.copa_do_brazil'])).toEqual(
       new Set(['first-round', 'third-round', 'fifth-round', 'round-of-16', 'semifinals']),
     )
   })
