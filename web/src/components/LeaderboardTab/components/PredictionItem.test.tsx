@@ -69,7 +69,10 @@ describe('PredictionItem', () => {
     expect(screen.getByText('Resultado')).toBeInTheDocument()
     expect(screen.getAllByText('2 × 1').length).toBe(2)
     expect(screen.getByText('5 pt')).toBeInTheDocument()
-    expect(screen.getByText('5 pt')).toHaveAttribute('class', expect.stringMatching(/predPointsGreen/))
+    expect(screen.getByText('5 pt')).toHaveAttribute(
+      'class',
+      expect.stringMatching(/predPointsGreen/),
+    )
   })
 
   it('renders predicted score, actual score, and zero points for a finished match', () => {
@@ -88,6 +91,31 @@ describe('PredictionItem', () => {
     expect(screen.getByText('Resultado')).toBeInTheDocument()
     expect(screen.getByText('0 × 2')).toBeInTheDocument()
     expect(screen.getByText('0 pt')).toBeInTheDocument()
-    expect(screen.getByText('0 pt')).toHaveAttribute('class', expect.stringMatching(/predPointsZero/))
+    expect(screen.getByText('0 pt')).toHaveAttribute(
+      'class',
+      expect.stringMatching(/predPointsZero/),
+    )
+  })
+
+  it('includes the classified and penalty bonuses in the points shown from the ranking', () => {
+    render(
+      <PredictionItem
+        prediction={{
+          ...basePrediction,
+          match_status: 'finished',
+          predicted_home_score: 2,
+          predicted_away_score: 0,
+          home_score: 2,
+          away_score: 0,
+          points_awarded: 3,
+          penalty_points: 1,
+          classified_points: 4,
+          predicted_classified: 'away',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('8 pt (+4 classificado) (+1 pênalti)')).toBeInTheDocument()
+    expect(screen.getByText('Classificado previsto: CRO')).toBeInTheDocument()
   })
 })

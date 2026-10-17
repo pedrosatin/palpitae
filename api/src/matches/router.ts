@@ -10,6 +10,7 @@ import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 import { roundLabel } from './rounds'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
+import { fetchTieMatches, indexTies, type TieMatch } from './ties'
 
 const router = new Hono<AppContext>()
 
@@ -143,17 +144,24 @@ async function fetchMatches(
   return { results, defaultRound, hasFilters }
 }
 
-function mapMatchesResponse(rows: Array<Record<string, unknown>>) {
+function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: TieMatch[]) {
+  const ties = indexTies(tieMatches)
   return rows.map((row) => {
     const { penalty_phases, ...rest } = row
+    const tie = ties.get(row.id as string)
     return {
       ...rest,
+      ...(tie ? { tie_role: tie.role } : {}),
+      leg1_match_id: tie?.role === 'leg2' ? (tie.partner?.id ?? null) : null,
       // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
       round_label: roundLabel((rest.round as string | null) ?? ''),
-      decides_on_penalties: matchGoesToPenalties(
-        parsePenaltyPhases(penalty_phases as string | null),
-        (rest.phase as string | null) ?? null,
-      ),
+      decides_on_penalties:
+        tie?.role === 'leg2' ||
+        (tie?.role !== 'leg1' &&
+          matchGoesToPenalties(
+            parsePenaltyPhases(penalty_phases as string | null),
+            (rest.phase as string | null) ?? null,
+          )),
     }
   })
 }
@@ -248,7 +256,13 @@ async function handleGetMatches(c: Context<AppContext>) {
     // gate (parsed in TS — no SQL json_each) and strip the raw gate from the
     // payload. The frontend stays dumb: it only reads the boolean to decide
     // whether to show the penalty-winner pick.
-    const matchesOut = mapMatchesResponse(results as Array<Record<string, unknown>>)
+    const rows = results as Array<Record<string, unknown>>
+    const tieMatches = await fetchTieMatches(
+      c.env.DB,
+      competitionId,
+      rows.map((r) => r.phase as string | null),
+    )
+    const matchesOut = mapMatchesResponse(rows, tieMatches)
 
     const response = c.json({
       matches: matchesOut,

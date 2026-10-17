@@ -7,6 +7,8 @@ import GroupHeader from './GroupHeader'
 import GroupInviteSection from './GroupInviteSection'
 import RenameGroupModal from './RenameGroupModal'
 import ErrorState from '../../components/ErrorState'
+import { apiFetch } from '../../lib/api'
+import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './GroupDetailPage.module.css'
@@ -38,6 +40,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     confirmDialog,
   } = useGroupActions(groupId, user)
 
+  const [settingsVersion, setSettingsVersion] = useState(0)
   const [renameOpen, setRenameOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
@@ -81,6 +84,15 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         onClose={() => setRenameOpen(false)}
         groupId={groupId!}
         currentName={group?.name ?? ''}
+        currentPointsClassified={group?.points_classified ?? 0}
+        onPointsClassifiedChanged={async () => {
+          const response = await apiFetch(`${config.apiUrl}/groups/${groupId}`)
+          if (!response.ok)
+            throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
+          const data = (await response.json()) as { group: typeof group }
+          setGroup(data.group)
+          setSettingsVersion((value) => value + 1)
+        }}
         onRenamed={(name) => setGroup((prev) => (prev ? { ...prev, name } : prev))}
       />
       {confirmDialog}
@@ -166,6 +178,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         />
 
         <GroupTabContent
+          key={settingsVersion}
           activeTab={activeTab}
           groupId={groupId}
           group={group}

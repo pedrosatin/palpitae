@@ -7,6 +7,9 @@ export interface UserPrediction {
   predicted_home_score: number | null
   predicted_away_score: number | null
   points_awarded: number | null
+  penalty_points?: number | null
+  classified_points?: number | null
+  predicted_classified?: 'home' | 'away' | null
   match_status: string
   match_start_time: string
   home_score: number | null

@@ -20,6 +20,7 @@ export interface GroupDetail {
   invite_code: string | null
   created_at: string
   points_exact: number
+  points_classified?: number
   points_winner: number
   predictions_visibility: string
   member_count: number

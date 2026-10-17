@@ -167,6 +167,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
   })
 
   const {
+    drafts,
     savingAll,
     savedAll,
     bulkError,
@@ -175,9 +176,17 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     handleSaved,
     handleDraftChange,
     handlePenaltyDraftChange,
-  } = usePredictionsBulkSave(groupId, roundMatches, predictions, setPredictions, selectedRound)
+  } = usePredictionsBulkSave(
+    groupId,
+    roundMatches,
+    predictions,
+    setPredictions,
+    selectedRound,
+    matches,
+  )
 
   return {
+    drafts,
     matches,
     predictions,
     loading,

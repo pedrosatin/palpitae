@@ -4,6 +4,7 @@
  * `usePredictionsTab` so the "which drafts are worth saving" rule lives in one
  * testable place instead of a single 40-line closure.
  */
+import { needsPenaltyPick } from './predictedTie'
 import type { Match, Prediction } from '../components/MatchCard'
 
 export type ScoreDraft = { home: string; away: string }
@@ -55,8 +56,9 @@ function resolvePenaltyWinner(
   penaltyDraft: PenaltyWinner | undefined,
   hasPenaltyDraft: boolean,
   prediction: Prediction | undefined,
+  leg1Prediction: Prediction | undefined,
 ): { eligibleDraw: boolean; winner: PenaltyWinner } {
-  const eligibleDraw = home === away && Boolean(match.decides_on_penalties)
+  const eligibleDraw = needsPenaltyPick(match, home, away, leg1Prediction)
   if (!eligibleDraw) return { eligibleDraw, winner: null }
   const winner = hasPenaltyDraft
     ? (penaltyDraft ?? null)
@@ -90,6 +92,22 @@ export function collectRoundDrafts({
   predictions,
 }: CollectRoundDraftsInput): RoundDraftPayload[] {
   const out: RoundDraftPayload[] = []
+  const effectivePredictions = new Map(predictions)
+  for (const match of roundMatches) {
+    if (isMatchLocked(match, predictions.get(match.id))) continue
+    const draft = drafts.get(match.id)
+    if (!draft || draft.home === '' || draft.away === '') continue
+    effectivePredictions.set(match.id, {
+      ...predictions.get(match.id),
+      id: '',
+      match_id: match.id,
+      predicted_home_score: Number(draft.home),
+      predicted_away_score: Number(draft.away),
+      points_awarded: 0,
+      locked: 0,
+      updated_at: '',
+    })
+  }
 
   for (const match of roundMatches) {
     const prediction = predictions.get(match.id)
@@ -109,6 +127,7 @@ export function collectRoundDrafts({
       penaltyDrafts.get(match.id),
       hasPenaltyDraft,
       prediction,
+      match.leg1_match_id ? effectivePredictions.get(match.leg1_match_id) : undefined,
     )
     if (eligibleDraw && winner === null) continue
 
