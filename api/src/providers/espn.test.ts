@@ -12,7 +12,7 @@ describe('fetchEspnScoreboard', () => {
     vi.useRealTimers()
   })
 
-  it('consulta a URL do scoreboard com a data compacta', async () => {
+  it('consulta a URL do scoreboard com a data compacta no parâmetro dates', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
 
     const promise = fetchEspnScoreboard('bra.1', '20261007')
@@ -21,7 +21,20 @@ describe('fetchEspnScoreboard', () => {
     await expect(promise).resolves.toEqual({ events: [] })
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
-      'https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard?date=20261007',
+      'https://site.api.espn.com/apis/site/v2/sports/soccer/bra.1/scoreboard?dates=20261007',
+    )
+  })
+
+  it('consulta a URL do scoreboard sem query string quando yyyymmdd é omitido', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
+
+    const promise = fetchEspnScoreboard('conmebol.libertadores')
+    await vi.advanceTimersByTimeAsync(0)
+
+    await expect(promise).resolves.toEqual({ events: [] })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(
+      'https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard',
     )
   })
 
@@ -61,9 +74,12 @@ describe('fetchEspnScoreboard', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('expõe a URL montada (documentação viva do formato)', () => {
+  it('expõe a URL montada com e sem data (documentação viva do formato)', () => {
     expect(espnScoreboardUrl('conmebol.libertadores', '20260818')).toBe(
-      'https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard?date=20260818',
+      'https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard?dates=20260818',
+    )
+    expect(espnScoreboardUrl('conmebol.libertadores')).toBe(
+      'https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard',
     )
   })
 })

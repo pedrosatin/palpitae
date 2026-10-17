@@ -23,8 +23,17 @@ describe('roundLabel', () => {
     })
   })
 
-  describe('known knockout stages', () => {
+  describe('known knockout and cup stages', () => {
     it.each([
+      ['GROUP_STAGE', 'Fase de grupos'],
+      ['FIRST_STAGE', '1ª fase'],
+      ['SECOND_STAGE', '2ª fase'],
+      ['THIRD_STAGE', '3ª fase'],
+      ['FIRST_ROUND', '1ª fase'],
+      ['SECOND_ROUND', '2ª fase'],
+      ['THIRD_ROUND', '3ª fase'],
+      ['FOURTH_ROUND', '4ª fase'],
+      ['FIFTH_ROUND', '5ª fase'],
       ['PLAYOFFS', 'Playoffs'],
       ['LAST_32', 'Rodada de 32'],
       ['LAST_16', 'Oitavas de final'],

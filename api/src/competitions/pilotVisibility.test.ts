@@ -29,6 +29,8 @@ async function createPilotFixture() {
       ('guest', 'Convidado'),
       ('ordinary', 'Comum');
 
+    DELETE FROM competitions;
+
     INSERT INTO competitions (id, name, slug, season, status, penalty_phases, visibility) VALUES
       ('comp-public', 'Brasileirão Série A 2026', 'brasileirao-2026', '2026', 'ongoing', '[]', 'public'),
       ('comp-pilot', 'UEFA Champions League 2025/26', 'champions-league-2025-26', '2025', 'ongoing', '["FINAL"]', 'pilot');

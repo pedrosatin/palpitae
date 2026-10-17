@@ -22,6 +22,7 @@ const espnFallbackMock = vi.mocked(scoreWindowFromEspn)
 type ActiveRow = {
   comp_id: string
   external_id: string
+  provider?: string
   season: string
   round: string
 }
@@ -99,7 +100,7 @@ describe('pollActiveMatches', () => {
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
     expect(db._captured.sql).toContain("status != 'finished'")
-    expect(db._captured.sql).toContain("provider = 'football-data'")
+    expect(db._captured.sql).toContain("provider IN ('football-data', 'espn')")
   })
 
   it('binds the active-window bounds as ISO 8601 strings (T/Z) matching stored start_time', async () => {
@@ -202,6 +203,39 @@ describe('pollActiveMatches', () => {
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
+    expect(scoreMock).not.toHaveBeenCalled()
+  })
+
+  it('syncs an ESPN primary competition once without matchday and skips ESPN fallback on error', async () => {
+    syncFixturesMock.mockRejectedValueOnce(new Error('ESPN down'))
+    const db = buildFakeDb([
+      {
+        comp_id: 'c-lib',
+        external_id: 'conmebol.libertadores',
+        provider: 'espn',
+        season: '2026',
+        round: 'GROUP_STAGE',
+      },
+      {
+        comp_id: 'c-lib',
+        external_id: 'conmebol.libertadores',
+        provider: 'espn',
+        season: '2026',
+        round: 'LAST_16',
+      },
+    ])
+
+    await pollActiveMatches(db as unknown as D1Database, 'key')
+
+    expect(syncFixturesMock).toHaveBeenCalledTimes(1)
+    expect(syncFixturesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        competitionCode: 'conmebol.libertadores',
+        season: 2026,
+        matchday: undefined,
+      }),
+    )
+    expect(espnFallbackMock).not.toHaveBeenCalled()
     expect(scoreMock).not.toHaveBeenCalled()
   })
 

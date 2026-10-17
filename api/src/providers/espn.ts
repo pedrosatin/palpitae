@@ -4,15 +4,14 @@
  * alimenta o site da ESPN, e por isso cada consumidor deve tratar respostas
  * malformadas como erro (ver ADR-015).
  *
- * Compartilhado entre o radar (api/src/radar/) e futuros consumidores. O tipo
- * devolvido é o mínimo que o radar precisa — `events` como lista de objetos
- * opacos (o radar só conta os do dia via `date`) e `leagues[0]` com o nome, o
- * logo e a temporada. Quem precisar de detalhes de jogo tipa depois.
+ * Compartilhado entre o radar (api/src/radar/) e o sync primário de copas da
+ * ESPN (`api/src/matches/espnSync.ts`).
  *
- * Nota importante sobre o parâmetro `date`: a ESPN não filtra estritamente —
- * para uma data sem jogos devolve a rodada vizinha, e para uma liga fora de
- * temporada devolve os últimos jogos. Quem conta "jogos do dia" tem que
- * filtrar pelo campo `date` de cada evento.
+ * Nota importante sobre o parâmetro `dates`: a ESPN exige `dates=YYYYMMDD` no
+ * plural (`date=` no singular é ignorado e devolve a rodada corrente). Além
+ * disso, para uma data sem jogos a ESPN devolve a rodada vizinha, e para uma
+ * liga fora de temporada devolve os últimos jogos. Quem conta "jogos do dia"
+ * tem que filtrar pelo campo `date` de cada evento.
  */
 
 const SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
@@ -23,8 +22,45 @@ const TIMEOUT_MS = 10_000
 /** Backoff do único retry (429/5xx) — a ESPN não cobra, então basta ser curto. */
 const RETRY_BACKOFF_MS = 500
 
-/** Evento do scoreboard. `date` (ISO 8601 UTC) é tudo que o radar lê. */
-export type EspnScoreboardEvent = { date?: unknown }
+export type EspnCompetitorTeam = {
+  id?: string
+  displayName?: string
+  shortDisplayName?: string
+  abbreviation?: string
+  logo?: string
+}
+
+export type EspnCompetitor = {
+  id?: string
+  homeAway?: string
+  winner?: boolean
+  score?: string
+  shootoutScore?: number
+  team?: EspnCompetitorTeam
+}
+
+export type EspnCompetitionStatusType = {
+  name?: string
+  state?: string
+  completed?: boolean
+}
+
+export type EspnEventCompetition = {
+  id?: string
+  date?: string
+  group?: { groupId?: string; name?: string; abbreviation?: string }
+  status?: { type?: EspnCompetitionStatusType }
+  competitors?: EspnCompetitor[]
+}
+
+/** Evento do scoreboard (usado pelo radar e pelo sync de partidas). */
+export type EspnScoreboardEvent = {
+  id?: string
+  date?: unknown
+  season?: { year?: number; type?: number; slug?: string }
+  status?: { type?: EspnCompetitionStatusType }
+  competitions?: EspnEventCompetition[]
+}
 
 /** Entrada de `leagues[]` — fatia que o radar usa (nome, logo, temporada). */
 export type EspnScoreboardLeague = {
@@ -36,15 +72,18 @@ export type EspnScoreboardLeague = {
 /** Temporada reportada no próprio scoreboard. */
 export type EspnSeason = { year?: number; startDate?: string; endDate?: string }
 
-/** Resposta do scoreboard — fatia mínima que o radar usa. */
+/** Resposta do scoreboard. */
 export type EspnScoreboard = {
   events?: EspnScoreboardEvent[]
   leagues?: EspnScoreboardLeague[]
 }
 
-/** URL do scoreboard de uma liga numa data (YYYYMMDD). Exportada para testes. */
-export function espnScoreboardUrl(slug: string, yyyymmdd: string): string {
-  return `${SCOREBOARD_URL}/${slug}/scoreboard?date=${yyyymmdd}`
+/** URL do scoreboard de uma liga, opcionalmente filtrada por data (YYYYMMDD). Exportada para testes. */
+export function espnScoreboardUrl(slug: string, yyyymmdd?: string): string {
+  if (yyyymmdd) {
+    return `${SCOREBOARD_URL}/${slug}/scoreboard?dates=${yyyymmdd}`
+  }
+  return `${SCOREBOARD_URL}/${slug}/scoreboard`
 }
 
 /** Status que vale uma segunda tentativa: rate limit e erros de servidor. */
@@ -57,11 +96,14 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Scoreboard de uma liga numa data. 1 retry com backoff em 429/5xx; o resto
- * (4xx, timeout, rede) falha direto — quem orquestra vários slugs já lida com
- * falha parcial.
+ * Scoreboard de uma liga (rodada corrente ou numa data `YYYYMMDD`). 1 retry com
+ * backoff em 429/5xx; o resto (4xx, timeout, rede) falha direto — quem
+ * orquestra vários slugs já lida com falha parcial.
  */
-export async function fetchEspnScoreboard(slug: string, yyyymmdd: string): Promise<EspnScoreboard> {
+export async function fetchEspnScoreboard(
+  slug: string,
+  yyyymmdd?: string,
+): Promise<EspnScoreboard> {
   let lastError: unknown = new Error(`ESPN: nenhuma tentativa feita para ${slug}`)
 
   for (let attempt = 0; attempt < 2; attempt++) {
