@@ -168,6 +168,20 @@ describe('visibilidade de piloto no grupo fechado', () => {
 
     expect((await request(`/groups/${pilotGroup.id}`, 'ordinary')).status).toBe(404)
     expect((await request(`/groups/${pilotGroup.id}/members`, 'ordinary')).status).toBe(404)
+    expect(
+      (
+        await request(`/groups/${pilotGroup.id}`, 'ordinary', 'PATCH', {
+          name: 'Renomeado',
+        })
+      ).status,
+    ).toBe(404)
+    expect(
+      (await request(`/groups/${pilotGroup.id}/invite/rotate`, 'ordinary', 'POST')).status,
+    ).toBe(404)
+    expect((await request(`/groups/${pilotGroup.id}`, 'ordinary', 'DELETE')).status).toBe(404)
+    expect(
+      (await request(`/groups/${pilotGroup.id}/members/ordinary`, 'ordinary', 'DELETE')).status,
+    ).toBe(404)
     expect((await request(`/predictions?group_id=${pilotGroup.id}`, 'ordinary')).status).toBe(404)
     expect(
       (

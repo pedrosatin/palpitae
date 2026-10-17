@@ -92,22 +92,29 @@ async function requireGroupMembership(c: Context<AppContext, '/:id'>): Promise<
     return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
   }
 
-  if (!hasPilotAccess(c.get('userEmail'), c.env)) {
-    const groupComp = await db
-      .prepare(
-        `SELECT c.visibility
-         FROM groups g
-         LEFT JOIN competitions c ON g.competition_id = c.id
-         WHERE g.id = ? AND g.deleted_at IS NULL`,
-      )
-      .bind(groupId)
-      .first<{ visibility?: string | null }>()
-    if (groupComp?.visibility === 'pilot') {
-      return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
-    }
+  if (await isPilotGroupBlocked(c, db, groupId)) {
+    return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
   }
 
   return { userId, groupId, db, membership }
+}
+
+async function isPilotGroupBlocked(
+  c: Context<AppContext>,
+  db: D1Database,
+  groupId: string,
+): Promise<boolean> {
+  if (hasPilotAccess(c.get('userEmail'), c.env)) return false
+  const groupComp = await db
+    .prepare(
+      `SELECT c.visibility
+       FROM groups g
+       LEFT JOIN competitions c ON g.competition_id = c.id
+       WHERE g.id = ? AND g.deleted_at IS NULL`,
+    )
+    .bind(groupId)
+    .first<{ visibility?: string | null }>()
+  return groupComp?.visibility === 'pilot'
 }
 
 router.get('/', requireAuth, async (c) => {
@@ -633,7 +640,7 @@ router.patch('/:id', requireAuth, async (c) => {
     .bind(groupId)
     .first<{ owner_user_id: string }>()
 
-  if (!group) {
+  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
 
@@ -668,7 +675,7 @@ router.post('/:id/invite/rotate', requireAuth, async (c) => {
     .bind(groupId)
     .first<{ owner_user_id: string }>()
 
-  if (!group) {
+  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
 
@@ -717,7 +724,7 @@ router.delete('/:id', requireAuth, async (c) => {
     .bind(groupId)
     .first<{ owner_user_id: string }>()
 
-  if (!group) {
+  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
 
@@ -801,7 +808,7 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     .bind(groupId)
     .first<{ owner_user_id: string }>()
 
-  if (!group) {
+  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
 
