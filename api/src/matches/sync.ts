@@ -383,6 +383,7 @@ export type MatchUpsertRow = {
   phase: string | null
   round: string
   groupName: string | null
+  leg: 1 | 2 | null
   duration: ApiMatch['score']['duration']
   penaltyWinner: 'home' | 'away' | null
   homePenaltyGoals: number | null
@@ -414,6 +415,20 @@ function resolvePenaltyWinner(score: ApiMatch['score']): 'home' | 'away' | null 
 
 function mapGroupName(group: string | null): string | null {
   return group ? group.replace(/^GROUP_/, '') : null
+}
+
+const TWO_LEG_KNOCKOUT_STAGES = new Set([
+  'PLAYOFFS',
+  'LAST_32',
+  'LAST_16',
+  'QUARTER_FINALS',
+  'SEMI_FINALS',
+])
+
+function mapLeg(matchday: number | null, stage: string): 1 | 2 | null {
+  if (!TWO_LEG_KNOCKOUT_STAGES.has(stage)) return null
+  if (matchday === 1 || matchday === 2) return matchday
+  return null
 }
 
 const KNOCKOUT_STAGES = new Set([
@@ -468,6 +483,7 @@ function mapMatchUpsertRow(
     phase: m.stage ?? null,
     round: mapRound(m.matchday, m.stage),
     groupName: mapGroupName(m.group),
+    leg: mapLeg(m.matchday, m.stage),
     duration: m.score.duration ?? null,
     penaltyWinner: resolvePenaltyWinner(m.score),
     homePenaltyGoals: isShootout ? (m.score.penalties?.home ?? null) : null,
@@ -481,10 +497,10 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        id, competition_id, external_id, provider, home_team_id, away_team_id,
        start_time, status, home_score, away_score, phase, round, group_name,
        duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed,
-       locked_at
+       locked_at, leg
      )
      VALUES (
-       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
      )
      ON CONFLICT (external_id, provider) DO UPDATE SET
        -- Travamento permanente: uma vez preenchido, locked_at não volta a NULL. É
@@ -510,6 +526,7 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        start_time         = CASE WHEN excluded.postponed = 1
                                  THEN matches.start_time ELSE excluded.start_time END,
        group_name         = excluded.group_name,
+       leg                = excluded.leg,
        duration           = excluded.duration,
        penalty_winner     = excluded.penalty_winner,
        home_penalty_goals = excluded.home_penalty_goals,
@@ -562,6 +579,7 @@ async function upsertMatches(
         row.awayPenaltyGoals,
         row.postponed,
         row.lockedAt,
+        row.leg,
         now,
       ),
     )

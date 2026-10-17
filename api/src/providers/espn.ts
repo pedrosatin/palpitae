@@ -48,6 +48,7 @@ export type EspnCompetitionStatusType = {
 export type EspnEventCompetition = {
   id?: string
   date?: string
+  leg?: { value?: number } | null
   group?: { groupId?: string; name?: string; abbreviation?: string }
   status?: { type?: EspnCompetitionStatusType }
   competitors?: EspnCompetitor[]
