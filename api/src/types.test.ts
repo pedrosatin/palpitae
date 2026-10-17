@@ -10,6 +10,7 @@ describe('types', () => {
       CF_ACCOUNT_ID?: string
       AE_SQL_TOKEN?: string
       ADMIN_EMAIL?: string
+      PILOT_EMAILS?: string
       JWT_SECRET: string
       GOOGLE_CLIENT_ID: string
       GOOGLE_CLIENT_SECRET: string

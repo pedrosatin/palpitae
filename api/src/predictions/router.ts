@@ -1,6 +1,7 @@
 import { type Context, Hono } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
+import { hasPilotAccess } from '../auth/permissions'
 import { isMatchLocked, lockedSql } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { roundLabel } from '../matches/rounds'
@@ -25,6 +26,24 @@ async function parseJsonBody<T>(
   } catch {
     return { ok: false, response: c.json({ error: 'Body JSON inválido' }, 400) }
   }
+}
+
+async function isPilotGroupBlocked(
+  c: Context<AppContext>,
+  db: D1Database,
+  groupId: string,
+): Promise<boolean> {
+  if (hasPilotAccess(c.get('userEmail'), c.env)) return false
+  const row = await db
+    .prepare(
+      `SELECT c.visibility
+       FROM groups g
+       LEFT JOIN competitions c ON g.competition_id = c.id
+       WHERE g.id = ? AND g.deleted_at IS NULL`,
+    )
+    .bind(groupId)
+    .first<{ visibility?: string | null }>()
+  return row?.visibility === 'pilot'
 }
 
 const router = new Hono<AppContext>()
@@ -59,6 +78,10 @@ router.get('/', requireAuth, async (c) => {
   }
 
   const db = c.env.DB
+
+  if (await isPilotGroupBlocked(c, db, groupId)) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
 
   const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
 
@@ -150,6 +173,10 @@ router.get('/user', requireAuth, async (c) => {
   }
 
   const db = c.env.DB
+
+  if (await isPilotGroupBlocked(c, db, groupId)) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
 
   // Requester must be a member of the group
   const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, requesterId)
@@ -280,6 +307,10 @@ router.get('/group', requireAuth, async (c) => {
   }
 
   const db = c.env.DB
+
+  if (await isPilotGroupBlocked(c, db, groupId)) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
 
   const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
 
@@ -451,6 +482,10 @@ router.put('/', requireAuth, async (c) => {
   }
 
   const db = c.env.DB
+
+  if (await isPilotGroupBlocked(c, db, group_id)) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
 
   // Verify user is a member of the group
   const { membership } = await getGroupMembershipTimed(db, group_id, userId)
@@ -714,6 +749,10 @@ async function handleBulkPut(c: Context<AppContext>) {
 
   const db = c.env.DB
 
+  if (await isPilotGroupBlocked(c, db, group_id as string)) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+
   // Verify user is a member of the group
   const { membership } = await getGroupMembershipTimed(db, group_id as string, userId)
 
@@ -917,6 +956,13 @@ async function handleImportPost(c: Context<AppContext>) {
   }
 
   const db = c.env.DB
+
+  if (
+    (await isPilotGroupBlocked(c, db, source_group_id)) ||
+    (await isPilotGroupBlocked(c, db, target_group_id))
+  ) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
 
   const validationError = await verifyGroupsForImport(db, userId, source_group_id, target_group_id)
   if (validationError) {

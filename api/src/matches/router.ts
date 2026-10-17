@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { hasPilotAccess } from '../auth/permissions'
 import { logError, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
@@ -213,6 +214,16 @@ async function handleGetMatches(c: Context<AppContext>) {
 
   try {
     const dbStartedAt = Date.now()
+    const competition = await db
+      .prepare('SELECT id, visibility FROM competitions WHERE id = ?')
+      .bind(competitionId)
+      .first<{ id?: string; visibility?: string | null }>()
+
+    const isPilot = competition?.visibility === 'pilot'
+    if (isPilot && !hasPilotAccess(c.get('userEmail'), c.env)) {
+      return c.json({ error: 'Competição não encontrada' }, 404)
+    }
+
     const { results, defaultRound, hasFilters } = await fetchMatches(
       db,
       competitionId,
@@ -241,14 +252,17 @@ async function handleGetMatches(c: Context<AppContext>) {
       matches: matchesOut,
       ...(hasFilters ? {} : { default_round: defaultRound }),
     })
-    response.headers.set('Cache-Control', matchesCacheControl(results))
+    response.headers.set(
+      'Cache-Control',
+      isPilot ? 'private, no-store' : matchesCacheControl(results),
+    )
 
     // Só cacheia listas não-vazias. Isso (a) evita servir um snapshot vazio de uma
     // competição que ainda vai ser sincronizada e (b) fecha o abuso: um competition_id
     // inexistente sempre retorna vazio → nunca entra no edge cache → nunca vira um HIT,
     // então o blob de `matches_cache` no hit só carrega competição real (cardinalidade
     // limitada). O Cache-Control (browser) continua valendo p/ a resposta vazia.
-    if (cache && results.length > 0) {
+    if (cache && !isPilot && results.length > 0) {
       // clone(): a response body can only be consumed once — the cache keeps
       // its own copy while we still return the original to the caller.
       c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))

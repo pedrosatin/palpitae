@@ -2,17 +2,16 @@ import type { JwtPayload } from './auth/jwt'
 
 export type Env = {
   DB: D1Database
-  // Analytics Engine — opcional: não existe em dev local / testes (writeDataPoint
-  // vira no-op via logEvent). Em produção o binding sempre está presente.
+  // Analytics Engine opcional em dev local e testes. Em produção o binding está presente.
   AE?: AnalyticsEngineDataset
-  // Cold path (Fase 4) — arquivo ilimitado de eventos em R2. Opcionais: o export
-  // diário vira no-op se faltar qualquer um. Ver docs/observability.md.
-  EVENTS?: R2Bucket // bucket R2 onde o NDJSON diário é gravado
-  CF_ACCOUNT_ID?: string // conta Cloudflare (URL da SQL API do Analytics Engine)
-  AE_SQL_TOKEN?: string // token com permissão Account Analytics:Read
-  // Dashboard de métricas (/metrics) — e-mail do único usuário autorizado.
-  // Opcional: sem ele, /metrics responde 403 pra todo mundo (fechado por padrão).
+  // Arquivo de eventos em R2. O export diário não executa se faltar qualquer binding abaixo.
+  EVENTS?: R2Bucket
+  CF_ACCOUNT_ID?: string
+  AE_SQL_TOKEN?: string
+  // E-mail do administrador autorizado no painel de métricas e na gestão de competições.
   ADMIN_EMAIL?: string
+  // Lista separada por vírgula de e-mails convidados para testar competições em modo piloto.
+  PILOT_EMAILS?: string
   JWT_SECRET: string
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
@@ -20,13 +19,11 @@ export type Env = {
   FRONTEND_URL: string
   FOOTBALL_API_KEY: string
   RESEND_API_KEY: string
-  // Segredo compartilhado com o proxy do Pages (web/functions/api). Com ele, a API
-  // confia no IP do visitante repassado pelo proxy. Ver docs/security.md.
+  // Segredo compartilhado com o proxy do Pages para confiar no IP repassado.
   PROXY_SHARED_SECRET?: string
 }
 
-// Resultado da verificação do cookie de sessão, guardado no contexto para que o
-// limitador e o requireAuth consultem `revoked_sessions` uma vez só.
+// Resultado da verificação do cookie de sessão guardado no contexto da requisição.
 export type SessionState = { payload: JwtPayload } | { error: unknown }
 
 export type Variables = {
