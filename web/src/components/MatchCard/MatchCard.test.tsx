@@ -587,3 +587,115 @@ describe('OUTCOMES', () => {
     })
   })
 })
+
+describe('MatchCard agregado de ida e volta', () => {
+  it('exige o vencedor nos pênaltis na volta 2x0 depois de palpite 2x0 na ida e salva o pick', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    const onSaved = vi.fn()
+    render(
+      <MatchCard
+        match={makeMatch({ tie_role: 'leg2', decides_on_penalties: true })}
+        prediction={makePrediction({ predicted_home_score: 2, predicted_away_score: 0 })}
+        leg1Prediction={makePrediction({ predicted_home_score: 2, predicted_away_score: 0 })}
+        groupId="g"
+        onSaved={onSaved}
+      />,
+    )
+    expect(screen.getByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Atualizar' })).toBeDisabled()
+    await user.click(screen.getByRole('radio', { name: 'BRA' }))
+    await user.click(screen.getByRole('button', { name: 'Atualizar' }))
+    expect(onSaved).toHaveBeenCalledWith('match-1', 2, 0, 'home')
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)?.[1]?.body as string)).toMatchObject({
+      predicted_penalty_winner: 'home',
+    })
+    fetchMock.mockRestore()
+  })
+  it('não oferece pênaltis para 0x0 na volta quando a ida foi 2x0', () => {
+    render(
+      <MatchCard
+        match={makeMatch({ tie_role: 'leg2', decides_on_penalties: true })}
+        prediction={undefined}
+        leg1Prediction={makePrediction({ predicted_home_score: 2, predicted_away_score: 0 })}
+        groupId="g"
+        onSaved={vi.fn()}
+      />,
+    )
+    expect(
+      screen.queryByRole('radiogroup', { name: 'Quem vence nos pênaltis?' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled()
+  })
+  it('soma os três componentes e mostra o classificado previsto', () => {
+    renderCard(
+      makeMatch({ status: 'finished', start_time: '2020-01-01', tie_role: 'leg2' }),
+      makePrediction({
+        locked: 1,
+        points_awarded: 3,
+        penalty_points: 1,
+        classified_points: 2,
+        predicted_classified: 'away',
+      }),
+    )
+    expect(screen.getByText(/6 pontos/)).toBeInTheDocument()
+    expect(screen.getByText('classificado: ARG')).toBeInTheDocument()
+  })
+})
+
+it('mantém o placar em edição quando apenas o classificado persistido muda', async () => {
+  const match = makeMatch({ tie_role: 'leg2', decides_on_penalties: true })
+  const prediction = makePrediction({
+    predicted_home_score: 1,
+    predicted_away_score: 0,
+    predicted_classified: 'away',
+  })
+  const props = { match, prediction, groupId: 'g', onSaved: vi.fn() }
+  const { rerender } = render(<MatchCard {...props} />)
+  const user = userEvent.setup()
+  const input = screen.getByRole('spinbutton', { name: 'Placar Brasil' })
+  await user.clear(input)
+  await user.type(input, '3')
+  rerender(<MatchCard {...props} prediction={{ ...prediction, predicted_classified: 'home' }} />)
+  expect(input).toHaveValue(3)
+})
+
+it('permite escolher pênaltis no draft com ida pendente, preservando a gravação para Salvar todos', async () => {
+  const onPenaltyDraftChange = vi.fn()
+  render(
+    <MatchCard
+      match={makeMatch({ tie_role: 'leg2', decides_on_penalties: true })}
+      prediction={makePrediction({ predicted_home_score: 2, predicted_away_score: 0 })}
+      leg1Prediction={makePrediction({ predicted_home_score: 2, predicted_away_score: 0 })}
+      leg1Pending
+      groupId="g"
+      onSaved={vi.fn()}
+      onPenaltyDraftChange={onPenaltyDraftChange}
+    />,
+  )
+  await userEvent.click(screen.getByRole('radio', { name: 'BRA' }))
+  expect(onPenaltyDraftChange).toHaveBeenCalledWith('match-1', 'home')
+  expect(screen.getByRole('button', { name: 'Atualizar' })).toBeDisabled()
+})
+
+it('mostra a escolha de resultado em edição na volta quando a ida aguarda salvar', async () => {
+  const onDraftChange = vi.fn()
+  render(
+    <MatchCard
+      match={makeMatch({ tie_role: 'leg2', decides_on_penalties: true })}
+      prediction={makePrediction({ predicted_home_score: 0, predicted_away_score: 1 })}
+      leg1Prediction={makePrediction({ predicted_home_score: 1, predicted_away_score: 0 })}
+      outcomeOnly
+      leg1Pending
+      groupId="g"
+      onSaved={vi.fn()}
+      onDraftChange={onDraftChange}
+    />,
+  )
+  await userEvent.click(screen.getByRole('radio', { name: 'Casa' }))
+  expect(onDraftChange).toHaveBeenCalledWith('match-1', '1', '0')
+  expect(screen.getByRole('radio', { name: 'Casa' })).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).toBeInTheDocument()
+})

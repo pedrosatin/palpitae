@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, Dispatch, SetStateAction } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
+import { predictedClassified } from '../../lib/predictedTie'
 import { collectRoundDrafts } from '../../lib/predictionDrafts'
 import type { Match, Prediction } from '../MatchCard'
 
@@ -13,6 +14,7 @@ export function usePredictionsBulkSave(
   predictions: PredictionMap,
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
   selectedRound: string | undefined,
+  allMatches: Match[] = roundMatches,
 ) {
   const [drafts, setDrafts] = useState<Map<string, { home: string; away: string }>>(new Map())
   const [penaltyDrafts, setPenaltyDrafts] = useState<Map<string, 'home' | 'away' | null>>(new Map())
@@ -50,17 +52,42 @@ export function usePredictionsBulkSave(
     setPredictions((prev) => {
       const next = new Map(prev)
       const existing = prev.get(matchId)
+      const match = allMatches.find((m) => m.id === matchId)
       next.set(matchId, {
         id: existing?.id ?? '',
         match_id: matchId,
         predicted_home_score: home,
         predicted_away_score: away,
         predicted_penalty_winner: penaltyWinner,
+        classified_points: existing?.classified_points ?? 0,
+        predicted_classified: match
+          ? predictedClassified(
+              match,
+              home,
+              away,
+              penaltyWinner,
+              match.leg1_match_id ? prev.get(match.leg1_match_id) : undefined,
+            )
+          : null,
         points_awarded: existing?.points_awarded ?? 0,
         penalty_points: existing?.penalty_points ?? 0,
         locked: 0,
         updated_at: new Date().toISOString(),
       })
+      for (const context of allMatches) {
+        const pick = next.get(context.id)
+        if (!pick) continue
+        next.set(context.id, {
+          ...pick,
+          predicted_classified: predictedClassified(
+            context,
+            pick.predicted_home_score,
+            pick.predicted_away_score,
+            pick.predicted_penalty_winner ?? null,
+            context.leg1_match_id ? next.get(context.leg1_match_id) : undefined,
+          ),
+        })
+      }
       return next
     })
   }
@@ -135,6 +162,7 @@ export function usePredictionsBulkSave(
   const pendingCount = pendingDrafts().length
 
   return {
+    drafts,
     savingAll,
     savedAll,
     bulkError,

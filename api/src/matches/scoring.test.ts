@@ -476,7 +476,9 @@ function buildFakeDb(
           updatedPredictions[id] = {
             points_awarded: points,
             penalty_points: penaltyPoints,
-            classified_points: classifiedPoints,
+            classified_points:
+              classifiedPoints *
+              (groupConfig(predictions.find((p) => p.id === id)!.group_id).points_classified ?? 0),
           }
         }
         if (sql?.startsWith('UPDATE matches SET scored_at')) {
@@ -484,18 +486,13 @@ function buildFakeDb(
           updatedMatches[id] = { scored_at: scoredAt }
         }
         if (sql?.includes('INSERT INTO leaderboard')) {
-          const [group_id, user_id, total_points, exact_hits] = params as [
-            string,
-            string,
-            number,
-            number,
-          ]
-          leaderboardUpserts.push({
-            group_id,
-            user_id,
-            total_points,
-            exact_hits,
-          })
+          const rows = await makeStatement(sql, [params[1]]).all<{
+            group_id: string
+            user_id: string
+            total_points: number
+            exact_hits: number
+          }>()
+          leaderboardUpserts.push(...rows.results)
         }
       }
     },

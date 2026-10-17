@@ -1,9 +1,9 @@
 # Configuração de pontuação e visibilidade por grupo
 
-Cada grupo define, **na criação**, como os palpites são pontuados e quem enxerga os
-palpites alheios. A configuração é **imutável** depois de criada (`PATCH /groups/:id`
-só aceita `name`). Grupos antigos herdam os defaults via `migration 0008` — sem recálculo
-de leaderboard.
+Cada grupo define na criação como os palpites são pontuados e quem enxerga os
+palpites alheios. O dono pode editar o nome e os pontos de classificado em
+`PATCH /groups/:id`. Placar exato, vencedor, pênaltis e visibilidade continuam
+definidos na criação. Grupos antigos herdam os defaults das migrations.
 
 ## Campos (tabela `groups`)
 
@@ -12,11 +12,12 @@ de leaderboard.
 | `points_exact` | INTEGER 0–10 | 3 | Pontos por acertar o placar exato |
 | `points_winner` | INTEGER 0–10 | 1 | Pontos por acertar só o vencedor/empate |
 | `points_penalty` | INTEGER 0–10 | 1 | Bônus por acertar o vencedor dos pênaltis (`migration 0010`) |
+| `points_classified` | INTEGER 0 a 10 | 0 | Bônus por acertar quem avança no jogo decisivo (`migration 0023`); editável pelo dono |
 | `predictions_visibility` | `'hidden'` \| `'public'` | `'hidden'` | Visibilidade dos palpites alheios |
 
 ## Invariantes (validadas na API **e** no front)
 
-1. Ambos inteiros em `0..10`.
+1. Os quatro valores de pontuação são inteiros em `0..10`.
 2. `points_exact + points_winner > 0` — não pode zerar os dois.
 3. `points_exact === 0` **ou** `points_exact >= points_winner`.
 
@@ -75,12 +76,19 @@ bônus **aditivo e independente**:
 
 ### Gate por `(competição, fase)` — fonte de verdade `competitions.penalty_phases`
 
-Elegibilidade **não** é "todo mata-mata". Cada competição lista em
-`competitions.penalty_phases` (JSON de `stage`s) as fases que vão a pênalti em jogo único.
-Comp/fase fora da lista = **fail-closed** (nunca pede nem pontua pênalti — ligas, ida-e-volta).
-O parse é no Worker (`matchGoesToPenalties` / `parsePenaltyPhases`), nunca SQL `json_each`.
-A API de matches devolve `decides_on_penalties` por jogo; o front fica burro. MVP semeia só
-a Copa (`fifa-world-cup-2026`).
+Cada competição lista em `competitions.penalty_phases` as fases que admitem pênaltis
+em jogo único. Fora dessa lista, jogo único não pede nem pontua pênaltis.
+
+Nos confrontos de ida e volta, a ida não tem pênaltis. A volta usa o agregado dos
+dois palpites, com os mandos invertidos. Se ele empata, a interface pede o vencedor
+dos pênaltis mesmo quando o palpite da volta tem um vencedor. Se o agregado não
+empata, um empate no placar da volta não pede pênaltis. Sem palpite na ida, não
+há bônus de pênaltis na volta. Essa regra vale nas fases de mata-mata mesmo
+quando a fase não consta em `penalty_phases`, como as oitavas da Champions.
+
+A API de jogos retorna `decides_on_penalties`, `tie_role` e `leg1_match_id`. O vínculo
+entre jogos não contém palpites de usuários. A interface combina esse vínculo
+com os palpites do próprio usuário para decidir se mostra o seletor.
 
 ### Placar canônico (regressão do bug do `fullTime`)
 
@@ -93,10 +101,10 @@ pênaltis)".
 ### Por que `penalty_points` é coluna separada
 
 `recalculateLeaderboard` infere `exact_hits` por `points_awarded == points_exact`. Somar o
-bônus em `points_awarded` quebraria essa detecção. Logo: `points_awarded` = só base,
-`penalty_points` = bônus; o leaderboard soma `points_awarded + penalty_points` como
-`total_points`. Re-scorar reescreve `penalty_points` (0 quando não aplicável) — sem reset
-manual.
+bônus em `points_awarded` quebraria essa detecção. `points_awarded` guarda o placar,
+`penalty_points` guarda os pênaltis e `classified_points` guarda o classificado.
+O ranking soma os três valores em `total_points`. Repontuar reescreve os bônus,
+com zero quando não se aplicam.
 
 ## Visibilidade
 
@@ -109,19 +117,35 @@ A visibilidade é sempre resolvida no servidor a partir do banco — o front nun
 revelar. O `points_exact` enviado ao front é só para a UI; a pontuação real usa os valores do
 banco em `scoreMatch`.
 
-### Onde o pênalti aparece no front
+### Palpites e pontos na interface
 
-- **Aba Palpitar** (`MatchCard`): num jogo elegível, o seletor "Quem vence nos pênaltis?"
-  fica sempre renderizado, mas **mutado** (`penaltyPickerMuted`) enquanto o placar não é
-  empate — empate (inclusive o default `0×0`) ativa. Em empate elegível o vencedor é
-  obrigatório antes de salvar.
-- **"Salvar todos"** (`PredictionsTab.collectRoundDrafts`): inclui o jogo quando há draft de
-  placar **ou** só de pênalti. Sem isso, um empate `0×0` default — que nunca gera draft de
-  placar — seria descartado silenciosamente junto com o vencedor escolhido.
-- **Aba Grupo** (`GroupPicksTab`): para um palpite de empate em jogo elegível, mostra o
-  vencedor escolhido (`⚽ <time>`) ao lado do placar — é o que distingue dois `1 × 1` iguais.
-  Os pontos exibidos somam base + bônus (`points_awarded + penalty_points`), igual ao
-  leaderboard.
+- A aba Palpitar mostra o seletor quando o placar previsto de um jogo único elegível
+  empata, ou quando o agregado previsto da volta empata. É preciso escolher o vencedor
+  antes de salvar pela interface. A API aceita uma volta sem escolha, com zero de bônus.
+- "Salvar todos" inclui rascunhos de placar e de pênaltis. Quando a ida e a volta estão
+  em edição na mesma rodada, usa os rascunhos dos dois jogos. O salvamento individual
+  da volta aguarda a ida ser salva, para a API usar o mesmo agregado mostrado na tela.
+- As abas Palpitar e Grupo mostram o classificado previsto e somam os três tipos de
+  ponto. O detalhe de palpites aberto pelo ranking também inclui os bônus no total.
+
+## Bônus de classificado (`points_classified`)
+
+O classificado é derivado dos placares previstos, sem palpite adicional. Na volta,
+a soma considera os mandos invertidos. No empate do agregado, vale o vencedor de
+pênaltis previsto na volta. Em final ou jogo único, vale o vencedor do placar ou,
+no empate, dos pênaltis. Sem palpite em um dos jogos, não há ponto de classificado.
+
+O bônus é creditado somente depois do jogo decisivo encerrado, e zero desliga a
+regra. A API retorna `predicted_classified` como `home`, `away` ou `null`, sempre
+na orientação do jogo decisivo, além de `classified_points`. Os filtros de
+visibilidade continuam aplicados aos palpites de terceiros e ao palpite da ida
+usado no cálculo.
+
+O dono configura o valor na criação ou em "Configurações do grupo". Alterar esse
+valor recalcula o bônus dos confrontos encerrados e o ranking do grupo. A API aplica
+configuração, bônus e ranking no mesmo batch transacional, preservando pontos de
+placar e pênaltis. A atualização não altera outros grupos nem as marcações de jogos
+já pontuados. O cron lê o valor vigente da regra ao gravar o bônus de classificado.
 
 ## Observabilidade
 

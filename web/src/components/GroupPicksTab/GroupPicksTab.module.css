@@ -78,6 +78,7 @@
 
 .pickRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
@@ -90,7 +91,7 @@
 }
 
 .pickName {
-  flex: 1;
+  flex: 1 0 7rem;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -104,7 +105,9 @@
 }
 
 .pickScore {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);

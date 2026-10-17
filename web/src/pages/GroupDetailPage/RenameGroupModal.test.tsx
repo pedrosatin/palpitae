@@ -59,7 +59,10 @@ describe('RenameGroupModal', () => {
 
   it('submits form successfully', async () => {
     const user = userEvent.setup({ delay: null })
-    vi.mocked(apiFetch).mockResolvedValueOnce({ ok: true, json: async () => ({}) } as unknown as Response)
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    } as unknown as Response)
 
     render(<RenameGroupModal {...defaultProps} />)
 
@@ -87,7 +90,7 @@ describe('RenameGroupModal', () => {
     const user = userEvent.setup({ delay: null })
     vi.mocked(apiFetch).mockResolvedValueOnce({
       ok: false,
-      json: async () => ({ error: 'Custom API error' })
+      json: async () => ({ error: 'Custom API error' }),
     } as unknown as Response)
 
     render(<RenameGroupModal {...defaultProps} />)
@@ -105,4 +108,30 @@ describe('RenameGroupModal', () => {
     expect(defaultProps.onRenamed).not.toHaveBeenCalled()
     expect(defaultProps.onClose).not.toHaveBeenCalled()
   })
+})
+
+it('edita pontos de classificado e informa o valor salvo ao grupo', async () => {
+  vi.mocked(apiFetch).mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response)
+  const onPointsClassifiedChanged = vi.fn()
+  render(
+    <RenameGroupModal
+      isOpen
+      onClose={vi.fn()}
+      groupId="g"
+      currentName="Grupo"
+      currentPointsClassified={0}
+      onRenamed={vi.fn()}
+      onPointsClassifiedChanged={onPointsClassifiedChanged}
+    />,
+  )
+  const user = userEvent.setup()
+  const input = screen.getByRole('spinbutton', { name: 'Bônus classificado' })
+  await user.clear(input)
+  await user.type(input, '4')
+  await user.click(screen.getByRole('button', { name: 'Salvar' }))
+  await waitFor(() => expect(onPointsClassifiedChanged).toHaveBeenCalledWith(4))
+  expect(apiFetch).toHaveBeenLastCalledWith(
+    expect.stringContaining('/groups/g'),
+    expect.objectContaining({ body: JSON.stringify({ name: 'Grupo', points_classified: 4 }) }),
+  )
 })

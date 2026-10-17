@@ -22,6 +22,7 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
   const [pointsExact, setPointsExact] = useState(3)
   const [pointsWinner, setPointsWinner] = useState(1)
   const [pointsPenalty, setPointsPenalty] = useState(1)
+  const [pointsClassified, setPointsClassified] = useState(0)
   const [predictionsVisibility, setPredictionsVisibility] = useState<'hidden' | 'public'>('hidden')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +56,7 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
     setPointsExact(3)
     setPointsWinner(1)
     setPointsPenalty(1)
+    setPointsClassified(0)
     setPredictionsVisibility('hidden')
     setError(null)
     setCreated(null)
@@ -91,6 +93,7 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
           points_exact: pointsExact,
           points_winner: pointsWinner,
           points_penalty: showPenaltyField ? pointsPenalty : 1,
+          points_classified: showPenaltyField ? pointsClassified : 0,
           predictions_visibility: predictionsVisibility,
         }),
       })
@@ -131,6 +134,8 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
     setPointsExact,
     pointsWinner,
     setPointsWinner,
+    pointsClassified,
+    setPointsClassified,
     pointsPenalty,
     setPointsPenalty,
     predictionsVisibility,

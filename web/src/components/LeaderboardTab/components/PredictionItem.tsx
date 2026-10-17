@@ -19,6 +19,13 @@ export function PredictionItem({ prediction: p }: PredictionItemProps) {
   const isFinished = p.match_status === 'finished'
   const hasPrediction = p.predicted_home_score !== null
   const isScheduled = p.match_status === 'scheduled'
+  const totalPoints = (p.points_awarded ?? 0) + (p.penalty_points ?? 0) + (p.classified_points ?? 0)
+  const classifiedTeam =
+    p.predicted_classified === 'home'
+      ? p.home_team_short_name
+      : p.predicted_classified === 'away'
+        ? p.away_team_short_name
+        : null
 
   return (
     <li className={styles.predItem}>
@@ -59,15 +66,16 @@ export function PredictionItem({ prediction: p }: PredictionItemProps) {
               </>
             )}
           </div>
+          {classifiedTeam && (
+            <p className={styles.predNone}>Classificado previsto: {classifiedTeam}</p>
+          )}
           <div className={styles.predMeta}>
             <span className={styles.predDate}>{formatDate(p.match_start_time)}</span>
             {isFinished && (
-              <span
-                className={
-                  (p.points_awarded ?? 0) > 0 ? styles.predPointsGreen : styles.predPointsZero
-                }
-              >
-                {p.points_awarded} pt
+              <span className={totalPoints > 0 ? styles.predPointsGreen : styles.predPointsZero}>
+                {totalPoints} pt
+                {(p.classified_points ?? 0) > 0 && ` (+${p.classified_points} classificado)`}
+                {(p.penalty_points ?? 0) > 0 && ` (+${p.penalty_points} pênalti)`}
               </span>
             )}
           </div>

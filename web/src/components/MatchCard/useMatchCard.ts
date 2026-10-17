@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { needsPenaltyPick } from '../../lib/predictedTie'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
@@ -7,6 +8,8 @@ import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 export interface UseMatchCardProps {
   match: Match
   prediction: Prediction | undefined
+  leg1Prediction?: Prediction
+  leg1Pending?: boolean
   groupId: string
   outcomeOnly?: boolean
   onSaved: (
@@ -47,13 +50,17 @@ function useMatchDraft(prediction: Prediction | undefined) {
   const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
   const [reopenPenalty, setReopenPenalty] = useState(false)
 
+  const persistedHome = prediction?.predicted_home_score
+  const persistedAway = prediction?.predicted_away_score
+  const persistedPenalty = prediction?.predicted_penalty_winner ?? null
   useEffect(() => {
-    if (prediction !== undefined) {
-      setHome(String(prediction.predicted_home_score))
-      setAway(String(prediction.predicted_away_score))
-      setPenaltyWinner(prediction.predicted_penalty_winner ?? null)
+    if (persistedHome !== undefined && persistedAway !== undefined) {
+      setHome(String(persistedHome))
+      setAway(String(persistedAway))
+      setPenaltyWinner(persistedPenalty)
+      setPendingOutcome(null)
     }
-  }, [prediction])
+  }, [persistedHome, persistedAway, persistedPenalty])
 
   return {
     home,
@@ -116,9 +123,63 @@ function useMatchPersistence(
   return { saving, error, saved, persist }
 }
 
+function matchControls({
+  match,
+  prediction,
+  leg1Prediction,
+  leg1Pending = false,
+  home,
+  away,
+  penaltyWinner,
+  pendingOutcome,
+  locked,
+  saving,
+}: {
+  match: Match
+  prediction?: Prediction
+  leg1Prediction?: Prediction
+  leg1Pending?: boolean
+  home: string
+  away: string
+  penaltyWinner: 'home' | 'away' | null
+  pendingOutcome: Outcome | null
+  locked: boolean
+  saving: boolean
+}) {
+  const selectedOutcome: Outcome | null =
+    pendingOutcome ??
+    (prediction !== undefined
+      ? prediction.predicted_home_score > prediction.predicted_away_score
+        ? 'home'
+        : prediction.predicted_home_score < prediction.predicted_away_score
+          ? 'away'
+          : 'draw'
+      : null)
+
+  const showPenaltyPicker =
+    !locked &&
+    home !== '' &&
+    away !== '' &&
+    needsPenaltyPick(match, Number(home), Number(away), leg1Prediction)
+
+  const scoreChanged =
+    prediction !== undefined
+      ? Number(home) !== prediction.predicted_home_score ||
+        Number(away) !== prediction.predicted_away_score
+      : true
+  const penaltyChanged = (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
+  const hasChanged = scoreChanged || penaltyChanged
+  const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
+  const canSave =
+    !leg1Pending && !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
+  return { selectedOutcome, showPenaltyPicker, canSave }
+}
+
 export function useMatchCard({
   match,
   prediction,
+  leg1Prediction,
+  leg1Pending = false,
   groupId,
   outcomeOnly = false,
   onSaved,
@@ -142,29 +203,18 @@ export function useMatchCard({
 
   const { saving, saved, error, persist } = useMatchPersistence(groupId, match.id, onSaved)
 
-  const selectedOutcome: Outcome | null =
-    prediction !== undefined
-      ? prediction.predicted_home_score > prediction.predicted_away_score
-        ? 'home'
-        : prediction.predicted_home_score < prediction.predicted_away_score
-          ? 'away'
-          : 'draw'
-      : pendingOutcome
-
-  const drawMarked = outcomeOnly
-    ? selectedOutcome === 'draw'
-    : home !== '' && away !== '' && Number(home) === Number(away)
-  const showPenaltyPicker = !locked && Boolean(match.decides_on_penalties) && drawMarked
-
-  const scoreChanged =
-    prediction !== undefined
-      ? Number(home) !== prediction.predicted_home_score ||
-        Number(away) !== prediction.predicted_away_score
-      : true
-  const penaltyChanged = (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
-  const hasChanged = scoreChanged || penaltyChanged
-  const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
-  const canSave = !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
+  const { selectedOutcome, showPenaltyPicker, canSave } = matchControls({
+    match,
+    prediction,
+    leg1Prediction,
+    leg1Pending,
+    home,
+    away,
+    penaltyWinner,
+    pendingOutcome,
+    locked,
+    saving,
+  })
 
   async function handleSave() {
     if (!canSave) return
@@ -182,14 +232,14 @@ export function useMatchCard({
     setPendingOutcome(outcome)
     onDraftChange?.(match.id, String(h), String(a))
 
-    if (outcome === 'draw' && match.decides_on_penalties) {
+    if (needsPenaltyPick(match, h, a, leg1Prediction)) {
       return
     }
     if (penaltyWinner !== null) {
       setPenaltyWinner(null)
       onPenaltyDraftChange?.(match.id, null)
     }
-    await persist(h, a, null)
+    if (!leg1Pending) await persist(h, a, null)
   }
 
   async function selectPenaltyWinner(winner: 'home' | 'away') {
@@ -201,13 +251,16 @@ export function useMatchCard({
     setPenaltyWinner(winner)
     setReopenPenalty(false)
     onPenaltyDraftChange?.(match.id, winner)
-    if (outcomeOnly) {
-      await persist(0, 0, winner)
+    if (outcomeOnly && !leg1Pending) {
+      await persist(Number(home), Number(away), winner)
     }
   }
 
   function clearPenaltyIfLeavingDraw(nextHome: string, nextAway: string) {
-    const stillDraw = nextHome !== '' && nextAway !== '' && Number(nextHome) === Number(nextAway)
+    const stillDraw =
+      nextHome !== '' &&
+      nextAway !== '' &&
+      needsPenaltyPick(match, Number(nextHome), Number(nextAway), leg1Prediction)
     if (!stillDraw && penaltyWinner !== null) {
       setPenaltyWinner(null)
       setReopenPenalty(false)

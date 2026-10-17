@@ -255,8 +255,8 @@ async function resolveMatchTieForWrite(
 
 /**
  * Vencedor dos pênaltis a gravar no palpite. Regras:
- *   - obrigatório só no empate do próprio jogo numa fase decidida nos pênaltis
- *     (penalty_phases), exceto na ida, que nunca vai a pênaltis;
+ *   - obrigatório no empate de jogo único numa fase de penalty_phases;
+ *   - a ida nunca aceita vencedor de pênaltis;
  *   - na volta, se a soma com o palpite da ida empata o agregado, grava o pick
  *     quando vier válido. Sem pick o palpite é aceito e só não pontua o classificado;
  *   - nos outros casos grava null, e um valor inválido é descartado em silêncio.
@@ -273,12 +273,13 @@ function resolvePenaltyPick(input: {
   const validPick: 'home' | 'away' | null =
     rawPenaltyWinner === 'home' || rawPenaltyWinner === 'away' ? rawPenaltyWinner : null
 
-  if (home === away && eligible && role !== 'leg1') {
-    return validPick ? { ok: true, value: validPick } : { ok: false }
+  if (role === 'leg1') return { ok: true, value: null }
+  if (role === 'leg2') {
+    const tied = leg1Score && home + leg1Score.awayScore === away + leg1Score.homeScore
+    return { ok: true, value: tied ? validPick : null }
   }
-  if (role === 'leg2' && leg1Score && home + leg1Score.awayScore === away + leg1Score.homeScore) {
-    return { ok: true, value: validPick }
-  }
+  if (eligible && home === away) return validPick ? { ok: true, value: validPick } : { ok: false }
+
   return { ok: true, value: null }
 }
 

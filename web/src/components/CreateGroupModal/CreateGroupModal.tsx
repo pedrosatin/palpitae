@@ -29,6 +29,8 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
     setPointsExact,
     pointsWinner,
     setPointsWinner,
+    pointsClassified,
+    setPointsClassified,
     pointsPenalty,
     setPointsPenalty,
     predictionsVisibility,
@@ -102,6 +104,28 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
             setPointsPenalty={setPointsPenalty}
             showPenaltyField={showPenaltyField}
           />
+
+          {showPenaltyField && (
+            <div className={shared.field}>
+              <label className={shared.label} htmlFor="points-classified">
+                Bônus classificado
+              </label>
+              <input
+                id="points-classified"
+                className={shared.input}
+                type="number"
+                min={0}
+                max={10}
+                step={1}
+                value={pointsClassified}
+                onChange={(e) => setPointsClassified(Number(e.target.value))}
+              />
+              <p>
+                Por acertar quem avança no jogo decisivo. Em ida e volta, considera seus dois
+                palpites. 0 desliga.
+              </p>
+            </div>
+          )}
 
           <VisibilityField
             predictionsVisibility={predictionsVisibility}

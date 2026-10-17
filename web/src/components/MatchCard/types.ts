@@ -1,5 +1,7 @@
 export interface Match {
   id: string
+  tie_role?: 'single' | 'leg1' | 'leg2'
+  leg1_match_id?: string | null
   start_time: string
   status: 'scheduled' | 'live' | 'finished'
   /**
@@ -44,6 +46,8 @@ export interface Prediction {
   predicted_away_score: number
   predicted_penalty_winner?: 'home' | 'away' | null
   points_awarded: number
+  classified_points?: number
+  predicted_classified?: 'home' | 'away' | null
   penalty_points?: number
   locked: boolean | 1 | 0
   updated_at: string

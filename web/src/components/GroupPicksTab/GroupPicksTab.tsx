@@ -29,6 +29,8 @@ interface MemberPrediction {
   predicted_away_score: number
   predicted_penalty_winner: 'home' | 'away' | null
   points_awarded: number
+  classified_points?: number
+  predicted_classified?: 'home' | 'away' | null
   penalty_points: number
   locked: 0 | 1
 }
@@ -95,14 +97,12 @@ function MatchPicksCard({
             // A draw pick is ambiguous on score alone in a knockout: the
             // penalty winner is what tells two equal scores apart.
             const showPenaltyPick =
-              Boolean(match.decides_on_penalties) &&
-              p.predicted_home_score === p.predicted_away_score &&
-              p.predicted_penalty_winner != null
+              Boolean(match.decides_on_penalties) && p.predicted_penalty_winner != null
             const penaltyTeam =
               p.predicted_penalty_winner === 'home'
                 ? match.home_team_short_name
                 : match.away_team_short_name
-            const total = p.points_awarded + (p.penalty_points ?? 0)
+            const total = p.points_awarded + (p.penalty_points ?? 0) + (p.classified_points ?? 0)
             return (
               <li
                 key={p.user_id}
@@ -114,6 +114,15 @@ function MatchPicksCard({
                 </span>
                 <span className={styles.pickScore}>
                   {p.predicted_home_score} × {p.predicted_away_score}
+                  {p.predicted_classified && (
+                    <span>
+                      {' '}
+                      classificado:{' '}
+                      {p.predicted_classified === 'home'
+                        ? match.home_team_short_name
+                        : match.away_team_short_name}
+                    </span>
+                  )}
                   {showPenaltyPick && (
                     <PenaltyBadge team={penaltyTeam} tooltip="Vencedor previsto nos pênaltis" />
                   )}

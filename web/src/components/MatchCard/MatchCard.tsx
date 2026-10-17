@@ -11,6 +11,8 @@ export type { Match, Prediction }
 interface MatchCardProps {
   match: Match
   prediction: Prediction | undefined
+  leg1Prediction?: Prediction
+  leg1Pending?: boolean
   groupId: string
   /**
    * When true the group scores only the winner/draw (points_exact = 0), so the
@@ -39,7 +41,6 @@ function formatDate(iso: string): string {
     timeZone: 'America/Sao_Paulo',
   })
 }
-
 
 export default function MatchCard(props: MatchCardProps) {
   const { match, prediction, outcomeOnly = false } = props
@@ -137,7 +138,7 @@ export default function MatchCard(props: MatchCardProps) {
         {match.decides_on_penalties && (
           <InfoHint
             label="fase eliminatória"
-            text="Empate no palpite vale para tempo regulamentar + prorrogação. Em caso de empate, o palpite de pênaltis é obrigatório."
+            text="O placar considera tempo regulamentar + prorrogação. Na volta, os pênaltis dependem do agregado dos seus dois palpites."
           />
         )}
         {locked ? (
@@ -173,6 +174,19 @@ export default function MatchCard(props: MatchCardProps) {
             handleScoreInput={handleScoreInput}
             handleSave={handleSave}
           />
+        )}
+        {!locked && prediction?.predicted_classified && (
+          <span className={styles.lockedPenalty}>
+            classificado:{' '}
+            {prediction.predicted_classified === 'home'
+              ? match.home_team_short_name
+              : match.away_team_short_name}
+          </span>
+        )}
+        {props.leg1Pending && (
+          <p className={styles.lockedPenalty}>
+            Salve o palpite da ida antes da volta ou use Salvar todos.
+          </p>
         )}
         {error && <p className={styles.errorMsg}>{error}</p>}
       </div>
@@ -248,7 +262,10 @@ function LockedPredictionView({
   }
 
   // Total = base + penalty bonus; both are surfaced as one figure.
-  const total = prediction.points_awarded + (prediction.penalty_points ?? 0)
+  const total =
+    prediction.points_awarded +
+    (prediction.penalty_points ?? 0) +
+    (prediction.classified_points ?? 0)
 
   return (
     <div className={styles.lockedPrediction}>
@@ -264,6 +281,14 @@ function LockedPredictionView({
           <span className={styles.lockedScore}>{prediction.predicted_away_score}</span>
         </div>
       )}
+      {prediction.predicted_classified && (
+        <span className={styles.lockedPenalty}>
+          classificado:{' '}
+          {prediction.predicted_classified === 'home'
+            ? match.home_team_short_name
+            : match.away_team_short_name}
+        </span>
+      )}
       {prediction.predicted_penalty_winner && (
         <span className={styles.lockedPenalty}>
           pênalti:{' '}
@@ -275,6 +300,12 @@ function LockedPredictionView({
       {isFinished && (
         <span className={`${styles.points} ${total > 0 ? styles.pointsGreen : styles.pointsZero}`}>
           {total} {total === 1 ? 'ponto' : 'pontos'}
+          {(prediction.classified_points ?? 0) > 0 && (
+            <span className={styles.penaltyBonus}>
+              {' '}
+              (+{prediction.classified_points} classificado)
+            </span>
+          )}
           {(prediction.penalty_points ?? 0) > 0 && (
             <span className={styles.penaltyBonus}> (+{prediction.penalty_points} pênalti)</span>
           )}

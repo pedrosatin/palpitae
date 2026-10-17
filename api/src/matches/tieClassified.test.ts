@@ -235,6 +235,30 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     }
     expect(matches.find((m) => m.id === 'm-r16-leg1')?.leg).toBe(1)
     expect(matches.find((m) => m.id === 'm-r16-leg2')?.leg).toBe(2)
+    expect(matches.find((m) => m.id === 'm-r16-leg2')).toMatchObject({
+      tie_role: 'leg2',
+      leg1_match_id: 'm-r16-leg1',
+      decides_on_penalties: true,
+    })
+    expect(matches.find((m) => m.id === 'm-r16-leg1')).toMatchObject({
+      tie_role: 'leg1',
+      decides_on_penalties: false,
+    })
+    finishMatch(sqlite, 'm-r16-leg1', 2, 0)
+    const filtered = await apiRequest(
+      db,
+      ana,
+      `/matches?competition_id=${COMP_ID}&status=scheduled`,
+    )
+    expect(await filtered.json()).toMatchObject({
+      matches: expect.arrayContaining([
+        expect.objectContaining({
+          id: 'm-r16-leg2',
+          tie_role: 'leg2',
+          leg1_match_id: 'm-r16-leg1',
+        }),
+      ]),
+    })
     expect(matches.find((m) => m.id === 'm-final-single')?.leg).toBeNull()
   })
 
@@ -502,6 +526,7 @@ describe('confrontos de mata-mata, agregado e pontos de classificado pela API', 
     }
     expect(anaPreds.find((p) => p.match_id === 'm-qf-leg2')).toMatchObject({
       classified_points: 3,
+      penalty_points: 1,
       predicted_classified: 'home',
     })
 
@@ -868,9 +893,9 @@ describe('regras do vencedor de pênaltis no palpite de mata-mata', () => {
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 1, 1, 'home')).status).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-r16-leg1')).toBeNull()
 
-    // A ida passa a Flamengo 1x0. Volta empatada numa fase com pênaltis continua exigindo o pick.
+    // A ida passa a Flamengo 1x0. Volta empatada com agregado desigual não exige o pick.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg1', 1, 0)).status).toBe(200)
-    expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 2, 2)).status).toBe(400)
+    expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 2, 2)).status).toBe(200)
     // Volta 2x0 não empata o agregado (2x1): pick enviado é descartado.
     expect((await putPrediction(db, ANA, group.id, 'm-r16-leg2', 2, 0, 'home')).status).toBe(200)
     expect(storedPick(sqlite, 'u-ana', 'm-r16-leg2')).toBeNull()
@@ -900,7 +925,7 @@ describe('regras do vencedor de pênaltis no palpite de mata-mata', () => {
     })
     expect(bulkRes.status).toBe(400)
     const bulkBody = (await bulkRes.json()) as { invalid_penalty: string[] }
-    expect(bulkBody.invalid_penalty.sort()).toEqual(['m-final-single', 'm-r16-leg2'])
+    expect(bulkBody.invalid_penalty.sort()).toEqual(['m-final-single'])
   })
 
   it('na volta do bulk ignora a ida travada do payload e usa a ida gravada no banco', async () => {
@@ -1081,7 +1106,7 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
 
     expect(await ownPrediction(db, ANA, group.id, 'm-cl-2')).toMatchObject({
       points_awarded: 3,
-      penalty_points: 0,
+      penalty_points: 1,
       classified_points: 3,
       predicted_classified: 'away',
     })
@@ -1162,4 +1187,277 @@ describe('pontuação de classificado com ordem de palpites, leg nulo e correç�
       predicted_classified: 'away',
     })
   })
+})
+
+describe('edição da pontuação de classificado', () => {
+  it('valida acesso e limites, repontua resultados e preserva placar e pênaltis', async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    seedKnockoutFixtures(sqlite)
+    const group = await createConfiguredGroup(db, 2)
+    const patch = (user: typeof ANA, points: unknown) =>
+      apiRequest(db, user, `/groups/${group.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ points_classified: points }),
+      })
+    expect((await patch(BETO, 4)).status).toBe(403)
+    for (const value of [-1, 11, 1.5, null, '2']) expect((await patch(ANA, value)).status).toBe(400)
+    await putPrediction(db, ANA, group.id, 'm-qf-leg1', 2, 0)
+    await putPrediction(db, ANA, group.id, 'm-qf-leg2', 2, 0, 'home')
+    finishMatch(sqlite, 'm-qf-leg1', 2, 0)
+    finishMatch(sqlite, 'm-qf-leg2', 2, 0, 'home')
+    await scoreUnprocessedMatches(COMP_ID, db)
+    expect(await ownPrediction(db, ANA, group.id, 'm-qf-leg2')).toMatchObject({
+      points_awarded: 3,
+      penalty_points: 1,
+      classified_points: 2,
+    })
+    expect((await patch(ANA, 4)).status).toBe(200)
+    expect(await ownPrediction(db, ANA, group.id, 'm-qf-leg2')).toMatchObject({
+      points_awarded: 3,
+      penalty_points: 1,
+      classified_points: 4,
+    })
+    expect(
+      sqlite
+        .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
+        .get(group.id, ANA.id),
+    ).toMatchObject({ total_points: 11 })
+    const detail = await apiRequest(db, ANA, `/groups/${group.id}`)
+    expect(await detail.json()).toMatchObject({ group: { points_classified: 4 } })
+    expect((await patch(ANA, 0)).status).toBe(200)
+    expect(await ownPrediction(db, ANA, group.id, 'm-qf-leg2')).toMatchObject({
+      points_awarded: 3,
+      penalty_points: 1,
+      classified_points: 0,
+    })
+  })
+  it('descarta pênaltis na volta empatada quando o agregado não empata, em gravação individual e bulk', async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    seedKnockoutFixtures(sqlite)
+    const group = await createConfiguredGroup(db)
+    await putPrediction(db, ANA, group.id, 'm-qf-leg1', 2, 0)
+    expect((await putPrediction(db, ANA, group.id, 'm-qf-leg2', 0, 0, 'home')).status).toBe(200)
+    expect(storedPick(sqlite, ANA.id, 'm-qf-leg2')).toBeNull()
+    const res = await apiRequest(db, ANA, '/predictions/bulk', {
+      method: 'PUT',
+      body: JSON.stringify({
+        group_id: group.id,
+        predictions: [
+          {
+            match_id: 'm-qf-leg2',
+            predicted_home_score: 1,
+            predicted_away_score: 1,
+            predicted_penalty_winner: 'home',
+          },
+        ],
+      }),
+    })
+    expect(res.status).toBe(200)
+    expect(storedPick(sqlite, ANA.id, 'm-qf-leg2')).toBeNull()
+    expect(await ownPrediction(db, ANA, group.id, 'm-qf-leg2')).toMatchObject({
+      predicted_classified: 'away',
+    })
+  })
+})
+
+it('reverte configuração e pontuação quando o ranking falha e permite repetir a edição', async () => {
+  const { sqlite, db } = createSqliteD1()
+  handles.push(sqlite)
+  seedKnockoutFixtures(sqlite)
+  const group = await createConfiguredGroup(db, 2)
+  await putPrediction(db, ANA, group.id, 'm-final-single', 1, 0)
+  finishMatch(sqlite, 'm-final-single', 1, 0)
+  await scoreUnprocessedMatches(COMP_ID, db)
+  sqlite.exec(
+    `CREATE TRIGGER fail_ranking BEFORE UPDATE ON leaderboard BEGIN SELECT RAISE(ABORT, 'ranking unavailable'); END`,
+  )
+  const patch = () =>
+    apiRequest(db, ANA, `/groups/${group.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ points_classified: 4 }),
+    })
+  expect((await patch()).status).toBe(500)
+  expect(
+    sqlite.prepare('SELECT points_classified FROM groups WHERE id = ?').get(group.id),
+  ).toMatchObject({ points_classified: 2 })
+  expect(await ownPrediction(db, ANA, group.id, 'm-final-single')).toMatchObject({
+    classified_points: 2,
+    points_awarded: 3,
+  })
+  expect(
+    sqlite
+      .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
+      .get(group.id, ANA.id),
+  ).toMatchObject({ total_points: 5 })
+  sqlite.exec('DROP TRIGGER fail_ranking')
+  expect((await patch()).status).toBe(200)
+  expect(
+    sqlite
+      .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
+      .get(group.id, ANA.id),
+  ).toMatchObject({ total_points: 7 })
+})
+
+for (const pauseBatch of [1, 2]) {
+  it(`mantém a regra vigente quando o cron continua após PATCH (batch ${pauseBatch})`, async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    seedKnockoutFixtures(sqlite)
+    const group = await createConfiguredGroup(db, 0)
+    await putPrediction(db, ANA, group.id, 'm-final-single', 1, 0)
+    finishMatch(sqlite, 'm-final-single', 1, 0)
+    let release!: () => void
+    let paused!: () => void
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const reached = new Promise<void>((resolve) => {
+      paused = resolve
+    })
+    let batches = 0
+    const delayedDb = {
+      ...db,
+      async batch(statements: D1PreparedStatement[]) {
+        batches++
+        if (batches === pauseBatch) {
+          paused()
+          await blocked
+        }
+        return db.batch(statements)
+      },
+    } as D1Database
+    const scoring = scoreUnprocessedMatches(COMP_ID, delayedDb)
+    await reached
+    const res = await apiRequest(db, ANA, `/groups/${group.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ points_classified: 5 }),
+    })
+    expect(res.status).toBe(200)
+    release()
+    await scoring
+    expect(await ownPrediction(db, ANA, group.id, 'm-final-single')).toMatchObject({
+      points_awarded: 3,
+      classified_points: 5,
+    })
+    expect(
+      sqlite
+        .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
+        .get(group.id, ANA.id),
+    ).toMatchObject({ total_points: 8 })
+  })
+}
+
+it('recalcula o valor enviado mesmo quando outra edição muda a regra depois da leitura', async () => {
+  const { sqlite, db } = createSqliteD1()
+  handles.push(sqlite)
+  seedKnockoutFixtures(sqlite)
+  const group = await createConfiguredGroup(db, 0)
+  await putPrediction(db, ANA, group.id, 'm-final-single', 1, 0)
+  finishMatch(sqlite, 'm-final-single', 1, 0)
+  await scoreUnprocessedMatches(COMP_ID, db)
+  let release!: () => void
+  let paused!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const reached = new Promise<void>((resolve) => {
+    paused = resolve
+  })
+  const delayedDb = {
+    ...db,
+    prepare(sql: string) {
+      const statement = db.prepare(sql)
+      if (!sql.includes('SELECT owner_user_id, competition_id, points_classified')) return statement
+      return {
+        ...statement,
+        bind(...args: (string | number | null)[]) {
+          const bound = statement.bind(...args)
+          return {
+            ...bound,
+            async first() {
+              const row = await bound.first()
+              paused()
+              await blocked
+              return row
+            },
+          }
+        },
+      }
+    },
+  } as D1Database
+  const stalePatch = apiRequest(delayedDb, ANA, `/groups/${group.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ points_classified: 0 }),
+  })
+  await reached
+  expect(
+    (
+      await apiRequest(db, ANA, `/groups/${group.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ points_classified: 5 }),
+      })
+    ).status,
+  ).toBe(200)
+  release()
+  expect((await stalePatch).status).toBe(200)
+  expect(
+    sqlite.prepare('SELECT points_classified FROM groups WHERE id = ?').get(group.id),
+  ).toMatchObject({ points_classified: 0 })
+  expect(await ownPrediction(db, ANA, group.id, 'm-final-single')).toMatchObject({
+    classified_points: 0,
+  })
+  expect(
+    sqlite
+      .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
+      .get(group.id, ANA.id),
+  ).toMatchObject({ total_points: 3 })
+})
+
+it('refaz o snapshot quando um jogo termina antes da transação de configuração', async () => {
+  const { sqlite, db } = createSqliteD1()
+  handles.push(sqlite)
+  seedKnockoutFixtures(sqlite)
+  const group = await createConfiguredGroup(db, 0)
+  await putPrediction(db, ANA, group.id, 'm-final-single', 1, 0)
+  sqlite.prepare("UPDATE matches SET status = 'live' WHERE id = 'm-final-single'").run()
+  let release!: () => void
+  let paused!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const reached = new Promise<void>((resolve) => {
+    paused = resolve
+  })
+  let batches = 0
+  const delayedDb = {
+    ...db,
+    async batch(statements: D1PreparedStatement[]) {
+      batches++
+      if (batches === 1) {
+        paused()
+        await blocked
+      }
+      return db.batch(statements)
+    },
+  } as D1Database
+  const editing = apiRequest(delayedDb, ANA, `/groups/${group.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ points_classified: 5 }),
+  })
+  await reached
+  finishMatch(sqlite, 'm-final-single', 1, 0)
+  await scoreUnprocessedMatches(COMP_ID, db)
+  release()
+  expect((await editing).status).toBe(200)
+  expect(batches).toBe(2)
+  expect(await ownPrediction(db, ANA, group.id, 'm-final-single')).toMatchObject({
+    classified_points: 5,
+  })
+  expect(
+    sqlite
+      .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
+      .get(group.id, ANA.id),
+  ).toMatchObject({ total_points: 8 })
 })

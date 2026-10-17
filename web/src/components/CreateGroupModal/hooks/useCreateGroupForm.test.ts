@@ -188,6 +188,7 @@ describe('useCreateGroupForm', () => {
           points_exact: 3,
           points_winner: 1,
           points_penalty: 1,
+          points_classified: 0,
           predictions_visibility: 'hidden',
         }),
       }),

@@ -275,7 +275,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
         round: 'FIRST_STAGE',
         round_label: '1ª fase',
         group_name: null,
-        decides_on_penalties: true,
+        decides_on_penalties: false,
       },
       {
         home: 'Fluminense',
@@ -287,7 +287,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
         round: 'LAST_16',
         round_label: 'Oitavas de final',
         group_name: null,
-        decides_on_penalties: true,
+        decides_on_penalties: false,
       },
       {
         home: 'Independiente Rivadavia',
@@ -323,7 +323,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
         round: 'SEMI_FINALS',
         round_label: 'Semifinais',
         group_name: null,
-        decides_on_penalties: true,
+        decides_on_penalties: false,
       },
     ])
 
@@ -385,7 +385,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       ).status,
     ).toBe(200)
 
-    // No mata-mata com LAST_16 em penalty_phases, o empate exige predicted_penalty_winner.
+    // Sem palpite da ida, a volta não tem agregado previsto nem vencedor de pênaltis.
     expect(
       (
         await request('/predictions', 'pilot', {
@@ -398,7 +398,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
           }),
         })
       ).status,
-    ).toBe(400)
+    ).toBe(200)
 
     expect(
       (
@@ -560,9 +560,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
     }
 
     // 6. Confere também pollActiveMatches quando um jogo da Libertadores cai na janela ativa sem scored_at.
-    sqlite
-      .prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401912523'`)
-      .run()
+    sqlite.prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401912523'`).run()
     vi.useFakeTimers()
     vi.setSystemTime(new Date(Date.parse('2026-10-16T00:30:00Z') + 130 * 60 * 1000))
     await pollActiveMatches(db, 'unused-key')
@@ -582,7 +580,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
     expect(members).toEqual([
       expect.objectContaining({
         user_id: 'u-pilot',
-        total_points: 13,
+        total_points: 12,
         exact_hits: 4,
       }),
     ])
@@ -593,7 +591,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       predictions: Array<{ match_id: string; points_awarded: number; penalty_points: number }>
     }
     const r16Pred = predictions.find((p) => p.match_id === round16Leg2.id)
-    expect(r16Pred).toMatchObject({ points_awarded: 3, penalty_points: 1 })
+    expect(r16Pred).toMatchObject({ points_awarded: 3, penalty_points: 0 })
   })
 
   it('re-sync e fallback não duplicam competição, time ou jogo entre os providers espn e football-data', async () => {
@@ -654,14 +652,18 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
     expect(updatedMap.get(LIBERTADORES_ID)).toBe(0)
 
     const compCounts = sqlite
-      .prepare(`SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`)
+      .prepare(
+        `SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`,
+      )
       .all()
     expect(compCounts).toEqual([
       { provider: 'espn', total: espnTotalBefore.total },
       { provider: 'football-data', total: 3 }, // Champions, Premier League da migration 0018 e Brasileirão
     ])
     const libertaSlugCount = sqlite
-      .prepare(`SELECT COUNT(*) AS total FROM competitions WHERE slug = 'conmebol-libertadores-2026'`)
+      .prepare(
+        `SELECT COUNT(*) AS total FROM competitions WHERE slug = 'conmebol-libertadores-2026'`,
+      )
       .get() as { total: number }
     expect(libertaSlugCount.total).toBe(1)
 
@@ -674,7 +676,9 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
     ])
 
     const matchCounts = sqlite
-      .prepare(`SELECT provider, COUNT(*) AS total FROM matches GROUP BY provider ORDER BY provider`)
+      .prepare(
+        `SELECT provider, COUNT(*) AS total FROM matches GROUP BY provider ORDER BY provider`,
+      )
       .all()
     expect(matchCounts).toEqual([
       { provider: 'espn', total: 6 },
@@ -713,7 +717,9 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
           id: 'ev-missing-teams',
           date: '2026-05-01T20:00Z',
           season: { year: 2026, slug: 'final' },
-          competitions: [{ competitors: [{ homeAway: 'home', team: { id: '1', displayName: 'A' } }] }],
+          competitions: [
+            { competitors: [{ homeAway: 'home', team: { id: '1', displayName: 'A' } }] },
+          ],
         },
       ],
     })
@@ -814,7 +820,9 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
     expect(edgeRes.teams).toBe(2)
 
     const teams = sqlite
-      .prepare(`SELECT external_id, short_name FROM teams WHERE provider = 'espn' ORDER BY external_id`)
+      .prepare(
+        `SELECT external_id, short_name FROM teams WHERE provider = 'espn' ORDER BY external_id`,
+      )
       .all()
     expect(teams).toEqual([
       { external_id: 't1', short_name: 'BOT' },

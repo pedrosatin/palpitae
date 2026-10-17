@@ -267,7 +267,7 @@ describe('Copa do Brasil em piloto', () => {
         round: 'FIFTH_ROUND',
         round_label: '5ª fase',
         group_name: null,
-        decides_on_penalties: true,
+        decides_on_penalties: false,
       },
       {
         home: 'Vasco da Gama',
@@ -279,7 +279,7 @@ describe('Copa do Brasil em piloto', () => {
         round: 'LAST_16',
         round_label: 'Oitavas de final',
         group_name: null,
-        decides_on_penalties: true,
+        decides_on_penalties: false,
       },
       {
         home: 'Fluminense',
@@ -303,7 +303,7 @@ describe('Copa do Brasil em piloto', () => {
         round: 'SEMI_FINALS',
         round_label: 'Semifinais',
         group_name: null,
-        decides_on_penalties: true,
+        decides_on_penalties: false,
       },
     ])
 
@@ -590,9 +590,7 @@ describe('Copa do Brasil em piloto', () => {
     expect(dbMatches[5].scored_at).toBeNull()
 
     // 6. Confere também pollActiveMatches quando um jogo da Copa do Brasil cai na janela ativa sem scored_at.
-    sqlite
-      .prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401874095'`)
-      .run()
+    sqlite.prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401874095'`).run()
     vi.useFakeTimers()
     vi.setSystemTime(new Date(Date.parse('2026-08-06T00:30:00Z') + 130 * 60 * 1000))
     await pollActiveMatches(db, 'unused-key')
@@ -686,7 +684,9 @@ describe('Copa do Brasil em piloto', () => {
     expect(updatedMap.get(COPA_DO_BRASIL_ID)).toBe(0)
 
     const compCounts = sqlite
-      .prepare(`SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`)
+      .prepare(
+        `SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`,
+      )
       .all()
     expect(compCounts).toEqual([
       { provider: 'espn', total: espnTotalBefore.total },
@@ -706,7 +706,9 @@ describe('Copa do Brasil em piloto', () => {
     ])
 
     const matchCounts = sqlite
-      .prepare(`SELECT provider, COUNT(*) AS total FROM matches GROUP BY provider ORDER BY provider`)
+      .prepare(
+        `SELECT provider, COUNT(*) AS total FROM matches GROUP BY provider ORDER BY provider`,
+      )
       .all()
     expect(matchCounts).toEqual([
       { provider: 'espn', total: 6 },

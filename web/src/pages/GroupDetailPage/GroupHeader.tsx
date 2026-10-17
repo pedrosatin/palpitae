@@ -82,7 +82,7 @@ function GroupMenu({
                   onOpenRename()
                 }}
               >
-                Editar nome
+                Configurações do grupo
               </button>
               <button
                 className={styles.menuItem}
