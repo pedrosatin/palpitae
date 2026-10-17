@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess } from '../auth/permissions'
 import { logError, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
+import { isEspnPrimaryCompetition } from './espnSync'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 import { roundLabel } from './rounds'
 import { scoreUnprocessedMatches } from './scoring'
@@ -311,6 +312,29 @@ router.get('/', requireAuth, handleGetMatches)
  *
  * Requires authentication.
  */
+type SyncBody = {
+  competition?: string
+  season?: number
+  matchday?: number
+  dates?: unknown
+}
+
+function isValidDatesList(dates: unknown): dates is string[] {
+  return (
+    Array.isArray(dates) &&
+    dates.every((d): d is string => typeof d === 'string' && /^\d{8}$/.test(d))
+  )
+}
+
+function validateSyncParams(body: SyncBody): string | null {
+  if (!body.competition || !body.season) return 'competition e season são obrigatórios'
+  if (typeof body.season !== 'number') return 'season deve ser um número'
+  if (body.dates !== undefined && !isValidDatesList(body.dates)) {
+    return 'dates deve ser uma lista de datas YYYYMMDD'
+  }
+  return null
+}
+
 router.post('/sync', requireAuth, async (c) => {
   // Ferramenta manual de seed/backfill — só o admin. A atualização normal de
   // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
@@ -322,25 +346,25 @@ router.post('/sync', requireAuth, async (c) => {
     return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
   }
 
-  let body: { competition?: string; season?: number; matchday?: number }
+  let body: SyncBody
   try {
     body = await c.req.json()
   } catch {
     return c.json({ error: 'Body JSON inválido' }, 400)
   }
 
-  const { competition, season, matchday } = body
-
-  if (!competition || !season) {
-    return c.json({ error: 'competition e season são obrigatórios' }, 400)
+  const validationError = validateSyncParams(body)
+  if (validationError) {
+    return c.json({ error: validationError }, 400)
   }
 
-  if (typeof season !== 'number') {
-    return c.json({ error: 'season deve ser um número' }, 400)
-  }
+  const competition = body.competition as string
+  const season = body.season as number
+  const { matchday } = body
+  const dates = body.dates as string[] | undefined
 
   const apiKey = c.env.FOOTBALL_API_KEY
-  if (!apiKey) {
+  if (!isEspnPrimaryCompetition(competition) && !apiKey) {
     return c.json({ error: 'FOOTBALL_API_KEY não configurada no servidor' }, 500)
   }
 
@@ -349,6 +373,7 @@ router.post('/sync', requireAuth, async (c) => {
       competitionCode: competition,
       season,
       matchday,
+      dates,
       apiKey,
       db: c.env.DB,
     })
