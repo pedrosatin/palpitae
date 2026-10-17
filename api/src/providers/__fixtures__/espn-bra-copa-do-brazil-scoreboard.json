@@ -1,0 +1,810 @@
+{
+ "leagues": [
+  {
+   "id": "8306",
+   "uid": "s:600~l:8306",
+   "name": "Copa do Brasil",
+   "abbreviation": "Copa do Brazil",
+   "midsizeName": "BRA.COPA_DO_BRAZIL",
+   "slug": "bra.copa_do_brazil",
+   "season": {
+    "year": 2026,
+    "startDate": "2026-01-01T05:00Z",
+    "endDate": "2026-12-31T05:00Z",
+    "displayName": "2026 Copa do Brasil",
+    "type": {
+     "id": "8",
+     "type": 14066,
+     "name": "Semifinals",
+     "abbreviation": "Semifinals"
+    }
+   },
+   "calendarType": "list",
+   "calendarStartDate": "2026-01-01T05:00Z",
+   "calendarEndDate": "2026-12-31T05:00Z",
+   "calendar": [
+    {
+     "label": "Copa do Brasil",
+     "startDate": "2026-01-01T05:00Z",
+     "endDate": "2026-12-31T05:00Z",
+     "entries": [
+      {
+       "label": "First Round",
+       "detail": "Feb 17-19",
+       "value": "1",
+       "startDate": "2026-01-01T08:00Z",
+       "endDate": "2026-02-20T07:59Z"
+      },
+      {
+       "label": "Second Round",
+       "detail": "Feb 24-Mar 5",
+       "value": "2",
+       "startDate": "2026-02-20T08:00Z",
+       "endDate": "2026-03-06T07:59Z"
+      },
+      {
+       "label": "Third Round",
+       "detail": "Mar 10-12",
+       "value": "3",
+       "startDate": "2026-03-06T08:00Z",
+       "endDate": "2026-03-14T06:59Z"
+      },
+      {
+       "label": "Fourth Round",
+       "detail": "Mar 17-19",
+       "value": "4",
+       "startDate": "2026-03-14T07:00Z",
+       "endDate": "2026-03-21T06:59Z"
+      },
+      {
+       "label": "Fifth Round",
+       "detail": "Apr 21-May 14",
+       "value": "5",
+       "startDate": "2026-03-21T07:00Z",
+       "endDate": "2026-05-16T06:59Z"
+      },
+      {
+       "label": "Rd of 16",
+       "detail": "Aug 1-6",
+       "value": "6",
+       "startDate": "2026-05-16T07:00Z",
+       "endDate": "2026-08-08T06:59Z"
+      },
+      {
+       "label": "Quarterfinals",
+       "detail": "Aug 25-Sep 3",
+       "value": "7",
+       "startDate": "2026-08-08T07:00Z",
+       "endDate": "2026-09-05T06:59Z"
+      },
+      {
+       "label": "Semifinals",
+       "detail": "Nov 1-8",
+       "value": "8",
+       "startDate": "2026-09-05T07:00Z",
+       "endDate": "2026-11-10T07:59Z"
+      },
+      {
+       "label": "Final",
+       "detail": "Dec 6",
+       "value": "9",
+       "startDate": "2026-11-10T08:00Z",
+       "endDate": "2027-01-01T07:59Z"
+      }
+     ]
+    }
+   ],
+   "logos": [
+    {
+     "href": "https://a.espncdn.com/i/leaguelogos/soccer/500/528.png",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "default"
+     ],
+     "lastUpdated": "2019-05-08T16:07Z"
+    }
+   ]
+  }
+ ],
+ "events": [
+  {
+   "id": "401858546",
+   "uid": "s:600~l:8306~e:401858546",
+   "date": "2026-02-17T23:00Z",
+   "name": "Ferroviaria at Sampaio Correa RJ",
+   "shortName": "FER @ SCFE",
+   "season": {
+    "year": 2026,
+    "type": 14065,
+    "slug": "first-round"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'",
+    "period": 5,
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401858546",
+     "uid": "s:600~l:8306~e:401858546~c:401858546",
+     "date": "2026-02-17T23:00Z",
+     "startDate": "2026-02-17T23:00Z",
+     "altGameNote": "Copa Do Brazil, First Round",
+     "notes": [
+      {
+       "text": "Ferroviaria advance 3-1 on penalties",
+       "headline": "Ferroviaria advance 3-1 on penalties",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'",
+      "period": 5,
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      }
+     },
+     "venue": {
+      "id": "8607",
+      "fullName": "Estádio Lourival Gomes de Almeida",
+      "address": {
+       "city": "Rio de Janeiro",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "id": "20855",
+       "uid": "s:600~t:20855",
+       "homeAway": "home",
+       "winner": false,
+       "score": "1",
+       "shootoutScore": 1,
+       "team": {
+        "id": "20855",
+        "uid": "s:600~t:20855",
+        "abbreviation": "SCFE",
+        "displayName": "Sampaio Correa RJ",
+        "shortDisplayName": "Sampaio RJ",
+        "name": "Sampaio Correa RJ",
+        "location": "Sampaio Correa RJ",
+        "logo": ""
+       }
+      },
+      {
+       "id": "17326",
+       "uid": "s:600~t:17326",
+       "homeAway": "away",
+       "winner": true,
+       "score": "1",
+       "shootoutScore": 3,
+       "team": {
+        "id": "17326",
+        "uid": "s:600~t:17326",
+        "abbreviation": "FER",
+        "displayName": "Ferroviaria",
+        "shortDisplayName": "Ferroviaria",
+        "name": "Ferroviaria",
+        "location": "Ferroviaria",
+        "logo": ""
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401862881",
+   "uid": "s:600~l:8306~e:401862881",
+   "date": "2026-03-10T22:00Z",
+   "name": "Avaí at Portuguesa",
+   "shortName": "AVA @ PTG",
+   "season": {
+    "year": 2026,
+    "type": 14063,
+    "slug": "third-round"
+   },
+   "status": {
+    "clock": 7200.0,
+    "displayClock": "120'",
+    "period": 5,
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401862881",
+     "uid": "s:600~l:8306~e:401862881~c:401862881",
+     "date": "2026-03-10T22:00Z",
+     "startDate": "2026-03-10T22:00Z",
+     "altGameNote": "Copa Do Brazil, Third Round",
+     "notes": [
+      {
+       "text": "Portuguesa advance 4-1 on penalties",
+       "headline": "Portuguesa advance 4-1 on penalties",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 7200.0,
+      "displayClock": "120'",
+      "period": 5,
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      }
+     },
+     "venue": {
+      "id": "5482",
+      "fullName": "Estádio do Canindé",
+      "address": {
+       "city": "Sao Paulo",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "id": "4773",
+       "uid": "s:600~t:4773",
+       "homeAway": "home",
+       "winner": true,
+       "score": "1",
+       "shootoutScore": 4,
+       "team": {
+        "id": "4773",
+        "uid": "s:600~t:4773",
+        "abbreviation": "PTG",
+        "displayName": "Portuguesa",
+        "shortDisplayName": "Portuguesa",
+        "name": "Portuguesa",
+        "location": "Portuguesa",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/4773.png"
+       }
+      },
+      {
+       "id": "9966",
+       "uid": "s:600~t:9966",
+       "homeAway": "away",
+       "winner": false,
+       "score": "1",
+       "shootoutScore": 1,
+       "team": {
+        "id": "9966",
+        "uid": "s:600~t:9966",
+        "abbreviation": "AVA",
+        "displayName": "Avaí",
+        "shortDisplayName": "Avaí",
+        "name": "Avaí",
+        "location": "Avaí",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9966.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401866345",
+   "uid": "s:600~l:8306~e:401866345",
+   "date": "2026-04-21T20:00Z",
+   "name": "Chapecoense at Botafogo",
+   "shortName": "CHA @ BOT",
+   "season": {
+    "year": 2026,
+    "type": 14061,
+    "slug": "fifth-round"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+8'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401866345",
+     "uid": "s:600~l:8306~e:401866345~c:401866345",
+     "date": "2026-04-21T20:00Z",
+     "startDate": "2026-04-21T20:00Z",
+     "altGameNote": "Copa Do Brazil, Fifth Round",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "6086",
+        "uid": "s:600~t:6086",
+        "winner": false
+       },
+       {
+        "id": "9318",
+        "uid": "s:600~t:9318",
+        "winner": false
+       }
+      ],
+      "completed": false,
+      "title": "Fifth Round",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+8'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "10707",
+      "fullName": "Joao Havelange Stadium",
+      "address": {
+       "city": "Rio de Janeiro",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "id": "6086",
+       "uid": "s:600~t:6086",
+       "homeAway": "home",
+       "winner": true,
+       "score": "1",
+       "team": {
+        "id": "6086",
+        "uid": "s:600~t:6086",
+        "abbreviation": "BOT",
+        "displayName": "Botafogo",
+        "shortDisplayName": "Botafogo",
+        "name": "Botafogo",
+        "location": "Botafogo",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/6086.png"
+       }
+      },
+      {
+       "id": "9318",
+       "uid": "s:600~t:9318",
+       "homeAway": "away",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "9318",
+        "uid": "s:600~t:9318",
+        "abbreviation": "CHA",
+        "displayName": "Chapecoense",
+        "shortDisplayName": "Chapecoense",
+        "name": "Chapecoense",
+        "location": "Chapecoense",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9318.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401873956",
+   "uid": "s:600~l:8306~e:401873956",
+   "date": "2026-08-01T20:30Z",
+   "name": "Fluminense at Vasco da Gama",
+   "shortName": "FLU @ VAS",
+   "season": {
+    "year": 2026,
+    "type": 14060,
+    "slug": "round-of-16"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+5'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401873956",
+     "uid": "s:600~l:8306~e:401873956~c:401873956",
+     "date": "2026-08-01T20:30Z",
+     "startDate": "2026-08-01T20:30Z",
+     "altGameNote": "Copa Do Brazil, Round of 16",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "3454",
+        "uid": "s:600~t:3454",
+        "winner": false
+       },
+       {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "winner": false
+       }
+      ],
+      "completed": false,
+      "title": "Round of 16",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+5'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5120",
+      "fullName": "Estadio do Maracana",
+      "address": {
+       "city": "Rio de Janeiro",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "id": "3454",
+       "uid": "s:600~t:3454",
+       "homeAway": "home",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "3454",
+        "uid": "s:600~t:3454",
+        "abbreviation": "VAS",
+        "displayName": "Vasco da Gama",
+        "shortDisplayName": "Vasco",
+        "name": "Vasco da Gama",
+        "location": "Vasco da Gama",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3454.png"
+       }
+      },
+      {
+       "id": "3445",
+       "uid": "s:600~t:3445",
+       "homeAway": "away",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "abbreviation": "FLU",
+        "displayName": "Fluminense",
+        "shortDisplayName": "Fluminense",
+        "name": "Fluminense",
+        "location": "Fluminense",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3445.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401874095",
+   "uid": "s:600~l:8306~e:401874095",
+   "date": "2026-08-06T00:30Z",
+   "name": "Vasco da Gama at Fluminense",
+   "shortName": "VAS @ FLU",
+   "season": {
+    "year": 2026,
+    "type": 14060,
+    "slug": "round-of-16"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+11'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401874095",
+     "uid": "s:600~l:8306~e:401874095~c:401874095",
+     "date": "2026-08-06T00:30Z",
+     "startDate": "2026-08-06T00:30Z",
+     "altGameNote": "Copa Do Brazil, Round of 16",
+     "notes": [
+      {
+       "text": "2nd Leg - Vasco da Gama win 3-1 on aggregate",
+       "headline": "2nd Leg - Vasco da Gama win 3-1 on aggregate",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "winner": false,
+        "aggregateScore": 1.0
+       },
+       {
+        "id": "3454",
+        "uid": "s:600~t:3454",
+        "winner": true,
+        "aggregateScore": 3.0
+       }
+      ],
+      "completed": true,
+      "title": "Round of 16",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+11'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5120",
+      "fullName": "Estadio do Maracana",
+      "address": {
+       "city": "Rio de Janeiro",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "id": "3445",
+       "uid": "s:600~t:3445",
+       "homeAway": "home",
+       "winner": false,
+       "score": "1",
+       "aggregateScore": 1.0,
+       "team": {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "abbreviation": "FLU",
+        "displayName": "Fluminense",
+        "shortDisplayName": "Fluminense",
+        "name": "Fluminense",
+        "location": "Fluminense",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3445.png"
+       }
+      },
+      {
+       "id": "3454",
+       "uid": "s:600~t:3454",
+       "homeAway": "away",
+       "winner": true,
+       "score": "3",
+       "aggregateScore": 3.0,
+       "team": {
+        "id": "3454",
+        "uid": "s:600~t:3454",
+        "abbreviation": "VAS",
+        "displayName": "Vasco da Gama",
+        "shortDisplayName": "Vasco",
+        "name": "Vasco da Gama",
+        "location": "Vasco da Gama",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3454.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401913105",
+   "uid": "s:600~l:8306~e:401913105",
+   "date": "2026-11-01T19:00Z",
+   "name": "Vasco da Gama at Palmeiras",
+   "shortName": "VAS @ PAL",
+   "season": {
+    "year": 2026,
+    "type": 14066,
+    "slug": "semifinals"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sun, November 1st at 2:00 PM EST",
+     "shortDetail": "Scheduled"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401913105",
+     "uid": "s:600~l:8306~e:401913105~c:401913105",
+     "date": "2026-11-01T19:00Z",
+     "startDate": "2026-11-01T19:00Z",
+     "altGameNote": "Copa Do Brazil, Semifinals",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "2029",
+        "uid": "s:600~t:2029",
+        "winner": false
+       },
+       {
+        "id": "3454",
+        "uid": "s:600~t:3454",
+        "winner": false
+       }
+      ],
+      "completed": false,
+      "title": "Semifinals",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0'",
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Sun, November 1st at 2:00 PM EST",
+       "shortDetail": "Scheduled"
+      }
+     },
+     "venue": {
+      "id": "6053",
+      "fullName": "Allianz Parque",
+      "address": {
+       "city": "Sao Paulo",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "id": "2029",
+       "uid": "s:600~t:2029",
+       "homeAway": "home",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "2029",
+        "uid": "s:600~t:2029",
+        "abbreviation": "PAL",
+        "displayName": "Palmeiras",
+        "shortDisplayName": "Palmeiras",
+        "name": "Palmeiras",
+        "location": "Palmeiras",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/2029.png"
+       }
+      },
+      {
+       "id": "3454",
+       "uid": "s:600~t:3454",
+       "homeAway": "away",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "3454",
+        "uid": "s:600~t:3454",
+        "abbreviation": "VAS",
+        "displayName": "Vasco da Gama",
+        "shortDisplayName": "Vasco",
+        "name": "Vasco da Gama",
+        "location": "Vasco da Gama",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3454.png"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
