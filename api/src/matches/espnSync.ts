@@ -126,11 +126,18 @@ function parseNonNegativeInt(raw: string | undefined): number | null {
   return Number(raw)
 }
 
+function isEspnPlaceholder(value: unknown): boolean {
+  return typeof value === 'string' && /^TBD(?:\s+(?:Home|Away))?$/i.test(value.trim())
+}
+
 function toValidCompetitor(comp: EspnCompetitor | undefined): ValidEspnCompetitor | null {
   const team: EspnCompetitorTeam | undefined = comp?.team
   const id = typeof team?.id === 'string' ? team.id.trim() : ''
   const displayName = typeof team?.displayName === 'string' ? team.displayName.trim() : ''
   if (!id || !displayName) return null
+  if ([displayName, team?.shortDisplayName, team?.abbreviation].some(isEspnPlaceholder)) {
+    return null
+  }
   return {
     winner: comp?.winner,
     score: comp?.score,
