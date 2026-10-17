@@ -1,0 +1,829 @@
+{
+ "leagues": [
+  {
+   "id": "783",
+   "uid": "s:600~l:783",
+   "name": "CONMEBOL Libertadores",
+   "abbreviation": "CONMEBOL Libertadores",
+   "midsizeName": "CONMEBOL.LIBERTADORES",
+   "slug": "conmebol.libertadores",
+   "season": {
+    "year": 2026,
+    "startDate": "2026-01-01T05:00Z",
+    "endDate": "2027-01-01T04:59Z",
+    "displayName": "2026 CONMEBOL Libertadores",
+    "type": {
+     "id": "7",
+     "type": 13922,
+     "name": "Semifinals",
+     "abbreviation": "Semifinals"
+    }
+   },
+   "calendarType": "list",
+   "calendarStartDate": "2026-01-01T05:00Z",
+   "calendarEndDate": "2027-01-01T04:59Z",
+   "calendar": [
+    {
+     "label": "CONMEBOL Libertadores",
+     "startDate": "2026-01-01T05:00Z",
+     "endDate": "2027-01-01T04:59Z",
+     "entries": [
+      {
+       "label": "First Stage",
+       "detail": "Feb 3-12",
+       "value": "1",
+       "startDate": "2026-01-01T08:00Z",
+       "endDate": "2026-02-14T07:59Z"
+      },
+      {
+       "label": "Second Stage",
+       "detail": "Feb 17-26",
+       "value": "2",
+       "startDate": "2026-02-14T08:00Z",
+       "endDate": "2026-02-28T07:59Z"
+      },
+      {
+       "label": "Third Stage",
+       "detail": "Mar 3-12",
+       "value": "3",
+       "startDate": "2026-02-28T08:00Z",
+       "endDate": "2026-03-14T06:59Z"
+      },
+      {
+       "label": "Group",
+       "detail": "Apr 7-May 28",
+       "value": "4",
+       "startDate": "2026-03-14T07:00Z",
+       "endDate": "2026-05-30T06:59Z"
+      },
+      {
+       "label": "Rd of 16",
+       "detail": "Aug 11-25",
+       "value": "5",
+       "startDate": "2026-05-30T07:00Z",
+       "endDate": "2026-08-22T06:59Z"
+      },
+      {
+       "label": "Quarterfinals",
+       "detail": "Sep 8-17",
+       "value": "6",
+       "startDate": "2026-08-22T07:00Z",
+       "endDate": "2026-09-19T06:59Z"
+      },
+      {
+       "label": "Semifinals",
+       "detail": "Oct 14-22",
+       "value": "7",
+       "startDate": "2026-09-19T07:00Z",
+       "endDate": "2026-10-24T06:59Z"
+      },
+      {
+       "label": "Final",
+       "detail": "Nov 28",
+       "value": "8",
+       "startDate": "2026-10-24T07:00Z",
+       "endDate": "2027-01-01T07:59Z"
+      }
+     ]
+    }
+   ],
+   "logos": [
+    {
+     "href": "https://a.espncdn.com/i/leaguelogos/soccer/500/58.png",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "default"
+     ],
+     "lastUpdated": "2021-08-12T20:17Z"
+    }
+   ]
+  }
+ ],
+ "events": [
+  {
+   "id": "401842610",
+   "uid": "s:600~l:783~e:401842610",
+   "date": "2026-02-04T00:30Z",
+   "name": "Deportivo Táchira at The Strongest",
+   "shortName": "TAC @ STR",
+   "season": {
+    "year": 2026,
+    "type": 13928,
+    "slug": "first-stage"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+7'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401842610",
+     "uid": "s:600~l:783~e:401842610~c:401842610",
+     "date": "2026-02-04T00:30Z",
+     "startDate": "2026-02-04T00:30Z",
+     "altGameNote": "CONMEBOL Libertadores, First Stage",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "2687",
+        "uid": "s:600~t:2687",
+        "winner": false
+       },
+       {
+        "id": "4818",
+        "uid": "s:600~t:4818",
+        "winner": false
+       }
+      ],
+      "completed": false,
+      "title": "First Stage",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+7'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "1913",
+      "fullName": "Estadio Hernando Siles",
+      "address": {
+       "city": "La Paz",
+       "country": "Bolivia"
+      }
+     },
+     "competitors": [
+      {
+       "id": "2687",
+       "uid": "s:600~t:2687",
+       "homeAway": "home",
+       "winner": true,
+       "score": "2",
+       "team": {
+        "id": "2687",
+        "uid": "s:600~t:2687",
+        "abbreviation": "STR",
+        "displayName": "The Strongest",
+        "shortDisplayName": "Strongest",
+        "name": "The Strongest",
+        "location": "The Strongest",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/2687.png"
+       }
+      },
+      {
+       "id": "4818",
+       "uid": "s:600~t:4818",
+       "homeAway": "away",
+       "winner": false,
+       "score": "1",
+       "team": {
+        "id": "4818",
+        "uid": "s:600~t:4818",
+        "abbreviation": "TAC",
+        "displayName": "Deportivo Táchira",
+        "shortDisplayName": "Táchira",
+        "name": "Deportivo Táchira",
+        "location": "Deportivo Táchira",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/4818.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401865480",
+   "uid": "s:600~l:783~e:401865480",
+   "date": "2026-04-07T22:00Z",
+   "name": "Fluminense at Deportivo La Guaira",
+   "shortName": "FLU @ LGA",
+   "season": {
+    "year": 2026,
+    "type": 13925,
+    "slug": "group-stage"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+6'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401865480",
+     "uid": "s:600~l:783~e:401865480~c:401865480",
+     "date": "2026-04-07T22:00Z",
+     "startDate": "2026-04-07T22:00Z",
+     "altGameNote": "CONMEBOL Libertadores, Group C",
+     "notes": [],
+     "group": {
+      "groupId": "3",
+      "name": "Group C",
+      "abbreviation": "Group C"
+     },
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5413",
+      "fullName": "Estadio Olímpico de la UCV",
+      "address": {
+       "city": "Caracas",
+       "country": "Venezuela"
+      }
+     },
+     "competitors": [
+      {
+       "id": "17090",
+       "uid": "s:600~t:17090",
+       "homeAway": "home",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "17090",
+        "uid": "s:600~t:17090",
+        "abbreviation": "LGA",
+        "displayName": "Deportivo La Guaira",
+        "shortDisplayName": "La Guaira",
+        "name": "Deportivo La Guaira",
+        "location": "Deportivo La Guaira",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/17090.png"
+       }
+      },
+      {
+       "id": "3445",
+       "uid": "s:600~t:3445",
+       "homeAway": "away",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "abbreviation": "FLU",
+        "displayName": "Fluminense",
+        "shortDisplayName": "Fluminense",
+        "name": "Fluminense",
+        "location": "Fluminense",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3445.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401874070",
+   "uid": "s:600~l:783~e:401874070",
+   "date": "2026-08-11T22:00Z",
+   "name": "Independiente Rivadavia at Fluminense",
+   "shortName": "RIV @ FLU",
+   "season": {
+    "year": 2026,
+    "type": 13924,
+    "slug": "round-of-16"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+6'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401874070",
+     "uid": "s:600~l:783~e:401874070~c:401874070",
+     "date": "2026-08-11T22:00Z",
+     "startDate": "2026-08-11T22:00Z",
+     "altGameNote": "CONMEBOL Libertadores, Round of 16",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "winner": false
+       },
+       {
+        "id": "9744",
+        "uid": "s:600~t:9744",
+        "winner": false
+       }
+      ],
+      "completed": false,
+      "title": "Round of 16",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5120",
+      "fullName": "Estadio do Maracana",
+      "address": {
+       "city": "Rio de Janeiro",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "id": "3445",
+       "uid": "s:600~t:3445",
+       "homeAway": "home",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "abbreviation": "FLU",
+        "displayName": "Fluminense",
+        "shortDisplayName": "Fluminense",
+        "name": "Fluminense",
+        "location": "Fluminense",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3445.png"
+       }
+      },
+      {
+       "id": "9744",
+       "uid": "s:600~t:9744",
+       "homeAway": "away",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "9744",
+        "uid": "s:600~t:9744",
+        "abbreviation": "RIV",
+        "displayName": "Independiente Rivadavia",
+        "shortDisplayName": "Ind. Rivadavia",
+        "name": "Independiente Rivadavia",
+        "location": "Independiente Rivadavia",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9744.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401874156",
+   "uid": "s:600~l:783~e:401874156",
+   "date": "2026-08-18T22:00Z",
+   "name": "Fluminense at Independiente Rivadavia",
+   "shortName": "FLU @ RIV",
+   "season": {
+    "year": 2026,
+    "type": 13924,
+    "slug": "round-of-16"
+   },
+   "status": {
+    "clock": 6000.0,
+    "displayClock": "100'",
+    "period": 5,
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401874156",
+     "uid": "s:600~l:783~e:401874156~c:401874156",
+     "date": "2026-08-18T22:00Z",
+     "startDate": "2026-08-18T22:00Z",
+     "altGameNote": "CONMEBOL Libertadores, Round of 16",
+     "notes": [
+      {
+       "text": "2nd Leg - Tied on aggregate - FLU win 5-4 on penalties",
+       "headline": "2nd Leg - Tied on aggregate - FLU win 5-4 on penalties",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "9744",
+        "uid": "s:600~t:9744",
+        "winner": false,
+        "aggregateScore": 1.0
+       },
+       {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "winner": true,
+        "aggregateScore": 1.0
+       }
+      ],
+      "completed": true,
+      "title": "Round of 16",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 6000.0,
+      "displayClock": "100'",
+      "period": 5,
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      }
+     },
+     "venue": {
+      "id": "2782",
+      "fullName": "Malvinas Argentinas (Mendoza)",
+      "address": {
+       "city": "Mendoza",
+       "country": "Argentina"
+      }
+     },
+     "competitors": [
+      {
+       "id": "9744",
+       "uid": "s:600~t:9744",
+       "homeAway": "home",
+       "winner": false,
+       "score": "1",
+       "aggregateScore": 1.0,
+       "shootoutScore": 4,
+       "team": {
+        "id": "9744",
+        "uid": "s:600~t:9744",
+        "abbreviation": "RIV",
+        "displayName": "Independiente Rivadavia",
+        "shortDisplayName": "Ind. Rivadavia",
+        "name": "Independiente Rivadavia",
+        "location": "Independiente Rivadavia",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9744.png"
+       }
+      },
+      {
+       "id": "3445",
+       "uid": "s:600~t:3445",
+       "homeAway": "away",
+       "winner": true,
+       "score": "1",
+       "aggregateScore": 1.0,
+       "shootoutScore": 5,
+       "team": {
+        "id": "3445",
+        "uid": "s:600~t:3445",
+        "abbreviation": "FLU",
+        "displayName": "Fluminense",
+        "shortDisplayName": "Fluminense",
+        "name": "Fluminense",
+        "location": "Fluminense",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3445.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401912525",
+   "uid": "s:600~l:783~e:401912525",
+   "date": "2026-09-16T22:00Z",
+   "name": "Palmeiras at Liga de Quito",
+   "shortName": "PAL @ LDU",
+   "season": {
+    "year": 2026,
+    "type": 13923,
+    "slug": "quarterfinals"
+   },
+   "status": {
+    "clock": 5760.0,
+    "displayClock": "96'",
+    "period": 5,
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401912525",
+     "uid": "s:600~l:783~e:401912525~c:401912525",
+     "date": "2026-09-16T22:00Z",
+     "startDate": "2026-09-16T22:00Z",
+     "altGameNote": "CONMEBOL Libertadores, Quarterfinals",
+     "notes": [
+      {
+       "text": "2nd Leg - Tied on aggregate - PAL win 4-3 on penalties",
+       "headline": "2nd Leg - Tied on aggregate - PAL win 4-3 on penalties",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "4816",
+        "uid": "s:600~t:4816",
+        "winner": false,
+        "aggregateScore": 3.0
+       },
+       {
+        "id": "2029",
+        "uid": "s:600~t:2029",
+        "winner": true,
+        "aggregateScore": 3.0
+       }
+      ],
+      "completed": true,
+      "title": "Quarterfinals",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 5760.0,
+      "displayClock": "96'",
+      "period": 5,
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      }
+     },
+     "venue": {
+      "id": "5510",
+      "fullName": "Rodrigo Paz Delgado",
+      "address": {
+       "city": "Quito",
+       "country": "Ecuador"
+      }
+     },
+     "competitors": [
+      {
+       "id": "4816",
+       "uid": "s:600~t:4816",
+       "homeAway": "home",
+       "winner": false,
+       "score": "3",
+       "aggregateScore": 3.0,
+       "shootoutScore": 3,
+       "team": {
+        "id": "4816",
+        "uid": "s:600~t:4816",
+        "abbreviation": "LDU",
+        "displayName": "Liga de Quito",
+        "shortDisplayName": "LDU",
+        "name": "Liga de Quito",
+        "location": "Liga de Quito",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/4816.png"
+       }
+      },
+      {
+       "id": "2029",
+       "uid": "s:600~t:2029",
+       "homeAway": "away",
+       "winner": true,
+       "score": "2",
+       "aggregateScore": 3.0,
+       "shootoutScore": 4,
+       "team": {
+        "id": "2029",
+        "uid": "s:600~t:2029",
+        "abbreviation": "PAL",
+        "displayName": "Palmeiras",
+        "shortDisplayName": "Palmeiras",
+        "name": "Palmeiras",
+        "location": "Palmeiras",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/2029.png"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401912523",
+   "uid": "s:600~l:783~e:401912523",
+   "date": "2026-10-16T00:30Z",
+   "name": "Flamengo at Estudiantes de La Plata",
+   "shortName": "FLA @ EST",
+   "season": {
+    "year": 2026,
+    "type": 13922,
+    "slug": "semifinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+5'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {},
+   "competitions": [
+    {
+     "id": "401912523",
+     "uid": "s:600~l:783~e:401912523~c:401912523",
+     "date": "2026-10-16T00:30Z",
+     "startDate": "2026-10-16T00:30Z",
+     "altGameNote": "CONMEBOL Libertadores, Semifinals",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "competitors": [
+       {
+        "id": "8",
+        "uid": "s:600~t:8",
+        "winner": false
+       },
+       {
+        "id": "819",
+        "uid": "s:600~t:819",
+        "winner": false
+       }
+      ],
+      "completed": false,
+      "title": "Semifinals",
+      "totalCompetitions": 2
+     },
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+5'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "8296",
+      "fullName": "Estadio Jorge Luis Hirschi",
+      "address": {
+       "city": "La Plata",
+       "country": "Argentina"
+      }
+     },
+     "competitors": [
+      {
+       "id": "8",
+       "uid": "s:600~t:8",
+       "homeAway": "home",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "8",
+        "uid": "s:600~t:8",
+        "abbreviation": "EST",
+        "displayName": "Estudiantes de La Plata",
+        "shortDisplayName": "Estudiantes",
+        "name": "Estudiantes de La Plata",
+        "location": "Estudiantes de La Plata",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/8.png"
+       }
+      },
+      {
+       "id": "819",
+       "uid": "s:600~t:819",
+       "homeAway": "away",
+       "winner": false,
+       "score": "0",
+       "team": {
+        "id": "819",
+        "uid": "s:600~t:819",
+        "abbreviation": "FLA",
+        "displayName": "Flamengo",
+        "shortDisplayName": "Flamengo",
+        "name": "Flamengo",
+        "location": "Flamengo",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/819.png"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
