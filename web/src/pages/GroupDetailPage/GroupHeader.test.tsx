@@ -55,7 +55,9 @@ describe('GroupHeader', () => {
       const leaveBtn = screen.getByRole('menuitem', { name: 'Sair do grupo' })
       expect(leaveBtn).toBeInTheDocument()
 
-      expect(screen.queryByRole('menuitem', { name: 'Editar nome' })).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('menuitem', { name: 'Configurações do grupo' }),
+      ).not.toBeInTheDocument()
       expect(screen.queryByRole('menuitem', { name: 'Excluir grupo' })).not.toBeInTheDocument()
     })
 
@@ -92,7 +94,7 @@ describe('GroupHeader', () => {
       const menuBtn = screen.getByRole('button', { name: 'Opções do grupo' })
       await user.click(menuBtn)
 
-      expect(screen.getByRole('menuitem', { name: 'Editar nome' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Configurações do grupo' })).toBeInTheDocument()
       expect(screen.getByRole('menuitem', { name: 'Excluir grupo' })).toBeInTheDocument()
       expect(screen.queryByRole('menuitem', { name: 'Sair do grupo' })).not.toBeInTheDocument()
     })
@@ -106,7 +108,7 @@ describe('GroupHeader', () => {
       )
 
       await user.click(screen.getByRole('button', { name: 'Opções do grupo' }))
-      await user.click(screen.getByRole('menuitem', { name: 'Editar nome' }))
+      await user.click(screen.getByRole('menuitem', { name: 'Configurações do grupo' }))
       expect(onOpenRename).toHaveBeenCalledTimes(1)
 
       await user.click(screen.getByRole('button', { name: 'Opções do grupo' }))

@@ -125,7 +125,8 @@ export default function ScoringRulesField({
             />
           </div>
           <p className={styles.penaltyHint}>
-            Pontos extras por acertar quem vence nos pênaltis num palpite de empate. 0 desliga.
+            Pontos extras por acertar quem vence nos pênaltis com empate no placar previsto ou no
+            agregado previsto da volta. 0 desliga.
           </p>
         </div>
       )}

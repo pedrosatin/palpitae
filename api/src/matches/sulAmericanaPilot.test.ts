@@ -162,8 +162,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       status: 'ongoing',
       type: 'cup',
       visibility: 'pilot',
-      penalty_phases:
-        '["FIRST_STAGE","PLAYOFFS","LAST_16","QUARTER_FINALS","SEMI_FINALS","FINAL"]',
+      penalty_phases: '["FIRST_STAGE","PLAYOFFS","LAST_16","QUARTER_FINALS","SEMI_FINALS","FINAL"]',
     })
 
     // Piloto enxerga a Sul-Americana; usuário comum não a vê em GET /competitions.
@@ -301,7 +300,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
         round: 'QUARTER_FINALS',
         round_label: 'Quartas de final',
         group_name: null,
-        decides_on_penalties: true,
+        decides_on_penalties: false,
       },
       {
         home: 'Atlético-MG',
@@ -463,7 +462,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
           }),
         })
       ).status,
-    ).toBe(400)
+    ).toBe(200)
 
     expect(
       (
@@ -625,9 +624,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     }
 
     // 6. Confere também pollActiveMatches quando um jogo da Sul-Americana cai na janela ativa sem scored_at.
-    sqlite
-      .prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401913071'`)
-      .run()
+    sqlite.prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401913071'`).run()
     vi.useFakeTimers()
     vi.setSystemTime(new Date(Date.parse('2026-09-16T22:00:00Z') + 130 * 60 * 1000))
     await pollActiveMatches(db, 'unused-key')
@@ -647,7 +644,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     expect(members).toEqual([
       expect.objectContaining({
         user_id: 'u-pilot',
-        total_points: 18,
+        total_points: 17,
         exact_hits: 5,
       }),
     ])
@@ -660,7 +657,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     const firstStagePred = predictions.find((p) => p.match_id === firstStageMatch.id)
     const r16Pred = predictions.find((p) => p.match_id === round16Match.id)
     expect(firstStagePred).toMatchObject({ points_awarded: 3, penalty_points: 1 })
-    expect(r16Pred).toMatchObject({ points_awarded: 3, penalty_points: 1 })
+    expect(r16Pred).toMatchObject({ points_awarded: 3, penalty_points: 0 })
   })
 
   it('re-sync e fallback não duplicam competição, time ou jogo da Sul-Americana entre os providers espn e football-data', async () => {
@@ -720,7 +717,9 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     expect(updatedMap.get(SUDAMERICANA_ID)).toBe(0)
 
     const compCounts = sqlite
-      .prepare(`SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`)
+      .prepare(
+        `SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`,
+      )
       .all()
     expect(compCounts).toEqual([
       { provider: 'espn', total: espnTotalBefore.total },
@@ -728,7 +727,9 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     ])
 
     const sudSlugCount = sqlite
-      .prepare(`SELECT COUNT(*) AS total FROM competitions WHERE slug = 'conmebol-sudamericana-2026'`)
+      .prepare(
+        `SELECT COUNT(*) AS total FROM competitions WHERE slug = 'conmebol-sudamericana-2026'`,
+      )
       .get() as { total: number }
     expect(sudSlugCount.total).toBe(1)
 
@@ -741,7 +742,9 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     ])
 
     const matchCounts = sqlite
-      .prepare(`SELECT provider, COUNT(*) AS total FROM matches GROUP BY provider ORDER BY provider`)
+      .prepare(
+        `SELECT provider, COUNT(*) AS total FROM matches GROUP BY provider ORDER BY provider`,
+      )
       .all()
     expect(matchCounts).toEqual([
       { provider: 'espn', total: 6 },
@@ -756,8 +759,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       status: 'ongoing',
       type: 'cup',
       visibility: 'pilot',
-      penalty_phases:
-        '["FIRST_STAGE","PLAYOFFS","LAST_16","QUARTER_FINALS","SEMI_FINALS","FINAL"]',
+      penalty_phases: '["FIRST_STAGE","PLAYOFFS","LAST_16","QUARTER_FINALS","SEMI_FINALS","FINAL"]',
     })
   })
 })

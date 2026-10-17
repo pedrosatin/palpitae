@@ -5,6 +5,7 @@ import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
+import { classifiedRuleChangeStatements } from '../matches/scoring'
 
 const router = new Hono<AppContext>()
 
@@ -623,9 +624,10 @@ router.get('/:id', requireAuth, async (c) => {
 /**
  * PATCH /groups/:id
  *
- * Renames a group. Only the group owner (admin) may do this.
+ * Updates a group name or classified bonus. Only the owner may do this.
+ * Existing scored predictions and rankings are recalculated when the bonus changes.
  *
- * Body: { name: string }
+ * Body: { name?: string, points_classified?: number }
  * Response 200: { group: { id, name } }
  */
 router.patch('/:id', requireAuth, async (c) => {
@@ -633,21 +635,30 @@ router.patch('/:id', requireAuth, async (c) => {
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const body = await c.req.json<{ name?: string }>()
-  const name = body.name?.trim()
-
-  if (!name) {
-    return c.json({ error: 'Nome é obrigatório' }, 400)
+  const body = await c.req.json<{ name?: string; points_classified?: number }>()
+  const name = typeof body.name === 'string' ? body.name.trim() : undefined
+  const pointsClassified = body.points_classified
+  if (
+    pointsClassified !== undefined &&
+    (!Number.isInteger(pointsClassified) || pointsClassified < 0 || pointsClassified > 10)
+  ) {
+    return c.json({ error: 'Pontos de classificado devem ser um inteiro entre 0 e 10' }, 400)
   }
 
-  if (name.length < 2 || name.length > 30) {
+  if (body.name === undefined && pointsClassified === undefined) {
+    return c.json({ error: 'Informe nome ou pontos de classificado' }, 400)
+  }
+
+  if (body.name !== undefined && (!name || name.length < 2 || name.length > 30)) {
     return c.json({ error: 'Nome deve ter entre 2 e 30 caracteres' }, 400)
   }
 
   const group = await db
-    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
+    .prepare(
+      'SELECT owner_user_id, competition_id, points_classified FROM groups WHERE id = ? AND deleted_at IS NULL',
+    )
     .bind(groupId)
-    .first<{ owner_user_id: string }>()
+    .first<{ owner_user_id: string; competition_id: string; points_classified: number }>()
 
   if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
@@ -657,13 +668,52 @@ router.patch('/:id', requireAuth, async (c) => {
     return c.json({ error: 'Apenas o administrador pode editar o grupo' }, 403)
   }
 
-  await db.prepare('UPDATE groups SET name = ? WHERE id = ?').bind(name, groupId).run()
+  const updates: string[] = []
+  const values: (string | number)[] = []
+  if (name !== undefined) {
+    updates.push('name = ?')
+    values.push(name)
+  }
+  if (pointsClassified !== undefined) {
+    updates.push('points_classified = ?')
+    values.push(pointsClassified)
+  }
+  const updateGroup = db
+    .prepare(`UPDATE groups SET ${updates.join(', ')} WHERE id = ?`)
+    .bind(...values, groupId)
+  if (pointsClassified !== undefined) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const [snapshotGuard, ...scoringUpdates] = await classifiedRuleChangeStatements(
+        db,
+        groupId,
+        group.competition_id,
+        pointsClassified,
+      )
+      try {
+        await db.batch([snapshotGuard!, updateGroup, ...scoringUpdates])
+        break
+      } catch (error) {
+        const detail = String(error) + String(error instanceof Error ? error.cause : '')
+        if (!detail.includes('classified_snapshot_changed')) throw error
+        if (attempt === 2)
+          return c.json({ error: 'Os resultados mudaram durante a edição. Tente novamente.' }, 409)
+      }
+    }
+  } else {
+    await updateGroup.run()
+  }
 
   logEvent(c.env.AE, 'group_renamed', {
     blobs: [groupId, await hashUserId(userId)],
   })
 
-  return c.json({ group: { id: groupId, name } })
+  return c.json({
+    group: {
+      id: groupId,
+      ...(name !== undefined ? { name } : {}),
+      ...(pointsClassified !== undefined ? { points_classified: pointsClassified } : {}),
+    },
+  })
 })
 
 /**

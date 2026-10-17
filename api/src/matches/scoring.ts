@@ -148,48 +148,20 @@ type Leg1PredictionInfo = {
   predicted_away_score: number
 }
 
+function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
+  return db
+    .prepare(`INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
+    SELECT p.group_id, p.user_id, SUM(p.points_awarded + p.penalty_points + p.classified_points),
+      SUM(CASE WHEN g.points_exact > g.points_winner AND p.points_awarded = g.points_exact THEN 1 ELSE 0 END), ?
+    FROM predictions p JOIN groups g ON g.id = p.group_id
+    WHERE p.group_id IN (SELECT value FROM json_each(?)) GROUP BY p.group_id, p.user_id
+    ON CONFLICT (group_id, user_id) DO UPDATE SET total_points = excluded.total_points,
+      exact_hits = excluded.exact_hits, last_updated = excluded.last_updated`)
+    .bind(new Date().toISOString(), JSON.stringify(groupIds))
+}
+
 async function recalculateLeaderboards(groupIds: string[], db: D1Database): Promise<void> {
-  if (groupIds.length === 0) return
-
-  // exact_hits is inferred from the awarded points: a prediction is an exact hit
-  // when it scored the group's points_exact. We only count it when the exact bonus
-  // is distinguishable from a plain winner hit (points_exact > points_winner) — when
-  // they're equal there's no exact bonus to detect, so exact_hits stays 0.
-  // classified_points entra no total junto com o placar e o bônus de pênaltis.
-  const rows = await db
-    .prepare(
-      `SELECT p.group_id, p.user_id,
-              SUM(p.points_awarded + p.penalty_points + p.classified_points) AS total_points,
-              SUM(
-                CASE WHEN g.points_exact > g.points_winner
-                       AND p.points_awarded = g.points_exact
-                     THEN 1 ELSE 0 END
-              ) AS exact_hits
-       FROM predictions p
-       JOIN groups g ON g.id = p.group_id
-       WHERE p.group_id IN (SELECT value FROM json_each(?))
-       GROUP BY p.group_id, p.user_id`,
-    )
-    .bind(JSON.stringify(groupIds))
-    .all<{ group_id: string; user_id: string; total_points: number; exact_hits: number }>()
-
-  if (rows.results.length === 0) return
-
-  const now = new Date().toISOString()
-  const statements = rows.results.map((row) =>
-    db
-      .prepare(
-        `INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (group_id, user_id) DO UPDATE SET
-           total_points = excluded.total_points,
-           exact_hits   = excluded.exact_hits,
-           last_updated = excluded.last_updated`,
-      )
-      .bind(row.group_id, row.user_id, row.total_points, row.exact_hits, now),
-  )
-
-  await runStatementBatches(db, statements)
+  if (groupIds.length > 0) await db.batch([leaderboardRefreshStatement(db, groupIds)])
 }
 
 /** Run D1 statements in parallel chunks of 100 (D1 batch limit). */
@@ -423,7 +395,7 @@ export async function scoreUnprocessedMatches(
   const affectedGroups = new Set<string>()
 
   const updatePredictionStmt = db.prepare(
-    `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? WHERE id = ?`,
+    `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? * (SELECT points_classified FROM groups WHERE id = predictions.group_id) WHERE id = ?`,
   )
 
   // 5. Evaluate all predictions
@@ -446,18 +418,24 @@ export async function scoreUnprocessedMatches(
       pointsWinner: p.points_winner,
     })
 
+    const tie = ties.get(p.match_id)
+    const p1 =
+      tie?.role === 'leg2' && tie.partner
+        ? leg1PredByKey.get(`${tie.partner.id}:${p.group_id}:${p.user_id}`)
+        : undefined
+    const penaltyEligible = tie?.role === 'leg2' ? Boolean(p1) : eligible && tie?.role !== 'leg1'
     const penaltyPoints = calculatePenaltyBonus(
-      p.predicted_home_score,
-      p.predicted_away_score,
+      p.predicted_home_score + (p1?.predicted_away_score ?? 0),
+      p.predicted_away_score + (p1?.predicted_home_score ?? 0),
       p.predicted_penalty_winner,
       matchCtx.penalty_winner,
       p.points_penalty,
-      eligible,
+      penaltyEligible,
     )
 
     const classifiedPoints = evaluateClassifiedPointsForPrediction(
       matchCtx,
-      p,
+      { ...p, points_classified: 1 },
       ties.get(p.match_id),
       leg1PredByKey,
     )
@@ -478,4 +456,96 @@ export async function scoreUnprocessedMatches(
 
   // 8. Deduplicated recalculate leaderboard
   await recalculateLeaderboards(Array.from(affectedGroups), db)
+}
+
+/** Statements for an atomic group-rule change; other groups and scoring flags stay untouched. */
+export async function classifiedRuleChangeStatements(
+  db: D1Database,
+  groupId: string,
+  competitionId: string,
+  pointsClassified: number,
+) {
+  const { results: matches } = await db
+    .prepare(
+      `SELECT id, competition_id, home_team_id, away_team_id, start_time, home_score, away_score,
+            penalty_winner, phase, leg, status, scored_at FROM matches WHERE competition_id = ? ORDER BY id`,
+    )
+    .bind(competitionId)
+    .all<TieMatchRow>()
+  const ties = indexTies(matches)
+  const { results: predictions } = await db
+    .prepare(
+      `SELECT p.id, p.match_id, p.group_id, p.user_id, p.predicted_home_score, p.predicted_away_score,
+            p.predicted_penalty_winner, g.points_exact, g.points_winner, g.points_penalty, g.points_classified
+     FROM predictions p JOIN groups g ON g.id = p.group_id WHERE p.group_id = ? ORDER BY p.id`,
+    )
+    .bind(groupId)
+    .all<ScoredPredictionRow>()
+  const leg1 = new Map(predictions.map((p) => [`${p.match_id}:${p.group_id}:${p.user_id}`, p]))
+  const matchMap = new Map(matches.map((m) => [m.id, m]))
+  const updates: { id: string; points: number }[] = []
+  for (const prediction of predictions) {
+    const match = matchMap.get(prediction.match_id)
+    if (
+      !match ||
+      match.status !== 'finished' ||
+      match.home_score === null ||
+      match.away_score === null ||
+      !isKnockoutPhase(match.phase)
+    )
+      continue
+    const points = evaluateClassifiedPointsForPrediction(
+      {
+        ...match,
+        home_score: match.home_score,
+        away_score: match.away_score,
+        penalty_phases: '[]',
+      },
+      { ...prediction, points_classified: pointsClassified },
+      ties.get(match.id),
+      leg1,
+    )
+    updates.push({ id: prediction.id, points })
+  }
+  // The guard runs inside the write transaction. A sync or prediction edit between
+  // the reads above and this batch aborts it, so the caller can rebuild the snapshot.
+  const matchFields = [
+    'id',
+    'competition_id',
+    'home_team_id',
+    'away_team_id',
+    'start_time',
+    'home_score',
+    'away_score',
+    'penalty_winner',
+    'phase',
+    'leg',
+    'status',
+  ] as const
+  const pickFields = [
+    'id',
+    'match_id',
+    'group_id',
+    'user_id',
+    'predicted_home_score',
+    'predicted_away_score',
+    'predicted_penalty_winner',
+  ] as const
+  const matchSnapshot = JSON.stringify(matches.map((m) => matchFields.map((field) => m[field])))
+  const pickSnapshot = JSON.stringify(predictions.map((p) => pickFields.map((field) => p[field])))
+  const guard = db
+    .prepare(`SELECT CASE WHEN
+    (SELECT json_group_array(json_array(${matchFields.join(', ')})) FROM (SELECT * FROM matches WHERE competition_id = ? ORDER BY id)) = ?
+    AND (SELECT json_group_array(json_array(${pickFields.join(', ')})) FROM (SELECT * FROM predictions WHERE group_id = ? ORDER BY id)) = ?
+    THEN 1 ELSE json_extract('{}', 'classified_snapshot_changed') END`)
+    .bind(competitionId, matchSnapshot, groupId, pickSnapshot)
+  return [
+    guard,
+    db
+      .prepare(`UPDATE predictions SET classified_points = (
+      SELECT json_extract(value, '$.points') FROM json_each(?) WHERE json_extract(value, '$.id') = predictions.id
+    ) WHERE group_id = ? AND id IN (SELECT json_extract(value, '$.id') FROM json_each(?))`)
+      .bind(JSON.stringify(updates), groupId, JSON.stringify(updates)),
+    leaderboardRefreshStatement(db, [groupId]),
+  ]
 }

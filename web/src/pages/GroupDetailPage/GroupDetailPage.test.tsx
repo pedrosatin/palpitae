@@ -286,7 +286,7 @@ describe('GroupDetailPage – leave group', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
 
-    expect(screen.getByRole('menuitem', { name: /editar nome/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /configurações do grupo/i })).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: /excluir grupo/i })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: /sair do grupo/i })).not.toBeInTheDocument()
   })
@@ -314,6 +314,46 @@ describe('GroupDetailPage – admin: rename & delete', () => {
     vi.restoreAllMocks()
   })
 
+  it('refreshes the points in the header after changing the classified bonus', async () => {
+    mockGroupFetchSequence(
+      { body: { group: { ...baseGroup, is_admin: true, points_classified: 0 } } },
+      { body: { group: { id: baseGroup.id, points_classified: 4 } } },
+      { body: { group: { ...baseGroup, is_admin: true, points_classified: 4, user_points: 14 } } },
+    )
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /configurações do grupo/i }))
+    const bonus = screen.getByRole('spinbutton', { name: 'Bônus classificado' })
+    await userEvent.clear(bonus)
+    await userEvent.type(bonus, '4')
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(await screen.findByText('14')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('explains when the bonus was saved but the refreshed points could not be loaded', async () => {
+    mockGroupFetchSequence(
+      { body: { group: { ...baseGroup, is_admin: true, points_classified: 0 } } },
+      { body: { group: { id: baseGroup.id, points_classified: 4 } } },
+      { ok: false },
+    )
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /configurações do grupo/i }))
+    const bonus = screen.getByRole('spinbutton', { name: 'Bônus classificado' })
+    await userEvent.clear(bonus)
+    await userEvent.type(bonus, '4')
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(
+      await screen.findByText('Pontuação salva. Recarregue a página para atualizar o grupo.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
   it('renames the group via the edit modal', async () => {
     mockGroupFetchSequence(
       { body: { group: { ...baseGroup, is_admin: true } } },
@@ -323,7 +363,7 @@ describe('GroupDetailPage – admin: rename & delete', () => {
     renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
-    await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /configurações do grupo/i }))
 
     const input = screen.getByPlaceholderText('Nome do grupo')
     await userEvent.clear(input)
@@ -381,11 +421,11 @@ describe('GroupDetailPage – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_menu_sair')
   })
 
-  it('fires click_group_detail_menu_editar_nome when Editar nome is clicked', async () => {
+  it('fires click_group_detail_menu_editar_nome when Configurações do grupo is clicked', async () => {
     mockGroupFetch({ ...baseGroup, is_admin: true })
     renderPage()
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
-    await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /configurações do grupo/i }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_menu_editar_nome')
   })
 
@@ -429,7 +469,7 @@ describe('GroupDetailPage – analytics', () => {
     renderPage()
 
     await userEvent.click(await screen.findByRole('button', { name: /opções do grupo/i }))
-    await userEvent.click(screen.getByRole('menuitem', { name: /editar nome/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /configurações do grupo/i }))
 
     const input = screen.getByPlaceholderText('Nome do grupo')
     await userEvent.clear(input)

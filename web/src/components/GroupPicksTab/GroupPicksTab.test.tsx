@@ -192,7 +192,7 @@ describe('GroupPicksTab', () => {
     expect(within(li).queryByLabelText(/pênaltis/i)).not.toBeInTheDocument()
   })
 
-  it('folds the penalty bonus into the displayed points total', async () => {
+  it('folds penalty and classified bonuses into the displayed points total', async () => {
     const matches = [
       makeMatch({
         id: 'm1',
@@ -216,6 +216,8 @@ describe('GroupPicksTab', () => {
           predicted_penalty_winner: 'home',
           points_awarded: 3,
           penalty_points: 1,
+          classified_points: 2,
+          predicted_classified: 'away',
           locked: 1,
         },
       ],
@@ -224,7 +226,8 @@ describe('GroupPicksTab', () => {
     render(<GroupPicksTab groupId="g1" competitionId="c1" />)
 
     await waitFor(() => {
-      expect(screen.getByText('4 pt')).toBeInTheDocument()
+      expect(screen.getByText('6 pt')).toBeInTheDocument()
+      expect(screen.getByText(/classificado: ARG/)).toBeInTheDocument()
     })
   })
 

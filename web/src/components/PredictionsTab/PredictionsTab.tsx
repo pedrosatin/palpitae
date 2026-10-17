@@ -14,12 +14,48 @@ interface PredictionsTabProps {
   pointsExact?: number
 }
 
+function leg1Context(
+  match: Match,
+  predictions: Map<string, import('../MatchCard').Prediction>,
+  roundMatches: Match[],
+  drafts: Map<string, { home: string; away: string }>,
+) {
+  const saved = match.leg1_match_id ? predictions.get(match.leg1_match_id) : undefined
+  const draft =
+    match.leg1_match_id && roundMatches.some((m) => m.id === match.leg1_match_id)
+      ? drafts.get(match.leg1_match_id)
+      : undefined
+  const pending =
+    draft &&
+    draft.home !== '' &&
+    draft.away !== '' &&
+    (!saved ||
+      Number(draft.home) !== saved.predicted_home_score ||
+      Number(draft.away) !== saved.predicted_away_score)
+  return {
+    pending: Boolean(pending),
+    prediction: pending
+      ? {
+          ...saved,
+          id: '',
+          match_id: match.leg1_match_id!,
+          predicted_home_score: Number(draft.home),
+          predicted_away_score: Number(draft.away),
+          points_awarded: 0,
+          locked: 0 as const,
+          updated_at: '',
+        }
+      : saved,
+  }
+}
+
 export default function PredictionsTab({
   groupId,
   competitionId,
   pointsExact = 3,
 }: PredictionsTabProps) {
   const {
+    drafts,
     matches,
     predictions,
     loading,
@@ -189,6 +225,8 @@ export default function PredictionsTab({
                 key={match.id}
                 match={match}
                 prediction={predictions.get(match.id)}
+                leg1Prediction={leg1Context(match, predictions, roundMatches, drafts).prediction}
+                leg1Pending={leg1Context(match, predictions, roundMatches, drafts).pending}
                 groupId={groupId}
                 outcomeOnly={pointsExact === 0}
                 onSaved={handleSaved}
