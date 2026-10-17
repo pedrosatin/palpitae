@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { hasPilotAccess, isAdminUser } from '../auth/permissions'
 import { parsePenaltyPhases } from '../matches/penalties'
 import type { AppContext } from '../types'
 
@@ -8,44 +9,83 @@ const router = new Hono<AppContext>()
 /**
  * GET /competitions
  *
- * Returns all available competitions.
- * Highly cached — this list changes rarely.
- *
- * Response:
- * {
- *   competitions: [
- *     { id, name, slug, season, status, has_penalty_phases }
- *   ]
- * }
- *
- * has_penalty_phases is derived server-side from penalty_phases (the (competition,
- * phase) gate). The frontend uses it to decide whether to show the points_penalty
- * field in CreateGroupModal — it never sees the raw phase list.
+ * Lista as competições disponíveis para o usuário autenticado.
+ * Competições com visibility 'pilot' aparecem apenas para o administrador e
+ * para os convidados listados em PILOT_EMAILS.
  */
 router.get('/', requireAuth, async (c) => {
   const db = c.env.DB
+  const canSeePilot = hasPilotAccess(c.get('userEmail'), c.env)
 
   try {
     const result = await db
       .prepare(
-        `SELECT id, name, slug, season, status, penalty_phases
+        `SELECT id, name, slug, season, status, penalty_phases, visibility
          FROM competitions
          ORDER BY name ASC`,
       )
       .all<Record<string, unknown>>()
 
-    const competitions = result.results.map(({ penalty_phases, ...rest }) => ({
-      ...rest,
-      has_penalty_phases: parsePenaltyPhases(penalty_phases as string | null).length > 0,
-    }))
+    const visibleRows = canSeePilot
+      ? result.results
+      : result.results.filter((row) => row.visibility !== 'pilot')
 
-    // Cache for 1 hour; serve stale for up to 24h while revalidating
-    c.header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
+    const competitions = visibleRows.map(
+      ({ penalty_phases, visibility: _visibility, ...rest }) => ({
+        ...rest,
+        has_penalty_phases: parsePenaltyPhases(penalty_phases as string | null).length > 0,
+      }),
+    )
+
+    c.header('Cache-Control', 'private, no-store')
 
     return c.json({ competitions })
   } catch (error) {
     console.error('Error fetching competitions:', error)
     return c.json({ error: 'Erro ao carregar competições' }, 500)
+  }
+})
+
+/**
+ * POST /competitions/:id/promote
+ *
+ * Promove manualmente uma competição para visibilidade pública.
+ * Restrito ao administrador configurado em ADMIN_EMAIL.
+ */
+router.post('/:id/promote', requireAuth, async (c) => {
+  if (!isAdminUser(c.get('userEmail'), c.env)) {
+    return c.json({ error: 'Apenas o administrador pode promover competições' }, 403)
+  }
+
+  const idOrSlug = c.req.param('id')
+  const db = c.env.DB
+
+  try {
+    const existing = await db
+      .prepare('SELECT id, slug FROM competitions WHERE id = ? OR slug = ?')
+      .bind(idOrSlug, idOrSlug)
+      .first<{ id: string; slug: string }>()
+
+    if (!existing) {
+      return c.json({ error: 'Competição não encontrada' }, 404)
+    }
+
+    await db
+      .prepare("UPDATE competitions SET visibility = 'public' WHERE id = ?")
+      .bind(existing.id)
+      .run()
+
+    return c.json({
+      ok: true,
+      competition: {
+        id: existing.id,
+        slug: existing.slug,
+        visibility: 'public',
+      },
+    })
+  } catch (error) {
+    console.error('Error promoting competition:', error)
+    return c.json({ error: 'Erro ao promover competição' }, 500)
   }
 })
 

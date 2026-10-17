@@ -1,9 +1,13 @@
 import { Hono } from 'hono'
 import { describe, expect, it, vi } from 'vitest'
+import { signJwt } from '../auth/jwt'
 import { competitionsRouter } from './router'
 import type { AppContext } from '../types'
 
-function fakeEnv(db: D1Database): AppContext['Bindings'] {
+function fakeEnv(
+  db: D1Database,
+  overrides: Partial<AppContext['Bindings']> = {},
+): AppContext['Bindings'] {
   return {
     JWT_SECRET: 'secret',
     GOOGLE_CLIENT_ID: 'cid',
@@ -13,6 +17,7 @@ function fakeEnv(db: D1Database): AppContext['Bindings'] {
     FOOTBALL_API_KEY: 'test-api-key',
     RESEND_API_KEY: 'test-resend-key',
     DB: db,
+    ...overrides,
   }
 }
 
@@ -43,9 +48,7 @@ describe('competitions router', () => {
       { id: '4', name: 'Comp 4', penalty_phases: 'invalid json' },
     ]
 
-    const token = await import('../auth/jwt').then((m) =>
-      m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600),
-    )
+    const token = await signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600)
     const response = await app.fetch(
       new Request('http://localhost/competitions', {
         headers: {
@@ -56,9 +59,7 @@ describe('competitions router', () => {
     )
 
     expect(response.status).toBe(200)
-    expect(response.headers.get('Cache-Control')).toBe(
-      'public, max-age=3600, stale-while-revalidate=86400',
-    )
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store')
 
     const body = await response.json()
     expect(body).toEqual({
@@ -71,15 +72,79 @@ describe('competitions router', () => {
     })
   })
 
+  it('hides pilot competitions from ordinary users and shows them to admin and pilot guests', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/competitions', competitionsRouter)
+
+    const competitions = [
+      { id: 'br', name: 'Brasileirão', penalty_phases: '[]', visibility: 'public' },
+      { id: 'cl', name: 'Champions League', penalty_phases: '["FINAL"]', visibility: 'pilot' },
+    ]
+
+    const env = fakeEnv(createDbMock(competitions), {
+      ADMIN_EMAIL: 'admin@palpitae.com.br',
+      PILOT_EMAILS: 'convidado@example.com',
+    })
+
+    const ordinaryToken = await signJwt(
+      { sub: 'u-ordinary', email: 'comum@example.com' },
+      'secret',
+      3600,
+    )
+    const ordinaryRes = await app.fetch(
+      new Request('http://localhost/competitions', {
+        headers: { Cookie: `session=${ordinaryToken}` },
+      }),
+      env,
+    )
+    expect(await ordinaryRes.json()).toEqual({
+      competitions: [{ id: 'br', name: 'Brasileirão', has_penalty_phases: false }],
+    })
+
+    const guestToken = await signJwt(
+      { sub: 'u-guest', email: 'convidado@example.com' },
+      'secret',
+      3600,
+    )
+    const guestRes = await app.fetch(
+      new Request('http://localhost/competitions', {
+        headers: { Cookie: `session=${guestToken}` },
+      }),
+      env,
+    )
+    expect(await guestRes.json()).toEqual({
+      competitions: [
+        { id: 'br', name: 'Brasileirão', has_penalty_phases: false },
+        { id: 'cl', name: 'Champions League', has_penalty_phases: true },
+      ],
+    })
+
+    const adminToken = await signJwt(
+      { sub: 'u-admin', email: 'admin@palpitae.com.br' },
+      'secret',
+      3600,
+    )
+    const adminRes = await app.fetch(
+      new Request('http://localhost/competitions', {
+        headers: { Cookie: `session=${adminToken}` },
+      }),
+      env,
+    )
+    expect(await adminRes.json()).toEqual({
+      competitions: [
+        { id: 'br', name: 'Brasileirão', has_penalty_phases: false },
+        { id: 'cl', name: 'Champions League', has_penalty_phases: true },
+      ],
+    })
+  })
+
   it('returns 500 on database error', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {}) // Suppress error logging in test output
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const app = new Hono<AppContext>()
     app.route('/competitions', competitionsRouter)
 
-    const token = await import('../auth/jwt').then((m) =>
-      m.signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600),
-    )
+    const token = await signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600)
     const response = await app.fetch(
       new Request('http://localhost/competitions', {
         headers: {
@@ -95,5 +160,108 @@ describe('competitions router', () => {
     expect(body).toEqual({ error: 'Erro ao carregar competições' })
 
     consoleSpy.mockRestore()
+  })
+
+  describe('POST /competitions/:id/promote', () => {
+    function createPromoteDbMock(found: { id: string; slug: string } | null) {
+      const updateRun = vi.fn().mockResolvedValue({ success: true })
+      const db = {
+        prepare: vi.fn((sql: string) => ({
+          bind: () => ({
+            first: async () => {
+              if (sql.includes('FROM revoked_sessions')) return null
+              if (sql.includes('FROM competitions WHERE id = ? OR slug = ?')) return found
+              return null
+            },
+            run: updateRun,
+          }),
+        })),
+      } as unknown as D1Database
+      return { db, updateRun }
+    }
+
+    it('rejects non-admin users with 403', async () => {
+      const app = new Hono<AppContext>()
+      app.route('/competitions', competitionsRouter)
+      const { db, updateRun } = createPromoteDbMock({ id: 'cl', slug: 'champions-league' })
+
+      const token = await signJwt(
+        { sub: 'u-guest', email: 'convidado@example.com' },
+        'secret',
+        3600,
+      )
+      const res = await app.fetch(
+        new Request('http://localhost/competitions/cl/promote', {
+          method: 'POST',
+          headers: { Cookie: `session=${token}` },
+        }),
+        fakeEnv(db, {
+          ADMIN_EMAIL: 'admin@palpitae.com.br',
+          PILOT_EMAILS: 'convidado@example.com',
+        }),
+      )
+
+      expect(res.status).toBe(403)
+      expect(await res.json()).toEqual({
+        error: 'Apenas o administrador pode promover competições',
+      })
+      expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it('returns 404 when competition does not exist', async () => {
+      const app = new Hono<AppContext>()
+      app.route('/competitions', competitionsRouter)
+      const { db, updateRun } = createPromoteDbMock(null)
+
+      const token = await signJwt(
+        { sub: 'u-admin', email: 'admin@palpitae.com.br' },
+        'secret',
+        3600,
+      )
+      const res = await app.fetch(
+        new Request('http://localhost/competitions/inexistente/promote', {
+          method: 'POST',
+          headers: { Cookie: `session=${token}` },
+        }),
+        fakeEnv(db, { ADMIN_EMAIL: 'admin@palpitae.com.br' }),
+      )
+
+      expect(res.status).toBe(404)
+      expect(await res.json()).toEqual({ error: 'Competição não encontrada' })
+      expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it('promotes competition to public when called by admin', async () => {
+      const app = new Hono<AppContext>()
+      app.route('/competitions', competitionsRouter)
+      const { db, updateRun } = createPromoteDbMock({
+        id: 'cl-2026',
+        slug: 'champions-league-2025-26',
+      })
+
+      const token = await signJwt(
+        { sub: 'u-admin', email: 'admin@palpitae.com.br' },
+        'secret',
+        3600,
+      )
+      const res = await app.fetch(
+        new Request('http://localhost/competitions/champions-league-2025-26/promote', {
+          method: 'POST',
+          headers: { Cookie: `session=${token}` },
+        }),
+        fakeEnv(db, { ADMIN_EMAIL: 'admin@palpitae.com.br' }),
+      )
+
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({
+        ok: true,
+        competition: {
+          id: 'cl-2026',
+          slug: 'champions-league-2025-26',
+          visibility: 'public',
+        },
+      })
+      expect(updateRun).toHaveBeenCalledOnce()
+    })
   })
 })

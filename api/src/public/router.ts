@@ -53,7 +53,7 @@ router.get('/invites/:code', async (c) => {
          (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id) AS member_count
        FROM groups g
        LEFT JOIN competitions c ON g.competition_id = c.id
-       WHERE g.invite_code = ? AND g.deleted_at IS NULL`,
+       WHERE g.invite_code = ? AND g.deleted_at IS NULL AND (c.visibility IS NULL OR c.visibility != 'pilot')`,
     )
       .bind(code)
       .first<InvitePreviewRow>()
