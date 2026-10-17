@@ -52,7 +52,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
   },
   { country: 'Brazil', name: 'Serie B', article: 'Campeonato Brasileiro de Futebol - Série B' },
   { country: 'Brazil', name: 'Serie C', article: 'Campeonato Brasileiro de Futebol - Série C' },
-  { country: 'Brazil', name: 'Copa Do Brasil', article: 'Copa do Brasil de Futebol' },
+  {
+    country: 'Brazil',
+    name: 'Copa Do Brasil',
+    article: 'Copa do Brasil de Futebol',
+    palpitaeSlug: 'copa-do-brasil',
+  },
   { country: 'Brazil', name: 'Copa Do Nordeste', article: 'Copa do Nordeste de Futebol' },
   { country: 'Brazil', name: 'Supercopa do Brasil', article: 'Supercopa Rei' },
   {
@@ -79,8 +84,18 @@ export const RADAR_ENTRIES: RadarEntry[] = [
   },
 
   // Conmebol
-  { country: 'World', name: 'CONMEBOL Libertadores', article: 'Copa Libertadores da América' },
-  { country: 'World', name: 'CONMEBOL Sudamericana', article: 'Copa Sul-Americana' },
+  {
+    country: 'World',
+    name: 'CONMEBOL Libertadores',
+    article: 'Copa Libertadores da América',
+    palpitaeSlug: 'conmebol-libertadores',
+  },
+  {
+    country: 'World',
+    name: 'CONMEBOL Sudamericana',
+    article: 'Copa Sul-Americana',
+    palpitaeSlug: 'conmebol-sudamericana',
+  },
   { country: 'World', name: 'CONMEBOL Recopa', article: 'Recopa Sul-Americana' },
   { country: 'World', name: 'Copa America', article: 'Copa América' },
 

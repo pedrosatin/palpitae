@@ -119,12 +119,12 @@ radarRouter.get('/', async (c) => {
       )
       .bind(since)
       .all<DailyRow>(),
-    // Demanda interna: grupos ativos por competição já suportada.
+    // Cadastro determina suporte; grupos não excluídos medem demanda interna.
     db
       .prepare(
-        `SELECT c.slug AS slug, COUNT(*) AS groups
-           FROM groups g JOIN competitions c ON c.id = g.competition_id
-          WHERE g.deleted_at IS NULL
+        `SELECT c.slug AS slug, COUNT(g.id) AS groups
+           FROM competitions c
+           LEFT JOIN groups g ON g.competition_id = c.id AND g.deleted_at IS NULL
           GROUP BY c.slug`,
       )
       .all<{ slug: string; groups: number }>(),
@@ -152,7 +152,7 @@ radarRouter.get('/', async (c) => {
     // curado (o slug carrega o ano, ex. `...-serie-a-2026`).
     const entry = findEntry(comp.country ?? '', comp.name)
     const supportedSlugs = entry?.palpitaeSlug
-      ? groupsBySlug.filter((g) => g.slug.startsWith(entry.palpitaeSlug as string))
+      ? groupsBySlug.filter((g) => g.slug.startsWith(`${entry.palpitaeSlug}-`))
       : []
 
     return {
