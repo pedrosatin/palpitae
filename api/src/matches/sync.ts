@@ -417,20 +417,6 @@ function mapGroupName(group: string | null): string | null {
   return group ? group.replace(/^GROUP_/, '') : null
 }
 
-const TWO_LEG_KNOCKOUT_STAGES = new Set([
-  'PLAYOFFS',
-  'LAST_32',
-  'LAST_16',
-  'QUARTER_FINALS',
-  'SEMI_FINALS',
-])
-
-function mapLeg(matchday: number | null, stage: string): 1 | 2 | null {
-  if (!TWO_LEG_KNOCKOUT_STAGES.has(stage)) return null
-  if (matchday === 1 || matchday === 2) return matchday
-  return null
-}
-
 const KNOCKOUT_STAGES = new Set([
   'PLAYOFFS',
   'LAST_32',
@@ -483,7 +469,10 @@ function mapMatchUpsertRow(
     phase: m.stage ?? null,
     round: mapRound(m.matchday, m.stage),
     groupName: mapGroupName(m.group),
-    leg: mapLeg(m.matchday, m.stage),
+    // A football-data não informa ida e volta: `matchday` não serve para isso
+    // (jogo único de mata-mata também vem com matchday 1). O par do confronto é
+    // achado pelos times invertidos na mesma fase, em ties.ts.
+    leg: null,
     duration: m.score.duration ?? null,
     penaltyWinner: resolvePenaltyWinner(m.score),
     homePenaltyGoals: isShootout ? (m.score.penalties?.home ?? null) : null,
@@ -538,6 +527,8 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
        -- penalty_winner também dispara o re-score: o provider pode corrigir só
        -- o vencedor dos pênaltis sem mexer no placar canônico.
+       -- Quando o jogo corrigido é a ida de um confronto já encerrado, scoring.ts
+       -- repontua a volta junto, porque o classificado depende do agregado.
        scored_at  = CASE
          WHEN matches.home_score IS NOT excluded.home_score
            OR matches.away_score IS NOT excluded.away_score

@@ -349,11 +349,16 @@ function buildFakeDb(
             })) as unknown as T[]
           return { results }
         }
-        if (sql.includes('FROM matches') && sql.includes('leg = 1')) {
-          const [compId, ...phases] = params as string[]
-          const results = matches.filter(
-            (m) => m.competition_id === compId && m.leg === 1 && m.phase && phases.includes(m.phase),
-          ) as unknown as T[]
+        // Jogos de mata-mata usados para montar os confrontos (ties.ts).
+        if (
+          sql.includes('FROM matches') &&
+          sql.includes('phase IN (SELECT value FROM json_each(?))')
+        ) {
+          const [compId, phasesJson] = params as [string, string]
+          const phases = JSON.parse(phasesJson) as string[]
+          const results = matches
+            .filter((m) => m.competition_id === compId && m.phase && phases.includes(m.phase))
+            .map((m) => ({ start_time: '', leg: null, ...m })) as unknown as T[]
           return { results }
         }
         if (sql.includes('FROM predictions') && sql.includes('WHERE match_id IN')) {
@@ -394,7 +399,8 @@ function buildFakeDb(
             grouped.set(key, {
               group_id: p.group_id,
               user_id: p.user_id,
-              total_points: cur.total_points + (pts as number) + (penPts as number) + (clsPts as number),
+              total_points:
+                cur.total_points + (pts as number) + (penPts as number) + (clsPts as number),
               exact_hits: cur.exact_hits + (isExact ? 1 : 0),
             })
           }

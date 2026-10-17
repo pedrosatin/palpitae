@@ -1,36 +1,26 @@
+import type { D1Database } from '@cloudflare/workers-types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
+import { isKnockoutPhase } from './rounds'
+import { fetchTieMatches, indexTies, type TieInfo, type TieMatch } from './ties'
 
-export interface ScoreInput {
+export function calculatePoints({
+  actualHome,
+  actualAway,
+  predictedHome,
+  predictedAway,
+  pointsExact = 3,
+  pointsWinner = 1,
+}: {
   actualHome: number
   actualAway: number
   predictedHome: number
   predictedAway: number
-  /** Group's points for an exact-score hit. 0 disables the exact-score bonus (1X2 mode). Default 3. */
   pointsExact?: number
-  /** Group's points for predicting the correct winner/draw. Default 1. */
   pointsWinner?: number
-}
-
-/**
- * Pure scoring function for a single match prediction.
- *
- * Defaults match the classic rule (ADR-004):
- *   pointsExact (default 3)  — exact score match (when pointsExact > 0)
- *   pointsWinner (default 1) — correct outcome (home win / draw / away win), wrong score
- *   0 pts                    — wrong outcome
- *
- * When pointsExact is 0 ("só vencedor" / 1X2 mode), the exact-score check is
- * skipped and any correct outcome awards pointsWinner.
- */
-export function calculatePoints(input: ScoreInput): number {
-  const {
-    actualHome,
-    actualAway,
-    predictedHome,
-    predictedAway,
-    pointsExact = 3,
-    pointsWinner = 1,
-  } = input
+}): number {
+  // pointsExact === 0 is the "winner only" / 1X2 mode: there is no exact-score bonus,
+  // so we never short-circuit here — otherwise a 1X2 pick stored as (1,0)/(0,0)/(0,1)
+  // would accidentally score the exact value when the real score happens to match.
   if (pointsExact > 0 && predictedHome === actualHome && predictedAway === actualAway)
     return pointsExact
   const actualWinner = actualHome > actualAway ? 'home' : actualHome < actualAway ? 'away' : 'draw'
@@ -62,8 +52,8 @@ export function calculatePenaltyBonus(
   eligible: boolean,
 ): number {
   if (!eligible || pointsPenalty <= 0) return 0
-  if (penaltyWinner === null) return 0
-  if (predictedHome !== predictedAway) return 0
+  if (penaltyWinner === null) return 0 // não foi a pênaltis
+  if (predictedHome !== predictedAway) return 0 // palpite não foi empate
   if (predictedPenaltyWinner === null) return 0
   return predictedPenaltyWinner === penaltyWinner ? pointsPenalty : 0
 }
@@ -83,8 +73,8 @@ export function resolveSingleMatchClassified(
 }
 
 /**
- * Deriva quem avança num confronto de ida e volta em relação ao mandante e ao
- * visitante do jogo de volta, em que o mandante da volta foi visitante na ida.
+ * Devolve o classificado como 'home' ou 'away' do jogo de volta. O mandante da
+ * volta é o visitante da ida.
  */
 export function resolveTwoLegClassified(
   leg1: { homeScore: number; awayScore: number },
@@ -98,7 +88,8 @@ export function resolveTwoLegClassified(
 }
 
 /**
- * Pontuação de classificado creditada apenas no jogo decisivo do confronto.
+ * Devolve pointsClassified quando o classificado previsto coincide com o real,
+ * e 0 nos outros casos.
  */
 export function calculateClassifiedBonus(
   predictedClassified: 'home' | 'away' | null,
@@ -112,13 +103,15 @@ export function calculateClassifiedBonus(
 
 type UnscoredMatchRow = {
   id: string
-  home_team_id?: string
-  away_team_id?: string
+  competition_id: string
+  home_team_id: string
+  away_team_id: string
+  start_time: string
   home_score: number
   away_score: number
   penalty_winner: 'home' | 'away' | null
   phase: string | null
-  leg?: 1 | 2 | null
+  leg: 1 | 2 | null
   penalty_phases: string
 }
 
@@ -133,18 +126,19 @@ type ScoredPredictionRow = {
   points_exact: number
   points_winner: number
   points_penalty: number
-  points_classified?: number
+  points_classified: number
 }
 
-type Leg1MatchInfo = {
-  id: string
-  phase: string | null
-  home_team_id: string
-  away_team_id: string
+/** Jogo de mata-mata com o placar e o estado de pontuação, para montar os confrontos. */
+type TieMatchRow = TieMatch & {
   status: string
   home_score: number | null
   away_score: number | null
+  penalty_winner: 'home' | 'away' | null
+  scored_at: string | null
 }
+
+const TIE_MATCH_COLUMNS = ['status', 'home_score', 'away_score', 'penalty_winner', 'scored_at']
 
 type Leg1PredictionInfo = {
   match_id: string
@@ -157,6 +151,11 @@ type Leg1PredictionInfo = {
 async function recalculateLeaderboards(groupIds: string[], db: D1Database): Promise<void> {
   if (groupIds.length === 0) return
 
+  // exact_hits is inferred from the awarded points: a prediction is an exact hit
+  // when it scored the group's points_exact. We only count it when the exact bonus
+  // is distinguishable from a plain winner hit (points_exact > points_winner) — when
+  // they're equal there's no exact bonus to detect, so exact_hits stays 0.
+  // classified_points entra no total junto com o placar e o bônus de pênaltis.
   const rows = await db
     .prepare(
       `SELECT p.group_id, p.user_id,
@@ -206,15 +205,16 @@ async function runStatementBatches(
   await Promise.all(batches)
 }
 
+/** Busca os palpites dos jogos informados em lotes (limite de bind do D1 ~100). */
 async function fetchPredictionsInChunks(
   db: D1Database,
   matchIds: string[],
 ): Promise<ScoredPredictionRow[]> {
   const allPredictions: ScoredPredictionRow[] = []
-  const chunkSize = 90
+  const CHUNK_SIZE = 90 // Safe limit under 100 for D1 IN clauses
 
-  for (let i = 0; i < matchIds.length; i += chunkSize) {
-    const chunkIds = matchIds.slice(i, i + chunkSize)
+  for (let i = 0; i < matchIds.length; i += CHUNK_SIZE) {
+    const chunkIds = matchIds.slice(i, i + CHUNK_SIZE)
     const placeholders = chunkIds.map(() => '?').join(',')
 
     const chunkPredictions = await db
@@ -235,48 +235,16 @@ async function fetchPredictionsInChunks(
   return allPredictions
 }
 
-async function fetchLeg1Context(
-  competitionId: string,
-  unscored: UnscoredMatchRow[],
+/** Palpites dos jogos de ida, indexados por `match_id:group_id:user_id`. */
+async function fetchLeg1Predictions(
   db: D1Database,
-): Promise<{
-  leg1ByKey: Map<string, Leg1MatchInfo>
-  leg1PredByKey: Map<string, Leg1PredictionInfo>
-}> {
-  const leg2Phases = Array.from(
-    new Set(
-      unscored
-        .filter((m) => m.leg === 2 && m.phase)
-        .map((m) => m.phase as string),
-    ),
-  )
-
-  const leg1ByKey = new Map<string, Leg1MatchInfo>()
+  leg1Ids: string[],
+): Promise<Map<string, Leg1PredictionInfo>> {
   const leg1PredByKey = new Map<string, Leg1PredictionInfo>()
-  if (leg2Phases.length === 0) return { leg1ByKey, leg1PredByKey }
+  const CHUNK_SIZE = 90 // Safe limit under 100 for D1 IN clauses
 
-  const phasePlaceholders = leg2Phases.map(() => '?').join(',')
-  const leg1Matches = await db
-    .prepare(
-      `SELECT id, phase, home_team_id, away_team_id, status, home_score, away_score
-       FROM matches
-       WHERE competition_id = ? AND leg = 1 AND phase IN (${phasePlaceholders})`,
-    )
-    .bind(competitionId, ...leg2Phases)
-    .all<Leg1MatchInfo>()
-
-  const leg1Ids: string[] = []
-  for (const m1 of leg1Matches.results) {
-    if (!m1.phase) continue
-    leg1ByKey.set(`${m1.phase}:${m1.home_team_id}:${m1.away_team_id}`, m1)
-    leg1Ids.push(m1.id)
-  }
-
-  if (leg1Ids.length === 0) return { leg1ByKey, leg1PredByKey }
-
-  const chunkSize = 90
-  for (let i = 0; i < leg1Ids.length; i += chunkSize) {
-    const chunkIds = leg1Ids.slice(i, i + chunkSize)
+  for (let i = 0; i < leg1Ids.length; i += CHUNK_SIZE) {
+    const chunkIds = leg1Ids.slice(i, i + CHUNK_SIZE)
     const placeholders = chunkIds.map(() => '?').join(',')
     const preds = await db
       .prepare(
@@ -292,25 +260,61 @@ async function fetchLeg1Context(
     }
   }
 
-  return { leg1ByKey, leg1PredByKey }
+  return leg1PredByKey
 }
 
+/**
+ * Volta já pontuada cuja ida está na lista de não pontuados: a ida teve o placar
+ * corrigido depois da volta, então o classificado da volta precisa ser refeito.
+ * Repontuar é idempotente: os pontos são gravados com SET e o ranking é a soma.
+ */
+function findLeg2ToRescore(
+  unscored: UnscoredMatchRow[],
+  ties: Map<string, TieInfo<TieMatchRow>>,
+): UnscoredMatchRow[] {
+  const unscoredIds = new Set(unscored.map((m) => m.id))
+  const extra: UnscoredMatchRow[] = []
+  for (const m of unscored) {
+    const tie = ties.get(m.id)
+    const leg2 = tie?.partner
+    if (tie?.role !== 'leg1' || !leg2 || unscoredIds.has(leg2.id)) continue
+    if (leg2.status !== 'finished' || leg2.scored_at === null) continue
+    if (leg2.home_score === null || leg2.away_score === null) continue
+    unscoredIds.add(leg2.id)
+    extra.push({
+      ...leg2,
+      home_score: leg2.home_score,
+      away_score: leg2.away_score,
+      penalty_phases: m.penalty_phases,
+    })
+  }
+  return extra
+}
+
+/**
+ * Pontos de classificado de um palpite. Só o jogo decisivo do confronto credita:
+ * a volta no ida e volta, ou o jogo único. Vale em toda fase de mata-mata,
+ * independente de `penalty_phases`. Sem palpite na ida, a volta não pontua.
+ */
 function evaluateClassifiedPointsForPrediction(
   matchCtx: UnscoredMatchRow,
   p: ScoredPredictionRow,
-  eligible: boolean,
-  leg1ByKey: Map<string, Leg1MatchInfo>,
+  tie: TieInfo<TieMatchRow> | undefined,
   leg1PredByKey: Map<string, Leg1PredictionInfo>,
 ): number {
   const pointsClassified = p.points_classified ?? 0
-  if (!eligible || pointsClassified <= 0 || matchCtx.leg === 1) return 0
+  const eligible = isKnockoutPhase(matchCtx.phase)
+  const role = tie?.role ?? 'single'
+  if (!eligible || pointsClassified <= 0 || role === 'leg1') return 0
 
-  if (matchCtx.leg === 2) {
-    if (!matchCtx.phase || !matchCtx.home_team_id || !matchCtx.away_team_id) return 0
-    const leg1 = leg1ByKey.get(
-      `${matchCtx.phase}:${matchCtx.away_team_id}:${matchCtx.home_team_id}`,
-    )
-    if (!leg1 || leg1.status !== 'finished' || leg1.home_score === null || leg1.away_score === null) {
+  if (role === 'leg2') {
+    const leg1 = tie?.partner
+    if (
+      !leg1 ||
+      leg1.status !== 'finished' ||
+      leg1.home_score === null ||
+      leg1.away_score === null
+    ) {
       return 0
     }
     const p1 = leg1PredByKey.get(`${leg1.id}:${p.group_id}:${p.user_id}`)
@@ -332,7 +336,12 @@ function evaluateClassifiedPointsForPrediction(
         penaltyWinner: p.predicted_penalty_winner,
       },
     )
-    return calculateClassifiedBonus(predictedClassified, actualClassified, pointsClassified, eligible)
+    return calculateClassifiedBonus(
+      predictedClassified,
+      actualClassified,
+      pointsClassified,
+      eligible,
+    )
   }
 
   const actualClassified = resolveSingleMatchClassified(
@@ -356,10 +365,11 @@ export async function scoreUnprocessedMatches(
   competitionId: string,
   db: D1Database,
 ): Promise<void> {
+  // 1. Fetch all unscored matches along with penalty context and scores
   const unscored = await db
     .prepare(
-      `SELECT m.id, m.home_team_id, m.away_team_id, m.home_score, m.away_score,
-              m.penalty_winner, m.phase, m.leg, c.penalty_phases
+      `SELECT m.id, m.competition_id, m.home_team_id, m.away_team_id, m.start_time,
+              m.home_score, m.away_score, m.penalty_winner, m.phase, m.leg, c.penalty_phases
        FROM matches m
        JOIN competitions c ON c.id = m.competition_id
        WHERE m.competition_id = ?
@@ -373,18 +383,41 @@ export async function scoreUnprocessedMatches(
 
   if (unscored.results.length === 0) return
 
-  const matchIds = unscored.results.map((m) => m.id)
-  const [allPredictions, { leg1ByKey, leg1PredByKey }] = await Promise.all([
+  // 2. Knockout ties: pair each match with the other leg and pull back the
+  // already-scored leg 2 of any leg 1 whose score was corrected.
+  const tieMatches = await fetchTieMatches<TieMatchRow>(
+    db,
+    competitionId,
+    unscored.results.map((m) => m.phase),
+    TIE_MATCH_COLUMNS,
+  )
+  const ties = indexTies(tieMatches)
+  const matchesToScore = [...unscored.results, ...findLeg2ToRescore(unscored.results, ties)]
+
+  // 3. Fetch predictions for all matches to score in chunks (D1 bind limit ~100),
+  // plus the leg 1 predictions that the leg 2 classified bonus depends on.
+  const matchIds = matchesToScore.map((m) => m.id)
+  const leg1Ids = Array.from(
+    new Set(
+      matchesToScore.flatMap((m) => {
+        const tie = ties.get(m.id)
+        return tie?.role === 'leg2' && tie.partner ? [tie.partner.id] : []
+      }),
+    ),
+  )
+  const [allPredictions, leg1PredByKey] = await Promise.all([
     fetchPredictionsInChunks(db, matchIds),
-    fetchLeg1Context(competitionId, unscored.results, db),
+    fetchLeg1Predictions(db, leg1Ids),
   ])
 
+  // 4. Process matches and map them by id for quick lookup
   const matchMap = new Map<string, UnscoredMatchRow>()
-  for (const m of unscored.results) {
+  for (const m of matchesToScore) {
     matchMap.set(m.id, m)
   }
 
-  const eligibleCache = new Map<string, boolean>()
+  const eligibleCache = new Map<string, boolean>() // match_id -> eligible
+
   const now = new Date().toISOString()
   const statements: ReturnType<D1Database['prepare']>[] = []
   const affectedGroups = new Set<string>()
@@ -393,9 +426,11 @@ export async function scoreUnprocessedMatches(
     `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? WHERE id = ?`,
   )
 
+  // 5. Evaluate all predictions
   for (const p of allPredictions) {
     const matchCtx = matchMap.get(p.match_id)!
 
+    // Cache eligibility check per match
     let eligible = eligibleCache.get(p.match_id)
     if (eligible === undefined) {
       eligible = matchGoesToPenalties(parsePenaltyPhases(matchCtx.penalty_phases), matchCtx.phase)
@@ -423,8 +458,7 @@ export async function scoreUnprocessedMatches(
     const classifiedPoints = evaluateClassifiedPointsForPrediction(
       matchCtx,
       p,
-      eligible,
-      leg1ByKey,
+      ties.get(p.match_id),
       leg1PredByKey,
     )
 
@@ -433,10 +467,15 @@ export async function scoreUnprocessedMatches(
   }
 
   const updateMatchStmt = db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`)
+
+  // 6. Update matches as scored
   for (const matchId of matchIds) {
     statements.push(updateMatchStmt.bind(now, matchId))
   }
 
+  // 7. Execute updates in chunks of 100 to avoid D1 limits
   await runStatementBatches(db, statements)
+
+  // 8. Deduplicated recalculate leaderboard
   await recalculateLeaderboards(Array.from(affectedGroups), db)
 }
