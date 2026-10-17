@@ -653,7 +653,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       .prepare(`SELECT provider, COUNT(*) AS total FROM competitions GROUP BY provider ORDER BY provider`)
       .all()
     expect(compCounts).toEqual([
-      { provider: 'espn', total: 1 },
+      { provider: 'espn', total: 2 },
       { provider: 'football-data', total: 3 }, // Champions, Premier League da migration 0018 e Brasileirão
     ])
 
