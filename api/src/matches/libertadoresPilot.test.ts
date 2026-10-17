@@ -52,8 +52,8 @@ const fakeExecutionCtx = {
 } as unknown as ExecutionContext
 
 /**
- * Converte a fixture real da Libertadores (jogos já encerrados em 2026) para o
- * estado agendado ('pre') no futuro, simulando a descoberta inicial antes da
+ * Converte a fixture real da Libertadores com jogos encerrados em 2026 para o
+ * estado agendado `pre` no futuro, para simular a descoberta inicial antes da
  * bola rolar.
  */
 function buildScheduledLibertadoresBoard(): EspnScoreboard {
@@ -98,7 +98,7 @@ function stubEspnApi(board: EspnScoreboard) {
   return fetchMock
 }
 
-describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
+describe('ESPN primária e Copa Libertadores em piloto', () => {
   it('reconhece os códigos das três copas ESPN como primárias', () => {
     expect(isEspnPrimaryCompetition('conmebol.libertadores')).toBe(true)
     expect(isEspnPrimaryCompetition('conmebol.sudamericana')).toBe(true)
@@ -188,7 +188,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
     }
     expect(ordinaryComps.competitions.map((c) => c.id)).not.toContain(LIBERTADORES_ID)
 
-    // 2. Sincroniza jogos agendados pela rota POST /matches/sync (mesmo sem FOOTBALL_API_KEY).
+    // 2. Sincroniza jogos agendados pela rota POST /matches/sync mesmo sem FOOTBALL_API_KEY.
     stubEspnApi(buildScheduledLibertadoresBoard())
 
     const invalidDatesRes = await request('/matches/sync', 'admin', {
@@ -370,7 +370,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
     )!
     const quarterMatch = matches.find((m) => m.phase === 'QUARTER_FINALS')!
 
-    // Na Fase de grupos (fora de penalty_phases), empate não pede pênaltis.
+    // Na Fase de grupos fora de penalty_phases, o empate não pede pênaltis.
     expect(
       (
         await request('/predictions', 'pilot', {
@@ -385,7 +385,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
       ).status,
     ).toBe(200)
 
-    // No mata-mata (LAST_16 está em penalty_phases), empate exige predicted_penalty_winner.
+    // No mata-mata com LAST_16 em penalty_phases, o empate exige predicted_penalty_winner.
     expect(
       (
         await request('/predictions', 'pilot', {
@@ -443,7 +443,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
       ).status,
     ).toBe(200)
 
-    // 5. Ciclo automático (discoverFixtures + pollActiveMatches) atualiza com a fixture real encerrada.
+    // 5. O ciclo automático com discoverFixtures e pollActiveMatches atualiza a partir da fixture real encerrada.
     stubEspnApi(LIBERTADORES_BOARD)
     await discoverFixtures(db, 'unused-key')
 
@@ -573,7 +573,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
       .get() as { scored_at: string | null }
     expect(rescored.scored_at).toEqual(expect.any(String))
 
-    // 7. Verifica pontuação do piloto no ranking (3 + 3 + (3 + 1 bônus pênalti) + 3 = 13 pontos, 4 placares exatos).
+    // 7. Verifica a pontuação do piloto no ranking com 13 pontos totais, 1 ponto de bônus de pênalti e 4 placares exatos.
     const membersRes = await request(`/groups/${group.id}/members`, 'pilot')
     expect(membersRes.status).toBe(200)
     const { members } = (await membersRes.json()) as {
@@ -600,7 +600,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
     const { sqlite, db } = createSqliteD1()
     handles.push(sqlite)
 
-    // Semeia competição, times e partida do Brasileirão (football-data) com clubes que também jogam a Libertadores.
+    // Semeia competição, times e partida do Brasileirão na football-data com clubes que também jogam a Libertadores.
     sqlite.exec(`
       INSERT INTO competitions (id, name, slug, external_id, provider, season, status, type, visibility)
       VALUES ('comp-bsa', 'Campeonato Brasileiro Série A', 'campeonato-brasileiro-serie-a-2026', 'BSA', 'football-data', '2026', 'ongoing', 'league', 'public');
@@ -641,7 +641,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
     })
     expect(second).toEqual(first)
 
-    // Roda o fallback da ESPN passando tanto a Libertadores (espn) quanto o Brasileirão (football-data).
+    // Roda o fallback da ESPN com a Libertadores da ESPN e o Brasileirão da football-data.
     const now = Date.parse('2026-10-16T00:30:00Z') + 130 * 60 * 1000
     const updatedMap = await scoreWindowFromEspn(db, undefined, [LIBERTADORES_ID, 'comp-bsa'], {
       now,
@@ -654,7 +654,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
       .all()
     expect(compCounts).toEqual([
       { provider: 'espn', total: 1 },
-      { provider: 'football-data', total: 3 }, // Champions, Premier League (0018) + Brasileirão
+      { provider: 'football-data', total: 3 }, // Champions, Premier League da migration 0018 e Brasileirão
     ])
 
     const teamCounts = sqlite
@@ -692,7 +692,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
 
     await expect(
       syncEspnFixtures({ competitionCode: 'liga.inexistente', season: 2026, db }),
-    ).rejects.toThrow('Competição ESPN desconhecida: liga.inexistente')
+    ).rejects.toThrow('Competição ESPN desconhecida liga.inexistente')
 
     // Scoreboard sem eventos válidos devolve contadores zerados sem gravar nada.
     stubEspnApi({
@@ -722,7 +722,7 @@ describe('ESPN primária e Copa Libertadores em piloto (Ticket 04)', () => {
       teams: 0,
     })
 
-    // Eventos cobrindo STATUS_FINAL_AET, STATUS_POSTPONED, estado 'in', fallback de short_name e winner booleano nos pênaltis.
+    // Eventos que cobrem STATUS_FINAL_AET, STATUS_POSTPONED, estado 'in', fallback de short_name e winner booleano nos pênaltis.
     stubEspnApi({
       events: [
         {

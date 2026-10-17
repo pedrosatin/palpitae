@@ -74,7 +74,7 @@ describe('fetchEspnScoreboard', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('expõe a URL montada com e sem data (documentação viva do formato)', () => {
+  it('expõe a URL montada com e sem data como documentação viva do formato', () => {
     expect(espnScoreboardUrl('conmebol.libertadores', '20260818')).toBe(
       'https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard?dates=20260818',
     )

@@ -4,14 +4,14 @@
  * alimenta o site da ESPN, e por isso cada consumidor deve tratar respostas
  * malformadas como erro (ver ADR-015).
  *
- * Compartilhado entre o radar (api/src/radar/) e o sync primário de copas da
- * ESPN (`api/src/matches/espnSync.ts`).
+ * Compartilhado entre o radar em `api/src/radar/` e o sync primário de copas da
+ * ESPN em `api/src/matches/espnSync.ts`.
  *
- * Nota importante sobre o parâmetro `dates`: a ESPN exige `dates=YYYYMMDD` no
- * plural (`date=` no singular é ignorado e devolve a rodada corrente). Além
- * disso, para uma data sem jogos a ESPN devolve a rodada vizinha, e para uma
- * liga fora de temporada devolve os últimos jogos. Quem conta "jogos do dia"
- * tem que filtrar pelo campo `date` de cada evento.
+ * A ESPN exige o parâmetro `dates=YYYYMMDD` no plural. O parâmetro `date=` no
+ * singular é ignorado e devolve a rodada corrente. Para uma data sem jogos a
+ * ESPN devolve a rodada vizinha, e para uma liga fora de temporada devolve os
+ * últimos jogos. Quem conta "jogos do dia" tem que filtrar pelo campo `date` de
+ * cada evento.
  */
 
 const SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
@@ -53,7 +53,7 @@ export type EspnEventCompetition = {
   competitors?: EspnCompetitor[]
 }
 
-/** Evento do scoreboard (usado pelo radar e pelo sync de partidas). */
+/** Evento do scoreboard usado pelo radar e pelo sync de partidas. */
 export type EspnScoreboardEvent = {
   id?: string
   date?: unknown
@@ -78,7 +78,7 @@ export type EspnScoreboard = {
   leagues?: EspnScoreboardLeague[]
 }
 
-/** URL do scoreboard de uma liga, opcionalmente filtrada por data (YYYYMMDD). Exportada para testes. */
+/** URL do scoreboard de uma liga, opcionalmente filtrada por data no formato YYYYMMDD. Exportada para testes. */
 export function espnScoreboardUrl(slug: string, yyyymmdd?: string): string {
   if (yyyymmdd) {
     return `${SCOREBOARD_URL}/${slug}/scoreboard?dates=${yyyymmdd}`
@@ -96,9 +96,9 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Scoreboard de uma liga (rodada corrente ou numa data `YYYYMMDD`). 1 retry com
- * backoff em 429/5xx; o resto (4xx, timeout, rede) falha direto — quem
- * orquestra vários slugs já lida com falha parcial.
+ * Scoreboard de uma liga na rodada corrente ou numa data `YYYYMMDD`. Aplica 1
+ * retry com backoff em 429 e 5xx. Erros 4xx, timeout e falhas de rede abortam
+ * direto, pois o chamador que consulta vários slugs já trata falha parcial.
  */
 export async function fetchEspnScoreboard(
   slug: string,

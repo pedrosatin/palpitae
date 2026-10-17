@@ -23,8 +23,8 @@ export type EspnPrimaryCompetitionMeta = {
 }
 
 /**
- * Competições cujo provider primário é a ESPN (fora do free tier da
- * football-data.org). A chave é o slug da competição na API da ESPN e também o
+ * Competições cujo provider primário é a ESPN, fora do free tier da
+ * football-data.org. A chave é o slug da competição na API da ESPN e também o
  * valor gravado em `competitions.external_id`.
  */
 export const ESPN_PRIMARY_COMPETITIONS: Record<string, EspnPrimaryCompetitionMeta> = {
@@ -47,10 +47,10 @@ export function isEspnPrimaryCompetition(code: string): boolean {
 }
 
 /**
- * Tradução de `event.season.slug` da ESPN para o código canônico de `phase` /
- * `round` do Palpitae (rótulos PT-BR em `rounds.ts`, gate de pênaltis em
- * `competitions.penalty_phases`). Qualquer slug fora deste mapa é descartado
- * em modo fail-closed.
+ * Tradução de `event.season.slug` da ESPN para o código canônico de `phase` e
+ * `round` do Palpitae, usado pelos rótulos PT-BR em `rounds.ts` e pelo gate de
+ * pênaltis em `competitions.penalty_phases`. Qualquer slug fora deste mapa é
+ * descartado em modo fail-closed.
  */
 const ESPN_STAGE_MAP: Record<string, string> = {
   'first-stage': 'FIRST_STAGE',
@@ -439,7 +439,7 @@ async function upsertEspnMatches(
 export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResult> {
   const meta = ESPN_PRIMARY_COMPETITIONS[opts.competitionCode]
   if (!meta) {
-    throw new Error(`Competição ESPN desconhecida: ${opts.competitionCode}`)
+    throw new Error(`Competição ESPN desconhecida ${opts.competitionCode}`)
   }
 
   const rawEvents = await fetchEventsForSync(opts.competitionCode, opts.dates)
@@ -456,7 +456,7 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     }
   }
 
-  const competition = await upsertEspnCompetition(dbOrThrow(opts.db), opts.competitionCode, meta, opts.season)
+  const competition = await upsertEspnCompetition(opts.db, opts.competitionCode, meta, opts.season)
   const { teamCount, teamIds } = await upsertEspnTeams(opts.db, validEvents)
   const now = opts.now ?? isoSeconds(new Date())
   const matchCount = await upsertEspnMatches(opts.db, competition.id, validEvents, teamIds, now)
@@ -469,6 +469,3 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
   }
 }
 
-function dbOrThrow(db: D1Database): D1Database {
-  return db
-}

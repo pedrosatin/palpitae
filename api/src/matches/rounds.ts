@@ -1,14 +1,14 @@
 /**
  * Fonte de verdade dos rótulos de exibição de fase/rodada.
  *
- * O `round` cru é um detalhe do provider: na football-data as rodadas de grupo
- * vêm numéricas ("1".."8") e as fases de mata-mata vêm como `stage` ("LAST_32",
- * ...); nas copas da ESPN tanto a fase de grupos ("GROUP_STAGE") quanto as fases
- * preliminares e eliminatórias entram como código canônico. Traduzir isso para
- * um rótulo PT-BR é decisão de domínio compartilhada por dois consumidores — o
- * e-mail de lembrete (`roundReminder.ts`) e a resposta de `GET /matches`
- * (`router.ts`, campo `round_label`, consumido pelo front). Por isso o mapa
- * vive aqui, no back, e não duplicado no front.
+ * O `round` cru depende do provider. Na football-data as rodadas de grupo vêm
+ * numéricas de "1" a "8" e as fases de mata-mata vêm como `stage` a exemplo de
+ * "LAST_32". Nas copas da ESPN tanto a fase de grupos "GROUP_STAGE" quanto as
+ * fases preliminares e eliminatórias entram como código canônico. Traduzir isso
+ * para um rótulo PT-BR é decisão de domínio compartilhada pelo e-mail de
+ * lembrete em `roundReminder.ts` e pela resposta de `GET /matches` em
+ * `router.ts` no campo `round_label`. Por isso o mapa vive no back e não é
+ * duplicado no front.
  */
 const KNOCKOUT_LABELS: Record<string, string> = {
   GROUP_STAGE: 'Fase de grupos',
