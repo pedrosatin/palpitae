@@ -280,7 +280,7 @@ describe('onRequest (workerd)', () => {
     expect(metaContent(html, 'name', 'twitter:title')).toBe(title.replaceAll('"', '&quot;'))
     expect(metaContent(html, 'name', 'twitter:description')).toBe(description)
     // Imagem continua a genérica.
-    expect(metaContent(html, 'property', 'og:image')).toBe('https://palpitae.com.br/og-image.png')
+    expect(metaContent(html, 'property', 'og:image')).toBe('https://palpitae.com.br/og-image-brasileirao-2026.png')
     // O resto da SPA segue intacto.
     expect(html).toContain('<div id="root"')
   })
