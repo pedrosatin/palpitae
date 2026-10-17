@@ -20,7 +20,7 @@
  * segredo, como o proxy de `/api/*`. Assim a API conta a quota pelo IP de quem pediu
  * o preview, e não pelo balde anônimo compartilhado dos Workers.
  *
- * og:image segue a genérica (/og-image.png); imagem dinâmica por grupo fica
+ * og:image segue a genérica (/og-image-brasileirao-2026.png); imagem dinâmica por grupo fica
  * para depois.
  */
 
