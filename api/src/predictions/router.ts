@@ -387,7 +387,10 @@ router.get('/', requireAuth, async (c) => {
     },
   })
 
-  return c.json({ predictions: predictionsOut })
+  return c.json({
+    predictions: predictionsOut,
+    import_completed: membership.predictions_import_completed === 1,
+  })
 })
 
 /**
@@ -1389,11 +1392,13 @@ async function handleImportPost(c: Context<AppContext>) {
     ),
   )
 
-  const batches = []
-  for (let i = 0; i < importStatements.length; i += 100) {
-    batches.push(db.batch(importStatements.slice(i, i + 100)))
-  }
-  await Promise.all(batches)
+  importStatements.push(
+    db
+      .prepare(`UPDATE group_members SET predictions_import_completed = 1
+      WHERE group_id = ? AND user_id = ?`)
+      .bind(target_group_id, userId),
+  )
+  await db.batch(importStatements)
 
   logEvent(c.env.AE, 'prediction_saved', {
     blobs: [target_group_id, '', await hashUserId(userId), 'import'],
