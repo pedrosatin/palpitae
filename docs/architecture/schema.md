@@ -482,3 +482,7 @@ CREATE TABLE IF NOT EXISTS payments (
 
 CREATE INDEX IF NOT EXISTS idx_payments_group ON payments(group_id);
 ```
+
+### Conclusão da importação de palpites
+
+`group_members.predictions_import_completed` registra se o membro já importou ao menos um palpite para aquele grupo. O marcador é gravado no mesmo batch dos palpites e aparece como `import_completed` somente na listagem autenticada dos próprios palpites. A interface recolhe o seletor e permite reabri-lo com "Importar novamente". Importações anteriores à migração 0024 não podem ser identificadas pelos palpites existentes e não recebem preenchimento retroativo.

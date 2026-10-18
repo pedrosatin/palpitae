@@ -3,7 +3,7 @@ import Button from '../Button'
 import ErrorState from '../ErrorState'
 import MatchCard, { type Match } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
-import Select from '../Select'
+import PredictionsImportBar from './PredictionsImportBar'
 import { usePredictionsTab } from './usePredictionsTab'
 import styles from './PredictionsTab.module.css'
 
@@ -74,6 +74,9 @@ export default function PredictionsTab({
     bulkError,
     pendingCount,
     handleSaveAll,
+    importCompleted,
+    importExpanded,
+    setImportExpanded,
     otherGroups,
     importSourceId,
     setImportSourceId,
@@ -132,35 +135,19 @@ export default function PredictionsTab({
 
   return (
     <div className={styles.root}>
-      {otherGroups.length > 0 && (
-        <div className={styles.importBar}>
-          <span className={styles.importLabel}>Importar palpites de:</span>
-          <Select
-            className={styles.importSelect}
-            value={importSourceId}
-            onChange={(e) => setImportSourceId(e.target.value)}
-          >
-            {otherGroups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </Select>
-          <Button
-            size="sm"
-            className={styles.importBtn}
-            onClick={handleImport}
-            disabled={importing || !importSourceId}
-          >
-            {importing ? 'Importando...' : 'Importar'}
-          </Button>
-          {importFeedback && (
-            <span className={importFeedback.ok ? styles.importSuccess : styles.importError}>
-              {importFeedback.message}
-            </span>
-          )}
-        </div>
-      )}
+      <PredictionsImportBar
+        {...{
+          otherGroups,
+          importCompleted,
+          importFeedback,
+          importExpanded,
+          importSourceId,
+          setImportSourceId,
+          importing,
+          handleImport,
+          setImportExpanded,
+        }}
+      />
       <RoundHeader
         id="predictions-round-select"
         roundKeys={roundKeys}

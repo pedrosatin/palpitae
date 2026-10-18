@@ -1,9 +1,8 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
-import { fetchCachedJson } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
@@ -13,11 +12,14 @@ type PredictionMap = Map<string, Prediction>
 function usePredictionsFetch(groupId: string, competitionId: string) {
   const [matches, setMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
+  const [importCompleted, setImportCompleted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
 
   useEffect(() => {
+    let active = true
+    setImportCompleted(false)
     setLoading(true)
     setError(null)
 
@@ -25,10 +27,12 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
       fetchCompetitionMatches(competitionId),
       apiFetch(`${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`).then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar palpites')
-        return r.json() as Promise<{ predictions: Prediction[] }>
+        return r.json() as Promise<{ predictions: Prediction[]; import_completed?: boolean }>
       }),
     ])
       .then(([matchesData, predictionsData]) => {
+        if (!active) return
+        setImportCompleted(predictionsData.import_completed === true)
         setMatches(matchesData.matches)
         const map = new Map<string, Prediction>()
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
@@ -36,18 +40,38 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
 
         applyDefaultRoundFromMatches(matchesData.matches, matchesData.default_round, setRoundIndex)
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .catch((e: Error) => {
+        if (active) setError(e.message)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [groupId, competitionId])
 
-  return { matches, predictions, setPredictions, loading, error, roundIndex, setRoundIndex }
+  return {
+    matches,
+    predictions,
+    setPredictions,
+    loading,
+    error,
+    roundIndex,
+    setRoundIndex,
+    importCompleted,
+    setImportCompleted,
+  }
 }
 
 function usePredictionsImport(
   groupId: string,
   competitionId: string,
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
+  setImportCompleted: Dispatch<SetStateAction<boolean>>,
 ) {
+  const scope = useRef({ active: true })
+  const [importExpanded, setImportExpanded] = useState(false)
   const [otherGroups, setOtherGroups] = useState<{ id: string; name: string }[]>([])
   const [importSourceId, setImportSourceId] = useState<string>('')
   const [importing, setImporting] = useState(false)
@@ -57,22 +81,22 @@ function usePredictionsImport(
   } | null>(null)
 
   useEffect(() => {
-    fetchCachedJson(
-      'groups:list',
-      () =>
-        apiFetch(`${config.apiUrl}/groups`, { cache: 'no-store' }).then((r) => {
-          if (!r.ok) throw new Error('Erro ao carregar grupos')
-          return r.json() as Promise<{
-            groups: Array<{
-              id: string
-              name: string
-              competition_id: string
-            }>
-          }>
-        }),
-      30_000,
-    )
+    const current = { active: true }
+    scope.current = current
+    setOtherGroups([])
+    setImportSourceId('')
+    setImporting(false)
+    setImportFeedback(null)
+    setImportExpanded(false)
+    apiFetch(`${config.apiUrl}/groups`, { cache: 'no-store' })
+      .then((r) => {
+        if (!r.ok) throw new Error('Erro ao carregar grupos')
+        return r.json() as Promise<{
+          groups: Array<{ id: string; name: string; competition_id: string }>
+        }>
+      })
       .then((data) => {
+        if (!current.active) return
         const siblings = data.groups.filter(
           (g) => g.competition_id === competitionId && g.id !== groupId,
         )
@@ -80,10 +104,14 @@ function usePredictionsImport(
         if (siblings.length > 0) setImportSourceId(siblings[0].id)
       })
       .catch(() => {})
+    return () => {
+      current.active = false
+    }
   }, [groupId, competitionId])
 
   async function handleImport() {
-    if (!importSourceId) return
+    const current = scope.current
+    if (!importSourceId || !current.active) return
     trackEvent('click_predictions_importar')
     setImporting(true)
     setImportFeedback(null)
@@ -104,32 +132,44 @@ function usePredictionsImport(
       }
       if (!res.ok) throw new Error(data.error ?? 'Erro ao importar palpites')
 
-      const predsRes = await apiFetch(
-        `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
-      )
-      const predsData = (await predsRes.json()) as {
-        predictions: Prediction[]
-      }
-      const map = new Map<string, Prediction>()
-      for (const p of predsData.predictions) map.set(p.match_id, p)
-      setPredictions(map)
-
+      if (!current.active) return
       const imported = data.imported ?? 0
       const skipped = data.locked_skipped ?? 0
       const msg =
         skipped > 0
           ? `${imported} palpite(s) importado(s). ${skipped} já bloqueado(s) foram ignorados.`
           : `${imported} palpite(s) importado(s) com sucesso!`
+      if (imported > 0) {
+        setImportCompleted(true)
+        setImportExpanded(false)
+      }
       setImportFeedback({ ok: true, message: msg })
-      setTimeout(() => setImportFeedback(null), 4000)
+      try {
+        const predsRes = await apiFetch(
+          `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
+        )
+        if (!predsRes.ok) throw new Error('Erro ao atualizar palpites')
+        const predsData = (await predsRes.json()) as { predictions: Prediction[] }
+        const map = new Map<string, Prediction>()
+        for (const p of predsData.predictions) map.set(p.match_id, p)
+        if (current.active) setPredictions(map)
+      } catch {
+        if (current.active)
+          setImportFeedback({
+            ok: false,
+            message: `${msg} Não foi possível atualizar os palpites na tela. Recarregue a página.`,
+          })
+      }
     } catch (e) {
-      setImportFeedback({ ok: false, message: (e as Error).message })
+      if (current.active) setImportFeedback({ ok: false, message: (e as Error).message })
     } finally {
-      setImporting(false)
+      if (current.active) setImporting(false)
     }
   }
 
   return {
+    importExpanded,
+    setImportExpanded,
     otherGroups,
     importSourceId,
     setImportSourceId,
@@ -140,17 +180,28 @@ function usePredictionsImport(
 }
 
 export function usePredictionsTab(groupId: string, competitionId: string) {
-  const { matches, predictions, setPredictions, loading, error, roundIndex, setRoundIndex } =
-    usePredictionsFetch(groupId, competitionId)
+  const {
+    matches,
+    predictions,
+    setPredictions,
+    loading,
+    error,
+    roundIndex,
+    setRoundIndex,
+    importCompleted,
+    setImportCompleted,
+  } = usePredictionsFetch(groupId, competitionId)
 
   const {
+    importExpanded,
+    setImportExpanded,
     otherGroups,
     importSourceId,
     setImportSourceId,
     importing,
     importFeedback,
     handleImport,
-  } = usePredictionsImport(groupId, competitionId, setPredictions)
+  } = usePredictionsImport(groupId, competitionId, setPredictions, setImportCompleted)
 
   const {
     roundKeys,
@@ -186,6 +237,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
   )
 
   return {
+    importCompleted,
     drafts,
     matches,
     predictions,
@@ -205,6 +257,8 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     bulkError,
     pendingCount,
     handleSaveAll,
+    importExpanded,
+    setImportExpanded,
     otherGroups,
     importSourceId,
     setImportSourceId,

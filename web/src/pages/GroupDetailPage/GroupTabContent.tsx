@@ -27,6 +27,7 @@ export default function GroupTabContent({
     <div className={styles.tabContent}>
       {activeTab === 'predictions' && (
         <PredictionsTab
+          key={`${userId}:${groupId}`}
           groupId={groupId}
           competitionId={group.competition_id}
           pointsExact={group.points_exact}
