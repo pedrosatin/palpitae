@@ -95,6 +95,49 @@ describe('Conclusão da importação por membro', () => {
     ).toBe(0)
   })
 
+  it.each([
+    { failMarker: false, scenario: 'persiste os 380 palpites e o marcador no destino' },
+    {
+      failMarker: true,
+      scenario: 'reverte inserções e sobrescrita de 380 palpites se o marcador falhar',
+    },
+  ])('$scenario', async ({ failMarker }) => {
+    const { sqlite, request } = setup()
+    sqlite.exec(`
+        WITH RECURSIVE season(n) AS (
+          SELECT 1 UNION ALL SELECT n + 1 FROM season WHERE n < 379
+        )
+        INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round)
+          SELECT 'm-' || n,'c','test-' || n,'test','h','v','2099-01-01T00:00:00Z','scheduled','1'
+          FROM season;
+        INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+          SELECT 'p-' || id,'a','source',id,3,2 FROM matches WHERE id != 'm';
+        INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+          VALUES ('existing','a','target','m',9,8);
+      `)
+    const readPicks = (groupId: string) =>
+      sqlite
+        .prepare(`
+        SELECT match_id,predicted_home_score,predicted_away_score FROM predictions
+        WHERE group_id = ? AND user_id = 'a' ORDER BY match_id
+      `)
+        .all(groupId)
+    const source = readPicks('source')
+    const previousTarget = readPicks('target')
+    expect(source).toHaveLength(380)
+    if (failMarker) {
+      sqlite.exec(`CREATE TRIGGER fail_season_marker BEFORE UPDATE OF predictions_import_completed ON group_members
+          BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;`)
+    }
+
+    const response = await request('a', 'target', true)
+    expect(response.status).toBe(failMarker ? 500 : 200)
+    if (!failMarker) expect((await response.json()).imported).toBe(380)
+    expect(readPicks('target')).toEqual(failMarker ? previousTarget : source)
+    expect(readPicks('source')).toEqual(source)
+    expect((await (await request()).json()).import_completed).toBe(!failMarker)
+  })
+
   it.each(['banido', 'removido', 'grupo excluído'])(
     'recusa destino %s sem alterar palpites ou marcador',
     async (state) => {
