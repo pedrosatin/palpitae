@@ -37,10 +37,10 @@ const ctx = {
   waitUntil: (p: Promise<unknown>) => p,
 } as unknown as ExecutionContext
 
-function run(cron: string) {
+function run(cron: string, scheduledTime = Date.now()) {
   const controller = {
     cron,
-    scheduledTime: Date.now(),
+    scheduledTime,
   } as unknown as ScheduledController
   return worker.scheduled!(controller, env, ctx)
 }
@@ -77,19 +77,20 @@ describe('scheduled handler routing', () => {
   })
 
   it('routes the fixture-discovery cron to discoverFixtures only', async () => {
-    await run('0 6 * * *')
+    await run('0 6 * * *', 1792022400000)
 
     expect(discoverFixtures).toHaveBeenCalledTimes(1)
-    expect(discoverFixtures).toHaveBeenCalledWith(env.DB, 'fk', env.AE)
+    expect(discoverFixtures).toHaveBeenCalledWith(env.DB, 'fk', env.AE, 1792022400000)
     expect(pollActiveMatches).not.toHaveBeenCalled()
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(exportRecentDays).not.toHaveBeenCalled()
   })
 
   it('falls back to the result poller for any other cron', async () => {
-    await run('*/30 * * * *')
+    await run('*/30 * * * *', 1792022400000)
 
     expect(pollActiveMatches).toHaveBeenCalledTimes(1)
+    expect(pollActiveMatches).toHaveBeenCalledWith(env.DB, 'fk', env.AE, 1792022400000)
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(discoverFixtures).not.toHaveBeenCalled()
