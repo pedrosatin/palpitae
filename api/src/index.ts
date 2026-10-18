@@ -89,7 +89,9 @@ export default {
 
     if (controller.cron === FIXTURE_DISCOVERY_CRON) {
       // Descobre jogos novos (mata-mata, remarcações) das competições ativas.
-      ctx.waitUntil(discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
+      ctx.waitUntil(
+        discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+      )
       return
     }
 
@@ -108,6 +110,8 @@ export default {
     }
 
     // Result poller — resultados da janela ativa + pontuação (ADR-007).
-    ctx.waitUntil(pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
+    ctx.waitUntil(
+      pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+    )
   },
 }

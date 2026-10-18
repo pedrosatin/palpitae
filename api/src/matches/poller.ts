@@ -13,32 +13,43 @@ type ActiveRound = {
   provider?: string
   season: string
   round: string
+  utc_day: string
 }
 
 type SyncTask = {
   comp: ActiveRound
   round: string
+  dates?: string[]
 }
 
 function buildSyncTasks(rows: ActiveRound[]): {
   compCount: number
   tasks: SyncTask[]
 } {
-  const byComp = new Map<string, { comp: ActiveRound; rounds: Set<string> }>()
+  const byComp = new Map<string, { comp: ActiveRound; rounds: Set<string>; dates: Set<string> }>()
   for (const row of rows) {
-    const entry = byComp.get(row.comp_id)
-    if (entry) {
-      entry.rounds.add(row.round)
-    } else {
-      byComp.set(row.comp_id, { comp: row, rounds: new Set([row.round]) })
+    let entry = byComp.get(row.comp_id)
+    if (!entry) {
+      entry = { comp: row, rounds: new Set(), dates: new Set() }
+      byComp.set(row.comp_id, entry)
+    }
+    entry.rounds.add(row.round)
+    if (row.provider === 'espn') {
+      // A ESPN indexa o dia local. Um jogo após meia-noite UTC pode estar no dia anterior.
+      const day = Date.parse(`${row.utc_day}T00:00:00Z`)
+      for (const offset of [-1, 0]) {
+        entry.dates.add(
+          new Date(day + offset * 86_400_000).toISOString().slice(0, 10).replaceAll('-', ''),
+        )
+      }
     }
   }
 
   const tasks: SyncTask[] = []
-  for (const { comp, rounds } of byComp.values()) {
+  for (const { comp, rounds, dates } of byComp.values()) {
     if (comp.provider === 'espn') {
       const firstRound = rounds.values().next().value ?? ''
-      tasks.push({ comp, round: firstRound })
+      tasks.push({ comp, round: firstRound, dates: Array.from(dates).sort() })
       continue
     }
     for (const round of rounds) {
@@ -72,6 +83,7 @@ export async function pollActiveMatches(
   db: D1Database,
   apiKey: string,
   ae?: AnalyticsEngineDataset,
+  now = Date.now(),
 ): Promise<void> {
   const startedAt = Date.now()
 
@@ -79,7 +91,6 @@ export async function pollActiveMatches(
   // Compute the bounds the same way so the TEXT comparison stays lexicographic.
   // SQLite's datetime('now', ...) would produce "2026-06-16 23:21:20" (space, no Z)
   // and string-compare wrong against the stored format.
-  const now = Date.now()
   const earliestOver = new Date(now - 115 * 60 * 1000).toISOString() // started ≥ 115 min ago
   const stillRelevant = new Date(now - 200 * 60 * 1000).toISOString() // started ≤ 200 min ago
   const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString() // started ≤ 24 h ago
@@ -91,7 +102,8 @@ export async function pollActiveMatches(
          c.external_id AS external_id,
          c.provider    AS provider,
          c.season      AS season,
-         m.round       AS round
+         m.round       AS round,
+         substr(m.start_time, 1, 10) AS utc_day
        FROM matches m
        JOIN competitions c ON c.id = m.competition_id
        WHERE m.start_time <= ?
@@ -118,7 +130,7 @@ export async function pollActiveMatches(
   const { compCount, tasks } = buildSyncTasks(rows.results)
 
   const syncResults = await Promise.all(
-    tasks.map(async ({ comp, round }) => {
+    tasks.map(async ({ comp, round, dates }) => {
       const matchday = parseInt(round, 10)
       const matchdayParam =
         comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
@@ -128,6 +140,7 @@ export async function pollActiveMatches(
           competitionCode: comp.external_id,
           season: Number(comp.season),
           matchday: matchdayParam,
+          dates,
           apiKey,
           db,
         })
@@ -138,14 +151,14 @@ export async function pollActiveMatches(
     }),
   )
 
-  let footballApiCalls = 0
+  // Requests primárias planejadas, sem retries nem chamadas do fallback.
+  const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)
   let fixturesUpdated = 0
   let hadError = false
   const syncedComps = new Set<string>()
   const failedCompIds = new Set<string>()
 
   for (const res of syncResults) {
-    footballApiCalls++
     if (res.success) {
       fixturesUpdated += res.matches
       syncedComps.add(res.comp.comp_id)
@@ -196,7 +209,7 @@ export async function pollActiveMatches(
 
   logEvent(ae, 'poller_run', {
     blobs: [hadError ? 'error' : 'ok'],
-    doubles: [rows.results.length, fixturesUpdated, footballApiCalls, Date.now() - startedAt],
+    doubles: [rows.results.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
   })
 
   console.info(
@@ -204,7 +217,9 @@ export async function pollActiveMatches(
     JSON.stringify({
       route: 'cron pollActiveMatches',
       competitions: compCount,
-      rounds: rows.results.length,
+      round_days: rows.results.length,
+      sync_tasks: tasks.length,
+      api_requests_planned: plannedApiRequests,
       total_ms: Date.now() - startedAt,
     }),
   )

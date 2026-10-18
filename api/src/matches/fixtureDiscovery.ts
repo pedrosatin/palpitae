@@ -7,31 +7,25 @@ type ActiveCompetition = {
   id: string
   external_id: string
   season: string
+  provider: string
 }
 
 /**
  * Descobre jogos novos das competições ativas. Roda 1x/dia de madrugada via Cron
  * Trigger (ver wrangler.toml), num horário sem jogos pra não competir com o poller.
  *
- * Diferente do poller (que busca por matchday da janela ativa), aqui o sync é
- * SEM filtro de matchday: busca o torneio inteiro de cada competição não-terminal.
- * O upsert de `syncFixtures` é idempotente (`ON CONFLICT` por external_id), então:
- *   - confrontos do mata-mata definidos ontem entram como linhas novas hoje
- *   - horários remarcados de jogos já existentes são atualizados
- *   - nada é duplicado
+ * football-data consulta o calendário inteiro, sem matchday. ESPN consulta nove
+ * datas individuais, de ontem UTC até hoje UTC + 7 dias, mesmo sem jogos no banco.
+ * O upsert atualiza confrontos e horários sem remover jogos fora desse horizonte.
  *
- * Por que sync completo (e não "esperar a rodada acabar"): em torneios curtos os
- * confrontos da próxima fase são agendados gradualmente conforme cada grupo termina.
- * Esperar o último grupo deixaria os primeiros jogos do mata-mata sem tempo de palpite;
- * um jogo adiado travaria a descoberta indefinidamente. O sync diário incondicional
- * pega tudo assim que a API Football disponibiliza, com o máximo de antecedência.
- *
- * Custo: 1 chamada à API Football por competição ativa por dia.
+ * Custo sem retries: 1 request por competição football-data e 9 por competição
+ * ESPN. As três copas ESPN planejam 27 requests por execução.
  */
 export async function discoverFixtures(
   db: D1Database,
   apiKey: string,
   ae?: AnalyticsEngineDataset,
+  now = Date.now(),
 ): Promise<void> {
   const startedAt = Date.now()
 
@@ -39,7 +33,7 @@ export async function discoverFixtures(
   // torneio acabado não ganha jogos novos, não vale gastar chamada da API.
   const rows = await db
     .prepare(
-      `SELECT id, external_id, season
+      `SELECT id, external_id, season, provider
          FROM competitions
         WHERE status != 'finished'
           AND provider IN ('football-data', 'espn')
@@ -56,7 +50,12 @@ export async function discoverFixtures(
     return
   }
 
-  let footballApiCalls = 0
+  const utcDay = new Date(now).setUTCHours(0, 0, 0, 0)
+  const espnDates = Array.from({ length: 9 }, (_, i) =>
+    new Date(utcDay + (i - 1) * 86_400_000).toISOString().slice(0, 10).replaceAll('-', ''),
+  )
+  // Requests primárias planejadas, excluindo retries do provedor.
+  let plannedApiRequests = 0
   let fixturesUpdated = 0
   let hadError = false
 
@@ -69,6 +68,7 @@ export async function discoverFixtures(
         const result = await syncFixtures({
           competitionCode: comp.external_id,
           season: Number(comp.season),
+          dates: comp.provider === 'espn' ? espnDates : undefined,
           apiKey,
           db,
         })
@@ -84,7 +84,7 @@ export async function discoverFixtures(
       }
     })()
 
-    footballApiCalls++ // cada syncFixtures faz exatamente 1 fetch à API Football
+    plannedApiRequests += comp.provider === 'espn' ? espnDates.length : 1
     executing.add(promise)
     promise.finally(() => executing.delete(promise))
 
@@ -97,7 +97,7 @@ export async function discoverFixtures(
 
   logEvent(ae, 'fixture_discovery_run', {
     blobs: [hadError ? 'error' : 'ok'],
-    doubles: [rows.results.length, fixturesUpdated, footballApiCalls, Date.now() - startedAt],
+    doubles: [rows.results.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
   })
 
   console.info(
@@ -106,6 +106,9 @@ export async function discoverFixtures(
       route: 'cron discoverFixtures',
       competitions: rows.results.length,
       fixtures_updated: fixturesUpdated,
+      sync_tasks: rows.results.length,
+      api_requests_planned: plannedApiRequests,
+      espn_dates: espnDates,
       total_ms: Date.now() - startedAt,
     }),
   )

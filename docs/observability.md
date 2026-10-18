@@ -133,6 +133,21 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app) | — | — |
 | `email_resubscribed` | `user_hash` | `source` (`settings`) | — | — |
 
+Nos eventos `poller_run` e `fixture_discovery_run`, `api_calls` conta requests
+primárias planejadas. Cada data ESPN corresponde a uma request, após deduplicação
+por competição e data. Cada rodada football-data do poller corresponde a uma
+request, e a descoberta football-data consulta o calendário inteiro em uma request.
+Retries dos provedores e chamadas do fallback ficam fora desse contador, que
+continua contando o plano quando uma request falha. Ele não mede HTTP efetivamente
+concluído. Os logs `[perf]` expõem `sync_tasks` e `api_requests_planned` para comparar
+sincronizações lógicas com requests planejadas. A descoberta também registra
+`espn_dates`, os nove dias de ontem UTC até hoje UTC + 7, totalizando 27 requests
+para as três copas ESPN antes de retries. O cron usa `scheduledTime` como referência
+para a janela de resgate e as datas de descoberta. `duration_ms` mede tempo real.
+O campo legado `matches_checked` do poller conta grupos de competição, rodada e dia
+UTC selecionados, não partidas individuais.
+
+
 Observação sobre `football_api_error`: tem **três formas** de chamada. No poller
 (`matches/poller.ts`) é `[comp_id, round, error_message]`; nos endpoints de matches
 (`POST /matches/sync` em `matches/router.ts`) é `[context, error_message]`; na descoberta de jogos
