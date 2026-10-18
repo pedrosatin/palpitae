@@ -25,6 +25,7 @@ type ActiveRow = {
   provider?: string
   season: string
   round: string
+  utc_day?: string
 }
 
 /**
@@ -215,6 +216,7 @@ describe('pollActiveMatches', () => {
         provider: 'espn',
         season: '2026',
         round: 'GROUP_STAGE',
+        utc_day: '2026-10-15',
       },
       {
         comp_id: 'c-lib',
@@ -222,6 +224,7 @@ describe('pollActiveMatches', () => {
         provider: 'espn',
         season: '2026',
         round: 'LAST_16',
+        utc_day: '2026-10-15',
       },
     ])
 
