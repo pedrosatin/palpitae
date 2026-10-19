@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import sudamericanaJson from '../providers/__fixtures__/espn-conmebol-sudamericana-scoreboard.json'
 import type { EspnCompetitorTeam, EspnScoreboardEvent } from '../providers/espn'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { syncEspnFixtures } from './espnSync'
+import { ESPN_PRIMARY_COMPETITIONS, syncEspnFixtures } from './espnSync'
 
 const handles: DatabaseSync[] = []
 
@@ -22,6 +22,25 @@ function database() {
 function realEvent(id = 'real-event'): EspnScoreboardEvent {
   const event: EspnScoreboardEvent = structuredClone(sudamericanaJson.events[0])
   event.id = id
+  return event
+}
+
+/** Competição de teste para sync de liga sem registrar bra.2 em produção. */
+const TEST_LEAGUE_CODE = 'test.bra.2'
+
+function withTestLeague(run: () => Promise<void>): Promise<void> {
+  ESPN_PRIMARY_COMPETITIONS[TEST_LEAGUE_CODE] = {
+    name: 'Brasileirão Série B (teste)',
+    slugPrefix: 'brasileirao-serie-b-teste',
+  }
+  return run().finally(() => {
+    delete ESPN_PRIMARY_COMPETITIONS[TEST_LEAGUE_CODE]
+  })
+}
+
+function leagueEvent(id = 'serie-b-event'): EspnScoreboardEvent {
+  const event = realEvent(id)
+  event.season = { year: 2026, slug: '2026-brasileiro-serie-b' }
   return event
 }
 
@@ -175,4 +194,90 @@ describe('sync ESPN com participantes indefinidos', () => {
       ).toMatchObject({ matches: 1, teams: 2 })
     },
   )
+})
+
+describe('fases de liga no sync ESPN', () => {
+  it('importa evento com slug 2026-brasileiro-serie-b como REGULAR_SEASON', async () => {
+    await withTestLeague(async () => {
+      const { sqlite, db } = database()
+      const event = leagueEvent('401860401')
+      scoreboard([event])
+
+      const result = await syncEspnFixtures({
+        db,
+        competitionCode: TEST_LEAGUE_CODE,
+        season: 2026,
+      })
+
+      expect(result).toMatchObject({ matches: 1, teams: 2 })
+      expect(
+        sqlite
+          .prepare('SELECT phase, round FROM matches WHERE external_id = ?')
+          .get('401860401'),
+      ).toEqual({ phase: 'REGULAR_SEASON', round: 'REGULAR_SEASON' })
+    })
+  })
+
+  it('usa week numérica como round quando a ESPN a expõe na liga', async () => {
+    await withTestLeague(async () => {
+      const { sqlite, db } = database()
+      const event = leagueEvent('401860402')
+      event.week = { number: 12 }
+      scoreboard([event])
+
+      await syncEspnFixtures({ db, competitionCode: TEST_LEAGUE_CODE, season: 2026 })
+
+      expect(
+        sqlite
+          .prepare('SELECT phase, round FROM matches WHERE external_id = ?')
+          .get('401860402'),
+      ).toEqual({ phase: 'REGULAR_SEASON', round: '12' })
+    })
+  })
+
+  it('mantém mapeamento de slug de copa (semifinals → SEMI_FINALS)', async () => {
+    const { sqlite, db } = database()
+    const event = realEvent('semi-event')
+    event.season = { year: 2026, slug: 'semifinals' }
+    scoreboard([event])
+
+    await syncEspnFixtures({
+      db,
+      competitionCode: 'conmebol.sudamericana',
+      season: 2026,
+    })
+
+    expect(
+      sqlite.prepare('SELECT phase, round FROM matches WHERE external_id = ?').get('semi-event'),
+    ).toEqual({ phase: 'SEMI_FINALS', round: 'SEMI_FINALS' })
+  })
+
+  it('descarta TBD também com slug de temporada de liga', async () => {
+    await withTestLeague(async () => {
+      const { sqlite, db } = database()
+      sqlite.exec('DELETE FROM competitions')
+      const event = leagueEvent('tbd-league')
+      Object.assign(team(event, 'home'), {
+        displayName: 'TBD Home',
+        shortDisplayName: 'TBD Home',
+        abbreviation: 'TBD Home',
+      })
+      Object.assign(team(event, 'away'), {
+        displayName: 'TBD Away',
+        shortDisplayName: 'TBD Away',
+        abbreviation: 'TBD Away',
+      })
+      scoreboard([event])
+      const before = sqlite.prepare('SELECT total_changes() AS total').get()
+
+      const result = await syncEspnFixtures({
+        db,
+        competitionCode: TEST_LEAGUE_CODE,
+        season: 2026,
+      })
+
+      expect(result).toMatchObject({ competitionId: '', teams: 0, matches: 0 })
+      expect(sqlite.prepare('SELECT total_changes() AS total').get()).toEqual(before)
+    })
+  })
 })
