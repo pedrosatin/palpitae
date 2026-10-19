@@ -1,6 +1,8 @@
 import crypto from 'node:crypto'
-import { describe, it, expect } from 'vitest'
-import { bucketKey, ipBucketIdentity } from './limits'
+import { describe, it, expect, vi } from 'vitest'
+import { bucketKey, ipBucketIdentity, anonymousIdentity, PROXY_SECRET_HEADER, CLIENT_IP_HEADER } from './limits'
+import type { Context } from 'hono'
+import type { AppContext } from '../types'
 
 describe('bucketKey', () => {
   it('generates a stable HMAC-SHA256 hex string', async () => {
@@ -75,5 +77,60 @@ describe('ipBucketIdentity', () => {
     expect(ipBucketIdentity('2001:db8::')).toBe('2001:db8:0:0::/64')
     // Leading ::
     expect(ipBucketIdentity('::2001:db8')).toBe('0:0:0:0::/64')
+  })
+})
+
+
+describe('anonymousIdentity', () => {
+  const createMockContext = (env: any, headers: Record<string, string>) => {
+    const getHeader = (name: string) => {
+      const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase())
+      return key ? headers[key] : undefined
+    }
+    return {
+      env,
+      req: {
+        header: vi.fn().mockImplementation(getHeader),
+      },
+    } as unknown as Context<AppContext>
+  }
+
+  it('should return ip identity when proxy secret is valid and forwarded IP is valid', async () => {
+    const context = createMockContext(
+      { PROXY_SHARED_SECRET: 'test-secret' },
+      { [PROXY_SECRET_HEADER]: 'test-secret', [CLIENT_IP_HEADER]: '192.168.1.1' },
+    )
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'ip:192.168.1.1', shared: false })
+  })
+
+  it('should return frontend proxy identity for shared worker without secret', async () => {
+    const context = createMockContext(
+      { FRONTEND_URL: 'https://test.com' },
+      { 'CF-Worker': 'test.com' },
+    )
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'proxy:anonymous:frontend', shared: true })
+  })
+
+  it('should handle other worker egress IP as proxy anonymous worker', async () => {
+    const context = createMockContext(
+      { FRONTEND_URL: 'https://test.com' },
+      { 'CF-Connecting-IP': '2a06:98c0:3600::103' },
+    )
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'proxy:anonymous:worker', shared: true })
+  })
+
+  it('should fallback to local when no matching headers are present', async () => {
+    const context = createMockContext({}, {})
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'ip:local', shared: false })
+  })
+
+  it('should handle direct IP fallback', async () => {
+    const context = createMockContext({}, { 'CF-Connecting-IP': '10.0.0.1' })
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'ip:10.0.0.1', shared: false })
   })
 })
