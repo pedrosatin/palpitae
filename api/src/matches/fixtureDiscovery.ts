@@ -86,7 +86,7 @@ export async function discoverFixtures(
   }
 
   // Mesmo teto do poller para football-data; ESPN não consome a cota FD.
-  const fdComps = rows.results.filter((comp) => comp.provider !== 'espn')
+  const fdComps = rows.results.filter((comp) => comp.provider === 'football-data')
   const espnComps = rows.results.filter((comp) => comp.provider === 'espn')
   await Promise.all([
     runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdComps, syncCompetition),

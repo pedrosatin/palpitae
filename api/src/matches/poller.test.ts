@@ -44,7 +44,13 @@ function buildFakeDb(rows: ActiveRow[]) {
           return stmt
         },
         async all<T>(): Promise<{ results: T[] }> {
-          return { results: rows as unknown as T[] }
+          // Rows sem provider explícito são football-data (filtro do pool FD).
+          return {
+            results: rows.map((row) => ({
+              provider: 'football-data',
+              ...row,
+            })) as unknown as T[],
+          }
         },
       }
       return stmt
@@ -490,6 +496,12 @@ describe('pollActiveMatches', () => {
     })
     expect(fdPeak).toBe(FD_MAX_CONCURRENT_REQUESTS)
     expect(fdInFlight).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    // ESPN resolve em paralelo e não espera a cota FD.
+    expect(
+      syncFixturesMock.mock.calls.some(
+        (call) => call[0].competitionCode === 'conmebol.libertadores',
+      ),
+    ).toBe(true)
 
     holdFd = false
     for (const release of fdWaiters.splice(0)) release()

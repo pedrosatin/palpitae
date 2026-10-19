@@ -31,7 +31,7 @@ export async function runWithConcurrency<T, R>(
   if (items.length === 0) return []
 
   const concurrency = Math.max(1, Math.min(limit, items.length))
-  const results = new Array<R>(items.length)
+  const results = Array.from({ length: items.length }) as R[]
   let nextIndex = 0
 
   const runners = Array.from({ length: concurrency }, async () => {

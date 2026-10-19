@@ -240,7 +240,7 @@ async function fetchMatchesFromApi(
     })
 
   let res = await request()
-  // Um único retry com backoff: evita martelar o free tier (10 req/min) em 429.
+  // Um único retry com backoff de 6s. Evita martelar o free tier de 10 req/min em 429.
   if (res.status === 429) {
     await new Promise((resolve) => setTimeout(resolve, FD_RETRY_BACKOFF_MS))
     res = await request()

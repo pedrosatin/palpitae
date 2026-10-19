@@ -155,7 +155,7 @@ export async function pollActiveMatches(
   }
 
   // football-data compartilha 10 req/min; ESPN não consome essa cota.
-  const fdTasks = tasks.filter((task) => task.comp.provider !== 'espn')
+  const fdTasks = tasks.filter((task) => task.comp.provider === 'football-data')
   const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
   const [fdResults, espnResults] = await Promise.all([
     runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runSyncTask),
