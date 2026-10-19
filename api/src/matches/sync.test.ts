@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { syncFixtures, resolveCanonicalScore, resolveLockedAt } from './sync'
+import { syncFixtures, resolveCanonicalScore, resolveLockedAt, slugify } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -669,5 +669,35 @@ describe('resolveLockedAt', () => {
     for (const status of nonStartedStatuses) {
       expect(resolveLockedAt(status, now)).toBeNull()
     }
+  })
+})
+
+describe('slugify', () => {
+  it('converts basic strings to slug format', () => {
+    expect(slugify('Hello World')).toBe('hello-world')
+  })
+
+  it('removes diacritics and accents', () => {
+    expect(slugify('São Paulo FC')).toBe('sao-paulo-fc')
+    expect(slugify('Atlético Mineiro')).toBe('atletico-mineiro')
+    expect(slugify('Goiás')).toBe('goias')
+  })
+
+  it('replaces special characters with hyphens', () => {
+    expect(slugify('Team A & Team B!!!')).toBe('team-a-team-b')
+    expect(slugify('Red Bull Bragantino - SP')).toBe('red-bull-bragantino-sp')
+  })
+
+  it('removes leading and trailing hyphens', () => {
+    expect(slugify('  --Team--  ')).toBe('team')
+    expect(slugify('-_-_Hello_-_')).toBe('hello')
+  })
+
+  it('handles empty strings', () => {
+    expect(slugify('')).toBe('')
+  })
+
+  it('handles already slugified strings', () => {
+    expect(slugify('already-slugified-string')).toBe('already-slugified-string')
   })
 })
