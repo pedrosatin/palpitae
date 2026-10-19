@@ -204,7 +204,7 @@ export async function scoreWindowFromEspn(
           blobs: [compId],
         })
       }
-    })
+    }),
   )
 
   return updatedByComp
@@ -274,6 +274,7 @@ async function scoreCompetitionWindow(
   const updateStmt = db.prepare(
     `UPDATE matches SET home_score = ?, away_score = ?, status = 'finished' WHERE id = ? AND status != 'finished'`,
   )
+  const statements: D1PreparedStatement[] = []
 
   for (const m of results) {
     const candidates = events.filter((ev) => matchesEvent(m, ev))
@@ -295,9 +296,15 @@ async function scoreCompetitionWindow(
     // scored_at fica NULL de propósito: scoreUnprocessedMatches pega o jogo na
     // sequência. O guard `status != 'finished'` protege contra corrida com o
     // caminho primário.
-    await updateStmt.bind(home, away, m.id).run()
+    statements.push(updateStmt.bind(home, away, m.id))
     updated++
   }
+
+  const batches = []
+  for (let i = 0; i < statements.length; i += 100) {
+    batches.push(db.batch(statements.slice(i, i + 100)))
+  }
+  await Promise.all(batches)
 
   logEvent(ae, 'match_results_fallback', {
     blobs: [compId],
