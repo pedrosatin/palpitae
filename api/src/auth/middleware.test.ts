@@ -83,7 +83,7 @@ describe('requireAuth middleware', () => {
 describe('resolveSession', () => {
   it('returns cached session if it exists in context', async () => {
     const c = buildMockContext(null)
-    const cachedState = { payload: { sub: 'user-1', email: 'test@example.com' } }
+    const cachedState = { payload: { sub: 'user-1', email: 'test@example.com' } } as any
     vi.mocked(c.get).mockReturnValue(cachedState)
 
     const result = await resolveSession(c)
@@ -122,7 +122,7 @@ describe('resolveSession', () => {
 
     const result = await resolveSession(c)
 
-    expect(result?.error).toBeInstanceOf(Error)
+    expect(result && 'error' in result ? result.error : null).toBeInstanceOf(Error)
     expect(c.set).toHaveBeenCalledWith('session', result)
   })
 })
