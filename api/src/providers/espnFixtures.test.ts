@@ -50,7 +50,7 @@ type FixtureEvent = {
   date?: string
   name?: string
   season?: { year?: number; slug?: string }
-  /** Ausente no scoreboard ao vivo de bra.2 — o contrato da liga fixa isso. */
+  /** Ausente no scoreboard ao vivo de bra.2. O contrato da liga fixa isso. */
   week?: number | { number?: number }
   matchday?: number
   competitions?: FixtureCompetition[]
@@ -425,7 +425,7 @@ describe('fixture ESPN bra.2', () => {
     const done = finished(events)
     expect(done.length).toBeGreaterThanOrEqual(3)
     for (const event of done) {
-      expect(event.id).toBeTruthy()
+      expect(event.id).toMatch(/^\d+$/)
       expect(Number.isFinite(Date.parse(event.date ?? ''))).toBe(true)
       const competitors = comp(event).competitors ?? []
       expect(competitors).toHaveLength(2)
