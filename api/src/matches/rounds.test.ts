@@ -1,5 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { roundLabel } from './rounds'
+import { roundLabel, isKnockoutPhase } from './rounds'
+
+describe('isKnockoutPhase', () => {
+  it('returns false for null, undefined, or empty phase', () => {
+    expect(isKnockoutPhase(null)).toBe(false)
+    expect(isKnockoutPhase(undefined)).toBe(false)
+    expect(isKnockoutPhase('')).toBe(false)
+  })
+
+  it('returns false for GROUP_STAGE', () => {
+    expect(isKnockoutPhase('GROUP_STAGE')).toBe(false)
+  })
+
+  it.each([
+    'FIRST_STAGE',
+    'SECOND_STAGE',
+    'LAST_32',
+    'LAST_16',
+    'QUARTER_FINALS',
+    'SEMI_FINALS',
+    'FINAL',
+    'PLAYOFFS',
+  ])('returns true for known knockout phase %s', (phase) => {
+    expect(isKnockoutPhase(phase)).toBe(true)
+  })
+
+  it.each(['LEAGUE_STAGE', 'REGULAR_SEASON', 'UNKNOWN_PHASE', 'ROUND_1', '1', '2'])(
+    'returns false for unknown or non-knockout phases like %s',
+    (phase) => {
+      expect(isKnockoutPhase(phase)).toBe(false)
+    },
+  )
+})
 
 describe('roundLabel', () => {
   describe('numeric group-stage rounds', () => {
