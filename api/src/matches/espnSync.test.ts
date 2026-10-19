@@ -281,3 +281,61 @@ describe('fases de liga no sync ESPN', () => {
     })
   })
 })
+
+function feedByDate(boards: Record<string, EspnScoreboardEvent[]>) {
+  const fetch = vi.fn(async (input: string | URL | Request) => {
+    const date = new URL(String(input)).searchParams.get('dates') ?? ''
+    return new Response(JSON.stringify({ events: boards[date] ?? [] }))
+  })
+  vi.stubGlobal('fetch', fetch)
+  return fetch
+}
+
+const queriedDates = (fetch: ReturnType<typeof feedByDate>) =>
+  fetch.mock.calls.map(([url]) => new URL(String(url)).searchParams.get('dates'))
+
+describe('fetchEventsForSync via syncEspnFixtures', () => {
+  it('consulta o scoreboard uma vez quando dates está vazio', async () => {
+    const { db } = database()
+    const event = realEvent('once-no-dates')
+    const fetch = feedByDate({ '': [event] })
+
+    const result = await syncEspnFixtures({
+      db,
+      competitionCode: 'conmebol.sudamericana',
+      season: 2026,
+      dates: [],
+    })
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(queriedDates(fetch)).toEqual([null])
+    expect(result).toMatchObject({ matches: 1, teams: 2 })
+  })
+
+  it('consulta cada data única e deduplica eventos pelo id entre scoreboards', async () => {
+    const { sqlite, db } = database()
+    const shared = realEvent('shared-event')
+    const onlyFirst = realEvent('only-first')
+    const onlySecond = realEvent('only-second')
+    const fetch = feedByDate({
+      '20260303': [shared, onlyFirst],
+      '20260407': [shared, onlySecond],
+    })
+
+    const result = await syncEspnFixtures({
+      db,
+      competitionCode: 'conmebol.sudamericana',
+      season: 2026,
+      dates: ['20260303', '20260303', '', '20260407'],
+    })
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(queriedDates(fetch).sort()).toEqual(['20260303', '20260407'])
+    expect(result).toMatchObject({ matches: 3, teams: 2 })
+    expect(sqlite.prepare('SELECT external_id FROM matches ORDER BY external_id').all()).toEqual([
+      { external_id: 'only-first' },
+      { external_id: 'only-second' },
+      { external_id: 'shared-event' },
+    ])
+  })
+})
