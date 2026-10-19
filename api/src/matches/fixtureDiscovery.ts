@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
+import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -59,41 +60,38 @@ export async function discoverFixtures(
   let fixturesUpdated = 0
   let hadError = false
 
-  const CONCURRENCY_LIMIT = 5
-  const executing = new Set<Promise<void>>()
-
   for (const comp of rows.results) {
-    const promise = (async () => {
-      try {
-        const result = await syncFixtures({
-          competitionCode: comp.external_id,
-          season: Number(comp.season),
-          dates: comp.provider === 'espn' ? espnDates : undefined,
-          apiKey,
-          db,
-        })
-        fixturesUpdated += result?.matches ?? 0
-        // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
-        // correção de placar que o upsert do sync zerou).
-        await scoreUnprocessedMatches(comp.id, db)
-      } catch (err) {
-        hadError = true
-        logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
-          blobs: ['fixture_discovery', comp.id],
-        })
-      }
-    })()
-
     plannedApiRequests += comp.provider === 'espn' ? espnDates.length : 1
-    executing.add(promise)
-    promise.finally(() => executing.delete(promise))
+  }
 
-    if (executing.size >= CONCURRENCY_LIMIT) {
-      await Promise.race(executing)
+  const syncCompetition = async (comp: ActiveCompetition): Promise<void> => {
+    try {
+      const result = await syncFixtures({
+        competitionCode: comp.external_id,
+        season: Number(comp.season),
+        dates: comp.provider === 'espn' ? espnDates : undefined,
+        apiKey,
+        db,
+      })
+      fixturesUpdated += result?.matches ?? 0
+      // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
+      // correção de placar que o upsert do sync zerou).
+      await scoreUnprocessedMatches(comp.id, db)
+    } catch (err) {
+      hadError = true
+      logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
+        blobs: ['fixture_discovery', comp.id],
+      })
     }
   }
 
-  await Promise.all(executing)
+  // Mesmo teto do poller para football-data; ESPN não consome a cota FD.
+  const fdComps = rows.results.filter((comp) => comp.provider === 'football-data')
+  const espnComps = rows.results.filter((comp) => comp.provider === 'espn')
+  await Promise.all([
+    runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdComps, syncCompetition),
+    Promise.all(espnComps.map(syncCompetition)),
+  ])
 
   logEvent(ae, 'fixture_discovery_run', {
     blobs: [hadError ? 'error' : 'ok'],

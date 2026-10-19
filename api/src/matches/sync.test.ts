@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
 import { syncFixtures, resolveCanonicalScore, resolveLockedAt } from './sync'
 
 // ---------------------------------------------------------------------------
@@ -669,5 +670,93 @@ describe('resolveLockedAt', () => {
     for (const status of nonStartedStatuses) {
       expect(resolveLockedAt(status, now)).toBeNull()
     }
+  })
+})
+
+describe('syncFixtures — football-data 429 retry', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('retries once after 429 and succeeds on the second response', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        async text() {
+          return 'rate limit'
+        },
+        async json() {
+          return {}
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            competition: { id: 2000, name: 'FIFA World Cup', code: 'WC' },
+            matches: [],
+          }
+        },
+        async text() {
+          return ''
+        },
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { db } = buildFakeDb()
+    const promise = syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+    await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
+    await expect(promise).resolves.toMatchObject({ matches: 0 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('throws a clear error when 429 persists after the single retry', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      async text() {
+        return 'still limited'
+      },
+      async json() {
+        return {}
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { db } = buildFakeDb()
+    const promise = syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+    const assertion = expect(promise).rejects.toThrow(
+      'football-data.org respondeu 429: still limited',
+    )
+    await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
+    await assertion
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry non-429 HTTP errors', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      async text() {
+        return 'boom'
+      },
+      async json() {
+        return {}
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { db } = buildFakeDb()
+    await expect(
+      syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db }),
+    ).rejects.toThrow('football-data.org respondeu 500: boom')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
