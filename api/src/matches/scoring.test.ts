@@ -1182,9 +1182,9 @@ describe('classifiedRuleChangeStatements', () => {
         predicted_home_score: 2,
         predicted_away_score: 0,
         predicted_penalty_winner: null,
-        points_awarded: null,
-        penalty_points: null,
-        classified_points: null,
+        points_awarded: 0,
+        penalty_points: 0,
+        classified_points: 0,
       },
     ]
     const db = buildFakeDb(matches, predictions, { g1: { points_classified: 5, points_exact: 3, points_winner: 1, points_penalty: 1 } })
@@ -1242,9 +1242,9 @@ describe('classifiedRuleChangeStatements', () => {
         predicted_home_score: 1,
         predicted_away_score: 0,
         predicted_penalty_winner: null,
-        points_awarded: null,
-        penalty_points: null,
-        classified_points: null,
+        points_awarded: 0,
+        penalty_points: 0,
+        classified_points: 0,
       },
       {
         id: 'p2',
@@ -1254,9 +1254,9 @@ describe('classifiedRuleChangeStatements', () => {
         predicted_home_score: 1,
         predicted_away_score: 1,
         predicted_penalty_winner: null,
-        points_awarded: null,
-        penalty_points: null,
-        classified_points: null,
+        points_awarded: 0,
+        penalty_points: 0,
+        classified_points: 0,
       },
     ]
     const db = buildFakeDb(matches, predictions, { g1: { points_classified: 5, points_exact: 3, points_winner: 1, points_penalty: 1 } })
