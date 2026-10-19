@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { syncFixtures, resolveCanonicalScore, resolveLockedAt } from './sync'
+import { syncFixtures, resolveCanonicalScore, resolveLockedAt, isoSeconds } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -669,5 +669,17 @@ describe('resolveLockedAt', () => {
     for (const status of nonStartedStatuses) {
       expect(resolveLockedAt(status, now)).toBeNull()
     }
+  })
+})
+
+describe('isoSeconds', () => {
+  it('strips milliseconds from an ISO string', () => {
+    const date = new Date('2026-07-29T12:34:56.789Z')
+    expect(isoSeconds(date)).toBe('2026-07-29T12:34:56Z')
+  })
+
+  it('strips .000Z correctly', () => {
+    const date = new Date('2026-07-29T12:34:56.000Z')
+    expect(isoSeconds(date)).toBe('2026-07-29T12:34:56Z')
   })
 })
