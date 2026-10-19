@@ -235,6 +235,62 @@ describe('fases de liga no sync ESPN', () => {
     })
   })
 
+  it('aceita week como número puro (week: 12) na rodada da liga', async () => {
+    await withTestLeague(async () => {
+      const { sqlite, db } = database()
+      const event = leagueEvent('401860403')
+      event.week = 12
+      scoreboard([event])
+
+      await syncEspnFixtures({ db, competitionCode: TEST_LEAGUE_CODE, season: 2026 })
+
+      expect(
+        sqlite
+          .prepare('SELECT phase, round FROM matches WHERE external_id = ?')
+          .get('401860403'),
+      ).toEqual({ phase: 'REGULAR_SEASON', round: '12' })
+    })
+  })
+
+  it('usa matchday numérico como round quando week está ausente', async () => {
+    await withTestLeague(async () => {
+      const { sqlite, db } = database()
+      const event = leagueEvent('401860404')
+      event.matchday = 7
+      scoreboard([event])
+
+      await syncEspnFixtures({ db, competitionCode: TEST_LEAGUE_CODE, season: 2026 })
+
+      expect(
+        sqlite
+          .prepare('SELECT phase, round FROM matches WHERE external_id = ?')
+          .get('401860404'),
+      ).toEqual({ phase: 'REGULAR_SEASON', round: '7' })
+    })
+  })
+
+  it('descarta slug desconhecido fora do padrão YYYY-… (fail-closed)', async () => {
+    await withTestLeague(async () => {
+      const { sqlite, db } = database()
+      const event = leagueEvent('mystery-stage-event')
+      event.season = { year: 2026, slug: 'mystery-stage' }
+      scoreboard([event])
+
+      const result = await syncEspnFixtures({
+        db,
+        competitionCode: TEST_LEAGUE_CODE,
+        season: 2026,
+      })
+
+      expect(result).toMatchObject({ matches: 0 })
+      expect(
+        sqlite
+          .prepare('SELECT COUNT(*) AS total FROM matches WHERE external_id = ?')
+          .get('mystery-stage-event'),
+      ).toEqual({ total: 0 })
+    })
+  })
+
   it('mantém mapeamento de slug de copa (semifinals → SEMI_FINALS)', async () => {
     const { sqlite, db } = database()
     const event = realEvent('semi-event')

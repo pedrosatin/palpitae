@@ -79,7 +79,7 @@ const LEAGUE_PHASE = 'REGULAR_SEASON'
  *
  * 1. Slug no mapa de copa/mata-mata → código mapeado (ex.: semifinals → SEMI_FINALS).
  * 2. Slug no padrão `YYYY-…` (identificador de temporada da liga, ex.:
- *    `2026-brasileiro-serie-b`, `2026-supercopa-rei`) → REGULAR_SEASON.
+ *    `2026-brasileiro-serie-b`) → REGULAR_SEASON.
  * 3. Qualquer outro slug → descartado (fail-closed).
  */
 function resolveEspnStage(slug: string | undefined): string | undefined {
