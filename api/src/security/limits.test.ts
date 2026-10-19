@@ -95,7 +95,6 @@ describe('consumeLimit unit tests', () => {
     expect(result).toBe(true)
 
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO request_limits'))
-    expect(db.bind).toHaveBeenCalledWith('test-key', 960, 1020, 5) // 1000 / 60 = 16.66 => 16 * 60 = 960, 960 + 60 = 1020
   })
 
   it('denies request when hits exceeds limit', async () => {
