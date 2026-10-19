@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { describe, it, expect } from 'vitest'
-import { bucketKey, ipBucketIdentity } from './limits'
+import { bucketKey, ipBucketIdentity, requestLimits } from './limits'
 
 describe('bucketKey', () => {
   it('generates a stable HMAC-SHA256 hex string', async () => {
@@ -75,5 +75,46 @@ describe('ipBucketIdentity', () => {
     expect(ipBucketIdentity('2001:db8::')).toBe('2001:db8:0:0::/64')
     // Leading ::
     expect(ipBucketIdentity('::2001:db8')).toBe('0:0:0:0::/64')
+  })
+})
+
+describe('requestLimits', () => {
+  it('handles D1 DB error during consumption gracefully', async () => {
+    const { Hono } = await import('hono')
+    const app = new Hono()
+
+    // Mock db throwing an error in consumeLimit
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          first: () => Promise.reject(new Error('DB is down!'))
+        })
+      })
+    }
+
+    // Mock logError via c.env.AE (which will just be ignored here, but we should pass something)
+    const mockEnv = {
+      DB: mockDb,
+      AE: {
+        writeDataPoint: () => {}
+      },
+      JWT_SECRET: 'secret',
+      FRONTEND_URL: 'http://localhost'
+    }
+
+    app.use('*', requestLimits)
+    app.get('/', (c) => c.text('ok'))
+    app.post('/', (c) => c.text('ok'))
+
+    // Test read operation with DB error (should pass)
+    const req1 = new Request('http://localhost/', { method: 'GET' })
+    const res1 = await app.fetch(req1, mockEnv)
+    expect(res1.status).toBe(200)
+
+    // Test write operation with DB error (should be blocked)
+    const req2 = new Request('http://localhost/', { method: 'POST' })
+    const res2 = await app.fetch(req2, mockEnv)
+    expect(res2.status).toBe(503)
+    expect(await res2.json()).toEqual({ error: 'Controle de requisições indisponível' })
   })
 })
