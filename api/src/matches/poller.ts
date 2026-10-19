@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
 import { scoreWindowFromEspn } from './espnFallback'
+import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -129,27 +130,38 @@ export async function pollActiveMatches(
 
   const { compCount, tasks } = buildSyncTasks(rows.results)
 
-  const syncResults = await Promise.all(
-    tasks.map(async ({ comp, round, dates }) => {
-      const matchday = parseInt(round, 10)
-      const matchdayParam =
-        comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
+  type SyncOutcome =
+    | { success: true; comp: ActiveRound; round: string; matches: number }
+    | { success: false; comp: ActiveRound; round: string; err: unknown }
 
-      try {
-        const result = await syncFixtures({
-          competitionCode: comp.external_id,
-          season: Number(comp.season),
-          matchday: matchdayParam,
-          dates,
-          apiKey,
-          db,
-        })
-        return { success: true as const, comp, round, matches: result?.matches ?? 0 }
-      } catch (err) {
-        return { success: false as const, comp, round, err }
-      }
-    }),
-  )
+  const runSyncTask = async ({ comp, round, dates }: SyncTask): Promise<SyncOutcome> => {
+    const matchday = parseInt(round, 10)
+    const matchdayParam =
+      comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
+
+    try {
+      const result = await syncFixtures({
+        competitionCode: comp.external_id,
+        season: Number(comp.season),
+        matchday: matchdayParam,
+        dates,
+        apiKey,
+        db,
+      })
+      return { success: true as const, comp, round, matches: result?.matches ?? 0 }
+    } catch (err) {
+      return { success: false as const, comp, round, err }
+    }
+  }
+
+  // football-data compartilha 10 req/min; ESPN não consome essa cota.
+  const fdTasks = tasks.filter((task) => task.comp.provider !== 'espn')
+  const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
+  const [fdResults, espnResults] = await Promise.all([
+    runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runSyncTask),
+    Promise.all(espnTasks.map(runSyncTask)),
+  ])
+  const syncResults = [...fdResults, ...espnResults]
 
   // Requests primárias planejadas, sem retries nem chamadas do fallback.
   const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)

@@ -7,6 +7,7 @@ vi.mock('./scoring', () => ({
 }))
 
 import { discoverFixtures } from './fixtureDiscovery'
+import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -17,6 +18,7 @@ type ActiveCompetition = {
   id: string
   external_id: string
   season: string
+  provider?: string
 }
 
 function buildFakeDb(rows: ActiveCompetition[]) {
@@ -222,28 +224,45 @@ describe('discoverFixtures', () => {
     expect(apiCalls).toBe(1)
   })
 
-  it('respects concurrency limit of 5', async () => {
+  it('caps concurrent football-data syncs under FD_MAX_CONCURRENT_REQUESTS', async () => {
     const competitions = Array.from({ length: 10 }, (_, i) => ({
       id: `c${i}`,
       external_id: `COMP${i}`,
       season: '2026',
+      provider: 'football-data',
     }))
     const db = buildFakeDb(competitions)
 
-    let executingCount = 0
-    let maxExecutingCount = 0
+    let fdInFlight = 0
+    let fdPeak = 0
+    let holdFd = true
+    const fdWaiters: Array<() => void> = []
 
     syncFixturesMock.mockImplementation(async () => {
-      executingCount++
-      maxExecutingCount = Math.max(maxExecutingCount, executingCount)
-      await new Promise((resolve) => setTimeout(resolve, 10))
-      executingCount--
+      fdInFlight++
+      fdPeak = Math.max(fdPeak, fdInFlight)
+      if (holdFd) {
+        await new Promise<void>((resolve) => {
+          fdWaiters.push(resolve)
+        })
+      }
+      fdInFlight--
       return undefined as never
     })
 
-    await discoverFixtures(db as unknown as D1Database, 'key')
+    const done = discoverFixtures(db as unknown as D1Database, 'key')
+
+    await vi.waitFor(() => {
+      expect(fdWaiters.length).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    })
+    expect(fdPeak).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    expect(fdInFlight).toBe(FD_MAX_CONCURRENT_REQUESTS)
+
+    holdFd = false
+    for (const release of fdWaiters.splice(0)) release()
+    await done
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(10)
-    expect(maxExecutingCount).toBeLessThanOrEqual(5)
+    expect(fdPeak).toBeLessThanOrEqual(FD_MAX_CONCURRENT_REQUESTS)
   })
 })

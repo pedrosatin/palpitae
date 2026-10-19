@@ -11,6 +11,7 @@ vi.mock('./espnFallback', () => ({
 }))
 
 import { scoreWindowFromEspn } from './espnFallback'
+import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import { pollActiveMatches } from './poller'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
@@ -426,5 +427,82 @@ describe('pollActiveMatches', () => {
 
     expect(consoleSpy).toHaveBeenCalledWith('[poller] Sync falhou comp=c1 round=1:', 'String error')
     consoleSpy.mockRestore()
+  })
+
+  it('caps concurrent football-data syncFixtures under FD_MAX_CONCURRENT_REQUESTS', async () => {
+    // 4 ligas FD × 2 rodadas = 8 tasks FD (> orçamento). ESPN não conta na cota.
+    const fdCodes = ['PD', 'SA', 'BL1', 'PPL'] as const
+    const rows: ActiveRow[] = []
+    for (const [i, code] of fdCodes.entries()) {
+      rows.push({
+        comp_id: `fd-${i}`,
+        external_id: code,
+        provider: 'football-data',
+        season: '2026',
+        round: '1',
+        utc_day: '2026-10-18',
+      })
+      rows.push({
+        comp_id: `fd-${i}`,
+        external_id: code,
+        provider: 'football-data',
+        season: '2026',
+        round: '2',
+        utc_day: '2026-10-18',
+      })
+    }
+    rows.push({
+      comp_id: 'espn-1',
+      external_id: 'conmebol.libertadores',
+      provider: 'espn',
+      season: '2026',
+      round: 'GROUP_STAGE',
+      utc_day: '2026-10-18',
+    })
+
+    let fdInFlight = 0
+    let fdPeak = 0
+    let holdFd = true
+    const fdWaiters: Array<() => void> = []
+
+    syncFixturesMock.mockImplementation(async (opts) => {
+      const isEspn = opts.competitionCode === 'conmebol.libertadores'
+      if (isEspn) {
+        return { matches: 1 } as never
+      }
+
+      fdInFlight++
+      fdPeak = Math.max(fdPeak, fdInFlight)
+      if (holdFd) {
+        await new Promise<void>((resolve) => {
+          fdWaiters.push(resolve)
+        })
+      }
+      fdInFlight--
+      return { matches: 1 } as never
+    })
+
+    const db = buildFakeDb(rows)
+    const done = pollActiveMatches(db as unknown as D1Database, 'key')
+
+    await vi.waitFor(() => {
+      expect(fdWaiters.length).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    })
+    expect(fdPeak).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    expect(fdInFlight).toBe(FD_MAX_CONCURRENT_REQUESTS)
+
+    holdFd = false
+    for (const release of fdWaiters.splice(0)) release()
+    await done
+
+    expect(fdPeak).toBeLessThanOrEqual(FD_MAX_CONCURRENT_REQUESTS)
+    const fdCalls = syncFixturesMock.mock.calls.filter(
+      (call) => call[0].competitionCode !== 'conmebol.libertadores',
+    )
+    const espnCalls = syncFixturesMock.mock.calls.filter(
+      (call) => call[0].competitionCode === 'conmebol.libertadores',
+    )
+    expect(fdCalls).toHaveLength(8)
+    expect(espnCalls).toHaveLength(1)
   })
 })

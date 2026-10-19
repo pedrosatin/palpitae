@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
+import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
 
 const PROVIDER = 'football-data'
 const API_BASE = 'https://api.football-data.org/v4'
@@ -233,9 +234,17 @@ async function fetchMatchesFromApi(
   url.searchParams.set('season', String(season))
   if (matchday !== undefined) url.searchParams.set('matchday', String(matchday))
 
-  const res = await fetch(url.toString(), {
-    headers: { 'X-Auth-Token': apiKey },
-  })
+  const request = () =>
+    fetch(url.toString(), {
+      headers: { 'X-Auth-Token': apiKey },
+    })
+
+  let res = await request()
+  // Um único retry com backoff: evita martelar o free tier (10 req/min) em 429.
+  if (res.status === 429) {
+    await new Promise((resolve) => setTimeout(resolve, FD_RETRY_BACKOFF_MS))
+    res = await request()
+  }
 
   if (!res.ok) {
     const text = await res.text()
