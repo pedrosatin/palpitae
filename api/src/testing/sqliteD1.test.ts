@@ -3,12 +3,12 @@ import { createSqliteD1 } from './sqliteD1'
 
 describe('createSqliteD1', () => {
   let db: any
-  let sqlite: any
+  let _sqlite: any
 
   beforeEach(() => {
     const d1 = createSqliteD1()
     db = d1.db
-    sqlite = d1.sqlite
+    _sqlite = d1.sqlite
   })
 
   it('applies migrations', async () => {
