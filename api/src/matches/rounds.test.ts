@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { roundLabel } from './rounds'
+import { isKnockoutPhase, roundLabel } from './rounds'
 
 describe('roundLabel', () => {
   describe('numeric group-stage rounds', () => {
@@ -26,6 +26,7 @@ describe('roundLabel', () => {
   describe('known knockout and cup stages', () => {
     it.each([
       ['GROUP_STAGE', 'Fase de grupos'],
+      ['REGULAR_SEASON', 'Temporada regular'],
       ['FIRST_STAGE', '1ª fase'],
       ['SECOND_STAGE', '2ª fase'],
       ['THIRD_STAGE', '3ª fase'],
@@ -63,4 +64,20 @@ describe('roundLabel', () => {
       expect(roundLabel(input)).toBe(expected)
     })
   })
+})
+
+describe('isKnockoutPhase', () => {
+  it.each(['SEMI_FINALS', 'FINAL', 'LAST_16', 'QUARTER_FINALS', 'PLAYOFFS'])(
+    'trata %s como mata-mata',
+    (phase) => {
+      expect(isKnockoutPhase(phase)).toBe(true)
+    },
+  )
+
+  it.each(['GROUP_STAGE', 'REGULAR_SEASON', '1', '30', '', null, undefined, 'UNKNOWN'])(
+    'não trata %s como mata-mata',
+    (phase) => {
+      expect(isKnockoutPhase(phase)).toBe(false)
+    },
+  )
 })
