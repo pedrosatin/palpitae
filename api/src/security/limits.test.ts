@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { bucketKey, ipBucketIdentity } from './limits'
 
 describe('bucketKey', () => {
@@ -65,7 +65,9 @@ describe('ipBucketIdentity', () => {
 
   it('returns non-IP values as is', () => {
     expect(ipBucketIdentity('not-an-ip')).toBe('not-an-ip')
-    expect(ipBucketIdentity('invalid:ip:address:format:too:many:colons:for:no:reason:here')).toBe('invalid:ip:address:format:too:many:colons:for:no:reason:here')
+    expect(ipBucketIdentity('invalid:ip:address:format:too:many:colons:for:no:reason:here')).toBe(
+      'invalid:ip:address:format:too:many:colons:for:no:reason:here',
+    )
   })
 
   it('handles edge cases in IPv6 expansion', () => {
@@ -75,5 +77,46 @@ describe('ipBucketIdentity', () => {
     expect(ipBucketIdentity('2001:db8::')).toBe('2001:db8:0:0::/64')
     // Leading ::
     expect(ipBucketIdentity('::2001:db8')).toBe('0:0:0:0::/64')
+  })
+})
+
+import type { D1Database } from '@cloudflare/workers-types'
+import { consumeLimit } from './limits'
+
+describe('consumeLimit unit tests', () => {
+  it('allows request when hits is within limit', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnThis(),
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ hits: 1 }),
+    } as unknown as D1Database
+
+    const result = await consumeLimit(db, 'test-key', 5, 1000)
+    expect(result).toBe(true)
+
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO request_limits'))
+    expect(db.bind).toHaveBeenCalledWith('test-key', 960, 1020, 5) // 1000 / 60 = 16.66 => 16 * 60 = 960, 960 + 60 = 1020
+  })
+
+  it('denies request when hits exceeds limit', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnThis(),
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ hits: 6 }),
+    } as unknown as D1Database
+
+    const result = await consumeLimit(db, 'test-key', 5, 1000)
+    expect(result).toBe(false)
+  })
+
+  it('denies request if D1 returns null (window bucket is full)', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnThis(),
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+    } as unknown as D1Database
+
+    const result = await consumeLimit(db, 'test-key', 5, 1000)
+    expect(result).toBe(false)
   })
 })
