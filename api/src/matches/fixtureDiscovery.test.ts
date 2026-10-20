@@ -7,6 +7,7 @@ vi.mock('./scoring', () => ({
 }))
 
 import { discoverFixtures } from './fixtureDiscovery'
+import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -17,6 +18,7 @@ type ActiveCompetition = {
   id: string
   external_id: string
   season: string
+  provider?: string
 }
 
 function buildFakeDb(rows: ActiveCompetition[]) {
@@ -94,8 +96,8 @@ describe('discoverFixtures', () => {
 
   it('calls syncFixtures and scoreUnprocessedMatches for each active competition', async () => {
     const db = buildFakeDb([
-      { id: 'c1', external_id: 'WC', season: '2026' },
-      { id: 'c2', external_id: 'CL', season: '2026' },
+      { id: 'c1', external_id: 'WC', season: '2026', provider: 'football-data' },
+      { id: 'c2', external_id: 'CL', season: '2026', provider: 'football-data' },
     ])
 
     await discoverFixtures(db as unknown as D1Database, 'key')
@@ -128,8 +130,8 @@ describe('discoverFixtures', () => {
   it('logs fixture_discovery_run event with ok status and correct counts on success', async () => {
     syncFixturesMock.mockResolvedValue({ matches: 5 } as never)
     const db = buildFakeDb([
-      { id: 'c1', external_id: 'WC', season: '2026' },
-      { id: 'c2', external_id: 'CL', season: '2026' },
+      { id: 'c1', external_id: 'WC', season: '2026', provider: 'football-data' },
+      { id: 'c2', external_id: 'CL', season: '2026', provider: 'football-data' },
     ])
     const ae = buildFakeAe()
 
@@ -157,8 +159,8 @@ describe('discoverFixtures', () => {
     syncFixturesMock.mockResolvedValueOnce({ matches: 3 } as never)
 
     const db = buildFakeDb([
-      { id: 'c1', external_id: 'WC', season: '2026' },
-      { id: 'c2', external_id: 'CL', season: '2026' },
+      { id: 'c1', external_id: 'WC', season: '2026', provider: 'football-data' },
+      { id: 'c2', external_id: 'CL', season: '2026', provider: 'football-data' },
     ])
     const ae = buildFakeAe()
 
@@ -194,7 +196,9 @@ describe('discoverFixtures', () => {
     syncFixturesMock.mockResolvedValueOnce({ matches: 5 } as never)
     scoreMock.mockRejectedValueOnce(new Error('Scoring Error'))
 
-    const db = buildFakeDb([{ id: 'c1', external_id: 'WC', season: '2026' }])
+    const db = buildFakeDb([
+      { id: 'c1', external_id: 'WC', season: '2026', provider: 'football-data' },
+    ])
     const ae = buildFakeAe()
 
     await discoverFixtures(
@@ -222,28 +226,102 @@ describe('discoverFixtures', () => {
     expect(apiCalls).toBe(1)
   })
 
-  it('respects concurrency limit of 5', async () => {
+  it('caps concurrent football-data syncs under FD_MAX_CONCURRENT_REQUESTS', async () => {
     const competitions = Array.from({ length: 10 }, (_, i) => ({
       id: `c${i}`,
       external_id: `COMP${i}`,
       season: '2026',
+      provider: 'football-data',
     }))
     const db = buildFakeDb(competitions)
 
-    let executingCount = 0
-    let maxExecutingCount = 0
+    let fdInFlight = 0
+    let fdPeak = 0
+    let holdFd = true
+    const fdWaiters: Array<() => void> = []
 
     syncFixturesMock.mockImplementation(async () => {
-      executingCount++
-      maxExecutingCount = Math.max(maxExecutingCount, executingCount)
-      await new Promise((resolve) => setTimeout(resolve, 10))
-      executingCount--
+      fdInFlight++
+      fdPeak = Math.max(fdPeak, fdInFlight)
+      if (holdFd) {
+        await new Promise<void>((resolve) => {
+          fdWaiters.push(resolve)
+        })
+      }
+      fdInFlight--
       return undefined as never
     })
 
-    await discoverFixtures(db as unknown as D1Database, 'key')
+    const done = discoverFixtures(db as unknown as D1Database, 'key')
+
+    await vi.waitFor(() => {
+      expect(fdWaiters.length).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    })
+    expect(fdPeak).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    expect(fdInFlight).toBe(FD_MAX_CONCURRENT_REQUESTS)
+
+    holdFd = false
+    for (const release of fdWaiters.splice(0)) release()
+    await done
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(10)
-    expect(maxExecutingCount).toBeLessThanOrEqual(5)
+    expect(fdPeak).toBeLessThanOrEqual(FD_MAX_CONCURRENT_REQUESTS)
+  })
+
+  it('runs ESPN discovery while football-data workers are still latched', async () => {
+    const competitions = [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        id: `fd-${i}`,
+        external_id: `COMP${i}`,
+        season: '2026',
+        provider: 'football-data',
+      })),
+      {
+        id: 'espn-1',
+        external_id: 'conmebol.libertadores',
+        season: '2026',
+        provider: 'espn',
+      },
+    ]
+    const db = buildFakeDb(competitions)
+
+    let holdFd = true
+    const fdWaiters: Array<() => void> = []
+    let espnResolvedWhileFdHeld = false
+
+    syncFixturesMock.mockImplementation(async (opts) => {
+      if (opts.competitionCode === 'conmebol.libertadores') {
+        expect(opts.dates).toHaveLength(9)
+        espnResolvedWhileFdHeld = holdFd
+        return { matches: 2 } as never
+      }
+      if (holdFd) {
+        await new Promise<void>((resolve) => {
+          fdWaiters.push(resolve)
+        })
+      }
+      return { matches: 1 } as never
+    })
+
+    const done = discoverFixtures(db as unknown as D1Database, 'key')
+
+    await vi.waitFor(() => {
+      expect(fdWaiters.length).toBe(FD_MAX_CONCURRENT_REQUESTS)
+    })
+    await vi.waitFor(() => {
+      expect(espnResolvedWhileFdHeld).toBe(true)
+    })
+
+    const espnCall = syncFixturesMock.mock.calls.find(
+      (call) => call[0].competitionCode === 'conmebol.libertadores',
+    )
+    expect(espnCall?.[0].dates).toHaveLength(9)
+
+    holdFd = false
+    for (const release of fdWaiters.splice(0)) release()
+    await done
+
+    expect(syncFixturesMock).toHaveBeenCalledTimes(7)
+    expect(espnResolvedWhileFdHeld).toBe(true)
   })
 })
