@@ -29,7 +29,7 @@ async function cookie(email: string) {
   return { Cookie: `session=${token}` }
 }
 
-describe('lote 2 — radar suportadas e piloto', () => {
+describe('lote 2: radar suportadas e piloto', () => {
   it('marca as cinco seedadas como supported no radar e as mantém fora do GET /competitions do usuário comum', async () => {
     const { sqlite, db } = createSqliteD1()
     try {
