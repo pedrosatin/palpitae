@@ -46,6 +46,11 @@ function buildFakeDb(rows: WindowRow[]) {
       }
       return stmt
     },
+    async batch(stmts: any[]) {
+      for (const stmt of stmts) {
+        await stmt.run()
+      }
+    }
   }
   return { db: db as unknown as D1Database, captured }
 }
