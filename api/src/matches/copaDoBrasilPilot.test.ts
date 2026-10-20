@@ -690,7 +690,7 @@ describe('Copa do Brasil em piloto', () => {
       .all()
     expect(compCounts).toEqual([
       { provider: 'espn', total: espnTotalBefore.total },
-      { provider: 'football-data', total: 7 },
+      { provider: 'football-data', total: 8 },
     ])
     const copaDoBrasilSlugCount = sqlite
       .prepare(`SELECT COUNT(*) AS total FROM competitions WHERE slug = 'copa-do-brasil-2026'`)

@@ -161,7 +161,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'Bundesliga',
     palpitaeSlug: 'bundesliga',
   },
-  { country: 'France', name: 'Ligue 1', article: 'Ligue 1' },
+  {
+    country: 'France',
+    name: 'Ligue 1',
+    article: 'Ligue 1',
+    palpitaeSlug: 'ligue-1',
+  },
   {
     country: 'Portugal',
     name: 'Primeira Liga',
