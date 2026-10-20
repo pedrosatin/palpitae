@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
-import { syncFixtures, resolveCanonicalScore, resolveLockedAt } from './sync'
+import { isoSeconds, resolveCanonicalScore, resolveLockedAt, syncFixtures } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -778,5 +778,17 @@ describe('syncFixtures — football-data 429 retry', () => {
       syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db }),
     ).rejects.toThrow('football-data.org respondeu 500: boom')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('isoSeconds', () => {
+  it('strips milliseconds from an ISO string', () => {
+    const date = new Date('2026-07-29T12:34:56.789Z')
+    expect(isoSeconds(date)).toBe('2026-07-29T12:34:56Z')
+  })
+
+  it('strips .000Z correctly', () => {
+    const date = new Date('2026-07-29T12:34:56.000Z')
+    expect(isoSeconds(date)).toBe('2026-07-29T12:34:56Z')
   })
 })
