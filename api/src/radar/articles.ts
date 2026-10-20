@@ -50,7 +50,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'Campeonato Brasileiro de Futebol',
     palpitaeSlug: 'campeonato-brasileiro-serie-a',
   },
-  { country: 'Brazil', name: 'Serie B', article: 'Campeonato Brasileiro de Futebol - Série B' },
+  {
+    country: 'Brazil',
+    name: 'Serie B',
+    article: 'Campeonato Brasileiro de Futebol - Série B',
+    palpitaeSlug: 'brasileirao-serie-b',
+  },
   { country: 'Brazil', name: 'Serie C', article: 'Campeonato Brasileiro de Futebol - Série C' },
   {
     country: 'Brazil',

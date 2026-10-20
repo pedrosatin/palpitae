@@ -32,6 +32,7 @@ function withTestLeague(run: () => Promise<void>): Promise<void> {
   ESPN_PRIMARY_COMPETITIONS[TEST_LEAGUE_CODE] = {
     name: 'Brasileirão Série B (teste)',
     slugPrefix: 'brasileirao-serie-b-teste',
+    type: 'league',
   }
   return run().finally(() => {
     delete ESPN_PRIMARY_COMPETITIONS[TEST_LEAGUE_CODE]
