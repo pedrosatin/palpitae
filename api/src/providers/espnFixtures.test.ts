@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest'
+import serieBJson from './__fixtures__/espn-bra-2-scoreboard.json'
 import copaJson from './__fixtures__/espn-bra-copa-do-brazil-scoreboard.json'
 import libertadoresJson from './__fixtures__/espn-conmebol-libertadores-scoreboard.json'
 import sudamericanaJson from './__fixtures__/espn-conmebol-sudamericana-scoreboard.json'
 
 /**
- * Contrato das amostras do spike ESPN (docs/architecture/spike-espn-novos-campeonatos.md).
+ * Contrato das amostras do spike ESPN.
+ *
+ * Copas: docs/architecture/spike-espn-novos-campeonatos.md (coleta 2026-10-17).
+ * Série B: docs/architecture/spike-espn-serie-b.md (coleta 2026-10-19).
  *
  * As fixtures são recortes de respostas reais de
- * `GET site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard?dates=YYYYMMDD`
- * coletadas em 2026-10-17, com campos pesados removidos (details, odds, broadcasts,
- * links, statistics). Cada fixture junta eventos de mais de um dia na mesma estrutura
- * de scoreboard. Estes testes fixam os campos que o relatório usa para aprovar os
- * slugs como fonte de confrontos: data, times, placar, fase, pênaltis, ida/volta e
- * agregado. Campo que a ESPN não entrega falha aqui em vez de virar suposição.
+ * `GET site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard?dates=YYYYMMDD`,
+ * com campos pesados removidos (details, odds, broadcasts, links, statistics).
+ * Cada fixture junta eventos de mais de um dia na mesma estrutura de scoreboard.
+ * Estes testes fixam os campos que o relatório usa para aprovar os slugs como
+ * fonte de confrontos. Campo que a ESPN não entrega falha aqui em vez de virar
+ * suposição.
  */
 
 type FixtureCompetitor = {
@@ -46,6 +50,9 @@ type FixtureEvent = {
   date?: string
   name?: string
   season?: { year?: number; slug?: string }
+  /** Ausente no scoreboard ao vivo de bra.2. O contrato da liga fixa isso. */
+  week?: number | { number?: number }
+  matchday?: number
   competitions?: FixtureCompetition[]
 }
 
@@ -53,7 +60,8 @@ type FixtureBoard = {
   leagues?: {
     slug?: string
     season?: { year?: number }
-    calendar?: { entries?: { label?: string }[] }[]
+    /** Copas: entradas de fase. Ligas: lista plana de datas ISO. */
+    calendar?: ({ entries?: { label?: string }[] } | string)[]
   }[]
   events?: FixtureEvent[]
 }
@@ -65,6 +73,8 @@ const FIXTURES = {
   'conmebol.sudamericana': sudamericanaJson,
   'bra.copa_do_brazil': copaJson,
 } as unknown as Record<Slug, FixtureBoard>
+
+const SERIE_B = serieBJson as unknown as FixtureBoard
 
 /** Fases por competição em `leagues[0].calendar[0].entries`, como o relatório descreve. */
 const CALENDAR_SIZE: Record<Slug, number> = {
@@ -133,7 +143,12 @@ describe.each(BOARDS)('fixture ESPN $slug', ({ slug, board }) => {
     const league = board.leagues?.[0]
     expect(league?.slug).toBe(slug)
     expect(league?.season?.year).toBe(2026)
-    const labels = league?.calendar?.[0]?.entries?.map((entry) => entry.label) ?? []
+    const first = league?.calendar?.[0]
+    expect(first && typeof first === 'object' && 'entries' in first).toBe(true)
+    const labels =
+      first && typeof first === 'object' && 'entries' in first
+        ? (first.entries?.map((entry) => entry.label) ?? [])
+        : []
     expect(labels).toHaveLength(CALENDAR_SIZE[slug])
   })
 
@@ -368,5 +383,104 @@ describe('amostras decisivas do spike', () => {
     expect(phases(FIXTURES['bra.copa_do_brazil'])).toEqual(
       new Set(['first-round', 'third-round', 'fifth-round', 'round-of-16', 'semifinals']),
     )
+  })
+})
+
+/**
+ * Contrato da Série B (liga). Separado do bloco de copas: calendário plano de
+ * datas, season.slug no padrão YYYY-…, sem leg/series e sem week/matchday no
+ * scoreboard ao vivo. O mapeamento REGULAR_SEASON já está em espnSync (#546).
+ */
+describe('fixture ESPN bra.2', () => {
+  const board = SERIE_B
+  const events = board.events ?? []
+
+  function isTbdEvent(event: FixtureEvent): boolean {
+    const competitors = comp(event).competitors ?? []
+    return competitors.some((c) => /^TBD(?:\s+(?:Home|Away))?$/i.test(c.team?.displayName ?? ''))
+  }
+
+  it('traz a liga bra.2 da temporada 2026 com calendário plano de datas', () => {
+    const league = board.leagues?.[0]
+    expect(league?.slug).toBe('bra.2')
+    expect(league?.season?.year).toBe(2026)
+    const calendar = league?.calendar ?? []
+    expect(calendar.length).toBeGreaterThanOrEqual(5)
+    expect(calendar.every((entry) => typeof entry === 'string')).toBe(true)
+    for (const entry of calendar) {
+      expect(Number.isFinite(Date.parse(String(entry)))).toBe(true)
+    }
+  })
+
+  it('todo evento usa season.slug 2026-brasileiro-serie-b (padrão YYYY- de liga)', () => {
+    expect(events.length).toBeGreaterThanOrEqual(5)
+    for (const event of events) {
+      expect(event.season?.year).toBe(2026)
+      expect(event.season?.slug).toBe('2026-brasileiro-serie-b')
+      expect(/^\d{4}-/.test(event.season?.slug ?? '')).toBe(true)
+    }
+  })
+
+  it('eventos encerrados têm ids numéricos, nomes, FT e placar em string', () => {
+    const done = finished(events)
+    expect(done.length).toBeGreaterThanOrEqual(3)
+    for (const event of done) {
+      expect(event.id).toMatch(/^\d+$/)
+      expect(Number.isFinite(Date.parse(event.date ?? ''))).toBe(true)
+      const competitors = comp(event).competitors ?? []
+      expect(competitors).toHaveLength(2)
+      expect(competitors.map((c) => c.homeAway).sort()).toEqual(['away', 'home'])
+      for (const competitor of competitors) {
+        expect(competitor.team?.id).toMatch(/^\d+$/)
+        expect(competitor.team?.displayName).toBeTruthy()
+        expect(competitor.score).toMatch(/^\d+$/)
+      }
+      expect(comp(event).status?.type?.name).toBe('STATUS_FULL_TIME')
+      expect(comp(event).status?.type?.detail).toBe('FT')
+    }
+  })
+
+  it('jogo de liga não tem leg nem series', () => {
+    expect(events.length).toBeGreaterThanOrEqual(1)
+    for (const event of events) {
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+    }
+  })
+
+  it('scoreboard ao vivo não traz week nem matchday (contrato da liga)', () => {
+    // resolveEspnRound grava REGULAR_SEASON quando week/matchday faltam.
+    // Ticket 06 não deve inventar número de rodada a partir deste payload.
+    expect(events.length).toBeGreaterThanOrEqual(1)
+    for (const event of events) {
+      expect(event.week).toBeUndefined()
+      expect(event.matchday).toBeUndefined()
+      expect('week' in event).toBe(false)
+      expect('matchday' in event).toBe(false)
+    }
+  })
+
+  it('guarda jogo futuro com times reais e placar "0"', () => {
+    const scheduledReal = events.filter(
+      (e) => comp(e).status?.type?.state === 'pre' && !isTbdEvent(e),
+    )
+    expect(scheduledReal.length).toBeGreaterThanOrEqual(1)
+    for (const event of scheduledReal) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.score).toBe('0')
+        expect(competitor.team?.id).toMatch(/^\d+$/)
+        expect(competitor.team?.displayName).not.toMatch(/^TBD/i)
+      }
+    }
+  })
+
+  it('placeholders TBD são identificáveis por displayName e status.detail', () => {
+    const tbds = events.filter(isTbdEvent)
+    expect(tbds.length).toBeGreaterThanOrEqual(1)
+    for (const event of tbds) {
+      expect(comp(event).status?.type?.detail).toBe('TBD')
+      const names = (comp(event).competitors ?? []).map((c) => c.team?.displayName)
+      expect(names).toEqual(expect.arrayContaining(['TBD Home', 'TBD Away']))
+    }
   })
 })

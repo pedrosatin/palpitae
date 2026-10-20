@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { syncFixtures, resolveCanonicalScore, resolveLockedAt, batchStatements } from './sync'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
+import { batchStatements, isoSeconds, resolveCanonicalScore, resolveLockedAt, syncFixtures } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -411,6 +412,26 @@ describe('syncFixtures — competition translation & stable slug (Decision 7/8)'
     expect(plDb.captured.competition[0][2]).toBe('premier-league-2026')
   })
 
+  it('traduz Primera Division e Serie A do lote 2 e mantém slugs estáveis', async () => {
+    mockFetch(
+      [match(210, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 1, away: 1 } })],
+      'Primera Division',
+    )
+    const pdDb = buildFakeDb()
+    await syncFixtures({ competitionCode: 'PD', season: 2026, apiKey: 'k', db: pdDb.db })
+    expect(pdDb.captured.competition[0][1]).toBe('La Liga')
+    expect(pdDb.captured.competition[0][2]).toBe('la-liga-2026')
+
+    mockFetch(
+      [match(211, { winner: 'HOME_TEAM', duration: 'REGULAR', fullTime: { home: 2, away: 0 } })],
+      'Serie A',
+    )
+    const saDb = buildFakeDb()
+    await syncFixtures({ competitionCode: 'SA', season: 2026, apiKey: 'k', db: saDb.db })
+    expect(saDb.captured.competition[0][1]).toBe('Serie A Italiana')
+    expect(saDb.captured.competition[0][2]).toBe('serie-a-2026')
+  })
+
   it('mapeia matchday numérico na fase de liga e usa stage no mata-mata mesmo com matchday de ida e volta', async () => {
     mockFetch(
       [
@@ -669,6 +690,106 @@ describe('resolveLockedAt', () => {
     for (const status of nonStartedStatuses) {
       expect(resolveLockedAt(status, now)).toBeNull()
     }
+  })
+})
+
+describe('syncFixtures — football-data 429 retry', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('retries once after 429 and succeeds on the second response', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        async text() {
+          return 'rate limit'
+        },
+        async json() {
+          return {}
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            competition: { id: 2000, name: 'FIFA World Cup', code: 'WC' },
+            matches: [],
+          }
+        },
+        async text() {
+          return ''
+        },
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { db } = buildFakeDb()
+    const promise = syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+    await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
+    await expect(promise).resolves.toMatchObject({ matches: 0 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('throws a clear error when 429 persists after the single retry', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      async text() {
+        return 'still limited'
+      },
+      async json() {
+        return {}
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { db } = buildFakeDb()
+    const promise = syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+    const assertion = expect(promise).rejects.toThrow(
+      'football-data.org respondeu 429: still limited',
+    )
+    await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
+    await assertion
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry non-429 HTTP errors', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      async text() {
+        return 'boom'
+      },
+      async json() {
+        return {}
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { db } = buildFakeDb()
+    await expect(
+      syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db }),
+    ).rejects.toThrow('football-data.org respondeu 500: boom')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('isoSeconds', () => {
+  it('strips milliseconds from an ISO string', () => {
+    const date = new Date('2026-07-29T12:34:56.789Z')
+    expect(isoSeconds(date)).toBe('2026-07-29T12:34:56Z')
+  })
+
+  it('strips .000Z correctly', () => {
+    const date = new Date('2026-07-29T12:34:56.000Z')
+    expect(isoSeconds(date)).toBe('2026-07-29T12:34:56Z')
   })
 })
 
