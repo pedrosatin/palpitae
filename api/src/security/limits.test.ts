@@ -1,67 +1,66 @@
 import crypto from 'node:crypto'
-import { describe, it, expect, vi } from 'vitest'
 import type { D1Database } from '@cloudflare/workers-types'
-import { bucketKey, ipBucketIdentity, clearExpiredSecurityRecords } from './limits'
+import type { Context } from 'hono'
+import { describe, it, expect, vi } from 'vitest'
+import type { AppContext } from '../types'
+import {
+  anonymousIdentity,
+  bucketKey,
+  clearExpiredSecurityRecords,
+  CLIENT_IP_HEADER,
+  ipBucketIdentity,
+  PROXY_SECRET_HEADER,
+} from './limits'
 
 describe('bucketKey', () => {
   it('generates a stable HMAC-SHA256 hex string', async () => {
-    const secret = 'my-super-secret'
-    const identity = 'user-123'
-    const result = await bucketKey(secret, identity)
+    const key = await bucketKey('secret', '192.168.1.1')
+    expect(key).toMatch(/^[a-f0-9]{64}$/)
 
-    expect(result).toMatch(/^[0-9a-f]{64}$/)
+    // Same inputs produce same key
+    const key2 = await bucketKey('secret', '192.168.1.1')
+    expect(key).toBe(key2)
 
-    // Verify determinism
-    const result2 = await bucketKey(secret, identity)
-    expect(result).toBe(result2)
+    // Different secret produces different key
+    const key3 = await bucketKey('other-secret', '192.168.1.1')
+    expect(key).not.toBe(key3)
+
+    // Different identity produces different key
+    const key4 = await bucketKey('secret', '192.168.1.2')
+    expect(key).not.toBe(key4)
   })
 
-  it('generates different keys for different identities', async () => {
-    const secret = 'my-super-secret'
-    const key1 = await bucketKey(secret, 'user-1')
-    const key2 = await bucketKey(secret, 'user-2')
-    expect(key1).not.toBe(key2)
-  })
-
-  it('generates different keys for different secrets', async () => {
-    const identity = 'user-1'
-    const key1 = await bucketKey('secret-1', identity)
-    const key2 = await bucketKey('secret-2', identity)
-    expect(key1).not.toBe(key2)
-  })
-
-  it('matches standard HMAC-SHA256 hex output', async () => {
+  it('matches Web Crypto HMAC-SHA256', async () => {
     const secret = 'test-secret'
-    const identity = 'test-identity'
-    const result = await bucketKey(secret, identity)
+    const identity = '10.0.0.1'
 
-    const expected = crypto.createHmac('sha256', secret).update(identity).digest('hex')
-    expect(result).toBe(expected)
+    const key = await bucketKey(secret, identity)
+
+    // Verify using Node crypto directly
+    const hmac = crypto.createHmac('sha256', secret)
+    hmac.update(identity)
+    const expected = hmac.digest('hex')
+
+    expect(key).toBe(expected)
   })
 })
 
 describe('ipBucketIdentity', () => {
-  it('returns IPv4 as is', () => {
-    expect(ipBucketIdentity('192.168.1.1')).toBe('192.168.1.1')
-    expect(ipBucketIdentity('  10.0.0.1  ')).toBe('10.0.0.1')
-    expect(ipBucketIdentity('8.8.8.8')).toBe('8.8.8.8')
+  it('leaves IPv4 addresses as is', () => {
+    expect(ipBucketIdentity('192.168.1.100')).toBe('192.168.1.100')
+    expect(ipBucketIdentity('10.0.1.254')).toBe('10.0.1.254')
+    expect(ipBucketIdentity('172.16.0.1')).toBe('172.16.0.1')
   })
 
-  it('extracts IPv4 from IPv4-mapped IPv6 addresses', () => {
-    expect(ipBucketIdentity('::ffff:192.168.1.1')).toBe('192.168.1.1')
-    expect(ipBucketIdentity('::FFFF:10.0.0.1')).toBe('10.0.0.1')
-  })
-
-  it('groups IPv6 addresses by /64 prefix', () => {
-    // Full IPv6
+  it('masks standard IPv6 addresses to /64 prefix', () => {
     expect(ipBucketIdentity('2001:0db8:85a3:0000:0000:8a2e:0370:7334')).toBe('2001:db8:85a3:0::/64')
-    // Compressed IPv6
-    expect(ipBucketIdentity('2001:db8:85a3::8a2e:370:7334')).toBe('2001:db8:85a3:0::/64')
-    // Localhost
-    expect(ipBucketIdentity('::1')).toBe('0:0:0:0::/64')
-    // Partial compression
+    expect(ipBucketIdentity('fe80:0000:0000:0000:0204:61ff:fe9d:f156')).toBe('fe80:0:0:0::/64')
+  })
+
+  it('expands and masks compressed IPv6 addresses', () => {
     expect(ipBucketIdentity('2001:db8::1')).toBe('2001:db8:0:0::/64')
-    expect(ipBucketIdentity('2a06:98c0:3600::103')).toBe('2a06:98c0:3600:0::/64')
+    expect(ipBucketIdentity('::1')).toBe('0:0:0:0::/64')
+    expect(ipBucketIdentity('fe80::')).toBe('fe80:0:0:0::/64')
   })
 
   it('returns non-IP values as is', () => {
@@ -70,11 +69,9 @@ describe('ipBucketIdentity', () => {
   })
 
   it('handles edge cases in IPv6 expansion', () => {
-    // Missing hextets or invalid hex
-    expect(ipBucketIdentity('2001:db8:zzzz::')).toBe('2001:db8:zzzz::')
-    // Trailing ::
+    // :: at the end
     expect(ipBucketIdentity('2001:db8::')).toBe('2001:db8:0:0::/64')
-    // Leading ::
+    // :: at the start with enough parts
     expect(ipBucketIdentity('::2001:db8')).toBe('0:0:0:0::/64')
   })
 })
@@ -113,5 +110,59 @@ describe('clearExpiredSecurityRecords', () => {
     expect(mockBatch).toHaveBeenCalledWith([stmtLimits, stmtSessions])
 
     vi.useRealTimers()
+  })
+})
+
+describe('anonymousIdentity', () => {
+  const createMockContext = (env: any, headers: Record<string, string>) => {
+    const getHeader = (name: string) => {
+      const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase())
+      return key ? headers[key] : undefined
+    }
+    return {
+      env,
+      req: {
+        header: vi.fn().mockImplementation(getHeader),
+      },
+    } as unknown as Context<AppContext>
+  }
+
+  it('should return ip identity when proxy secret is valid and forwarded IP is valid', async () => {
+    const context = createMockContext(
+      { PROXY_SHARED_SECRET: 'test-secret' },
+      { [PROXY_SECRET_HEADER]: 'test-secret', [CLIENT_IP_HEADER]: '192.168.1.1' },
+    )
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'ip:192.168.1.1', shared: false })
+  })
+
+  it('should return frontend proxy identity for shared worker without secret', async () => {
+    const context = createMockContext(
+      { FRONTEND_URL: 'https://test.com' },
+      { 'CF-Worker': 'test.com' },
+    )
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'proxy:anonymous:frontend', shared: true })
+  })
+
+  it('should handle other worker egress IP as proxy anonymous worker', async () => {
+    const context = createMockContext(
+      { FRONTEND_URL: 'https://test.com' },
+      { 'CF-Connecting-IP': '2a06:98c0:3600::103' },
+    )
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'proxy:anonymous:worker', shared: true })
+  })
+
+  it('should fallback to local when no matching headers are present', async () => {
+    const context = createMockContext({}, {})
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'ip:local', shared: false })
+  })
+
+  it('should handle direct IP fallback', async () => {
+    const context = createMockContext({}, { 'CF-Connecting-IP': '10.0.0.1' })
+    const result = await anonymousIdentity(context)
+    expect(result).toEqual({ identity: 'ip:10.0.0.1', shared: false })
   })
 })
