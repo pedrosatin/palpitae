@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
-import { describe, it, expect } from 'vitest'
-import { bucketKey, ipBucketIdentity } from './limits'
+import { describe, it, expect, vi } from 'vitest'
+import type { D1Database } from '@cloudflare/workers-types'
+import { bucketKey, ipBucketIdentity, clearExpiredSecurityRecords } from './limits'
 
 describe('bucketKey', () => {
   it('generates a stable HMAC-SHA256 hex string', async () => {
@@ -75,5 +76,42 @@ describe('ipBucketIdentity', () => {
     expect(ipBucketIdentity('2001:db8::')).toBe('2001:db8:0:0::/64')
     // Leading ::
     expect(ipBucketIdentity('::2001:db8')).toBe('0:0:0:0::/64')
+  })
+})
+
+describe('clearExpiredSecurityRecords', () => {
+  it('clears expired records from both tables using batch execution', async () => {
+    vi.useFakeTimers()
+    const nowSecs = 1700000000
+    vi.setSystemTime(new Date(nowSecs * 1000))
+
+    const stmtLimits = { bind: vi.fn().mockReturnThis() }
+    const stmtSessions = { bind: vi.fn().mockReturnThis() }
+
+    const mockPrepare = vi.fn().mockImplementation((query) => {
+      if (query.includes('request_limits')) return stmtLimits
+      if (query.includes('revoked_sessions')) return stmtSessions
+      return null
+    })
+
+    const mockBatch = vi.fn().mockResolvedValue([])
+
+    const mockDb = {
+      prepare: mockPrepare,
+      batch: mockBatch,
+    } as unknown as D1Database
+
+    await clearExpiredSecurityRecords(mockDb)
+
+    expect(mockPrepare).toHaveBeenCalledTimes(2)
+    expect(mockPrepare).toHaveBeenCalledWith('DELETE FROM request_limits WHERE expires_at <= ?')
+    expect(mockPrepare).toHaveBeenCalledWith('DELETE FROM revoked_sessions WHERE expires_at <= ?')
+
+    expect(stmtLimits.bind).toHaveBeenCalledWith(nowSecs)
+    expect(stmtSessions.bind).toHaveBeenCalledWith(nowSecs)
+
+    expect(mockBatch).toHaveBeenCalledWith([stmtLimits, stmtSessions])
+
+    vi.useRealTimers()
   })
 })
