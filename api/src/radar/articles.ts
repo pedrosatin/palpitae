@@ -144,7 +144,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'La Liga',
     palpitaeSlug: 'la-liga',
   },
-  { country: 'Italy', name: 'Serie A', article: 'Campeonato Italiano de Futebol – Série A' },
+  {
+    country: 'Italy',
+    name: 'Serie A',
+    article: 'Campeonato Italiano de Futebol – Série A',
+    palpitaeSlug: 'serie-a',
+  },
   { country: 'Germany', name: 'Bundesliga', article: 'Bundesliga' },
   { country: 'France', name: 'Ligue 1', article: 'Ligue 1' },
   { country: 'Portugal', name: 'Primeira Liga', article: 'Primeira Liga' },
