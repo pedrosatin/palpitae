@@ -1,14 +1,15 @@
-# Preparação e abertura das copas ESPN em 2027
+# Preparação e abertura das competições ESPN em 2027
 
-Libertadores, Copa do Brasil e Sul-Americana usam o mesmo pipeline ESPN. Cada nova temporada só é cadastrada quando o sync encontra ao menos um evento válido com `event.season.year = 2027`. Um retorno vazio, um evento sem ano ou de outra edição não cadastra temporada, time ou jogo. `ok: true` com contadores zerados significa que nada foi importado.
+Libertadores, Copa do Brasil, Sul-Americana e Brasileirão Série B usam o mesmo pipeline ESPN. Cada nova temporada só é cadastrada quando o sync encontra ao menos um evento válido com `event.season.year = 2027`. Um retorno vazio, um evento sem ano ou de outra edição não cadastra temporada, time ou jogo. `ok: true` com contadores zerados significa que nada foi importado.
 
-Em 17/10/2026, consultas de `scoreboard?dates=20270201` retornaram HTTP 200, `leagues[0].season.year = 2026` e `events = []` nas três fontes. Isso descreve apenas a data consultada e não comprova ausência de calendário em todo o ano. A abertura de 2027 e o encerramento do piloto de 2026 continuam pendentes.
+Em 17/10/2026, consultas de `scoreboard?dates=20270201` retornaram HTTP 200, `leagues[0].season.year = 2026` e `events = []` nas fontes ESPN consultadas. Isso descreve apenas a data consultada e não comprova ausência de calendário em todo o ano. A abertura de 2027 e o encerramento do piloto de 2026 continuam pendentes.
 
 Fontes consultadas:
 
 - [Libertadores em 01/02/2027](https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.libertadores/scoreboard?dates=20270201)
 - [Copa do Brasil em 01/02/2027](https://site.api.espn.com/apis/site/v2/sports/soccer/bra.copa_do_brazil/scoreboard?dates=20270201)
 - [Sul-Americana em 01/02/2027](https://site.api.espn.com/apis/site/v2/sports/soccer/conmebol.sudamericana/scoreboard?dates=20270201)
+- [Série B em 01/02/2027](https://site.api.espn.com/apis/site/v2/sports/soccer/bra.2/scoreboard?dates=20270201)
 
 ## Conferência da fonte e carga administrativa
 
@@ -19,6 +20,7 @@ O admin deve confirmar o calendário e o regulamento de cada competição antes 
 | Libertadores | `conmebol.libertadores` | `conmebol-libertadores-2027` |
 | Copa do Brasil | `bra.copa_do_brazil` | `copa-do-brasil-2027` |
 | Sul-Americana | `conmebol.sudamericana` | `conmebol-sudamericana-2027` |
+| Brasileirão Série B | `bra.2` | `brasileirao-serie-b-2027` |
 
 Com uma sessão do admin, envie um pedido por competição para `POST /matches/sync`. Use datas `YYYYMMDD` confirmadas na fonte. No exemplo, `PALPITAE_SYNC_BODY` deve apontar para um JSON preparado com o formato abaixo, substituindo `DATA_CONFIRMADA_YYYYMMDD` antes do envio:
 
@@ -39,7 +41,7 @@ curl --fail-with-body --request POST "$PALPITAE_API_URL/matches/sync" \
 
 Configure `PALPITAE_API_URL` para o ambiente de validação e `PALPITAE_ADMIN_COOKIE` como `session=...`, sem registrar a sessão em arquivos versionados. Produção exige uma operação administrativa separada. O endpoint exige `ADMIN_EMAIL`, e a ESPN dispensa `FOOTBALL_API_KEY`.
 
-A carga cria `type = cup`, `status = upcoming`, `visibility = pilot` e fases de pênaltis vazias. Repita o mesmo pedido e confira que as contagens persistidas não aumentaram. `synced.matches` conta jogos processados naquela chamada, inclusive atualizações.
+A carga cria `status = upcoming`, `visibility = pilot` e fases de pênaltis vazias. Copas nascem com `type = cup`; a Série B nasce com `type = league` (`meta.type` em `espnSync.ts`). Repita o mesmo pedido e confira que as contagens persistidas não aumentaram. `synced.matches` conta jogos processados naquela chamada, inclusive atualizações.
 
 ## Configuração e validação do piloto
 
@@ -74,6 +76,6 @@ curl --fail-with-body --request POST \
   --cookie "$PALPITAE_ADMIN_COOKIE"
 ```
 
-Confira que `GET /competitions` com a sessão de um usuário comum mostra apenas a competição promovida, entre as três de 2027. Repita a decisão separadamente para as demais. A promoção altera apenas `visibility`; o status temporal continua sob manutenção administrativa.
+Confira que `GET /competitions` com a sessão de um usuário comum mostra apenas a competição promovida, entre as quatro de 2027. Repita a decisão separadamente para as demais. A promoção altera apenas `visibility`; o status temporal continua sob manutenção administrativa.
 
 Permanecem pendentes os calendários e fixtures de 2027 confirmados, a carga real antes da primeira rodada, a configuração dos regulamentos, a validação e conclusão dos pilotos e a promoção individual pelo admin. Esta preparação não executa essas operações e não altera produção.
