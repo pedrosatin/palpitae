@@ -1,4 +1,4 @@
--- Nomes de exibição PT do lote 2 (ops/04).
+-- Nomes de exibição PT do lote 2.
 -- Slugs permanecem estáveis; só o campo name muda onde ainda estava o rótulo cru da API.
 UPDATE competitions SET name = 'La Liga' WHERE slug = 'la-liga-2026';
 UPDATE competitions SET name = 'Serie A Italiana' WHERE slug = 'serie-a-2026';
