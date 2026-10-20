@@ -179,7 +179,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'Primeira Liga',
     palpitaeSlug: 'primeira-liga',
   },
-  { country: 'Netherlands', name: 'Eredivisie', article: 'Eredivisie' },
+  {
+    country: 'Netherlands',
+    name: 'Eredivisie',
+    article: 'Eredivisie',
+    palpitaeSlug: 'eredivisie',
+  },
   {
     country: 'Argentina',
     name: 'Liga Profesional Argentina',
