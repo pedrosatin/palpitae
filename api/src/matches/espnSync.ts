@@ -20,6 +20,8 @@ const PROVIDER = 'espn'
 export type EspnPrimaryCompetitionMeta = {
   name: string
   slugPrefix: string
+  /** Default cup. Ligas de pontos corridos usam league. */
+  type?: 'cup' | 'league'
 }
 
 /**
@@ -43,6 +45,7 @@ export const ESPN_PRIMARY_COMPETITIONS: Record<string, EspnPrimaryCompetitionMet
   'bra.2': {
     name: 'Brasileirão Série B',
     slugPrefix: 'brasileirao-serie-b',
+    type: 'league',
   },
 }
 
@@ -275,10 +278,12 @@ async function upsertEspnCompetition(
 ): Promise<{ id: string }> {
   const competitionSlug = `${meta.slugPrefix}-${season}`
 
+  const competitionType = meta.type ?? 'cup'
+
   await db
     .prepare(
       `INSERT INTO competitions (id, name, slug, external_id, provider, season, status, type, visibility)
-       VALUES (?, ?, ?, ?, ?, ?, 'upcoming', 'cup', 'pilot')
+       VALUES (?, ?, ?, ?, ?, ?, 'upcoming', ?, 'pilot')
        ON CONFLICT (slug) DO UPDATE SET
          external_id = excluded.external_id,
          provider    = excluded.provider,
@@ -291,6 +296,7 @@ async function upsertEspnCompetition(
       competitionCode,
       PROVIDER,
       String(season),
+      competitionType,
     )
     .run()
 
