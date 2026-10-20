@@ -5,7 +5,7 @@ import {
   generatePkce,
   generateState,
   upsertUser,
-  verifyGoogleIdToken,
+  exchangeCode, verifyGoogleIdToken,
   clearJwksCacheForTest,
 } from './google'
 import { beforeAll, vi, beforeEach, afterEach } from 'vitest'
@@ -227,6 +227,53 @@ describe('buildAuthUrl', () => {
     expect(urlString).toBe(
       'https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=test-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A8787%2Fauth%2Fcallback&scope=openid+email+profile&state=test-state&nonce=test-nonce&code_challenge=test-challenge&code_challenge_method=S256&access_type=online&prompt=select_account',
     )
+  })
+})
+
+describe('exchangeCode', () => {
+  const params = {
+    code: 'test-code',
+    codeVerifier: 'test-verifier',
+    clientId: 'test-client-id',
+    clientSecret: 'test-secret',
+    redirectUri: 'http://localhost:8787/auth/callback',
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('exchanges code successfully', async () => {
+    vi.stubGlobal('fetch', async (url: string, options: any) => {
+      expect(url).toBe('https://oauth2.googleapis.com/token')
+      expect(options.method).toBe('POST')
+      expect(options.headers['Content-Type']).toBe('application/x-www-form-urlencoded')
+
+      const bodyParams = new URLSearchParams(options.body)
+      expect(bodyParams.get('grant_type')).toBe('authorization_code')
+      expect(bodyParams.get('code')).toBe(params.code)
+      expect(bodyParams.get('code_verifier')).toBe(params.codeVerifier)
+      expect(bodyParams.get('client_id')).toBe(params.clientId)
+      expect(bodyParams.get('client_secret')).toBe(params.clientSecret)
+      expect(bodyParams.get('redirect_uri')).toBe(params.redirectUri)
+
+      return {
+        ok: true,
+        json: async () => ({ id_token: 'fake-id-token', access_token: 'fake-access-token' }),
+      }
+    })
+
+    const result = await exchangeCode(params)
+    expect(result).toEqual({ id_token: 'fake-id-token', access_token: 'fake-access-token' })
+  })
+
+  it('throws an error when exchange fails', async () => {
+    vi.stubGlobal('fetch', async () => ({
+      ok: false,
+      text: async () => 'invalid_request',
+    }))
+
+    await expect(exchangeCode(params)).rejects.toThrow('Token exchange failed: invalid_request')
   })
 })
 
