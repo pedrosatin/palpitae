@@ -59,6 +59,9 @@ export type EspnScoreboardEvent = {
   id?: string
   date?: unknown
   season?: { year?: number; type?: number; slug?: string }
+  /** Rodada numérica em algumas ligas; Série B costuma omitir. */
+  week?: number | { number?: number }
+  matchday?: number
   status?: { type?: EspnCompetitionStatusType }
   competitions?: EspnEventCompetition[]
 }
