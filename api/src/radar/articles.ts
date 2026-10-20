@@ -144,6 +144,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     palpitaeSlug: 'premier-league',
   },
   {
+    country: 'England',
+    name: 'Championship',
+    article: 'EFL Championship',
+    palpitaeSlug: 'championship',
+  },
+  {
     country: 'Spain',
     name: 'La Liga',
     article: 'La Liga',

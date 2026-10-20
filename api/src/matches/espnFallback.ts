@@ -34,6 +34,8 @@ export const FOOTBALL_DATA_TO_ESPN: Record<string, string> = {
   '2018': 'uefa.euro',
   PL: 'eng.1',
   '2021': 'eng.1',
+  ELC: 'eng.2',
+  '2016': 'eng.2',
   PD: 'esp.1',
   '2014': 'esp.1',
   SA: 'ita.1',

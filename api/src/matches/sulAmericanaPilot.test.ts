@@ -723,7 +723,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       .all()
     expect(compCounts).toEqual([
       { provider: 'espn', total: espnTotalBefore.total },
-      { provider: 'football-data', total: 8 },
+      { provider: 'football-data', total: 9 },
     ])
 
     const sudSlugCount = sqlite

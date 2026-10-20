@@ -80,6 +80,7 @@ export const ESPN_LEAGUES: EspnLeagueRef[] = [
   { slug: 'fifa.cwc', name: 'FIFA Club World Cup', country: 'World', type: 'Cup' },
   // Ligas nacionais de fora
   { slug: 'eng.1', name: 'Premier League', country: 'England', type: 'League' },
+  { slug: 'eng.2', name: 'Championship', country: 'England', type: 'League' },
   // ESPN chama de "Spanish La Liga" — o nome aqui casa com a curadoria.
   { slug: 'esp.1', name: 'La Liga', country: 'Spain', type: 'League' },
   { slug: 'ita.1', name: 'Serie A', country: 'Italy', type: 'League' },
