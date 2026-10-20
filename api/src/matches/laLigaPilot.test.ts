@@ -127,7 +127,7 @@ function stubFootballDataApi(finished: boolean) {
 }
 
 describe('La Liga em piloto pelo football-data', () => {
-  it('seedia como liga piloto, sincroniza sem duplicar, preserva type e permite grupo/palpite ao admin', async () => {
+  it('cadastra a liga piloto, sincroniza sem duplicar e permite grupo e palpite ao admin', async () => {
     const { sqlite, db } = createSqliteD1()
     handles.push(sqlite)
     const env = makeEnv(db)
@@ -206,7 +206,7 @@ describe('La Liga em piloto pelo football-data', () => {
       )
     }
 
-    // 2. Sync duas vezes com PD e uma com 2014 — sem duplicar jogos; type league permanece.
+    // 2. Sync duas vezes com PD e uma com 2014. Sem duplicar jogos. type league permanece.
     stubFootballDataApi(false)
     for (const code of ['PD', 'PD', '2014']) {
       const syncRes = await request('/matches/sync', 'admin', {
