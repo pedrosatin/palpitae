@@ -412,6 +412,26 @@ describe('syncFixtures — competition translation & stable slug (Decision 7/8)'
     expect(plDb.captured.competition[0][2]).toBe('premier-league-2026')
   })
 
+  it('traduz Primera Division e Serie A do lote 2 e mantém slugs estáveis', async () => {
+    mockFetch(
+      [match(210, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 1, away: 1 } })],
+      'Primera Division',
+    )
+    const pdDb = buildFakeDb()
+    await syncFixtures({ competitionCode: 'PD', season: 2026, apiKey: 'k', db: pdDb.db })
+    expect(pdDb.captured.competition[0][1]).toBe('La Liga')
+    expect(pdDb.captured.competition[0][2]).toBe('la-liga-2026')
+
+    mockFetch(
+      [match(211, { winner: 'HOME_TEAM', duration: 'REGULAR', fullTime: { home: 2, away: 0 } })],
+      'Serie A',
+    )
+    const saDb = buildFakeDb()
+    await syncFixtures({ competitionCode: 'SA', season: 2026, apiKey: 'k', db: saDb.db })
+    expect(saDb.captured.competition[0][1]).toBe('Serie A Italiana')
+    expect(saDb.captured.competition[0][2]).toBe('serie-a-2026')
+  })
+
   it('mapeia matchday numérico na fase de liga e usa stage no mata-mata mesmo com matchday de ida e volta', async () => {
     mockFetch(
       [

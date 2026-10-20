@@ -65,6 +65,8 @@ const COMP_TRANSLATIONS: Record<string, string> = {
   'Copa América': 'Copa América',
   'Champions League': 'Liga dos Campeões',
   'Primera Division': 'La Liga',
+  // "Serie A" sem acento: não casa com "Campeonato Brasileiro Série A".
+  'Serie A': 'Serie A Italiana',
 }
 
 // Prefixo de slug de produto quando o nome cru da API geraria outro slug.

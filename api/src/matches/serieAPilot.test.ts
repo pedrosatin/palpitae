@@ -163,7 +163,7 @@ describe('Serie A em piloto pelo football-data', () => {
         fakeExecutionCtx,
       )
 
-    // 1. Migration 0026 cadastra Serie A 2026 como league, football-data e pilot.
+    // 1. Migration 0026/0030 cadastra Serie A Italiana 2026 como league, football-data e pilot.
     const seededRow = sqlite
       .prepare(
         `SELECT id, name, slug, external_id, provider, season, status, type, penalty_phases, visibility
@@ -172,7 +172,7 @@ describe('Serie A em piloto pelo football-data', () => {
       .get(SERIE_A_ID)
     expect(seededRow).toEqual({
       id: SERIE_A_ID,
-      name: 'Serie A',
+      name: 'Serie A Italiana',
       slug: 'serie-a-2026',
       external_id: '2019',
       provider: 'football-data',
@@ -220,7 +220,7 @@ describe('Serie A em piloto pelo football-data', () => {
       }
       expect(syncBody).toMatchObject({
         ok: true,
-        synced: { competition: 'Serie A', matches: 3 },
+        synced: { competition: 'Serie A Italiana', matches: 3 },
       })
     }
 
@@ -242,7 +242,7 @@ describe('Serie A em piloto pelo football-data', () => {
     }
     expect(afterSync).toEqual({
       id: SERIE_A_ID,
-      name: 'Serie A',
+      name: 'Serie A Italiana',
       slug: 'serie-a-2026',
       external_id: '2019',
       type: 'league',
@@ -274,7 +274,7 @@ describe('Serie A em piloto pelo football-data', () => {
     const createGroupRes = await request('/groups', 'admin', {
       method: 'POST',
       body: JSON.stringify({
-        name: 'Bolão da Serie A',
+        name: 'Bolão da Serie A Italiana',
         competition_id: SERIE_A_ID,
         points_exact: 3,
         points_winner: 1,
@@ -290,7 +290,7 @@ describe('Serie A em piloto pelo football-data', () => {
       group: { competition_name: string; competition_type: string }
     }
     expect(detail.group).toMatchObject({
-      competition_name: 'Serie A',
+      competition_name: 'Serie A Italiana',
       competition_type: 'league',
     })
 
