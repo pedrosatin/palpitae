@@ -23,9 +23,10 @@ describe('curadoria do radar', () => {
     expect(findEntry('Estonia', 'Meistriliiga')).toBeUndefined()
   })
 
-  it('marca UEFA Champions League e Premier League com palpitaeSlug', () => {
+  it('marca UEFA Champions League, Premier League e La Liga com palpitaeSlug', () => {
     expect(findEntry('World', 'UEFA Champions League')?.palpitaeSlug).toBe('uefa-champions-league')
     expect(findEntry('England', 'Premier League')?.palpitaeSlug).toBe('premier-league')
+    expect(findEntry('Spain', 'La Liga')?.palpitaeSlug).toBe('la-liga')
   })
 
   it('não tem entradas duplicadas na curadoria', () => {
