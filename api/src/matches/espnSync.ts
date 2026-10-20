@@ -40,6 +40,10 @@ export const ESPN_PRIMARY_COMPETITIONS: Record<string, EspnPrimaryCompetitionMet
     name: 'Copa do Brasil',
     slugPrefix: 'copa-do-brasil',
   },
+  'bra.2': {
+    name: 'Brasileirão Série B',
+    slugPrefix: 'brasileirao-serie-b',
+  },
 }
 
 export function isEspnPrimaryCompetition(code: string): boolean {

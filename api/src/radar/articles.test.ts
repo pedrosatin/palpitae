@@ -23,12 +23,13 @@ describe('curadoria do radar', () => {
     expect(findEntry('Estonia', 'Meistriliiga')).toBeUndefined()
   })
 
-  it('marca UEFA Champions League, Premier League, La Liga, Serie A (Itália), Bundesliga e Primeira Liga com palpitaeSlug', () => {
+  it('marca UEFA Champions League, Premier League, La Liga, Serie A (Itália), Bundesliga, Primeira Liga e Série B com palpitaeSlug', () => {
     expect(findEntry('World', 'UEFA Champions League')?.palpitaeSlug).toBe('uefa-champions-league')
     expect(findEntry('England', 'Premier League')?.palpitaeSlug).toBe('premier-league')
     expect(findEntry('Spain', 'La Liga')?.palpitaeSlug).toBe('la-liga')
     expect(findEntry('Italy', 'Serie A')?.palpitaeSlug).toBe('serie-a')
     expect(findEntry('Brazil', 'Serie A')?.palpitaeSlug).toBe('campeonato-brasileiro-serie-a')
+    expect(findEntry('Brazil', 'Serie B')?.palpitaeSlug).toBe('brasileirao-serie-b')
     expect(findEntry('Germany', 'Bundesliga')?.palpitaeSlug).toBe('bundesliga')
     expect(findEntry('Portugal', 'Primeira Liga')?.palpitaeSlug).toBe('primeira-liga')
   })
