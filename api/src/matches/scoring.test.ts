@@ -6,6 +6,7 @@ import {
   resolveSingleMatchClassified,
   resolveTwoLegClassified,
   scoreUnprocessedMatches,
+  classifiedRuleChangeStatements,
 } from './scoring'
 
 // ---------------------------------------------------------------------------
@@ -328,6 +329,16 @@ function buildFakeDb(
         return null
       },
       async all<T>(): Promise<{ results: T[] }> {
+        if (sql.includes('FROM matches WHERE competition_id = ? ORDER BY id')) {
+          const compId = params[0] as string
+          const results = matches
+            .filter((m) => m.competition_id === compId)
+            .map((m) => ({
+              ...m,
+              penalty_phases: JSON.stringify(penaltyPhases[m.competition_id] ?? []),
+            })) as unknown as T[]
+          return { results }
+        }
         if (
           sql.includes('FROM matches') &&
           sql.includes("status = 'finished'") &&
@@ -364,6 +375,16 @@ function buildFakeDb(
         if (sql.includes('FROM predictions') && sql.includes('WHERE match_id IN')) {
           const matchIds = params as string[]
           const results = predictions.filter((p) => matchIds.includes(p.match_id)) as unknown as T[]
+          return { results }
+        }
+        if (sql.includes('FROM predictions p JOIN groups g ON g.id = p.group_id WHERE p.group_id = ? ORDER BY p.id')) {
+          const groupId = params[0] as string
+          const results = predictions
+            .filter((p) => p.group_id === groupId)
+            .map((p) => ({
+              ...p,
+              ...groupConfig(p.group_id),
+            })) as unknown as T[]
           return { results }
         }
         if (sql.includes('FROM predictions') && sql.includes('WHERE p.match_id IN')) {
@@ -1133,5 +1154,119 @@ describe('calculateClassifiedBonus', () => {
     expect(calculateClassifiedBonus('home', 'home', 2, false)).toBe(0)
     expect(calculateClassifiedBonus(null, 'home', 2, true)).toBe(0)
     expect(calculateClassifiedBonus('home', null, 2, true)).toBe(0)
+  })
+})
+
+
+describe('classifiedRuleChangeStatements', () => {
+  it('generates the correct updates for knockout phase matches', async () => {
+    const matches: FakeMatch[] = [
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 2,
+        away_score: 1,
+        penalty_winner: null,
+        phase: 'LAST_16',
+        leg: null,
+        scored_at: '2026-06-11T22:00:00Z',
+      },
+    ]
+    const predictions: FakePrediction[] = [
+      {
+        id: 'p1',
+        match_id: 'm1',
+        group_id: 'g1',
+        user_id: 'u1',
+        predicted_home_score: 2,
+        predicted_away_score: 0,
+        predicted_penalty_winner: null,
+        points_awarded: 0,
+        penalty_points: 0,
+        classified_points: 0,
+      },
+    ]
+    const db = buildFakeDb(matches, predictions, { g1: { points_classified: 5, points_exact: 3, points_winner: 1, points_penalty: 1 } })
+
+    const statements = await classifiedRuleChangeStatements(db as unknown as D1Database, 'g1', 'c1', 5)
+
+    expect(statements).toHaveLength(3)
+
+    // Second statement is the update statement. Let's check its structure.
+    const updateStmt = statements[1] as unknown as { _sql: string; _params: unknown[] }
+    expect(updateStmt._sql).toContain('UPDATE predictions SET classified_points =')
+
+    // The first bind parameter is the updates JSON string.
+    const updatesJson = updateStmt._params[0] as string
+    const updates = JSON.parse(updatesJson)
+
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toEqual({
+      id: 'p1',
+      points: 5, // home team wins exactly predicted
+    })
+  })
+
+  it('skips matches that are not finished or not knockout phase', async () => {
+    const matches: FakeMatch[] = [
+      {
+        id: 'm1',
+        competition_id: 'c1',
+        status: 'scheduled',
+        home_score: null,
+        away_score: null,
+        penalty_winner: null,
+        phase: 'LAST_16',
+        leg: null,
+        scored_at: null,
+      },
+      {
+        id: 'm2',
+        competition_id: 'c1',
+        status: 'finished',
+        home_score: 1,
+        away_score: 1,
+        penalty_winner: null,
+        phase: 'GROUP_STAGE',
+        leg: null,
+        scored_at: '2026-06-11T22:00:00Z',
+      },
+    ]
+    const predictions: FakePrediction[] = [
+      {
+        id: 'p1',
+        match_id: 'm1',
+        group_id: 'g1',
+        user_id: 'u1',
+        predicted_home_score: 1,
+        predicted_away_score: 0,
+        predicted_penalty_winner: null,
+        points_awarded: 0,
+        penalty_points: 0,
+        classified_points: 0,
+      },
+      {
+        id: 'p2',
+        match_id: 'm2',
+        group_id: 'g1',
+        user_id: 'u1',
+        predicted_home_score: 1,
+        predicted_away_score: 1,
+        predicted_penalty_winner: null,
+        points_awarded: 0,
+        penalty_points: 0,
+        classified_points: 0,
+      },
+    ]
+    const db = buildFakeDb(matches, predictions, { g1: { points_classified: 5, points_exact: 3, points_winner: 1, points_penalty: 1 } })
+
+    const statements = await classifiedRuleChangeStatements(db as unknown as D1Database, 'g1', 'c1', 5)
+
+    const updateStmt = statements[1] as unknown as { _sql: string; _params: unknown[] }
+    const updatesJson = updateStmt._params[0] as string
+    const updates = JSON.parse(updatesJson)
+
+    expect(updates).toHaveLength(0)
   })
 })
