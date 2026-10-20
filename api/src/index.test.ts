@@ -1,5 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('./security/limits', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./security/limits')>()
+  return {
+    ...actual,
+    clearExpiredSecurityRecords: vi.fn(async () => {}),
+  }
+})
+vi.mock('./observability/events', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./observability/events')>()
+  return {
+    ...actual,
+    logError: vi.fn(),
+  }
+})
+
 vi.mock('./notifications/roundReminder', () => ({
   sendRoundReminders: vi.fn(async () => {}),
 }))
@@ -19,6 +34,9 @@ import { pollActiveMatches } from './matches/poller'
 import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
 import type { Env } from './types'
+
+import { clearExpiredSecurityRecords } from './security/limits'
+import { logError } from './observability/events'
 
 const env = {
   DB: {
@@ -48,6 +66,28 @@ function run(cron: string, scheduledTime = Date.now()) {
 describe('scheduled handler routing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('logs an error if clearExpiredSecurityRecords fails', async () => {
+    const error = new Error('DB timeout')
+    vi.mocked(clearExpiredSecurityRecords).mockRejectedValueOnce(error)
+
+    await run('*/30 * * * *')
+
+    // Wait for the floating promise to reject
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(clearExpiredSecurityRecords).toHaveBeenCalledTimes(1)
+    expect(clearExpiredSecurityRecords).toHaveBeenCalledWith(env.DB)
+
+    expect(logError).toHaveBeenCalledTimes(1)
+    expect(logError).toHaveBeenCalledWith(
+      env.AE,
+      'security_storage_error',
+      '[limits] Limpeza de registros expirados falhou:',
+      error,
+      { blobs: ['cleanup'] },
+    )
   })
 
   afterEach(() => {
