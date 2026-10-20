@@ -10,6 +10,7 @@ import {
   CLIENT_IP_HEADER,
   ipBucketIdentity,
   PROXY_SECRET_HEADER,
+  requestLimits,
 } from './limits'
 
 describe('bucketKey', () => {
@@ -164,5 +165,46 @@ describe('anonymousIdentity', () => {
     const context = createMockContext({}, { 'CF-Connecting-IP': '10.0.0.1' })
     const result = await anonymousIdentity(context)
     expect(result).toEqual({ identity: 'ip:10.0.0.1', shared: false })
+  })
+})
+
+describe('requestLimits', () => {
+  it('handles D1 DB error during consumption gracefully', async () => {
+    const { Hono } = await import('hono')
+    const app = new Hono()
+
+    // Mock db throwing an error in consumeLimit
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          first: () => Promise.reject(new Error('DB is down!'))
+        })
+      })
+    }
+
+    // Mock logError via c.env.AE (which will just be ignored here, but we should pass something)
+    const mockEnv = {
+      DB: mockDb,
+      AE: {
+        writeDataPoint: () => {}
+      },
+      JWT_SECRET: 'secret',
+      FRONTEND_URL: 'http://localhost'
+    }
+
+    app.use('*', requestLimits)
+    app.get('/', (c) => c.text('ok'))
+    app.post('/', (c) => c.text('ok'))
+
+    // Test read operation with DB error (should pass)
+    const req1 = new Request('http://localhost/', { method: 'GET' })
+    const res1 = await app.fetch(req1, mockEnv)
+    expect(res1.status).toBe(200)
+
+    // Test write operation with DB error (should be blocked)
+    const req2 = new Request('http://localhost/', { method: 'POST' })
+    const res2 = await app.fetch(req2, mockEnv)
+    expect(res2.status).toBe(503)
+    expect(await res2.json()).toEqual({ error: 'Controle de requisições indisponível' })
   })
 })
