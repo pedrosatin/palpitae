@@ -658,7 +658,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       .all()
     expect(compCounts).toEqual([
       { provider: 'espn', total: espnTotalBefore.total },
-      { provider: 'football-data', total: 3 }, // Champions, Premier League da migration 0018 e Brasileirão
+      { provider: 'football-data', total: 10 }, // Champions, Premier (0018), La Liga (0025), Serie A (0026), Bundesliga (0027), Primeira Liga (0028), Ligue 1 (0031), Championship (0032), Eredivisie (0033) e Brasileirão
     ])
     const libertaSlugCount = sqlite
       .prepare(
