@@ -12,6 +12,7 @@
  */
 const KNOCKOUT_LABELS: Record<string, string> = {
   GROUP_STAGE: 'Fase de grupos',
+  REGULAR_SEASON: 'Temporada regular',
   FIRST_STAGE: '1ª fase',
   SECOND_STAGE: '2ª fase',
   THIRD_STAGE: '3ª fase',
@@ -39,11 +40,11 @@ export function roundLabel(round: string): string {
 }
 
 /**
- * Fase eliminatória (mata-mata): qualquer fase conhecida do mapa acima, menos a
- * fase de grupos. Rodadas numéricas, GROUP_STAGE, LEAGUE_STAGE, REGULAR_SEASON e
- * fases desconhecidas ficam de fora (fail-closed).
+ * Fase eliminatória (mata-mata): qualquer fase conhecida do mapa acima, menos
+ * fase de grupos e temporada regular. Rodadas numéricas, GROUP_STAGE,
+ * LEAGUE_STAGE, REGULAR_SEASON e fases desconhecidas ficam de fora (fail-closed).
  */
 export function isKnockoutPhase(phase: string | null | undefined): boolean {
-  if (!phase || phase === 'GROUP_STAGE') return false
+  if (!phase || phase === 'GROUP_STAGE' || phase === 'REGULAR_SEASON') return false
   return Object.hasOwn(KNOCKOUT_LABELS, phase)
 }
