@@ -166,20 +166,23 @@ describe('preparação das temporadas ESPN 2027', () => {
         "SELECT slug, status, type, visibility FROM competitions WHERE season = '2027' ORDER BY slug",
       )
       .all()
-    expect(seasons).toHaveLength(3)
+    expect(seasons).toHaveLength(4)
     expect(
-      seasons.every(
-        (row) => row.status === 'upcoming' && row.type === 'cup' && row.visibility === 'pilot',
-      ),
+      seasons.every((row) => row.status === 'upcoming' && row.visibility === 'pilot'),
     ).toBe(true)
+    const bySlug = Object.fromEntries(seasons.map((row) => [String(row.slug), row]))
+    expect(bySlug['brasileirao-serie-b-2027']?.type).toBe('league')
+    expect(bySlug['conmebol-libertadores-2027']?.type).toBe('cup')
+    expect(bySlug['conmebol-sudamericana-2027']?.type).toBe('cup')
+    expect(bySlug['copa-do-brasil-2027']?.type).toBe('cup')
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM teams').get()).toEqual({ n: 2 })
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 3 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 4 })
     expect(
       sqlite.prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id").all(),
     ).toEqual(before2026)
 
     await discoverFixtures(db, '')
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 6 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 8 })
     expect(
       sqlite.prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id").all(),
     ).toEqual(before2026)
@@ -201,7 +204,7 @@ describe('preparação das temporadas ESPN 2027', () => {
     expect(await list('ordinary')).toContain(slug)
     for (const row of seasons.slice(1)) expect(await list('ordinary')).not.toContain(row.slug)
     await discoverFixtures(db, '')
-    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 6 })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 8 })
     expect(sqlite.prepare('SELECT visibility FROM competitions WHERE slug = ?').get(slug)).toEqual({
       visibility: 'public',
     })
