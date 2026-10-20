@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
-import { isoSeconds, resolveCanonicalScore, resolveLockedAt, slugify, syncFixtures } from './sync'
+import { batchStatements, isoSeconds, resolveCanonicalScore, resolveLockedAt, slugify, syncFixtures } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -790,6 +790,32 @@ describe('isoSeconds', () => {
   it('strips .000Z correctly', () => {
     const date = new Date('2026-07-29T12:34:56.000Z')
     expect(isoSeconds(date)).toBe('2026-07-29T12:34:56Z')
+  })
+})
+
+describe('batchStatements', () => {
+  it('splits statements into chunks of 100 and calls db.batch in parallel', async () => {
+    const batchMock = vi.fn().mockResolvedValue(undefined)
+    const db = { batch: batchMock } as any
+
+    // Create 250 dummy statements
+    const statements = Array.from({ length: 250 }).map((_, i) => ({ id: i })) as any[]
+
+    await batchStatements(db, statements)
+
+    expect(batchMock).toHaveBeenCalledTimes(3)
+    expect(batchMock).toHaveBeenNthCalledWith(1, statements.slice(0, 100))
+    expect(batchMock).toHaveBeenNthCalledWith(2, statements.slice(100, 200))
+    expect(batchMock).toHaveBeenNthCalledWith(3, statements.slice(200, 250))
+  })
+
+  it('handles empty statement arrays gracefully', async () => {
+    const batchMock = vi.fn().mockResolvedValue(undefined)
+    const db = { batch: batchMock } as any
+
+    await batchStatements(db, [])
+
+    expect(batchMock).not.toHaveBeenCalled()
   })
 })
 
