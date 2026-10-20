@@ -141,7 +141,7 @@ describe('fetchEspnLeaguesAndCounts', () => {
     scoreboardMock.mockRejectedValue(new Error('DNS de sumiço'))
 
     await expect(fetchEspnLeaguesAndCounts('2026-10-07')).rejects.toThrow(
-      'ESPN falhou em todos os 39 slugs do recorte',
+      'ESPN falhou em todos os 40 slugs do recorte',
     )
   })
 })

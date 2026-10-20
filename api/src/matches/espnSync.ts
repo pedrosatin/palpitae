@@ -20,6 +20,8 @@ const PROVIDER = 'espn'
 export type EspnPrimaryCompetitionMeta = {
   name: string
   slugPrefix: string
+  /** Default cup. Ligas de pontos corridos usam league. */
+  type?: 'cup' | 'league'
 }
 
 /**
@@ -40,6 +42,11 @@ export const ESPN_PRIMARY_COMPETITIONS: Record<string, EspnPrimaryCompetitionMet
     name: 'Copa do Brasil',
     slugPrefix: 'copa-do-brasil',
   },
+  'bra.2': {
+    name: 'Brasileirão Série B',
+    slugPrefix: 'brasileirao-serie-b',
+    type: 'league',
+  },
 }
 
 export function isEspnPrimaryCompetition(code: string): boolean {
@@ -47,10 +54,11 @@ export function isEspnPrimaryCompetition(code: string): boolean {
 }
 
 /**
- * Tradução de `event.season.slug` da ESPN para o código canônico de `phase` e
- * `round` do Palpitae, usado pelos rótulos PT-BR em `rounds.ts` e pelo gate de
- * pênaltis em `competitions.penalty_phases`. Qualquer slug fora deste mapa é
- * descartado em modo fail-closed.
+ * Tradução de `event.season.slug` da ESPN para o código canônico de fase das
+ * copas (mata-mata e grupos). Usado pelos rótulos PT-BR em `rounds.ts` e pelo
+ * gate de pênaltis em `competitions.penalty_phases`.
+ *
+ * Slugs fora deste mapa ainda podem ser fase de liga: ver `resolveEspnStage`.
  */
 const ESPN_STAGE_MAP: Record<string, string> = {
   'first-stage': 'FIRST_STAGE',
@@ -69,6 +77,50 @@ const ESPN_STAGE_MAP: Record<string, string> = {
   '3rd-place': 'THIRD_PLACE',
   'third-place': 'THIRD_PLACE',
   final: 'FINAL',
+}
+
+const LEAGUE_PHASE = 'REGULAR_SEASON'
+
+/**
+ * Resolve `event.season.slug` da ESPN para a fase canônica.
+ *
+ * 1. Slug no mapa de copa/mata-mata → código mapeado (ex.: semifinals → SEMI_FINALS).
+ * 2. Slug no padrão `YYYY-…` (identificador de temporada da liga, ex.:
+ *    `2026-brasileiro-serie-b`) → REGULAR_SEASON.
+ * 3. Qualquer outro slug → descartado (fail-closed).
+ */
+function resolveEspnStage(slug: string | undefined): string | undefined {
+  if (!slug) return undefined
+  const mapped = ESPN_STAGE_MAP[slug]
+  if (mapped) return mapped
+  // Temporada de liga: a ESPN usa o id da edição (`2026-brasileiro-serie-b`)
+  // no lugar da fase de mata-mata. Aceita o padrão YYYY-… como REGULAR_SEASON.
+  if (/^\d{4}-/.test(slug)) return LEAGUE_PHASE
+  return undefined
+}
+
+/**
+ * Rodada numérica quando a ESPN expõe week/matchday; senão a própria fase
+ * (mesmo padrão das copas, onde round = stage).
+ */
+function resolveEspnRound(ev: EspnScoreboardEvent, stage: string): string {
+  if (stage !== LEAGUE_PHASE) return stage
+
+  const week = ev.week
+  if (typeof week === 'number' && Number.isFinite(week) && week >= 0) {
+    return String(Math.trunc(week))
+  }
+  if (week && typeof week === 'object') {
+    const n = week.number
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) {
+      return String(Math.trunc(n))
+    }
+  }
+  const matchday = ev.matchday
+  if (typeof matchday === 'number' && Number.isFinite(matchday) && matchday >= 0) {
+    return String(Math.trunc(matchday))
+  }
+  return LEAGUE_PHASE
 }
 
 const ESPN_POSTPONED_STATUSES = new Set([
@@ -106,6 +158,7 @@ type ValidEspnEvent = {
   id: string
   startTime: string
   stage: string
+  round: string
   leg: 1 | 2 | null
   groupName: string | null
   state: string | undefined
@@ -166,7 +219,7 @@ function extractValidEvent(ev: EspnScoreboardEvent, season: number): ValidEspnEv
   // Só o ano explícito do evento autoriza importá-lo para a temporada pedida.
   if (ev.season?.year !== season) return null
 
-  const stage = ev.season?.slug ? ESPN_STAGE_MAP[ev.season.slug] : undefined
+  const stage = resolveEspnStage(ev.season?.slug)
   const startTime = resolveStartTime(ev.date)
   const comp: EspnEventCompetition | undefined = ev.competitions?.[0]
   if (!stage || !startTime || !comp) return null
@@ -183,6 +236,7 @@ function extractValidEvent(ev: EspnScoreboardEvent, season: number): ValidEspnEv
     id,
     startTime,
     stage,
+    round: resolveEspnRound(ev, stage),
     leg,
     groupName: parseGroupName(comp.group?.name),
     state: statusType?.state,
@@ -224,10 +278,12 @@ async function upsertEspnCompetition(
 ): Promise<{ id: string }> {
   const competitionSlug = `${meta.slugPrefix}-${season}`
 
+  const competitionType = meta.type ?? 'cup'
+
   await db
     .prepare(
       `INSERT INTO competitions (id, name, slug, external_id, provider, season, status, type, visibility)
-       VALUES (?, ?, ?, ?, ?, ?, 'upcoming', 'cup', 'pilot')
+       VALUES (?, ?, ?, ?, ?, ?, 'upcoming', ?, 'pilot')
        ON CONFLICT (slug) DO UPDATE SET
          external_id = excluded.external_id,
          provider    = excluded.provider,
@@ -240,6 +296,7 @@ async function upsertEspnCompetition(
       competitionCode,
       PROVIDER,
       String(season),
+      competitionType,
     )
     .run()
 
@@ -394,7 +451,7 @@ function mapEspnEventToRow(
     homeScore: isFinished ? homeParsed : null,
     awayScore: isFinished ? awayParsed : null,
     phase: ev.stage,
-    round: ev.stage,
+    round: ev.round,
     groupName: ev.groupName,
     leg: ev.leg,
     ...outcome,
