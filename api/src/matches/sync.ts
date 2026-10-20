@@ -64,6 +64,13 @@ const COMP_TRANSLATIONS: Record<string, string> = {
   'European Championship': 'Eurocopa',
   'Copa América': 'Copa América',
   'Champions League': 'Liga dos Campeões',
+  'Primera Division': 'La Liga',
+}
+
+// Prefixo de slug de produto quando o nome cru da API geraria outro slug.
+// Mesmo estilo de chave que COMP_TRANSLATIONS (substring via includes).
+const COMP_SLUG_OVERRIDES: Record<string, string> = {
+  'Primera Division': 'la-liga',
 }
 
 type ApiTeam = {
@@ -280,7 +287,14 @@ async function upsertCompetition(
   // Slug deriva do nome CRU da API (não do traduzido) p/ ficar estável: mudar a
   // tradução de exibição não pode mudar a chave de conflito do upsert, senão um
   // re-sync criaria uma competição duplicada (slug = 'fifa-world-cup-2026' em prod).
-  const competitionSlug = slugify(`${apiComp.name}-${season}`)
+  // COMP_SLUG_OVERRIDES cobre casos em que o produto fixou um slug distinto
+  // (ex.: La Liga vs. Primera Division).
+  const slugOverrideKey = Object.keys(COMP_SLUG_OVERRIDES).find((key) =>
+    apiComp.name.includes(key),
+  )
+  const competitionSlug = slugOverrideKey
+    ? `${COMP_SLUG_OVERRIDES[slugOverrideKey]}-${season}`
+    : slugify(`${apiComp.name}-${season}`)
 
   await db
     .prepare(
