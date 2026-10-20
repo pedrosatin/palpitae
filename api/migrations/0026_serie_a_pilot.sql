@@ -1,5 +1,5 @@
 -- Seed da Serie A 2026 via football-data SA/2019, visibility pilot.
--- API name "Serie A" já gera slug serie-a-2026 via slugify — sem COMP_SLUG_OVERRIDES.
+-- API name "Serie A" já gera slug serie-a-2026 via slugify. Sem COMP_SLUG_OVERRIDES.
 INSERT INTO competitions (
   id,
   name,
