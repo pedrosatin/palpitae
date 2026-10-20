@@ -150,7 +150,12 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'Campeonato Italiano de Futebol – Série A',
     palpitaeSlug: 'serie-a',
   },
-  { country: 'Germany', name: 'Bundesliga', article: 'Bundesliga' },
+  {
+    country: 'Germany',
+    name: 'Bundesliga',
+    article: 'Bundesliga',
+    palpitaeSlug: 'bundesliga',
+  },
   { country: 'France', name: 'Ligue 1', article: 'Ligue 1' },
   { country: 'Portugal', name: 'Primeira Liga', article: 'Primeira Liga' },
   { country: 'Netherlands', name: 'Eredivisie', article: 'Eredivisie' },
