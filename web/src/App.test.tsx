@@ -304,6 +304,20 @@ describe('App', () => {
     expect(fetchMock).toHaveBeenCalledWith(`${config.apiUrl}/auth/me`, { credentials: 'include' })
   })
 
+  it('falls back to unauthenticated route when /auth/me rejects with a network error', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('Network request failed'))
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+    })
+  })
+
   it('falls back to unauthenticated route when /auth/me returns 200 with authenticated: false', async () => {
     // Visita anônima: o endpoint responde 200 (não 401) para não aparecer como
     // erro no console do navegador — ver PAGESPEED_REPORT.md item 3.
