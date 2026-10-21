@@ -8,6 +8,7 @@ import {
   bucketKey,
   clearExpiredSecurityRecords,
   CLIENT_IP_HEADER,
+  consumeLimit,
   ipBucketIdentity,
   PROXY_SECRET_HEADER,
   requestLimits,
@@ -206,5 +207,42 @@ describe('requestLimits', () => {
     const res2 = await app.fetch(req2, mockEnv)
     expect(res2.status).toBe(503)
     expect(await res2.json()).toEqual({ error: 'Controle de requisições indisponível' })
+  })
+})
+
+describe('consumeLimit unit tests', () => {
+  it('allows request when hits is within limit', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnThis(),
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ hits: 1 }),
+    } as unknown as D1Database
+
+    const result = await consumeLimit(db, 'test-key', 5, 1000)
+    expect(result).toBe(true)
+
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO request_limits'))
+  })
+
+  it('denies request when hits exceeds limit', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnThis(),
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue({ hits: 6 }),
+    } as unknown as D1Database
+
+    const result = await consumeLimit(db, 'test-key', 5, 1000)
+    expect(result).toBe(false)
+  })
+
+  it('denies request if D1 returns null (window bucket is full)', async () => {
+    const db = {
+      prepare: vi.fn().mockReturnThis(),
+      bind: vi.fn().mockReturnThis(),
+      first: vi.fn().mockResolvedValue(null),
+    } as unknown as D1Database
+
+    const result = await consumeLimit(db, 'test-key', 5, 1000)
+    expect(result).toBe(false)
   })
 })
