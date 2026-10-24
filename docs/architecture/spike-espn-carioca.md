@@ -8,7 +8,7 @@ Este documento registra o resultado do spike que avaliou a API pública da ESPN 
 
 A coleta consultou a API ao vivo em 24 de outubro de 2026, sem autenticação, pelo endpoint `GET https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=YYYYMMDD`. A pesquisa leu o calendário plano da temporada (33 datas), percorreu cada dia com intervalo de cerca de 1,3 s entre chamadas (rajada gera HTTP 403 da Akamai) e acumulou 62 eventos. As amostras cobrem Taça Guanabara (fase de pontos e mata-mata), Taça Rio (semifinais e final) e a fase de rebaixamento, todas com placar conhecido. A temporada 2026 já estava encerrada na coleta; não havia jogo futuro nem placeholder TBD no calendário. O JSON bruto ficou fora do repositório (`~/.cache/palpitae-carioca-research/`).
 
-O recorte de contrato deste spike está em `api/src/providers/__fixtures__/espn-bra-camp-carioca-scoreboard.json`, no mesmo estilo das fixtures de copa, da Série B e do Paulista: campos pesados removidos (`details`, `odds`, `broadcasts`, `links`, `statistics`) e eventos de dias diferentes reunidos num único scoreboard. A fixture guarda 2 jogos de `taca-guanabara` (um com `group`, um sem), 1 quarta encerrada no tempo regulamentar, 1 quarta decidida nos pênaltis, o par ida/volta das semifinais da Taça Guanabara, a final da Taça Guanabara nos pênaltis, o par ida/volta das semifinais da Taça Rio, a final da Taça Rio e 1 jogo da fase de rebaixamento. O calendário da fixture é uma amostra de 10 datas ISO tirada das 33 datas ao vivo. O teste `api/src/providers/espnFixtures.test.ts` (bloco `fixture ESPN bra.camp.carioca`) fixa os campos que sustentam o veredito.
+O recorte de contrato deste spike está em `api/src/providers/__fixtures__/espn-bra-camp-carioca-scoreboard.json`, no mesmo estilo das fixtures de copa e da Série B: campos pesados removidos (`details`, `odds`, `broadcasts`, `links`, `statistics`) e eventos de dias diferentes reunidos num único scoreboard. A fixture guarda 2 jogos de `taca-guanabara` (um com `group`, um sem), 1 quarta encerrada no tempo regulamentar, 1 quarta decidida nos pênaltis, o par ida/volta das semifinais da Taça Guanabara, a final da Taça Guanabara nos pênaltis, o par ida/volta das semifinais da Taça Rio, a final da Taça Rio e 1 jogo da fase de rebaixamento. O calendário da fixture é uma amostra de 10 datas ISO tirada das 33 datas ao vivo. O teste `api/src/providers/espnFixtures.test.ts` (bloco `fixture ESPN bra.camp.carioca`) fixa os campos que sustentam o veredito.
 
 ## Contrato observado
 
@@ -76,8 +76,11 @@ O endpoint responde com slug válido, placares encerrados, pênaltis estruturado
 
 ```bash
 curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=20260115"
+curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=20260214"
 curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=20260215"
 curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=20260222"
 curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=20260301"
 curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=20260308"
 ```
+
+O evento `401860540` (Vasco da Gama x Volta Redonda, kickoff `2026-02-15T00:30Z`, quarta nos pênaltis) entra no calendário ESPN em `dates=20260214`. A chave `dates` segue o dia do calendário local da liga; o kickoff em UTC cai no dia seguinte. A consulta `dates=20260215` devolve o Flamengo x Botafogo (`2026-02-15T20:30Z`). Amostra em cache: `~/.cache/palpitae-carioca-research/scoreboard_20260214.json`.
