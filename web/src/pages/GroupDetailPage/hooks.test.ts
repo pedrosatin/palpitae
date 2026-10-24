@@ -352,8 +352,12 @@ describe('useGroupTabs', () => {
     expect(result.current.activeTab).toBe('leaderboard')
   })
 
-  it('falls back to default if standings tab is requested but group competition is not league', () => {
-    const nonLeagueGroup: GroupDetail = { ...mockGroup, competition_type: 'cup' }
+  it('falls back to default if standings tab is requested but cup is not standings-eligible', () => {
+    const nonLeagueGroup: GroupDetail = {
+      ...mockGroup,
+      competition_type: 'cup',
+      competition_code: 'bra.copa_do_brazil',
+    }
     const { result } = renderHook(() => useGroupTabs(nonLeagueGroup), {
       wrapper: ({ children }) =>
         React.createElement(MemoryRouter, { initialEntries: ['/?tab=standings'] }, children),
@@ -361,6 +365,36 @@ describe('useGroupTabs', () => {
 
     expect(result.current.activeTab).toBe('predictions')
     expect(result.current.showStandings).toBe(false)
+  })
+
+  it('shows standings for regional cups with canonical competition_code', () => {
+    const gauchoGroup: GroupDetail = {
+      ...mockGroup,
+      competition_type: 'cup',
+      competition_code: 'bra.camp.gaucho',
+    }
+    const { result } = renderHook(() => useGroupTabs(gauchoGroup), {
+      wrapper: ({ children }) =>
+        React.createElement(MemoryRouter, { initialEntries: ['/?tab=standings'] }, children),
+    })
+
+    expect(result.current.showStandings).toBe(true)
+    expect(result.current.activeTab).toBe('standings')
+  })
+
+  it('shows standings for Paulista and Carioca cup codes', () => {
+    for (const code of ['bra.camp.paulista', 'bra.camp.carioca'] as const) {
+      const regional: GroupDetail = {
+        ...mockGroup,
+        competition_type: 'cup',
+        competition_code: code,
+      }
+      const { result } = renderHook(() => useGroupTabs(regional), {
+        wrapper: ({ children }) =>
+          React.createElement(MemoryRouter, { initialEntries: ['/'] }, children),
+      })
+      expect(result.current.showStandings).toBe(true)
+    }
   })
 
   it('setActiveTab updates URL correctly', () => {

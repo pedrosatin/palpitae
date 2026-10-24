@@ -32,6 +32,35 @@ const GENERAL_RANKING_PHASES = new Set(['TACA_GUANABARA'])
  */
 const GENERAL_RANKING_GROUP_STAGE_CODES = new Set(['bra.camp.gaucho'])
 
+/**
+ * Copas regionais com classificação de pontos implementada na StandingsTab.
+ * Identidade por `competitions.external_id`; não abre Tabela para toda cup.
+ */
+const STANDINGS_ELIGIBLE_CUP_CODES = new Set([
+  'bra.camp.gaucho',
+  'bra.camp.carioca',
+  'bra.camp.paulista',
+])
+
+/**
+ * Decide se o GroupDetail mostra a aba Tabela.
+ * Ligas sempre; cups só com código canônico na allowlist regional.
+ */
+export function isStandingsTabEligible(
+  competitionType: CompetitionType | null | undefined,
+  competitionCode?: string | null,
+): boolean {
+  if (competitionType === 'league') return true
+  if (
+    competitionType === 'cup' &&
+    competitionCode != null &&
+    STANDINGS_ELIGIBLE_CUP_CODES.has(competitionCode)
+  ) {
+    return true
+  }
+  return false
+}
+
 export function isLeagueTable(group: string): boolean {
   return group === LEAGUE
 }

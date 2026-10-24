@@ -6,6 +6,7 @@ import StandingsTab, {
   computeStandings,
   isGeneralRanking,
   isLeagueTable,
+  isStandingsTabEligible,
   standingsBucket,
 } from './StandingsTab'
 import { GENERAL_RANKING, LEAGUE, FORM_SIZE } from './StandingsTab'
@@ -77,6 +78,28 @@ describe('isGeneralRanking', () => {
     expect(isGeneralRanking(GENERAL_RANKING)).toBe(true)
     expect(isGeneralRanking(LEAGUE)).toBe(false)
     expect(isGeneralRanking('B')).toBe(false)
+  })
+})
+
+describe('isStandingsTabEligible', () => {
+  it('allows every league regardless of competition_code', () => {
+    expect(isStandingsTabEligible('league', null)).toBe(true)
+    expect(isStandingsTabEligible('league', 'BSA')).toBe(true)
+    expect(isStandingsTabEligible('league', 'bra.camp.gaucho')).toBe(true)
+  })
+
+  it('allows only regional cups with known canonical codes', () => {
+    expect(isStandingsTabEligible('cup', 'bra.camp.gaucho')).toBe(true)
+    expect(isStandingsTabEligible('cup', 'bra.camp.carioca')).toBe(true)
+    expect(isStandingsTabEligible('cup', 'bra.camp.paulista')).toBe(true)
+    expect(isStandingsTabEligible('cup', 'bra.copa_do_brazil')).toBe(false)
+    expect(isStandingsTabEligible('cup', 'conmebol.libertadores')).toBe(false)
+    expect(isStandingsTabEligible('cup', null)).toBe(false)
+  })
+
+  it('rejects null/unknown competition_type', () => {
+    expect(isStandingsTabEligible(null, 'bra.camp.gaucho')).toBe(false)
+    expect(isStandingsTabEligible(undefined, 'bra.camp.gaucho')).toBe(false)
   })
 })
 
