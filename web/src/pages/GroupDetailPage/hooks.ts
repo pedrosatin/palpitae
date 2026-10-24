@@ -5,6 +5,7 @@ import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useConfirm } from '../../components/ConfirmModal'
 import { trackEvent } from '../../analytics/ga'
+import { isStandingsTabEligible } from '../../components/StandingsTab'
 import { type Tab, type GroupDetail, type User, DEFAULT_TAB, parseTab } from './types'
 
 export function useGroupDetail(groupId: string | undefined) {
@@ -32,7 +33,7 @@ export function useGroupDetail(groupId: string | undefined) {
 export function useGroupTabs(group: GroupDetail | null) {
   const [searchParams, setSearchParams] = useSearchParams()
   const rawTab = parseTab(searchParams.get('tab'))
-  const showStandings = group?.competition_type === 'league'
+  const showStandings = isStandingsTabEligible(group?.competition_type, group?.competition_code)
   const activeTab =
     rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
 

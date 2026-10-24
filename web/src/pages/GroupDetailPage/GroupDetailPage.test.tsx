@@ -49,11 +49,15 @@ vi.mock('../../components/JoinGroupModal', () => ({
     ) : null,
 }))
 
-vi.mock('../../components/StandingsTab', () => ({
-  default: ({ competitionId }: { competitionId: string }) => (
-    <div data-testid="standings-tab">StandingsTab:{competitionId}</div>
-  ),
-}))
+vi.mock('../../components/StandingsTab', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../components/StandingsTab')>()
+  return {
+    ...actual,
+    default: ({ competitionId }: { competitionId: string }) => (
+      <div data-testid="standings-tab">StandingsTab:{competitionId}</div>
+    ),
+  }
+})
 
 vi.mock('../../components/LeaderboardTab', () => ({
   default: ({ groupId }: { groupId: string }) => (
@@ -81,6 +85,7 @@ const baseGroup = {
   competition_id: 'comp-1',
   competition_name: 'Copa do Mundo',
   competition_type: null as 'league' | 'cup' | null,
+  competition_code: null as string | null,
   is_admin: false,
   invite_code: 'INV001',
   created_at: '2026-01-01T00:00:00Z',
@@ -496,15 +501,51 @@ describe('GroupDetailPage – standings tab gate (competition_type)', () => {
     expect(screen.getByTestId('standings-tab')).toHaveTextContent('StandingsTab:comp-1')
   })
 
-  it('hides the Tabela tab for cup competitions', async () => {
-    mockGroupFetch({ ...baseGroup, competition_type: 'cup' })
+  it('shows the Tabela tab for Gaúcho cup with canonical competition_code', async () => {
+    mockGroupFetch({
+      ...baseGroup,
+      competition_type: 'cup',
+      competition_code: 'bra.camp.gaucho',
+    })
+    renderPage()
+    expect(await screen.findByRole('link', { name: /Tabela/i })).toBeInTheDocument()
+  })
+
+  it('renders StandingsTab when Tabela is clicked in a Gaúcho cup group', async () => {
+    mockGroupFetch({
+      ...baseGroup,
+      competition_type: 'cup',
+      competition_code: 'bra.camp.gaucho',
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('link', { name: /Tabela/i }))
+    expect(screen.getByTestId('standings-tab')).toHaveTextContent('StandingsTab:comp-1')
+  })
+
+  it('honours ?tab=standings deep link for an eligible regional cup', async () => {
+    mockGroupFetch({
+      ...baseGroup,
+      competition_type: 'cup',
+      competition_code: 'bra.camp.carioca',
+    })
+    renderPage('/groups/abc?tab=standings')
+    expect(await screen.findByTestId('standings-tab')).toHaveTextContent('StandingsTab:comp-1')
+    expect(screen.getByRole('link', { name: /Tabela/i })).toHaveClass(/tabActive/i)
+  })
+
+  it('hides the Tabela tab for ordinary cup competitions without eligible code', async () => {
+    mockGroupFetch({
+      ...baseGroup,
+      competition_type: 'cup',
+      competition_code: 'bra.copa_do_brazil',
+    })
     renderPage()
     await screen.findByRole('link', { name: /Ranking/i })
     expect(screen.queryByRole('link', { name: /Tabela/i })).not.toBeInTheDocument()
   })
 
-  it('falls back to the default tab when ?tab=standings is forced on a cup group', async () => {
-    mockGroupFetch({ ...baseGroup, competition_type: 'cup' })
+  it('falls back to the default tab when ?tab=standings is forced on an ordinary cup', async () => {
+    mockGroupFetch({ ...baseGroup, competition_type: 'cup', competition_code: null })
     renderPage('/groups/abc?tab=standings')
     await screen.findByRole('link', { name: /Ranking/i })
     expect(screen.queryByTestId('standings-tab')).not.toBeInTheDocument()

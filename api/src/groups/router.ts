@@ -17,6 +17,8 @@ type GroupRow = {
   competition_id: string
   competition_name: string | null
   competition_type: 'league' | 'cup' | null
+  /** Código canônico da competição (`competitions.external_id`). */
+  competition_code: string | null
   competition_status: 'upcoming' | 'ongoing' | 'finished' | null
   admin_id: string
   invite_code: string
@@ -141,6 +143,7 @@ router.get('/', requireAuth, async (c) => {
           g.competition_id,
           c.name AS competition_name,
           c.type AS competition_type,
+          c.external_id AS competition_code,
           -- competitions.status hoje nasce 'upcoming' e nunca é atualizado, então
           -- derivamos o fim a partir dos jogos reais: acabou quando a competição
           -- tem partidas e nenhuma está pendente. Ainda respeitamos a coluna caso
@@ -270,6 +273,7 @@ router.get('/', requireAuth, async (c) => {
         competition_id: group.competition_id,
         competition_name: group.competition_name ?? null,
         competition_type: group.competition_type ?? null,
+        competition_code: group.competition_code ?? null,
         competition_status: group.competition_status ?? null,
         is_admin: group.admin_id === userId,
         created_at: group.created_at,
@@ -549,6 +553,7 @@ router.get('/:id', requireAuth, async (c) => {
          g.competition_id,
          c.name AS competition_name,
          c.type AS competition_type,
+         c.external_id AS competition_code,
          g.owner_user_id AS admin_id,
          g.invite_code,
          g.created_at,
@@ -605,6 +610,7 @@ router.get('/:id', requireAuth, async (c) => {
       competition_id: group.competition_id,
       competition_name: group.competition_name,
       competition_type: group.competition_type ?? null,
+      competition_code: group.competition_code ?? null,
       is_admin: group.admin_id === userId,
       invite_code: group.admin_id === userId ? group.invite_code : null,
       created_at: group.created_at,

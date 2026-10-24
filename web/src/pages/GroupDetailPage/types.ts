@@ -16,6 +16,8 @@ export interface GroupDetail {
   competition_id: string
   competition_name: string | null
   competition_type: CompetitionType | null
+  /** Código canônico (`competitions.external_id`), ex. bra.camp.gaucho. */
+  competition_code: string | null
   is_admin: boolean
   invite_code: string | null
   created_at: string
