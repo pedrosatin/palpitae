@@ -17,10 +17,82 @@
 const SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
 
 /** Timeout por tentativa — o sync diário não pode travar num slug morto. */
-const TIMEOUT_MS = 10_000
+export const ESPN_TIMEOUT_MS = 10_000
 
 /** Backoff do único retry (429/5xx) — a ESPN não cobra, então basta ser curto. */
-const RETRY_BACKOFF_MS = 500
+export const ESPN_RETRY_BACKOFF_MS = 500
+
+/**
+ * Intervalo mínimo entre o início de duas requests ao scoreboard público.
+ * Rajadas devolvem 403 Akamai; ~1,3s serializado é o ritmo seguro observado.
+ */
+export const ESPN_MIN_INTERVAL_MS = 1_300
+
+/** Cadeia que serializa todas as chamadas `fetchEspnScoreboard` do isolate. */
+let espnGate: Promise<void> = Promise.resolve()
+
+/** Timestamp do último início de request (0 = nenhuma ainda neste isolate). */
+let lastEspnRequestStartedAt = 0
+
+/** Em Vitest o delay parte de 0 (exclusão mútua permanece); o Worker usa 1,3s. */
+const DEFAULT_MIN_INTERVAL_MS =
+  typeof process !== 'undefined' && process.env.VITEST ? 0 : ESPN_MIN_INTERVAL_MS
+
+/** Intervalo efetivo; testes de pacing restauram `ESPN_MIN_INTERVAL_MS`. */
+let espnMinIntervalMs = DEFAULT_MIN_INTERVAL_MS
+
+/** Timeout efetivo por tentativa; testes de abort podem encurtar. */
+let espnTimeoutMs = ESPN_TIMEOUT_MS
+
+/**
+ * Reinicia a fila, o relógio, o intervalo e o timeout. Só para testes; o Worker
+ * real mantém o estado pelo tempo de vida do isolate.
+ */
+export function resetEspnClientForTests(): void {
+  espnGate = Promise.resolve()
+  lastEspnRequestStartedAt = 0
+  espnMinIntervalMs = DEFAULT_MIN_INTERVAL_MS
+  espnTimeoutMs = ESPN_TIMEOUT_MS
+}
+
+/**
+ * Ajusta só o delay de pacing nos testes. `0` preserva a serialização HTTP
+ * sem esperar 1,3s entre dezenas de chamadas mockadas.
+ */
+export function setEspnMinIntervalForTests(ms: number): void {
+  espnMinIntervalMs = Math.max(0, ms)
+}
+
+/** Ajusta o timeout por tentativa nos testes (ex.: abort com relógio real). */
+export function setEspnTimeoutForTests(ms: number): void {
+  espnTimeoutMs = Math.max(1, ms)
+}
+
+/**
+ * Executa `fn` com exclusão mútua e intervalo mínimo desde o último início.
+ * Falhas não quebram a fila das próximas chamadas.
+ */
+function withEspnPace<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = espnGate
+  let release!: () => void
+  espnGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+
+  return previous
+    .catch(() => undefined)
+    .then(async () => {
+      if (lastEspnRequestStartedAt > 0) {
+        const elapsed = Date.now() - lastEspnRequestStartedAt
+        // Relógio de teste pode voltar (fake timers): elapsed negativo não espera.
+        const wait = elapsed < 0 ? 0 : Math.max(0, espnMinIntervalMs - elapsed)
+        if (wait > 0) await delay(wait)
+      }
+      lastEspnRequestStartedAt = Date.now()
+      return fn()
+    })
+    .finally(release)
+}
 
 export type EspnCompetitorTeam = {
   id?: string
@@ -100,30 +172,34 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * Scoreboard de uma liga na rodada corrente ou numa data `YYYYMMDD`. Aplica 1
- * retry com backoff em 429 e 5xx. Erros 4xx, timeout e falhas de rede abortam
- * direto, pois o chamador que consulta vários slugs já trata falha parcial.
+ * Scoreboard de uma liga na rodada corrente ou numa data `YYYYMMDD`. Serializa
+ * as chamadas com `ESPN_MIN_INTERVAL_MS` entre inícios. Aplica 1 retry com
+ * backoff em 429 e 5xx (dentro do mesmo slot). Erros 4xx (inclui 403 Akamai),
+ * timeout e falhas de rede abortam direto — o chamador que consulta vários
+ * slugs já trata falha parcial, e retry em 403 viraria tempestade.
  */
 export async function fetchEspnScoreboard(
   slug: string,
   yyyymmdd?: string,
 ): Promise<EspnScoreboard> {
-  let lastError: unknown = new Error(`ESPN: nenhuma tentativa feita para ${slug}`)
+  return withEspnPace(async () => {
+    let lastError: unknown = new Error(`ESPN: nenhuma tentativa feita para ${slug}`)
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) await delay(RETRY_BACKOFF_MS)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) await delay(ESPN_RETRY_BACKOFF_MS)
 
-    const res = await fetch(espnScoreboardUrl(slug, yyyymmdd), {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    })
-    if (res.ok) return (await res.json()) as EspnScoreboard
+      const res = await fetch(espnScoreboardUrl(slug, yyyymmdd), {
+        signal: AbortSignal.timeout(espnTimeoutMs),
+      })
+      if (res.ok) return (await res.json()) as EspnScoreboard
 
-    // Corpo junto: a mensagem de um 429/5xx é o que diferencia rate limit de
-    // outage na hora de olhar o log do Actions.
-    const body = (await res.text().catch(() => '')).slice(0, 200)
-    lastError = new Error(`ESPN respondeu ${res.status} em ${slug}: ${body}`)
-    if (!isRetryable(res.status)) throw lastError
-  }
+      // Corpo junto: a mensagem de um 429/5xx é o que diferencia rate limit de
+      // outage na hora de olhar o log do Actions.
+      const body = (await res.text().catch(() => '')).slice(0, 200)
+      lastError = new Error(`ESPN respondeu ${res.status} em ${slug}: ${body}`)
+      if (!isRetryable(res.status)) throw lastError
+    }
 
-  throw lastError
+    throw lastError
+  })
 }

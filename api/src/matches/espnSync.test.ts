@@ -1,16 +1,26 @@
 /// <reference types="node" />
 import type { DatabaseSync } from 'node:sqlite'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import sudamericanaJson from '../providers/__fixtures__/espn-conmebol-sudamericana-scoreboard.json'
 import type { EspnCompetitorTeam, EspnScoreboardEvent } from '../providers/espn'
+import {
+  resetEspnClientForTests,
+  setEspnMinIntervalForTests,
+} from '../providers/espn'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { ESPN_PRIMARY_COMPETITIONS, syncEspnFixtures } from './espnSync'
 
 const handles: DatabaseSync[] = []
 
+beforeEach(() => {
+  resetEspnClientForTests()
+  setEspnMinIntervalForTests(0)
+})
+
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
   vi.unstubAllGlobals()
+  resetEspnClientForTests()
 })
 
 function database() {

@@ -137,6 +137,8 @@ Nos eventos `poller_run` e `fixture_discovery_run`, `api_calls` conta requests
 primárias planejadas. Cada data ESPN corresponde a uma request, após deduplicação
 por competição e data. Cada rodada football-data do poller corresponde a uma
 request, e a descoberta football-data consulta o calendário inteiro em uma request.
+O log `[perf]` desses crons também registra `espn_max_concurrent` e
+`espn_min_interval_ms` (teto de syncs ESPN em voo e pacing HTTP anti-403).
 Retries dos provedores e chamadas do fallback ficam fora desse contador, que
 continua contando o plano quando uma request falha. Ele não mede HTTP efetivamente
 concluído. Os logs `[perf]` expõem `sync_tasks` e `api_requests_planned` para comparar

@@ -1,5 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
+import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
+import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
@@ -154,12 +156,12 @@ export async function pollActiveMatches(
     }
   }
 
-  // football-data compartilha 10 req/min; ESPN não consome essa cota.
+  // football-data compartilha 10 req/min; ESPN tem teto próprio + pacing HTTP.
   const fdTasks = tasks.filter((task) => task.comp.provider === 'football-data')
   const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
   const [fdResults, espnResults] = await Promise.all([
     runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runSyncTask),
-    Promise.all(espnTasks.map(runSyncTask)),
+    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runSyncTask),
   ])
   const syncResults = [...fdResults, ...espnResults]
 
@@ -232,6 +234,8 @@ export async function pollActiveMatches(
       round_days: rows.results.length,
       sync_tasks: tasks.length,
       api_requests_planned: plannedApiRequests,
+      espn_max_concurrent: ESPN_MAX_CONCURRENT_COMPETITIONS,
+      espn_min_interval_ms: ESPN_MIN_INTERVAL_MS,
       total_ms: Date.now() - startedAt,
     }),
   )
