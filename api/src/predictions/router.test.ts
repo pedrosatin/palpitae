@@ -117,8 +117,12 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
             },
             async all() {
               if (sql.includes('FROM matches m')) {
-                // params: [group_id, ...matchIds]
-                const matchIds = params.slice(1) as string[]
+                // params: [group_id, JSON.stringify(matchIds)] or legacy [group_id, ...matchIds]
+                const rawParam = params[1]
+                const matchIds =
+                  typeof rawParam === 'string' && rawParam.startsWith('[')
+                    ? (JSON.parse(rawParam) as string[])
+                    : (params.slice(1) as string[])
                 const results = matchIds
                   .filter((id) => matches[id] !== undefined)
                   .map((id) => ({
@@ -298,6 +302,26 @@ describe('predictions router – PUT /bulk', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { saved: string[] }
     expect(body.saved).toEqual(['m1'])
+  })
+
+  it('supports up to 100 predictions without exceeding D1 parameter limit', async () => {
+    const matches: Record<string, string> = {}
+    const predictions = []
+    for (let i = 1; i <= 100; i++) {
+      const id = `m${i}`
+      matches[id] = future
+      predictions.push({ match_id: id, predicted_home_score: 1, predicted_away_score: 0 })
+    }
+    const db = createBulkDbMock({ matches })
+    const res = await requestBulk(db, {
+      group_id: 'g1',
+      predictions,
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ok: boolean; saved: string[] }
+    expect(body.ok).toBe(true)
+    expect(body.saved).toHaveLength(100)
   })
 })
 
