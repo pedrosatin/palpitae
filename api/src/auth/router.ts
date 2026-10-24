@@ -173,9 +173,9 @@ authRouter.get('/callback', async (c) => {
     }
     return c.redirect(destination)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'auth_failed'
-    logEvent(c.env.AE, 'login_failure', { blobs: ['exchange_failed', message] })
-    return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(message)}`)
+    console.error('OAuth callback failed:', err)
+    logEvent(c.env.AE, 'login_failure', { blobs: ['exchange_failed'] })
+    return c.redirect(`${c.env.FRONTEND_URL}?auth_error=exchange_failed`)
   }
 })
 

@@ -259,7 +259,8 @@ describe('auth router', () => {
     expect(googleAuth.upsertUser).toHaveBeenCalled()
   })
 
-  it('callback redirects with error if exchangeCode throws', async () => {
+  it('callback redirects with static error code if exchangeCode throws and logs to console', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(googleAuth.exchangeCode).mockRejectedValue(new Error('Auth error'))
 
     const headers = new Headers({
@@ -271,10 +272,13 @@ describe('auth router', () => {
     )
     expect(res.status).toBe(302)
     const location = res.headers.get('Location')
-    expect(location).toBe('http://localhost:5173?auth_error=Auth%20error')
+    expect(location).toBe('http://localhost:5173?auth_error=exchange_failed')
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
-  it('callback unhandled error is caught', async () => {
+  it('callback unhandled error is caught and redirects with static error code', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(googleAuth.exchangeCode).mockRejectedValue('unhandled error')
 
     const headers = new Headers({
@@ -286,7 +290,9 @@ describe('auth router', () => {
     )
     expect(res.status).toBe(302)
     const location = res.headers.get('Location')
-    expect(location).toBe('http://localhost:5173?auth_error=auth_failed')
+    expect(location).toBe('http://localhost:5173?auth_error=exchange_failed')
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it('callback works properly with valid parameters and missing redirect cookie', async () => {
