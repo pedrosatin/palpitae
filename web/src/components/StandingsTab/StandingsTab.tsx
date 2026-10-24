@@ -469,12 +469,13 @@ export default function StandingsTab({
   const standings = computeStandings(matches, competitionCode)
 
   if (standings.size === 0) {
-    // Liga sem jogos sincronizados ainda não tem tabela — mas dizer "não tem
-    // fase de grupos" seria falso; a mensagem certa depende do tipo.
+    // Competições elegíveis à aba Tabela (liga ou cup regional canônica) podem
+    // chegar sem partidas das fases de classificação; cups inelegíveis seguem
+    // com a mensagem de ausência de fase de grupos.
     return (
       <p className={styles.empty}>
-        {competitionType === 'league'
-          ? 'Ainda não há jogos sincronizados para montar a classificação.'
+        {isStandingsTabEligible(competitionType, competitionCode)
+          ? 'Ainda não há jogos das fases de classificação para montar a tabela.'
           : 'Esta competição não tem fase de grupos.'}
       </p>
     )

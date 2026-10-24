@@ -583,7 +583,9 @@ describe('StandingsTab — liga (pontos corridos)', () => {
     mockFetch([])
     render(<StandingsTab competitionId="comp-1" competitionType="league" />)
     expect(
-      await screen.findByText('Ainda não há jogos sincronizados para montar a classificação.'),
+      await screen.findByText(
+        'Ainda não há jogos das fases de classificação para montar a tabela.',
+      ),
     ).toBeInTheDocument()
     expect(screen.queryByText('Esta competição não tem fase de grupos.')).not.toBeInTheDocument()
   })
@@ -992,5 +994,77 @@ describe('StandingsTab — Gaúcho classificatória (ranking geral)', () => {
       await screen.findByText('Esta competição não tem fase de grupos.'),
     ).toBeInTheDocument()
     expect(screen.queryByText('Ranking geral')).not.toBeInTheDocument()
+  })
+})
+
+describe('StandingsTab — empty state for eligible regional cups', () => {
+  const EMPTY_CLASSIFICATION =
+    'Ainda não há jogos das fases de classificação para montar a tabela.'
+  const NO_GROUPS = 'Esta competição não tem fase de grupos.'
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['bra.camp.gaucho', 'gaucho'],
+    ['bra.camp.carioca', 'carioca'],
+    ['bra.camp.paulista', 'paulista'],
+  ] as const)(
+    'shows classification empty state for %s without matches',
+    async (code, competitionId) => {
+      mockFetch([])
+      render(
+        <StandingsTab
+          competitionId={competitionId}
+          competitionType="cup"
+          competitionCode={code}
+        />,
+      )
+      expect(await screen.findByText(EMPTY_CLASSIFICATION)).toBeInTheDocument()
+      expect(screen.queryByText(NO_GROUPS)).not.toBeInTheDocument()
+    },
+  )
+
+  it('shows classification empty state when Gaúcho has only knockout matches', async () => {
+    mockFetch([
+      makeMatch({
+        id: 'ko1',
+        group_name: null,
+        phase: 'QUARTER_FINALS',
+        status: 'finished',
+        home_score: 1,
+        away_score: 0,
+      }),
+    ])
+    render(
+      <StandingsTab
+        competitionId="gaucho"
+        competitionType="cup"
+        competitionCode="bra.camp.gaucho"
+      />,
+    )
+    expect(await screen.findByText(EMPTY_CLASSIFICATION)).toBeInTheDocument()
+    expect(screen.queryByText(NO_GROUPS)).not.toBeInTheDocument()
+  })
+
+  it('keeps the groups message for a common cup without standings eligibility', async () => {
+    mockFetch([])
+    render(
+      <StandingsTab
+        competitionId="cdb"
+        competitionType="cup"
+        competitionCode="bra.copa_do_brazil"
+      />,
+    )
+    expect(await screen.findByText(NO_GROUPS)).toBeInTheDocument()
+    expect(screen.queryByText(EMPTY_CLASSIFICATION)).not.toBeInTheDocument()
+  })
+
+  it('keeps the groups message for a cup without competitionCode', async () => {
+    mockFetch([])
+    render(<StandingsTab competitionId="cup-no-code" competitionType="cup" />)
+    expect(await screen.findByText(NO_GROUPS)).toBeInTheDocument()
+    expect(screen.queryByText(EMPTY_CLASSIFICATION)).not.toBeInTheDocument()
   })
 })
