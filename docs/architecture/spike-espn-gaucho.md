@@ -49,17 +49,17 @@ O calendário plano (`calendarType=day`) tem o formato de liga. O contrato dos e
 
 Lookup literal em `ESPN_STAGE_MAP` e em `resolveEspnStage` (`api/src/matches/espnSync.ts`), na base deste spike:
 
-| Slug observado | Situação no mapa atual | Ação sugerida no ticket 08 |
+| Slug observado | Situação no mapa | Nota |
 | --- | --- | --- |
-| `first-round` | Já mapeado → `FIRST_ROUND` | Nenhuma |
-| `quarterfinals` | Já mapeado → `QUARTER_FINALS` | Nenhuma |
-| `semifinals` | Já mapeado → `SEMI_FINALS` | Nenhuma |
-| `gaucho---relegation` | Ausente; não casa com `YYYY-…` | Mapear no `ESPN_STAGE_MAP` (fase de rebaixamento, rótulo PT-BR próprio) |
-| `farroupilha---semifinals` | Ausente | Mapear para semifinal do Farroupilha |
-| `farroupilha---finals` | Ausente; o mapa tem só `final` (singular) | Mapear para final do Farroupilha |
-| `finals` | Ausente; o mapa tem só `final` (singular) | Mapear `finals` → `FINAL` |
+| `first-round` | Contextual em `bra.camp.gaucho` → `GROUP_STAGE` | Classificatória de grupos; outras copas mantêm `FIRST_ROUND` eliminatório |
+| `quarterfinals` | `QUARTER_FINALS` | Mata-mata |
+| `semifinals` | `SEMI_FINALS` | Mata-mata |
+| `gaucho---relegation` | `RELEGATION_STAGE` | Ticket 08 |
+| `farroupilha---semifinals` | `FARROUPILHA_SEMI_FINALS` | Ticket 08 |
+| `farroupilha---finals` | `FARROUPILHA_FINAL` | Ticket 08 |
+| `finals` | `FINAL` | Ticket 08 |
 
-Até o ticket 08, um sync piloto importaria só `first-round`, `quarterfinals` e `semifinals`, e descartaria rebaixamento, finais do título e todo o Farroupilha (fail-closed). Este spike lista as fases novas e não implementa o parser.
+A exceção `bra.camp.gaucho` + `first-round` → `GROUP_STAGE` evita `tie_role`/bônus de classificado na fase de pontos. A chave é competição + slug; o campo `group` incompleto não entra na decisão.
 
 ## Veredito
 
