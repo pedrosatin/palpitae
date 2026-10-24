@@ -58,7 +58,12 @@ export function isEspnPrimaryCompetition(code: string): boolean {
  * copas (mata-mata e grupos). Usado pelos rótulos PT-BR em `rounds.ts` e pelo
  * gate de pênaltis em `competitions.penalty_phases`.
  *
- * Slugs fora deste mapa ainda podem ser fase de liga: ver `resolveEspnStage`.
+ * Lookup literal: só slugs comprovados nos spikes entram aqui. Caminhos
+ * paralelos (Taça Guanabara / Taça Rio, Troféu Inconfidência / playoffs,
+ * Farroupilha / título, rebaixamento) ficam com códigos distintos para o
+ * admin configurar `penalty_phases` por fase. Slugs fora do mapa ainda podem
+ * ser fase de liga via `resolveEspnStage` (padrão `YYYY-…`); qualquer outro
+ * é descartado (fail-closed). Sem regex ampla e sem leitura de notas/texto.
  */
 const ESPN_STAGE_MAP: Record<string, string> = {
   'first-stage': 'FIRST_STAGE',
@@ -70,6 +75,8 @@ const ESPN_STAGE_MAP: Record<string, string> = {
   'fourth-round': 'FOURTH_ROUND',
   'fifth-round': 'FIFTH_ROUND',
   'group-stage': 'GROUP_STAGE',
+  'league-phase': 'LEAGUE_PHASE',
+  'regular-season': 'REGULAR_SEASON',
   'knockout-round-playoffs': 'PLAYOFFS',
   'round-of-16': 'LAST_16',
   quarterfinals: 'QUARTER_FINALS',
@@ -77,6 +84,25 @@ const ESPN_STAGE_MAP: Record<string, string> = {
   '3rd-place': 'THIRD_PLACE',
   'third-place': 'THIRD_PLACE',
   final: 'FINAL',
+  finals: 'FINAL',
+  // Campeonato Carioca (bra.camp.carioca): Taça Guanabara, Taça Rio, rebaixamento.
+  // A ESPN codifica o hífen tipográfico do rótulo com três hífens no slug.
+  'taca-guanabara': 'TACA_GUANABARA',
+  'taca-guanabara---quarterfinals': 'TACA_GUANABARA_QUARTER_FINALS',
+  'taca-guanabara---semifinals': 'TACA_GUANABARA_SEMI_FINALS',
+  'taca-guanabara---final': 'TACA_GUANABARA_FINAL',
+  'taca-rio---semifinals': 'TACA_RIO_SEMI_FINALS',
+  'taca-rio---final': 'TACA_RIO_FINAL',
+  'relegation-stage': 'RELEGATION_STAGE',
+  // Campeonato Mineiro (bra.camp.mineiro): Troféu Inconfidência e playoffs do título.
+  'trofeu-inconfidencia---semifinals': 'TROFEU_INCONFIDENCIA_SEMI_FINALS',
+  'trofeu-inconfidencia---finals': 'TROFEU_INCONFIDENCIA_FINAL',
+  'playoffs---semifinals': 'PLAYOFFS_SEMI_FINALS',
+  'playoffs---final': 'PLAYOFFS_FINAL',
+  // Campeonato Gaúcho (bra.camp.gaucho): rebaixamento e Farroupilha.
+  'gaucho---relegation': 'RELEGATION_STAGE',
+  'farroupilha---semifinals': 'FARROUPILHA_SEMI_FINALS',
+  'farroupilha---finals': 'FARROUPILHA_FINAL',
 }
 
 const LEAGUE_PHASE = 'REGULAR_SEASON'

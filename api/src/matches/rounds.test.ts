@@ -27,6 +27,9 @@ describe('roundLabel', () => {
     it.each([
       ['GROUP_STAGE', 'Fase de grupos'],
       ['REGULAR_SEASON', 'Temporada regular'],
+      ['LEAGUE_PHASE', 'Fase de pontos'],
+      ['TACA_GUANABARA', 'Taça Guanabara'],
+      ['RELEGATION_STAGE', 'Rebaixamento'],
       ['FIRST_STAGE', '1ª fase'],
       ['SECOND_STAGE', '2ª fase'],
       ['THIRD_STAGE', '3ª fase'],
@@ -42,6 +45,17 @@ describe('roundLabel', () => {
       ['SEMI_FINALS', 'Semifinais'],
       ['THIRD_PLACE', 'Terceiro lugar'],
       ['FINAL', 'Final'],
+      ['TACA_GUANABARA_QUARTER_FINALS', 'Quartas da Taça Guanabara'],
+      ['TACA_GUANABARA_SEMI_FINALS', 'Semifinais da Taça Guanabara'],
+      ['TACA_GUANABARA_FINAL', 'Final da Taça Guanabara'],
+      ['TACA_RIO_SEMI_FINALS', 'Semifinais da Taça Rio'],
+      ['TACA_RIO_FINAL', 'Final da Taça Rio'],
+      ['TROFEU_INCONFIDENCIA_SEMI_FINALS', 'Semifinais do Troféu Inconfidência'],
+      ['TROFEU_INCONFIDENCIA_FINAL', 'Final do Troféu Inconfidência'],
+      ['PLAYOFFS_SEMI_FINALS', 'Semifinais dos playoffs'],
+      ['PLAYOFFS_FINAL', 'Final dos playoffs'],
+      ['FARROUPILHA_SEMI_FINALS', 'Semifinais do Farroupilha'],
+      ['FARROUPILHA_FINAL', 'Final do Farroupilha'],
     ])('maps %s to PT-BR label %s', (input, expected) => {
       expect(roundLabel(input)).toBe(expected)
     })
@@ -67,17 +81,40 @@ describe('roundLabel', () => {
 })
 
 describe('isKnockoutPhase', () => {
-  it.each(['SEMI_FINALS', 'FINAL', 'LAST_16', 'QUARTER_FINALS', 'PLAYOFFS'])(
-    'trata %s como mata-mata',
-    (phase) => {
-      expect(isKnockoutPhase(phase)).toBe(true)
-    },
-  )
+  it.each([
+    'SEMI_FINALS',
+    'FINAL',
+    'LAST_16',
+    'QUARTER_FINALS',
+    'PLAYOFFS',
+    'TACA_GUANABARA_QUARTER_FINALS',
+    'TACA_GUANABARA_SEMI_FINALS',
+    'TACA_GUANABARA_FINAL',
+    'TACA_RIO_SEMI_FINALS',
+    'TACA_RIO_FINAL',
+    'TROFEU_INCONFIDENCIA_SEMI_FINALS',
+    'TROFEU_INCONFIDENCIA_FINAL',
+    'PLAYOFFS_SEMI_FINALS',
+    'PLAYOFFS_FINAL',
+    'FARROUPILHA_SEMI_FINALS',
+    'FARROUPILHA_FINAL',
+  ])('trata %s como mata-mata', (phase) => {
+    expect(isKnockoutPhase(phase)).toBe(true)
+  })
 
-  it.each(['GROUP_STAGE', 'REGULAR_SEASON', '1', '30', '', null, undefined, 'UNKNOWN'])(
-    'não trata %s como mata-mata',
-    (phase) => {
-      expect(isKnockoutPhase(phase)).toBe(false)
-    },
-  )
+  it.each([
+    'GROUP_STAGE',
+    'REGULAR_SEASON',
+    'LEAGUE_PHASE',
+    'TACA_GUANABARA',
+    'RELEGATION_STAGE',
+    '1',
+    '30',
+    '',
+    null,
+    undefined,
+    'UNKNOWN',
+  ])('não trata %s como mata-mata', (phase) => {
+    expect(isKnockoutPhase(phase)).toBe(false)
+  })
 })
