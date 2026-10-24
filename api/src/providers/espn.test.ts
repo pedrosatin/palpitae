@@ -85,10 +85,70 @@ describe('fetchEspnScoreboard', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ events: [], leagues: [] })))
 
     const promise = fetchEspnScoreboard('eng.1', '20261005')
-    await vi.advanceTimersByTimeAsync(ESPN_RETRY_BACKOFF_MS)
+    // Retry imediato: pacing 1300 cobre o backoff 500
+    await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS)
 
     await expect(promise).resolves.toEqual({ events: [], leagues: [] })
     expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('espaça cada tentativa HTTP (retry 429 incluso) com intervalo mínimo e peak 1', async () => {
+    vi.useFakeTimers()
+    let inFlight = 0
+    let peak = 0
+    const startedAt: number[] = []
+    let retriesLeftForA = 1
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      startedAt.push(Date.now())
+      const url = String(input)
+
+      if (url.includes('dates=20261001') && retriesLeftForA > 0) {
+        retriesLeftForA--
+        inFlight--
+        return new Response('Too many requests', { status: 429 })
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      inFlight--
+      return new Response(JSON.stringify({ events: [] }))
+    })
+
+    const withRetry = fetchEspnScoreboard('bra.1', '20261001')
+    const neighbor = fetchEspnScoreboard('bra.1', '20261002')
+
+    // 3 inícios × 1300ms + margem para o body de 20ms por sucesso
+    await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS * 3 + 100)
+    await Promise.all([withRetry, neighbor])
+
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(peak).toBe(1)
+    expect(startedAt).toHaveLength(3)
+    for (let i = 1; i < startedAt.length; i++) {
+      expect(
+        startedAt[i]! - startedAt[i - 1]!,
+        `gap entre fetch ${i - 1}→${i} deve ser >= ${ESPN_MIN_INTERVAL_MS}ms (got ${startedAt[i]! - startedAt[i - 1]!}; startedAt=${startedAt.join(',')})`,
+      ).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS)
+    }
+
+    // 403 não retenta; reset limpa fila/relógio para a próxima suíte
+    resetEspnClientForTests()
+    setEspnMinIntervalForTests(ESPN_MIN_INTERVAL_MS)
+    vi.mocked(fetch).mockReset()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('Forbidden', { status: 403 }))
+    await expect(fetchEspnScoreboard('bra.1', '20261005')).rejects.toThrow(
+      'ESPN respondeu 403 em bra.1: Forbidden',
+    )
+    expect(fetch).toHaveBeenCalledTimes(1)
+
+    resetEspnClientForTests()
+    setEspnMinIntervalForTests(ESPN_MIN_INTERVAL_MS)
+    vi.mocked(fetch).mockReset()
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
+    await expect(fetchEspnScoreboard('bra.1', '20261006')).resolves.toEqual({ events: [] })
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('retenta em 5xx e lança se a segunda tentativa também falhar', async () => {
@@ -101,10 +161,45 @@ describe('fetchEspnScoreboard', () => {
     const assertion = expect(promise).rejects.toThrow(
       'ESPN respondeu 503 em bra.2: boom de novo',
     )
-    await vi.advanceTimersByTimeAsync(ESPN_RETRY_BACKOFF_MS)
+    await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS)
     await assertion
     expect(fetch).toHaveBeenCalledTimes(2)
   })
+
+  it('smoke relógio real: retry 5xx e vizinho respeitam pacing sem ESPN live', async () => {
+    let inFlight = 0
+    let peak = 0
+    const startedAt: number[] = []
+    let firstA = true
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      startedAt.push(Date.now())
+      const url = String(input)
+      if (url.includes('dates=20261011') && firstA) {
+        firstA = false
+        inFlight--
+        return new Response('bad gateway', { status: 502 })
+      }
+      inFlight--
+      return new Response(JSON.stringify({ events: [] }))
+    })
+
+    const [retrying, neighbor] = await Promise.all([
+      fetchEspnScoreboard('bra.1', '20261011'),
+      fetchEspnScoreboard('bra.1', '20261012'),
+    ])
+
+    expect(retrying).toEqual({ events: [] })
+    expect(neighbor).toEqual({ events: [] })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(peak).toBe(1)
+    expect(startedAt).toHaveLength(3)
+    for (let i = 1; i < startedAt.length; i++) {
+      expect(startedAt[i]! - startedAt[i - 1]!).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS)
+    }
+  }, 15_000)
 
   it('não retenta 403 Akamai nem outros 4xx (sem tempestade de retry)', async () => {
     setEspnMinIntervalForTests(0)

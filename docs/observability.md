@@ -140,8 +140,9 @@ request, e a descoberta football-data consulta o calendário inteiro em uma requ
 O log `[perf]` desses crons também registra `espn_max_concurrent` e
 `espn_min_interval_ms` (teto de syncs ESPN em voo e pacing HTTP anti-403).
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
-`fetchEspnScoreboard` desse isolate. Invokes e isolates distintos mantêm filas
-próprias e podem sobrepor requests. Os crons `0 6 * * *` (fixture discovery) e
+`fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
+retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
+isolates distintos mantêm filas próprias e podem sobrepor requests. Os crons `0 6 * * *` (fixture discovery) e
 `0,30 * * * *` (poller) coincidem às 06:00 UTC; o pilot remoto deve medir
 sobreposição, 403, `total_ms` e `api_requests_planned` antes do gate 2027.
 Retries dos provedores e chamadas do fallback ficam fora desse contador, que

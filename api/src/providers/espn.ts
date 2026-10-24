@@ -69,7 +69,8 @@ export function setEspnTimeoutForTests(ms: number): void {
 }
 
 /**
- * Executa `fn` com exclusão mútua e intervalo mínimo desde o último início.
+ * Serializa `fn` no isolate (no máximo 1 HTTP ESPN em voo). O pacing por
+ * tentativa fica em `awaitEspnRequestSlot` — assim o retry também espera.
  * Falhas não quebram a fila das próximas chamadas.
  */
 function withEspnPace<T>(fn: () => Promise<T>): Promise<T> {
@@ -81,17 +82,26 @@ function withEspnPace<T>(fn: () => Promise<T>): Promise<T> {
 
   return previous
     .catch(() => undefined)
-    .then(async () => {
-      if (lastEspnRequestStartedAt > 0) {
-        const elapsed = Date.now() - lastEspnRequestStartedAt
-        // Relógio de teste pode voltar (fake timers): elapsed negativo não espera.
-        const wait = elapsed < 0 ? 0 : Math.max(0, espnMinIntervalMs - elapsed)
-        if (wait > 0) await delay(wait)
-      }
-      lastEspnRequestStartedAt = Date.now()
-      return fn()
-    })
+    .then(() => fn())
     .finally(release)
+}
+
+/**
+ * Espera o maior entre o intervalo mínimo desde o último início HTTP e
+ * `minDelayMs` (backoff do retry), depois marca o início desta tentativa.
+ * Não soma os dois quando o pacing já cobre o backoff.
+ */
+async function awaitEspnRequestSlot(minDelayMs = 0): Promise<void> {
+  if (lastEspnRequestStartedAt > 0) {
+    const elapsed = Date.now() - lastEspnRequestStartedAt
+    // Relógio de teste pode voltar (fake timers): elapsed negativo não espera pacing.
+    const pacingWait = elapsed < 0 ? 0 : Math.max(0, espnMinIntervalMs - elapsed)
+    const wait = Math.max(minDelayMs, pacingWait)
+    if (wait > 0) await delay(wait)
+  } else if (minDelayMs > 0) {
+    await delay(minDelayMs)
+  }
+  lastEspnRequestStartedAt = Date.now()
 }
 
 export type EspnCompetitorTeam = {
@@ -173,10 +183,12 @@ function delay(ms: number): Promise<void> {
 
 /**
  * Scoreboard de uma liga na rodada corrente ou numa data `YYYYMMDD`. Serializa
- * as chamadas com `ESPN_MIN_INTERVAL_MS` entre inícios. Aplica 1 retry com
- * backoff em 429 e 5xx (dentro do mesmo slot). Erros 4xx (inclui 403 Akamai),
- * timeout e falhas de rede abortam direto — o chamador que consulta vários
- * slugs já trata falha parcial, e retry em 403 viraria tempestade.
+ * as chamadas (mutex por isolate) e aplica `ESPN_MIN_INTERVAL_MS` entre o
+ * início de cada tentativa HTTP — inclusive o único retry de 429/5xx, cujo
+ * backoff de `ESPN_RETRY_BACKOFF_MS` é o piso quando o pacing já não cobre.
+ * Erros 4xx (inclui 403 Akamai), timeout e falhas de rede abortam direto — o
+ * chamador que consulta vários slugs já trata falha parcial, e retry em 403
+ * viraria tempestade.
  */
 export async function fetchEspnScoreboard(
   slug: string,
@@ -186,7 +198,7 @@ export async function fetchEspnScoreboard(
     let lastError: unknown = new Error(`ESPN: nenhuma tentativa feita para ${slug}`)
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      if (attempt > 0) await delay(ESPN_RETRY_BACKOFF_MS)
+      await awaitEspnRequestSlot(attempt > 0 ? ESPN_RETRY_BACKOFF_MS : 0)
 
       const res = await fetch(espnScoreboardUrl(slug, yyyymmdd), {
         signal: AbortSignal.timeout(espnTimeoutMs),
