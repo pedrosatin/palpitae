@@ -83,4 +83,4 @@ curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/s
 curl -s "https://site.api.espn.com/apis/site/v2/sports/soccer/bra.camp.carioca/scoreboard?dates=20260308"
 ```
 
-O evento `401860540` (Vasco da Gama x Volta Redonda, kickoff `2026-02-15T00:30Z`, quarta nos pênaltis) entra no calendário ESPN em `dates=20260214`. A chave `dates` segue o dia do calendário local da liga; o kickoff em UTC cai no dia seguinte. A consulta `dates=20260215` devolve o Flamengo x Botafogo (`2026-02-15T20:30Z`). Amostra em cache: `~/.cache/palpitae-carioca-research/scoreboard_20260214.json`.
+O evento `401860540` (Vasco da Gama x Volta Redonda, kickoff `2026-02-15T00:30Z`, quarta nos pênaltis) entra no calendário ESPN em `dates=20260214`. A chave `dates` segue o dia do calendário local da liga; o kickoff em UTC cai no dia seguinte. A consulta `dates=20260215` devolve o Botafogo x Flamengo (`2026-02-15T20:30Z`). Amostra em cache: `~/.cache/palpitae-carioca-research/scoreboard_20260214.json`.
