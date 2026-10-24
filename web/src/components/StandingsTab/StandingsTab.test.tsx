@@ -6,6 +6,7 @@ import StandingsTab, {
   computeStandings,
   isGeneralRanking,
   isLeagueTable,
+  isStandingsTabEligible,
   standingsBucket,
 } from './StandingsTab'
 import { GENERAL_RANKING, LEAGUE, FORM_SIZE } from './StandingsTab'
@@ -80,6 +81,28 @@ describe('isGeneralRanking', () => {
   })
 })
 
+describe('isStandingsTabEligible', () => {
+  it('allows every league regardless of competition_code', () => {
+    expect(isStandingsTabEligible('league', null)).toBe(true)
+    expect(isStandingsTabEligible('league', 'BSA')).toBe(true)
+    expect(isStandingsTabEligible('league', 'bra.camp.gaucho')).toBe(true)
+  })
+
+  it('allows only regional cups with known canonical codes', () => {
+    expect(isStandingsTabEligible('cup', 'bra.camp.gaucho')).toBe(true)
+    expect(isStandingsTabEligible('cup', 'bra.camp.carioca')).toBe(true)
+    expect(isStandingsTabEligible('cup', 'bra.camp.paulista')).toBe(true)
+    expect(isStandingsTabEligible('cup', 'bra.copa_do_brazil')).toBe(false)
+    expect(isStandingsTabEligible('cup', 'conmebol.libertadores')).toBe(false)
+    expect(isStandingsTabEligible('cup', null)).toBe(false)
+  })
+
+  it('rejects null/unknown competition_type', () => {
+    expect(isStandingsTabEligible(null, 'bra.camp.gaucho')).toBe(false)
+    expect(isStandingsTabEligible(undefined, 'bra.camp.gaucho')).toBe(false)
+  })
+})
+
 describe('standingsBucket', () => {
   it('maps REGULAR_SEASON and LEAGUE_PHASE without group to LEAGUE', () => {
     expect(standingsBucket({ phase: 'REGULAR_SEASON', group_name: null })).toBe(LEAGUE)
@@ -95,6 +118,41 @@ describe('standingsBucket', () => {
   it('collapses TACA_GUANABARA into GENERAL_RANKING even when group_name is set', () => {
     expect(standingsBucket({ phase: 'TACA_GUANABARA', group_name: null })).toBe(GENERAL_RANKING)
     expect(standingsBucket({ phase: 'TACA_GUANABARA', group_name: 'B' })).toBe(GENERAL_RANKING)
+  })
+
+  it('collapses Gaúcho GROUP_STAGE into GENERAL_RANKING by canonical code', () => {
+    expect(
+      standingsBucket(
+        { phase: 'GROUP_STAGE', group_name: null },
+        'bra.camp.gaucho',
+      ),
+    ).toBe(GENERAL_RANKING)
+    expect(
+      standingsBucket({ phase: 'GROUP_STAGE', group_name: 'A' }, 'bra.camp.gaucho'),
+    ).toBe(GENERAL_RANKING)
+  })
+
+  it('does not collapse other competitions GROUP_STAGE without named group', () => {
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null }, 'bra.copa_do_brazil')).toBe(
+      null,
+    )
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: 'A' }, 'conmebol.libertadores')).toBe(
+      'A',
+    )
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null }, null)).toBe(null)
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null }, undefined)).toBe(null)
+  })
+
+  it('keeps Gaúcho relegation and knockouts out of general ranking', () => {
+    expect(
+      standingsBucket(
+        { phase: 'RELEGATION_STAGE', group_name: 'Relegation Group' },
+        'bra.camp.gaucho',
+      ),
+    ).toBe('Relegation Group')
+    expect(
+      standingsBucket({ phase: 'QUARTER_FINALS', group_name: null }, 'bra.camp.gaucho'),
+    ).toBe(null)
   })
 
   it('ignores knockout phases without group_name', () => {
@@ -753,5 +811,186 @@ describe('StandingsTab — Taça Guanabara (ranking geral)', () => {
     expect(standings.has('B')).toBe(false)
     expect(standings.get('A')).toHaveLength(2)
     expect(standings.get(GENERAL_RANKING)).toHaveLength(2)
+  })
+})
+
+describe('StandingsTab — Gaúcho classificatória (ranking geral)', () => {
+  const GAUCHO = 'bra.camp.gaucho'
+
+  function gsMatch(overrides: Partial<Match> = {}): Match {
+    return makeMatch({
+      phase: 'GROUP_STAGE',
+      round: 'GROUP_STAGE',
+      round_label: 'Fase de grupos',
+      group_name: null,
+      status: 'finished',
+      ...overrides,
+    })
+  }
+
+  it('reproduces the missing null-group gap without competition code', () => {
+    const matches = [
+      gsMatch({ id: 'g-null', home_score: 2, away_score: 0 }),
+      gsMatch({
+        id: 'g-a',
+        group_name: 'A',
+        home_score: 1,
+        away_score: 1,
+        home_team_id: 'gre',
+        home_team_name: 'Grêmio',
+        home_team_short_name: 'GRE',
+        away_team_id: 'int',
+        away_team_name: 'Internacional',
+        away_team_short_name: 'INT',
+      }),
+    ]
+    const withoutCode = computeStandings(matches)
+    expect(withoutCode.has(GENERAL_RANKING)).toBe(false)
+    expect(withoutCode.has('A')).toBe(true)
+    expect([...withoutCode.keys()]).toEqual(['A'])
+  })
+
+  it('merges null and named Gaúcho GROUP_STAGE into one GENERAL_RANKING ordered by points', () => {
+    const matches = [
+      gsMatch({ id: 'g-null', home_score: 2, away_score: 0 }),
+      gsMatch({
+        id: 'g-a',
+        group_name: 'A',
+        home_score: 1,
+        away_score: 1,
+        home_team_id: 'gre',
+        home_team_name: 'Grêmio',
+        home_team_short_name: 'GRE',
+        away_team_id: 'int',
+        away_team_name: 'Internacional',
+        away_team_short_name: 'INT',
+      }),
+    ]
+    const standings = computeStandings(matches, GAUCHO)
+    expect([...standings.keys()]).toEqual([GENERAL_RANKING])
+    expect(standings.has('A')).toBe(false)
+    const table = standings.get(GENERAL_RANKING)!
+    expect(table).toHaveLength(4)
+    expect(table[0].team_id).toBe('bra')
+    expect(table[0].p).toBe(3)
+    expect(table[0].j).toBe(1)
+    const gre = table.find((t) => t.team_id === 'gre')!
+    expect(gre.p).toBe(1)
+    expect(gre.j).toBe(1)
+  })
+
+  it('keeps named GROUP_STAGE of another cup separate and does not collapse globally', () => {
+    const matches = [
+      gsMatch({
+        id: 'copa-a',
+        group_name: 'A',
+        home_score: 3,
+        away_score: 0,
+      }),
+      gsMatch({
+        id: 'copa-b',
+        group_name: 'B',
+        home_score: 1,
+        away_score: 1,
+        home_team_id: 'fla',
+        home_team_name: 'Flamengo',
+        home_team_short_name: 'FLA',
+        away_team_id: 'vas',
+        away_team_name: 'Vasco',
+        away_team_short_name: 'VAS',
+      }),
+    ]
+    const standings = computeStandings(matches, 'conmebol.libertadores')
+    expect(standings.has(GENERAL_RANKING)).toBe(false)
+    expect(standings.has('A')).toBe(true)
+    expect(standings.has('B')).toBe(true)
+  })
+
+  it('keeps Gaúcho relegation separate and knockouts out of ranking', () => {
+    const matches = [
+      gsMatch({ id: 'gs1', home_score: 1, away_score: 0 }),
+      makeMatch({
+        id: 'rel',
+        phase: 'RELEGATION_STAGE',
+        round: 'RELEGATION_STAGE',
+        round_label: 'Rebaixamento',
+        group_name: 'Relegation Group',
+        status: 'finished',
+        home_score: 2,
+        away_score: 2,
+        home_team_id: 'aim',
+        home_team_name: 'Aimoré',
+        home_team_short_name: 'AIM',
+        away_team_id: 'sao',
+        away_team_name: 'São Luiz',
+        away_team_short_name: 'SAO',
+      }),
+      makeMatch({
+        id: 'qf',
+        phase: 'QUARTER_FINALS',
+        round: 'QUARTER_FINALS',
+        round_label: 'Quartas',
+        group_name: null,
+        status: 'finished',
+        home_score: 3,
+        away_score: 0,
+        home_team_id: 'ypir',
+        home_team_name: 'Ypiranga',
+        home_team_short_name: 'YPI',
+        away_team_id: 'cax',
+        away_team_name: 'Caxias',
+        away_team_short_name: 'CAX',
+      }),
+    ]
+    const standings = computeStandings(matches, GAUCHO)
+    expect(standings.has(GENERAL_RANKING)).toBe(true)
+    expect(standings.has('Relegation Group')).toBe(true)
+    expect(standings.get(GENERAL_RANKING)!.map((t) => t.team_id).sort()).toEqual(['arg', 'bra'])
+    expect(standings.get('Relegation Group')!.map((t) => t.team_id).sort()).toEqual([
+      'aim',
+      'sao',
+    ])
+    expect(standings.get(GENERAL_RANKING)!.find((t) => t.team_id === 'ypir')).toBeUndefined()
+  })
+
+  it('renders Ranking geral with incompleteness note when competitionCode is Gaúcho', async () => {
+    mockFetch([
+      gsMatch({ id: 'g-null', home_score: 2, away_score: 0 }),
+      gsMatch({
+        id: 'g-a',
+        group_name: 'A',
+        home_score: 0,
+        away_score: 1,
+        home_team_id: 'gre',
+        home_team_name: 'Grêmio',
+        home_team_short_name: 'GRE',
+        away_team_id: 'int',
+        away_team_name: 'Internacional',
+        away_team_short_name: 'INT',
+      }),
+    ])
+    render(
+      <StandingsTab
+        competitionId="gaucho"
+        competitionType="cup"
+        competitionCode="bra.camp.gaucho"
+      />,
+    )
+    expect(await screen.findByText('Ranking geral')).toBeInTheDocument()
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent(/não entrega grupos completos/i)
+    expect(note).toHaveTextContent(/não é a classificação oficial dos grupos/i)
+    expect(screen.queryByText(/Grupo A/)).not.toBeInTheDocument()
+    expect(screen.getByText('Brasil')).toBeInTheDocument()
+    expect(screen.getByText('Internacional')).toBeInTheDocument()
+  })
+
+  it('does not enable the Gaúcho exception when competitionCode is missing', async () => {
+    mockFetch([gsMatch({ id: 'g-null', home_score: 1, away_score: 0 })])
+    render(<StandingsTab competitionId="gaucho" competitionType="cup" />)
+    expect(
+      await screen.findByText('Esta competição não tem fase de grupos.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Ranking geral')).not.toBeInTheDocument()
   })
 })

@@ -304,6 +304,19 @@ describe('groups router', () => {
     expect(body.groups[0]?.pending_predictions).toBe(2)
   })
 
+  it('includes competition_code from competitions.external_id on the groups list', async () => {
+    const res = await requestGroupsList('user@example.com')
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      groups: Array<{ competition_code: string | null }>
+    }
+
+    // Mock list row omits external_id → null; field must still be present.
+    expect(body.groups[0]).toHaveProperty('competition_code')
+    expect(body.groups[0]?.competition_code).toBeNull()
+  })
+
   it('returns the matched group id for an invite code the user already belongs to', async () => {
     const res = await requestGroupsList('user@example.com', 'INV123')
 
