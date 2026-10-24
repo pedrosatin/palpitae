@@ -37,6 +37,7 @@ export default function GroupTabContent({
         <StandingsTab
           competitionId={group.competition_id}
           competitionType={group.competition_type}
+          competitionCode={group.competition_code}
         />
       )}
       {activeTab === 'group-picks' && (
