@@ -13,7 +13,7 @@ import {
 describe('fetchEspnScoreboard', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn())
-    // O setup global zera o delay; aqui restauramos 1,3s para medir pacing.
+    // Em Vitest o delay default é 0 via process.env.VITEST no módulo; aqui restauramos 1,3s para medir pacing.
     resetEspnClientForTests()
     setEspnMinIntervalForTests(ESPN_MIN_INTERVAL_MS)
   })
