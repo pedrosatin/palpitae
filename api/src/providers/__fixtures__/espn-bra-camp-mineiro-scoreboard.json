@@ -1,0 +1,1234 @@
+{
+ "leagues": [
+  {
+   "id": "10872",
+   "uid": "s:600~l:10872",
+   "name": "Brazilian Campeonato Mineiro",
+   "abbreviation": "Brazil Mineiro",
+   "midsizeName": "BRA.CAMP.MINEIRO",
+   "slug": "bra.camp.mineiro",
+   "season": {
+    "year": 2026,
+    "startDate": "2026-01-01T05:00Z",
+    "endDate": "2026-12-31T21:59Z",
+    "displayName": "2026 Brazilian Campeonato Mineiro",
+    "type": {
+     "id": "3",
+     "type": 13863,
+     "name": "Playoffs - Final",
+     "abbreviation": "Final"
+    }
+   },
+   "calendarType": "day",
+   "calendarStartDate": "2026-01-01T05:00Z",
+   "calendarEndDate": "2026-12-31T21:59Z",
+   "calendar": [
+    "2026-01-10T08:00Z",
+    "2026-01-11T08:00Z",
+    "2026-01-14T08:00Z",
+    "2026-02-01T08:00Z",
+    "2026-02-14T08:00Z",
+    "2026-02-20T08:00Z",
+    "2026-02-21T08:00Z",
+    "2026-02-22T08:00Z",
+    "2026-02-28T08:00Z",
+    "2026-03-01T08:00Z",
+    "2026-03-04T08:00Z",
+    "2026-03-07T08:00Z",
+    "2026-03-08T08:00Z"
+   ],
+   "logos": [
+    {
+     "href": "https://a.espncdn.com/i/leaguelogos/soccer/500/2360.png",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "default"
+     ],
+     "lastUpdated": "2019-07-30T20:49Z"
+    },
+    {
+     "href": "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2360.png",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "dark"
+     ],
+     "lastUpdated": "2019-07-30T20:49Z"
+    }
+   ]
+  }
+ ],
+ "events": [
+  {
+   "id": "762136",
+   "uid": "s:600~l:10872~e:762136",
+   "date": "2026-01-10T19:00Z",
+   "name": "Tombense at Uberlândia",
+   "shortName": "TOM @ UBE",
+   "season": {
+    "year": 2026,
+    "type": 13865,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+14'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Estádio Parque do Sabiá"
+   },
+   "competitions": [
+    {
+     "id": "762136",
+     "uid": "s:600~l:10872~e:762136~c:762136",
+     "date": "2026-01-10T19:00Z",
+     "startDate": "2026-01-10T19:00Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+14'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5703",
+      "fullName": "Estádio Parque do Sabiá",
+      "address": {
+       "city": "Uberlandia",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": false,
+       "id": "9460",
+       "score": "0",
+       "uid": "s:600~t:9460",
+       "team": {
+        "shortDisplayName": "Uberlândia",
+        "location": "Uberlândia",
+        "id": "9460",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9460.png",
+        "name": "Uberlândia",
+        "abbreviation": "UBE",
+        "displayName": "Uberlândia",
+        "uid": "s:600~t:9460"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "id": "17339",
+       "score": "0",
+       "uid": "s:600~t:17339",
+       "team": {
+        "shortDisplayName": "Tombense",
+        "location": "Tombense",
+        "id": "17339",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/17339.png",
+        "name": "Tombense",
+        "abbreviation": "TOM",
+        "displayName": "Tombense",
+        "uid": "s:600~t:17339"
+       }
+      }
+     ],
+     "group": {
+      "groupId": "1",
+      "name": "Group A"
+     }
+    }
+   ]
+  },
+  {
+   "id": "762134",
+   "uid": "s:600~l:10872~e:762134",
+   "date": "2026-01-10T21:30Z",
+   "name": "Pouso Alegre at Cruzeiro",
+   "shortName": "POU @ CRU",
+   "season": {
+    "year": 2026,
+    "type": 13865,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+8'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Estadio Mineirão"
+   },
+   "competitions": [
+    {
+     "id": "762134",
+     "uid": "s:600~l:10872~e:762134~c:762134",
+     "date": "2026-01-10T21:30Z",
+     "startDate": "2026-01-10T21:30Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+8'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5109",
+      "fullName": "Estadio Mineirão",
+      "address": {
+       "city": "Belo Horizonte",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": false,
+       "id": "2022",
+       "score": "1",
+       "uid": "s:600~t:2022",
+       "team": {
+        "shortDisplayName": "Cruzeiro",
+        "location": "Cruzeiro",
+        "id": "2022",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/2022.png",
+        "name": "Cruzeiro",
+        "abbreviation": "CRU",
+        "displayName": "Cruzeiro",
+        "uid": "s:600~t:2022"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": true,
+       "id": "20852",
+       "score": "2",
+       "uid": "s:600~t:20852",
+       "team": {
+        "shortDisplayName": "Pouso Alegre",
+        "location": "Pouso Alegre",
+        "id": "20852",
+        "logo": "",
+        "name": "Pouso Alegre",
+        "abbreviation": "POU",
+        "displayName": "Pouso Alegre",
+        "uid": "s:600~t:20852"
+       }
+      }
+     ],
+     "group": {
+      "groupId": "3",
+      "name": "Group C"
+     }
+    }
+   ]
+  },
+  {
+   "id": "762135",
+   "uid": "s:600~l:10872~e:762135",
+   "date": "2026-01-11T22:30Z",
+   "name": "Athletic at América Mineiro",
+   "shortName": "ACMG @ AMG",
+   "season": {
+    "year": 2026,
+    "type": 13865,
+    "slug": "regular-season"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+4'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Estádio Raimundo Sampaio (Independência)"
+   },
+   "competitions": [
+    {
+     "id": "762135",
+     "uid": "s:600~l:10872~e:762135~c:762135",
+     "date": "2026-01-11T22:30Z",
+     "startDate": "2026-01-11T22:30Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+4'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5405",
+      "fullName": "Estádio Raimundo Sampaio (Independência)",
+      "address": {
+       "city": "Belo Horizonte",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": true,
+       "id": "6154",
+       "score": "3",
+       "uid": "s:600~t:6154",
+       "team": {
+        "shortDisplayName": "América-MG",
+        "location": "América Mineiro",
+        "id": "6154",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/6154.png",
+        "name": "América Mineiro",
+        "abbreviation": "AMG",
+        "displayName": "América Mineiro",
+        "uid": "s:600~t:6154"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "id": "20851",
+       "score": "0",
+       "uid": "s:600~t:20851",
+       "team": {
+        "shortDisplayName": "Athletic",
+        "location": "Athletic",
+        "id": "20851",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/20851.png",
+        "name": "Athletic",
+        "abbreviation": "ACMG",
+        "displayName": "Athletic",
+        "uid": "s:600~t:20851"
+       }
+      }
+     ],
+     "group": {
+      "groupId": "2",
+      "name": "Group B"
+     }
+    }
+   ]
+  },
+  {
+   "id": "401861301",
+   "uid": "s:600~l:10872~e:401861301",
+   "date": "2026-02-21T19:00Z",
+   "name": "North EC at Uberlândia",
+   "shortName": "NOR @ UBE",
+   "season": {
+    "year": 2026,
+    "type": 14107,
+    "slug": "trofeu-inconfidencia---semifinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+12'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Estádio Parque do Sabiá"
+   },
+   "competitions": [
+    {
+     "id": "401861301",
+     "uid": "s:600~l:10872~e:401861301~c:401861301",
+     "date": "2026-02-21T19:00Z",
+     "startDate": "2026-02-21T19:00Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+12'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5703",
+      "fullName": "Estádio Parque do Sabiá",
+      "address": {
+       "city": "Uberlandia",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": false,
+       "id": "9460",
+       "score": "1",
+       "uid": "s:600~t:9460",
+       "team": {
+        "shortDisplayName": "Uberlândia",
+        "location": "Uberlândia",
+        "id": "9460",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9460.png",
+        "name": "Uberlândia",
+        "abbreviation": "UBE",
+        "displayName": "Uberlândia",
+        "uid": "s:600~t:9460"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "id": "131565",
+       "score": "1",
+       "uid": "s:600~t:131565",
+       "team": {
+        "shortDisplayName": "North",
+        "location": "North EC",
+        "id": "131565",
+        "logo": "",
+        "name": "North EC",
+        "abbreviation": "NOR",
+        "displayName": "North EC",
+        "uid": "s:600~t:131565"
+       }
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "title": "Troféu Inconfidência - Semifinals",
+      "totalCompetitions": 2,
+      "completed": false,
+      "competitors": [
+       {
+        "id": "9460",
+        "uid": "s:600~t:9460",
+        "winner": false
+       },
+       {
+        "id": "131565",
+        "uid": "s:600~t:131565",
+        "winner": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401861303",
+   "uid": "s:600~l:10872~e:401861303",
+   "date": "2026-03-01T20:00Z",
+   "name": "Uberlândia at North EC",
+   "shortName": "UBE @ NOR",
+   "season": {
+    "year": 2026,
+    "type": 14107,
+    "slug": "trofeu-inconfidencia---semifinals"
+   },
+   "status": {
+    "clock": 5700.0,
+    "displayClock": "95'",
+    "period": 5,
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    }
+   },
+   "venue": {
+    "displayName": "Arena Credinor"
+   },
+   "competitions": [
+    {
+     "id": "401861303",
+     "uid": "s:600~l:10872~e:401861303~c:401861303",
+     "date": "2026-03-01T20:00Z",
+     "startDate": "2026-03-01T20:00Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [
+      {
+       "text": "2nd Leg - Tied on aggregate - North EC advance 4-3 on penalties",
+       "headline": "2nd Leg - Tied on aggregate - North EC advance 4-3 on penalties",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 5700.0,
+      "displayClock": "95'",
+      "period": 5,
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      }
+     },
+     "venue": {
+      "id": "10861",
+      "fullName": "Arena Credinor",
+      "address": {
+       "city": "Montes Claros",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": true,
+       "id": "131565",
+       "score": "0",
+       "aggregateScore": 1.0,
+       "uid": "s:600~t:131565",
+       "shootoutScore": 4,
+       "advance": true,
+       "team": {
+        "shortDisplayName": "North",
+        "location": "North EC",
+        "id": "131565",
+        "logo": "",
+        "name": "North EC",
+        "abbreviation": "NOR",
+        "displayName": "North EC",
+        "uid": "s:600~t:131565"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "id": "9460",
+       "score": "0",
+       "aggregateScore": 1.0,
+       "uid": "s:600~t:9460",
+       "shootoutScore": 3,
+       "advance": false,
+       "team": {
+        "shortDisplayName": "Uberlândia",
+        "location": "Uberlândia",
+        "id": "9460",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9460.png",
+        "name": "Uberlândia",
+        "abbreviation": "UBE",
+        "displayName": "Uberlândia",
+        "uid": "s:600~t:9460"
+       }
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "title": "Troféu Inconfidência - Semifinals",
+      "totalCompetitions": 2,
+      "completed": true,
+      "competitors": [
+       {
+        "id": "131565",
+        "uid": "s:600~t:131565",
+        "winner": true,
+        "aggregateScore": 1.0
+       },
+       {
+        "id": "9460",
+        "uid": "s:600~t:9460",
+        "winner": false,
+        "aggregateScore": 1.0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401861299",
+   "uid": "s:600~l:10872~e:401861299",
+   "date": "2026-02-22T21:00Z",
+   "name": "América Mineiro at Atlético-MG",
+   "shortName": "AMG @ CAM",
+   "season": {
+    "year": 2026,
+    "type": 13864,
+    "slug": "playoffs---semifinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+7'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Arena MRV"
+   },
+   "competitions": [
+    {
+     "id": "401861299",
+     "uid": "s:600~l:10872~e:401861299~c:401861299",
+     "date": "2026-02-22T21:00Z",
+     "startDate": "2026-02-22T21:00Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+7'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "9663",
+      "fullName": "Arena MRV",
+      "address": {
+       "city": "Belo Horizonte",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": false,
+       "id": "7632",
+       "score": "1",
+       "uid": "s:600~t:7632",
+       "team": {
+        "shortDisplayName": "Atlético-MG",
+        "location": "Atlético-MG",
+        "id": "7632",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/7632.png",
+        "name": "Atlético-MG",
+        "abbreviation": "CAM",
+        "displayName": "Atlético-MG",
+        "uid": "s:600~t:7632"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "id": "6154",
+       "score": "1",
+       "uid": "s:600~t:6154",
+       "team": {
+        "shortDisplayName": "América-MG",
+        "location": "América Mineiro",
+        "id": "6154",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/6154.png",
+        "name": "América Mineiro",
+        "abbreviation": "AMG",
+        "displayName": "América Mineiro",
+        "uid": "s:600~t:6154"
+       }
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "title": "Playoffs - Semifinals",
+      "totalCompetitions": 2,
+      "completed": false,
+      "competitors": [
+       {
+        "id": "7632",
+        "uid": "s:600~t:7632",
+        "winner": false
+       },
+       {
+        "id": "6154",
+        "uid": "s:600~t:6154",
+        "winner": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401861305",
+   "uid": "s:600~l:10872~e:401861305",
+   "date": "2026-03-01T21:00Z",
+   "name": "Atlético-MG at América Mineiro",
+   "shortName": "CAM @ AMG",
+   "season": {
+    "year": 2026,
+    "type": 13864,
+    "slug": "playoffs---semifinals"
+   },
+   "status": {
+    "clock": 5880.0,
+    "displayClock": "98'",
+    "period": 5,
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    }
+   },
+   "venue": {
+    "displayName": "Estádio Raimundo Sampaio (Independência)"
+   },
+   "competitions": [
+    {
+     "id": "401861305",
+     "uid": "s:600~l:10872~e:401861305~c:401861305",
+     "date": "2026-03-01T21:00Z",
+     "startDate": "2026-03-01T21:00Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [
+      {
+       "text": "2nd Leg - Tied on aggregate - Atlético-MG advance 4-2 on penalties",
+       "headline": "2nd Leg - Tied on aggregate - Atlético-MG advance 4-2 on penalties",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 5880.0,
+      "displayClock": "98'",
+      "period": 5,
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      }
+     },
+     "venue": {
+      "id": "5405",
+      "fullName": "Estádio Raimundo Sampaio (Independência)",
+      "address": {
+       "city": "Belo Horizonte",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": false,
+       "id": "6154",
+       "score": "0",
+       "aggregateScore": 1.0,
+       "uid": "s:600~t:6154",
+       "shootoutScore": 2,
+       "advance": false,
+       "team": {
+        "shortDisplayName": "América-MG",
+        "location": "América Mineiro",
+        "id": "6154",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/6154.png",
+        "name": "América Mineiro",
+        "abbreviation": "AMG",
+        "displayName": "América Mineiro",
+        "uid": "s:600~t:6154"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": true,
+       "id": "7632",
+       "score": "0",
+       "aggregateScore": 1.0,
+       "uid": "s:600~t:7632",
+       "shootoutScore": 4,
+       "advance": true,
+       "team": {
+        "shortDisplayName": "Atlético-MG",
+        "location": "Atlético-MG",
+        "id": "7632",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/7632.png",
+        "name": "Atlético-MG",
+        "abbreviation": "CAM",
+        "displayName": "Atlético-MG",
+        "uid": "s:600~t:7632"
+       }
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "title": "Playoffs - Semifinals",
+      "totalCompetitions": 2,
+      "completed": true,
+      "competitors": [
+       {
+        "id": "6154",
+        "uid": "s:600~t:6154",
+        "winner": false,
+        "aggregateScore": 1.0
+       },
+       {
+        "id": "7632",
+        "uid": "s:600~t:7632",
+        "winner": true,
+        "aggregateScore": 1.0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401863458",
+   "uid": "s:600~l:10872~e:401863458",
+   "date": "2026-03-04T22:30Z",
+   "name": "North EC at URT",
+   "shortName": "NOR @ URT",
+   "season": {
+    "year": 2026,
+    "type": 14108,
+    "slug": "trofeu-inconfidencia---finals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+14'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Arena DB - DanBred (Zama Maciel)"
+   },
+   "competitions": [
+    {
+     "id": "401863458",
+     "uid": "s:600~l:10872~e:401863458~c:401863458",
+     "date": "2026-03-04T22:30Z",
+     "startDate": "2026-03-04T22:30Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+14'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "6941",
+      "fullName": "Arena DB - DanBred (Zama Maciel)",
+      "address": {
+       "city": "Patos de Minas",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": false,
+       "id": "18399",
+       "score": "1",
+       "uid": "s:600~t:18399",
+       "team": {
+        "shortDisplayName": "URT",
+        "location": "URT",
+        "id": "18399",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/18399.png",
+        "name": "URT",
+        "abbreviation": "URT",
+        "displayName": "URT",
+        "uid": "s:600~t:18399"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": true,
+       "id": "131565",
+       "score": "2",
+       "uid": "s:600~t:131565",
+       "team": {
+        "shortDisplayName": "North",
+        "location": "North EC",
+        "id": "131565",
+        "logo": "",
+        "name": "North EC",
+        "abbreviation": "NOR",
+        "displayName": "North EC",
+        "uid": "s:600~t:131565"
+       }
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "title": "Troféu Inconfidência - Finals",
+      "totalCompetitions": 2,
+      "completed": false,
+      "competitors": [
+       {
+        "id": "18399",
+        "uid": "s:600~t:18399",
+        "winner": false
+       },
+       {
+        "id": "131565",
+        "uid": "s:600~t:131565",
+        "winner": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401863459",
+   "uid": "s:600~l:10872~e:401863459",
+   "date": "2026-03-07T21:30Z",
+   "name": "URT at North EC",
+   "shortName": "URT @ NOR",
+   "season": {
+    "year": 2026,
+    "type": 14108,
+    "slug": "trofeu-inconfidencia---finals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+5'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Arena Credinor"
+   },
+   "competitions": [
+    {
+     "id": "401863459",
+     "uid": "s:600~l:10872~e:401863459~c:401863459",
+     "date": "2026-03-07T21:30Z",
+     "startDate": "2026-03-07T21:30Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [
+      {
+       "text": "2nd Leg - North EC win 3-1 on aggregate",
+       "headline": "2nd Leg - North EC win 3-1 on aggregate",
+       "type": "event"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+5'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "10861",
+      "fullName": "Arena Credinor",
+      "address": {
+       "city": "Montes Claros",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": true,
+       "id": "131565",
+       "score": "1",
+       "aggregateScore": 3.0,
+       "uid": "s:600~t:131565",
+       "advance": true,
+       "team": {
+        "shortDisplayName": "North",
+        "location": "North EC",
+        "id": "131565",
+        "logo": "",
+        "name": "North EC",
+        "abbreviation": "NOR",
+        "displayName": "North EC",
+        "uid": "s:600~t:131565"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "id": "18399",
+       "score": "0",
+       "aggregateScore": 1.0,
+       "uid": "s:600~t:18399",
+       "advance": false,
+       "team": {
+        "shortDisplayName": "URT",
+        "location": "URT",
+        "id": "18399",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/18399.png",
+        "name": "URT",
+        "abbreviation": "URT",
+        "displayName": "URT",
+        "uid": "s:600~t:18399"
+       }
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "title": "Troféu Inconfidência - Finals",
+      "totalCompetitions": 2,
+      "completed": true,
+      "competitors": [
+       {
+        "id": "131565",
+        "uid": "s:600~t:131565",
+        "winner": true,
+        "aggregateScore": 3.0
+       },
+       {
+        "id": "18399",
+        "uid": "s:600~t:18399",
+        "winner": false,
+        "aggregateScore": 1.0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401863457",
+   "uid": "s:600~l:10872~e:401863457",
+   "date": "2026-03-08T21:00Z",
+   "name": "Atlético-MG at Cruzeiro",
+   "shortName": "CAM @ CRU",
+   "season": {
+    "year": 2026,
+    "type": 13863,
+    "slug": "playoffs---final"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+17'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "venue": {
+    "displayName": "Estadio Mineirão"
+   },
+   "competitions": [
+    {
+     "id": "401863457",
+     "uid": "s:600~l:10872~e:401863457~c:401863457",
+     "date": "2026-03-08T21:00Z",
+     "startDate": "2026-03-08T21:00Z",
+     "altGameNote": "Brazil Mineiro",
+     "notes": [],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+17'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "venue": {
+      "id": "5109",
+      "fullName": "Estadio Mineirão",
+      "address": {
+       "city": "Belo Horizonte",
+       "country": "Brazil"
+      }
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "winner": true,
+       "id": "2022",
+       "score": "1",
+       "uid": "s:600~t:2022",
+       "team": {
+        "shortDisplayName": "Cruzeiro",
+        "location": "Cruzeiro",
+        "id": "2022",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/2022.png",
+        "name": "Cruzeiro",
+        "abbreviation": "CRU",
+        "displayName": "Cruzeiro",
+        "uid": "s:600~t:2022"
+       }
+      },
+      {
+       "homeAway": "away",
+       "winner": false,
+       "id": "7632",
+       "score": "0",
+       "uid": "s:600~t:7632",
+       "team": {
+        "shortDisplayName": "Atlético-MG",
+        "location": "Atlético-MG",
+        "id": "7632",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/7632.png",
+        "name": "Atlético-MG",
+        "abbreviation": "CAM",
+        "displayName": "Atlético-MG",
+        "uid": "s:600~t:7632"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
