@@ -11,8 +11,35 @@ export type CompetitionType = 'league' | 'cup'
 /** Chave do bucket único de liga em computeStandings ('' nunca colide com nome de grupo). */
 export const LEAGUE = ''
 
+/**
+ * Bucket de ranking geral para fases de pontos com grupos ESPN incompletos
+ * (ex.: Taça Guanabara). Valor sentinela que não colide com group_name real.
+ */
+export const GENERAL_RANKING = '__general_ranking__'
+
+/** Fases de pontos corridos sem grupos: entram na tabela "Classificação". */
+const LEAGUE_TABLE_PHASES = new Set(['REGULAR_SEASON', 'LEAGUE_PHASE'])
+
+/**
+ * Fases de pontos cujo group_name na ESPN é parcial/incompleto: todos os jogos
+ * da fase vão para um ranking geral (não inventa A/B nem omite null).
+ */
+const GENERAL_RANKING_PHASES = new Set(['TACA_GUANABARA'])
+
 export function isLeagueTable(group: string): boolean {
   return group === LEAGUE
+}
+
+export function isGeneralRanking(group: string): boolean {
+  return group === GENERAL_RANKING
+}
+
+/** Decide o bucket da classificação a partir de phase/group_name canônicos da API. */
+export function standingsBucket(m: Pick<Match, 'phase' | 'group_name'>): string | null {
+  if (GENERAL_RANKING_PHASES.has(m.phase)) return GENERAL_RANKING
+  if (m.group_name != null) return m.group_name
+  if (LEAGUE_TABLE_PHASES.has(m.phase)) return LEAGUE
+  return null
 }
 
 /** Quantos jogos recentes a coluna "Últimas" mostra. */
@@ -176,9 +203,10 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
     return team
   }
 
-  // LEAGUE ('') = tabela única de liga (pontos corridos). Copa: agrupa por
-  // group_name (fase de grupos) e ignora mata-mata (group_name null fora de
-  // REGULAR_SEASON).
+  // LEAGUE ('') = tabela única (REGULAR_SEASON / LEAGUE_PHASE). GENERAL_RANKING
+  // = Taça Guanabara (e similares) com grupos ESPN incompletos — junta todos os
+  // jogos da fase. Demais fases: agrupa por group_name e ignora mata-mata
+  // (group_name null fora das fases de pontos acima).
   // Ordem cronológica: a coluna de forma depende de "mais recente por último";
   // a ordem do payload de /matches não é garantida.
   const chronological = [...matches].sort((a, b) =>
@@ -186,7 +214,7 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
   )
 
   for (const m of chronological) {
-    const groupKey = m.group_name ?? (m.phase === 'REGULAR_SEASON' ? LEAGUE : null)
+    const groupKey = standingsBucket(m)
     if (groupKey === null) continue
 
     // Ensure both teams appear in the table even before any match is played.
@@ -390,7 +418,11 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
     )
   }
 
-  const groups = [...standings.keys()].sort((a, b) => a.localeCompare(b))
+  // Ranking geral e liga antes dos grupos nomeados.
+  const groups = [...standings.keys()].sort((a, b) => {
+    const rank = (g: string) => (isLeagueTable(g) || isGeneralRanking(g) ? 0 : 1)
+    return rank(a) - rank(b) || a.localeCompare(b)
+  })
 
   return (
     <div className={styles.root}>
@@ -399,6 +431,10 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
           {isLeagueTable(group) ? (
             <div className={`${styles.groupHeader} ${styles.groupHeaderStatic}`}>
               <span>Classificação</span>
+            </div>
+          ) : isGeneralRanking(group) ? (
+            <div className={`${styles.groupHeader} ${styles.groupHeaderStatic}`}>
+              <span>Ranking geral</span>
             </div>
           ) : (
             <button
@@ -412,6 +448,12 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
               <span className={styles.groupHint}>ver jogos</span>
             </button>
           )}
+          {isGeneralRanking(group) ? (
+            <p className={styles.incompleteNote} role="note">
+              A ESPN não entrega grupos completos nesta fase. Este ranking junta
+              todos os jogos e não é a classificação oficial dos grupos.
+            </p>
+          ) : null}
           <StandingsTable teams={standings.get(group)!} />
         </div>
       ))}
