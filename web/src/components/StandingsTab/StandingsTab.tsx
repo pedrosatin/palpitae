@@ -26,6 +26,12 @@ const LEAGUE_TABLE_PHASES = new Set(['REGULAR_SEASON', 'LEAGUE_PHASE'])
  */
 const GENERAL_RANKING_PHASES = new Set(['TACA_GUANABARA'])
 
+/**
+ * Competições cuja fase GROUP_STAGE usa ranking geral (grupos ESPN incompletos).
+ * Seleção por código canônico (competitions.external_id); não globaliza GROUP_STAGE.
+ */
+const GENERAL_RANKING_GROUP_STAGE_CODES = new Set(['bra.camp.gaucho'])
+
 export function isLeagueTable(group: string): boolean {
   return group === LEAGUE
 }
@@ -34,9 +40,24 @@ export function isGeneralRanking(group: string): boolean {
   return group === GENERAL_RANKING
 }
 
-/** Decide o bucket da classificação a partir de phase/group_name canônicos da API. */
-export function standingsBucket(m: Pick<Match, 'phase' | 'group_name'>): string | null {
+export type StandingsBucketMatch = Pick<Match, 'phase' | 'group_name'>
+
+/**
+ * Decide o bucket da classificação a partir de phase/group_name canônicos da API
+ * e, quando necessário, do código canônico da competição (ex.: Gaúcho).
+ */
+export function standingsBucket(
+  m: StandingsBucketMatch,
+  competitionCode?: string | null,
+): string | null {
   if (GENERAL_RANKING_PHASES.has(m.phase)) return GENERAL_RANKING
+  if (
+    m.phase === 'GROUP_STAGE' &&
+    competitionCode != null &&
+    GENERAL_RANKING_GROUP_STAGE_CODES.has(competitionCode)
+  ) {
+    return GENERAL_RANKING
+  }
   if (m.group_name != null) return m.group_name
   if (LEAGUE_TABLE_PHASES.has(m.phase)) return LEAGUE
   return null
@@ -61,6 +82,11 @@ interface StandingsTabProps {
   competitionId: string
   /** Gate vem do grupo (competitions.type); decide o texto do empty state. */
   competitionType?: CompetitionType | null
+  /**
+   * Código canônico da competição (`competitions.external_id`), ex. bra.camp.gaucho.
+   * Usado só para exceções de ranking geral por identidade; ausente = sem exceção.
+   */
+  competitionCode?: string | null
 }
 
 /** Resultado de um jogo na forma recente do time, mais antigo → mais recente. */
@@ -180,7 +206,10 @@ function sortStandings(
   return result
 }
 
-export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> {
+export function computeStandings(
+  matches: Match[],
+  competitionCode?: string | null,
+): Map<string, TeamStanding[]> {
   const byGroup = new Map<string, Map<string, TeamStanding>>()
 
   function teamFor(
@@ -204,9 +233,9 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
   }
 
   // LEAGUE ('') = tabela única (REGULAR_SEASON / LEAGUE_PHASE). GENERAL_RANKING
-  // = Taça Guanabara (e similares) com grupos ESPN incompletos — junta todos os
-  // jogos da fase. Demais fases: agrupa por group_name e ignora mata-mata
-  // (group_name null fora das fases de pontos acima).
+  // = Taça Guanabara / Gaúcho classificatória com grupos ESPN incompletos —
+  // junta todos os jogos da fase. Demais fases: agrupa por group_name e
+  // ignora mata-mata (group_name null fora das fases de pontos acima).
   // Ordem cronológica: a coluna de forma depende de "mais recente por último";
   // a ordem do payload de /matches não é garantida.
   const chronological = [...matches].sort((a, b) =>
@@ -214,7 +243,7 @@ export function computeStandings(matches: Match[]): Map<string, TeamStanding[]> 
   )
 
   for (const m of chronological) {
-    const groupKey = standingsBucket(m)
+    const groupKey = standingsBucket(m, competitionCode)
     if (groupKey === null) continue
 
     // Ensure both teams appear in the table even before any match is played.
@@ -381,7 +410,11 @@ function StandingsTable({ teams }: { teams: TeamStanding[] }) {
   )
 }
 
-export default function StandingsTab({ competitionId, competitionType }: StandingsTabProps) {
+export default function StandingsTab({
+  competitionId,
+  competitionType,
+  competitionCode,
+}: StandingsTabProps) {
   const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -404,7 +437,7 @@ export default function StandingsTab({ competitionId, competitionType }: Standin
     return <ErrorState message={error} />
   }
 
-  const standings = computeStandings(matches)
+  const standings = computeStandings(matches, competitionCode)
 
   if (standings.size === 0) {
     // Liga sem jogos sincronizados ainda não tem tabela — mas dizer "não tem

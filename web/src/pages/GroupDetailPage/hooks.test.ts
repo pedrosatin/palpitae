@@ -319,6 +319,7 @@ const mockGroup: GroupDetail = {
   competition_id: 'c1',
   competition_name: 'Test Comp',
   competition_type: 'league',
+  competition_code: null,
   is_admin: true,
   invite_code: 'TEST',
   created_at: '2023-01-01',

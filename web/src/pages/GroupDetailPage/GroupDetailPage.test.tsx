@@ -81,6 +81,7 @@ const baseGroup = {
   competition_id: 'comp-1',
   competition_name: 'Copa do Mundo',
   competition_type: null as 'league' | 'cup' | null,
+  competition_code: null,
   is_admin: false,
   invite_code: 'INV001',
   created_at: '2026-01-01T00:00:00Z',
