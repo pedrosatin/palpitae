@@ -6,7 +6,7 @@ Este documento registra o resultado do spike que avaliou a API pública da ESPN 
 
 ## Método
 
-A coleta consultou a API ao vivo em 24 de outubro de 2026, sem autenticação, pelo endpoint `GET https://site.api.espn.com/apis/site/v2/sports/soccer/bra.copa_do_nordeste/scoreboard?dates=YYYYMMDD`. As chamadas foram serializadas com intervalo de cerca de 1,3 s. A pesquisa leu o calendário de fases, amostragem densa de maio (dias 8–28), datas de grupos em março/abril, quartas, semifinal e final, além do catálogo `sports.core.api.espn.com` em `lang=en` e `lang=pt` e do lookup direto do slug. O JSON bruto ficou fora do repositório em `~/.cache/palpitae-nordeste-research/`, com proveniência por chave de coleta (`nordeste_*.json`, `catalog_*.json`, `lookup_nordeste_en.json`, `nordeste_scan_*.json`, `nordeste_penhunt_*.json`).
+A coleta consultou a API ao vivo em 24 de outubro de 2026, sem autenticação, pelo endpoint `GET https://site.api.espn.com/apis/site/v2/sports/soccer/bra.copa_do_nordeste/scoreboard?dates=YYYYMMDD`. As chamadas foram serializadas com intervalo de cerca de 1,3 s. A pesquisa leu o calendário de fases, amostragem densa de maio (dias 8 a 28), datas de grupos em março/abril, quartas, semifinal e final, além do catálogo `sports.core.api.espn.com` em `lang=en` e `lang=pt` e do lookup direto do slug. O JSON bruto ficou fora do repositório em `~/.cache/palpitae-nordeste-research/`, com proveniência por chave de coleta (`nordeste_*.json`, `catalog_*.json`, `lookup_nordeste_en.json`, `nordeste_scan_*.json`, `nordeste_penhunt_*.json`).
 
 O parâmetro `dates=YYYYMMDD` segue o dia do calendário local da liga (BRT), não o dia UTC de `events[].date`. Exemplos: a semifinal com kickoff `2026-05-21T00:00Z` responde em `dates=20260520`; a volta da final `2026-06-03T00:00Z` responde em `dates=20260602`; o jogo Vitória 1×0 Ceará (`2026-05-07T00:30Z`) responde em `dates=20260506`. Os curls da seção Reprodução usam a chave que devolve o evento, e o mando (`homeAway`) bate com o payload.
 
@@ -32,7 +32,7 @@ A prova válida do slug é o scoreboard direto. Ausência no catálogo `en` não
 | Placar | `competitors[].score` | String numérica em jogo encerrado |
 | Jogo encerrado | `competitions[0].status.type` | `state=post`, `name=STATUS_FULL_TIME`, `detail=FT` nas amostras |
 | Temporada / fase | `events[].season.slug` | Quatro valores: `group-stage`, `quarterfinals`, `semifinals`, `finals` |
-| Grupo | `competitions[0].group` | Presente na fase de grupos (`Group A`–`D`, `groupId` numérico); ausente no mata-mata amostrado |
+| Grupo | `competitions[0].group` | Presente na fase de grupos (`Group A` a `D`, `groupId` numérico); ausente no mata-mata amostrado |
 | Quartas | `leg` / `series` | Ausentes; classificado pelo `competitors[].winner` do jogo único |
 | Semifinais | `leg` / `series` | Ida com `leg.value=1`, `series.title=Semifinals`, `totalCompetitions=2`, `completed=false` |
 | Final | `leg` / `series` | Ida e volta com `finals`; na volta, `aggregateScore` em competitors e em `series.competitors`, `series.completed=true`, um `winner` na series |
