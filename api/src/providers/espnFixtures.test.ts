@@ -601,6 +601,11 @@ describe('fixture ESPN bra.camp.gaucho', () => {
     expect(caxiasYpiranga).toBeTruthy()
     expect(teamIdBySide(caxiasYpiranga as FixtureEvent, 'home')).toBe('17131')
     expect(teamIdBySide(caxiasYpiranga as FixtureEvent, 'away')).toBe('4935')
+    const competitors = comp(caxiasYpiranga as FixtureEvent).competitors ?? []
+    const caxias = competitors.find((c) => c.team?.id === '17131')
+    const ypiranga = competitors.find((c) => c.team?.id === '4935')
+    expect(ypiranga?.winner).toBe(true)
+    expect(caxias?.winner).toBe(false)
   })
 
   it('farroupilha---semifinals liga ida e volta por leg e series, com pênaltis na volta', () => {
