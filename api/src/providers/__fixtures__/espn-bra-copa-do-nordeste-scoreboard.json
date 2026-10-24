@@ -1,0 +1,776 @@
+{
+ "leagues": [
+  {
+   "slug": "bra.copa_do_nordeste",
+   "abbreviation": "Copa do Nordeste",
+   "season": {
+    "year": 2026,
+    "startDate": "2026-01-01T05:00Z",
+    "endDate": "2026-12-31T05:00Z",
+    "displayName": "2026 Copa do Nordeste",
+    "type": {
+     "id": "4",
+     "type": 14120,
+     "name": "Finals",
+     "abbreviation": "Finals"
+    }
+   },
+   "midsizeName": "BRA.COPA_DO_NORDESTE",
+   "uid": "s:600~l:10951",
+   "calendar": [
+    {
+     "label": "Copa do Nordeste",
+     "startDate": "2026-01-01T05:00Z",
+     "endDate": "2026-12-31T05:00Z",
+     "entries": [
+      {
+       "label": "Group",
+       "detail": "Mar 24-May 27",
+       "value": "1",
+       "startDate": "2026-01-01T08:00Z",
+       "endDate": "2026-05-01T06:59Z"
+      },
+      {
+       "label": "Quarterfinals",
+       "detail": "May 6-7",
+       "value": "2",
+       "startDate": "2026-05-01T07:00Z",
+       "endDate": "2026-05-08T06:59Z"
+      },
+      {
+       "label": "Semifinals",
+       "detail": "May 20",
+       "value": "3",
+       "startDate": "2026-05-08T07:00Z",
+       "endDate": "2026-05-28T06:59Z"
+      },
+      {
+       "label": "Finals",
+       "detail": "Jun 2-6",
+       "value": "4",
+       "startDate": "2026-05-28T07:00Z",
+       "endDate": "2026-12-31T07:59Z"
+      }
+     ]
+    }
+   ],
+   "name": "Copa do Nordeste",
+   "calendarEndDate": "2026-12-31T05:00Z",
+   "logos": [
+    {
+     "href": "https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/default-team-logo-500.png&w=100&h=100",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "default"
+     ],
+     "lastUpdated": "2026-10-23T23:20Z"
+    },
+    {
+     "href": "https://a.espncdn.com/guid/1e228648-220c-3da5-98d2-c8f44d6aa83f/logos/default-dark.png",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "dark"
+     ],
+     "lastUpdated": "2022-02-09T23:57Z"
+    }
+   ],
+   "calendarStartDate": "2026-01-01T05:00Z",
+   "calendarType": "list",
+   "id": "10951"
+  }
+ ],
+ "events": [
+  {
+   "competitions": [
+    {
+     "group": {
+      "groupId": "3",
+      "name": "Group C",
+      "abbreviation": "Group C"
+     },
+     "uid": "s:600~l:10951~e:401864991~c:401864991",
+     "timeValid": true,
+     "notes": [],
+     "attendance": 0,
+     "competitors": [
+      {
+       "winner": false,
+       "team": {
+        "abbreviation": "SID",
+        "uid": "s:600~t:6195",
+        "logo": "",
+        "name": "Sociedade Imperatriz de Desportos",
+        "location": "Sociedade Imperatriz de Desportos",
+        "displayName": "Sociedade Imperatriz de Desportos",
+        "shortDisplayName": "Imperatiz",
+        "id": "6195"
+       },
+       "id": "6195",
+       "score": "0",
+       "uid": "s:600~t:6195",
+       "homeAway": "home"
+      },
+      {
+       "winner": true,
+       "team": {
+        "abbreviation": "RET",
+        "uid": "s:600~t:20896",
+        "logo": "",
+        "name": "Retró",
+        "location": "Retró",
+        "displayName": "Retró",
+        "shortDisplayName": "Retró",
+        "id": "20896"
+       },
+       "id": "20896",
+       "score": "1",
+       "uid": "s:600~t:20896",
+       "homeAway": "away"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "date": "2026-03-24T22:00Z",
+     "recent": false,
+     "playByPlayAvailable": true,
+     "altGameNote": "Copa do Nordeste, Group C",
+     "startDate": "2026-03-24T22:00Z",
+     "id": "401864991",
+     "leg": null,
+     "series": null
+    }
+   ],
+   "season": {
+    "year": 2026,
+    "type": 14123,
+    "slug": "group-stage"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "date": "2026-03-24T22:00Z",
+   "uid": "s:600~l:10951~e:401864991",
+   "name": "Retró at Sociedade Imperatriz de Desportos",
+   "shortName": "RET @ SID",
+   "id": "401864991"
+  },
+  {
+   "competitions": [
+    {
+     "uid": "s:600~l:10951~e:401871108~c:401871108",
+     "timeValid": true,
+     "notes": [],
+     "attendance": 0,
+     "competitors": [
+      {
+       "winner": true,
+       "team": {
+        "abbreviation": "ABC",
+        "uid": "s:600~t:9965",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9965.png",
+        "name": "ABC",
+        "location": "ABC",
+        "displayName": "ABC",
+        "shortDisplayName": "ABC",
+        "id": "9965"
+       },
+       "id": "9965",
+       "score": "4",
+       "uid": "s:600~t:9965",
+       "homeAway": "home"
+      },
+      {
+       "winner": false,
+       "team": {
+        "abbreviation": "JUA",
+        "uid": "s:600~t:18191",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/18191.png",
+        "name": "Juazeirense",
+        "location": "Juazeirense",
+        "displayName": "Juazeirense",
+        "shortDisplayName": "Juazeirense",
+        "id": "18191"
+       },
+       "id": "18191",
+       "score": "0",
+       "uid": "s:600~t:18191",
+       "homeAway": "away"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "date": "2026-05-06T22:00Z",
+     "recent": false,
+     "playByPlayAvailable": true,
+     "altGameNote": "Copa do Nordeste, Quarterfinals",
+     "venue": {
+      "id": "5379",
+      "fullName": "Arena das Dunas",
+      "address": {
+       "city": "Natal",
+       "country": "Brazil"
+      }
+     },
+     "startDate": "2026-05-06T22:00Z",
+     "id": "401871108",
+     "group": null,
+     "leg": null,
+     "series": null
+    }
+   ],
+   "season": {
+    "year": 2026,
+    "type": 14122,
+    "slug": "quarterfinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "date": "2026-05-06T22:00Z",
+   "uid": "s:600~l:10951~e:401871108",
+   "name": "Juazeirense at ABC",
+   "venue": {},
+   "shortName": "JUA @ ABC",
+   "id": "401871108"
+  },
+  {
+   "competitions": [
+    {
+     "uid": "s:600~l:10951~e:401871111~c:401871111",
+     "timeValid": true,
+     "notes": [],
+     "attendance": 0,
+     "competitors": [
+      {
+       "winner": true,
+       "team": {
+        "abbreviation": "VIT",
+        "uid": "s:600~t:3457",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3457.png",
+        "name": "Vitória",
+        "location": "Vitória",
+        "displayName": "Vitória",
+        "shortDisplayName": "Vitória",
+        "id": "3457"
+       },
+       "id": "3457",
+       "score": "1",
+       "uid": "s:600~t:3457",
+       "homeAway": "home"
+      },
+      {
+       "winner": false,
+       "team": {
+        "abbreviation": "CEA",
+        "uid": "s:600~t:9969",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/9969.png",
+        "name": "Ceará",
+        "location": "Ceará",
+        "displayName": "Ceará",
+        "shortDisplayName": "Ceará",
+        "id": "9969"
+       },
+       "id": "9969",
+       "score": "0",
+       "uid": "s:600~t:9969",
+       "homeAway": "away"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "date": "2026-05-07T00:30Z",
+     "recent": false,
+     "playByPlayAvailable": true,
+     "altGameNote": "Copa do Nordeste, Quarterfinals",
+     "venue": {
+      "id": "5627",
+      "fullName": "Estadio Manoel Barradas",
+      "address": {
+       "city": "Salvador",
+       "country": "Brazil"
+      }
+     },
+     "startDate": "2026-05-07T00:30Z",
+     "id": "401871111",
+     "group": null,
+     "leg": null,
+     "series": null
+    }
+   ],
+   "season": {
+    "year": 2026,
+    "type": 14122,
+    "slug": "quarterfinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "date": "2026-05-07T00:30Z",
+   "uid": "s:600~l:10951~e:401871111",
+   "name": "Ceará at Vitória",
+   "venue": {},
+   "shortName": "CEA @ VIT",
+   "id": "401871111"
+  },
+  {
+   "competitions": [
+    {
+     "series": {
+      "title": "Semifinals",
+      "completed": false,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "winner": false,
+        "uid": "s:600~t:6272",
+        "id": "6272"
+       },
+       {
+        "winner": false,
+        "uid": "s:600~t:7635",
+        "id": "7635"
+       }
+      ]
+     },
+     "uid": "s:600~l:10951~e:401871834~c:401871834",
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "timeValid": true,
+     "notes": [
+      {
+       "type": "event",
+       "headline": "1st Leg",
+       "text": "1st Leg"
+      }
+     ],
+     "attendance": 0,
+     "competitors": [
+      {
+       "winner": false,
+       "team": {
+        "abbreviation": "FOR",
+        "uid": "s:600~t:6272",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/6272.png",
+        "name": "Fortaleza",
+        "location": "Fortaleza",
+        "displayName": "Fortaleza",
+        "shortDisplayName": "Fortaleza",
+        "id": "6272"
+       },
+       "id": "6272",
+       "score": "1",
+       "uid": "s:600~t:6272",
+       "homeAway": "home"
+      },
+      {
+       "winner": true,
+       "team": {
+        "abbreviation": "SPO",
+        "uid": "s:600~t:7635",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/7635.png",
+        "name": "Sport",
+        "location": "Sport",
+        "displayName": "Sport",
+        "shortDisplayName": "Sport",
+        "id": "7635"
+       },
+       "id": "7635",
+       "score": "2",
+       "uid": "s:600~t:7635",
+       "homeAway": "away"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "date": "2026-05-21T00:00Z",
+     "recent": false,
+     "playByPlayAvailable": true,
+     "altGameNote": "Copa do Nordeste, Semifinals",
+     "venue": {
+      "id": "10625",
+      "fullName": "Arena Castelão",
+      "address": {
+       "city": "Fortaleza",
+       "country": "Brazil"
+      }
+     },
+     "startDate": "2026-05-21T00:00Z",
+     "id": "401871834",
+     "group": null
+    }
+   ],
+   "season": {
+    "year": 2026,
+    "type": 14121,
+    "slug": "semifinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "date": "2026-05-21T00:00Z",
+   "uid": "s:600~l:10951~e:401871834",
+   "name": "Sport at Fortaleza",
+   "venue": {},
+   "shortName": "SPO @ FOR",
+   "id": "401871834"
+  },
+  {
+   "competitions": [
+    {
+     "series": {
+      "title": "Finals",
+      "completed": false,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "winner": false,
+        "uid": "s:600~t:6272",
+        "id": "6272"
+       },
+       {
+        "winner": false,
+        "uid": "s:600~t:3457",
+        "id": "3457"
+       }
+      ]
+     },
+     "uid": "s:600~l:10951~e:401874050~c:401874050",
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "timeValid": true,
+     "notes": [
+      {
+       "type": "event",
+       "headline": "1st Leg",
+       "text": "1st Leg"
+      }
+     ],
+     "attendance": 30042,
+     "competitors": [
+      {
+       "winner": false,
+       "team": {
+        "abbreviation": "FOR",
+        "uid": "s:600~t:6272",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/6272.png",
+        "name": "Fortaleza",
+        "location": "Fortaleza",
+        "displayName": "Fortaleza",
+        "shortDisplayName": "Fortaleza",
+        "id": "6272"
+       },
+       "id": "6272",
+       "score": "1",
+       "uid": "s:600~t:6272",
+       "homeAway": "home"
+      },
+      {
+       "winner": true,
+       "team": {
+        "abbreviation": "VIT",
+        "uid": "s:600~t:3457",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3457.png",
+        "name": "Vitória",
+        "location": "Vitória",
+        "displayName": "Vitória",
+        "shortDisplayName": "Vitória",
+        "id": "3457"
+       },
+       "id": "3457",
+       "score": "2",
+       "uid": "s:600~t:3457",
+       "homeAway": "away"
+      }
+     ],
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+19'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "date": "2026-06-03T00:00Z",
+     "recent": false,
+     "playByPlayAvailable": true,
+     "altGameNote": "Copa do Nordeste, Finals",
+     "venue": {
+      "id": "10625",
+      "fullName": "Arena Castelão",
+      "address": {
+       "city": "Fortaleza",
+       "country": "Brazil"
+      }
+     },
+     "startDate": "2026-06-03T00:00Z",
+     "id": "401874050",
+     "group": null
+    }
+   ],
+   "season": {
+    "year": 2026,
+    "type": 14120,
+    "slug": "finals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+19'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "date": "2026-06-03T00:00Z",
+   "uid": "s:600~l:10951~e:401874050",
+   "name": "Vitória at Fortaleza",
+   "venue": {},
+   "shortName": "VIT @ FOR",
+   "id": "401874050"
+  },
+  {
+   "competitions": [
+    {
+     "series": {
+      "title": "Finals",
+      "completed": true,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "winner": true,
+        "uid": "s:600~t:3457",
+        "id": "3457",
+        "aggregateScore": 4.0
+       },
+       {
+        "winner": false,
+        "uid": "s:600~t:6272",
+        "id": "6272",
+        "aggregateScore": 2.0
+       }
+      ]
+     },
+     "uid": "s:600~l:10951~e:401874103~c:401874103",
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "timeValid": true,
+     "notes": [
+      {
+       "type": "event",
+       "headline": "2nd Leg - Vitória win 4-2 on aggregate",
+       "text": "2nd Leg - Vitória win 4-2 on aggregate"
+      }
+     ],
+     "attendance": 0,
+     "competitors": [
+      {
+       "winner": true,
+       "team": {
+        "abbreviation": "VIT",
+        "uid": "s:600~t:3457",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3457.png",
+        "name": "Vitória",
+        "location": "Vitória",
+        "displayName": "Vitória",
+        "shortDisplayName": "Vitória",
+        "id": "3457"
+       },
+       "id": "3457",
+       "score": "2",
+       "uid": "s:600~t:3457",
+       "homeAway": "home",
+       "aggregateScore": 4.0
+      },
+      {
+       "winner": false,
+       "team": {
+        "abbreviation": "FOR",
+        "uid": "s:600~t:6272",
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/6272.png",
+        "name": "Fortaleza",
+        "location": "Fortaleza",
+        "displayName": "Fortaleza",
+        "shortDisplayName": "Fortaleza",
+        "id": "6272"
+       },
+       "id": "6272",
+       "score": "1",
+       "uid": "s:600~t:6272",
+       "homeAway": "away",
+       "aggregateScore": 2.0
+      }
+     ],
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0'",
+      "period": 2,
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      }
+     },
+     "date": "2026-06-06T19:00Z",
+     "recent": false,
+     "playByPlayAvailable": true,
+     "altGameNote": "Copa do Nordeste, Finals",
+     "venue": {
+      "id": "5627",
+      "fullName": "Estadio Manoel Barradas",
+      "address": {
+       "city": "Salvador",
+       "country": "Brazil"
+      }
+     },
+     "startDate": "2026-06-06T19:00Z",
+     "id": "401874103",
+     "group": null
+    }
+   ],
+   "season": {
+    "year": 2026,
+    "type": 14120,
+    "slug": "finals"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0'",
+    "period": 2,
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    }
+   },
+   "date": "2026-06-06T19:00Z",
+   "uid": "s:600~l:10951~e:401874103",
+   "name": "Fortaleza at Vitória",
+   "venue": {},
+   "shortName": "FOR @ VIT",
+   "id": "401874103"
+  }
+ ]
+}
