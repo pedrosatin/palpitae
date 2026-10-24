@@ -58,7 +58,7 @@
   font-weight: var(--font-weight-normal);
   text-transform: none;
   letter-spacing: 0;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   line-height: 1.4;
 }
 
