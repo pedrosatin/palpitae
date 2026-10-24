@@ -19,7 +19,7 @@ O HTML e os JSON brutos ficaram fora do Git em `~/.cache/palpitae-pernambucano-r
 | Home | `https://www.fpf-pe.com.br/` → `.../pt/home/` | 200 | Entrada; link para Competições |
 | Lista de competições | `https://www.fpf-pe.com.br/pt/competicoes/` | 200 | Cards com `jogos.php?q=<idcampeonato>` |
 | Shell A1 2026 | `https://www.fpf-pe.com.br/pt/competicoes/jogos.php?q=1651` | 200 | Nav de fases + containers vazios preenchidos por AJAX |
-| Conteúdo editorial A1 | `https://www.fpf-pe.com.br/pt/conteudo/?q=100&sc=14` | 200 | Editais/PDFs; não é feed de jogos |
+| Conteúdo editorial A1 | `https://www.fpf-pe.com.br/pt/conteudo/?q=100&sc=14` | 200 | Editais/PDFs; fora do feed de jogos |
 | Jogos (AJAX) | `POST .../pt/competicoes/jogos_ajax_ver2.php` | 200 | JSON `{html, rodada}` com cards da fase |
 | Classificação (AJAX) | `POST .../pt/competicoes/classificacao_ajax_ver2.php` | 200 | HTML de tabela por fase |
 | Detalhe do jogo (AJAX) | `POST .../pt/competicoes/infoJogo.php` | 200 | HTML com nomes, data com ano, arbitragem, alteração de jogo, link de súmula |
@@ -108,9 +108,9 @@ Reuso de parser exige o mesmo contrato de página ou o mesmo shape de AJAX. A am
 | --- | --- | --- | --- |
 | FPF-PE | `fpf-pe.com.br/pt/competicoes/jogos.php` + `*_ajax_ver2.php` | PHP + jQuery; HTML em JSON | Referência deste spike |
 | FBF | `fbf.org.br` (Laravel/CSRF); ` /competicoes/<n>` 200; `/competicoes` lista genérica **HTTP 500** no teste; `/jogo/detalhes/<n>` 200 | Rotas REST-like próprias; CSS de pênaltis no detalhe (`detail-penalty-*`); sem `jogos_ajax_ver2.php` | Markup e rotas incompatíveis com o parser PE |
-| FCF | `futebolcearense.com.br/2023/homepage.asp` e `campeonatos.asp` 200; `tabela.asp`/`jogos.asp` **404** | ASP clássico IIS; links `clubes.asp?q=serie-a` etc. | Outra plataforma; sem endpoints AJAX equivalentes |
+| FCF | `futebolcearense.com.br/2023/homepage.asp` e `campeonatos.asp` 200; `tabela.asp`/`jogos.asp` **404** | Shell ASP/IIS; no JS do HTML em cache (`fcf-home.html`, `fcf-campeonatos.html`), `api/v2/?route=` com `games-byRound`, `phases`, `championships` e `classifications` (descoberta estática; HTTP/JSON desses routes não exercitado neste ticket) | Stack e contrato distintos do AJAX PHP da PE; o parser PE não cobre FCF. A `api/v2` observada ficou fora do gate deste spike |
 
-Não há padrão compartilhado de IDs, POST body ou fragmentos HTML. Baiano e Cearense exigiriam spikes e parsers próprios. O critério de GO completo do ticket (reuso plausível BA/CE) não se sustenta.
+Não há padrão compartilhado de IDs, POST body ou fragmentos HTML entre FPF-PE, FBF e FCF. Baiano e Cearense exigiriam spikes e parsers próprios. O critério de GO completo do ticket (reuso plausível BA/CE) não se sustenta. A presença de `api/v2` no JS da FCF não altera esse critério: este ticket não avaliou essa API como fonte candidata.
 
 ## Manutenção e risco de quebra
 
