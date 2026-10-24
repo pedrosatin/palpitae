@@ -3,6 +3,7 @@ import serieBJson from './__fixtures__/espn-bra-2-scoreboard.json'
 import paulistaJson from './__fixtures__/espn-bra-camp-paulista-scoreboard.json'
 import cariocaJson from './__fixtures__/espn-bra-camp-carioca-scoreboard.json'
 import mineiroJson from './__fixtures__/espn-bra-camp-mineiro-scoreboard.json'
+import gauchoJson from './__fixtures__/espn-bra-camp-gaucho-scoreboard.json'
 import copaJson from './__fixtures__/espn-bra-copa-do-brazil-scoreboard.json'
 import libertadoresJson from './__fixtures__/espn-conmebol-libertadores-scoreboard.json'
 import sudamericanaJson from './__fixtures__/espn-conmebol-sudamericana-scoreboard.json'
@@ -15,6 +16,7 @@ import sudamericanaJson from './__fixtures__/espn-conmebol-sudamericana-scoreboa
  * Paulista: docs/architecture/spike-espn-paulista.md (coleta 2026-10-24).
  * Carioca: docs/architecture/spike-espn-carioca.md (coleta 2026-10-24).
  * Mineiro: docs/architecture/spike-espn-mineiro.md (coleta 2026-10-24).
+ * Gaúcho: docs/architecture/spike-espn-gaucho.md (coleta 2026-10-24).
  *
  * As fixtures são recortes de respostas reais de
  * `GET site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard?dates=YYYYMMDD`,
@@ -1062,6 +1064,287 @@ describe('fixture ESPN bra.camp.mineiro', () => {
   it('altGameNote é sempre Brazil Mineiro e não identifica a fase', () => {
     for (const event of events) {
       expect(comp(event).altGameNote).toBe('Brazil Mineiro')
+    }
+  })
+})
+
+const GAUCHO = gauchoJson as unknown as FixtureBoard
+
+/** Team ids ESPN do Grenal, conferidos na fixture. */
+const GREMIO_ID = '6273'
+const INTERNACIONAL_ID = '1936'
+
+/**
+ * Contrato do Campeonato Gaúcho (bra.camp.gaucho). Calendário plano de datas,
+ * season.slug fatiado em fases (type cup), grupos incompletos na first-round,
+ * rebaixamento, mata-mata com leg/series e Grenal na final.
+ */
+describe('fixture ESPN bra.camp.gaucho', () => {
+  const board = GAUCHO
+  const events = board.events ?? []
+
+  it('traz bra.camp.gaucho da temporada 2026 com calendário plano de datas', () => {
+    const league = board.leagues?.[0]
+    expect(league?.slug).toBe('bra.camp.gaucho')
+    expect(league?.season?.year).toBe(2026)
+    const calendar = league?.calendar ?? []
+    expect(calendar.length).toBeGreaterThanOrEqual(5)
+    expect(calendar.every((entry) => typeof entry === 'string')).toBe(true)
+    for (const entry of calendar) {
+      expect(Number.isFinite(Date.parse(String(entry)))).toBe(true)
+    }
+  })
+
+  it('guarda as sete fases observadas no season.slug', () => {
+    const phases = new Set(events.map((e) => e.season?.slug))
+    expect(phases).toEqual(
+      new Set([
+        'first-round',
+        'gaucho---relegation',
+        'quarterfinals',
+        'farroupilha---semifinals',
+        'semifinals',
+        'finals',
+        'farroupilha---finals',
+      ]),
+    )
+  })
+
+  it('todo evento tem data UTC, mandante/visitante e team.id numérico', () => {
+    expect(events.length).toBeGreaterThanOrEqual(10)
+    for (const event of events) {
+      expect(event.id).toMatch(/^\d+$/)
+      expect(Number.isFinite(Date.parse(event.date ?? ''))).toBe(true)
+      expect(event.season?.year).toBe(2026)
+      expect(event.season?.slug).toBeTruthy()
+      const competitors = comp(event).competitors ?? []
+      expect(competitors).toHaveLength(2)
+      expect(competitors.map((c) => c.homeAway).sort()).toEqual(['away', 'home'])
+      for (const competitor of competitors) {
+        expect(competitor.team?.id).toMatch(/^\d+$/)
+        expect(competitor.team?.displayName).toBeTruthy()
+      }
+    }
+  })
+
+  it('eventos encerrados trazem placar em string e status post FT ou FT-Pens', () => {
+    const done = finished(events)
+    expect(done.length).toBe(events.length)
+    for (const event of done) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.score).toMatch(/^\d+$/)
+      }
+      expect(comp(event).status?.type?.state).toBe('post')
+      expect(['STATUS_FULL_TIME', 'STATUS_FINAL_PEN']).toContain(comp(event).status?.type?.name)
+      expect(['FT', 'FT-Pens']).toContain(comp(event).status?.type?.detail)
+    }
+  })
+
+  it('first-round mistura jogo com Group A e jogo sem group, sem leg nem series', () => {
+    const firstRound = events.filter((e) => e.season?.slug === 'first-round')
+    expect(firstRound.length).toBeGreaterThanOrEqual(2)
+    const withGroup = firstRound.filter((e) => comp(e).group?.name)
+    const withoutGroup = firstRound.filter((e) => !comp(e).group)
+    expect(withGroup.length).toBeGreaterThanOrEqual(1)
+    expect(withoutGroup.length).toBeGreaterThanOrEqual(1)
+    expect(withGroup[0]?.date).toBe('2026-01-11T00:00Z')
+    expect(comp(withGroup[0] as FixtureEvent).group?.name).toBe(
+      '2026 Campeonato Gaúcho - Group A',
+    )
+    expect(comp(withGroup[0] as FixtureEvent).group?.groupId).toBe('1')
+    for (const event of firstRound) {
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+    }
+  })
+
+  it('fase gaucho---relegation expõe Relegation Group sem leg nem series', () => {
+    const relegation = events.filter((e) => e.season?.slug === 'gaucho---relegation')
+    expect(relegation.length).toBeGreaterThanOrEqual(1)
+    for (const event of relegation) {
+      expect(comp(event).group?.name).toBe('Relegation Group')
+      expect(comp(event).group?.groupId).toBe('1')
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+    }
+  })
+
+  it('quarterfinals é jogo único sem leg nem series', () => {
+    const quarters = events.filter((e) => e.season?.slug === 'quarterfinals')
+    expect(quarters.length).toBeGreaterThanOrEqual(1)
+    for (const event of quarters) {
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+      expect(comp(event).group ?? null).toBeNull()
+      expect(comp(event).status?.type?.name).toBe('STATUS_FULL_TIME')
+    }
+    const caxiasYpiranga = quarters.find((e) => e.id === '401858934')
+    expect(caxiasYpiranga).toBeTruthy()
+    expect(teamIdBySide(caxiasYpiranga as FixtureEvent, 'home')).toBe('17131')
+    expect(teamIdBySide(caxiasYpiranga as FixtureEvent, 'away')).toBe('4935')
+    const competitors = comp(caxiasYpiranga as FixtureEvent).competitors ?? []
+    const caxias = competitors.find((c) => c.team?.id === '17131')
+    const ypiranga = competitors.find((c) => c.team?.id === '4935')
+    expect(ypiranga?.winner).toBe(true)
+    expect(caxias?.winner).toBe(false)
+  })
+
+  it('farroupilha---semifinals liga ida e volta por leg e series, com pênaltis na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'farroupilha---semifinals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-02-16')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-02-21')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Farroupilha - Semifinals')
+    expect(comp(leg2).series?.title).toBe('Farroupilha - Semifinals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.totalCompetitions).toBe(2)
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+
+    expect(comp(leg2).status?.type?.name).toBe('STATUS_FINAL_PEN')
+    expect(comp(leg2).status?.type?.detail).toBe('FT-Pens')
+    const competitors = comp(leg2).competitors ?? []
+    const caxias = competitors.find((c) => c.team?.id === '17131')
+    const saoLuiz = competitors.find((c) => c.team?.id === '7391')
+    expect(caxias?.shootoutScore).toBe(2)
+    expect(saoLuiz?.shootoutScore).toBe(3)
+    expect(caxias?.winner).toBe(false)
+    expect(saoLuiz?.winner).toBe(true)
+    expect(caxias?.aggregateScore).toBe(2)
+    expect(saoLuiz?.aggregateScore).toBe(2)
+
+    const seriesByTeam = new Map(
+      (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
+    )
+    expect(seriesByTeam.get('17131')).toBe(2)
+    expect(seriesByTeam.get('7391')).toBe(2)
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('7391')
+  })
+
+  it('semifinals liga ida e volta por leg e series, com pênaltis na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'semifinals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-02-15')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-02-22')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Semifinals')
+    expect(comp(leg2).series?.title).toBe('Semifinals')
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
+
+    expect(comp(leg2).status?.type?.name).toBe('STATUS_FINAL_PEN')
+    expect(comp(leg2).status?.type?.detail).toBe('FT-Pens')
+    const competitors = comp(leg2).competitors ?? []
+    const juventude = competitors.find((c) => c.team?.id === '6270')
+    const gremio = competitors.find((c) => c.team?.id === GREMIO_ID)
+    expect(juventude?.shootoutScore).toBe(1)
+    expect(gremio?.shootoutScore).toBe(4)
+    expect(juventude?.winner).toBe(false)
+    expect(gremio?.winner).toBe(true)
+    expect(juventude?.aggregateScore).toBe(2)
+    expect(gremio?.aggregateScore).toBe(2)
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe(GREMIO_ID)
+  })
+
+  it('finals do título é Grenal em ida e volta com agregado e winner na series', () => {
+    const [leg1, leg2] = tiePair(events, 'finals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-03-01')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-03-08')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Finals')
+    expect(comp(leg2).series?.title).toBe('Finals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    expect(teamIdBySide(leg1, 'home')).toBe(GREMIO_ID)
+    expect(teamIdBySide(leg1, 'away')).toBe(INTERNACIONAL_ID)
+    expect(teamIdBySide(leg2, 'home')).toBe(INTERNACIONAL_ID)
+    expect(teamIdBySide(leg2, 'away')).toBe(GREMIO_ID)
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+    const seriesByTeam = new Map(
+      (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
+    )
+    for (const competitor of comp(leg2).competitors ?? []) {
+      expect(typeof competitor.aggregateScore).toBe('number')
+      expect(seriesByTeam.get(competitor.team?.id ?? '')).toBe(competitor.aggregateScore)
+    }
+    expect(seriesByTeam.get(GREMIO_ID)).toBe(4)
+    expect(seriesByTeam.get(INTERNACIONAL_ID)).toBe(1)
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe(GREMIO_ID)
+  })
+
+  it('farroupilha---finals liga ida e volta por leg e series com agregado na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'farroupilha---finals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-03-02')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-03-06')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Farroupilha - Finals')
+    expect(comp(leg2).series?.title).toBe('Farroupilha - Finals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('7391')
+  })
+
+  it('guarda Grenal também na first-round com mando e ids corretos', () => {
+    const grenal = events.find(
+      (e) =>
+        e.season?.slug === 'first-round' &&
+        ((teamIdBySide(e, 'home') === INTERNACIONAL_ID && teamIdBySide(e, 'away') === GREMIO_ID) ||
+          (teamIdBySide(e, 'home') === GREMIO_ID && teamIdBySide(e, 'away') === INTERNACIONAL_ID)),
+    )
+    expect(grenal).toBeTruthy()
+    expect(grenal?.id).toBe('762039')
+    expect(grenal?.date).toBe('2026-01-25T23:00Z')
+    expect(teamIdBySide(grenal as FixtureEvent, 'home')).toBe(INTERNACIONAL_ID)
+    expect(teamIdBySide(grenal as FixtureEvent, 'away')).toBe(GREMIO_ID)
+    const home = (comp(grenal as FixtureEvent).competitors ?? []).find((c) => c.homeAway === 'home')
+    const away = (comp(grenal as FixtureEvent).competitors ?? []).find((c) => c.homeAway === 'away')
+    expect(home?.score).toBe('4')
+    expect(away?.score).toBe('2')
+  })
+
+  it('scoreboard ao vivo não traz week nem matchday', () => {
+    expect(events.length).toBeGreaterThanOrEqual(1)
+    for (const event of events) {
+      expect(event.week).toBeUndefined()
+      expect(event.matchday).toBeUndefined()
+      expect('week' in event).toBe(false)
+      expect('matchday' in event).toBe(false)
+    }
+  })
+
+  it('altGameNote é sempre Brazil Gaucho e não identifica a fase', () => {
+    for (const event of events) {
+      expect(comp(event).altGameNote).toBe('Brazil Gaucho')
     }
   })
 })
