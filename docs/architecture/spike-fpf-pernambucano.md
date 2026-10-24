@@ -8,7 +8,7 @@ A temporada 2026 serve de proxy para planejar 2027. A pesquisa prévia em fontes
 
 ## Método
 
-Coleta ao vivo em 2026-10-24 (UTC), com `curl` e inspeção do DOM renderizado no preview colaborativo. Partiu-se da home oficial descoberta por link público (`https://www.fpf-pe.com.br/` → `/pt/home/`), depois `/pt/competicoes/`, e só então das páginas de jogos apontadas pelo próprio site. Não se assumiu URL de temporada a priori.
+Coleta ao vivo em 2026-10-24 (UTC), com `curl` e inspeção do DOM renderizado no navegador. Partiu-se da home oficial descoberta por link público (`https://www.fpf-pe.com.br/` → `/pt/home/`), depois `/pt/competicoes/`, e só então das páginas de jogos apontadas pelo próprio site. Não se assumiu URL de temporada a priori.
 
 O HTML e os JSON brutos ficaram fora do Git em `~/.cache/palpitae-pernambucano-research/` (manifesto `manifest.json`, script descartável `probe-fpf-pe.sh`). Trechos mínimos de markup usados neste relatório estão citados abaixo.
 
@@ -145,7 +145,7 @@ GO restrito (só PE, aceitando fuso assumido e sem pênaltis no feed) foi consid
 
 - Amostra concentrada no A1 masculino 2026 já encerrado (proxy). Temporada 2027 ainda não tinha shell equivalente no momento da coleta.
 - Nenhuma partida observada exibiu disputa de pênaltis no HTML; a lacuna de campo permanece mesmo com o REC a prever pênaltis.
-- Preview automatizado falhou em um clique/snapshot por timeout; a evidência de DOM veio de `preview_evaluate` bem-sucedido e de `curl` nos mesmos endpoints.
+- Uma navegação falhou por timeout. O DOM renderizado e as respostas HTTP dos mesmos endpoints foram conferidos separadamente.
 - FBF `/competicoes` (lista) respondeu 500; páginas `/competicoes/1` e `/competicoes/2` responderam 200. Página inacessível não foi tratada como fonte inexistente.
 - ToS de reuso automatizado das federações não foi litigio neste spike; o veredito já cai por contrato de dados e reuso técnico.
 
