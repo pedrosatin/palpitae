@@ -29,13 +29,13 @@ O recorte de contrato deste spike está em `api/src/providers/__fixtures__/espn-
 | Placeholder TBD | `team.displayName` + `status.detail` | Não apareceu nas 26 datas da temporada 2026 encerrada |
 | Calendário | `leagues[0].calendar` | Lista plana de datas ISO (`calendarType=day`), 26 entradas ao vivo |
 
-O `altGameNote` veio sempre como `Brazil Paulista` e não repete o nome da fase. O parser futuro deve ler `season.slug`, não o texto da nota.
+O `altGameNote` veio sempre como `Brazil Paulista`. O parser futuro lê a fase em `season.slug`. O `altGameNote` fixo `Brazil Paulista` não identifica a fase.
 
 ## Formato e type recomendado
 
 O Paulista 2026 tem fases distintas no `season.slug`: classificatória (`league-phase`), depois mata-mata em jogo único nas quartas e semifinais, e final em ida e volta. Pelo critério do lote (cup quando as fases vêm fatiadas no slug), o type recomendado para cadastro futuro é `cup`.
 
-O calendário plano (`calendarType=day`) parece o de uma liga, mas o contrato dos eventos é de copa com fases. O radar já lista `bra.camp.paulista` como `League` só no catálogo de descoberta; isso não define o `type` do cadastro piloto.
+O calendário plano (`calendarType=day`) tem o formato de liga. O contrato dos eventos é de copa com fases no `season.slug`. O radar lista `bra.camp.paulista` como `League` no catálogo de descoberta. Esse catálogo não define o `type` do cadastro piloto.
 
 ## Mapeamento atual do sync e fases novas
 
@@ -43,8 +43,8 @@ O calendário plano (`calendarType=day`) parece o de uma liga, mas o contrato do
 
 | Slug observado | Situação no mapa atual | Ação sugerida no ticket de parser |
 | --- | --- | --- |
-| `league-phase` | Ausente; não casa com o padrão `YYYY-…` de liga | Incluir no `ESPN_STAGE_MAP` (ex.: `LEAGUE_PHASE` ou reuso de `REGULAR_SEASON`, decisão do ticket de parser) |
-| `finals` | Ausente; o mapa tem só `final` (singular) | Incluir `finals` → `FINAL` |
+| `league-phase` | Ausente; não casa com o padrão `YYYY-…` de liga | O ticket de parser deveria mapear `league-phase` no `ESPN_STAGE_MAP` (ex.: `LEAGUE_PHASE` ou reuso de `REGULAR_SEASON`, decisão desse ticket) |
+| `finals` | Ausente; o mapa tem só `final` (singular) | O ticket de parser deveria mapear `finals` → `FINAL` |
 | `quarterfinals` | Já mapeado | Nenhuma |
 | `semifinals` | Já mapeado | Nenhuma |
 

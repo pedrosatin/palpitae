@@ -628,6 +628,12 @@ describe('fixture ESPN bra.camp.paulista', () => {
     }
   })
 
+  it('altGameNote é sempre Brazil Paulista e não identifica a fase', () => {
+    for (const event of events) {
+      expect(comp(event).altGameNote).toBe('Brazil Paulista')
+    }
+  })
+
   it('nenhum evento da fixture tem group (contrato do scoreboard Paulista)', () => {
     for (const event of events) {
       expect(comp(event).group ?? null).toBeNull()
