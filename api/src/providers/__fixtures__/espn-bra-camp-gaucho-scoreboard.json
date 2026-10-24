@@ -1,0 +1,1575 @@
+{
+ "leagues": [
+  {
+   "id": "2272",
+   "logos": [
+    {
+     "href": "https://a.espncdn.com/i/leaguelogos/soccer/500/2272.png",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "default"
+     ],
+     "lastUpdated": "2019-07-30T20:49Z"
+    },
+    {
+     "href": "https://a.espncdn.com/i/leaguelogos/soccer/500-dark/2272.png",
+     "width": 500,
+     "height": 500,
+     "alt": "",
+     "rel": [
+      "full",
+      "dark"
+     ],
+     "lastUpdated": "2019-07-30T20:49Z"
+    }
+   ],
+   "name": "Brazilian Campeonato Gaucho",
+   "calendarStartDate": "2026-01-01T05:00Z",
+   "abbreviation": "Brazil Gaucho",
+   "midsizeName": "BRA.CAMP.GAUCHO",
+   "calendar": [
+    "2026-01-10T08:00Z",
+    "2026-01-11T08:00Z",
+    "2026-01-14T08:00Z",
+    "2026-01-15T08:00Z",
+    "2026-01-26T08:00Z",
+    "2026-02-05T08:00Z",
+    "2026-02-07T08:00Z",
+    "2026-02-14T08:00Z",
+    "2026-02-21T08:00Z",
+    "2026-02-28T08:00Z",
+    "2026-03-02T08:00Z",
+    "2026-03-06T08:00Z",
+    "2026-03-07T08:00Z",
+    "2026-03-08T08:00Z"
+   ],
+   "season": {
+    "year": 2026,
+    "startDate": "2026-01-01T05:00Z",
+    "endDate": "2026-12-31T05:00Z",
+    "displayName": "2026 Campeonato Gaucho",
+    "type": {
+     "id": "4",
+     "type": 13852,
+     "name": "Finals",
+     "abbreviation": "2026 Campeonato Gaucho Playoffs"
+    }
+   },
+   "uid": "s:600~l:2272",
+   "calendarType": "day",
+   "calendarEndDate": "2026-12-31T05:00Z",
+   "slug": "bra.camp.gaucho"
+  }
+ ],
+ "events": [
+  {
+   "id": "762011",
+   "name": "Grêmio at Avenida",
+   "shortName": "GRE @ AVE",
+   "date": "2026-01-11T00:00Z",
+   "uid": "s:600~l:2272~e:762011",
+   "season": {
+    "year": 2026,
+    "type": 13854,
+    "slug": "first-round"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+4'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estadio dos Eucaliptos"
+   },
+   "competitions": [
+    {
+     "id": "762011",
+     "startDate": "2026-01-11T00:00Z",
+     "date": "2026-01-11T00:00Z",
+     "uid": "s:600~l:2272~e:762011~c:762011",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+4'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "6058",
+      "address": {
+       "city": "Porto Alegre",
+       "country": "Brazil"
+      },
+      "fullName": "Estadio dos Eucaliptos"
+     },
+     "notes": [],
+     "competitors": [
+      {
+       "id": "10266",
+       "score": "0",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:10266",
+       "winner": false,
+       "team": {
+        "id": "10266",
+        "color": "3B5B4C",
+        "name": "Avenida",
+        "location": "Avenida",
+        "shortDisplayName": "Avenida",
+        "abbreviation": "AVE",
+        "isActive": true,
+        "displayName": "Avenida",
+        "alternateColor": "F0EFED",
+        "uid": "s:600~t:10266"
+       }
+      },
+      {
+       "id": "6273",
+       "score": "4",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:6273",
+       "winner": true,
+       "team": {
+        "id": "6273",
+        "color": "0093EC",
+        "name": "Grêmio",
+        "location": "Grêmio",
+        "shortDisplayName": "Grêmio",
+        "abbreviation": "GRE",
+        "isActive": true,
+        "displayName": "Grêmio",
+        "alternateColor": "000000",
+        "uid": "s:600~t:6273"
+       }
+      }
+     ],
+     "group": {
+      "groupId": "1",
+      "name": "2026 Campeonato Gaúcho - Group A",
+      "abbreviation": "2026 Campeonato Gaúcho - Group A"
+     }
+    }
+   ]
+  },
+  {
+   "id": "762039",
+   "name": "Grêmio at Internacional",
+   "shortName": "GRE @ INT",
+   "date": "2026-01-25T23:00Z",
+   "uid": "s:600~l:2272~e:762039",
+   "season": {
+    "year": 2026,
+    "type": 13854,
+    "slug": "first-round"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+6'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estadio Beira-Rio"
+   },
+   "competitions": [
+    {
+     "id": "762039",
+     "startDate": "2026-01-25T23:00Z",
+     "date": "2026-01-25T23:00Z",
+     "uid": "s:600~l:2272~e:762039~c:762039",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "5376",
+      "address": {
+       "city": "Porto Alegre",
+       "country": "Brazil"
+      },
+      "fullName": "Estadio Beira-Rio"
+     },
+     "notes": [],
+     "competitors": [
+      {
+       "id": "1936",
+       "score": "4",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:1936",
+       "winner": true,
+       "team": {
+        "id": "1936",
+        "color": "C60000",
+        "name": "Internacional",
+        "location": "Internacional",
+        "shortDisplayName": "Internacional",
+        "abbreviation": "INT",
+        "isActive": true,
+        "displayName": "Internacional",
+        "alternateColor": "000000",
+        "uid": "s:600~t:1936"
+       }
+      },
+      {
+       "id": "6273",
+       "score": "2",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:6273",
+       "winner": false,
+       "team": {
+        "id": "6273",
+        "color": "0093EC",
+        "name": "Grêmio",
+        "location": "Grêmio",
+        "shortDisplayName": "Grêmio",
+        "abbreviation": "GRE",
+        "isActive": true,
+        "displayName": "Grêmio",
+        "alternateColor": "000000",
+        "uid": "s:600~t:6273"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401858984",
+   "name": "Monsoon at Guarany de Bagé",
+   "shortName": "MON @ GDB",
+   "date": "2026-02-06T19:00Z",
+   "uid": "s:600~l:2272~e:401858984",
+   "season": {
+    "year": 2026,
+    "type": 13849,
+    "slug": "gaucho---relegation"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+6'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estadio Antonio Magalhães Rossel"
+   },
+   "competitions": [
+    {
+     "id": "401858984",
+     "startDate": "2026-02-06T19:00Z",
+     "date": "2026-02-06T19:00Z",
+     "uid": "s:600~l:2272~e:401858984~c:401858984",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+6'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "9007",
+      "address": {
+       "city": "Bage",
+       "country": "Brazil"
+      },
+      "fullName": "Estadio Antonio Magalhães Rossel"
+     },
+     "notes": [],
+     "competitors": [
+      {
+       "id": "21369",
+       "score": "0",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:21369",
+       "winner": false,
+       "team": {
+        "id": "21369",
+        "color": "000000",
+        "name": "Guarany de Bagé",
+        "location": "Guarany de Bagé",
+        "shortDisplayName": "Guarany de Bagé",
+        "abbreviation": "GDB",
+        "isActive": true,
+        "displayName": "Guarany de Bagé",
+        "alternateColor": "C60000",
+        "uid": "s:600~t:21369"
+       }
+      },
+      {
+       "id": "22520",
+       "score": "0",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:22520",
+       "winner": false,
+       "team": {
+        "id": "22520",
+        "color": "000000",
+        "name": "Monsoon",
+        "location": "Monsoon",
+        "shortDisplayName": "Monsoon",
+        "abbreviation": "MON",
+        "isActive": true,
+        "displayName": "Monsoon",
+        "alternateColor": "C60000",
+        "uid": "s:600~t:22520"
+       }
+      }
+     ],
+     "group": {
+      "groupId": "1",
+      "name": "Relegation Group",
+      "abbreviation": "Relegation Group"
+     }
+    }
+   ]
+  },
+  {
+   "id": "401858934",
+   "name": "Ypiranga at Caxias do Sul",
+   "shortName": "YPI @ CAX",
+   "date": "2026-02-06T23:30Z",
+   "uid": "s:600~l:2272~e:401858934",
+   "season": {
+    "year": 2026,
+    "type": 14079,
+    "slug": "quarterfinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+4'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estádio Francisco Stédile (Centenário)"
+   },
+   "competitions": [
+    {
+     "id": "401858934",
+     "startDate": "2026-02-06T23:30Z",
+     "date": "2026-02-06T23:30Z",
+     "uid": "s:600~l:2272~e:401858934~c:401858934",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+4'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "5464",
+      "address": {
+       "city": "Caxias do Sul",
+       "country": "Brazil"
+      },
+      "fullName": "Estádio Francisco Stédile (Centenário)"
+     },
+     "notes": [],
+     "competitors": [
+      {
+       "id": "17131",
+       "score": "0",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:17131",
+       "winner": false,
+       "team": {
+        "id": "17131",
+        "color": "1C60AA",
+        "name": "Caxias do Sul",
+        "location": "Caxias do Sul",
+        "shortDisplayName": "Caxias do Sul",
+        "abbreviation": "CAX",
+        "isActive": true,
+        "displayName": "Caxias do Sul",
+        "alternateColor": "C60000",
+        "uid": "s:600~t:17131"
+       }
+      },
+      {
+       "id": "4935",
+       "score": "2",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:4935",
+       "winner": true,
+       "team": {
+        "id": "4935",
+        "color": "FFD65A",
+        "name": "Ypiranga",
+        "location": "Ypiranga",
+        "shortDisplayName": "Ypiranga",
+        "abbreviation": "YPI",
+        "isActive": true,
+        "displayName": "Ypiranga",
+        "alternateColor": "004526",
+        "uid": "s:600~t:4935"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401860799",
+   "name": "Juventude at Grêmio",
+   "shortName": "JUV @ GRE",
+   "date": "2026-02-15T20:30Z",
+   "uid": "s:600~l:2272~e:401860799",
+   "season": {
+    "year": 2026,
+    "type": 13853,
+    "slug": "semifinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+10'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Arena do Grêmio"
+   },
+   "competitions": [
+    {
+     "id": "401860799",
+     "startDate": "2026-02-15T20:30Z",
+     "date": "2026-02-15T20:30Z",
+     "uid": "s:600~l:2272~e:401860799~c:401860799",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+10'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "5039",
+      "address": {
+       "city": "Porto Alegre",
+       "country": "Brazil"
+      },
+      "fullName": "Arena do Grêmio"
+     },
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "6273",
+       "score": "1",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:6273",
+       "winner": false,
+       "team": {
+        "id": "6273",
+        "color": "0093EC",
+        "name": "Grêmio",
+        "location": "Grêmio",
+        "shortDisplayName": "Grêmio",
+        "abbreviation": "GRE",
+        "isActive": true,
+        "displayName": "Grêmio",
+        "alternateColor": "000000",
+        "uid": "s:600~t:6273"
+       }
+      },
+      {
+       "id": "6270",
+       "score": "1",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:6270",
+       "winner": false,
+       "team": {
+        "id": "6270",
+        "color": "417505",
+        "name": "Juventude",
+        "location": "Juventude",
+        "shortDisplayName": "Juventude",
+        "abbreviation": "JUV",
+        "isActive": true,
+        "displayName": "Juventude",
+        "alternateColor": "fafafc",
+        "uid": "s:600~t:6270"
+       }
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "title": "Semifinals",
+      "completed": false,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "6273",
+        "uid": "s:600~t:6273",
+        "winner": false
+       },
+       {
+        "id": "6270",
+        "uid": "s:600~t:6270",
+        "winner": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401860802",
+   "name": "Caxias do Sul at São Luiz-RS",
+   "shortName": "CAX @ SLU",
+   "date": "2026-02-16T22:00Z",
+   "uid": "s:600~l:2272~e:401860802",
+   "season": {
+    "year": 2026,
+    "type": 13851,
+    "slug": "farroupilha---semifinals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+7'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estádio 19 de Outubro"
+   },
+   "competitions": [
+    {
+     "id": "401860802",
+     "startDate": "2026-02-16T22:00Z",
+     "date": "2026-02-16T22:00Z",
+     "uid": "s:600~l:2272~e:401860802~c:401860802",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+7'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "10832",
+      "address": {
+       "city": "Ljuí",
+       "country": "Brazil"
+      },
+      "fullName": "Estádio 19 de Outubro"
+     },
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "7391",
+       "score": "1",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:7391",
+       "winner": false,
+       "team": {
+        "id": "7391",
+        "color": "C60000",
+        "name": "São Luiz-RS",
+        "location": "São Luiz-RS",
+        "shortDisplayName": "São Luiz-RS",
+        "abbreviation": "SLU",
+        "isActive": true,
+        "displayName": "São Luiz-RS",
+        "alternateColor": "fafafa",
+        "uid": "s:600~t:7391"
+       }
+      },
+      {
+       "id": "17131",
+       "score": "2",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:17131",
+       "winner": true,
+       "team": {
+        "id": "17131",
+        "color": "1C60AA",
+        "name": "Caxias do Sul",
+        "location": "Caxias do Sul",
+        "shortDisplayName": "Caxias do Sul",
+        "abbreviation": "CAX",
+        "isActive": true,
+        "displayName": "Caxias do Sul",
+        "alternateColor": "C60000",
+        "uid": "s:600~t:17131"
+       }
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "title": "Farroupilha - Semifinals",
+      "completed": false,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "7391",
+        "uid": "s:600~t:7391",
+        "winner": false
+       },
+       {
+        "id": "17131",
+        "uid": "s:600~t:17131",
+        "winner": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401860803",
+   "name": "São Luiz-RS at Caxias do Sul",
+   "shortName": "SLU @ CAX",
+   "date": "2026-02-21T19:00Z",
+   "uid": "s:600~l:2272~e:401860803",
+   "season": {
+    "year": 2026,
+    "type": 13851,
+    "slug": "farroupilha---semifinals"
+   },
+   "status": {
+    "clock": 5760.0,
+    "displayClock": "96'",
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    },
+    "period": 5
+   },
+   "venue": {
+    "displayName": "Estádio Francisco Stédile (Centenário)"
+   },
+   "competitions": [
+    {
+     "id": "401860803",
+     "startDate": "2026-02-21T19:00Z",
+     "date": "2026-02-21T19:00Z",
+     "uid": "s:600~l:2272~e:401860803~c:401860803",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5760.0,
+      "displayClock": "96'",
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      },
+      "period": 5
+     },
+     "venue": {
+      "id": "5464",
+      "address": {
+       "city": "Caxias do Sul",
+       "country": "Brazil"
+      },
+      "fullName": "Estádio Francisco Stédile (Centenário)"
+     },
+     "notes": [
+      {
+       "text": "2nd Leg - Tied on aggregate - São Luiz-RS advance 3-2 on penalties",
+       "headline": "2nd Leg - Tied on aggregate - São Luiz-RS advance 3-2 on penalties",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "17131",
+       "score": "0",
+       "order": 0,
+       "shootoutScore": 2,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:17131",
+       "aggregateScore": 2.0,
+       "winner": false,
+       "team": {
+        "id": "17131",
+        "color": "1C60AA",
+        "name": "Caxias do Sul",
+        "location": "Caxias do Sul",
+        "shortDisplayName": "Caxias do Sul",
+        "abbreviation": "CAX",
+        "isActive": true,
+        "displayName": "Caxias do Sul",
+        "alternateColor": "C60000",
+        "uid": "s:600~t:17131"
+       }
+      },
+      {
+       "id": "7391",
+       "score": "1",
+       "order": 1,
+       "shootoutScore": 3,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:7391",
+       "aggregateScore": 2.0,
+       "winner": true,
+       "team": {
+        "id": "7391",
+        "color": "C60000",
+        "name": "São Luiz-RS",
+        "location": "São Luiz-RS",
+        "shortDisplayName": "São Luiz-RS",
+        "abbreviation": "SLU",
+        "isActive": true,
+        "displayName": "São Luiz-RS",
+        "alternateColor": "fafafa",
+        "uid": "s:600~t:7391"
+       }
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "title": "Farroupilha - Semifinals",
+      "completed": true,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "17131",
+        "uid": "s:600~t:17131",
+        "aggregateScore": 2.0,
+        "winner": false
+       },
+       {
+        "id": "7391",
+        "uid": "s:600~t:7391",
+        "aggregateScore": 2.0,
+        "winner": true
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401860806",
+   "name": "Grêmio at Juventude",
+   "shortName": "GRE @ JUV",
+   "date": "2026-02-22T21:00Z",
+   "uid": "s:600~l:2272~e:401860806",
+   "season": {
+    "year": 2026,
+    "type": 13853,
+    "slug": "semifinals"
+   },
+   "status": {
+    "clock": 5760.0,
+    "displayClock": "96'",
+    "type": {
+     "id": "47",
+     "name": "STATUS_FINAL_PEN",
+     "state": "post",
+     "completed": true,
+     "description": "Final Score - After Penalties",
+     "detail": "FT-Pens",
+     "shortDetail": "FT-Pens"
+    },
+    "period": 5
+   },
+   "venue": {
+    "displayName": "Alfredo Jaconi"
+   },
+   "competitions": [
+    {
+     "id": "401860806",
+     "startDate": "2026-02-22T21:00Z",
+     "date": "2026-02-22T21:00Z",
+     "uid": "s:600~l:2272~e:401860806~c:401860806",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5760.0,
+      "displayClock": "96'",
+      "type": {
+       "id": "47",
+       "name": "STATUS_FINAL_PEN",
+       "state": "post",
+       "completed": true,
+       "description": "Final Score - After Penalties",
+       "detail": "FT-Pens",
+       "shortDetail": "FT-Pens"
+      },
+      "period": 5
+     },
+     "venue": {
+      "id": "10810",
+      "address": {
+       "city": "Caxias do Sul",
+       "country": "Brazil"
+      },
+      "fullName": "Alfredo Jaconi"
+     },
+     "notes": [
+      {
+       "text": "2nd Leg - Tied on aggregate - Grêmio advance 4-1 on penalties",
+       "headline": "2nd Leg - Tied on aggregate - Grêmio advance 4-1 on penalties",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "6270",
+       "score": "1",
+       "order": 0,
+       "shootoutScore": 1,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:6270",
+       "aggregateScore": 2.0,
+       "winner": false,
+       "team": {
+        "id": "6270",
+        "color": "417505",
+        "name": "Juventude",
+        "location": "Juventude",
+        "shortDisplayName": "Juventude",
+        "abbreviation": "JUV",
+        "isActive": true,
+        "displayName": "Juventude",
+        "alternateColor": "fafafc",
+        "uid": "s:600~t:6270"
+       }
+      },
+      {
+       "id": "6273",
+       "score": "1",
+       "order": 1,
+       "shootoutScore": 4,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:6273",
+       "aggregateScore": 2.0,
+       "winner": true,
+       "team": {
+        "id": "6273",
+        "color": "0093EC",
+        "name": "Grêmio",
+        "location": "Grêmio",
+        "shortDisplayName": "Grêmio",
+        "abbreviation": "GRE",
+        "isActive": true,
+        "displayName": "Grêmio",
+        "alternateColor": "000000",
+        "uid": "s:600~t:6273"
+       }
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "title": "Semifinals",
+      "completed": true,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "6270",
+        "uid": "s:600~t:6270",
+        "aggregateScore": 2.0,
+        "winner": false
+       },
+       {
+        "id": "6273",
+        "uid": "s:600~t:6273",
+        "aggregateScore": 2.0,
+        "winner": true
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401862322",
+   "name": "Internacional at Grêmio",
+   "shortName": "INT @ GRE",
+   "date": "2026-03-01T21:00Z",
+   "uid": "s:600~l:2272~e:401862322",
+   "season": {
+    "year": 2026,
+    "type": 13852,
+    "slug": "finals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+4'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Arena do Grêmio"
+   },
+   "competitions": [
+    {
+     "id": "401862322",
+     "startDate": "2026-03-01T21:00Z",
+     "date": "2026-03-01T21:00Z",
+     "uid": "s:600~l:2272~e:401862322~c:401862322",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+4'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "5039",
+      "address": {
+       "city": "Porto Alegre",
+       "country": "Brazil"
+      },
+      "fullName": "Arena do Grêmio"
+     },
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "6273",
+       "score": "3",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:6273",
+       "winner": true,
+       "team": {
+        "id": "6273",
+        "color": "0093EC",
+        "name": "Grêmio",
+        "location": "Grêmio",
+        "shortDisplayName": "Grêmio",
+        "abbreviation": "GRE",
+        "isActive": true,
+        "displayName": "Grêmio",
+        "alternateColor": "000000",
+        "uid": "s:600~t:6273"
+       }
+      },
+      {
+       "id": "1936",
+       "score": "0",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:1936",
+       "winner": false,
+       "team": {
+        "id": "1936",
+        "color": "C60000",
+        "name": "Internacional",
+        "location": "Internacional",
+        "shortDisplayName": "Internacional",
+        "abbreviation": "INT",
+        "isActive": true,
+        "displayName": "Internacional",
+        "alternateColor": "000000",
+        "uid": "s:600~t:1936"
+       }
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "title": "Finals",
+      "completed": false,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "6273",
+        "uid": "s:600~t:6273",
+        "winner": false
+       },
+       {
+        "id": "1936",
+        "uid": "s:600~t:1936",
+        "winner": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401862381",
+   "name": "Novo Hamburgo at São Luiz-RS",
+   "shortName": "NVH @ SLU",
+   "date": "2026-03-02T22:00Z",
+   "uid": "s:600~l:2272~e:401862381",
+   "season": {
+    "year": 2026,
+    "type": 13850,
+    "slug": "farroupilha---finals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+8'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estádio 19 de Outubro"
+   },
+   "competitions": [
+    {
+     "id": "401862381",
+     "startDate": "2026-03-02T22:00Z",
+     "date": "2026-03-02T22:00Z",
+     "uid": "s:600~l:2272~e:401862381~c:401862381",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+8'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "10832",
+      "address": {
+       "city": "Ljuí",
+       "country": "Brazil"
+      },
+      "fullName": "Estádio 19 de Outubro"
+     },
+     "notes": [
+      {
+       "text": "1st Leg",
+       "headline": "1st Leg",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "7391",
+       "score": "1",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:7391",
+       "winner": true,
+       "team": {
+        "id": "7391",
+        "color": "C60000",
+        "name": "São Luiz-RS",
+        "location": "São Luiz-RS",
+        "shortDisplayName": "São Luiz-RS",
+        "abbreviation": "SLU",
+        "isActive": true,
+        "displayName": "São Luiz-RS",
+        "alternateColor": "fafafa",
+        "uid": "s:600~t:7391"
+       }
+      },
+      {
+       "id": "7388",
+       "score": "0",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:7388",
+       "winner": false,
+       "team": {
+        "id": "7388",
+        "color": "0093EC",
+        "name": "Novo Hamburgo",
+        "location": "Novo Hamburgo",
+        "shortDisplayName": "Novo Hamburgo",
+        "abbreviation": "NVH",
+        "isActive": true,
+        "displayName": "Novo Hamburgo",
+        "alternateColor": "fafafa",
+        "uid": "s:600~t:7388"
+       }
+      }
+     ],
+     "leg": {
+      "value": 1,
+      "displayValue": "1st Leg"
+     },
+     "series": {
+      "title": "Farroupilha - Finals",
+      "completed": false,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "7391",
+        "uid": "s:600~t:7391",
+        "winner": false
+       },
+       {
+        "id": "7388",
+        "uid": "s:600~t:7388",
+        "winner": false
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401862382",
+   "name": "São Luiz-RS at Novo Hamburgo",
+   "shortName": "SLU @ NVH",
+   "date": "2026-03-06T23:00Z",
+   "uid": "s:600~l:2272~e:401862382",
+   "season": {
+    "year": 2026,
+    "type": 13850,
+    "slug": "farroupilha---finals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+9'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estádio do Vale"
+   },
+   "competitions": [
+    {
+     "id": "401862382",
+     "startDate": "2026-03-06T23:00Z",
+     "date": "2026-03-06T23:00Z",
+     "uid": "s:600~l:2272~e:401862382~c:401862382",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+9'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "10833",
+      "address": {
+       "city": "Novo Hamburgo",
+       "country": "Brazil"
+      },
+      "fullName": "Estádio do Vale"
+     },
+     "notes": [
+      {
+       "text": "2nd Leg - São Luiz-RS win 2-1 on aggregate",
+       "headline": "2nd Leg - São Luiz-RS win 2-1 on aggregate",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "7388",
+       "score": "1",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:7388",
+       "aggregateScore": 1.0,
+       "winner": false,
+       "team": {
+        "id": "7388",
+        "color": "0093EC",
+        "name": "Novo Hamburgo",
+        "location": "Novo Hamburgo",
+        "shortDisplayName": "Novo Hamburgo",
+        "abbreviation": "NVH",
+        "isActive": true,
+        "displayName": "Novo Hamburgo",
+        "alternateColor": "fafafa",
+        "uid": "s:600~t:7388"
+       }
+      },
+      {
+       "id": "7391",
+       "score": "1",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:7391",
+       "aggregateScore": 2.0,
+       "winner": true,
+       "team": {
+        "id": "7391",
+        "color": "C60000",
+        "name": "São Luiz-RS",
+        "location": "São Luiz-RS",
+        "shortDisplayName": "São Luiz-RS",
+        "abbreviation": "SLU",
+        "isActive": true,
+        "displayName": "São Luiz-RS",
+        "alternateColor": "fafafa",
+        "uid": "s:600~t:7391"
+       }
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "title": "Farroupilha - Finals",
+      "completed": true,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "7388",
+        "uid": "s:600~t:7388",
+        "aggregateScore": 1.0,
+        "winner": false
+       },
+       {
+        "id": "7391",
+        "uid": "s:600~t:7391",
+        "aggregateScore": 2.0,
+        "winner": true
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "401862323",
+   "name": "Grêmio at Internacional",
+   "shortName": "GRE @ INT",
+   "date": "2026-03-08T21:00Z",
+   "uid": "s:600~l:2272~e:401862323",
+   "season": {
+    "year": 2026,
+    "type": 13852,
+    "slug": "finals"
+   },
+   "status": {
+    "clock": 5400.0,
+    "displayClock": "90'+11'",
+    "type": {
+     "id": "28",
+     "name": "STATUS_FULL_TIME",
+     "state": "post",
+     "completed": true,
+     "description": "Full Time",
+     "detail": "FT",
+     "shortDetail": "FT"
+    },
+    "period": 2
+   },
+   "venue": {
+    "displayName": "Estadio Beira-Rio"
+   },
+   "competitions": [
+    {
+     "id": "401862323",
+     "startDate": "2026-03-08T21:00Z",
+     "date": "2026-03-08T21:00Z",
+     "uid": "s:600~l:2272~e:401862323~c:401862323",
+     "altGameNote": "Brazil Gaucho",
+     "status": {
+      "clock": 5400.0,
+      "displayClock": "90'+11'",
+      "type": {
+       "id": "28",
+       "name": "STATUS_FULL_TIME",
+       "state": "post",
+       "completed": true,
+       "description": "Full Time",
+       "detail": "FT",
+       "shortDetail": "FT"
+      },
+      "period": 2
+     },
+     "venue": {
+      "id": "5376",
+      "address": {
+       "city": "Porto Alegre",
+       "country": "Brazil"
+      },
+      "fullName": "Estadio Beira-Rio"
+     },
+     "notes": [
+      {
+       "text": "2nd Leg - Grêmio win 4-1 on aggregate",
+       "headline": "2nd Leg - Grêmio win 4-1 on aggregate",
+       "type": "event"
+      }
+     ],
+     "competitors": [
+      {
+       "id": "1936",
+       "score": "1",
+       "order": 0,
+       "type": "team",
+       "homeAway": "home",
+       "uid": "s:600~t:1936",
+       "aggregateScore": 1.0,
+       "winner": false,
+       "team": {
+        "id": "1936",
+        "color": "C60000",
+        "name": "Internacional",
+        "location": "Internacional",
+        "shortDisplayName": "Internacional",
+        "abbreviation": "INT",
+        "isActive": true,
+        "displayName": "Internacional",
+        "alternateColor": "000000",
+        "uid": "s:600~t:1936"
+       }
+      },
+      {
+       "id": "6273",
+       "score": "1",
+       "order": 1,
+       "type": "team",
+       "homeAway": "away",
+       "uid": "s:600~t:6273",
+       "aggregateScore": 4.0,
+       "winner": true,
+       "team": {
+        "id": "6273",
+        "color": "0093EC",
+        "name": "Grêmio",
+        "location": "Grêmio",
+        "shortDisplayName": "Grêmio",
+        "abbreviation": "GRE",
+        "isActive": true,
+        "displayName": "Grêmio",
+        "alternateColor": "000000",
+        "uid": "s:600~t:6273"
+       }
+      }
+     ],
+     "leg": {
+      "value": 2,
+      "displayValue": "2nd Leg"
+     },
+     "series": {
+      "title": "Finals",
+      "completed": true,
+      "totalCompetitions": 2,
+      "competitors": [
+       {
+        "id": "1936",
+        "uid": "s:600~t:1936",
+        "aggregateScore": 1.0,
+        "winner": false
+       },
+       {
+        "id": "6273",
+        "uid": "s:600~t:6273",
+        "aggregateScore": 4.0,
+        "winner": true
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}
