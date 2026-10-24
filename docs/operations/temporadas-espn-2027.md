@@ -54,6 +54,10 @@ npx wrangler d1 execute palpitae --local --command "SELECT c.slug, COUNT(m.id) A
 
 O cadastro inicial deixa `penalty_phases = []`. O admin precisa configurar as fases permitidas conforme o regulamento confirmado de 2027. Não copie automaticamente o regulamento de 2026. O mapa de fases aceitas está em `api/src/matches/espnSync.ts`; fase desconhecida é descartada. Não existe endpoint de edição dessa configuração. Uma atualização D1 deve selecionar exatamente um slug e temporada e manter `visibility = pilot` durante a validação.
 
+### Limitação conhecida da Copa do Nordeste (feed 2026)
+
+Na coleta proxy de 2026, candidatos de volta de semifinal `401871835` e `401871836` (`dates=20260527`) chegaram com `season.slug=group-stage`, grupos C/D e sem `leg`/`series`. O sync canônico os importa como `GROUP_STAGE` com `leg=null`. O parser não corrige fase por ID de evento, texto de nota ou heurística de data. Se o padrão se repetir em 2027, a carga administrativa deve reconfirmar o feed na fonte e registrar o tratamento ou a limitação antes de configurar `penalty_phases` e promover o slug.
+
 Exemplo de formato SQL, a preencher e revisar antes de executar em arquivo próprio:
 
 ```sql
