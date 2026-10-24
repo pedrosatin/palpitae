@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import serieBJson from './__fixtures__/espn-bra-2-scoreboard.json'
 import copaJson from './__fixtures__/espn-bra-copa-do-brazil-scoreboard.json'
+import nordesteJson from './__fixtures__/espn-bra-copa-do-nordeste-scoreboard.json'
 import libertadoresJson from './__fixtures__/espn-conmebol-libertadores-scoreboard.json'
 import sudamericanaJson from './__fixtures__/espn-conmebol-sudamericana-scoreboard.json'
 
@@ -9,6 +10,7 @@ import sudamericanaJson from './__fixtures__/espn-conmebol-sudamericana-scoreboa
  *
  * Copas: docs/architecture/spike-espn-novos-campeonatos.md (coleta 2026-10-17).
  * Série B: docs/architecture/spike-espn-serie-b.md (coleta 2026-10-19).
+ * Copa do Nordeste: docs/architecture/spike-espn-copa-do-nordeste.md (coleta 2026-10-24).
  *
  * As fixtures são recortes de respostas reais de
  * `GET site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard?dates=YYYYMMDD`,
@@ -75,6 +77,7 @@ const FIXTURES = {
 } as unknown as Record<Slug, FixtureBoard>
 
 const SERIE_B = serieBJson as unknown as FixtureBoard
+const NORDESTE = nordesteJson as unknown as FixtureBoard
 
 /** Fases por competição em `leagues[0].calendar[0].entries`, como o relatório descreve. */
 const CALENDAR_SIZE: Record<Slug, number> = {
@@ -482,5 +485,180 @@ describe('fixture ESPN bra.2', () => {
       const names = (comp(event).competitors ?? []).map((c) => c.team?.displayName)
       expect(names).toEqual(expect.arrayContaining(['TBD Home', 'TBD Away']))
     }
+  })
+})
+
+/**
+ * Contrato da Copa do Nordeste (copa regional). Calendário de fases (list),
+ * group-stage com group, quarterfinals em jogo único, semifinals com leg 1
+ * estruturado, finals (plural) em ida/volta com aggregateScore/winner. Temporada
+ * 2026 encerrada na coleta: sem state=pre nem TBD nesta fixture. Sem amostra de
+ * STATUS_FINAL_PEN / shootoutScore neste slug.
+ */
+describe('fixture ESPN bra.copa_do_nordeste', () => {
+  const board = NORDESTE
+  const events = board.events ?? []
+
+  it('traz bra.copa_do_nordeste da temporada 2026 com calendário de fases', () => {
+    const league = board.leagues?.[0]
+    expect(league?.slug).toBe('bra.copa_do_nordeste')
+    expect(league?.season?.year).toBe(2026)
+    const first = league?.calendar?.[0]
+    expect(first && typeof first === 'object' && 'entries' in first).toBe(true)
+    const labels =
+      first && typeof first === 'object' && 'entries' in first
+        ? (first.entries?.map((entry) => entry.label) ?? [])
+        : []
+    expect(labels).toEqual(['Group', 'Quarterfinals', 'Semifinals', 'Finals'])
+  })
+
+  it('guarda as quatro fases observadas no season.slug', () => {
+    const phases = new Set(events.map((e) => e.season?.slug))
+    expect(phases).toEqual(
+      new Set(['group-stage', 'quarterfinals', 'semifinals', 'finals']),
+    )
+  })
+
+  it('todo evento tem data UTC, mandante/visitante e team.id numérico', () => {
+    expect(events.length).toBeGreaterThanOrEqual(6)
+    for (const event of events) {
+      expect(event.id).toMatch(/^\d+$/)
+      expect(Number.isFinite(Date.parse(event.date ?? ''))).toBe(true)
+      expect(event.season?.year).toBe(2026)
+      expect(event.season?.slug).toBeTruthy()
+      expect(comp(event).altGameNote).toBeTruthy()
+      const competitors = comp(event).competitors ?? []
+      expect(competitors).toHaveLength(2)
+      expect(competitors.map((c) => c.homeAway).sort()).toEqual(['away', 'home'])
+      for (const competitor of competitors) {
+        expect(competitor.team?.id).toMatch(/^\d+$/)
+        expect(competitor.team?.displayName).toBeTruthy()
+      }
+    }
+  })
+
+  it('eventos encerrados trazem placar em string e status post FT', () => {
+    const done = finished(events)
+    expect(done.length).toBe(events.length)
+    for (const event of done) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.score).toMatch(/^\d+$/)
+      }
+      expect(comp(event).status?.type?.state).toBe('post')
+      expect(comp(event).status?.type?.name).toBe('STATUS_FULL_TIME')
+      expect(comp(event).status?.type?.detail).toBe('FT')
+    }
+  })
+
+  it('fase de grupos expõe group e não tem leg nem series', () => {
+    const groupEvents = events.filter((e) => e.season?.slug === 'group-stage')
+    expect(groupEvents.length).toBeGreaterThanOrEqual(1)
+    for (const event of groupEvents) {
+      expect(comp(event).group?.name).toMatch(/^Group [A-D]$/)
+      expect(comp(event).group?.groupId).toMatch(/^\d+$/)
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+      expect(comp(event).altGameNote).toContain(comp(event).group?.name ?? '')
+    }
+  })
+
+  it('quartas são jogo único com winner no time e sem leg/series', () => {
+    const quarters = events.filter((e) => e.season?.slug === 'quarterfinals')
+    expect(quarters.length).toBeGreaterThanOrEqual(2)
+    for (const event of quarters) {
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+      expect(comp(event).group ?? null).toBeNull()
+      const winners = (comp(event).competitors ?? []).filter((c) => c.winner)
+      expect(winners).toHaveLength(1)
+    }
+    const abc = quarters.find((e) => e.id === '401871108')
+    expect(abc).toBeTruthy()
+    const home = (comp(abc as FixtureEvent).competitors ?? []).find(
+      (c) => c.homeAway === 'home',
+    )
+    expect(home?.team?.displayName).toBe('ABC')
+    expect(home?.winner).toBe(true)
+    expect(home?.score).toBe('4')
+  })
+
+  it('semifinal amostrada traz leg 1 e series aberta (totalCompetitions=2)', () => {
+    const semis = events.filter((e) => e.season?.slug === 'semifinals')
+    expect(semis.length).toBeGreaterThanOrEqual(1)
+    const leg1 = semis.find((e) => comp(e).leg?.value === 1)
+    expect(leg1).toBeTruthy()
+    expect(leg1?.id).toBe('401871834')
+    expect(leg1?.date?.slice(0, 10)).toBe('2026-05-21')
+    expect(comp(leg1 as FixtureEvent).leg).toEqual({
+      value: 1,
+      displayValue: '1st Leg',
+    })
+    expect(comp(leg1 as FixtureEvent).series?.title).toBe('Semifinals')
+    expect(comp(leg1 as FixtureEvent).series?.totalCompetitions).toBe(2)
+    expect(comp(leg1 as FixtureEvent).series?.completed).toBe(false)
+    expect(comp(leg1 as FixtureEvent).group ?? null).toBeNull()
+    for (const competitor of comp(leg1 as FixtureEvent).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+    // Nesta fixture não há volta com season.slug=semifinals (lacuna da fonte 2026).
+    expect(semis.some((e) => comp(e).leg?.value === 2)).toBe(false)
+  })
+
+  it('final (finals plural) liga ida e volta por leg e series, com agregado e classificado na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'finals')
+    expect(leg1.id).toBe('401874050')
+    expect(leg2.id).toBe('401874103')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-06-03')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-06-06')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Finals')
+    expect(comp(leg2).series?.title).toBe('Finals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.totalCompetitions).toBe(2)
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+
+    const seriesByTeam = new Map(
+      (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
+    )
+    for (const competitor of comp(leg2).competitors ?? []) {
+      expect(typeof competitor.aggregateScore).toBe('number')
+      expect(seriesByTeam.get(competitor.team?.id ?? '')).toBe(competitor.aggregateScore)
+    }
+
+    const vitoria = (comp(leg2).competitors ?? []).find((c) => c.team?.id === '3457')
+    const fortaleza = (comp(leg2).competitors ?? []).find((c) => c.team?.id === '6272')
+    expect(vitoria?.winner).toBe(true)
+    expect(fortaleza?.winner).toBe(false)
+    expect(vitoria?.aggregateScore).toBe(4)
+    expect(fortaleza?.aggregateScore).toBe(2)
+
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('3457')
+  })
+
+  it('não há amostra de pênaltis (STATUS_FINAL_PEN / shootoutScore) nesta temporada proxy', () => {
+    expect(shootouts(events)).toHaveLength(0)
+    for (const event of events) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.shootoutScore).toBeUndefined()
+      }
+    }
+  })
+
+  it('finals (plural) difere do final singular já mapeado no espnSync', () => {
+    // Lookup literal em ESPN_STAGE_MAP (espnSync.ts): existe `final`, não `finals`.
+    // resolveEspnStage é fail-closed; eventos com slug finals seriam descartados até o ticket 08.
+    expect(events.some((e) => e.season?.slug === 'finals')).toBe(true)
+    expect(events.some((e) => e.season?.slug === 'final')).toBe(false)
   })
 })
