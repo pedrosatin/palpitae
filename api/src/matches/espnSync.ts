@@ -110,13 +110,24 @@ const LEAGUE_PHASE = 'REGULAR_SEASON'
 /**
  * Resolve `event.season.slug` da ESPN para a fase canônica.
  *
- * 1. Slug no mapa de copa/mata-mata → código mapeado (ex.: semifinals → SEMI_FINALS).
- * 2. Slug no padrão `YYYY-…` (identificador de temporada da liga, ex.:
+ * 1. Exceção contextual: em `bra.camp.gaucho`, `first-round` é classificatória
+ *    de grupos → GROUP_STAGE (não mata-mata). Em outras copas o mesmo slug
+ *    continua FIRST_ROUND eliminatório.
+ * 2. Slug no mapa de copa/mata-mata → código mapeado (ex.: semifinals → SEMI_FINALS).
+ * 3. Slug no padrão `YYYY-…` (identificador de temporada da liga, ex.:
  *    `2026-brasileiro-serie-b`) → REGULAR_SEASON.
- * 3. Qualquer outro slug → descartado (fail-closed).
+ * 4. Qualquer outro slug → descartado (fail-closed).
  */
-function resolveEspnStage(slug: string | undefined): string | undefined {
+function resolveEspnStage(
+  slug: string | undefined,
+  competitionCode?: string,
+): string | undefined {
   if (!slug) return undefined
+  // Gaúcho: first-round comprovada como fase de grupos/pontos (spike 2026).
+  // Chave = competição + slug; não inferir por presença incompleta de group.
+  if (competitionCode === 'bra.camp.gaucho' && slug === 'first-round') {
+    return 'GROUP_STAGE'
+  }
   const mapped = ESPN_STAGE_MAP[slug]
   if (mapped) return mapped
   // Temporada de liga: a ESPN usa o id da edição (`2026-brasileiro-serie-b`)
@@ -238,14 +249,18 @@ function resolveStartTime(rawDate: unknown): string | null {
   return isoSeconds(new Date(parsed))
 }
 
-function extractValidEvent(ev: EspnScoreboardEvent, season: number): ValidEspnEvent | null {
+function extractValidEvent(
+  ev: EspnScoreboardEvent,
+  season: number,
+  competitionCode?: string,
+): ValidEspnEvent | null {
   const id = typeof ev.id === 'string' ? ev.id.trim() : ''
   if (!id) return null
   // O scoreboard pode responder com outra edição ao consultar datas futuras.
   // Só o ano explícito do evento autoriza importá-lo para a temporada pedida.
   if (ev.season?.year !== season) return null
 
-  const stage = resolveEspnStage(ev.season?.slug)
+  const stage = resolveEspnStage(ev.season?.slug, competitionCode)
   const startTime = resolveStartTime(ev.date)
   const comp: EspnEventCompetition | undefined = ev.competitions?.[0]
   if (!stage || !startTime || !comp) return null
@@ -542,7 +557,7 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
 
   const rawEvents = await fetchEventsForSync(opts.competitionCode, opts.dates)
   const validEvents = rawEvents
-    .map((ev) => extractValidEvent(ev, opts.season))
+    .map((ev) => extractValidEvent(ev, opts.season, opts.competitionCode))
     .filter((ev): ev is ValidEspnEvent => ev !== null)
 
   if (validEvents.length === 0) {

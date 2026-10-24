@@ -82,6 +82,12 @@ describe('roundLabel', () => {
 
 describe('isKnockoutPhase', () => {
   it.each([
+    'FIRST_ROUND',
+    'SECOND_ROUND',
+    'THIRD_ROUND',
+    'FOURTH_ROUND',
+    'FIFTH_ROUND',
+    'FIRST_STAGE',
     'SEMI_FINALS',
     'FINAL',
     'LAST_16',
