@@ -51,6 +51,17 @@
   color: var(--color-primary);
 }
 
+.incompleteNote {
+  margin: 0;
+  padding: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
 .tableWrap {
   overflow-x: auto;
 }

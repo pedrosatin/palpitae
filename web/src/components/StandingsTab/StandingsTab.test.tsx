@@ -2,8 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
-import StandingsTab, { computeStandings, isLeagueTable } from './StandingsTab'
-import { LEAGUE, FORM_SIZE } from './StandingsTab'
+import StandingsTab, {
+  computeStandings,
+  isGeneralRanking,
+  isLeagueTable,
+  standingsBucket,
+} from './StandingsTab'
+import { GENERAL_RANKING, LEAGUE, FORM_SIZE } from './StandingsTab'
 import { type Match } from '../MatchCard'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -63,6 +68,39 @@ describe('isLeagueTable', () => {
     expect(isLeagueTable('A')).toBe(false)
     expect(isLeagueTable('Group B')).toBe(false)
     expect(isLeagueTable('league')).toBe(false)
+    expect(isLeagueTable(GENERAL_RANKING)).toBe(false)
+  })
+})
+
+describe('isGeneralRanking', () => {
+  it('returns true only for the GENERAL_RANKING sentinel', () => {
+    expect(isGeneralRanking(GENERAL_RANKING)).toBe(true)
+    expect(isGeneralRanking(LEAGUE)).toBe(false)
+    expect(isGeneralRanking('B')).toBe(false)
+  })
+})
+
+describe('standingsBucket', () => {
+  it('maps REGULAR_SEASON and LEAGUE_PHASE without group to LEAGUE', () => {
+    expect(standingsBucket({ phase: 'REGULAR_SEASON', group_name: null })).toBe(LEAGUE)
+    expect(standingsBucket({ phase: 'LEAGUE_PHASE', group_name: null })).toBe(LEAGUE)
+  })
+
+  it('keeps named groups for GROUP_STAGE and prefers group_name on league phases', () => {
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: 'A' })).toBe('A')
+    expect(standingsBucket({ phase: 'REGULAR_SEASON', group_name: 'A' })).toBe('A')
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null })).toBe(null)
+  })
+
+  it('collapses TACA_GUANABARA into GENERAL_RANKING even when group_name is set', () => {
+    expect(standingsBucket({ phase: 'TACA_GUANABARA', group_name: null })).toBe(GENERAL_RANKING)
+    expect(standingsBucket({ phase: 'TACA_GUANABARA', group_name: 'B' })).toBe(GENERAL_RANKING)
+  })
+
+  it('ignores knockout phases without group_name', () => {
+    expect(standingsBucket({ phase: 'QUARTER_FINALS', group_name: null })).toBe(null)
+    expect(standingsBucket({ phase: 'TACA_GUANABARA_QUARTER_FINALS', group_name: null })).toBe(null)
+    expect(standingsBucket({ phase: 'FINAL', group_name: null })).toBe(null)
   })
 })
 
@@ -414,7 +452,62 @@ describe('StandingsTab — liga (pontos corridos)', () => {
     expect(screen.queryByText('ver jogos')).not.toBeInTheDocument()
   })
 
-  it('ignores knockout matches (group_name null fora de REGULAR_SEASON)', async () => {
+  it('renders Classificação from LEAGUE_PHASE matches without group_name (Paulista)', async () => {
+    mockFetch([
+      leagueMatch({
+        id: 'p1',
+        phase: 'LEAGUE_PHASE',
+        status: 'finished',
+        home_score: 2,
+        away_score: 1,
+      }),
+      leagueMatch({
+        id: 'p2',
+        phase: 'LEAGUE_PHASE',
+        status: 'finished',
+        home_score: 0,
+        away_score: 0,
+        home_team_id: 'bra',
+        away_team_id: 'uru',
+        away_team_name: 'Uruguai',
+        away_team_short_name: 'URU',
+      }),
+    ])
+    render(<StandingsTab competitionId="paulista" competitionType="cup" />)
+    expect(await screen.findByText('Classificação')).toBeInTheDocument()
+    expect(screen.queryByText(/Grupo /)).not.toBeInTheDocument()
+    expect(screen.queryByText('Ranking geral')).not.toBeInTheDocument()
+    // Placar agregado: BRA 2J 4P (vitória + empate); ARG 1J 0P; URU 1J 1P
+    const standings = computeStandings([
+      leagueMatch({
+        id: 'p1',
+        phase: 'LEAGUE_PHASE',
+        status: 'finished',
+        home_score: 2,
+        away_score: 1,
+      }),
+      leagueMatch({
+        id: 'p2',
+        phase: 'LEAGUE_PHASE',
+        status: 'finished',
+        home_score: 0,
+        away_score: 0,
+        home_team_id: 'bra',
+        away_team_id: 'uru',
+        away_team_name: 'Uruguai',
+        away_team_short_name: 'URU',
+      }),
+    ])
+    expect(standings.size).toBe(1)
+    expect(standings.has(LEAGUE)).toBe(true)
+    const bra = standings.get(LEAGUE)!.find((t) => t.team_id === 'bra')!
+    expect(bra.p).toBe(4)
+    expect(bra.j).toBe(2)
+    expect(bra.v).toBe(1)
+    expect(bra.e).toBe(1)
+  })
+
+  it('ignores knockout matches (group_name null fora das fases de pontos)', async () => {
     mockFetch([
       leagueMatch({
         id: 'k1',
@@ -527,5 +620,138 @@ describe('StandingsTab — forma recente (Últimas 4)', () => {
     await screen.findByText('Classificação')
     expect(screen.getByRole('img', { name: 'Vitória 2x0 contra ARG' })).toBeInTheDocument()
     expect(screen.getAllByRole('img', { name: /Empate 1x1/ })).toHaveLength(2)
+  })
+})
+
+describe('StandingsTab — Taça Guanabara (ranking geral)', () => {
+  function tgMatch(overrides: Partial<Match> = {}): Match {
+    return makeMatch({
+      phase: 'TACA_GUANABARA',
+      round: 'TACA_GUANABARA',
+      round_label: 'Taça Guanabara',
+      group_name: null,
+      status: 'finished',
+      ...overrides,
+    })
+  }
+
+  it('merges null and Group B into one GENERAL_RANKING table with correct points', () => {
+    const matches = [
+      tgMatch({
+        id: 'tg-null',
+        group_name: null,
+        home_score: 2,
+        away_score: 0,
+      }),
+      tgMatch({
+        id: 'tg-b',
+        group_name: 'B',
+        home_score: 1,
+        away_score: 1,
+        home_team_id: 'fla',
+        home_team_name: 'Flamengo',
+        home_team_short_name: 'FLA',
+        away_team_id: 'vas',
+        away_team_name: 'Vasco',
+        away_team_short_name: 'VAS',
+      }),
+    ]
+    const standings = computeStandings(matches)
+    expect([...standings.keys()]).toEqual([GENERAL_RANKING])
+    expect(standings.has('B')).toBe(false)
+    expect(standings.has(LEAGUE)).toBe(false)
+    const table = standings.get(GENERAL_RANKING)!
+    expect(table).toHaveLength(4)
+    const bra = table.find((t) => t.team_id === 'bra')!
+    const fla = table.find((t) => t.team_id === 'fla')!
+    expect(bra.p).toBe(3)
+    expect(bra.j).toBe(1)
+    expect(fla.p).toBe(1)
+    expect(fla.j).toBe(1)
+  })
+
+  it('does not mix knockout TG phases into the ranking and does not duplicate teams', () => {
+    const matches = [
+      tgMatch({ id: 'tg1', home_score: 1, away_score: 0 }),
+      tgMatch({
+        id: 'tg2',
+        group_name: 'B',
+        home_score: 0,
+        away_score: 2,
+        // mesmo BRA x ARG de tg1 — segundo jogo, não duplica linha
+      }),
+      makeMatch({
+        id: 'tg-qf',
+        phase: 'TACA_GUANABARA_QUARTER_FINALS',
+        round: 'TACA_GUANABARA_QUARTER_FINALS',
+        round_label: 'Quartas da Taça Guanabara',
+        group_name: null,
+        status: 'finished',
+        home_score: 3,
+        away_score: 0,
+        home_team_id: 'flu',
+        home_team_name: 'Fluminense',
+        home_team_short_name: 'FLU',
+        away_team_id: 'bot',
+        away_team_name: 'Botafogo',
+        away_team_short_name: 'BOT',
+      }),
+    ]
+    const standings = computeStandings(matches)
+    expect(standings.size).toBe(1)
+    const table = standings.get(GENERAL_RANKING)!
+    expect(table.map((t) => t.team_id).sort()).toEqual(['arg', 'bra'])
+    const bra = table.find((t) => t.team_id === 'bra')!
+    expect(bra.j).toBe(2)
+    expect(bra.p).toBe(3) // vitória + derrota
+    expect(table.find((t) => t.team_id === 'flu')).toBeUndefined()
+  })
+
+  it('renders Ranking geral with incompleteness note and never Grupo B', async () => {
+    mockFetch([
+      tgMatch({ id: 'tg-null', home_score: 2, away_score: 0 }),
+      tgMatch({
+        id: 'tg-b',
+        group_name: 'B',
+        home_score: 0,
+        away_score: 1,
+        home_team_id: 'fla',
+        home_team_name: 'Flamengo',
+        home_team_short_name: 'FLA',
+        away_team_id: 'vas',
+        away_team_name: 'Vasco',
+        away_team_short_name: 'VAS',
+      }),
+    ])
+    render(<StandingsTab competitionId="carioca" competitionType="cup" />)
+    expect(await screen.findByText('Ranking geral')).toBeInTheDocument()
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent(/não entrega grupos completos/i)
+    expect(note).toHaveTextContent(/não é a classificação oficial dos grupos/i)
+    expect(screen.queryByText(/Grupo B/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Classificação')).not.toBeInTheDocument()
+    expect(screen.queryByText('ver jogos')).not.toBeInTheDocument()
+    expect(screen.getByText('Brasil')).toBeInTheDocument()
+    expect(screen.getByText('Flamengo')).toBeInTheDocument()
+  })
+
+  it('keeps GROUP_STAGE A/B tables separate from TACA_GUANABARA ranking', () => {
+    const matches = [
+      makeMatch({
+        id: 'gs-a',
+        phase: 'GROUP_STAGE',
+        group_name: 'A',
+        status: 'finished',
+        home_score: 1,
+        away_score: 0,
+      }),
+      tgMatch({ id: 'tg1', group_name: 'B', home_score: 2, away_score: 2 }),
+    ]
+    const standings = computeStandings(matches)
+    expect(standings.has('A')).toBe(true)
+    expect(standings.has(GENERAL_RANKING)).toBe(true)
+    expect(standings.has('B')).toBe(false)
+    expect(standings.get('A')).toHaveLength(2)
+    expect(standings.get(GENERAL_RANKING)).toHaveLength(2)
   })
 })
