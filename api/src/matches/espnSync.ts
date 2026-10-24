@@ -256,11 +256,11 @@ async function fetchEventsForSync(
     return board.events ?? []
   }
 
-  const boards = await Promise.all(
-    uniqueDates.map((yyyymmdd) => fetchEspnScoreboard(competitionCode, yyyymmdd)),
-  )
+  // Sequencial: o cliente ESPN já serializa HTTP com pacing; evitar enfileirar
+  // N promises de uma vez deixa o custo e o progresso observáveis por data.
   const byId = new Map<string, EspnScoreboardEvent>()
-  for (const board of boards) {
+  for (const yyyymmdd of uniqueDates) {
+    const board = await fetchEspnScoreboard(competitionCode, yyyymmdd)
     for (const ev of board.events ?? []) {
       if (typeof ev.id === 'string' && ev.id) {
         byId.set(ev.id, ev)

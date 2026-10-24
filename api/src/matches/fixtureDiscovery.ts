@@ -1,5 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
+import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
+import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
@@ -20,7 +22,9 @@ type ActiveCompetition = {
  * O upsert atualiza confrontos e horários sem remover jogos fora desse horizonte.
  *
  * Custo sem retries: 1 request por competição football-data e 9 por competição
- * ESPN. As três copas ESPN planejam 27 requests por execução.
+ * ESPN. Dez competições ESPN-primárias planejam 90 requests por execução, com
+ * teto de syncs paralelas (`ESPN_MAX_CONCURRENT_COMPETITIONS`) e pacing HTTP
+ * no cliente (~1,3s entre inícios).
  */
 export async function discoverFixtures(
   db: D1Database,
@@ -85,12 +89,12 @@ export async function discoverFixtures(
     }
   }
 
-  // Mesmo teto do poller para football-data; ESPN não consome a cota FD.
+  // football-data compartilha 10 req/min; ESPN tem teto próprio + pacing HTTP.
   const fdComps = rows.results.filter((comp) => comp.provider === 'football-data')
   const espnComps = rows.results.filter((comp) => comp.provider === 'espn')
   await Promise.all([
     runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdComps, syncCompetition),
-    Promise.all(espnComps.map(syncCompetition)),
+    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnComps, syncCompetition),
   ])
 
   logEvent(ae, 'fixture_discovery_run', {
@@ -107,6 +111,8 @@ export async function discoverFixtures(
       sync_tasks: rows.results.length,
       api_requests_planned: plannedApiRequests,
       espn_dates: espnDates,
+      espn_max_concurrent: ESPN_MAX_CONCURRENT_COMPETITIONS,
+      espn_min_interval_ms: ESPN_MIN_INTERVAL_MS,
       total_ms: Date.now() - startedAt,
     }),
   )

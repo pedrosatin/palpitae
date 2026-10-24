@@ -1,18 +1,28 @@
 /// <reference types="node" />
 import type { DatabaseSync } from 'node:sqlite'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import template from '../providers/__fixtures__/espn-conmebol-sudamericana-scoreboard.json'
 import type { EspnScoreboardEvent } from '../providers/espn'
+import {
+  resetEspnClientForTests,
+  setEspnMinIntervalForTests,
+} from '../providers/espn'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { syncEspnFixtures } from './espnSync'
+import { ESPN_PRIMARY_COMPETITIONS, syncEspnFixtures } from './espnSync'
 import { discoverFixtures } from './fixtureDiscovery'
 import { pollActiveMatches } from './poller'
 
 const handles: DatabaseSync[] = []
+beforeEach(() => {
+  resetEspnClientForTests()
+  // Mantém exclusão mútua HTTP; zera só o sleep de 1,3s entre dezenas de mocks.
+  setEspnMinIntervalForTests(0)
+})
 afterEach(() => {
   handles.splice(0).forEach((db) => db.close())
   vi.unstubAllGlobals()
   vi.useRealTimers()
+  resetEspnClientForTests()
 })
 function database() {
   const result = createSqliteD1()
@@ -81,8 +91,7 @@ describe('cron ESPN com datas explícitas', () => {
   })
 
   it('descobre sem jogos no banco, consulta nove dias, preserva futuro e rejeita outro ano e TBD', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-10-15T04:00:00Z'))
+    const now = Date.parse('2026-10-15T04:00:00Z')
     const { sqlite, db } = database()
     sqlite.exec(
       `INSERT INTO competitions (id,name,slug,external_id,provider,season,status,visibility) VALUES ('cup','Copa Sul-Americana','conmebol-sudamericana-2026','conmebol.sudamericana','espn','2026','upcoming','pilot')`,
@@ -95,7 +104,7 @@ describe('cron ESPN com datas explícitas', () => {
     const fetch = feed({ '20261020': [valid, wrongYear, tbd] })
     const ae = { writeDataPoint: vi.fn() }
 
-    await discoverFixtures(db, '', ae as unknown as AnalyticsEngineDataset)
+    await discoverFixtures(db, '', ae as unknown as AnalyticsEngineDataset, now)
 
     expect(queriedDates(fetch).sort()).toEqual(
       Array.from({ length: 9 }, (_, i) => String(20261014 + i)),
@@ -112,13 +121,12 @@ describe('cron ESPN com datas explícitas', () => {
     ).toBe(9)
     valid.date = '2026-10-21T23:00:00Z'
     feed({ '20261021': [valid] })
-    await discoverFixtures(db, '')
+    await discoverFixtures(db, '', undefined, now)
     expect(sqlite.prepare('SELECT start_time FROM matches').get()).toEqual({
       start_time: '2026-10-21T23:00:00Z',
     })
     feed({})
-    vi.setSystemTime(new Date('2026-10-01T04:00:00Z'))
-    await discoverFixtures(db, '')
+    await discoverFixtures(db, '', undefined, Date.parse('2026-10-01T04:00:00Z'))
     expect(sqlite.prepare('SELECT external_id FROM matches').all()).toEqual([
       { external_id: 'future' },
     ])
@@ -244,5 +252,99 @@ describe('cron ESPN com datas explícitas', () => {
     )![0]
     expect(point.doubles[2]).toBe(9)
     expect(point.blobs[1]).toBe('ok')
+  })
+
+  it('cobre 10 competições ESPN temporárias só na janela de 9 dias, serializa HTTP e persiste contadores', async () => {
+    const { sqlite, db } = database()
+    const codes = Array.from({ length: 10 }, (_, i) => `test.cron.${i}`)
+    for (const [i, code] of codes.entries()) {
+      ESPN_PRIMARY_COMPETITIONS[code] = {
+        name: `Temp ${i}`,
+        slugPrefix: `temp-cron-${i}`,
+      }
+      sqlite
+        .prepare(
+          `INSERT INTO competitions (id,name,slug,external_id,provider,season,status,visibility)
+           VALUES (?, ?, ?, ?, 'espn', '2026', 'upcoming', 'pilot')`,
+        )
+        .run(`c${i}`, `Temp ${i}`, `temp-cron-${i}-2026`, code)
+    }
+
+    let inFlight = 0
+    let peak = 0
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      inFlight++
+      peak = Math.max(peak, inFlight)
+      const url = new URL(String(input))
+      const date = url.searchParams.get('dates') ?? ''
+      const slug = url.pathname.split('/').at(-2) ?? ''
+      const idx = codes.indexOf(slug)
+      const events =
+        date === '20261020' && idx >= 0
+          ? [event(`m-${idx}`, '2026-10-20T22:00:00Z')]
+          : []
+      // Identidade por competição: reusa o template trocando só o id do evento.
+      if (events[0]) {
+        events[0].competitions![0].competitors![0].team!.id = `home-${idx}`
+        events[0].competitions![0].competitors![1].team!.id = `away-${idx}`
+        events[0].competitions![0].competitors![0].team!.displayName = `Home ${idx}`
+        events[0].competitions![0].competitors![1].team!.displayName = `Away ${idx}`
+      }
+      inFlight--
+      return new Response(JSON.stringify({ events }))
+    })
+    vi.stubGlobal('fetch', fetch)
+    const ae = { writeDataPoint: vi.fn() }
+
+    try {
+      await discoverFixtures(
+        db,
+        '',
+        ae as unknown as AnalyticsEngineDataset,
+        Date.parse('2026-10-15T06:00:00Z'),
+      )
+
+      expect(fetch).toHaveBeenCalledTimes(90)
+      expect(peak).toBe(1)
+      const dates = [...new Set(queriedDates(fetch))].sort()
+      expect(dates).toEqual([
+        '20261014',
+        '20261015',
+        '20261016',
+        '20261017',
+        '20261018',
+        '20261019',
+        '20261020',
+        '20261021',
+        '20261022',
+      ])
+      expect(dates).not.toContain('20260101')
+      expect(dates).not.toContain('20261231')
+      expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 10 })
+      const point = ae.writeDataPoint.mock.calls.find(
+        ([p]) => p.blobs[0] === 'fixture_discovery_run',
+      )![0]
+      expect(point.blobs[1]).toBe('ok')
+      expect(point.doubles[0]).toBe(10)
+      expect(point.doubles[1]).toBe(10)
+      expect(point.doubles[2]).toBe(90)
+    } finally {
+      for (const code of codes) delete ESPN_PRIMARY_COMPETITIONS[code]
+    }
+  })
+
+  it('preserva backfill manual por dates confirmadas fora do cron', async () => {
+    const { sqlite, db } = database()
+    const ev = event('backfill', '2026-03-03T22:00:00Z')
+    feed({ '20260303': [ev] })
+    await syncEspnFixtures({
+      db,
+      competitionCode: 'conmebol.sudamericana',
+      season: 2026,
+      dates: ['20260303'],
+    })
+    expect(sqlite.prepare('SELECT external_id, start_time FROM matches').all()).toEqual([
+      { external_id: 'backfill', start_time: '2026-03-03T22:00:00Z' },
+    ])
   })
 })
