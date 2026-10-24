@@ -1160,7 +1160,6 @@ async function handleBulkPut(c: Context<AppContext>) {
   // Fetch all referenced matches that actually belong to the group's competition.
   // phase + competition.penalty_phases drive the per-match penalty gate; teams and
   // leg locate the other leg of a knockout tie.
-  const placeholders = matchIds.map(() => '?').join(', ')
   const matchRows = await db
     .prepare(
       `SELECT m.id, m.competition_id, m.home_team_id, m.away_team_id, m.start_time, m.status,
@@ -1168,9 +1167,9 @@ async function handleBulkPut(c: Context<AppContext>) {
        FROM matches m
        JOIN groups g ON g.competition_id = m.competition_id
        JOIN competitions c ON c.id = m.competition_id
-       WHERE g.id = ? AND m.id IN (${placeholders})`,
+       WHERE g.id = ? AND m.id IN (SELECT value FROM json_each(?))`,
     )
-    .bind(group_id, ...matchIds)
+    .bind(group_id, JSON.stringify(matchIds))
     .all<BulkMatchInfo>()
 
   const matchInfo = new Map(matchRows.results.map((m) => [m.id, m]))

@@ -383,6 +383,33 @@ describe('access controls with a real SQL database', () => {
     ).toBe(400)
   })
 
+  it('accepts exactly 100 bulk predictions without exceeding D1 parameter limit', async () => {
+    const { request, sqlite } = await fixture()
+    const matchInserts = Array.from(
+      { length: 100 },
+      (_, i) =>
+        `('bulk-${i}', 'competition', 'ext-${i}', 'football-data', 'home', 'away', '2099-01-01T00:00:00Z', 'scheduled')`,
+    ).join(', ')
+    sqlite.exec(
+      `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status) VALUES ${matchInserts}`,
+    )
+
+    const predictions = Array.from({ length: 100 }, (_, i) => ({
+      match_id: `bulk-${i}`,
+      predicted_home_score: 1,
+      predicted_away_score: 0,
+    }))
+
+    const res = await request('/predictions/bulk', 'member', 'PUT', {
+      group_id: 'group',
+      predictions,
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ok: boolean; saved: string[] }
+    expect(body.ok).toBe(true)
+    expect(body.saved).toHaveLength(100)
+  })
+
   it('counts concurrent requests in shared storage and resets only at a new window', async () => {
     const { db } = await fixture()
     const results = await Promise.all(
