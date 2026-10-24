@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import serieBJson from './__fixtures__/espn-bra-2-scoreboard.json'
+import paulistaJson from './__fixtures__/espn-bra-camp-paulista-scoreboard.json'
+import cariocaJson from './__fixtures__/espn-bra-camp-carioca-scoreboard.json'
+import mineiroJson from './__fixtures__/espn-bra-camp-mineiro-scoreboard.json'
 import gauchoJson from './__fixtures__/espn-bra-camp-gaucho-scoreboard.json'
 import copaJson from './__fixtures__/espn-bra-copa-do-brazil-scoreboard.json'
 import libertadoresJson from './__fixtures__/espn-conmebol-libertadores-scoreboard.json'
@@ -10,6 +13,9 @@ import sudamericanaJson from './__fixtures__/espn-conmebol-sudamericana-scoreboa
  *
  * Copas: docs/architecture/spike-espn-novos-campeonatos.md (coleta 2026-10-17).
  * Série B: docs/architecture/spike-espn-serie-b.md (coleta 2026-10-19).
+ * Paulista: docs/architecture/spike-espn-paulista.md (coleta 2026-10-24).
+ * Carioca: docs/architecture/spike-espn-carioca.md (coleta 2026-10-24).
+ * Mineiro: docs/architecture/spike-espn-mineiro.md (coleta 2026-10-24).
  * Gaúcho: docs/architecture/spike-espn-gaucho.md (coleta 2026-10-24).
  *
  * As fixtures são recortes de respostas reais de
@@ -77,6 +83,9 @@ const FIXTURES = {
 } as unknown as Record<Slug, FixtureBoard>
 
 const SERIE_B = serieBJson as unknown as FixtureBoard
+const PAULISTA = paulistaJson as unknown as FixtureBoard
+const CARIOCA = cariocaJson as unknown as FixtureBoard
+const MINEIRO = mineiroJson as unknown as FixtureBoard
 
 /** Fases por competição em `leagues[0].calendar[0].entries`, como o relatório descreve. */
 const CALENDAR_SIZE: Record<Slug, number> = {
@@ -483,6 +492,578 @@ describe('fixture ESPN bra.2', () => {
       expect(comp(event).status?.type?.detail).toBe('TBD')
       const names = (comp(event).competitors ?? []).map((c) => c.team?.displayName)
       expect(names).toEqual(expect.arrayContaining(['TBD Home', 'TBD Away']))
+    }
+  })
+})
+
+/**
+ * Contrato do Campeonato Paulista (copa com fases no slug e calendário plano).
+ * Classificatória em `league-phase`, quartas/semis em jogo único, final em
+ * ida/volta. Slugs `league-phase` e `finals` ainda estão fora do ESPN_STAGE_MAP.
+ */
+describe('fixture ESPN bra.camp.paulista', () => {
+  const board = PAULISTA
+  const events = board.events ?? []
+
+  it('traz bra.camp.paulista da temporada 2026 com calendário plano de datas', () => {
+    const league = board.leagues?.[0]
+    expect(league?.slug).toBe('bra.camp.paulista')
+    expect(league?.season?.year).toBe(2026)
+    const calendar = league?.calendar ?? []
+    expect(calendar.length).toBeGreaterThanOrEqual(5)
+    expect(calendar.every((entry) => typeof entry === 'string')).toBe(true)
+    for (const entry of calendar) {
+      expect(Number.isFinite(Date.parse(String(entry)))).toBe(true)
+    }
+  })
+
+  it('guarda as quatro fases observadas no season.slug', () => {
+    const phases = new Set(events.map((e) => e.season?.slug))
+    expect(phases).toEqual(
+      new Set(['league-phase', 'quarterfinals', 'semifinals', 'finals']),
+    )
+  })
+
+  it('todo evento tem data UTC, mandante/visitante e team.id numérico', () => {
+    expect(events.length).toBeGreaterThanOrEqual(6)
+    for (const event of events) {
+      expect(event.id).toMatch(/^\d+$/)
+      expect(Number.isFinite(Date.parse(event.date ?? ''))).toBe(true)
+      expect(event.season?.year).toBe(2026)
+      expect(event.season?.slug).toBeTruthy()
+      const competitors = comp(event).competitors ?? []
+      expect(competitors).toHaveLength(2)
+      expect(competitors.map((c) => c.homeAway).sort()).toEqual(['away', 'home'])
+      for (const competitor of competitors) {
+        expect(competitor.team?.id).toMatch(/^\d+$/)
+        expect(competitor.team?.displayName).toBeTruthy()
+      }
+    }
+  })
+
+  it('eventos encerrados trazem placar em string e status post FT ou FT-Pens', () => {
+    const done = finished(events)
+    expect(done.length).toBe(events.length)
+    for (const event of done) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.score).toMatch(/^\d+$/)
+      }
+      expect(comp(event).status?.type?.state).toBe('post')
+      expect(['STATUS_FULL_TIME', 'STATUS_FINAL_PEN']).toContain(
+        comp(event).status?.type?.name,
+      )
+      expect(['FT', 'FT-Pens']).toContain(comp(event).status?.type?.detail)
+    }
+  })
+
+  it('classificatória league-phase não tem group, leg nem series', () => {
+    const leaguePhase = events.filter((e) => e.season?.slug === 'league-phase')
+    expect(leaguePhase.length).toBeGreaterThanOrEqual(2)
+    for (const event of leaguePhase) {
+      expect(comp(event).group ?? null).toBeNull()
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+    }
+  })
+
+  it('quartas e semifinais são jogo único sem leg nem series', () => {
+    const singleKo = events.filter((e) =>
+      ['quarterfinals', 'semifinals'].includes(e.season?.slug ?? ''),
+    )
+    expect(singleKo.length).toBeGreaterThanOrEqual(2)
+    for (const event of singleKo) {
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+      expect(comp(event).group ?? null).toBeNull()
+    }
+  })
+
+  it('quarta decidida nos pênaltis expõe shootoutScore e winner', () => {
+    const pens = events.find((e) => e.id === '401861577')
+    expect(pens).toBeTruthy()
+    expect(pens?.season?.slug).toBe('quarterfinals')
+    expect(comp(pens as FixtureEvent).status?.type?.name).toBe('STATUS_FINAL_PEN')
+    expect(comp(pens as FixtureEvent).status?.type?.detail).toBe('FT-Pens')
+    const competitors = comp(pens as FixtureEvent).competitors ?? []
+    const corinthians = competitors.find((c) => c.team?.id === '874')
+    const portuguesa = competitors.find((c) => c.team?.id === '4773')
+    expect(corinthians?.shootoutScore).toBe(8)
+    expect(portuguesa?.shootoutScore).toBe(7)
+    expect(corinthians?.winner).toBe(true)
+    expect(portuguesa?.winner).toBe(false)
+    expect(comp(pens as FixtureEvent).leg ?? null).toBeNull()
+    expect(comp(pens as FixtureEvent).series ?? null).toBeNull()
+  })
+
+  it('final liga ida e volta por leg e series, com agregado na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'finals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-03-04')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-03-08')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Finals')
+    expect(comp(leg2).series?.title).toBe('Finals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.totalCompetitions).toBe(2)
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+    const seriesByTeam = new Map(
+      (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
+    )
+    for (const competitor of comp(leg2).competitors ?? []) {
+      expect(typeof competitor.aggregateScore).toBe('number')
+      expect(seriesByTeam.get(competitor.team?.id ?? '')).toBe(competitor.aggregateScore)
+    }
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('2029')
+  })
+
+  it('scoreboard ao vivo não traz week nem matchday', () => {
+    expect(events.length).toBeGreaterThanOrEqual(1)
+    for (const event of events) {
+      expect(event.week).toBeUndefined()
+      expect(event.matchday).toBeUndefined()
+      expect('week' in event).toBe(false)
+      expect('matchday' in event).toBe(false)
+    }
+  })
+
+  it('altGameNote é sempre Brazil Paulista e não identifica a fase', () => {
+    for (const event of events) {
+      expect(comp(event).altGameNote).toBe('Brazil Paulista')
+    }
+  })
+
+  it('nenhum evento da fixture tem group (contrato do scoreboard Paulista)', () => {
+    for (const event of events) {
+      expect(comp(event).group ?? null).toBeNull()
+    }
+  })
+})
+
+/**
+ * Contrato do Campeonato Carioca (copa estadual). Fases próprias no season.slug
+ * (Taça Guanabara, Taça Rio, rebaixamento), com `---` no literal ESPN. O mapa
+ * atual de espnSync descartaria todos os sete slugs até o ticket de parser.
+ */
+describe('fixture ESPN bra.camp.carioca', () => {
+  const board = CARIOCA
+  const events = board.events ?? []
+
+  it('traz bra.camp.carioca da temporada 2026 com calendário plano de datas', () => {
+    const league = board.leagues?.[0]
+    expect(league?.slug).toBe('bra.camp.carioca')
+    expect(league?.season?.year).toBe(2026)
+    const calendar = league?.calendar ?? []
+    expect(calendar.length).toBeGreaterThanOrEqual(5)
+    expect(calendar.every((entry) => typeof entry === 'string')).toBe(true)
+    for (const entry of calendar) {
+      expect(Number.isFinite(Date.parse(String(entry)))).toBe(true)
+    }
+  })
+
+  it('guarda as sete fases observadas no season.slug', () => {
+    const phases = new Set(events.map((e) => e.season?.slug))
+    expect(phases).toEqual(
+      new Set([
+        'taca-guanabara',
+        'taca-guanabara---quarterfinals',
+        'taca-guanabara---semifinals',
+        'taca-guanabara---final',
+        'taca-rio---semifinals',
+        'taca-rio---final',
+        'relegation-stage',
+      ]),
+    )
+  })
+
+  it('todo evento tem data UTC, mandante/visitante e team.id numérico', () => {
+    expect(events.length).toBeGreaterThanOrEqual(10)
+    for (const event of events) {
+      expect(event.id).toMatch(/^\d+$/)
+      expect(Number.isFinite(Date.parse(event.date ?? ''))).toBe(true)
+      expect(event.season?.year).toBe(2026)
+      expect(event.season?.slug).toBeTruthy()
+      const competitors = comp(event).competitors ?? []
+      expect(competitors).toHaveLength(2)
+      expect(competitors.map((c) => c.homeAway).sort()).toEqual(['away', 'home'])
+      for (const competitor of competitors) {
+        expect(competitor.team?.id).toMatch(/^\d+$/)
+        expect(competitor.team?.displayName).toBeTruthy()
+      }
+    }
+  })
+
+  it('eventos encerrados trazem placar em string e status post FT ou FT-Pens', () => {
+    const done = finished(events)
+    expect(done.length).toBe(events.length)
+    for (const event of done) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.score).toMatch(/^\d+$/)
+      }
+      expect(comp(event).status?.type?.state).toBe('post')
+      expect(['STATUS_FULL_TIME', 'STATUS_FINAL_PEN']).toContain(
+        comp(event).status?.type?.name,
+      )
+      expect(['FT', 'FT-Pens']).toContain(comp(event).status?.type?.detail)
+    }
+  })
+
+  it('fase de pontos taca-guanabara não tem leg nem series', () => {
+    const leaguePhase = events.filter((e) => e.season?.slug === 'taca-guanabara')
+    expect(leaguePhase.length).toBeGreaterThanOrEqual(2)
+    for (const event of leaguePhase) {
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+    }
+  })
+
+  it('guarda amostra de group na Taça Guanabara e no rebaixamento', () => {
+    const tgWithGroup = events.find(
+      (e) => e.season?.slug === 'taca-guanabara' && comp(e).group?.name === 'Group B',
+    )
+    expect(tgWithGroup).toBeTruthy()
+    expect(comp(tgWithGroup as FixtureEvent).group?.groupId).toBe('2')
+
+    const relegation = events.find((e) => e.season?.slug === 'relegation-stage')
+    expect(relegation).toBeTruthy()
+    expect(comp(relegation as FixtureEvent).group?.name).toBe('Relegation Group')
+    expect(comp(relegation as FixtureEvent).leg ?? null).toBeNull()
+    expect(comp(relegation as FixtureEvent).series ?? null).toBeNull()
+  })
+
+  it('quartas da Taça Guanabara são jogo único sem leg nem series', () => {
+    const quarters = events.filter((e) => e.season?.slug === 'taca-guanabara---quarterfinals')
+    expect(quarters.length).toBeGreaterThanOrEqual(2)
+    for (const event of quarters) {
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+      expect(comp(event).group ?? null).toBeNull()
+    }
+  })
+
+  it('quarta decidida nos pênaltis expõe shootoutScore e winner', () => {
+    const pens = events.find((e) => e.id === '401860540')
+    expect(pens).toBeTruthy()
+    expect(pens?.season?.slug).toBe('taca-guanabara---quarterfinals')
+    expect(comp(pens as FixtureEvent).status?.type?.name).toBe('STATUS_FINAL_PEN')
+    expect(comp(pens as FixtureEvent).status?.type?.detail).toBe('FT-Pens')
+    const competitors = comp(pens as FixtureEvent).competitors ?? []
+    const vasco = competitors.find((c) => c.team?.id === '3454')
+    const volta = competitors.find((c) => c.team?.id === '4806')
+    expect(vasco?.shootoutScore).toBe(5)
+    expect(volta?.shootoutScore).toBe(3)
+    expect(vasco?.winner).toBe(true)
+    expect(volta?.winner).toBe(false)
+  })
+
+  it('semifinais da Taça Guanabara ligam ida e volta por leg e series, com agregado na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'taca-guanabara---semifinals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-02-22')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-03-01')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Taça Guanabara - Semifinals')
+    expect(comp(leg2).series?.title).toBe('Taça Guanabara - Semifinals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.totalCompetitions).toBe(2)
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+    const seriesByTeam = new Map(
+      (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
+    )
+    for (const competitor of comp(leg2).competitors ?? []) {
+      expect(typeof competitor.aggregateScore).toBe('number')
+      expect(seriesByTeam.get(competitor.team?.id ?? '')).toBe(competitor.aggregateScore)
+    }
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('3445')
+  })
+
+  it('final da Taça Guanabara nos pênaltis expõe shootoutScore e winner sem series', () => {
+    const final = events.find((e) => e.id === '401863456')
+    expect(final).toBeTruthy()
+    expect(final?.season?.slug).toBe('taca-guanabara---final')
+    expect(comp(final as FixtureEvent).status?.type?.name).toBe('STATUS_FINAL_PEN')
+    expect(comp(final as FixtureEvent).leg ?? null).toBeNull()
+    expect(comp(final as FixtureEvent).series ?? null).toBeNull()
+    const competitors = comp(final as FixtureEvent).competitors ?? []
+    const flamengo = competitors.find((c) => c.team?.id === '819')
+    const fluminense = competitors.find((c) => c.team?.id === '3445')
+    expect(flamengo?.shootoutScore).toBe(5)
+    expect(fluminense?.shootoutScore).toBe(4)
+    expect(flamengo?.winner).toBe(true)
+    expect(fluminense?.winner).toBe(false)
+  })
+
+  it('semifinais da Taça Rio ligam ida e volta por leg e series', () => {
+    const [leg1, leg2] = tiePair(events, 'taca-rio---semifinals')
+    expect(comp(leg1).series?.title).toBe('Taça Rio - Semifinals')
+    expect(comp(leg2).series?.title).toBe('Taça Rio - Semifinals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.completed).toBe(true)
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('10265')
+  })
+
+  it('final da Taça Rio é jogo único sem leg nem series', () => {
+    const final = events.find((e) => e.season?.slug === 'taca-rio---final')
+    expect(final).toBeTruthy()
+    expect(comp(final as FixtureEvent).leg ?? null).toBeNull()
+    expect(comp(final as FixtureEvent).series ?? null).toBeNull()
+    expect(comp(final as FixtureEvent).status?.type?.name).toBe('STATUS_FULL_TIME')
+    const botafogo = (comp(final as FixtureEvent).competitors ?? []).find(
+      (c) => c.team?.id === '6086',
+    )
+    expect(botafogo?.winner).toBe(true)
+  })
+
+  it('scoreboard ao vivo não traz week nem matchday', () => {
+    expect(events.length).toBeGreaterThanOrEqual(1)
+    for (const event of events) {
+      expect(event.week).toBeUndefined()
+      expect(event.matchday).toBeUndefined()
+      expect('week' in event).toBe(false)
+      expect('matchday' in event).toBe(false)
+    }
+  })
+
+  it('altGameNote é sempre Brazil Carioca e não identifica a fase', () => {
+    for (const event of events) {
+      expect(comp(event).altGameNote).toBe('Brazil Carioca')
+    }
+  })
+})
+
+/**
+ * Contrato do Campeonato Mineiro (estadual com fases fatiadas). Calendário plano
+ * de datas, season.slug por fase (incluindo Troféu Inconfidência e playoffs),
+ * grupos A/B/C na classificatória, ida/volta com series nas semis/final do
+ * troféu e nas semis dos playoffs, final do título em jogo único. Temporada
+ * 2026 encerrada na coleta: sem state=pre nem TBD nesta fixture.
+ */
+describe('fixture ESPN bra.camp.mineiro', () => {
+  const board = MINEIRO
+  const events = board.events ?? []
+
+  it('traz bra.camp.mineiro da temporada 2026 com calendário plano de datas', () => {
+    const league = board.leagues?.[0]
+    expect(league?.slug).toBe('bra.camp.mineiro')
+    expect(league?.season?.year).toBe(2026)
+    const calendar = league?.calendar ?? []
+    expect(calendar.length).toBeGreaterThanOrEqual(5)
+    expect(calendar.every((entry) => typeof entry === 'string')).toBe(true)
+    for (const entry of calendar) {
+      expect(Number.isFinite(Date.parse(String(entry)))).toBe(true)
+    }
+  })
+
+  it('guarda as cinco fases observadas no season.slug', () => {
+    const phases = new Set(events.map((e) => e.season?.slug))
+    expect(phases).toEqual(
+      new Set([
+        'regular-season',
+        'trofeu-inconfidencia---semifinals',
+        'trofeu-inconfidencia---finals',
+        'playoffs---semifinals',
+        'playoffs---final',
+      ]),
+    )
+  })
+
+  it('todo evento tem data UTC, mandante/visitante e team.id numérico', () => {
+    expect(events.length).toBeGreaterThanOrEqual(9)
+    for (const event of events) {
+      expect(event.id).toMatch(/^\d+$/)
+      expect(Number.isFinite(Date.parse(event.date ?? ''))).toBe(true)
+      expect(event.season?.year).toBe(2026)
+      expect(event.season?.slug).toBeTruthy()
+      const competitors = comp(event).competitors ?? []
+      expect(competitors).toHaveLength(2)
+      expect(competitors.map((c) => c.homeAway).sort()).toEqual(['away', 'home'])
+      for (const competitor of competitors) {
+        expect(competitor.team?.id).toMatch(/^\d+$/)
+        expect(competitor.team?.displayName).toBeTruthy()
+      }
+    }
+  })
+
+  it('eventos encerrados trazem placar em string e status post FT ou FT-Pens', () => {
+    const done = finished(events)
+    expect(done.length).toBe(events.length)
+    for (const event of done) {
+      for (const competitor of comp(event).competitors ?? []) {
+        expect(competitor.score).toMatch(/^\d+$/)
+      }
+      expect(comp(event).status?.type?.state).toBe('post')
+      expect(['STATUS_FULL_TIME', 'STATUS_FINAL_PEN']).toContain(
+        comp(event).status?.type?.name,
+      )
+      expect(['FT', 'FT-Pens']).toContain(comp(event).status?.type?.detail)
+    }
+  })
+
+  it('classificatória regular-season expõe grupos A/B/C e não tem leg nem series', () => {
+    const leaguePhase = events.filter((e) => e.season?.slug === 'regular-season')
+    expect(leaguePhase.length).toBeGreaterThanOrEqual(3)
+    const groupNames = new Set(
+      leaguePhase.map((e) => comp(e).group?.name).filter(Boolean),
+    )
+    expect(groupNames).toEqual(new Set(['Group A', 'Group B', 'Group C']))
+    for (const event of leaguePhase) {
+      expect(comp(event).group?.groupId).toMatch(/^[123]$/)
+      expect(comp(event).leg ?? null).toBeNull()
+      expect(comp(event).series ?? null).toBeNull()
+    }
+  })
+
+  it('semifinal do Troféu Inconfidência liga ida e volta por leg e series, com pênaltis na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'trofeu-inconfidencia---semifinals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-02-21')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-03-01')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Troféu Inconfidência - Semifinals')
+    expect(comp(leg2).series?.title).toBe('Troféu Inconfidência - Semifinals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.totalCompetitions).toBe(2)
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+    expect(comp(leg1).group ?? null).toBeNull()
+    expect(comp(leg2).group ?? null).toBeNull()
+
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+
+    expect(comp(leg2).status?.type?.name).toBe('STATUS_FINAL_PEN')
+    expect(comp(leg2).status?.type?.detail).toBe('FT-Pens')
+    const competitors = comp(leg2).competitors ?? []
+    const north = competitors.find((c) => c.team?.id === '131565')
+    const uberlandia = competitors.find((c) => c.team?.id === '9460')
+    expect(north?.shootoutScore).toBe(4)
+    expect(uberlandia?.shootoutScore).toBe(3)
+    expect(north?.winner).toBe(true)
+    expect(uberlandia?.winner).toBe(false)
+    expect(north?.aggregateScore).toBe(1)
+    expect(uberlandia?.aggregateScore).toBe(1)
+
+    const seriesByTeam = new Map(
+      (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
+    )
+    expect(seriesByTeam.get('131565')).toBe(1)
+    expect(seriesByTeam.get('9460')).toBe(1)
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('131565')
+  })
+
+  it('semifinal dos playoffs liga ida e volta por leg e series, com pênaltis na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'playoffs---semifinals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-02-22')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-03-01')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Playoffs - Semifinals')
+    expect(comp(leg2).series?.title).toBe('Playoffs - Semifinals')
+    expect(comp(leg1).series?.completed).toBe(false)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    expect(teamIdBySide(leg2, 'away')).toBe(teamIdBySide(leg1, 'home'))
+    expect(teamIdBySide(leg2, 'home')).toBe(teamIdBySide(leg1, 'away'))
+
+    expect(comp(leg2).status?.type?.name).toBe('STATUS_FINAL_PEN')
+    const competitors = comp(leg2).competitors ?? []
+    const atletico = competitors.find((c) => c.team?.id === '7632')
+    const america = competitors.find((c) => c.team?.id === '6154')
+    expect(atletico?.shootoutScore).toBe(4)
+    expect(america?.shootoutScore).toBe(2)
+    expect(atletico?.winner).toBe(true)
+    expect(america?.winner).toBe(false)
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('7632')
+  })
+
+  it('final do Troféu Inconfidência liga ida e volta por leg e series, com agregado na volta', () => {
+    const [leg1, leg2] = tiePair(events, 'trofeu-inconfidencia---finals')
+    expect(leg1.date?.slice(0, 10)).toBe('2026-03-04')
+    expect(leg2.date?.slice(0, 10)).toBe('2026-03-07')
+    expect(comp(leg1).leg).toEqual({ value: 1, displayValue: '1st Leg' })
+    expect(comp(leg2).leg).toEqual({ value: 2, displayValue: '2nd Leg' })
+    expect(comp(leg1).series?.title).toBe('Troféu Inconfidência - Finals')
+    expect(comp(leg2).series?.title).toBe('Troféu Inconfidência - Finals')
+    expect(comp(leg1).series?.totalCompetitions).toBe(2)
+    expect(comp(leg2).series?.completed).toBe(true)
+
+    for (const competitor of comp(leg1).competitors ?? []) {
+      expect(competitor.aggregateScore).toBeUndefined()
+    }
+    const seriesByTeam = new Map(
+      (comp(leg2).series?.competitors ?? []).map((c) => [c.id, c.aggregateScore]),
+    )
+    for (const competitor of comp(leg2).competitors ?? []) {
+      expect(typeof competitor.aggregateScore).toBe('number')
+      expect(seriesByTeam.get(competitor.team?.id ?? '')).toBe(competitor.aggregateScore)
+    }
+    const classified = (comp(leg2).series?.competitors ?? []).filter((c) => c.winner)
+    expect(classified).toHaveLength(1)
+    expect(classified[0]?.id).toBe('131565')
+  })
+
+  it('final dos playoffs é jogo único sem leg nem series', () => {
+    const final = events.find((e) => e.season?.slug === 'playoffs---final')
+    expect(final).toBeTruthy()
+    expect(final?.id).toBe('401863457')
+    expect(comp(final as FixtureEvent).leg ?? null).toBeNull()
+    expect(comp(final as FixtureEvent).series ?? null).toBeNull()
+    expect(comp(final as FixtureEvent).group ?? null).toBeNull()
+    expect(comp(final as FixtureEvent).status?.type?.name).toBe('STATUS_FULL_TIME')
+    const cruzeiro = (comp(final as FixtureEvent).competitors ?? []).find(
+      (c) => c.team?.id === '2022',
+    )
+    const atletico = (comp(final as FixtureEvent).competitors ?? []).find(
+      (c) => c.team?.id === '7632',
+    )
+    expect(cruzeiro?.winner).toBe(true)
+    expect(atletico?.winner).toBe(false)
+    expect(cruzeiro?.score).toBe('1')
+    expect(atletico?.score).toBe('0')
+  })
+
+  it('scoreboard ao vivo não traz week nem matchday', () => {
+    expect(events.length).toBeGreaterThanOrEqual(1)
+    for (const event of events) {
+      expect(event.week).toBeUndefined()
+      expect(event.matchday).toBeUndefined()
+      expect('week' in event).toBe(false)
+      expect('matchday' in event).toBe(false)
+    }
+  })
+
+  it('altGameNote é sempre Brazil Mineiro e não identifica a fase', () => {
+    for (const event of events) {
+      expect(comp(event).altGameNote).toBe('Brazil Mineiro')
     }
   })
 })
