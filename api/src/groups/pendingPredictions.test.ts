@@ -73,6 +73,13 @@ async function createFixture() {
       ('group-b', 'bob', '2026-01-01T00:00:00Z'),
       ('group-pilot', 'alice', '2026-01-01T00:00:00Z'),
       ('group-empty', 'alice', '2026-01-01T00:00:00Z');
+
+    -- Seed distinto para regressão de bind: se now/userId trocarem de lugar,
+    -- user_points/user_position divergem mesmo com pending_predictions plausível.
+    INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated) VALUES
+      ('group-a', 'alice', 30, 4, '2026-06-14T00:00:00Z'),
+      ('group-a', 'bob', 10, 1, '2026-06-14T00:00:00Z'),
+      ('group-b', 'bob', 7, 0, '2026-06-14T00:00:00Z');
   `)
 
   const env: Env = {
@@ -129,7 +136,12 @@ async function createFixture() {
 }
 
 type GroupsBody = {
-  groups: Array<{ id: string; pending_predictions: number }>
+  groups: Array<{
+    id: string
+    pending_predictions: number
+    user_points: number
+    user_position: number
+  }>
 }
 
 describe('GET /groups pending_predictions (SQLite D1)', () => {
@@ -143,15 +155,20 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
       expect(res.headers.get('Cache-Control')).toBe('private, no-store')
 
       const body = (await res.json()) as GroupsBody
-      const byId = Object.fromEntries(body.groups.map((g) => [g.id, g.pending_predictions]))
+      const aliceA = body.groups.find((g) => g.id === 'group-a')
+      const aliceEmpty = body.groups.find((g) => g.id === 'group-empty')
 
       // Alice no group-a: 3 abertos futuros + 1 adiado aberto na rodada 2 = 4.
       // Travado e rodada 3 não entram. Sem palpites ainda.
-      expect(byId['group-a']).toBe(4)
+      expect(aliceA?.pending_predictions).toBe(4)
+      expect(aliceA?.user_points).toBe(30)
+      expect(aliceA?.user_position).toBe(1)
       // Grupo sem jogos: 0, sem falso "concluído" no front (só some o hint).
-      expect(byId['group-empty']).toBe(0)
+      expect(aliceEmpty?.pending_predictions).toBe(0)
+      expect(aliceEmpty?.user_points).toBe(0)
+      expect(aliceEmpty?.user_position).toBe(1)
       // Pilot some da lista para usuário sem acesso (alice não é admin/pilot).
-      expect(byId['group-pilot']).toBeUndefined()
+      expect(body.groups.some((g) => g.id === 'group-pilot')).toBe(false)
       expect(body.groups.some((g) => g.id === 'group-b')).toBe(false)
     } finally {
       vi.useRealTimers()
@@ -185,6 +202,8 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
       const aliceA = aliceBody.groups.find((g) => g.id === 'group-a')
       // Restam open-3 + postponed (0x0 e 1x2 já preenchidos).
       expect(aliceA?.pending_predictions).toBe(2)
+      expect(aliceA?.user_points).toBe(30)
+      expect(aliceA?.user_position).toBe(1)
 
       const bobRes = await request('bob')
       const bobBody = (await bobRes.json()) as GroupsBody
@@ -192,8 +211,12 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
       const bobB = bobBody.groups.find((g) => g.id === 'group-b')
       // Bob preencheu só open-3 em group-a → open-1, open-2 e postponed = 3.
       expect(bobA?.pending_predictions).toBe(3)
+      expect(bobA?.user_points).toBe(10)
+      expect(bobA?.user_position).toBe(2)
       // group-b: mesmos jogos da competição, Bob sem palpites → 4.
       expect(bobB?.pending_predictions).toBe(4)
+      expect(bobB?.user_points).toBe(7)
+      expect(bobB?.user_position).toBe(1)
 
       // Carol sem membership → lista vazia (não vaza grupos).
       const carolRes = await request('carol')

@@ -2,13 +2,22 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { usePredictionsTab } from './usePredictionsTab'
 import * as ga from '../../analytics/ga'
+import { invalidateApiCache } from '../../lib/api-cache'
 import { makeMatch } from '../matchFixtures'
 
 vi.mock('../../analytics/ga', () => ({
   trackEvent: vi.fn(),
 }))
+vi.mock('../../lib/api-cache', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api-cache')>()
+  return {
+    ...actual,
+    invalidateApiCache: vi.fn(),
+  }
+})
 
 const mockTrackEvent = vi.mocked(ga.trackEvent)
+const mockInvalidate = vi.mocked(invalidateApiCache)
 
 function mockFetch(
   matches: ReturnType<typeof makeMatch>[],
@@ -66,6 +75,7 @@ describe('usePredictionsTab', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     mockTrackEvent.mockClear()
+    mockInvalidate.mockClear()
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -173,6 +183,39 @@ describe('usePredictionsTab', () => {
       count: 1,
       round: '1',
     })
+    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
+  })
+
+  it('does not invalidate groups cache when bulk save fails', async () => {
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    mockFetch(matches, [], [], '1')
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => {
+      result.current.handleDraftChange('m1', '2', '1')
+    })
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/predictions/bulk')) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: 'Falha ao salvar' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+      }
+      return Promise.reject(new Error(`Unhandled request: ${u}`))
+    })
+
+    await act(async () => {
+      await result.current.handleSaveAll()
+    })
+
+    expect(result.current.bulkError).toBe('Falha ao salvar')
+    expect(mockInvalidate).not.toHaveBeenCalled()
   })
 
   it('handles import', async () => {
@@ -209,5 +252,6 @@ describe('usePredictionsTab', () => {
       }),
     )
     expect(result.current.importFeedback?.ok).toBe(true)
+    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
   })
 })
