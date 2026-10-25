@@ -3,6 +3,7 @@ import { needsPenaltyPick } from '../../lib/predictedTie'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
+import { invalidateApiCache } from '../../lib/api-cache'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
 export interface UseMatchCardProps {
@@ -115,6 +116,9 @@ function useMatchPersistence(
       return
     }
 
+    // Inclui placar e pênalti no mesmo PUT. Invalida só após sucesso para a
+    // home refetchar pending_predictions sem N stale do TTL de 30s.
+    invalidateApiCache('groups:')
     setSaved(true)
     onSaved(matchId, homeScore, awayScore, penWinner)
     setTimeout(() => setSaved(false), 2500)

@@ -75,18 +75,28 @@ function Podium({ group }: { group: GroupWithStats }) {
   )
 }
 
+/** Copy PT-BR da pendência na home. Só chamar com count > 0. */
+export function pendingPredictionsLabel(count: number): string {
+  return count === 1 ? '1 palpite pendente' : `${count} palpites pendentes`
+}
+
 export default function GroupCard({ group, onClick }: GroupCardProps) {
   const isOwner = group.is_admin
   const isFinished = group.competition_status === 'finished'
   const [shareOpen, setShareOpen] = useState(false)
+  // Só exibe com count > 0: evita "em dia" falso quando ainda não há jogos.
+  const pendingCount = isFinished ? 0 : group.pending_predictions
+  const hasPending = pendingCount > 0
+  const pendingLabel = hasPending ? pendingPredictionsLabel(pendingCount) : null
+  const openLabel = hasPending
+    ? `Abrir grupo ${group.name}, ${pendingLabel}`
+    : `Abrir grupo ${group.name}`
 
   return (
     <Card hoverable className={isFinished ? `${styles.card} ${styles.finished}` : styles.card}>
-      <button className={styles.cardBtn} onClick={onClick} aria-label={`Abrir grupo ${group.name}`}>
+      <button className={styles.cardBtn} onClick={onClick} aria-label={openLabel}>
         <div className={styles.header}>
           <h3 className={styles.name}>{group.name}</h3>
-          {/* Badge de palpites pendentes desabilitada — quebrada visualmente, #207.
-              Reabilitar quando tivermos uma UI melhor. */}
           <div className={styles.badges}>
             {isOwner && <span className={styles.ownerBadge}>Admin</span>}
             <span
@@ -115,6 +125,10 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
               <span className={styles.statValue}>{group.user_points}</span>
             </div>
           </div>
+        )}
+
+        {hasPending && pendingLabel && (
+          <p className={styles.pendingHint}>{pendingLabel} · ir a Palpitar</p>
         )}
       </button>
 

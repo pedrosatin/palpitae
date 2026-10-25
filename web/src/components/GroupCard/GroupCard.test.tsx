@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import GroupCard from './GroupCard'
+import GroupCard, { pendingPredictionsLabel } from './GroupCard'
 
 const mockTrackEvent = vi.fn()
 vi.mock('../../analytics/ga', () => ({
@@ -57,14 +57,45 @@ describe('GroupCard', () => {
     expect(onClick).toHaveBeenCalledOnce()
   })
 
-  it('does not show pending badge when pending_predictions is 0', () => {
+  it('does not show pending hint when pending_predictions is 0', () => {
     render(<GroupCard group={baseGroup} onClick={onClick} />)
+    expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Abrir grupo Meu Grupo' })).toBeInTheDocument()
+  })
+
+  it('shows singular pending hint and enriches the open label when count is 1', () => {
+    render(<GroupCard group={{ ...baseGroup, pending_predictions: 1 }} onClick={onClick} />)
+    expect(screen.getByText('1 palpite pendente · ir a Palpitar')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: 'Abrir grupo Meu Grupo, 1 palpite pendente',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows plural pending hint when count is greater than 1', () => {
+    render(<GroupCard group={{ ...baseGroup, pending_predictions: 3 }} onClick={onClick} />)
+    expect(screen.getByText('3 palpites pendentes · ir a Palpitar')).toBeInTheDocument()
+  })
+
+  it('hides pending hint on finished groups even when the API still sends a count', () => {
+    render(
+      <GroupCard
+        group={{
+          ...baseGroup,
+          competition_status: 'finished',
+          pending_predictions: 4,
+          podium: [{ position: 1, display: 'Ana', points: 10, is_you: true }],
+        }}
+        onClick={onClick}
+      />,
+    )
     expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
   })
 
-  it('does not show pending badge even when pending_predictions > 0 (disabled, #207)', () => {
-    render(<GroupCard group={{ ...baseGroup, pending_predictions: 3 }} onClick={onClick} />)
-    expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
+  it('formats pendingPredictionsLabel in PT-BR singular and plural', () => {
+    expect(pendingPredictionsLabel(1)).toBe('1 palpite pendente')
+    expect(pendingPredictionsLabel(2)).toBe('2 palpites pendentes')
   })
 
   describe('finished (encerrado) variant', () => {

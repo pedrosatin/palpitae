@@ -2,11 +2,16 @@ import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useMatchCard } from './useMatchCard'
 import type { Match, Prediction } from './MatchCard'
+import { invalidateApiCache } from '../../lib/api-cache'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 vi.mock('../../config', () => ({ config: { apiUrl: 'mockApiUrl' } }))
+vi.mock('../../lib/api-cache', () => ({
+  invalidateApiCache: vi.fn(),
+}))
 
 const mockFetch = vi.spyOn(globalThis, 'fetch')
+const mockInvalidate = vi.mocked(invalidateApiCache)
 
 function makeMatch(overrides: Partial<Match> = {}): Match {
   return {
@@ -47,6 +52,7 @@ function makePrediction(overrides: Partial<Prediction> = {}): Prediction {
 describe('useMatchCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockInvalidate.mockClear()
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({}),
@@ -204,6 +210,7 @@ describe('useMatchCard', () => {
     )
 
     expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0, null)
+    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
   })
 
   it('selectOutcome logic for home', async () => {
@@ -333,6 +340,7 @@ describe('useMatchCard', () => {
     expect(result.current.error).toBe('Mock error message')
     expect(result.current.saved).toBe(false)
     expect(onSaved).not.toHaveBeenCalled()
+    expect(mockInvalidate).not.toHaveBeenCalled()
   })
 
   it('reverts saved state after timeout', async () => {

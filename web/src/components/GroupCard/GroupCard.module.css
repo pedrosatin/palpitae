@@ -146,6 +146,21 @@
   color: var(--color-primary);
 }
 
+/* Hint de pendências na home: faixa abaixo dos stats, dentro do mesmo botão
+   do card (sem link aninhado). Só renderiza com count > 0. */
+.pendingHint {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: color-mix(in srgb, var(--color-primary) 14%, var(--color-bg));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  text-align: center;
+  line-height: 1.3;
+}
+
 /* ─── Finished (encerrado) ──────────────────────────────────────────────────
    Campeonato acabou → o card vira arquivo: quieto e dessaturado. O único estouro
    é a coroa do campeão em lime. Nenhuma cor nova entra na marca. */
