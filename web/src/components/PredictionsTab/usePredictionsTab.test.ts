@@ -254,4 +254,83 @@ describe('usePredictionsTab', () => {
     expect(result.current.importFeedback?.ok).toBe(true)
     expect(mockInvalidate).toHaveBeenCalledWith('groups:')
   })
+
+  it('Salvar todos inclui adiado com horário passado como último pendente e invalida groups', async () => {
+    const past = new Date(Date.now() - 3_600_000).toISOString()
+    const matches = [
+      makeMatch({
+        id: 'm-postponed',
+        round: '2',
+        status: 'scheduled',
+        start_time: past,
+        postponed: 1,
+      }),
+    ]
+    mockFetch(matches, [], [], '2')
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => {
+      result.current.handleDraftChange('m-postponed', '0', '0')
+    })
+    expect(result.current.pendingCount).toBe(1)
+
+    const saveSpy = vi.spyOn(globalThis, 'fetch')
+    await act(async () => {
+      await result.current.handleSaveAll()
+    })
+
+    expect(saveSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/predictions/bulk'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({
+          group_id: 'g1',
+          predictions: [
+            {
+              match_id: 'm-postponed',
+              predicted_home_score: 0,
+              predicted_away_score: 0,
+              predicted_penalty_winner: null,
+            },
+          ],
+        }),
+      }),
+    )
+    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
+  })
+
+  it('Salvar todos ignora adiado com locked_at', async () => {
+    const past = new Date(Date.now() - 3_600_000).toISOString()
+    const matches = [
+      makeMatch({
+        id: 'm-locked-postponed',
+        round: '2',
+        status: 'scheduled',
+        start_time: past,
+        postponed: 1,
+        locked_at: past,
+      }),
+    ]
+    mockFetch(matches, [], [], '2')
+    const { result } = renderHook(() => usePredictionsTab('g1', 'c1'))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => {
+      result.current.handleDraftChange('m-locked-postponed', '1', '0')
+    })
+    expect(result.current.pendingCount).toBe(0)
+
+    const saveSpy = vi.spyOn(globalThis, 'fetch')
+    await act(async () => {
+      await result.current.handleSaveAll()
+    })
+    expect(saveSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('/predictions/bulk'),
+      expect.anything(),
+    )
+    expect(mockInvalidate).not.toHaveBeenCalled()
+  })
 })
