@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, Dispatch, SetStateAction } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
+import { invalidateApiCache } from '../../lib/api-cache'
 import { predictedClassified } from '../../lib/predictedTie'
 import { collectRoundDrafts } from '../../lib/predictionDrafts'
 import type { Match, Prediction } from '../MatchCard'
@@ -150,6 +151,9 @@ export function usePredictionsBulkSave(
         }
       }
 
+      // Home cards leem pending_predictions via fetchCachedJson (TTL 30s).
+      // Sem invalidar, voltar à dashboard dentro do TTL mostra N antigo.
+      invalidateApiCache('groups:')
       setSavedAll(true)
       savedAllTimerRef.current = setTimeout(() => setSavedAll(false), 2500)
     } catch (e) {

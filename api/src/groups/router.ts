@@ -6,6 +6,7 @@ import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
+import { pendingPredictionsBinds, pendingPredictionsSql } from './pendingPredictions'
 
 const router = new Hono<AppContext>()
 
@@ -178,19 +179,7 @@ router.get('/', requireAuth, async (c) => {
             ),
             1
           ) AS user_position,
-          (
-            SELECT COUNT(*)
-            FROM matches m
-            WHERE m.competition_id = g.competition_id
-              AND m.status = 'scheduled'
-              AND m.start_time > datetime('now')
-              AND NOT EXISTS (
-                SELECT 1 FROM predictions p
-                WHERE p.match_id = m.id
-                  AND p.group_id = g.id
-                  AND p.user_id = ?
-              )
-          ) AS pending_predictions
+          ${pendingPredictionsSql('g')} AS pending_predictions
         FROM groups g
         INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
         LEFT JOIN competitions c ON g.competition_id = c.id
@@ -201,7 +190,7 @@ router.get('/', requireAuth, async (c) => {
         ORDER BY g.created_at DESC
         `,
       )
-      .bind(userId, userId, userId)
+      .bind(...pendingPredictionsBinds(new Date().toISOString(), userId), userId, userId)
       .all<GroupRow & { user_position: number; user_points: number; pending_predictions: number }>()
 
     const matchedInviteGroup = inviteCode

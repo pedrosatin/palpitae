@@ -24,9 +24,17 @@ export type CollectRoundDraftsInput = {
   predictions: Map<string, Prediction>
 }
 
-/** A match is locked once it has kicked off or the server marked its prediction locked. */
+/**
+ * Travamento alinhado a ADR-004 / api/src/matches/locking.ts e useMatchCard:
+ * locked_at, status live/finished ou prediction.locked fecham; postponed com
+ * horário passado e sem lock explícito permanece aberto (start_time original).
+ */
 function isMatchLocked(match: Match, prediction: Prediction | undefined): boolean {
-  return Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)
+  if (match.locked_at) return true
+  if (match.status === 'live' || match.status === 'finished') return true
+  if (prediction?.locked) return true
+  if (match.postponed) return false
+  return new Date() >= new Date(match.start_time)
 }
 
 /**

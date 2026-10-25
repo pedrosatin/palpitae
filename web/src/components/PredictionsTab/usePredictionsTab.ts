@@ -3,6 +3,7 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
+import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
@@ -142,6 +143,8 @@ function usePredictionsImport(
       if (imported > 0) {
         setImportCompleted(true)
         setImportExpanded(false)
+        // Import altera pending_predictions do grupo alvo na home.
+        invalidateApiCache('groups:')
       }
       setImportFeedback({ ok: true, message: msg })
       try {
