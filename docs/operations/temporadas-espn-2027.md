@@ -29,17 +29,11 @@ O sync monta o slug da temporada com `${meta.slugPrefix}-${season}` em `upsertEs
 
 Este roteiro não inventa `slugPrefix` para códigos ainda ausentes de `ESPN_PRIMARY_COMPETITIONS`. O prefixo entra no mapa de meta no ticket de cadastro, junto da inclusão do código ESPN.
 
-## Relação com a execução operacional
+## Execução operacional
 
-Três frentes se complementam e não se substituem:
+O admin registra as evidências por competição: publicação da fonte, carga íntegra, configuração do regulamento, resultado do piloto e decisão de promoção. Os portões abaixo orientam essa conferência.
 
-1. **Este roteiro** documenta portões, evidência esperada e comandos de conferência.
-2. **Checklist operacional da abertura 2027** (tracker local `ops-validacao`, item de checklist da abertura) executa os portões quando o calendário e os eventos 2027 existirem.
-3. **Abertura das temporadas ESPN 2027** (tracker local `novos-campeonatos`, item de temporada 2027) cobre cadastro, sync contínuo, radar e promote um a um no produto.
-
-Caminhos relativos a `.scratch/` não resolvem no GitHub público. Por isso este documento traduz esses trabalhos em portões estáveis acima e cita os trackers só como referência local do operador.
-
-Ligas football-data (lotes 2 e 3) seguem `docs/operations/promocao-lote2.md`.
+Ligas football-data (lotes 2 e 3) seguem o [roteiro de promoção](promocao-lote2.md).
 
 ## Conferência da fonte (estado observado)
 
