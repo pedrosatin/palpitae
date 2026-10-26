@@ -67,9 +67,13 @@ Dois detalhes da ESPN validados ao vivo que moldaram a implementação:
 - O parâmetro de data é **`dates=YYYYMMDD` (plural)**. O singular `date=` é silenciosamente ignorado e devolve a rodada corrente — todos os eventos em 'pre', ou seja, um fallback que nunca atualiza nada.
 - O scoreboard agrupa eventos por **dia norte-americano**: São Paulo×Cruzeiro `2026-10-08T00:30Z` aparece em `dates=20261007`. Por isso buscamos o dia UTC de cada jogo E o dia anterior (2 fetches por data distinta — cobre qualquer fronteira de fuso fixa).
 
+### Atualização — 2026-10-26
+
+O fallback também roda após um sync bem-sucedido que deixou jogos sem resultado. Consulta somente partidas ainda não finalizadas, de 115 minutos até 24 horas após o início, e exclui adiados fora da janela ativa de 200 minutos. Placares alterados limpam `scored_at` para refazer a pontuação. O sync primário preserva a linha de um jogo finalizado quando recebe um estado não final; correções de resultado final continuam permitidas.
+
 ### Consequences
 
-- **Roda dentro do Worker, sem rate limit adicional.** A ESPN não filtra por IP de origem (a lição da API-Football no ADR-014 não se aplica), e o volume é ínfimo por construção: o fallback só roda quando o primário falhou, só para competições com jogos na janela de 85 min, com ~2 fetches por competição. De graça e sem chave — não há o que gerenciar.
+- **Roda dentro do Worker pelo cliente ESPN compartilhado.** A consulta ao D1 evita requests para competições sem pendentes. As chamadas HTTP compartilham timeout, pacing anti-403 e retry limitado com os demais consumidores da ESPN; a janela de resgate pode consultar até três datas por competição.
 - Falha do fallback NUNCA quebra o poller: try/catch no ponto de chamada e por competição dentro do módulo. O próximo run volta a tentar pelo caminho primário.
 - **Observabilidade**: um evento `match_results_fallback` por competição (`blobs: [compId]`, `doubles: [atualizados, pulados]`) no Analytics Engine, além do `football_api_error` já emitido na falha do primário. O `poller_run` segue com status `error` quando o primário falhou — o fallback é melhor-esforço, não apaga o incidente.
 - **Pênaltis ficam fora do escopo**: o fallback grava só placar e status; `penalty_winner` e gols de pênaltis permanecem como estavam. Quando o primário volta, o upsert do sync preenche os campos e zera `scored_at` (mecanismo já existente), disparando re-score com o bônus de pênaltis. Custo transitório: grupos de mata-mata podem ver os pontos do bônus chegarem depois.
