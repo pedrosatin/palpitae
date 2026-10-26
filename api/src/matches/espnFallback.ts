@@ -1,9 +1,11 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
+import { fetchEspnScoreboard as fetchScoreboard, type EspnScoreboardEvent } from '../providers/espn'
+import { ACTIVE_RESULT_WINDOW_MS, EARLIEST_RESULT_MS, RESCUE_WINDOW_MS } from './matchPollingWindow'
 
 /**
  * Fallback de RESULTADOS via ESPN (ADR-016). Quando o sync da football-data.org
- * falha (429/5xx/outage), o jogo na janela ativa ficava sem placar até o provedor
+ * falha (429/5xx/outage) ou devolve dados atrasados, o jogo ficava sem placar até o provedor
  * primário voltar. Aqui a ESPN não-oficial preenche o placar de jogos que JÁ
  * existem no D1 — nunca insere jogos, times ou competições.
  *
@@ -54,8 +56,6 @@ export const FOOTBALL_DATA_TO_ESPN: Record<string, string> = {
   '2146': 'uefa.europa',
 }
 
-const ESPN_API_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
-
 /**
  * Tolerância entre o `start_time` interno e o `date` do evento ESPN. Os dois
  * provedores divergem em remarcamentos de última hora; 150 min cobre isso sem
@@ -71,11 +71,7 @@ type EspnCompetitor = {
   score?: string
 }
 
-type EspnEvent = {
-  date?: string
-  status?: { type?: { state?: string } }
-  competitions?: { competitors?: EspnCompetitor[] }[]
-}
+type EspnEvent = EspnScoreboardEvent
 
 type WindowMatch = {
   id: string
@@ -119,12 +115,7 @@ function namesRelated(a: string, b: string): boolean {
 }
 
 async function fetchEspnScoreboard(slug: string, yyyymmdd: string): Promise<EspnEvent[]> {
-  const res = await fetch(`${ESPN_API_BASE}/${slug}/scoreboard?dates=${yyyymmdd}`)
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`ESPN scoreboard respondeu ${res.status}: ${text.slice(0, 200)}`)
-  }
-  const data = (await res.json()) as { events?: EspnEvent[] }
+  const data = await fetchScoreboard(slug, yyyymmdd)
   return data.events ?? []
 }
 
@@ -145,7 +136,7 @@ function espnCompetitors(ev: EspnEvent): {
  * qualquer lado (data inválida, competitor ausente) → não casa (fail-closed).
  */
 function matchesEvent(m: WindowMatch, ev: EspnEvent): boolean {
-  if (!ev.date) return false
+  if (typeof ev.date !== 'string') return false
   const kickoff = Date.parse(ev.date)
   const start = Date.parse(m.start_time)
   if (!Number.isFinite(kickoff) || !Number.isFinite(start)) return false
@@ -169,7 +160,7 @@ function espnScores(ev: EspnEvent): { home: number | null; away: number | null }
 }
 
 /**
- * Para cada competição em erro: pontua os jogos da janela ativa cujo evento
+ * Para cada competição consultada: recupera os jogos ainda sem resultado cujo evento
  * correspondente na ESPN já terminou ('post'). Devolve um mapa compId → nº de
  * jogos atualizados (comps sem jogos na janela, sem mapeamento ou com casamento
  * ambíguo devolvem 0 e nunca lançam).
@@ -187,16 +178,24 @@ export async function scoreWindowFromEspn(
   const updatedByComp = new Map<string, number>()
   if (compIds.length === 0) return updatedByComp
 
-  // Mesma janela do poller (ADR-007): start_time entre now-200min e now-115min,
-  // em ISO 8601 com T/Z para a comparação TEXT ficar lexicográfica.
+  // Mesmos limites do poller, incluindo o resgate de até 24 h e a exclusão de
+  // adiados fora da janela ativa. ISO com T/Z mantém a comparação TEXT correta.
   const now = opts.now ?? Date.now()
-  const earliestOver = new Date(now - 115 * 60 * 1000).toISOString()
-  const stillRelevant = new Date(now - 200 * 60 * 1000).toISOString()
+  const earliestOver = new Date(now - EARLIEST_RESULT_MS).toISOString()
+  const stillRelevant = new Date(now - ACTIVE_RESULT_WINDOW_MS).toISOString()
+  const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString()
 
   await Promise.all(
     compIds.map(async (compId) => {
       try {
-        const updated = await scoreCompetitionWindow(db, ae, compId, earliestOver, stillRelevant)
+        const updated = await scoreCompetitionWindow(
+          db,
+          ae,
+          compId,
+          earliestOver,
+          rescueFloor,
+          stillRelevant,
+        )
         updatedByComp.set(compId, updated)
       } catch (err) {
         // Erro de fetch/parsing isola a competição — as demais continuam. Devolve
@@ -217,6 +216,7 @@ async function scoreCompetitionWindow(
   ae: AnalyticsEngineDataset | undefined,
   compId: string,
   earliestOver: string,
+  rescueFloor: string,
   stillRelevant: string,
 ): Promise<number> {
   const { results } = await db
@@ -233,9 +233,10 @@ async function scoreCompetitionWindow(
           AND c.provider = 'football-data'
           AND m.start_time <= ?
           AND m.start_time >= ?
+          AND (m.start_time >= ? OR m.postponed = 0)
           AND m.status != 'finished'`,
     )
-    .bind(compId, earliestOver, stillRelevant)
+    .bind(compId, earliestOver, rescueFloor, stillRelevant)
     .all<WindowMatch>()
 
   if (results.length === 0) return 0
@@ -274,7 +275,10 @@ async function scoreCompetitionWindow(
   let updated = 0
   let skipped = 0
   const updateStmt = db.prepare(
-    `UPDATE matches SET home_score = ?, away_score = ?, status = 'finished' WHERE id = ? AND status != 'finished'`,
+    `UPDATE matches SET home_score = ?, away_score = ?, status = 'finished',
+       scored_at = CASE WHEN home_score IS NOT ? OR away_score IS NOT ?
+                        THEN NULL ELSE scored_at END
+     WHERE id = ? AND status != 'finished'`,
   )
   const statements: D1PreparedStatement[] = []
 
@@ -295,10 +299,9 @@ async function scoreCompetitionWindow(
       skipped++
       continue
     }
-    // scored_at fica NULL de propósito: scoreUnprocessedMatches pega o jogo na
-    // sequência. O guard `status != 'finished'` protege contra corrida com o
-    // caminho primário.
-    statements.push(updateStmt.bind(home, away, m.id))
+    // Uma linha regredida pode já ter scored_at: placar corrigido precisa passar
+    // de novo pelo scoring. O guard protege resultados finalizados pelo primário.
+    statements.push(updateStmt.bind(home, away, home, away, m.id))
     updated++
   }
 

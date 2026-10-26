@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSqliteD1 } from '../testing/sqliteD1'
 import { FOOTBALL_DATA_TO_ESPN, scoreWindowFromEspn } from './espnFallback'
 
 // ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ function buildFakeDb(rows: WindowRow[]) {
       for (const stmt of stmts) {
         await stmt.run()
       }
-    }
+    },
   }
   return { db: db as unknown as D1Database, captured }
 }
@@ -76,8 +77,16 @@ function espnEvent(opts: {
     competitions: [
       {
         competitors: [
-          { homeAway: 'home', team: { displayName: opts.home ?? 'Flamengo' }, score: opts.homeScore ?? '2' },
-          { homeAway: 'away', team: { displayName: opts.away ?? 'Corinthians' }, score: opts.awayScore ?? '1' },
+          {
+            homeAway: 'home',
+            team: { displayName: opts.home ?? 'Flamengo' },
+            score: opts.homeScore ?? '2',
+          },
+          {
+            homeAway: 'away',
+            team: { displayName: opts.away ?? 'Corinthians' },
+            score: opts.awayScore ?? '1',
+          },
         ],
       },
     ],
@@ -145,16 +154,20 @@ describe('scoreWindowFromEspn', () => {
         }),
       ],
     })
-    const { db, captured } = buildFakeDb([row({ home_name: 'CR Flamengo', away_name: 'São Paulo FC' })])
+    const { db, captured } = buildFakeDb([
+      row({ home_name: 'CR Flamengo', away_name: 'São Paulo FC' }),
+    ])
     const ae = buildFakeAe()
 
     const result = await scoreWindowFromEspn(db, ae, ['c1'], { now: NOW })
 
     expect(result.get('c1')).toBe(1)
     expect(captured.updates).toHaveLength(1)
-    expect(captured.updates[0]).toEqual([3, 0, 'm1'])
+    expect(captured.updates[0]).toEqual([3, 0, 3, 0, 'm1'])
 
-    const points = ae.writeDataPoint.mock.calls.map((c) => c[0]).filter((p) => p.blobs?.[0] === 'match_results_fallback')
+    const points = ae.writeDataPoint.mock.calls
+      .map((c) => c[0])
+      .filter((p) => p.blobs?.[0] === 'match_results_fallback')
     expect(points).toHaveLength(1)
     expect(points[0].blobs[1]).toBe('c1')
     expect(points[0].doubles).toEqual([1, 0])
@@ -248,9 +261,7 @@ describe('scoreWindowFromEspn', () => {
 
   it('pula o jogo quando nenhum evento casa (nome de time diferente)', async () => {
     mockFetch({
-      '20261005': [
-        espnEvent({ date: IN_WINDOW_START, home: 'Palmeiras', away: 'Botafogo' }),
-      ],
+      '20261005': [espnEvent({ date: IN_WINDOW_START, home: 'Palmeiras', away: 'Botafogo' })],
     })
     const { db, captured } = buildFakeDb([row()])
 
@@ -262,9 +273,7 @@ describe('scoreWindowFromEspn', () => {
 
   it('não casa quando mandante/visitante estão invertidos no evento', async () => {
     mockFetch({
-      '20261005': [
-        espnEvent({ date: IN_WINDOW_START, home: 'Corinthians', away: 'Flamengo' }),
-      ],
+      '20261005': [espnEvent({ date: IN_WINDOW_START, home: 'Corinthians', away: 'Flamengo' })],
     })
     const { db, captured } = buildFakeDb([row()])
 
@@ -294,9 +303,8 @@ describe('scoreWindowFromEspn', () => {
     // Guard contra corrida com o caminho primário: só regrava jogo não-finalizado.
     expect(captured.updateSql).toContain("SET home_score = ?, away_score = ?, status = 'finished'")
     expect(captured.updateSql).toContain("AND status != 'finished'")
-    // O fallback só grava placar+status: scored_at fica NULL (a pontuação vem
-    // depois) e pênaltis ficam para o primário. Nenhum INSERT aqui.
-    expect(captured.updateSql).not.toContain('scored_at')
+    // Correções limpam scored_at; pênaltis ficam para o primário. Nenhum INSERT.
+    expect(captured.updateSql).toContain('scored_at = CASE')
     expect(captured.updateSql).not.toContain('penalty')
     expect(captured.updateSql).not.toMatch(/INSERT/i)
     expect(captured.updates).toHaveLength(1)
@@ -304,6 +312,101 @@ describe('scoreWindowFromEspn', () => {
     expect(captured.windowSql).toContain("c.provider = 'football-data'")
     expect(captured.windowSql).toContain("status != 'finished'")
     expect(captured.windowParams[0]).toBe('c1')
+  })
+
+  it('resgata até 24 h com SQL real, exclui adiados antigos e preserva resultados finalizados', async () => {
+    const { sqlite, db } = createSqliteD1()
+    try {
+      sqlite.exec(`INSERT INTO competitions (id,name,slug,status,external_id,provider,season)
+        VALUES ('c1','League','league','ongoing','BSA','football-data','2026');`)
+      const fixtures = [
+        { id: 'active', minutes: 150, postponed: 0, status: 'scheduled' },
+        { id: 'late', minutes: 10 * 60, postponed: 0, status: 'scheduled' },
+        { id: 'boundary', minutes: 24 * 60, postponed: 0, status: 'scheduled' },
+        { id: 'too-old', minutes: 24 * 60 + 1, postponed: 0, status: 'scheduled' },
+        { id: 'too-early', minutes: 114, postponed: 0, status: 'scheduled' },
+        { id: 'postponed', minutes: 10 * 60, postponed: 1, status: 'scheduled' },
+        { id: 'active-postponed', minutes: 150, postponed: 1, status: 'scheduled' },
+        { id: 'finished', minutes: 150, postponed: 0, status: 'finished' },
+      ]
+      const events: Record<string, unknown[]> = {}
+      for (const fixture of fixtures) {
+        const start = new Date(NOW - fixture.minutes * 60_000).toISOString()
+        for (const side of ['home', 'away']) {
+          const name = `${fixture.id} ${side}`
+          sqlite.prepare('INSERT INTO teams(id,name,slug) VALUES(?,?,?)').run(name, name, name)
+        }
+        sqlite
+          .prepare(`INSERT INTO matches
+          (id,external_id,provider,competition_id,home_team_id,away_team_id,start_time,status,round,postponed,home_score,away_score)
+          VALUES (?, ?, 'football-data', 'c1', ?, ?, ?, ?, '1', ?, 0, 0)`)
+          .run(
+            fixture.id,
+            fixture.id,
+            `${fixture.id} home`,
+            `${fixture.id} away`,
+            start,
+            fixture.status,
+            fixture.postponed,
+          )
+        const date = start.slice(0, 10).replaceAll('-', '')
+        ;(events[date] ??= []).push(
+          espnEvent({
+            date: start,
+            home: `${fixture.id} home`,
+            away: `${fixture.id} away`,
+            homeScore: '2',
+            awayScore: '1',
+          }),
+        )
+      }
+      mockFetch(events)
+
+      const result = await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+      expect(result.get('c1')).toBe(4)
+      const recovered = sqlite
+        .prepare('SELECT id FROM matches WHERE home_score=2 ORDER BY id')
+        .all()
+      expect(recovered.map((m) => m.id)).toEqual(['active', 'active-postponed', 'boundary', 'late'])
+      expect(
+        sqlite.prepare("SELECT home_score FROM matches WHERE id='finished'").get()?.home_score,
+      ).toBe(0)
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it('limpa pontuação antiga quando corrige placar e preserva scored_at quando o placar não muda', async () => {
+    const { sqlite, db } = createSqliteD1()
+    try {
+      sqlite.exec(`
+        INSERT INTO competitions (id,name,slug,status,external_id,provider,season)
+          VALUES ('c1','League','league','ongoing','BSA','football-data','2026');
+        INSERT INTO teams (id,name,slug) VALUES ('h','Flamengo','h'), ('a','Corinthians','a');
+        INSERT INTO matches (id,external_id,provider,competition_id,home_team_id,away_team_id,start_time,status,round,home_score,away_score,scored_at)
+          VALUES ('m1','m1','football-data','c1','h','a','${IN_WINDOW_START}','scheduled','1',0,0,'2026-10-05T21:00:00Z');
+      `)
+      mockFetch({
+        '20261005': [espnEvent({ date: IN_WINDOW_START, homeScore: '2', awayScore: '1' })],
+      })
+
+      await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+      expect(
+        sqlite.prepare('SELECT status,home_score,away_score,scored_at FROM matches').get(),
+      ).toEqual({ status: 'finished', home_score: 2, away_score: 1, scored_at: null })
+      sqlite.exec("UPDATE matches SET status='scheduled',scored_at='2026-10-05T21:00:00Z'")
+
+      await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+      expect(sqlite.prepare('SELECT status,scored_at FROM matches').get()).toEqual({
+        status: 'finished',
+        scored_at: '2026-10-05T21:00:00Z',
+      })
+    } finally {
+      sqlite.close()
+    }
   })
 
   it('competição sem mapeamento ESPN é pulada sem erro e sem fetch', async () => {

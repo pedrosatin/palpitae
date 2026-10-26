@@ -291,9 +291,7 @@ async function upsertCompetition(
   // re-sync criaria uma competição duplicada (slug = 'fifa-world-cup-2026' em prod).
   // COMP_SLUG_OVERRIDES cobre slug de produto distinto do nome cru da API.
   // Exemplo: produto fixou la-liga, API envia Primera Division.
-  const slugOverrideKey = Object.keys(COMP_SLUG_OVERRIDES).find((key) =>
-    apiComp.name.includes(key),
-  )
+  const slugOverrideKey = Object.keys(COMP_SLUG_OVERRIDES).find((key) => apiComp.name.includes(key))
   const competitionSlug = slugOverrideKey
     ? `${COMP_SLUG_OVERRIDES[slugOverrideKey]}-${season}`
     : slugify(`${apiComp.name}-${season}`)
@@ -326,7 +324,10 @@ async function upsertCompetition(
   return competition
 }
 
-export async function batchStatements(db: D1Database, statements: D1PreparedStatement[]): Promise<void> {
+export async function batchStatements(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+): Promise<void> {
   const batches = []
   for (let i = 0; i < statements.length; i += 100) {
     batches.push(db.batch(statements.slice(i, i + 100)))
@@ -558,7 +559,10 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
          WHEN matches.home_score IS NOT excluded.home_score
            OR matches.away_score IS NOT excluded.away_score
            OR matches.penalty_winner IS NOT excluded.penalty_winner
-         THEN NULL ELSE matches.scored_at END`
+         THEN NULL ELSE matches.scored_at END
+     -- Uma resposta atrasada do provedor não pode desfazer um resultado final
+     -- (inclusive obtido pelo fallback). Correções finais continuam aceitas.
+     WHERE matches.status != 'finished' OR excluded.status = 'finished'`
 
 async function upsertMatches(
   db: D1Database,
@@ -621,7 +625,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
 
   const { competitionCode, season, matchday, apiKey, db } = opts
   if (!apiKey) {
-    throw new Error("FOOTBALL_API_KEY não configurada no servidor")
+    throw new Error('FOOTBALL_API_KEY não configurada no servidor')
   }
 
   const data = await fetchMatchesFromApi(competitionCode, season, matchday, apiKey)

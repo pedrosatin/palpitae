@@ -3,10 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import template from '../providers/__fixtures__/espn-conmebol-sudamericana-scoreboard.json'
 import type { EspnScoreboardEvent } from '../providers/espn'
-import {
-  resetEspnClientForTests,
-  setEspnMinIntervalForTests,
-} from '../providers/espn'
+import { resetEspnClientForTests, setEspnMinIntervalForTests } from '../providers/espn'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { ESPN_PRIMARY_COMPETITIONS, syncEspnFixtures } from './espnSync'
 import { discoverFixtures } from './fixtureDiscovery'
@@ -208,8 +205,15 @@ describe('cron ESPN com datas explícitas', () => {
     vi.stubGlobal('fetch', fetch)
     const now = Date.parse('2026-10-15T04:00:00Z')
     await pollActiveMatches(db, 'key', undefined, now)
-    expect(fetch).toHaveBeenCalledTimes(2)
-    const requests = vi.mocked(globalThis.fetch).mock.calls.map(([url]) => new URL(String(url)))
+    const allRequests = vi.mocked(globalThis.fetch).mock.calls.map(([url]) => new URL(String(url)))
+    const requests = allRequests.filter((url) => url.hostname === 'api.football-data.org')
+    expect(requests).toHaveLength(2)
+    const fallbackRequests = allRequests.filter((url) => url.hostname === 'site.api.espn.com')
+    expect(fallbackRequests.map((url) => url.searchParams.get('dates')).sort()).toEqual([
+      '20261013',
+      '20261014',
+      '20261015',
+    ])
     expect(requests.map((url) => url.searchParams.get('matchday')).sort()).toEqual(['30', '31'])
     expect(
       requests.every(
@@ -280,9 +284,7 @@ describe('cron ESPN com datas explícitas', () => {
       const slug = url.pathname.split('/').at(-2) ?? ''
       const idx = codes.indexOf(slug)
       const events =
-        date === '20261020' && idx >= 0
-          ? [event(`m-${idx}`, '2026-10-20T22:00:00Z')]
-          : []
+        date === '20261020' && idx >= 0 ? [event(`m-${idx}`, '2026-10-20T22:00:00Z')] : []
       // Identidade por competição: reusa o template trocando só o id do evento.
       if (events[0]) {
         events[0].competitions![0].competitors![0].team!.id = `home-${idx}`

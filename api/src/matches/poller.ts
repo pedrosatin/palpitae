@@ -4,11 +4,9 @@ import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
+import { ACTIVE_RESULT_WINDOW_MS, EARLIEST_RESULT_MS, RESCUE_WINDOW_MS } from './matchPollingWindow'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
-
-// Até quando o poller ainda busca resultado de um jogo que passou da janela ativa.
-const RESCUE_WINDOW_MS = 24 * 60 * 60 * 1000
 
 type ActiveRound = {
   comp_id: string
@@ -79,8 +77,8 @@ function buildSyncTasks(rows: ActiveRound[]): {
  * final (resultado atrasado no provedor, falha nos dois ticks) e jogos finalizados
  * ainda sem pontuação continuam entrando na consulta. Jogos adiados
  * (`postponed = 1`) ficam de fora do resgate, para não gastar quota da
- * football-data com partidas que não terminam. O failover da ESPN cobre só a
- * janela ativa de competições cujo provider é `football-data`.
+ * football-data com partidas que não terminam. O resgate da ESPN cobre a mesma
+ * janela e consulta apenas jogos ainda sem resultado, inclusive após sync HTTP 200.
  */
 export async function pollActiveMatches(
   db: D1Database,
@@ -94,8 +92,8 @@ export async function pollActiveMatches(
   // Compute the bounds the same way so the TEXT comparison stays lexicographic.
   // SQLite's datetime('now', ...) would produce "2026-06-16 23:21:20" (space, no Z)
   // and string-compare wrong against the stored format.
-  const earliestOver = new Date(now - 115 * 60 * 1000).toISOString() // started ≥ 115 min ago
-  const stillRelevant = new Date(now - 200 * 60 * 1000).toISOString() // started ≤ 200 min ago
+  const earliestOver = new Date(now - EARLIEST_RESULT_MS).toISOString() // started ≥ 115 min ago
+  const stillRelevant = new Date(now - ACTIVE_RESULT_WINDOW_MS).toISOString() // started ≤ 200 min ago
   const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString() // started ≤ 24 h ago
 
   const rows = await db
@@ -138,8 +136,7 @@ export async function pollActiveMatches(
 
   const runSyncTask = async ({ comp, round, dates }: SyncTask): Promise<SyncOutcome> => {
     const matchday = parseInt(round, 10)
-    const matchdayParam =
-      comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
+    const matchdayParam = comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
 
     try {
       const result = await syncFixtures({
@@ -170,17 +167,15 @@ export async function pollActiveMatches(
   let fixturesUpdated = 0
   let hadError = false
   const syncedComps = new Set<string>()
-  const failedCompIds = new Set<string>()
+  const fallbackCompIds = new Set<string>()
 
   for (const res of syncResults) {
+    if (res.comp.provider !== 'espn') fallbackCompIds.add(res.comp.comp_id)
     if (res.success) {
       fixturesUpdated += res.matches
       syncedComps.add(res.comp.comp_id)
     } else {
       hadError = true
-      if (res.comp.provider !== 'espn') {
-        failedCompIds.add(res.comp.comp_id)
-      }
       logError(
         ae,
         'football_api_error',
@@ -193,9 +188,11 @@ export async function pollActiveMatches(
     }
   }
 
-  if (failedCompIds.size > 0) {
+  // HTTP 200 pode trazer status atrasado: o fallback consulta o D1 após os upserts
+  // e só chama a ESPN quando ainda há partidas elegíveis sem resultado final.
+  if (fallbackCompIds.size > 0) {
     try {
-      const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(failedCompIds), { now })
+      const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), { now })
       for (const [compId, updated] of updatedByComp) {
         if (updated > 0) syncedComps.add(compId)
       }

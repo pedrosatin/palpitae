@@ -264,12 +264,26 @@ describe('pollActiveMatches', () => {
     )
   })
 
-  it('does not run the fallback when every sync succeeds', async () => {
+  it('checks remaining results after successful syncs, including HTTP 200 with stale status', async () => {
     const db = buildFakeDb([{ comp_id: 'c1', external_id: 'BSA', season: '2026', round: '30' }])
+    syncFixturesMock.mockResolvedValue({ matches: 1 } as never)
+    espnFallbackMock.mockResolvedValue(new Map([['c1', 1]]))
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
-    expect(espnFallbackMock).not.toHaveBeenCalled()
+    expect(espnFallbackMock).toHaveBeenCalledWith(
+      db,
+      undefined,
+      ['c1'],
+      expect.objectContaining({ now: expect.any(Number) }),
+    )
+    expect(syncFixturesMock.mock.invocationCallOrder[0]).toBeLessThan(
+      espnFallbackMock.mock.invocationCallOrder[0],
+    )
+    expect(espnFallbackMock.mock.invocationCallOrder[0]).toBeLessThan(
+      scoreMock.mock.invocationCallOrder[0],
+    )
+    expect(scoreMock).toHaveBeenCalledTimes(1)
   })
 
   it('scores a competition the fallback rescued (fallback updated ≥1 match)', async () => {
