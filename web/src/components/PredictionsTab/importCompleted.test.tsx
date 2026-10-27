@@ -211,4 +211,87 @@ describe('Barra de importação', () => {
     expect(view.result.current.importCompleted).toBe(false)
     expect(view.result.current.importFeedback).toBeNull()
   })
+
+  describe('com import_sources', () => {
+    function mockSources(body: {
+      import_completed: boolean
+      import_sources: Record<string, string[]>
+      predictions: Array<{ match_id: string }>
+    }) {
+      const posts: unknown[] = []
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+        const path = String(url)
+        const json = (data: unknown) => new Response(JSON.stringify(data))
+        if (path.includes('/predictions/import')) {
+          posts.push(JSON.parse(String(init?.body)))
+          return json({ imported: 1 })
+        }
+        if (path.includes('/matches'))
+          return json({
+            matches: [makeMatch({ id: 'm', round: '1' }), makeMatch({ id: 'm2', round: '2' })],
+            default_round: '2',
+          })
+        if (path.includes('/groups'))
+          return json({
+            groups: [
+              { id: 'source', name: 'Origem', competition_id: 'c' },
+              { id: 'empty', name: 'Vazio', competition_id: 'c' },
+            ],
+          })
+        if (path.includes('/predictions?')) return json(body)
+        throw new Error(path)
+      })
+      return posts
+    }
+
+    it('reabre o seletor quando a rodada nova tem palpites em outro grupo', async () => {
+      const posts = mockSources({
+        import_completed: true,
+        import_sources: { source: ['m', 'm2'] },
+        predictions: [{ match_id: 'm' }],
+      })
+      render(<PredictionsTab groupId="target" competitionId="c" />)
+      expect(await screen.findByText('Novos palpites para importar de:')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Origem (1 palpite novo)' })).toBeInTheDocument()
+      expect(screen.queryByRole('option', { name: /Vazio/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Importar novamente' })).not.toBeInTheDocument()
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Importar' }))
+      await waitFor(() =>
+        expect(posts).toEqual([
+          { source_group_id: 'source', target_group_id: 'target', only_missing: true },
+        ]),
+      )
+    })
+
+    it('mantém recolhido quando nada falta e esconde a barra sem importação anterior', async () => {
+      const posts = mockSources({
+        import_completed: true,
+        import_sources: { source: ['m'] },
+        predictions: [{ match_id: 'm' }],
+      })
+      const view = render(<PredictionsTab groupId="target" competitionId="c" />)
+      await screen.findByRole('button', { name: 'Importar novamente' })
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Importar novamente' }))
+      expect(screen.getByText('Importar palpites de:')).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Vazio' })).toBeInTheDocument()
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Importar' }))
+      await waitFor(() =>
+        expect(posts).toEqual([{ source_group_id: 'source', target_group_id: 'target' }]),
+      )
+      view.unmount()
+      vi.restoreAllMocks()
+
+      mockSources({ import_completed: false, import_sources: {}, predictions: [] })
+      render(<PredictionsTab groupId="target" competitionId="c" />)
+      await waitFor(() => expect(screen.queryByText('Carregando jogos...')).not.toBeInTheDocument())
+      await waitFor(() =>
+        expect(globalThis.fetch).toHaveBeenCalledWith(
+          expect.stringContaining('/groups'),
+          expect.anything(),
+        ),
+      )
+      await act(async () => {})
+      expect(screen.queryByText(/importar palpites/i)).not.toBeInTheDocument()
+    })
+  })
 })

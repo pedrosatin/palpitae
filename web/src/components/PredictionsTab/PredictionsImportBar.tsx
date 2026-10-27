@@ -6,6 +6,8 @@ import styles from './PredictionsTab.module.css'
 type ImportProps = Pick<
   ReturnType<typeof usePredictionsTab>,
   | 'otherGroups'
+  | 'importOptions'
+  | 'importPending'
   | 'importCompleted'
   | 'importFeedback'
   | 'importExpanded'
@@ -16,8 +18,15 @@ type ImportProps = Pick<
   | 'setImportExpanded'
 >
 
+function optionLabel({ name, missing }: { name: string; missing: number }) {
+  if (missing === 0) return name
+  return `${name} (${missing} ${missing === 1 ? 'palpite novo' : 'palpites novos'})`
+}
+
 export default function PredictionsImportBar({
   otherGroups,
+  importOptions,
+  importPending,
   importCompleted,
   importFeedback,
   importExpanded,
@@ -27,21 +36,26 @@ export default function PredictionsImportBar({
   handleImport,
   setImportExpanded,
 }: ImportProps) {
+  const showSelector = (importPending || importExpanded) && importOptions.length > 0
   return (
     <>
-      {(otherGroups.length > 0 || importCompleted || importFeedback) && (
+      {(showSelector || importCompleted || importFeedback) && (
         <div className={styles.importBar}>
-          {(!importCompleted || importExpanded) && otherGroups.length > 0 ? (
+          {showSelector ? (
             <>
-              <span className={styles.importLabel}>Importar palpites de:</span>
+              <span className={styles.importLabel}>
+                {importCompleted && !importExpanded
+                  ? 'Novos palpites para importar de:'
+                  : 'Importar palpites de:'}
+              </span>
               <Select
                 className={styles.importSelect}
                 value={importSourceId}
                 onChange={(e) => setImportSourceId(e.target.value)}
               >
-                {otherGroups.map((g) => (
+                {importOptions.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.name}
+                    {optionLabel(g)}
                   </option>
                 ))}
               </Select>

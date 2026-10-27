@@ -9,11 +9,19 @@ import type { Match, Prediction } from '../MatchCard'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 
 type PredictionMap = Map<string, Prediction>
+/** Grupo de origem → jogos abertos que o usuário palpitou lá. `null`: API antiga, sem o campo. */
+type ImportSources = Record<string, string[]> | null
+type PredictionsResponse = {
+  predictions: Prediction[]
+  import_completed?: boolean
+  import_sources?: Record<string, string[]>
+}
 
 function usePredictionsFetch(groupId: string, competitionId: string) {
   const [matches, setMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
   const [importCompleted, setImportCompleted] = useState(false)
+  const [importSources, setImportSources] = useState<ImportSources>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
@@ -21,6 +29,7 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
   useEffect(() => {
     let active = true
     setImportCompleted(false)
+    setImportSources(null)
     setLoading(true)
     setError(null)
 
@@ -28,12 +37,13 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
       fetchCompetitionMatches(competitionId),
       apiFetch(`${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`).then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar palpites')
-        return r.json() as Promise<{ predictions: Prediction[]; import_completed?: boolean }>
+        return r.json() as Promise<PredictionsResponse>
       }),
     ])
       .then(([matchesData, predictionsData]) => {
         if (!active) return
         setImportCompleted(predictionsData.import_completed === true)
+        setImportSources(predictionsData.import_sources ?? null)
         setMatches(matchesData.matches)
         const map = new Map<string, Prediction>()
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
@@ -62,14 +72,45 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
     setRoundIndex,
     importCompleted,
     setImportCompleted,
+    importSources,
+    setImportSources,
+  }
+}
+
+/**
+ * Palpites que cada grupo irmão ainda pode trazer: jogos abertos sem palpite aqui.
+ * Recalcula a cada palpite salvo, sem nova ida à API.
+ */
+function deriveImportOptions(
+  otherGroups: { id: string; name: string }[],
+  importSources: ImportSources,
+  predictions: PredictionMap,
+  importCompleted: boolean,
+  importExpanded: boolean,
+) {
+  const missing = (id: string) =>
+    (importSources?.[id] ?? []).filter((matchId) => !predictions.has(matchId)).length
+  const withMissing = otherGroups.map((g) => ({ id: g.id, name: g.name, missing: missing(g.id) }))
+  // Sem `import_sources` (API antiga), vale só o marcador de importação concluída.
+  if (importSources === null) {
+    return { importPending: !importCompleted && withMissing.length > 0, importOptions: withMissing }
+  }
+  const importable = withMissing.filter((g) => g.missing > 0).sort((a, b) => b.missing - a.missing)
+  return {
+    importPending: importable.length > 0,
+    importOptions: importExpanded ? withMissing : importable,
   }
 }
 
 function usePredictionsImport(
   groupId: string,
   competitionId: string,
+  predictions: PredictionMap,
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
+  importCompleted: boolean,
   setImportCompleted: Dispatch<SetStateAction<boolean>>,
+  importSources: ImportSources,
+  setImportSources: Dispatch<SetStateAction<ImportSources>>,
 ) {
   const scope = useRef({ active: true })
   const [importExpanded, setImportExpanded] = useState(false)
@@ -110,9 +151,23 @@ function usePredictionsImport(
     }
   }, [groupId, competitionId])
 
+  const { importPending, importOptions } = deriveImportOptions(
+    otherGroups,
+    importSources,
+    predictions,
+    importCompleted,
+    importExpanded,
+  )
+  const selectedSourceId = importOptions.some((g) => g.id === importSourceId)
+    ? importSourceId
+    : (importOptions[0]?.id ?? '')
+
   async function handleImport() {
     const current = scope.current
-    if (!importSourceId || !current.active) return
+    const sourceId = selectedSourceId
+    // "Novos palpites" só preenche o que falta; "Importar novamente" sobrescreve.
+    const onlyMissing = importSources !== null && !importExpanded
+    if (!sourceId || !current.active) return
     trackEvent('click_predictions_importar')
     setImporting(true)
     setImportFeedback(null)
@@ -121,8 +176,9 @@ function usePredictionsImport(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          source_group_id: importSourceId,
+          source_group_id: sourceId,
           target_group_id: groupId,
+          ...(onlyMissing ? { only_missing: true } : {}),
         }),
       })
       const data = (await res.json()) as {
@@ -152,10 +208,13 @@ function usePredictionsImport(
           `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
         )
         if (!predsRes.ok) throw new Error('Erro ao atualizar palpites')
-        const predsData = (await predsRes.json()) as { predictions: Prediction[] }
+        const predsData = (await predsRes.json()) as PredictionsResponse
         const map = new Map<string, Prediction>()
         for (const p of predsData.predictions) map.set(p.match_id, p)
-        if (current.active) setPredictions(map)
+        if (current.active) {
+          setPredictions(map)
+          if (predsData.import_sources) setImportSources(predsData.import_sources)
+        }
       } catch {
         if (current.active)
           setImportFeedback({
@@ -174,7 +233,9 @@ function usePredictionsImport(
     importExpanded,
     setImportExpanded,
     otherGroups,
-    importSourceId,
+    importOptions,
+    importPending,
+    importSourceId: selectedSourceId,
     setImportSourceId,
     importing,
     importFeedback,
@@ -193,18 +254,31 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     setRoundIndex,
     importCompleted,
     setImportCompleted,
+    importSources,
+    setImportSources,
   } = usePredictionsFetch(groupId, competitionId)
 
   const {
     importExpanded,
     setImportExpanded,
     otherGroups,
+    importOptions,
+    importPending,
     importSourceId,
     setImportSourceId,
     importing,
     importFeedback,
     handleImport,
-  } = usePredictionsImport(groupId, competitionId, setPredictions, setImportCompleted)
+  } = usePredictionsImport(
+    groupId,
+    competitionId,
+    predictions,
+    setPredictions,
+    importCompleted,
+    setImportCompleted,
+    importSources,
+    setImportSources,
+  )
 
   const {
     roundKeys,
@@ -263,6 +337,8 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     importExpanded,
     setImportExpanded,
     otherGroups,
+    importOptions,
+    importPending,
     importSourceId,
     setImportSourceId,
     importing,
