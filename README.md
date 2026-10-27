@@ -124,6 +124,11 @@ npm run build
 The `dist/` output, together with the Pages functions under `web/functions/`,
 is deployed to Cloudflare Pages via Wrangler.
 
+The optional [TBBC feedback pilot](docs/feedback.md) asks about saving predictions.
+Set the public build variable `VITE_TBBC_SITE_KEY` to enable it; leaving it empty
+disables the prompt and feedback requests. The GitHub Actions build reads the
+repository variable of the same name.
+
 ## Contributing
 
 Found a bug or have a suggestion? Open an issue at

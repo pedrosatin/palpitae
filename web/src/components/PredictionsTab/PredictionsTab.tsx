@@ -4,6 +4,7 @@ import ErrorState from '../ErrorState'
 import MatchCard, { type Match } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import PredictionsImportBar from './PredictionsImportBar'
+import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
 import { usePredictionsTab } from './usePredictionsTab'
 import styles from './PredictionsTab.module.css'
 
@@ -71,6 +72,7 @@ export default function PredictionsTab({
     setRoundIndex,
     savingAll,
     savedAll,
+    hasSavedPredictions,
     bulkError,
     pendingCount,
     handleSaveAll,
@@ -202,6 +204,8 @@ export default function PredictionsTab({
                 : 'Salvar todos'}
         </Button>
       </div>
+
+      {hasSavedPredictions && <PredictionsFeedback />}
 
       {groupedRoundMatches(roundMatches).map(([groupName, groupMatches]) => (
         <div key={groupName ?? '__no_group'} className={styles.matchGroup}>
