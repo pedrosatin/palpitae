@@ -513,8 +513,8 @@ export default function StandingsTab({
           )}
           {isGeneralRanking(group) ? (
             <p className={styles.incompleteNote} role="note">
-              A ESPN não entrega grupos completos nesta fase. Este ranking junta
-              todos os jogos e não é a classificação oficial dos grupos.
+              A ESPN não entrega grupos completos nesta fase. Este ranking junta todos os jogos e
+              não é a classificação oficial dos grupos.
             </p>
           ) : null}
           <StandingsTable teams={standings.get(group)!} />
