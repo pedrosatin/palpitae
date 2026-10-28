@@ -5,6 +5,7 @@ import { getGuideOrigin } from '../../../analytics/guideOrigin'
 import { apiFetch } from '../../../lib/api'
 import { ScoringPreset } from '../constants'
 import { selectableCompetitions } from '../competitionStatus'
+import type { CompetitionSelectGroups } from '../competitionStatus'
 import { Competition, CreatedGroup } from '../types'
 
 interface UseCreateGroupFormProps {
@@ -15,6 +16,10 @@ interface UseCreateGroupFormProps {
 
 export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGroupFormProps) {
   const [competitions, setCompetitions] = useState<Competition[]>([])
+  const [competitionGroups, setCompetitionGroups] = useState<CompetitionSelectGroups>({
+    ongoing: [],
+    upcoming: [],
+  })
   const [loadingCompetitions, setLoadingCompetitions] = useState(false)
 
   const [name, setName] = useState('')
@@ -44,9 +49,11 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
       .then((r) => r.json() as Promise<{ competitions: Competition[] }>)
       .then((data) => {
         // Encerradas saem; em andamento entram primeiro no select e são o
-        // default — campeonato prestes a virar só fallback.
-        const { list } = selectableCompetitions(data.competitions)
+        // default — campeonato prestes a virar só fallback. Os grupos saem
+        // daqui uma única vez; o modal não reparticiona a lista.
+        const { list, groups } = selectableCompetitions(data.competitions)
         setCompetitions(list)
+        setCompetitionGroups(groups)
         if (list.length > 0) {
           setCompetitionId(list[0].id)
         }
@@ -129,6 +136,7 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
 
   return {
     competitions,
+    competitionGroups,
     loadingCompetitions,
     name,
     setName,

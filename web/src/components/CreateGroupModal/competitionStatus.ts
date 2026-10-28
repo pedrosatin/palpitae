@@ -12,6 +12,10 @@ export type CompetitionSelectGroups = {
  * como palpitar jogos que já aconteceram), então saem da lista. As elegíveis
  * voltam separadas para os <optgroup> do select — "Em andamento" primeiro.
  * A ordem interna de cada grupo é preservada (a API já ordena por nome).
+ *
+ * Status fora da união (a versão da API pode ter chegado antes do deploy do
+ * frontend, ou veio ausente) é tratado como "Em breve": aparece no select em
+ * vez de sumir, o caminho conservador para o usuário não perder a opção.
  */
 export function partitionSelectableCompetitions(
   competitions: Competition[],

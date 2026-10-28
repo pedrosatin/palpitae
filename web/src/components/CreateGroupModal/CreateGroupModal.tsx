@@ -6,7 +6,6 @@ import shared from '../modal-shared.module.css'
 import CreateGroupSuccessView from './components/CreateGroupSuccessView'
 import ScoringRulesField from './components/ScoringRulesField'
 import VisibilityField from './components/VisibilityField'
-import { partitionSelectableCompetitions } from './competitionStatus'
 import { useCreateGroupForm } from './hooks/useCreateGroupForm'
 import type { Competition, CreatedGroup } from './types'
 
@@ -19,6 +18,7 @@ interface CreateGroupModalProps {
 export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateGroupModalProps) {
   const {
     competitions,
+    competitionGroups,
     loadingCompetitions,
     name,
     setName,
@@ -44,9 +44,9 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
     handleSubmit,
   } = useCreateGroupForm({ isOpen, onClose, onCreated })
 
-  // Andamento primeiro, depois as por começar; sem um dos grupos não há
-  // <optgroup> — um título sozinho só adicionaria ruído.
-  const groups = partitionSelectableCompetitions(competitions)
+  // Grupos já calculados no hook no carregamento (fonte única de verdade);
+  // sem um dos grupos não há <optgroup> — um título sozinho só adicionaria ruído.
+  const groups = competitionGroups
   const hasBothGroups = groups.ongoing.length > 0 && groups.upcoming.length > 0
   const selected = competitions.find((c) => c.id === competitionId)
   const selectedOngoing = selected?.status === 'ongoing'
@@ -111,7 +111,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
               </Select>
             )}
             {selectedOngoing && (
-              <p className={styles.statusHint}>
+              <p role="status" className={styles.statusHint}>
                 Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que
                 faltam.
               </p>

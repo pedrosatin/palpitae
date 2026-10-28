@@ -93,6 +93,58 @@ describe('CreateGroupModal', () => {
     expect(screen.queryByRole('group', { name: 'Em breve' })).not.toBeInTheDocument()
   })
 
+  it('renders a flat list when every competition is ongoing (no trailing group)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [
+          { id: 'a', name: 'Brasileirão', status: 'ongoing' },
+          { id: 'b', name: 'Liga dos Campeões', status: 'ongoing' },
+        ],
+      }),
+    } as Response)
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Liga dos Campeões/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+    expect(screen.getByText(/já começou/)).toBeInTheDocument()
+  })
+
+  it('orders the Em andamento group before Em breve', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [
+          { id: 'z', name: 'Zebra Cup', status: 'upcoming' },
+          { id: 'a', name: 'A Liga', status: 'ongoing' },
+        ],
+      }),
+    } as Response)
+    render(<CreateGroupModal {...defaultProps} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Zebra Cup/ })).toBeInTheDocument()
+    })
+    // Ordem do DOM: "Em andamento" precede "Em breve", mesmo com o nome vindo depois.
+    expect(
+      screen.getAllByRole('group').map((group) => group.getAttribute('label')),
+    ).toEqual(['Em andamento', 'Em breve'])
+  })
+
+  it('announces the ongoing hint to screen readers', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [{ id: 'a', name: 'Brasileirão', status: 'ongoing' }],
+      }),
+    } as Response)
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(/já começou/)
+    })
+  })
+
   it('calls onCreated and shows success screen on successful submission', async () => {
     mockFetchCompetitions()
     const createdGroup = { id: 'g1', name: 'Os Craques', invite_code: 'INV123' }
