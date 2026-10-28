@@ -58,11 +58,7 @@ describe('competitionMatches', () => {
 
   describe('applyDefaultRoundFromMatches', () => {
     it('extracts unique rounds and calls applyDefaultRound', () => {
-      const matches = [
-        { round: 'Round 1' },
-        { round: 'Round 2' },
-        { round: 'Round 1' },
-      ] as any[]
+      const matches = [{ round: 'Round 1' }, { round: 'Round 2' }, { round: 'Round 1' }] as any[]
 
       const setRoundIndex = vi.fn()
 
@@ -71,7 +67,7 @@ describe('competitionMatches', () => {
       expect(applyDefaultRound).toHaveBeenCalledWith(
         'Round 2',
         ['Round 1', 'Round 2'],
-        setRoundIndex
+        setRoundIndex,
       )
     })
 
@@ -80,11 +76,7 @@ describe('competitionMatches', () => {
 
       applyDefaultRoundFromMatches([], null, setRoundIndex)
 
-      expect(applyDefaultRound).toHaveBeenCalledWith(
-        null,
-        [],
-        setRoundIndex
-      )
+      expect(applyDefaultRound).toHaveBeenCalledWith(null, [], setRoundIndex)
     })
   })
 })

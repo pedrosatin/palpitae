@@ -94,9 +94,7 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
         roundMatches: [match],
         drafts: new Map([['m-postponed', { home: '1', away: '0' }]]),
         penaltyDrafts: new Map(),
-        predictions: new Map([
-          ['m-postponed', pred({ match_id: 'm-postponed', locked: 1 })],
-        ]),
+        predictions: new Map([['m-postponed', pred({ match_id: 'm-postponed', locked: 1 })]]),
       }),
     ).toEqual([])
   })
