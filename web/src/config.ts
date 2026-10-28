@@ -15,6 +15,8 @@ export const config = {
   apiUrl: import.meta.env.VITE_API_URL ?? 'http://localhost:8787',
   authUrl: import.meta.env.VITE_AUTH_URL ?? 'http://localhost:8787',
   gaMeasurementId: import.meta.env.VITE_GA_MEASUREMENT_ID ?? '',
+  /** Public TBBC inbox key. Empty disables feedback and all TBBC requests. */
+  tbbcSiteKey: (import.meta.env.VITE_TBBC_SITE_KEY ?? '').trim(),
 } as const
 
 function isAbsoluteUrl(value: string): boolean {

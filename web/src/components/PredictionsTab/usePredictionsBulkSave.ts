@@ -22,6 +22,7 @@ export function usePredictionsBulkSave(
 
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
+  const [hasSavedPredictions, setHasSavedPredictions] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
   const savedAllTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -50,6 +51,7 @@ export function usePredictionsBulkSave(
     away: number,
     penaltyWinner: 'home' | 'away' | null,
   ) {
+    setHasSavedPredictions(true)
     setPredictions((prev) => {
       const next = new Map(prev)
       const existing = prev.get(matchId)
@@ -169,6 +171,7 @@ export function usePredictionsBulkSave(
     drafts,
     savingAll,
     savedAll,
+    hasSavedPredictions,
     bulkError,
     pendingCount,
     handleSaveAll,
