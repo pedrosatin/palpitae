@@ -87,7 +87,7 @@ vinham de `crests.football-data.org`, já liberado em `img-src`.
 | `script-src` | `'self'`, 3 hashes, `https://static.cloudflareinsights.com`, `https://www.googletagmanager.com` | bundle do Vite; os dois scripts inline do `index.html` e o script do GA nos guias (`build/analytics.ts`); beacon do Cloudflare Web Analytics que a borda injeta no HTML; `gtag.js` carregado por `src/analytics/ga.ts` e pelos guias |
 | `style-src` | `'self'`, 3 hashes | CSS do bundle; `<style>` inline do `index.html`, dos guias e do 404 |
 | `img-src` | `'self'`, `data:`, `blob:`, `https://crests.football-data.org`, `https://*.googleusercontent.com`, `https://*.google-analytics.com`, `https://*.googletagmanager.com` | ícones locais; SVG em `data:` no CSS; prévia do cartão de compartilhamento (`URL.createObjectURL`); escudos dos times (`teams.logo_url`, vindo da football-data.org); foto do perfil Google; pixels do GA4 |
-| `connect-src` | `'self'`, `https://cloudflareinsights.com`, `https://*.google-analytics.com`, `https://*.analytics.google.com`, `https://*.googletagmanager.com` | API pelo proxy `/api` (mesma origem); envio do Web Analytics; coleta do GA4 |
+| `connect-src` | `'self'`, `https://tbbc.app`, `https://cloudflareinsights.com`, `https://*.google-analytics.com`, `https://*.analytics.google.com`, `https://*.googletagmanager.com` | API pelo proxy `/api` (mesma origem); feedback opcional pela API da TBBC, sem credenciais; envio do Web Analytics; coleta do GA4 |
 | `font-src`, `manifest-src` | `'self'` | o site usa fontes do sistema; `site.webmanifest` |
 | `frame-src`, `worker-src`, `object-src` | `'none'` | nada usa iframe, worker ou plugin |
 | `base-uri` | `'self'` |  |
