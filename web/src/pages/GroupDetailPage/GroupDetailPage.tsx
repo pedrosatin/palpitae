@@ -99,49 +99,14 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     </>
   )
 
+  let content = null
   if (loading) {
-    return (
+    content = <p className={styles.loadingText}>Carregando grupo...</p>
+  } else if (error || !group) {
+    content = <ErrorState message={error ?? 'Grupo não encontrado'} />
+  } else {
+    content = (
       <>
-        <Header
-          user={user}
-          onCreateGroup={() => setCreateOpen(true)}
-          onJoinGroup={() => setJoinOpen(true)}
-          onLogout={onLogout}
-        />
-        <main className={styles.root}>
-          <p className={styles.loadingText}>Carregando grupo...</p>
-        </main>
-        {modals}
-      </>
-    )
-  }
-
-  if (error || !group) {
-    return (
-      <>
-        <Header
-          user={user}
-          onCreateGroup={() => setCreateOpen(true)}
-          onJoinGroup={() => setJoinOpen(true)}
-          onLogout={onLogout}
-        />
-        <main className={styles.root}>
-          <ErrorState message={error ?? 'Grupo não encontrado'} />
-        </main>
-        {modals}
-      </>
-    )
-  }
-
-  return (
-    <>
-      <Header
-        user={user}
-        onCreateGroup={() => setCreateOpen(true)}
-        onJoinGroup={() => setJoinOpen(true)}
-        onLogout={onLogout}
-      />
-      <main className={styles.root}>
         {/* Group header */}
         <GroupHeader
           group={group}
@@ -186,7 +151,19 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           isAdmin={isAdmin}
           userId={user.id}
         />
-      </main>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <Header
+        user={user}
+        onCreateGroup={() => setCreateOpen(true)}
+        onJoinGroup={() => setJoinOpen(true)}
+        onLogout={onLogout}
+      />
+      <main className={styles.root}>{content}</main>
       {modals}
     </>
   )
