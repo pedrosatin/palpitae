@@ -23,6 +23,10 @@ type SyncTask = {
   dates?: string[]
 }
 
+type SyncOutcome =
+  | { success: true; comp: ActiveRound; round: string; matches: number }
+  | { success: false; comp: ActiveRound; round: string; err: unknown }
+
 function buildSyncTasks(rows: ActiveRound[]): {
   compCount: number
   tasks: SyncTask[]
@@ -61,6 +65,89 @@ function buildSyncTasks(rows: ActiveRound[]): {
   return { compCount: byComp.size, tasks }
 }
 
+async function fetchActiveRounds(db: D1Database, now: number): Promise<ActiveRound[]> {
+  const earliestOver = new Date(now - EARLIEST_RESULT_MS).toISOString()
+  const stillRelevant = new Date(now - ACTIVE_RESULT_WINDOW_MS).toISOString()
+  const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString()
+
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT
+         c.id          AS comp_id,
+         c.external_id AS external_id,
+         c.provider    AS provider,
+         c.season      AS season,
+         m.round       AS round,
+         substr(m.start_time, 1, 10) AS utc_day
+       FROM matches m
+       JOIN competitions c ON c.id = m.competition_id
+       WHERE m.start_time <= ?
+         AND m.start_time >= ?
+         AND c.provider IN ('football-data', 'espn')
+         AND (
+           (m.status != 'finished' AND (m.start_time >= ? OR m.postponed = 0))
+           OR (m.status = 'finished' AND m.scored_at IS NULL
+               AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL)
+         )`,
+    )
+    .bind(earliestOver, rescueFloor, stillRelevant)
+    .all<ActiveRound>()
+
+  return rows.results
+}
+
+async function executeSyncTasks(
+  tasks: SyncTask[],
+  apiKey: string,
+  db: D1Database,
+): Promise<SyncOutcome[]> {
+  const runSyncTask = async ({ comp, round, dates }: SyncTask): Promise<SyncOutcome> => {
+    const matchday = parseInt(round, 10)
+    const matchdayParam = comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
+
+    try {
+      const result = await syncFixtures({
+        competitionCode: comp.external_id,
+        season: Number(comp.season),
+        matchday: matchdayParam,
+        dates,
+        apiKey,
+        db,
+      })
+      return { success: true as const, comp, round, matches: result?.matches ?? 0 }
+    } catch (err) {
+      return { success: false as const, comp, round, err }
+    }
+  }
+
+  const fdTasks = tasks.filter((task) => task.comp.provider === 'football-data')
+  const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
+  const [fdResults, espnResults] = await Promise.all([
+    runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runSyncTask),
+    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runSyncTask),
+  ])
+  return [...fdResults, ...espnResults]
+}
+
+async function scoreSyncedCompetitions(syncedComps: Set<string>, db: D1Database): Promise<void> {
+  const scoreResults = await Promise.all(
+    Array.from(syncedComps).map(async (compId) => {
+      try {
+        await scoreUnprocessedMatches(compId, db)
+        return { success: true as const, compId }
+      } catch (err) {
+        return { success: false as const, compId, err }
+      }
+    }),
+  )
+
+  for (const res of scoreResults) {
+    if (!res.success) {
+      throw res.err
+    }
+  }
+}
+
 /**
  * Polls football-data.org and ESPN for results of matches currently inside
  * their active window, then scores them. Designed to run on a Cron Trigger
@@ -87,39 +174,9 @@ export async function pollActiveMatches(
   now = Date.now(),
 ): Promise<void> {
   const startedAt = Date.now()
+  const rows = await fetchActiveRounds(db, now)
 
-  // start_time is stored as ISO 8601 with `T`/`Z` (e.g. "2026-06-16T22:00:00Z").
-  // Compute the bounds the same way so the TEXT comparison stays lexicographic.
-  // SQLite's datetime('now', ...) would produce "2026-06-16 23:21:20" (space, no Z)
-  // and string-compare wrong against the stored format.
-  const earliestOver = new Date(now - EARLIEST_RESULT_MS).toISOString() // started ≥ 115 min ago
-  const stillRelevant = new Date(now - ACTIVE_RESULT_WINDOW_MS).toISOString() // started ≤ 200 min ago
-  const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString() // started ≤ 24 h ago
-
-  const rows = await db
-    .prepare(
-      `SELECT DISTINCT
-         c.id          AS comp_id,
-         c.external_id AS external_id,
-         c.provider    AS provider,
-         c.season      AS season,
-         m.round       AS round,
-         substr(m.start_time, 1, 10) AS utc_day
-       FROM matches m
-       JOIN competitions c ON c.id = m.competition_id
-       WHERE m.start_time <= ?
-         AND m.start_time >= ?
-         AND c.provider IN ('football-data', 'espn')
-         AND (
-           (m.status != 'finished' AND (m.start_time >= ? OR m.postponed = 0))
-           OR (m.status = 'finished' AND m.scored_at IS NULL
-               AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL)
-         )`,
-    )
-    .bind(earliestOver, rescueFloor, stillRelevant)
-    .all<ActiveRound>()
-
-  if (rows.results.length === 0) {
+  if (rows.length === 0) {
     console.info('[poller] Nenhum jogo na janela ativa.')
     logEvent(ae, 'poller_run', {
       blobs: ['ok'],
@@ -128,41 +185,9 @@ export async function pollActiveMatches(
     return
   }
 
-  const { compCount, tasks } = buildSyncTasks(rows.results)
+  const { compCount, tasks } = buildSyncTasks(rows)
+  const syncResults = await executeSyncTasks(tasks, apiKey, db)
 
-  type SyncOutcome =
-    | { success: true; comp: ActiveRound; round: string; matches: number }
-    | { success: false; comp: ActiveRound; round: string; err: unknown }
-
-  const runSyncTask = async ({ comp, round, dates }: SyncTask): Promise<SyncOutcome> => {
-    const matchday = parseInt(round, 10)
-    const matchdayParam = comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
-
-    try {
-      const result = await syncFixtures({
-        competitionCode: comp.external_id,
-        season: Number(comp.season),
-        matchday: matchdayParam,
-        dates,
-        apiKey,
-        db,
-      })
-      return { success: true as const, comp, round, matches: result?.matches ?? 0 }
-    } catch (err) {
-      return { success: false as const, comp, round, err }
-    }
-  }
-
-  // football-data compartilha 10 req/min; ESPN tem teto próprio + pacing HTTP.
-  const fdTasks = tasks.filter((task) => task.comp.provider === 'football-data')
-  const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
-  const [fdResults, espnResults] = await Promise.all([
-    runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runSyncTask),
-    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runSyncTask),
-  ])
-  const syncResults = [...fdResults, ...espnResults]
-
-  // Requests primárias planejadas, sem retries nem chamadas do fallback.
   const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)
   let fixturesUpdated = 0
   let hadError = false
@@ -188,8 +213,6 @@ export async function pollActiveMatches(
     }
   }
 
-  // HTTP 200 pode trazer status atrasado: o fallback consulta o D1 após os upserts
-  // e só chama a ESPN quando ainda há partidas elegíveis sem resultado final.
   if (fallbackCompIds.size > 0) {
     try {
       const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), { now })
@@ -201,26 +224,11 @@ export async function pollActiveMatches(
     }
   }
 
-  const scoreResults = await Promise.all(
-    Array.from(syncedComps).map(async (compId) => {
-      try {
-        await scoreUnprocessedMatches(compId, db)
-        return { success: true as const, compId }
-      } catch (err) {
-        return { success: false as const, compId, err }
-      }
-    }),
-  )
-
-  for (const res of scoreResults) {
-    if (!res.success) {
-      throw res.err
-    }
-  }
+  await scoreSyncedCompetitions(syncedComps, db)
 
   logEvent(ae, 'poller_run', {
     blobs: [hadError ? 'error' : 'ok'],
-    doubles: [rows.results.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
+    doubles: [rows.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
   })
 
   console.info(
@@ -228,7 +236,7 @@ export async function pollActiveMatches(
     JSON.stringify({
       route: 'cron pollActiveMatches',
       competitions: compCount,
-      round_days: rows.results.length,
+      round_days: rows.length,
       sync_tasks: tasks.length,
       api_requests_planned: plannedApiRequests,
       espn_max_concurrent: ESPN_MAX_CONCURRENT_COMPETITIONS,
