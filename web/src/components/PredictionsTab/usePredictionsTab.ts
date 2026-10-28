@@ -5,6 +5,7 @@ import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
+import { isMatchLocked } from '../../lib/predictionDrafts'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 
@@ -79,19 +80,23 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
 
 /**
  * Palpites que cada grupo irmão ainda pode trazer: jogos abertos sem palpite aqui.
- * Recalcula a cada palpite salvo, sem nova ida à API.
+ * Recalcula a cada palpite salvo, sem nova ida à API, e descarta jogos que
+ * travaram com a página aberta.
  */
 function deriveImportOptions(
   otherGroups: { id: string; name: string }[],
   importSources: ImportSources,
   predictions: PredictionMap,
+  matches: Match[],
   importCompleted: boolean,
   importExpanded: boolean,
 ) {
+  const open = new Set(matches.filter((m) => !isMatchLocked(m, undefined)).map((m) => m.id))
   const missing = (id: string) =>
-    (importSources?.[id] ?? []).filter((matchId) => !predictions.has(matchId)).length
+    (importSources?.[id] ?? []).filter((matchId) => open.has(matchId) && !predictions.has(matchId))
+      .length
   const withMissing = otherGroups.map((g) => ({ id: g.id, name: g.name, missing: missing(g.id) }))
-  // Sem `import_sources` (API antiga), vale só o marcador de importação concluída.
+  // API antiga, sem `import_sources`: vale só o marcador de importação concluída.
   if (importSources === null) {
     return { importPending: !importCompleted && withMissing.length > 0, importOptions: withMissing }
   }
@@ -105,6 +110,7 @@ function deriveImportOptions(
 function usePredictionsImport(
   groupId: string,
   competitionId: string,
+  matches: Match[],
   predictions: PredictionMap,
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
   importCompleted: boolean,
@@ -142,8 +148,9 @@ function usePredictionsImport(
         const siblings = data.groups.filter(
           (g) => g.competition_id === competitionId && g.id !== groupId,
         )
+        // Sem pré-seleção: o padrão é o primeiro de `importOptions`, o grupo com mais
+        // palpites faltando.
         setOtherGroups(siblings)
-        if (siblings.length > 0) setImportSourceId(siblings[0].id)
       })
       .catch(() => {})
     return () => {
@@ -155,6 +162,7 @@ function usePredictionsImport(
     otherGroups,
     importSources,
     predictions,
+    matches,
     importCompleted,
     importExpanded,
   )
@@ -165,7 +173,8 @@ function usePredictionsImport(
   async function handleImport() {
     const current = scope.current
     const sourceId = selectedSourceId
-    // "Novos palpites" só preenche o que falta; "Importar novamente" sobrescreve.
+    // O seletor de pendências só preenche o que falta, inclusive na primeira
+    // importação. O seletor completo, aberto pelo link, sobrescreve.
     const onlyMissing = importSources !== null && !importExpanded
     if (!sourceId || !current.active) return
     trackEvent('click_predictions_importar')
@@ -272,6 +281,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
   } = usePredictionsImport(
     groupId,
     competitionId,
+    matches,
     predictions,
     setPredictions,
     importCompleted,

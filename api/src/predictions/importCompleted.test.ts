@@ -89,9 +89,13 @@ describe('Conclusão da importação por membro', () => {
     expect(await sources()).toEqual({ source: ['m'] })
     sqlite.exec("INSERT INTO group_bans (group_id,user_id) VALUES ('source','a')")
     expect(await sources()).toEqual({})
-    sqlite.exec(
-      "DELETE FROM group_bans; UPDATE groups SET deleted_at = '2026-01-01' WHERE id = 'source'",
-    )
+    // Saiu do grupo de origem: o palpite antigo continua no banco, mas não conta.
+    sqlite.exec("DELETE FROM group_bans; DELETE FROM group_members WHERE id = 'as'")
+    expect(await sources()).toEqual({})
+    sqlite.exec(`
+      INSERT INTO group_members (id,group_id,user_id) VALUES ('as','source','a');
+      UPDATE groups SET deleted_at = '2026-01-01' WHERE id = 'source';
+    `)
     expect(await sources()).toEqual({})
   })
 

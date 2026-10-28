@@ -301,8 +301,8 @@ const router = new Hono<AppContext>()
  * Sem `match_id`, `import_sources` lista, por grupo do mesmo campeonato em que o
  * usuário também é membro, os jogos ainda abertos que ele já palpitou lá. O front
  * cruza com os palpites deste grupo para oferecer importação só quando há
- * palpite faltando (o marcador `import_completed` sozinho fica velho quando a
- * rodada vira).
+ * palpite faltando. O marcador `import_completed` sozinho fica velho quando a
+ * rodada vira.
  *
  * Response:
  * {
@@ -368,10 +368,13 @@ router.get('/', requireAuth, async (c) => {
   query += ` ORDER BY m.start_time ASC`
 
   const queryStartedAt = Date.now()
-  const result = await db
-    .prepare(query)
-    .bind(...params)
-    .all<PredictionRow>()
+  const [result, importSources] = await Promise.all([
+    db
+      .prepare(query)
+      .bind(...params)
+      .all<PredictionRow>(),
+    matchId ? null : fetchImportSources(db, userId, groupId, now),
+  ])
   const ties = await fetchRowTies(db, result.results)
   const leg1Map = await fetchSingleUserLeg1Map(db, groupId, userId, result.results, ties)
   const queryMs = Date.now() - queryStartedAt
@@ -396,7 +399,7 @@ router.get('/', requireAuth, async (c) => {
   return c.json({
     predictions: predictionsOut,
     import_completed: membership.predictions_import_completed === 1,
-    ...(matchId ? {} : { import_sources: await fetchImportSources(db, userId, groupId, now) }),
+    ...(importSources ? { import_sources: importSources } : {}),
   })
 })
 

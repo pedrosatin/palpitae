@@ -228,7 +228,11 @@ describe('Barra de importação', () => {
         }
         if (path.includes('/matches'))
           return json({
-            matches: [makeMatch({ id: 'm', round: '1' }), makeMatch({ id: 'm2', round: '2' })],
+            matches: [
+              makeMatch({ id: 'm', round: '1' }),
+              makeMatch({ id: 'm2', round: '2' }),
+              makeMatch({ id: 'done', round: '1', status: 'finished' }),
+            ],
             default_round: '2',
           })
         if (path.includes('/groups'))
@@ -247,7 +251,8 @@ describe('Barra de importação', () => {
     it('reabre o seletor quando a rodada nova tem palpites em outro grupo', async () => {
       const posts = mockSources({
         import_completed: true,
-        import_sources: { source: ['m', 'm2'] },
+        // `done` travou depois da resposta da API e não entra na contagem.
+        import_sources: { source: ['m', 'm2', 'done'] },
         predictions: [{ match_id: 'm' }],
       })
       render(<PredictionsTab groupId="target" competitionId="c" />)
@@ -263,13 +268,13 @@ describe('Barra de importação', () => {
       )
     })
 
-    it('mantém recolhido quando nada falta e esconde a barra sem importação anterior', async () => {
+    it('mantém recolhido quando nada falta e sobrescreve no Importar novamente', async () => {
       const posts = mockSources({
         import_completed: true,
         import_sources: { source: ['m'] },
         predictions: [{ match_id: 'm' }],
       })
-      const view = render(<PredictionsTab groupId="target" competitionId="c" />)
+      render(<PredictionsTab groupId="target" competitionId="c" />)
       await screen.findByRole('button', { name: 'Importar novamente' })
       await userEvent.setup().click(screen.getByRole('button', { name: 'Importar novamente' }))
       expect(screen.getByText('Importar palpites de:')).toBeInTheDocument()
@@ -278,20 +283,49 @@ describe('Barra de importação', () => {
       await waitFor(() =>
         expect(posts).toEqual([{ source_group_id: 'source', target_group_id: 'target' }]),
       )
-      view.unmount()
-      vi.restoreAllMocks()
+    })
 
-      mockSources({ import_completed: false, import_sources: {}, predictions: [] })
+    it('sem pendências nem importação anterior, recolhe num link que sobrescreve', async () => {
+      const posts = mockSources({ import_completed: false, import_sources: {}, predictions: [] })
       render(<PredictionsTab groupId="target" competitionId="c" />)
-      await waitFor(() => expect(screen.queryByText('Carregando jogos...')).not.toBeInTheDocument())
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: 'Importar de outro grupo' }))
+      expect(screen.getByText('Importar palpites de:')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Importar' }))
       await waitFor(() =>
-        expect(globalThis.fetch).toHaveBeenCalledWith(
-          expect.stringContaining('/groups'),
-          expect.anything(),
-        ),
+        expect(posts).toEqual([{ source_group_id: 'source', target_group_id: 'target' }]),
       )
-      await act(async () => {})
-      expect(screen.queryByText(/importar palpites/i)).not.toBeInTheDocument()
+    })
+
+    it('primeira importação com pendências preenche só o que falta', async () => {
+      const posts = mockSources({
+        import_completed: false,
+        import_sources: { source: ['m'], empty: ['m', 'm2'] },
+        predictions: [],
+      })
+      render(<PredictionsTab groupId="target" competitionId="c" />)
+      expect(await screen.findByText('Importar palpites de:')).toBeInTheDocument()
+      // O grupo com mais pendências vem selecionado, mesmo não sendo o primeiro de /groups.
+      expect(screen.getByRole('option', { name: 'Vazio (2 palpites novos)' })).toHaveProperty(
+        'selected',
+        true,
+      )
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Importar' }))
+      await waitFor(() =>
+        expect(posts).toEqual([
+          { source_group_id: 'empty', target_group_id: 'target', only_missing: true },
+        ]),
+      )
+    })
+
+    it('a contagem cai quando o palpite é salvo no próprio grupo', async () => {
+      mockSources({ import_completed: false, import_sources: { source: ['m2'] }, predictions: [] })
+      const { result } = renderHook(() => usePredictionsTab('target', 'c'))
+      await waitFor(() => expect(result.current.importOptions).toHaveLength(1))
+      expect(result.current.importOptions[0]).toMatchObject({ id: 'source', missing: 1 })
+      act(() => result.current.handleSaved('m2', 1, 0, null))
+      expect(result.current.importPending).toBe(false)
+      expect(result.current.importOptions).toEqual([])
     })
   })
 })

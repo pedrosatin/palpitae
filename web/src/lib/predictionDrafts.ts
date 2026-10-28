@@ -29,7 +29,7 @@ export type CollectRoundDraftsInput = {
  * locked_at, status live/finished ou prediction.locked fecham; postponed com
  * horário passado e sem lock explícito permanece aberto (start_time original).
  */
-function isMatchLocked(match: Match, prediction: Prediction | undefined): boolean {
+export function isMatchLocked(match: Match, prediction: Prediction | undefined): boolean {
   if (match.locked_at) return true
   if (match.status === 'live' || match.status === 'finished') return true
   if (prediction?.locked) return true
