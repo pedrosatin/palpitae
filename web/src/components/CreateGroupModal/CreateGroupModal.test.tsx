@@ -57,6 +57,42 @@ describe('CreateGroupModal', () => {
     })
   })
 
+  it('hides finished competitions and groups ongoing ones first', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [
+          { ...competitions[0], id: 'copa-do-mundo', name: 'Copa do Mundo', status: 'finished' },
+          { id: 'brasileirao', name: 'Brasileirão', status: 'ongoing' },
+          { id: 'nordeste', name: 'Copa do Nordeste', status: 'upcoming' },
+        ],
+      }),
+    } as Response)
+
+    render(<CreateGroupModal {...defaultProps} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Brasileirão/ })).toBeInTheDocument()
+    })
+
+    // Copa do Mundo encerrada não entra no select.
+    expect(screen.queryByRole('option', { name: /Copa do Mundo/ })).not.toBeInTheDocument()
+
+    // Com os dois grupos presentes, os <optgroup> separam andamento e futuro.
+    expect(screen.getByRole('group', { name: 'Em andamento' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Em breve' })).toBeInTheDocument()
+    expect(screen.getByText('Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que faltam.')).toBeInTheDocument()
+  })
+
+  it('renders a flat list when there is only one status', async () => {
+    mockFetchCompetitions()
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Copa 2026/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('group', { name: 'Em breve' })).not.toBeInTheDocument()
+  })
+
   it('calls onCreated and shows success screen on successful submission', async () => {
     mockFetchCompetitions()
     const createdGroup = { id: 'g1', name: 'Os Craques', invite_code: 'INV123' }

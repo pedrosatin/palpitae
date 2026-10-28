@@ -72,6 +72,35 @@ describe('competitions router', () => {
     })
   })
 
+  it('passes through the derived status column as status', async () => {
+    const app = new Hono<AppContext>()
+    app.route('/competitions', competitionsRouter)
+
+    const competitions = [
+      { id: 'wc', name: 'Copa do Mundo', penalty_phases: '[]', status: 'finished' },
+      { id: 'br', name: 'Brasileirão', penalty_phases: '[]', status: 'ongoing' },
+      { id: 'cl', name: 'Champions League', penalty_phases: '[]', status: 'upcoming' },
+    ]
+
+    const token = await signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600)
+    const response = await app.fetch(
+      new Request('http://localhost/competitions', {
+        headers: { Cookie: `session=${token}` },
+      }),
+      fakeEnv(createDbMock(competitions)),
+    )
+
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body).toEqual({
+      competitions: [
+        { id: 'wc', name: 'Copa do Mundo', status: 'finished', has_penalty_phases: false },
+        { id: 'br', name: 'Brasileirão', status: 'ongoing', has_penalty_phases: false },
+        { id: 'cl', name: 'Champions League', status: 'upcoming', has_penalty_phases: false },
+      ],
+    })
+  })
+
   it('hides pilot competitions from ordinary users and shows them to admin and pilot guests', async () => {
     const app = new Hono<AppContext>()
     app.route('/competitions', competitionsRouter)

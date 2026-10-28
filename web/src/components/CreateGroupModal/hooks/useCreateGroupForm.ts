@@ -4,6 +4,7 @@ import { trackEvent } from '../../../analytics/ga'
 import { getGuideOrigin } from '../../../analytics/guideOrigin'
 import { apiFetch } from '../../../lib/api'
 import { ScoringPreset } from '../constants'
+import { selectableCompetitions } from '../competitionStatus'
 import { Competition, CreatedGroup } from '../types'
 
 interface UseCreateGroupFormProps {
@@ -37,12 +38,17 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
   useEffect(() => {
     if (!isOpen || competitions.length > 0) return
     setLoadingCompetitions(true)
-    fetch(`${config.apiUrl}/competitions`)
+    // apiFetch em vez de fetch cru: em dev o modal roda cross-origin (5173 →
+    // 8787) e sem credentials o cookie de sessão não vai — 401 garantido.
+    apiFetch(`${config.apiUrl}/competitions`)
       .then((r) => r.json() as Promise<{ competitions: Competition[] }>)
       .then((data) => {
-        setCompetitions(data.competitions)
-        if (data.competitions.length > 0) {
-          setCompetitionId(data.competitions[0].id)
+        // Encerradas saem; em andamento entram primeiro no select e são o
+        // default — campeonato prestes a virar só fallback.
+        const { list } = selectableCompetitions(data.competitions)
+        setCompetitions(list)
+        if (list.length > 0) {
+          setCompetitionId(list[0].id)
         }
       })
       .catch(() => setError('Não foi possível carregar as competições'))
