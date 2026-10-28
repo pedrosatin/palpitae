@@ -97,9 +97,17 @@ async function fetchRowTies(
   }
 
   const ties = new Map<string, TieInfo<TieMatch>>()
-  for (const [competitionId, phases] of phasesByCompetition) {
-    const tieMatches = await fetchTieMatches(db, competitionId, phases)
-    for (const [matchId, tie] of indexTies(tieMatches)) ties.set(matchId, tie)
+  const tiePromises = Array.from(phasesByCompetition.entries()).map(
+    async ([competitionId, phases]) => {
+      const tieMatches = await fetchTieMatches(db, competitionId, phases)
+      return indexTies(tieMatches)
+    },
+  )
+  const tieResults = await Promise.all(tiePromises)
+  for (const tieMap of tieResults) {
+    for (const [matchId, tie] of tieMap) {
+      ties.set(matchId, tie)
+    }
   }
   return ties
 }
@@ -1037,9 +1045,17 @@ async function fetchBulkTieContext(
   if (phasesByCompetition.size === 0) return { roleByMatch, leg1ScoreByMatch }
 
   const ties = new Map<string, TieInfo<TieMatch>>()
-  for (const [competitionId, phases] of phasesByCompetition) {
-    const tieMatches = await fetchTieMatches(db, competitionId, phases)
-    for (const [matchId, tie] of indexTies(tieMatches)) ties.set(matchId, tie)
+  const tiePromises2 = Array.from(phasesByCompetition.entries()).map(
+    async ([competitionId, phases]) => {
+      const tieMatches = await fetchTieMatches(db, competitionId, phases)
+      return indexTies(tieMatches)
+    },
+  )
+  const tieResults2 = await Promise.all(tiePromises2)
+  for (const tieMap of tieResults2) {
+    for (const [matchId, tie] of tieMap) {
+      ties.set(matchId, tie)
+    }
   }
 
   const leg1IdByLeg2 = new Map<string, string>()
