@@ -151,6 +151,7 @@ export async function exportRecentDays(env: Env, today: Date, lookbackDays = 90)
   }
 
   let exported = 0
+  const promises: Promise<void>[] = []
   for (let back = 1; back <= lookbackDays; back++) {
     if (exported >= MAX_EXPORTS_PER_RUN) {
       console.info(
@@ -172,23 +173,26 @@ export async function exportRecentDays(env: Env, today: Date, lookbackDays = 90)
       // da retenção, o re-export gravaria um marcador vazio por cima do arquivo
       // bom). Re-put do mesmo corpo + metadata; conta no teto de exports/run.
       if (existing.customMetadata?.events === undefined) {
-        try {
-          await backfillEventsMetadata(env.EVENTS, key)
-          exported++
-        } catch (err) {
-          console.error(`[export] falha no backfill de metadata de ${key} — pulando:`, err)
-        }
+        exported++
+        promises.push(
+          backfillEventsMetadata(env.EVENTS, key).catch((err) => {
+            console.error(`[export] falha no backfill de metadata de ${key} — pulando:`, err)
+            exported--
+          }),
+        )
       }
       continue
     }
 
-    try {
-      await exportEventsToR2(env, day)
-      exported++
-    } catch (err) {
-      // Isola a falha de um dia — não trava o backfill dos demais. Sem arquivo, o
-      // dia é re-tentado na próxima execução (não conta no teto de exports).
-      console.error(`[export] falha ao exportar ${key} — pulando:`, err)
-    }
+    exported++
+    promises.push(
+      exportEventsToR2(env, day).catch((err) => {
+        // Isola a falha de um dia — não trava o backfill dos demais. Sem arquivo, o
+        // dia é re-tentado na próxima execução (não conta no teto de exports).
+        console.error(`[export] falha ao exportar ${key} — pulando:`, err)
+        exported--
+      }),
+    )
   }
+  await Promise.all(promises)
 }
