@@ -266,26 +266,32 @@ function KpiCard({
   )
 }
 
-function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
-  const stacked = useMemo(
+function useStackedSeries(overview: OverviewResponse | null) {
+  return useMemo(
     () =>
       overview
         ? buildStackedSeries(overview.daily, overview.totals, overview.days)
         : { series: [], legend: [] },
     [overview],
   )
+}
 
-  const apiCallsSeries = useMemo(
+function useApiCallsSeries(overview: OverviewResponse | null) {
+  return useMemo(
     () => (overview ? buildApiCallsSeries(overview.apiCallsDaily, overview.days) : []),
     [overview],
   )
+}
 
-  const dauSeries = useMemo(
+function useDauSeries(overview: OverviewResponse | null) {
+  return useMemo(
     () => (overview ? buildDauSeries(overview.predictionsDaily, overview.days) : []),
     [overview],
   )
+}
 
-  const kpis = useMemo(() => {
+function useKpis(overview: OverviewResponse | null) {
+  return useMemo(() => {
     if (!overview) return null
     const totalOf = (type: string) =>
       Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
@@ -306,13 +312,13 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
       emailResubs: totalOf('email_resubscribed'),
     }
   }, [overview])
+}
 
-  // Sampling do AE: média > 1 significa amostragem — números viram estimativa.
-  const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
-  const isSampling = avgSample > 1.01
-
-  // Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
-  const whaleShare = useMemo(() => {
+function useWhaleShare(
+  overview: OverviewResponse | null,
+  kpis: ReturnType<typeof useKpis>
+) {
+  return useMemo(() => {
     if (!overview || !kpis || kpis.predictions === 0 || overview.whales.length === 0) return null
     const shareOf = (n: number) =>
       Math.min(
@@ -325,9 +331,10 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
       )
     return { top1: shareOf(1), top5: shareOf(5) }
   }, [overview, kpis])
+}
 
-  // Triagem rápida: o que precisa de atenção agora, pro topo da página.
-  const alerts = useMemo(() => {
+function useAlerts(overview: OverviewResponse | null) {
+  return useMemo(() => {
     if (!overview) return []
     const list: { key: string; label: string; level: 'warn' | 'danger' }[] = []
 
@@ -358,9 +365,10 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     }
     return list
   }, [overview])
+}
 
-  // Verifica a integridade do export nos últimos 14 dias.
-  const archiveDays = useMemo(() => {
+function useArchiveDays(archive: ArchiveResponse | null) {
+  return useMemo(() => {
     if (!archive || archive.files.length === 0) return []
     const byDay = new Map(
       archive.files.map((f) => [f.key.replace('events/', '').replace('.ndjson', ''), f]),
@@ -374,10 +382,10 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
         return { day, file, beforeFirstExport: !file && day < oldest }
       })
   }, [archive])
+}
 
-  // Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
-  // enxerga além da janela de ~3 meses do Analytics Engine.
-  const archiveStats = useMemo(() => {
+function useArchiveStats(archive: ArchiveResponse | null) {
+  return useMemo(() => {
     if (!archive || archive.files.length === 0) return null
     const totalBytes = archive.files.reduce((sum, f) => sum + f.size, 0)
     const totalEvents = archive.files.reduce((sum, f) => sum + (f.events ?? 0), 0)
@@ -404,6 +412,22 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
       monthly,
     }
   }, [archive])
+}
+
+function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
+  const stacked = useStackedSeries(overview)
+  const apiCallsSeries = useApiCallsSeries(overview)
+  const dauSeries = useDauSeries(overview)
+  const kpis = useKpis(overview)
+
+  // Sampling do AE: média > 1 significa amostragem — números viram estimativa.
+  const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
+  const isSampling = avgSample > 1.01
+
+  const whaleShare = useWhaleShare(overview, kpis)
+  const alerts = useAlerts(overview)
+  const archiveDays = useArchiveDays(archive)
+  const archiveStats = useArchiveStats(archive)
 
   return {
     stacked,
