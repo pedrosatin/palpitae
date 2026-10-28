@@ -3,7 +3,11 @@ export interface Competition {
   name: string
   slug: string
   season: string | null
-  status: string
+  /**
+   * Status derivado do backend (`competitions.status` + jogos reais):
+   * 'upcoming' | 'ongoing' | 'finished'.
+   */
+  status: 'upcoming' | 'ongoing' | 'finished'
   /** True when the competition has knockout phases that decide on penalties. */
   has_penalty_phases?: boolean
 }

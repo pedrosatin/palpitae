@@ -57,6 +57,94 @@ describe('CreateGroupModal', () => {
     })
   })
 
+  it('hides finished competitions and groups ongoing ones first', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [
+          { ...competitions[0], id: 'copa-do-mundo', name: 'Copa do Mundo', status: 'finished' },
+          { id: 'brasileirao', name: 'Brasileirão', status: 'ongoing' },
+          { id: 'nordeste', name: 'Copa do Nordeste', status: 'upcoming' },
+        ],
+      }),
+    } as Response)
+
+    render(<CreateGroupModal {...defaultProps} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Brasileirão/ })).toBeInTheDocument()
+    })
+
+    // Copa do Mundo encerrada não entra no select.
+    expect(screen.queryByRole('option', { name: /Copa do Mundo/ })).not.toBeInTheDocument()
+
+    // Com os dois grupos presentes, os <optgroup> separam andamento e futuro.
+    expect(screen.getByRole('group', { name: 'Em andamento' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Em breve' })).toBeInTheDocument()
+    expect(screen.getByText('Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que faltam.')).toBeInTheDocument()
+  })
+
+  it('renders a flat list when there is only one status', async () => {
+    mockFetchCompetitions()
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Copa 2026/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('group', { name: 'Em breve' })).not.toBeInTheDocument()
+  })
+
+  it('renders a flat list when every competition is ongoing (no trailing group)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [
+          { id: 'a', name: 'Brasileirão', status: 'ongoing' },
+          { id: 'b', name: 'Liga dos Campeões', status: 'ongoing' },
+        ],
+      }),
+    } as Response)
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Liga dos Campeões/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+    expect(screen.getByText(/já começou/)).toBeInTheDocument()
+  })
+
+  it('orders the Em andamento group before Em breve', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [
+          { id: 'z', name: 'Zebra Cup', status: 'upcoming' },
+          { id: 'a', name: 'A Liga', status: 'ongoing' },
+        ],
+      }),
+    } as Response)
+    render(<CreateGroupModal {...defaultProps} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /Zebra Cup/ })).toBeInTheDocument()
+    })
+    // Ordem do DOM: "Em andamento" precede "Em breve", mesmo com o nome vindo depois.
+    expect(
+      screen.getAllByRole('group').map((group) => group.getAttribute('label')),
+    ).toEqual(['Em andamento', 'Em breve'])
+  })
+
+  it('announces the ongoing hint to screen readers', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        competitions: [{ id: 'a', name: 'Brasileirão', status: 'ongoing' }],
+      }),
+    } as Response)
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(/já começou/)
+    })
+  })
+
   it('calls onCreated and shows success screen on successful submission', async () => {
     mockFetchCompetitions()
     const createdGroup = { id: 'g1', name: 'Os Craques', invite_code: 'INV123' }
