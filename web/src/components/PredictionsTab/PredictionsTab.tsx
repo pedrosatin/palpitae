@@ -80,6 +80,8 @@ export default function PredictionsTab({
     importExpanded,
     setImportExpanded,
     otherGroups,
+    importOptions,
+    importPending,
     importSourceId,
     setImportSourceId,
     importing,
@@ -140,6 +142,8 @@ export default function PredictionsTab({
       <PredictionsImportBar
         {...{
           otherGroups,
+          importOptions,
+          importPending,
           importCompleted,
           importFeedback,
           importExpanded,

@@ -298,6 +298,12 @@ const router = new Hono<AppContext>()
  * no jogo decisivo de um confronto de mata-mata (null nos demais jogos), e
  * `classified_points` os pontos de classificado já creditados.
  *
+ * Sem `match_id`, `import_sources` lista, por grupo do mesmo campeonato em que o
+ * usuário também é membro, os jogos ainda abertos que ele já palpitou lá. O front
+ * cruza com os palpites deste grupo para oferecer importação só quando há
+ * palpite faltando. O marcador `import_completed` sozinho fica velho quando a
+ * rodada vira.
+ *
  * Response:
  * {
  *   predictions: [
@@ -362,10 +368,13 @@ router.get('/', requireAuth, async (c) => {
   query += ` ORDER BY m.start_time ASC`
 
   const queryStartedAt = Date.now()
-  const result = await db
-    .prepare(query)
-    .bind(...params)
-    .all<PredictionRow>()
+  const [result, importSources] = await Promise.all([
+    db
+      .prepare(query)
+      .bind(...params)
+      .all<PredictionRow>(),
+    matchId ? null : fetchImportSources(db, userId, groupId, now),
+  ])
   const ties = await fetchRowTies(db, result.results)
   const leg1Map = await fetchSingleUserLeg1Map(db, groupId, userId, result.results, ties)
   const queryMs = Date.now() - queryStartedAt
@@ -390,8 +399,35 @@ router.get('/', requireAuth, async (c) => {
   return c.json({
     predictions: predictionsOut,
     import_completed: membership.predictions_import_completed === 1,
+    ...(importSources ? { import_sources: importSources } : {}),
   })
 })
+
+/** Jogos abertos palpitados pelo usuário em outros grupos ativos do mesmo campeonato. */
+async function fetchImportSources(
+  db: D1Database,
+  userId: string,
+  groupId: string,
+  now: string,
+): Promise<Record<string, string[]>> {
+  const rows = await db
+    .prepare(
+      `SELECT p.group_id, p.match_id
+       FROM predictions p
+       JOIN matches m ON m.id = p.match_id
+       JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL
+       JOIN group_members gm ON gm.group_id = p.group_id AND gm.user_id = p.user_id
+       WHERE p.user_id = ? AND p.group_id != ?
+         AND g.competition_id = (SELECT competition_id FROM groups WHERE id = ?)
+         AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = p.group_id AND b.user_id = p.user_id)
+         AND NOT ${lockedSql()}`,
+    )
+    .bind(userId, groupId, groupId, now)
+    .all<{ group_id: string; match_id: string }>()
+  const sources: Record<string, string[]> = {}
+  for (const r of rows.results) (sources[r.group_id] ??= []).push(r.match_id)
+  return sources
+}
 
 /**
  * GET /predictions/user?group_id=xxx&user_id=xxx
@@ -1232,9 +1268,10 @@ router.put('/bulk', requireAuth, handleBulkPut)
  *
  * Only unlocked predictions (jogo ainda não começou, ou adiado) are copied. Already-locked
  * matches are silently skipped and reported in `locked_skipped`. Existing
- * predictions in the target group are overwritten.
+ * predictions in the target group are overwritten, unless `only_missing` is true:
+ * then only matches without a prediction in the target are filled.
  *
- * Body: { source_group_id, target_group_id }
+ * Body: { source_group_id, target_group_id, only_missing? }
  *
  * Response: { ok: true, imported: number, locked_skipped: number }
  *
@@ -1291,17 +1328,23 @@ async function fetchPredictionsToImport(
   db: D1Database,
   userId: string,
   sourceGroupId: string,
+  targetGroupId: string,
+  onlyMissing: boolean,
   now: string,
 ) {
   // Fetch user's predictions from source group for unlocked matches only
+  const missingFilter = onlyMissing
+    ? ` AND NOT EXISTS (SELECT 1 FROM predictions t
+         WHERE t.user_id = p.user_id AND t.group_id = ? AND t.match_id = p.match_id)`
+    : ''
   const sourcePredictions = await db
     .prepare(
       `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}`,
+       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}${missingFilter}`,
     )
-    .bind(userId, sourceGroupId, now)
+    .bind(userId, sourceGroupId, now, ...(onlyMissing ? [targetGroupId] : []))
     .all<{
       match_id: string
       predicted_home_score: number
@@ -1311,13 +1354,17 @@ async function fetchPredictionsToImport(
 
   const toImport = sourcePredictions.results
 
-  // Count total source predictions to report how many were locked-skipped
-  const totalCount = await db
-    .prepare(`SELECT COUNT(*) AS total FROM predictions WHERE user_id = ? AND group_id = ?`)
-    .bind(userId, sourceGroupId)
+  // Count locked source predictions to report how many were skipped
+  const lockedCount = await db
+    .prepare(
+      `SELECT COUNT(*) AS total FROM predictions p
+       JOIN matches m ON m.id = p.match_id
+       WHERE p.user_id = ? AND p.group_id = ? AND ${lockedSql()}`,
+    )
+    .bind(userId, sourceGroupId, now)
     .first<{ total: number }>()
 
-  const lockedSkipped = (totalCount?.total ?? 0) - toImport.length
+  const lockedSkipped = lockedCount?.total ?? 0
 
   return { toImport, lockedSkipped }
 }
@@ -1325,12 +1372,13 @@ async function fetchPredictionsToImport(
 async function handleImportPost(c: Context<AppContext>) {
   const userId = c.get('userId')
 
-  type ImportBody = { source_group_id?: string; target_group_id?: string }
+  type ImportBody = { source_group_id?: string; target_group_id?: string; only_missing?: boolean }
   const parsed = await parseJsonBody<ImportBody>(c)
   if (!parsed.ok) return parsed.response
   const body = parsed.body
 
   const { source_group_id, target_group_id } = body
+  const onlyMissing = body.only_missing === true
 
   if (!source_group_id || !target_group_id) {
     return c.json({ error: 'source_group_id e target_group_id são obrigatórios' }, 400)
@@ -1359,6 +1407,8 @@ async function handleImportPost(c: Context<AppContext>) {
     db,
     userId,
     source_group_id,
+    target_group_id,
+    onlyMissing,
     now,
   )
 
@@ -1370,11 +1420,15 @@ async function handleImportPost(c: Context<AppContext>) {
   const importStmt = db.prepare(
     `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+     ON CONFLICT (user_id, group_id, match_id) DO ${
+       onlyMissing
+         ? 'NOTHING'
+         : `UPDATE SET
        predicted_home_score     = excluded.predicted_home_score,
        predicted_away_score     = excluded.predicted_away_score,
        predicted_penalty_winner = excluded.predicted_penalty_winner,
-       updated_at               = excluded.updated_at`,
+       updated_at               = excluded.updated_at`
+     }`,
   )
 
   const importStatements = toImport.map((p) =>
