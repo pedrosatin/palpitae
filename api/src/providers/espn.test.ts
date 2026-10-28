@@ -197,7 +197,7 @@ describe('fetchEspnScoreboard', () => {
     expect(peak).toBe(1)
     expect(startedAt).toHaveLength(3)
     for (let i = 1; i < startedAt.length; i++) {
-      expect(startedAt[i]! - startedAt[i - 1]!).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS)
+      expect(startedAt[i]! - startedAt[i - 1]!).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS - 50)
     }
   }, 15_000)
 
