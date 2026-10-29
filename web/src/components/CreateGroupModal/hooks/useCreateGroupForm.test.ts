@@ -7,7 +7,9 @@ import { act } from '@testing-library/react'
 import { captureGuideOrigin } from '../../../analytics/guideOrigin'
 
 vi.mock('../../../lib/api', () => ({
-  apiFetch: vi.fn(),
+  apiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+    globalThis.fetch(input, { ...init, credentials: 'include' }),
+  ),
 }))
 
 vi.mock('../../../analytics/ga', () => ({
@@ -74,6 +76,44 @@ describe('useCreateGroupForm', () => {
     expect(result.current.competitions).toEqual(competitions)
     expect(result.current.competitionId).toBe('c1')
     expect(result.current.showPenaltyField).toBe(false)
+  })
+
+  it('drops finished competitions and defaults to the first ongoing one', async () => {
+    const competitions = [
+      { id: 'c1', name: 'Brasileirão', status: 'ongoing', has_penalty_phases: false },
+      { id: 'c2', name: 'Champions League', status: 'upcoming', has_penalty_phases: false },
+      { id: 'c3', name: 'Copa do Mundo', status: 'finished', has_penalty_phases: false },
+    ]
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ competitions })),
+    )
+
+    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+
+    await waitFor(() => {
+      expect(result.current.loadingCompetitions).toBe(false)
+    })
+
+    expect(result.current.competitions).toEqual([competitions[0], competitions[1]])
+    expect(result.current.competitionId).toBe('c1')
+  })
+
+  it('falls back to the first upcoming competition when none is ongoing', async () => {
+    const competitions = [
+      { id: 'c1', name: 'Copa do Nordeste', status: 'upcoming', has_penalty_phases: false },
+      { id: 'c2', name: 'Copa do Mundo', status: 'finished', has_penalty_phases: false },
+    ]
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ competitions })),
+    )
+
+    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+
+    await waitFor(() => {
+      expect(result.current.competitions.length).toBe(1)
+    })
+
+    expect(result.current.competitionId).toBe('c1')
   })
 
   it('sets showPenaltyField correctly', async () => {
@@ -147,20 +187,22 @@ describe('useCreateGroupForm', () => {
     })
     expect(result.current.error).toBe('Pelo menos um tipo de pontuação deve ser maior que zero')
 
-    expect(mockApiFetch).not.toHaveBeenCalled()
+    // A listagem de competições agora passa por apiFetch; o POST /groups é que
+    // não pode acontecer.
+    expect(
+      mockApiFetch.mock.calls.filter((call) => String(call[0]).includes('/groups')),
+    ).toHaveLength(0)
   })
 
   it('creates group successfully', async () => {
     captureGuideOrigin('?from=guia_planilha-de-bolao')
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
-    )
-
     const createdGroup = { id: 'g1', name: 'My Group' }
-    mockApiFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ group: createdGroup }),
-    } as Response)
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ group: createdGroup }),
+      } as Response)
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
@@ -204,14 +246,12 @@ describe('useCreateGroupForm', () => {
 
   it('handles API error response on creation', async () => {
     captureGuideOrigin('?from=guia_planilha-de-bolao')
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
-    )
-
-    mockApiFetch.mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ error: 'Nome já existe' }),
-    } as Response)
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })))
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Nome já existe' }),
+      } as Response)
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
@@ -232,11 +272,9 @@ describe('useCreateGroupForm', () => {
 
   it('handles fetch exception on creation', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
-    )
-
-    mockApiFetch.mockRejectedValueOnce(new Error('Network offline'))
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })))
+      .mockRejectedValueOnce(new Error('Network offline'))
 
     const { result } = renderHook(() => useCreateGroupForm(defaultProps))
 
