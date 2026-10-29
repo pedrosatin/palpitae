@@ -917,7 +917,7 @@ router.put('/', requireAuth, async (c) => {
     .run()
 
   logEvent(c.env.AE, 'prediction_saved', {
-    blobs: [group_id, match.round, await hashUserId(userId), 'single'],
+    blobs: [group_id, match.round, await hashUserId(userId), 'single', match.competition_id],
     doubles: [1],
   })
 
@@ -1255,7 +1255,14 @@ async function handleBulkPut(c: Context<AppContext>) {
     }
     await Promise.all(batches)
     logEvent(c.env.AE, 'prediction_saved', {
-      blobs: [group_id!, '', await hashUserId(userId), 'bulk'], // round vazio: múltiplas rodadas
+      // round vazio: múltiplas rodadas. Todo jogo salvo é da competição do grupo.
+      blobs: [
+        group_id!,
+        '',
+        await hashUserId(userId),
+        'bulk',
+        matchInfo.get(saved[0])?.competition_id,
+      ],
       doubles: [saved.length],
     })
   }
@@ -1292,7 +1299,7 @@ async function verifyGroupsForImport(
   userId: string,
   sourceGroupId: string,
   targetGroupId: string,
-): Promise<{ error: string; status: ContentfulStatusCode } | null> {
+): Promise<{ error: string; status: ContentfulStatusCode } | { competitionId: string }> {
   // Verify user is an active member of both groups (same rule as every group route)
   const [sourceMembership, targetMembership] = await Promise.all([
     getGroupMembership(db, sourceGroupId, userId),
@@ -1327,7 +1334,7 @@ async function verifyGroupsForImport(
     return { error: 'Os grupos pertencem a campeonatos diferentes', status: 422 }
   }
 
-  return null
+  return { competitionId: targetGroup.competition_id }
 }
 
 async function fetchPredictionsToImport(
@@ -1403,9 +1410,9 @@ async function handleImportPost(c: Context<AppContext>) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
 
-  const validationError = await verifyGroupsForImport(db, userId, source_group_id, target_group_id)
-  if (validationError) {
-    return c.json({ error: validationError.error }, validationError.status)
+  const verified = await verifyGroupsForImport(db, userId, source_group_id, target_group_id)
+  if ('error' in verified) {
+    return c.json({ error: verified.error }, verified.status)
   }
 
   const now = new Date().toISOString()
@@ -1460,7 +1467,7 @@ async function handleImportPost(c: Context<AppContext>) {
   await db.batch(importStatements)
 
   logEvent(c.env.AE, 'prediction_saved', {
-    blobs: [target_group_id, '', await hashUserId(userId), 'import'],
+    blobs: [target_group_id, '', await hashUserId(userId), 'import', verified.competitionId],
     doubles: [toImport.length],
   })
 

@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
+import { createProviderHttpObserver } from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
@@ -76,6 +77,10 @@ export async function discoverFixtures(
         dates: comp.provider === 'espn' ? espnDates : undefined,
         apiKey,
         db,
+        onHttpAttempt: createProviderHttpObserver(ae, {
+          context: 'discovery',
+          competitionId: comp.id,
+        }),
       })
       fixturesUpdated += result?.matches ?? 0
       // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após

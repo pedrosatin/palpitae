@@ -2,6 +2,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
+import { pendingPredictionsSql } from './pendingPredictions'
+import { lockedSql } from '../matches/locking'
 import { signJwt } from '../auth/jwt'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
@@ -245,5 +247,30 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('pendingPredictionsSql unit tests', () => {
+  it('returns correctly formatted sql string with default alias', () => {
+    const sql = pendingPredictionsSql()
+    expect(sql.trim().replace(/\s+/g, ' ')).toContain(
+      `WHERE m.competition_id = g.competition_id`
+    )
+    expect(sql.trim().replace(/\s+/g, ' ')).toContain(
+      `AND NOT ${lockedSql('m').trim().replace(/\s+/g, ' ')}`
+    )
+    expect(sql.trim().replace(/\s+/g, ' ')).toContain(
+      `AND p.group_id = g.id`
+    )
+  })
+
+  it('returns correctly formatted sql string with custom alias', () => {
+    const sql = pendingPredictionsSql('customAlias')
+    expect(sql.trim().replace(/\s+/g, ' ')).toContain(
+      `WHERE m.competition_id = customAlias.competition_id`
+    )
+    expect(sql.trim().replace(/\s+/g, ' ')).toContain(
+      `AND p.group_id = customAlias.id`
+    )
   })
 })
