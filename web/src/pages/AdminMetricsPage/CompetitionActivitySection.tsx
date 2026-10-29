@@ -197,7 +197,7 @@ function GroupsDailyChart({ data }: { data: CompetitionActivityResponse }) {
       {data.groupsDailyTruncated && (
         <p className={styles.samplingWarning}>
           A consulta diária bateu no limite de linhas da API do Analytics Engine: os dias mais
-          antigos do período podem estar incompletos no gráfico. A tabela abaixo não é afetada.
+          antigos do período podem estar incompletos no gráfico e em totais derivados da série.
         </p>
       )}
       {outsideAxis > 0 && (

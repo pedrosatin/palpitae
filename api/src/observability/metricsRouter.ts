@@ -521,8 +521,9 @@ metricsRouter.get('/competition-activity', async (c) => {
 
     // Id que só aparece na série diária (evento entre as consultas paralelas)
     // entra no total com o que a própria série soma, para a UI sempre achar o nome.
+    const groupTotalsIds = new Set(groupsCreated.map((r) => competitionIdOrEmpty(r.competition_id)))
     for (const d of groupsDaily) {
-      if (!byCompetition.has(d.competition_id))
+      if (!groupTotalsIds.has(d.competition_id))
         entry(d.competition_id).groups_created += d.groups_created
     }
 

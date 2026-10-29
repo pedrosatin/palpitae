@@ -919,7 +919,10 @@ describe('GET /metrics/competition-activity', () => {
     const res = await getActivity(
       fetchBySql({
         groups: [],
-        daily: [{ day: '2026-10-22 00:00:00', competition_id: COMP_B, groups: '3' }],
+        daily: [
+          { day: '2026-10-22 00:00:00', competition_id: COMP_B, groups: '3' },
+          { day: '2026-10-23 00:00:00', competition_id: COMP_B, groups: '4' },
+        ],
       }),
     )
     const body = (await res.json()) as ActivityBody
@@ -929,7 +932,7 @@ describe('GET /metrics/competition-activity', () => {
         competition_id: COMP_B,
         name: 'Libertadores',
         season: '2026',
-        groups_created: 3,
+        groups_created: 7,
         prediction_saves: 0,
         predictions: 0,
       },
