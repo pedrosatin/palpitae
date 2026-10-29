@@ -87,6 +87,10 @@ interface CompetitionSnapshot {
   groups_current: number
   members: number
   active_groups_14d: number
+  // Saúde de resultados (D1). Ausentes numa API anterior a esse recorte —
+  // a página mostra "—" / aviso em vez de tratar a falta como zero.
+  overdue_no_score?: number
+  finished_unscored?: number
 }
 
 interface ArchiveResponse {
@@ -540,10 +544,13 @@ function BusinessSection({ business }: { business: BusinessResponse }) {
       </div>
 
       {business.competitions ? (
-        <CompetitionsTable
-          competitions={business.competitions}
-          activeGroupDays={business.activeGroupDays ?? 14}
-        />
+        <>
+          <CompetitionsTable
+            competitions={business.competitions}
+            activeGroupDays={business.activeGroupDays ?? 14}
+          />
+          <ResultsHealthTable competitions={business.competitions} />
+        </>
       ) : (
         <LegacyTopCompetitions topCompetitions={business.topCompetitions} />
       )}
@@ -649,7 +656,7 @@ function CompetitionsTable({
         <p className={styles.hint}>Nenhuma temporada com esses filtros.</p>
       ) : (
         <div className={styles.tableScroll}>
-          <table className={styles.table}>
+          <table className={styles.table} aria-label="Grupos por campeonato">
             <thead>
               <tr>
                 <th>campeonato</th>
@@ -687,6 +694,79 @@ function CompetitionsTable({
           </table>
         </div>
       )}
+    </>
+  )
+}
+
+/** Contagem de saúde de resultados; "—" quando a API ainda não manda o campo. */
+function HealthCount({ value }: { value: number | undefined }) {
+  if (value === undefined) return <>—</>
+  return <span className={value > 0 ? styles.statusWarn : styles.statusMuted}>{value}</span>
+}
+
+/**
+ * Buraco de feed (jogo sem placar após kickoff + 3h) versus backlog de
+ * pontuação (finished sem scored_at), por temporada. Quem tem pendência vem
+ * primeiro; zeros continuam visíveis.
+ */
+function ResultsHealthTable({ competitions }: { competitions: CompetitionSnapshot[] }) {
+  if (competitions.length === 0) return null
+
+  const hasHealth = competitions.some(
+    (c) => c.overdue_no_score !== undefined || c.finished_unscored !== undefined,
+  )
+  if (!hasHealth) {
+    return (
+      <>
+        <h3 className={styles.subTitle}>Saúde dos resultados por campeonato</h3>
+        <p className={styles.hint}>Indisponível: a API ainda não envia esses números.</p>
+      </>
+    )
+  }
+
+  const pending = (c: CompetitionSnapshot) => (c.overdue_no_score ?? 0) + (c.finished_unscored ?? 0)
+  const sorted = [...competitions].sort((a, b) => pending(b) - pending(a))
+  const withOverdue = competitions.filter((c) => (c.overdue_no_score ?? 0) > 0).length
+  const withUnscored = competitions.filter((c) => (c.finished_unscored ?? 0) > 0).length
+
+  return (
+    <>
+      <h3 className={styles.subTitle}>Saúde dos resultados por campeonato</h3>
+      <p className={styles.hint}>
+        {withOverdue} temporada(s) com jogo atrasado · {withUnscored} com jogo encerrado sem
+        pontuação · atrasado = agendado ou ao vivo, sem placar completo, 3h após o início (adiados
+        ficam de fora)
+      </p>
+      <div className={styles.tableScroll}>
+        <table className={styles.table} aria-label="Saúde dos resultados por campeonato">
+          <thead>
+            <tr>
+              <th>campeonato</th>
+              <th>temporada</th>
+              <th>status</th>
+              <th className={styles.num}>atrasados sem placar</th>
+              <th className={styles.num}>encerrados sem pontuação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((c) => (
+              <tr key={c.id}>
+                <td title={c.id}>{c.name}</td>
+                <td className={styles.nowrap} title={c.slug}>
+                  {c.season ?? c.slug}
+                </td>
+                <td className={styles.nowrap}>{STATUS_LABELS[c.status] ?? c.status}</td>
+                <td className={styles.num}>
+                  <HealthCount value={c.overdue_no_score} />
+                </td>
+                <td className={styles.num}>
+                  <HealthCount value={c.finished_unscored} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   )
 }

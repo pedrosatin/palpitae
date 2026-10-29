@@ -195,7 +195,7 @@ describe('GET /metrics/overview', () => {
  * (membros distintos, não memberships). O grupo excluído tem membro e palpite
  * recente que não podem vazar em nenhuma contagem.
  */
-function createBusinessFixture() {
+function createBusinessFixture(extraSql = '') {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
   const ago = (days: number) => `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${days} days')`
@@ -220,11 +220,11 @@ function createBusinessFixture() {
       ('fla', 'Flamengo', 'FLA', 'flamengo'),
       ('pal', 'Palmeiras', 'PAL', 'palmeiras');
 
-    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status) VALUES
-      ('m-br26-1', 'comp-br26', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished'),
-      ('m-br26-2', 'comp-br26', 'fd-2', 'football-data', 'pal', 'fla', '2026-06-08T19:00:00Z', 'finished'),
-      ('m-br25-1', 'comp-br25', 'fd-3', 'football-data', 'fla', 'pal', '2025-06-01T19:00:00Z', 'finished'),
-      ('m-pilot-1', 'comp-pilot', 'espn-1', 'espn', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished');
+    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, scored_at) VALUES
+      ('m-br26-1', 'comp-br26', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', 1, 0, '2026-06-01T21:00:00Z'),
+      ('m-br26-2', 'comp-br26', 'fd-2', 'football-data', 'pal', 'fla', '2026-06-08T19:00:00Z', 'finished', 2, 2, '2026-06-08T21:00:00Z'),
+      ('m-br25-1', 'comp-br25', 'fd-3', 'football-data', 'fla', 'pal', '2025-06-01T19:00:00Z', 'finished', 0, 1, '2025-06-01T21:00:00Z'),
+      ('m-pilot-1', 'comp-pilot', 'espn-1', 'espn', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', 3, 1, '2026-06-01T21:00:00Z');
 
     INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, created_at, deleted_at) VALUES
       ('g-br26-a', 'Bolão da Firma', 'comp-br26', 'alice', 'SECRET-AAAA', datetime('now', '-60 days'), NULL),
@@ -258,7 +258,56 @@ function createBusinessFixture() {
       -- g-pilot: dentro da janela por pouco (13 dias).
       ('p-8', 'carol', 'g-pilot', 'm-pilot-1', 0, 1, ${ago(13)}, ${ago(13)});
   `)
+  if (extraSql) sqlite.exec(extraSql)
   return db
+}
+
+/**
+ * Jogos para a saúde de resultados, todos relativos ao relógio do SQLite.
+ * Brasileirão 2026 tem grupos, membros e palpites: se a agregação de jogos
+ * multiplicasse linhas (ou vice-versa), os números dele sairiam errados.
+ * Os horários ficam a 1 min das fronteiras para absorver o tempo do teste.
+ */
+function healthMatchesSql() {
+  const at = (...modifiers: string[]) =>
+    `strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ${modifiers.map((m) => `'${m}'`).join(', ')})`
+  const row = (
+    id: string,
+    comp: string,
+    start: string,
+    status: string,
+    extra: { home?: number; away?: number; postponed?: number; scoredAt?: string } = {},
+  ) =>
+    `('${id}', '${comp}', 'ext-${id}', 'football-data', 'fla', 'pal', ${start}, '${status}', ` +
+    `${extra.home ?? 'NULL'}, ${extra.away ?? 'NULL'}, ${extra.postponed ?? 0}, ` +
+    `${extra.scoredAt ? `'${extra.scoredAt}'` : 'NULL'})`
+  return `
+    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, postponed, scored_at) VALUES
+      -- Atrasados contados (br26): scheduled e live, 1 min além das 3h.
+      ${row('h-late-sched', 'comp-br26', at('-3 hours', '-1 minutes'), 'scheduled')},
+      ${row('h-late-live', 'comp-br26', at('-5 hours'), 'live')},
+      -- Placar parcial (só um lado) ainda é jogo sem placar.
+      ${row('h-late-partial', 'comp-br26', at('-4 hours'), 'live', { home: 1 })},
+      -- start_time com offset -03:00 (4h atrás em UTC) e com milissegundos.
+      ${row('h-late-offset', 'comp-br26', `strftime('%Y-%m-%dT%H:%M:%S-03:00', 'now', '-3 hours', '-4 hours')`, 'scheduled')},
+      ${row('h-late-ms', 'comp-br26', `strftime('%Y-%m-%dT%H:%M:%S.123Z', 'now', '-6 hours')`, 'scheduled')},
+      -- Fora da contagem de atrasados: dentro da janela de 3h, no futuro,
+      -- adiado, com placar 0x0 (zero não é ausência) e offset ainda na janela.
+      ${row('h-in-window', 'comp-br26', at('-2 hours', '-59 minutes'), 'live')},
+      ${row('h-future', 'comp-br26', at('+2 hours'), 'scheduled')},
+      ${row('h-postponed', 'comp-br26', at('-5 hours'), 'scheduled', { postponed: 1 })},
+      ${row('h-zero-zero', 'comp-br26', at('-5 hours'), 'live', { home: 0, away: 0 })},
+      ${row('h-offset-in-window', 'comp-br26', `strftime('%Y-%m-%dT%H:%M:%S-03:00', 'now', '-3 hours', '-2 hours')`, 'scheduled')},
+      -- Finished sem scored_at (contados) e com scored_at (não contado).
+      ${row('h-fin-unscored-1', 'comp-br26', at('-2 days'), 'finished', { home: 1, away: 0 })},
+      ${row('h-fin-unscored-2', 'comp-br26', at('-2 days'), 'finished')},
+      ${row('h-fin-scored', 'comp-br26', at('-2 days'), 'finished', { home: 2, away: 0, scoredAt: '2026-06-01T21:00:00Z' })},
+      -- Outra temporada com o mesmo nome: contagens separadas por id.
+      ${row('h-br25-late', 'comp-br25', at('-1 days'), 'scheduled')},
+      ${row('h-br25-unscored', 'comp-br25', at('-1 days'), 'finished', { home: 1, away: 1 })},
+      -- Piloto: finished/atrasado só em jogo adiado ou já pontuado.
+      ${row('h-pilot-postponed', 'comp-pilot', at('-9 hours'), 'live', { postponed: 1 })};
+  `
 }
 
 interface CompetitionRow {
@@ -272,6 +321,8 @@ interface CompetitionRow {
   groups_current: number
   members: number
   active_groups_14d: number
+  overdue_no_score: number
+  finished_unscored: number
 }
 
 describe('GET /metrics/business', () => {
@@ -341,6 +392,8 @@ describe('GET /metrics/business', () => {
         groups_current: 2,
         members: 3,
         active_groups_14d: 1,
+        overdue_no_score: 0,
+        finished_unscored: 0,
       },
       {
         id: 'comp-br25',
@@ -353,6 +406,8 @@ describe('GET /metrics/business', () => {
         groups_current: 1,
         members: 1,
         active_groups_14d: 0,
+        overdue_no_score: 0,
+        finished_unscored: 0,
       },
       {
         id: 'comp-pilot',
@@ -365,6 +420,8 @@ describe('GET /metrics/business', () => {
         groups_current: 1,
         members: 1,
         active_groups_14d: 1,
+        overdue_no_score: 0,
+        finished_unscored: 0,
       },
       {
         id: 'comp-empty',
@@ -377,6 +434,8 @@ describe('GET /metrics/business', () => {
         groups_current: 0,
         members: 0,
         active_groups_14d: 0,
+        overdue_no_score: 0,
+        finished_unscored: 0,
       },
     ])
     // Formato legado para o front ainda não atualizado: só quem tem grupo.
@@ -387,15 +446,67 @@ describe('GET /metrics/business', () => {
     ])
   })
 
-  it('não expõe e-mails, ids de usuário, nomes de grupo nem convites', async () => {
+  it('conta jogos atrasados sem placar e finished sem scored_at por temporada', async () => {
     const res = await makeApp().request(
       '/metrics/business',
       { headers: await authHeaders(ADMIN) },
-      makeEnv({ DB: createBusinessFixture() }),
+      makeEnv({ DB: createBusinessFixture(healthMatchesSql()) }),
+    )
+
+    const { competitions } = (await res.json()) as { competitions: CompetitionRow[] }
+    const health = Object.fromEntries(
+      competitions.map((c) => [
+        c.id,
+        { overdue: c.overdue_no_score, unscored: c.finished_unscored },
+      ]),
+    )
+    expect(health).toEqual({
+      // 5 atrasados: scheduled 3h01, live, parcial, offset -03:00 e milissegundos.
+      // Ficam de fora: janela de 3h, futuro, adiado, 0x0 e offset na janela.
+      // 2 finished sem scored_at; o pontuado e os do fixture-base não contam.
+      'comp-br26': { overdue: 5, unscored: 2 },
+      'comp-br25': { overdue: 1, unscored: 1 },
+      // Só tem um jogo adiado e um finished já pontuado: zeros explícitos.
+      'comp-pilot': { overdue: 0, unscored: 0 },
+      // Sem nenhum jogo: continua na lista, zerada.
+      'comp-empty': { overdue: 0, unscored: 0 },
+    })
+  })
+
+  it('a saúde de resultados não altera grupos, membros nem ativos da temporada', async () => {
+    const [withMatches, baseline] = await Promise.all(
+      [healthMatchesSql(), ''].map(async (extra) => {
+        const res = await makeApp().request(
+          '/metrics/business',
+          { headers: await authHeaders(ADMIN) },
+          makeEnv({ DB: createBusinessFixture(extra) }),
+        )
+        const { competitions } = (await res.json()) as { competitions: CompetitionRow[] }
+        return competitions.map((c) => [c.id, c.groups_current, c.members, c.active_groups_14d])
+      }),
+    )
+    expect(withMatches).toEqual(baseline)
+    expect(withMatches[0]).toEqual(['comp-br26', 2, 3, 1])
+  })
+
+  it('não expõe e-mails, ids de usuário, nomes de grupo, convites nem ids de jogo', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: createBusinessFixture(healthMatchesSql()) }),
     )
 
     const raw = await res.text()
-    for (const leaked of ['@example.com', 'alice', 'Bolão', 'SECRET-', 'g-br26-a']) {
+    for (const leaked of [
+      '@example.com',
+      'alice',
+      'Bolão',
+      'SECRET-',
+      'g-br26-a',
+      'm-br26',
+      'h-late',
+      'h-fin',
+    ]) {
       expect(raw).not.toContain(leaked)
     }
   })
