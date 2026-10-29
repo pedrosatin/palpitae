@@ -75,8 +75,17 @@ function XAxis({ labels, format }: { labels: string[]; format: (label: string) =
   )
 }
 
-/** Barras empilhadas por dia — um segmento colorido por tipo de evento. */
-export function StackedBarChart({ days, ariaLabel }: { days: StackedDay[]; ariaLabel: string }) {
+/** Barras empilhadas por dia — um segmento colorido por tipo de evento (ou série). */
+export function StackedBarChart({
+  days,
+  ariaLabel,
+  segmentLabel = eventLabel,
+}: {
+  days: StackedDay[]
+  ariaLabel: string
+  /** Nome do segmento no tooltip (default: rótulo de tipo de evento). */
+  segmentLabel?: (type: string) => string
+}) {
   const max = Math.max(1, ...days.map((d) => d.segments.reduce((sum, s) => sum + s.value, 0)))
   const barW = WIDTH / Math.max(1, days.length)
 
@@ -104,7 +113,7 @@ export function StackedBarChart({ days, ariaLabel }: { days: StackedDay[]; ariaL
                   height={h}
                   fill={s.color}
                 >
-                  <title>{`${d.label} · ${eventLabel(s.type)}: ${s.value}`}</title>
+                  <title>{`${d.label} · ${segmentLabel(s.type)}: ${s.value}`}</title>
                 </rect>
               )
             })}

@@ -117,12 +117,12 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
-| `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `double1`=count (nº de palpites salvos) |
+| `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
 | `group_joined` | `group_id` | `user_hash` | — | — |
 | `group_renamed` | `group_id` | `user_hash` | — | — |
 | `group_invite_rotated` | `group_id` | `user_hash` | — | — |
-| `group_deleted` | `group_id` | `user_hash` | — | — |
+| `group_deleted` | `group_id` | `user_hash` | `competition_id` (UUID; ausente em eventos anteriores ao deploy do enriquecimento) | — |
 | `member_removed` | `group_id` | `user_hash` (do removido) | `reason` (`self`=saiu sozinho / `admin`=removido pelo dono) | — |
 | `login_success` | `user_hash` | — | — | — |
 | `logout_all` | `user_hash` | — | — | — |
@@ -211,6 +211,25 @@ recorte, "sem registro ainda" quando nunca houve evento, e a data de início da 
 
 Observação sobre `prediction_saved`: o `kind` (single/bulk/import) cai em **blob5** porque o
 `round` (blob3) é mantido na posição mesmo vazio, pra alinhar as três variantes na mesma coluna.
+
+### Dimensão `competition_id` em `prediction_saved` e `group_deleted`
+
+Os dois eventos passaram a carregar o UUID da competição do grupo: `prediction_saved` em
+**blob6** e `group_deleted` em **blob4**. A dimensão entra sempre **depois** das posições
+existentes, então nenhuma coluna mudou de lugar e consultas e arquivos R2 antigos continuam
+válidos.
+
+- **Origem:** `competition_id` do jogo no palpite único, do jogo salvo no bulk, do grupo de destino
+  no import e do grupo na exclusão. Vem de linhas que a rota já leu para validar a mutação, sem
+  query extra, e só é gravado depois da escrita bem-sucedida.
+- **Sem backfill:** evento anterior ao deploy chega com o blob vazio (o Analytics Engine devolve
+  `''` para posição não gravada). O painel agrupa esse caso em "sem liga". O R2 já arquivado não é
+  reescrito.
+- **Compatibilidade de deploy:** API e web não sobem juntas. A web nova trata
+  `/metrics/competition-activity` ausente ou com erro como "indisponível" sem derrubar a página, e a
+  API nova convive com a web antiga, que não consome a rota.
+- **Privacidade:** só o UUID da competição, que já era dimensão de `group_created`. Nada de nome de
+  campeonato, grupo ou usuário.
 
 ### Regra de instrumentação (obrigatória)
 
@@ -301,6 +320,31 @@ nunca saem no payload: valores de competição que não são UUID viram "sem lig
 acendem um alerta de aviso no topo da página. `football_api_error` aparece nos rótulos como
 "Erro de sync de provedor", porque o poller, a descoberta e o sync manual cobrem os dois
 provedores.
+
+Do Analytics Engine, `GET /metrics/competition-activity?days=` alimenta a seção **Atividade por
+campeonato**, também separada do `/overview` pelo mesmo motivo. Agrega no período (7/30/90 dias):
+
+- grupos criados por campeonato, de `group_created` (blob3), com `SUM(_sample_interval)`;
+- palpites salvos e envios por campeonato, de `prediction_saved` (blob6), com
+  `SUM(double1 * _sample_interval)` e `SUM(_sample_interval)`;
+- `predictionsDimensionSince`, o primeiro `prediction_saved` com a dimensão, sem filtro de período;
+- `groupsDaily`, as criações de grupo por dia UTC (`YYYY-MM-DD`) × campeonato, de `group_created`
+  (blob3) com `SUM(_sample_interval)`, na mesma janela. Só vêm dias com criação; o cliente preenche os
+  dias zerados e desenha barras empilhadas por campeonato (os 8 maiores do período, o resto em
+  "Outros"). A consulta tem teto de 5000 linhas, do dia mais recente para o mais antigo; ao bater no
+  teto a resposta traz `groupsDailyTruncated: true` e o painel avisa que os dias antigos podem estar
+  incompletos. O primeiro dia da janela é parcial (a janela é `NOW() - N dias`, não meia-noite): o
+  que cai fora dos N dias do eixo fica só na tabela, com aviso.
+
+A SQL API não faz join com o D1: o Worker pega os UUIDs que voltaram do Analytics Engine e resolve
+nome e temporada em `competitions` numa query só (`json_each`). Id que não existe mais no D1 sai com
+nome e temporada nulos e a página mostra "Campeonato" mais os 8 primeiros caracteres. Valor que não
+é UUID vira "sem liga", sem texto livre no payload. Como o evento histórico não tem a dimensão, os
+palpites anteriores ao deploy aparecem na linha "sem liga", e a página avisa quando a dimensão é mais
+nova que o período selecionado ou ainda não foi coletada: isso é falta de dado, não zero atividade.
+Sob sampling do Analytics Engine as contagens são estimativas, inclusive as da série diária. A
+série não leva nome de grupo, código de convite nem user_hash: só dia, UUID de campeonato validado e
+contagem. Web nova com API anterior à série mostra a tabela e "série diária indisponível".
 
 Do cold path o dashboard mostra: KPIs do acervo (dias arquivados, eventos
 arquivados via customMetadata, tamanho total, dia mais antigo), **eventos/mês

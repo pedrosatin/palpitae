@@ -8,7 +8,11 @@ import AdminPageShell from '../AdminPageShell'
 import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
+import { lastDays } from './dates'
 import { eventLabel } from './labels'
+import CompetitionActivitySection, {
+  type CompetitionActivityResponse,
+} from './CompetitionActivitySection'
 import ProviderOpsSection, {
   totalHttpFailures,
   type CompetitionNames,
@@ -122,19 +126,6 @@ interface ArchiveQueryResponse {
 
 // Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
 const MAX_CHART_TYPES = SERIES_COLORS.length
-
-/** Últimos `days` dias UTC, do mais antigo pro mais novo (YYYY-MM-DD). */
-function lastDays(days: number, endOffset = 0): string[] {
-  const today = new Date()
-  const keys: string[] = []
-  for (let back = days - 1 + endOffset; back >= endOffset; back--) {
-    const d = new Date(
-      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - back),
-    )
-    keys.push(d.toISOString().slice(0, 10))
-  }
-  return keys
-}
 
 /**
  * Monta as barras empilhadas: um segmento por tipo de evento por dia, tipos
@@ -1267,6 +1258,7 @@ export default function AdminMetricsPage() {
   const [overview, setOverview] = useState<OverviewResponse | null>(null)
   const [business, setBusiness] = useState<BusinessResponse | null>(null)
   const [ops, setOps] = useState<OpsResponse | null>(null)
+  const [activity, setActivity] = useState<CompetitionActivityResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1288,8 +1280,9 @@ export default function AdminMetricsPage() {
       apiFetch(buildApiUrl('/metrics/archive')),
       // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
       apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
+      apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
     ])
-      .then(async ([ovRes, bizRes, arRes, opsRes]) => {
+      .then(async ([ovRes, bizRes, arRes, opsRes, activityRes]) => {
         if (cancelled) return
         if (ovRes.status === 403) {
           setError('forbidden')
@@ -1301,6 +1294,11 @@ export default function AdminMetricsPage() {
         if (bizRes.ok) setBusiness((await bizRes.json()) as BusinessResponse)
         if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
         setOps(opsRes?.ok ? ((await opsRes.json().catch(() => null)) as OpsResponse | null) : null)
+        setActivity(
+          activityRes?.ok
+            ? ((await activityRes.json().catch(() => null)) as CompetitionActivityResponse | null)
+            : null,
+        )
       })
       .catch(() => {
         if (!cancelled) setError('failed')
@@ -1382,6 +1380,8 @@ export default function AdminMetricsPage() {
             )}
 
             {business && <BusinessSection business={business} />}
+
+            <CompetitionActivitySection data={activity} />
 
             <EventsSection overview={overview} stacked={stacked} />
             <EngagementSection dauSeries={dauSeries} />
