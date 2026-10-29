@@ -6,7 +6,6 @@ import {
   type EspnScoreboardEvent,
   fetchEspnScoreboard,
 } from '../providers/espn'
-import type { ProviderHttpObserver } from '../observability/providerHttp'
 import {
   batchStatements,
   isoSeconds,
@@ -119,7 +118,10 @@ const LEAGUE_PHASE = 'REGULAR_SEASON'
  *    `2026-brasileiro-serie-b`) → REGULAR_SEASON.
  * 4. Qualquer outro slug → descartado (fail-closed).
  */
-function resolveEspnStage(slug: string | undefined, competitionCode?: string): string | undefined {
+function resolveEspnStage(
+  slug: string | undefined,
+  competitionCode?: string,
+): string | undefined {
   if (!slug) return undefined
   // Gaúcho: first-round comprovada como fase de grupos/pontos (spike 2026).
   // Chave = competição + slug; não inferir por presença incompleta de group.
@@ -172,7 +174,6 @@ export type EspnSyncOptions = {
   dates?: string[]
   db: D1Database
   now?: string
-  onHttpAttempt?: ProviderHttpObserver
 }
 
 type ValidEspnTeam = {
@@ -289,11 +290,10 @@ function extractValidEvent(
 async function fetchEventsForSync(
   competitionCode: string,
   dates?: string[],
-  onAttempt?: ProviderHttpObserver,
 ): Promise<EspnScoreboardEvent[]> {
   const uniqueDates = dates ? Array.from(new Set(dates.filter(Boolean))) : []
   if (uniqueDates.length === 0) {
-    const board = await fetchEspnScoreboard(competitionCode, undefined, onAttempt)
+    const board = await fetchEspnScoreboard(competitionCode)
     return board.events ?? []
   }
 
@@ -301,7 +301,7 @@ async function fetchEventsForSync(
   // N promises de uma vez deixa o custo e o progresso observáveis por data.
   const byId = new Map<string, EspnScoreboardEvent>()
   for (const yyyymmdd of uniqueDates) {
-    const board = await fetchEspnScoreboard(competitionCode, yyyymmdd, onAttempt)
+    const board = await fetchEspnScoreboard(competitionCode, yyyymmdd)
     for (const ev of board.events ?? []) {
       if (typeof ev.id === 'string' && ev.id) {
         byId.set(ev.id, ev)
@@ -427,7 +427,10 @@ function resolveShootoutWinner(
 
 function resolveFinishedOutcome(
   ev: ValidEspnEvent,
-): Pick<MatchUpsertRow, 'duration' | 'penaltyWinner' | 'homePenaltyGoals' | 'awayPenaltyGoals'> {
+): Pick<
+  MatchUpsertRow,
+  'duration' | 'penaltyWinner' | 'homePenaltyGoals' | 'awayPenaltyGoals'
+> {
   const hasShootoutScores =
     typeof ev.home.shootoutScore === 'number' && typeof ev.away.shootoutScore === 'number'
   const isShootout = ev.statusName === 'STATUS_FINAL_PEN' || hasShootoutScores
@@ -552,7 +555,7 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     throw new Error(`Competição ESPN desconhecida ${opts.competitionCode}`)
   }
 
-  const rawEvents = await fetchEventsForSync(opts.competitionCode, opts.dates, opts.onHttpAttempt)
+  const rawEvents = await fetchEventsForSync(opts.competitionCode, opts.dates)
   const validEvents = rawEvents
     .map((ev) => extractValidEvent(ev, opts.season, opts.competitionCode))
     .filter((ev): ev is ValidEspnEvent => ev !== null)

@@ -176,37 +176,6 @@
   color: var(--color-danger);
 }
 
-.statusWarn {
-  color: var(--color-warning);
-}
-
-.statusMuted {
-  color: var(--color-text-secondary);
-}
-
-/* Lista de campeonatos: 8 colunas não cabem no celular — rola na horizontal. */
-.tableScroll {
-  overflow-x: auto;
-}
-
-.filterRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.filterPills {
-  flex-wrap: wrap;
-}
-
-.filterLabel {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  min-width: 6rem;
-}
-
 .hint {
   color: var(--color-text-secondary);
   margin: 0;

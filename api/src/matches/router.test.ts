@@ -426,27 +426,6 @@ describe('matches router – GET /', () => {
         ok: true,
       })
     })
-
-    it('instrumenta as tentativas HTTP do sync manual com contexto sync e sem competição', async () => {
-      const ae = { writeDataPoint: vi.fn() }
-      const db = createMatchesDbMock()
-      const env = fakeEnv(db, {
-        ADMIN_EMAIL: 'admin@example.com',
-        AE: ae as unknown as AnalyticsEngineDataset,
-      })
-
-      const response = await runSync(await syncRequest(ADMIN), env)
-      expect(response.status).toBe(200)
-
-      const { onHttpAttempt } = syncFixturesSpy.mock.calls[0][0]
-      onHttpAttempt({ provider: 'football-data', status: 500, durationMs: 33 })
-
-      expect(ae.writeDataPoint).toHaveBeenCalledWith({
-        indexes: ['provider_http_attempt'],
-        blobs: ['provider_http_attempt', 'football-data', '', '500', 'sync'],
-        doubles: [33, 1],
-      })
-    })
   })
 
   describe('matches router – POST /sync', () => {

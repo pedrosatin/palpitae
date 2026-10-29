@@ -1,6 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
-import { createProviderHttpObserver } from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
@@ -147,10 +146,6 @@ export async function pollActiveMatches(
         dates,
         apiKey,
         db,
-        onHttpAttempt: createProviderHttpObserver(ae, {
-          context: 'poller',
-          competitionId: comp.comp_id,
-        }),
       })
       return { success: true as const, comp, round, matches: result?.matches ?? 0 }
     } catch (err) {
@@ -202,10 +197,7 @@ export async function pollActiveMatches(
         if (updated > 0) syncedComps.add(compId)
       }
     } catch (err) {
-      // blob2 vazio: a falha é do fallback inteiro, sem competição (a mensagem fica em blob3).
-      logError(ae, 'match_results_fallback', '[poller] Fallback ESPN falhou:', err, {
-        blobs: [''],
-      })
+      logError(ae, 'match_results_fallback', '[poller] Fallback ESPN falhou:', err)
     }
   }
 

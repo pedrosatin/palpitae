@@ -18,32 +18,11 @@ router.get('/', requireAuth, async (c) => {
   const canSeePilot = hasPilotAccess(c.get('userEmail'), c.env)
 
   try {
-    // `competitions.status` nasce 'upcoming' e não é mantido pelo sync, então o
-    // `status` devolvido aqui é derivado dos jogos reais (mesma regra de
-    // groups/router.ts): acabou quando tem partidas e nenhuma pendente; está em
-    // andamento quando tem partidas encerradas e ainda há pendentes. Sem jogos,
-    // vale a coluna.
     const result = await db
       .prepare(
-        `SELECT
-           c.id, c.name, c.slug, c.season, c.penalty_phases, c.visibility,
-           CASE
-             WHEN c.status = 'finished' THEN 'finished'
-             WHEN NOT EXISTS (
-               SELECT 1 FROM matches m WHERE m.competition_id = c.id
-             ) THEN c.status
-             WHEN NOT EXISTS (
-               SELECT 1 FROM matches m
-               WHERE m.competition_id = c.id AND m.status != 'finished'
-             ) THEN 'finished'
-             WHEN EXISTS (
-               SELECT 1 FROM matches m
-               WHERE m.competition_id = c.id AND m.status = 'finished'
-             ) THEN 'ongoing'
-             ELSE c.status
-           END AS status
-         FROM competitions c
-         ORDER BY c.name ASC`,
+        `SELECT id, name, slug, season, status, penalty_phases, visibility
+         FROM competitions
+         ORDER BY name ASC`,
       )
       .all<Record<string, unknown>>()
 

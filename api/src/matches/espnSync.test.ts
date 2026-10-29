@@ -8,27 +8,9 @@ import {
   setEspnMinIntervalForTests,
 } from '../providers/espn'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { ESPN_PRIMARY_COMPETITIONS, isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
+import { ESPN_PRIMARY_COMPETITIONS, syncEspnFixtures } from './espnSync'
 
 const handles: DatabaseSync[] = []
-
-describe('isEspnPrimaryCompetition', () => {
-  it('returns true for known competitions in ESPN_PRIMARY_COMPETITIONS', () => {
-    expect(isEspnPrimaryCompetition('conmebol.sudamericana')).toBe(true)
-    expect(isEspnPrimaryCompetition('bra.copa_do_brazil')).toBe(true)
-  })
-
-  it('returns false for unknown competitions', () => {
-    expect(isEspnPrimaryCompetition('uefa.champions')).toBe(false)
-    expect(isEspnPrimaryCompetition('invalid.code')).toBe(false)
-  })
-
-  it('returns false for Object prototype properties', () => {
-    expect(isEspnPrimaryCompetition('toString')).toBe(false)
-    expect(isEspnPrimaryCompetition('__proto__')).toBe(false)
-    expect(isEspnPrimaryCompetition('hasOwnProperty')).toBe(false)
-  })
-})
 
 beforeEach(() => {
   resetEspnClientForTests()

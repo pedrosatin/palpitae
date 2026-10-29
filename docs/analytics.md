@@ -131,7 +131,6 @@ Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 |---|---|---|
 | `click_admin_metrics_periodo` | troca do período dos gráficos (7d/30d/90d) | `{ days }` (`7`/`30`/`90`) |
 | `click_admin_metrics_arquivo_mes` | seleção de um mês pra analisar o arquivo frio (R2) | `{ month }` (`YYYY-MM`) |
-| `click_admin_metrics_filtro_campeonato` | troca de filtro da lista de grupos por campeonato | `{ filter, value }` (`visibility`: `all`/`public`/`pilot`; `status`: `all`/`ongoing`/`upcoming`/`finished`) |
 
 Radar de competições (`/admin/oportunidades`, AdminRadarPage):
 

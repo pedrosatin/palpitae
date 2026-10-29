@@ -103,64 +103,6 @@ async function requireGroupMembership(c: Context<AppContext, '/:id'>): Promise<
   return { userId, groupId, db, membership }
 }
 
-async function fetchGroupsPodiums(
-  db: D1Database,
-  finishedGroupIds: string[],
-  userId: string,
-): Promise<Map<string, PodiumEntry[]>> {
-  const podiumByGroup = new Map<string, PodiumEntry[]>()
-  if (finishedGroupIds.length === 0) return podiumByGroup
-
-  const placeholders = finishedGroupIds.map(() => '?').join(', ')
-  const podiumRows = await db
-    .prepare(
-      `
-      SELECT group_id, user_id, display, points, rank
-      FROM (
-        SELECT
-          l.group_id AS group_id,
-          l.user_id AS user_id,
-          COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display,
-          l.total_points AS points,
-          ROW_NUMBER() OVER (
-            PARTITION BY l.group_id
-            -- Mesmo desempate do endpoint de membros (pontos → acertos exatos →
-            -- ordem de entrada), senão o #1 do card pode divergir do leaderboard.
-            ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC
-          ) AS rank
-        FROM leaderboard l
-        JOIN users u ON u.id = l.user_id
-        JOIN group_members gm ON gm.group_id = l.group_id AND gm.user_id = l.user_id
-        LEFT JOIN profiles p ON p.user_id = l.user_id
-        WHERE l.group_id IN (${placeholders})
-      )
-      WHERE rank <= 3
-      ORDER BY group_id, rank
-      `,
-    )
-    .bind(...finishedGroupIds)
-    .all<{
-      group_id: string
-      user_id: string
-      display: string
-      points: number
-      rank: number
-    }>()
-
-  for (const row of podiumRows.results) {
-    const entries = podiumByGroup.get(row.group_id) ?? []
-    entries.push({
-      position: row.rank,
-      display: row.display,
-      points: row.points,
-      is_you: row.user_id === userId,
-    })
-    podiumByGroup.set(row.group_id, entries)
-  }
-
-  return podiumByGroup
-}
-
 async function isPilotGroupBlocked(
   c: Context<AppContext>,
   db: D1Database,
@@ -262,7 +204,55 @@ router.get('/', requireAuth, async (c) => {
       .filter((group) => group.competition_status === 'finished')
       .map((group) => group.id)
 
-    const podiumByGroup = await fetchGroupsPodiums(db, finishedGroupIds, userId)
+    const podiumByGroup = new Map<string, PodiumEntry[]>()
+    if (finishedGroupIds.length > 0) {
+      const placeholders = finishedGroupIds.map(() => '?').join(', ')
+      const podiumRows = await db
+        .prepare(
+          `
+          SELECT group_id, user_id, display, points, rank
+          FROM (
+            SELECT
+              l.group_id AS group_id,
+              l.user_id AS user_id,
+              COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display,
+              l.total_points AS points,
+              ROW_NUMBER() OVER (
+                PARTITION BY l.group_id
+                -- Mesmo desempate do endpoint de membros (pontos → acertos exatos →
+                -- ordem de entrada), senão o #1 do card pode divergir do leaderboard.
+                ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC
+              ) AS rank
+            FROM leaderboard l
+            JOIN users u ON u.id = l.user_id
+            JOIN group_members gm ON gm.group_id = l.group_id AND gm.user_id = l.user_id
+            LEFT JOIN profiles p ON p.user_id = l.user_id
+            WHERE l.group_id IN (${placeholders})
+          )
+          WHERE rank <= 3
+          ORDER BY group_id, rank
+          `,
+        )
+        .bind(...finishedGroupIds)
+        .all<{
+          group_id: string
+          user_id: string
+          display: string
+          points: number
+          rank: number
+        }>()
+
+      for (const row of podiumRows.results) {
+        const entries = podiumByGroup.get(row.group_id) ?? []
+        entries.push({
+          position: row.rank,
+          display: row.display,
+          points: row.points,
+          is_you: row.user_id === userId,
+        })
+        podiumByGroup.set(row.group_id, entries)
+      }
+    }
 
     const dbMs = Date.now() - dbStartedAt
     const payload = {
@@ -784,9 +774,9 @@ router.delete('/:id', requireAuth, async (c) => {
   const db = c.env.DB
 
   const group = await db
-    .prepare('SELECT owner_user_id, competition_id FROM groups WHERE id = ? AND deleted_at IS NULL')
+    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
     .bind(groupId)
-    .first<{ owner_user_id: string; competition_id: string }>()
+    .first<{ owner_user_id: string }>()
 
   if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
@@ -802,7 +792,7 @@ router.delete('/:id', requireAuth, async (c) => {
     .run()
 
   logEvent(c.env.AE, 'group_deleted', {
-    blobs: [groupId, await hashUserId(userId), group.competition_id],
+    blobs: [groupId, await hashUserId(userId)],
   })
 
   return c.json({ success: true })

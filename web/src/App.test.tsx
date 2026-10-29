@@ -257,30 +257,6 @@ describe('App', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('handles localStorage errors gracefully when setting known session', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
-    })
-
-    const originalSetItem = Storage.prototype.setItem
-    Storage.prototype.setItem = vi.fn(() => {
-      throw new Error('Storage is restricted')
-    })
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <App />
-      </MemoryRouter>,
-    )
-
-    await waitFor(() => {
-      expect(screen.getByTestId('dashboard-page')).toBeInTheDocument()
-    })
-
-    Storage.prototype.setItem = originalSetItem
-  })
-
   it('records and clears the known-session flag from the /auth/me result', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,

@@ -1,9 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
-import {
-  createProviderHttpObserver,
-  type ProviderHttpObserver,
-} from '../observability/providerHttp'
 import { fetchEspnScoreboard as fetchScoreboard, type EspnScoreboardEvent } from '../providers/espn'
 import { ACTIVE_RESULT_WINDOW_MS, EARLIEST_RESULT_MS, RESCUE_WINDOW_MS } from './matchPollingWindow'
 
@@ -118,12 +114,8 @@ function namesRelated(a: string, b: string): boolean {
   return a.includes(b) || b.includes(a)
 }
 
-async function fetchEspnScoreboard(
-  slug: string,
-  yyyymmdd: string,
-  onAttempt?: ProviderHttpObserver,
-): Promise<EspnEvent[]> {
-  const data = await fetchScoreboard(slug, yyyymmdd, onAttempt)
+async function fetchEspnScoreboard(slug: string, yyyymmdd: string): Promise<EspnEvent[]> {
+  const data = await fetchScoreboard(slug, yyyymmdd)
   return data.events ?? []
 }
 
@@ -275,9 +267,8 @@ async function scoreCompetitionWindow(
     )
   }
 
-  const onAttempt = createProviderHttpObserver(ae, { context: 'fallback', competitionId: compId })
   const eventsArrays = await Promise.all(
-    Array.from(dates).map((date) => fetchEspnScoreboard(slug, date, onAttempt)),
+    Array.from(dates).map((date) => fetchEspnScoreboard(slug, date)),
   )
   const events = eventsArrays.flat()
 

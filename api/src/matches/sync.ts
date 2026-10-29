@@ -1,5 +1,4 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
 
@@ -127,8 +126,6 @@ export type SyncOptions = {
   db: D1Database
   /** Instante do sync (ISO 8601). Padrão: agora. Usado para gravar `locked_at`. */
   now?: string
-  /** Telemetria por tentativa HTTP ao provedor (contexto e competição já embutidos). */
-  onHttpAttempt?: ProviderHttpObserver
 }
 
 export type SyncResult = {
@@ -241,33 +238,15 @@ async function fetchMatchesFromApi(
   season: number,
   matchday: number | undefined,
   apiKey: string,
-  onAttempt?: ProviderHttpObserver,
 ): Promise<ApiMatchesResponse> {
   const url = new URL(`${API_BASE}/competitions/${competitionCode}/matches`)
   url.searchParams.set('season', String(season))
   if (matchday !== undefined) url.searchParams.set('matchday', String(matchday))
 
-  const request = async () => {
-    const startedAt = Date.now()
-    try {
-      const res = await fetch(url.toString(), {
-        headers: { 'X-Auth-Token': apiKey },
-      })
-      notifyHttpAttempt(onAttempt, {
-        provider: 'football-data',
-        status: res.status,
-        durationMs: Date.now() - startedAt,
-      })
-      return res
-    } catch (err) {
-      notifyHttpAttempt(onAttempt, {
-        provider: 'football-data',
-        status: 0,
-        durationMs: Date.now() - startedAt,
-      })
-      throw err
-    }
-  }
+  const request = () =>
+    fetch(url.toString(), {
+      headers: { 'X-Auth-Token': apiKey },
+    })
 
   let res = await request()
   // Um único retry com backoff de 6s. Evita martelar o free tier de 10 req/min em 429.
@@ -641,7 +620,6 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
       dates: opts.dates,
       db: opts.db,
       now: opts.now,
-      onHttpAttempt: opts.onHttpAttempt,
     })
   }
 
@@ -650,13 +628,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     throw new Error('FOOTBALL_API_KEY não configurada no servidor')
   }
 
-  const data = await fetchMatchesFromApi(
-    competitionCode,
-    season,
-    matchday,
-    apiKey,
-    opts.onHttpAttempt,
-  )
+  const data = await fetchMatchesFromApi(competitionCode, season, matchday, apiKey)
   const { competition: apiComp, matches } = data
 
   const competitionName = resolveCompetitionName(apiComp, competitionCode)

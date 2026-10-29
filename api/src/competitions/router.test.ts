@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
-import { createSqliteD1 } from '../testing/sqliteD1'
 import { competitionsRouter } from './router'
 import type { AppContext } from '../types'
 
@@ -73,35 +72,6 @@ describe('competitions router', () => {
     })
   })
 
-  it('passes through the derived status column as status', async () => {
-    const app = new Hono<AppContext>()
-    app.route('/competitions', competitionsRouter)
-
-    const competitions = [
-      { id: 'wc', name: 'Copa do Mundo', penalty_phases: '[]', status: 'finished' },
-      { id: 'br', name: 'Brasileirão', penalty_phases: '[]', status: 'ongoing' },
-      { id: 'cl', name: 'Champions League', penalty_phases: '[]', status: 'upcoming' },
-    ]
-
-    const token = await signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600)
-    const response = await app.fetch(
-      new Request('http://localhost/competitions', {
-        headers: { Cookie: `session=${token}` },
-      }),
-      fakeEnv(createDbMock(competitions)),
-    )
-
-    expect(response.status).toBe(200)
-    const body = await response.json()
-    expect(body).toEqual({
-      competitions: [
-        { id: 'wc', name: 'Copa do Mundo', status: 'finished', has_penalty_phases: false },
-        { id: 'br', name: 'Brasileirão', status: 'ongoing', has_penalty_phases: false },
-        { id: 'cl', name: 'Champions League', status: 'upcoming', has_penalty_phases: false },
-      ],
-    })
-  })
-
   it('hides pilot competitions from ordinary users and shows them to admin and pilot guests', async () => {
     const app = new Hono<AppContext>()
     app.route('/competitions', competitionsRouter)
@@ -166,70 +136,6 @@ describe('competitions router', () => {
         { id: 'cl', name: 'Champions League', has_penalty_phases: true },
       ],
     })
-  })
-
-  /**
-   * O CASE de status derivado é a parte mais arriscada do query — rodá-lo num
-   * SQLite real (mesma migrations de produção) cobre os ramos que o mock de D1
-   * não executa. Cada competição abaixo exercita um ramo do CASE.
-   */
-  it('deriva status a partir das partidas, executando o SQL em SQLite real', async () => {
-    const { sqlite, db } = createSqliteD1()
-    try {
-      sqlite.exec(`
-        DELETE FROM competitions;
-        INSERT INTO teams (id, name, slug, provider) VALUES
-          ('t-h', 'Mandante', 'mandante', 'espn'),
-          ('t-a', 'Visitante', 'visitante', 'espn');
-        INSERT INTO competitions (id, name, slug, season, status, provider) VALUES
-          ('c-concluida', 'Concluída', 'deriva-concluida', '2026', 'upcoming', 'espn'), -- todas encerradas → finished
-          ('c-rolando',   'Rolando',   'deriva-rolando',   '2026', 'upcoming', 'espn'), -- encerrada + pendente → ongoing
-          ('c-futura',    'Futura',    'deriva-futura',    '2027', 'upcoming', 'espn'), -- só futuras → coluna
-          ('c-coluna',    'Coluna',    'deriva-coluna',    '2027', 'finished', 'espn'), -- sem jogos, coluna finished → finished
-          ('c-live',      'Ao vivo',   'deriva-live',      '2026', 'upcoming', 'espn'), -- finished + live → ongoing
-          ('c-bateria',   'Bateria',   'deriva-bateria',   '2027', 'upcoming', 'espn'); -- live + futura, sem finished → coluna
-        INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status) VALUES
-          ('m-a1', 'c-concluida', 'x1', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-a2', 'c-concluida', 'x2', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished'),
-          ('m-b1', 'c-rolando',   'x3', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-b2', 'c-rolando',   'x4', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'scheduled'),
-          ('m-c1', 'c-futura',    'x5', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'scheduled'),
-          ('m-e1', 'c-live',      'x6', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-e2', 'c-live',      'x7', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'live'),
-          ('m-f1', 'c-bateria',   'x8', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'live'),
-          ('m-f2', 'c-bateria',   'x9', 'espn', 't-h', 't-a', '2027-01-02T12:00:00Z', 'scheduled');
-      `)
-
-      const app = new Hono<AppContext>()
-      app.route('/competitions', competitionsRouter)
-
-      const token = await signJwt({ sub: 'test-user', email: 'test@example.com' }, 'secret', 3600)
-      const response = await app.fetch(
-        new Request('http://localhost/competitions', {
-          headers: { Cookie: `session=${token}` },
-        }),
-        fakeEnv(db),
-      )
-
-      expect(response.status).toBe(200)
-      const body = (await response.json()) as {
-        competitions: { id: string; status: string }[]
-      }
-      const statusById = Object.fromEntries(
-        body.competitions.map((c) => [c.id, c.status]),
-      )
-
-      expect(statusById['c-concluida']).toBe('finished')
-      expect(statusById['c-rolando']).toBe('ongoing')
-      expect(statusById['c-futura']).toBe('upcoming')
-      expect(statusById['c-coluna']).toBe('finished')
-      // 'live' é pendente: encerrada + ao vivo → ongoing.
-      expect(statusById['c-live']).toBe('ongoing')
-      // Ao vivo + futura, sem nenhuma encerrada → mantém a coluna.
-      expect(statusById['c-bateria']).toBe('upcoming')
-    } finally {
-      sqlite.close()
-    }
   })
 
   it('returns 500 on database error', async () => {

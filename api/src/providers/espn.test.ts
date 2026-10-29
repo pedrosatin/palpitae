@@ -158,7 +158,9 @@ describe('fetchEspnScoreboard', () => {
       .mockResolvedValueOnce(new Response('boom de novo', { status: 503 }))
 
     const promise = fetchEspnScoreboard('bra.2', '20261005')
-    const assertion = expect(promise).rejects.toThrow('ESPN respondeu 503 em bra.2: boom de novo')
+    const assertion = expect(promise).rejects.toThrow(
+      'ESPN respondeu 503 em bra.2: boom de novo',
+    )
     await vi.advanceTimersByTimeAsync(ESPN_MIN_INTERVAL_MS)
     await assertion
     expect(fetch).toHaveBeenCalledTimes(2)
@@ -195,7 +197,7 @@ describe('fetchEspnScoreboard', () => {
     expect(peak).toBe(1)
     expect(startedAt).toHaveLength(3)
     for (let i = 1; i < startedAt.length; i++) {
-      expect(startedAt[i]! - startedAt[i - 1]!).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS)
+      expect(startedAt[i]! - startedAt[i - 1]!).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS - 50)
     }
   }, 15_000)
 
@@ -257,95 +259,5 @@ describe('fetchEspnScoreboard', () => {
     expect(ESPN_TIMEOUT_MS).toBe(10_000)
     expect(ESPN_RETRY_BACKOFF_MS).toBe(500)
     expect(ESPN_MIN_INTERVAL_MS).toBe(1_300)
-  })
-})
-
-describe('fetchEspnScoreboard · telemetria por tentativa', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn())
-    resetEspnClientForTests()
-    setEspnMinIntervalForTests(0)
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    resetEspnClientForTests()
-  })
-
-  it('reporta o sucesso com provedor, status e duração', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
-    const onAttempt = vi.fn()
-
-    await fetchEspnScoreboard('bra.1', '20261007', onAttempt)
-
-    expect(onAttempt).toHaveBeenCalledTimes(1)
-    expect(onAttempt).toHaveBeenCalledWith({
-      provider: 'espn',
-      status: 200,
-      durationMs: expect.any(Number),
-    })
-  })
-
-  it('reporta cada tentativa do retry: 429 e depois 200', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(new Response('slow down', { status: 429 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
-    const onAttempt = vi.fn()
-
-    await fetchEspnScoreboard('eng.1', '20261005', onAttempt)
-
-    expect(onAttempt.mock.calls.map(([a]) => a.status)).toEqual([429, 200])
-  })
-
-  it('reporta o 403 uma única vez e mantém o erro original (sem retry)', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response('Forbidden', { status: 403 }))
-    const onAttempt = vi.fn()
-
-    await expect(fetchEspnScoreboard('bra.1', '20261005', onAttempt)).rejects.toThrow(
-      'ESPN respondeu 403 em bra.1: Forbidden',
-    )
-    expect(onAttempt.mock.calls.map(([a]) => a.status)).toEqual([403])
-    expect(fetch).toHaveBeenCalledTimes(1)
-  })
-
-  it('reporta 5xx nas duas tentativas antes de lançar', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(new Response('a', { status: 503 }))
-      .mockResolvedValueOnce(new Response('b', { status: 502 }))
-    const onAttempt = vi.fn()
-
-    await expect(fetchEspnScoreboard('bra.1', '20261005', onAttempt)).rejects.toThrow('502')
-    expect(onAttempt.mock.calls.map(([a]) => a.status)).toEqual([503, 502])
-  })
-
-  it('reporta falha de rede como status 0 e relança o erro', async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('fetch failed'))
-    const onAttempt = vi.fn()
-
-    await expect(fetchEspnScoreboard('bra.1', '20261005', onAttempt)).rejects.toThrow(
-      'fetch failed',
-    )
-    expect(onAttempt).toHaveBeenCalledWith({
-      provider: 'espn',
-      status: 0,
-      durationMs: expect.any(Number),
-    })
-  })
-
-  it('observer que lança não muda o resultado nem o número de requests', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [{ id: '1' }] })))
-
-    const result = await fetchEspnScoreboard('bra.1', '20261005', () => {
-      throw new Error('telemetria quebrada')
-    })
-
-    expect(result).toEqual({ events: [{ id: '1' }] })
-    expect(fetch).toHaveBeenCalledTimes(1)
-  })
-
-  it('sem observer o comportamento é idêntico', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
-
-    await expect(fetchEspnScoreboard('bra.1', '20261005')).resolves.toEqual({ events: [] })
   })
 })

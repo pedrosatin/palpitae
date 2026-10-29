@@ -1,14 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
-import {
-  MATCH_UPSERT_SQL,
-  batchStatements,
-  isoSeconds,
-  resolveCanonicalScore,
-  resolveLockedAt,
-  slugify,
-  syncFixtures,
-} from './sync'
+import { batchStatements, isoSeconds, resolveCanonicalScore, resolveLockedAt, slugify, syncFixtures } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -789,115 +781,6 @@ describe('syncFixtures — football-data 429 retry', () => {
   })
 })
 
-describe('syncFixtures — telemetria por tentativa HTTP', () => {
-  const response = (status: number, body: unknown = {}) => ({
-    ok: status >= 200 && status < 300,
-    status,
-    async text() {
-      return 'corpo do provedor'
-    },
-    async json() {
-      return body
-    },
-  })
-
-  it('football-data: reporta 429 e a segunda tentativa como eventos separados', async () => {
-    vi.useFakeTimers()
-    try {
-      vi.stubGlobal(
-        'fetch',
-        vi
-          .fn()
-          .mockResolvedValueOnce(response(429))
-          .mockResolvedValueOnce(
-            response(200, { competition: { id: 2000, name: 'FIFA World Cup' }, matches: [] }),
-          ),
-      )
-      const onHttpAttempt = vi.fn()
-
-      const { db } = buildFakeDb()
-      const promise = syncFixtures({
-        competitionCode: 'WC',
-        season: 2026,
-        apiKey: 'k',
-        db,
-        onHttpAttempt,
-      })
-      await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
-      await promise
-
-      expect(onHttpAttempt.mock.calls.map(([a]) => [a.provider, a.status])).toEqual([
-        ['football-data', 429],
-        ['football-data', 200],
-      ])
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('football-data: reporta 403 e mantém a mensagem de erro original', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(403)))
-    const onHttpAttempt = vi.fn()
-
-    const { db } = buildFakeDb()
-    await expect(
-      syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db, onHttpAttempt }),
-    ).rejects.toThrow('football-data.org respondeu 403: corpo do provedor')
-    expect(onHttpAttempt).toHaveBeenCalledTimes(1)
-    expect(onHttpAttempt.mock.calls[0][0]).toMatchObject({ provider: 'football-data', status: 403 })
-  })
-
-  it('football-data: falha de rede vira status 0 e o erro segue para o chamador', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
-    const onHttpAttempt = vi.fn()
-
-    const { db } = buildFakeDb()
-    await expect(
-      syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db, onHttpAttempt }),
-    ).rejects.toThrow('fetch failed')
-    expect(onHttpAttempt.mock.calls[0][0]).toMatchObject({ provider: 'football-data', status: 0 })
-  })
-
-  it('football-data: observer que lança não muda o resultado do sync', async () => {
-    mockFetch([])
-    const { db } = buildFakeDb()
-
-    await expect(
-      syncFixtures({
-        competitionCode: 'WC',
-        season: 2026,
-        apiKey: 'k',
-        db,
-        onHttpAttempt: () => {
-          throw new Error('telemetria quebrada')
-        },
-      }),
-    ).resolves.toMatchObject({ matches: 0 })
-  })
-
-  it('ESPN primária: o observer chega ao cliente do scoreboard', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ events: [] }), { status: 200 })),
-    )
-    const onHttpAttempt = vi.fn()
-
-    const { db } = buildFakeDb()
-    await syncFixtures({
-      competitionCode: 'conmebol.libertadores',
-      season: 2026,
-      db,
-      onHttpAttempt,
-    })
-
-    expect(onHttpAttempt).toHaveBeenCalledWith({
-      provider: 'espn',
-      status: 200,
-      durationMs: expect.any(Number),
-    })
-  })
-})
-
 describe('isoSeconds', () => {
   it('strips milliseconds from an ISO string', () => {
     const date = new Date('2026-07-29T12:34:56.789Z')
@@ -963,23 +846,5 @@ describe('slugify', () => {
 
   it('handles already slugified strings', () => {
     expect(slugify('already-slugified-string')).toBe('already-slugified-string')
-  })
-})
-
-describe('MATCH_UPSERT_SQL', () => {
-  it('should be a valid SQL statement', () => {
-    expect(MATCH_UPSERT_SQL).toContain('INSERT INTO matches')
-    expect(MATCH_UPSERT_SQL).toContain('ON CONFLICT (external_id, provider) DO UPDATE SET')
-    expect(MATCH_UPSERT_SQL).toContain('locked_at')
-  })
-
-  it('should have matching number of columns and placeholders', () => {
-    const insertMatch = MATCH_UPSERT_SQL.match(/INSERT INTO matches \(([\s\S]*?)\)\s*VALUES \(([\s\S]*?)\)/)
-    expect(insertMatch).not.toBeNull()
-    if (insertMatch) {
-      const columns = insertMatch[1].split(',').map(c => c.trim()).filter(c => c.length > 0)
-      const placeholders = insertMatch[2].split(',').map(c => c.trim()).filter(c => c === '?')
-      expect(columns.length).toBe(placeholders.length)
-    }
   })
 })

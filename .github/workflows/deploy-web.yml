@@ -20,14 +20,13 @@ permissions:
 # Deploy so pra main: se dois pushes entrarem juntos, o mais novo cancela
 # o anterior e a producao termina no ultimo commit.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     defaults:
       run:
         working-directory: web
@@ -63,7 +62,6 @@ jobs:
   deploy:
     name: Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     needs: test
     if: github.event_name == 'push'
     defaults:

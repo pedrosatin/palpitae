@@ -50,20 +50,6 @@ function leg1Context(
   }
 }
 
-function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
-  const result: [string | null, Match[]][] = []
-  for (const m of ms) {
-    const key = m.group_name ?? null
-    const last = result[result.length - 1]
-    if (last && last[0] === key) {
-      last[1].push(m)
-    } else {
-      result.push([key, [m]])
-    }
-  }
-  return result
-}
-
 export default function PredictionsTab({
   groupId,
   competitionId,
@@ -135,6 +121,20 @@ export default function PredictionsTab({
 
   if (matches.length === 0) {
     return <p className={styles.empty}>Nenhum jogo encontrado para esta competição.</p>
+  }
+
+  function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
+    const result: [string | null, Match[]][] = []
+    for (const m of ms) {
+      const key = m.group_name ?? null
+      const last = result[result.length - 1]
+      if (last && last[0] === key) {
+        last[1].push(m)
+      } else {
+        result.push([key, [m]])
+      }
+    }
+    return result
   }
 
   return (
