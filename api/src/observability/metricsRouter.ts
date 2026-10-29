@@ -223,6 +223,12 @@ metricsRouter.get('/overview', async (c) => {
 
 type AeRow = Record<string, unknown>
 
+/** Dia UTC `YYYY-MM-DD` (também valida o `from`/`to` do arquivo frio). */
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Teto de linhas (dia × campeonato) da série diária; ver `groupsDailyTruncated`. */
+const GROUP_DAILY_LIMIT = 5000
+
 /** UUID de competição; qualquer outra coisa em blob de competição é lixo legado. */
 const COMPETITION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -398,6 +404,163 @@ metricsRouter.get('/ops', async (c) => {
   } catch (err) {
     console.error('[metrics] falha na SQL API (ops):', err)
     return c.json({ error: 'Falha ao consultar o Analytics Engine' }, 502)
+  }
+})
+
+/**
+ * Criações de grupo e atividade de palpites por campeonato no período, a
+ * partir do Analytics Engine. Endpoint próprio (como `/ops`) para que uma
+ * falha aqui não derrube a página e para o front novo conviver com uma API
+ * ainda sem a rota.
+ *
+ * Posições: group_created → blob3 competition_id; prediction_saved → blob6
+ * competition_id (só em eventos gravados depois do deploy do enriquecimento),
+ * double1 = nº de palpites do evento. Evento antigo sem a dimensão chega com
+ * blob6 vazio e vira a linha "sem liga" (`competition_id: ''`); não há backfill.
+ *
+ * Contagens ponderadas pelo sampling: eventos = SUM(_sample_interval),
+ * palpites = SUM(double1 * _sample_interval). A SQL API não faz join com o D1:
+ * o Worker resolve nome e temporada dos ids que vieram do AE. Id sem linha em
+ * `competitions` sai com `name` e `season` nulos. `predictionsDimensionSince`
+ * (sem filtro de janela) é o primeiro evento com a dimensão, para o painel
+ * distinguir "sem palpites" de "dimensão ainda não coletada".
+ *
+ * `groupsDaily` é a série de criações de grupo por dia (UTC, `YYYY-MM-DD`) ×
+ * competition_id, com o mesmo SUM(_sample_interval). Só existem linhas de dias
+ * com criação: o preenchimento dos dias zerados é do cliente. A consulta tem
+ * teto de GROUP_DAILY_LIMIT linhas (ordem do dia mais recente para o mais
+ * antigo); se bater no teto, `groupsDailyTruncated` é true e o painel avisa em
+ * vez de mostrar uma série cortada como completa. O payload não carrega nome
+ * de grupo, código de convite nem user_hash: só ids de campeonato (UUID
+ * validado), dia e contagem; nome e temporada saem de `competitions`.
+ */
+metricsRouter.get('/competition-activity', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  const days = parseDays(c.req.query('days'))
+  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+
+  try {
+    const [groupsCreated, predictionsSaved, dimensionSince, groupsDailyRows] = await Promise.all([
+      runAeSql(
+        c.env,
+        `SELECT blob3 AS competition_id, SUM(_sample_interval) AS groups ` +
+          `FROM ${DATASET} WHERE blob1 = 'group_created' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY groups DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob6 AS competition_id, SUM(_sample_interval) AS saves, ` +
+          `SUM(double1 * _sample_interval) AS predictions ` +
+          `FROM ${DATASET} WHERE blob1 = 'prediction_saved' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY predictions DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT MIN(timestamp) AS first_at FROM ${DATASET} ` +
+          `WHERE blob1 = 'prediction_saved' AND blob6 != ''`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day, ` +
+          `blob3 AS competition_id, SUM(_sample_interval) AS groups ` +
+          `FROM ${DATASET} WHERE blob1 = 'group_created' AND ${since} ` +
+          `GROUP BY day, competition_id ORDER BY day DESC LIMIT ${GROUP_DAILY_LIMIT}`,
+      ),
+    ])
+
+    // Dia × campeonato: normaliza o dia, descarta linha sem dia válido e soma
+    // ids inválidos em "sem liga" (a mesma chave pode repetir após o saneamento).
+    const dailyByKey = new Map<
+      string,
+      { day: string; competition_id: string; groups_created: number }
+    >()
+    for (const r of groupsDailyRows) {
+      const day = String(r.day ?? '').slice(0, 10)
+      const groups = Number(r.groups ?? 0)
+      if (!DAY_RE.test(day) || !Number.isFinite(groups)) continue
+      const competition_id = competitionIdOrEmpty(r.competition_id)
+      const key = `${day}\u0000${competition_id}`
+      const row = dailyByKey.get(key) ?? { day, competition_id, groups_created: 0 }
+      row.groups_created += groups
+      dailyByKey.set(key, row)
+    }
+    const groupsDaily = [...dailyByKey.values()].sort(
+      (a, b) => a.day.localeCompare(b.day) || a.competition_id.localeCompare(b.competition_id),
+    )
+
+    const byCompetition = new Map<
+      string,
+      {
+        competition_id: string
+        groups_created: number
+        prediction_saves: number
+        predictions: number
+      }
+    >()
+    const entry = (id: string) => {
+      const row = byCompetition.get(id) ?? {
+        competition_id: id,
+        groups_created: 0,
+        prediction_saves: 0,
+        predictions: 0,
+      }
+      byCompetition.set(id, row)
+      return row
+    }
+    for (const r of groupsCreated) {
+      entry(competitionIdOrEmpty(r.competition_id)).groups_created += Number(r.groups ?? 0)
+    }
+    for (const r of predictionsSaved) {
+      const row = entry(competitionIdOrEmpty(r.competition_id))
+      row.prediction_saves += Number(r.saves ?? 0)
+      row.predictions += Number(r.predictions ?? 0)
+    }
+
+    // Id que só aparece na série diária (evento entre as consultas paralelas)
+    // entra no total com o que a própria série soma, para a UI sempre achar o nome.
+    const groupTotalsIds = new Set(groupsCreated.map((r) => competitionIdOrEmpty(r.competition_id)))
+    for (const d of groupsDaily) {
+      if (!groupTotalsIds.has(d.competition_id))
+        entry(d.competition_id).groups_created += d.groups_created
+    }
+
+    const ids = [...byCompetition.keys()].filter((id) => id !== '')
+    const known = new Map<string, { name: string; season: string | null }>()
+    if (ids.length > 0) {
+      const found = await c.env.DB.prepare(
+        `SELECT id, name, season FROM competitions WHERE id IN (SELECT value FROM json_each(?))`,
+      )
+        .bind(JSON.stringify(ids))
+        .all<{ id: string; name: string; season: string | null }>()
+      for (const r of found.results) known.set(r.id, { name: r.name, season: r.season })
+    }
+
+    const competitions = [...byCompetition.values()]
+      .map((row) => ({
+        ...row,
+        name: known.get(row.competition_id)?.name ?? null,
+        season: known.get(row.competition_id)?.season ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          b.groups_created - a.groups_created ||
+          b.predictions - a.predictions ||
+          a.competition_id.localeCompare(b.competition_id),
+      )
+
+    return c.json({
+      days,
+      predictionsDimensionSince: (dimensionSince[0]?.first_at as string | null | undefined) ?? null,
+      competitions,
+      groupsDaily,
+      groupsDailyTruncated: groupsDailyRows.length >= GROUP_DAILY_LIMIT,
+    })
+  } catch (err) {
+    console.error('[metrics] falha ao montar atividade por campeonato:', err)
+    return c.json({ error: 'Falha ao consultar a atividade por campeonato' }, 502)
   }
 })
 
@@ -585,7 +748,6 @@ metricsRouter.get('/archive', async (c) => {
   return c.json({ files })
 })
 
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 const MAX_QUERY_SPAN_DAYS = 92
 
 /** Lista de dias YYYY-MM-DD de `from` a `to` (inclusive), UTC. */

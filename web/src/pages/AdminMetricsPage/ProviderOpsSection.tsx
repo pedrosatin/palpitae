@@ -58,7 +58,7 @@ function formatMs(ms: number): string {
 }
 
 /** "YYYY-MM-DD hh:mm:ss" (UTC da SQL API) → "dd/mm hh:mm UTC". */
-function formatSince(ts: string): string {
+export function formatSince(ts: string): string {
   const [date, time] = ts.split(' ')
   if (!date || !time) return ts
   const [, m, d] = date.split('-')
