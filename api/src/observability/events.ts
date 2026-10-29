@@ -22,6 +22,8 @@ export type EventType =
   | 'football_api_error'
   // Fallback de resultados via ESPN (ADR-016)
   | 'match_results_fallback'
+  // Tentativa HTTP a um provedor de partidas (ESPN, football-data): toda falha + amostra de sucessos
+  | 'provider_http_attempt'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'

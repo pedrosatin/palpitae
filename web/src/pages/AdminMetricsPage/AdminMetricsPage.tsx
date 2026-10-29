@@ -9,6 +9,11 @@ import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
 import { eventLabel } from './labels'
+import ProviderOpsSection, {
+  totalHttpFailures,
+  type CompetitionNames,
+  type OpsResponse,
+} from './ProviderOpsSection'
 
 /**
  * Dashboard admin de métricas server-side (Analytics Engine + R2).
@@ -68,7 +73,29 @@ interface BusinessResponse {
   groupsCreatedInPeriod: number
   avgGroupsPerUser: number
   medianGroupsPerUser: number
+  // Ausentes numa API anterior ao snapshot por campeonato — a página cai no
+  // top 10 legado (`topCompetitions`) enquanto o deploy da API não chega.
+  activeGroupDays?: number
+  competitions?: CompetitionSnapshot[]
   topCompetitions: { competition: string; groups: number }[]
+}
+
+// Uma linha por temporada cadastrada (inclusive sem grupo) — só agregados.
+interface CompetitionSnapshot {
+  id: string
+  name: string
+  slug: string
+  season: string | null
+  provider: string | null
+  visibility: string
+  status: string
+  groups_current: number
+  members: number
+  active_groups_14d: number
+  // Saúde de resultados (D1). Ausentes numa API anterior a esse recorte —
+  // a página mostra "—" / aviso em vez de tratar a falta como zero.
+  overdue_no_score?: number
+  finished_unscored?: number
 }
 
 interface ArchiveResponse {
@@ -266,7 +293,133 @@ function KpiCard({
   )
 }
 
-function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
+type MetricsAlert = { key: string; label: string; level: 'warn' | 'danger' }
+
+function buildKpis(overview: OverviewResponse) {
+  const totalOf = (type: string) =>
+    Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
+  const hits = Number(overview.cache.find((c) => c.result === 'hit')?.count ?? 0)
+  const misses = Number(overview.cache.find((c) => c.result === 'miss')?.count ?? 0)
+  const cacheTotal = hits + misses
+  const groupsCreated = totalOf('group_created')
+  const groupsJoined = totalOf('group_joined')
+  return {
+    activeUsers: Number(overview.predictions.active_users ?? 0),
+    predictions: Number(overview.predictions.total ?? 0),
+    groupsCreated,
+    // Conversão de convite: entradas por grupo criado no período.
+    joinRate: groupsCreated > 0 ? (groupsJoined / groupsCreated).toFixed(1) : '—',
+    logins: totalOf('login_success'),
+    cacheHitRate: cacheTotal > 0 ? `${Math.round((hits / cacheTotal) * 100)}%` : '—',
+    emailUnsubs: totalOf('email_unsubscribed'),
+    emailResubs: totalOf('email_resubscribed'),
+  }
+}
+
+// Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
+function buildWhaleShare(overview: OverviewResponse, totalPredictions: number) {
+  if (totalPredictions === 0 || overview.whales.length === 0) return null
+  const shareOf = (n: number) =>
+    Math.min(
+      100,
+      Math.round(
+        (overview.whales.slice(0, n).reduce((sum, w) => sum + Number(w.predictions), 0) /
+          totalPredictions) *
+          100,
+      ),
+    )
+  return { top1: shareOf(1), top5: shareOf(5) }
+}
+
+// Triagem rápida: o que precisa de atenção agora, pro topo da página.
+function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): MetricsAlert[] {
+  const list: MetricsAlert[] = []
+
+  for (const r of overview.lastRuns) {
+    const info = CRON_INFO[r.event_type]
+    if (info && isStale(r.last_run, info.staleAfterMin)) {
+      list.push({
+        key: `stale-${r.event_type}`,
+        label: `${info.label} atrasado`,
+        level: 'danger',
+      })
+    }
+  }
+  if (overview.recentErrors.length > 0) {
+    list.push({
+      key: 'errors',
+      label: `${overview.recentErrors.length} erro(s) recente(s)`,
+      level: 'danger',
+    })
+  }
+  const httpFailures = totalHttpFailures(ops)
+  if (httpFailures > 0) {
+    list.push({
+      key: 'provider-http',
+      label: `${httpFailures} falha(s) HTTP de provedor`,
+      level: 'warn',
+    })
+  }
+  const emailFailed = Number(overview.emailHealth.failed)
+  if (emailFailed > 0) {
+    list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
+  }
+  const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
+  if (loginFailTotal > 0) {
+    list.push({ key: 'login', label: `${loginFailTotal} falha(s) de login`, level: 'warn' })
+  }
+  return list
+}
+
+type ArchiveFile = ArchiveResponse['files'][number]
+
+// Verifica a integridade do export nos últimos 14 dias.
+function buildArchiveDays(files: ArchiveFile[]) {
+  const byDay = new Map(files.map((f) => [f.key.replace('events/', '').replace('.ndjson', ''), f]))
+  const oldest = [...byDay.keys()].sort()[0].replaceAll('/', '-')
+  return lastDays(14, 1)
+    .reverse()
+    .map((day) => {
+      const key = day.replaceAll('-', '/')
+      const file = byDay.get(key) ?? null
+      return { day, file, beforeFirstExport: !file && day < oldest }
+    })
+}
+
+// Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
+// enxerga além da janela de ~3 meses do Analytics Engine.
+function buildArchiveStats(files: ArchiveFile[]) {
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
+  const totalEvents = files.reduce((sum, f) => sum + (f.events ?? 0), 0)
+  const missingMeta = files.filter((f) => f.events === null).length
+  const oldestDay = files
+    .map((f) => f.key.replace('events/', '').replace('.ndjson', '').replaceAll('/', '-'))
+    .sort()[0]
+
+  const byMonth = new Map<string, number>()
+  for (const f of files) {
+    const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-') // YYYY-MM
+    byMonth.set(month, (byMonth.get(month) ?? 0) + (f.events ?? 0))
+  }
+  const monthly = [...byMonth.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([label, total]) => ({ label, total }))
+
+  return {
+    totalDays: files.length,
+    totalBytes,
+    totalEvents,
+    missingMeta,
+    oldestDay,
+    monthly,
+  }
+}
+
+function useMetricsData(
+  overview: OverviewResponse | null,
+  archive: ArchiveResponse | null,
+  ops: OpsResponse | null,
+) {
   const stacked = useMemo(
     () =>
       overview
@@ -285,125 +438,30 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     [overview],
   )
 
-  const kpis = useMemo(() => {
-    if (!overview) return null
-    const totalOf = (type: string) =>
-      Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
-    const hits = Number(overview.cache.find((c) => c.result === 'hit')?.count ?? 0)
-    const misses = Number(overview.cache.find((c) => c.result === 'miss')?.count ?? 0)
-    const cacheTotal = hits + misses
-    const groupsCreated = totalOf('group_created')
-    const groupsJoined = totalOf('group_joined')
-    return {
-      activeUsers: Number(overview.predictions.active_users ?? 0),
-      predictions: Number(overview.predictions.total ?? 0),
-      groupsCreated,
-      // Conversão de convite: entradas por grupo criado no período.
-      joinRate: groupsCreated > 0 ? (groupsJoined / groupsCreated).toFixed(1) : '—',
-      logins: totalOf('login_success'),
-      cacheHitRate: cacheTotal > 0 ? `${Math.round((hits / cacheTotal) * 100)}%` : '—',
-      emailUnsubs: totalOf('email_unsubscribed'),
-      emailResubs: totalOf('email_resubscribed'),
-    }
-  }, [overview])
+  const kpis = useMemo(() => (overview ? buildKpis(overview) : null), [overview])
 
   // Sampling do AE: média > 1 significa amostragem — números viram estimativa.
   const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
   const isSampling = avgSample > 1.01
 
-  // Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
-  const whaleShare = useMemo(() => {
-    if (!overview || !kpis || kpis.predictions === 0 || overview.whales.length === 0) return null
-    const shareOf = (n: number) =>
-      Math.min(
-        100,
-        Math.round(
-          (overview.whales.slice(0, n).reduce((sum, w) => sum + Number(w.predictions), 0) /
-            kpis.predictions) *
-            100,
-        ),
-      )
-    return { top1: shareOf(1), top5: shareOf(5) }
-  }, [overview, kpis])
+  const whaleShare = useMemo(
+    () => (overview && kpis ? buildWhaleShare(overview, kpis.predictions) : null),
+    [overview, kpis],
+  )
 
-  // Triagem rápida: o que precisa de atenção agora, pro topo da página.
-  const alerts = useMemo(() => {
-    if (!overview) return []
-    const list: { key: string; label: string; level: 'warn' | 'danger' }[] = []
+  const alerts = useMemo(() => (overview ? buildAlerts(overview, ops) : []), [overview, ops])
 
-    for (const r of overview.lastRuns) {
-      const info = CRON_INFO[r.event_type]
-      if (info && isStale(r.last_run, info.staleAfterMin)) {
-        list.push({
-          key: `stale-${r.event_type}`,
-          label: `${info.label} atrasado`,
-          level: 'danger',
-        })
-      }
-    }
-    if (overview.recentErrors.length > 0) {
-      list.push({
-        key: 'errors',
-        label: `${overview.recentErrors.length} erro(s) recente(s)`,
-        level: 'danger',
-      })
-    }
-    const emailFailed = Number(overview.emailHealth.failed)
-    if (emailFailed > 0) {
-      list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
-    }
-    const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
-    if (loginFailTotal > 0) {
-      list.push({ key: 'login', label: `${loginFailTotal} falha(s) de login`, level: 'warn' })
-    }
-    return list
-  }, [overview])
+  const archiveFiles = archive && archive.files.length > 0 ? archive.files : null
 
-  // Verifica a integridade do export nos últimos 14 dias.
-  const archiveDays = useMemo(() => {
-    if (!archive || archive.files.length === 0) return []
-    const byDay = new Map(
-      archive.files.map((f) => [f.key.replace('events/', '').replace('.ndjson', ''), f]),
-    )
-    const oldest = [...byDay.keys()].sort()[0].replaceAll('/', '-')
-    return lastDays(14, 1)
-      .reverse()
-      .map((day) => {
-        const key = day.replaceAll('-', '/')
-        const file = byDay.get(key) ?? null
-        return { day, file, beforeFirstExport: !file && day < oldest }
-      })
-  }, [archive])
+  const archiveDays = useMemo(
+    () => (archiveFiles ? buildArchiveDays(archiveFiles) : []),
+    [archiveFiles],
+  )
 
-  // Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
-  // enxerga além da janela de ~3 meses do Analytics Engine.
-  const archiveStats = useMemo(() => {
-    if (!archive || archive.files.length === 0) return null
-    const totalBytes = archive.files.reduce((sum, f) => sum + f.size, 0)
-    const totalEvents = archive.files.reduce((sum, f) => sum + (f.events ?? 0), 0)
-    const missingMeta = archive.files.filter((f) => f.events === null).length
-    const oldestDay = archive.files
-      .map((f) => f.key.replace('events/', '').replace('.ndjson', '').replaceAll('/', '-'))
-      .sort()[0]
-
-    const byMonth = new Map<string, number>()
-    for (const f of archive.files) {
-      const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-') // YYYY-MM
-      byMonth.set(month, (byMonth.get(month) ?? 0) + (f.events ?? 0))
-    }
-    const monthly = [...byMonth.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([label, total]) => ({ label, total }))
-
-    return {
-      totalDays: archive.files.length,
-      totalBytes,
-      totalEvents,
-      missingMeta,
-      oldestDay,
-      monthly,
-    }
-  }, [archive])
+  const archiveStats = useMemo(
+    () => (archiveFiles ? buildArchiveStats(archiveFiles) : null),
+    [archiveFiles],
+  )
 
   return {
     stacked,
@@ -419,11 +477,7 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
   }
 }
 
-function StatusStrip({
-  alerts,
-}: {
-  alerts: { key: string; label: string; level: 'warn' | 'danger' }[]
-}) {
+function StatusStrip({ alerts }: { alerts: MetricsAlert[] }) {
   if (alerts.length === 0) {
     return (
       <div className={styles.statusStrip}>
@@ -506,16 +560,252 @@ function BusinessSection({ business }: { business: BusinessResponse }) {
         />
       </div>
 
+      {business.competitions ? (
+        <>
+          <CompetitionsTable
+            competitions={business.competitions}
+            activeGroupDays={business.activeGroupDays ?? 14}
+          />
+          <ResultsHealthTable competitions={business.competitions} />
+        </>
+      ) : (
+        <LegacyTopCompetitions topCompetitions={business.topCompetitions} />
+      )}
+    </section>
+  )
+}
+
+const VISIBILITY_FILTERS = [
+  { value: 'all', label: 'Todas' },
+  { value: 'public', label: 'Públicas' },
+  { value: 'pilot', label: 'Piloto' },
+]
+
+const STATUS_FILTERS = [
+  { value: 'all', label: 'Todos' },
+  { value: 'ongoing', label: 'Em andamento' },
+  { value: 'upcoming', label: 'Próximos' },
+  { value: 'finished', label: 'Encerrados' },
+]
+
+const VISIBILITY_LABELS: Record<string, string> = { public: 'pública', pilot: 'piloto' }
+
+const STATUS_LABELS: Record<string, string> = {
+  ongoing: 'em andamento',
+  upcoming: 'próximo',
+  finished: 'encerrado',
+}
+
+function FilterPills({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className={styles.filterRow}>
+      <span className={styles.filterLabel}>{label}</span>
+      <div className={`${shared.periods} ${styles.filterPills}`} role="group" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={o.value === value}
+            className={o.value === value ? shared.periodActive : shared.period}
+            onClick={() => onChange(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CompetitionsTable({
+  competitions,
+  activeGroupDays,
+}: {
+  competitions: CompetitionSnapshot[]
+  activeGroupDays: number
+}) {
+  const [visibility, setVisibility] = useState('all')
+  const [status, setStatus] = useState('all')
+
+  const filtered = competitions.filter(
+    (c) =>
+      (visibility === 'all' || c.visibility === visibility) &&
+      (status === 'all' || c.status === status),
+  )
+  const withoutGroups = filtered.filter((c) => c.groups_current === 0).length
+
+  function changeFilter(filter: 'visibility' | 'status', value: string) {
+    trackEvent('click_admin_metrics_filtro_campeonato', { filter, value })
+    if (filter === 'visibility') setVisibility(value)
+    else setStatus(value)
+  }
+
+  return (
+    <>
+      <h3 className={styles.subTitle}>Grupos por campeonato</h3>
+      <FilterPills
+        label="Visibilidade"
+        options={VISIBILITY_FILTERS}
+        value={visibility}
+        onChange={(v) => changeFilter('visibility', v)}
+      />
+      <FilterPills
+        label="Status"
+        options={STATUS_FILTERS}
+        value={status}
+        onChange={(v) => changeFilter('status', v)}
+      />
+      <p className={styles.hint}>
+        {filtered.length} de {competitions.length} temporada(s) · {withoutGroups} sem grupo · ativo
+        = grupo com palpite nos últimos {activeGroupDays} dias
+      </p>
+      {filtered.length === 0 ? (
+        <p className={styles.hint}>Nenhuma temporada com esses filtros.</p>
+      ) : (
+        <div className={styles.tableScroll}>
+          <table className={styles.table} aria-label="Grupos por campeonato">
+            <thead>
+              <tr>
+                <th>campeonato</th>
+                <th>temporada</th>
+                <th>provider</th>
+                <th>visibilidade</th>
+                <th>status</th>
+                <th className={styles.num}>grupos</th>
+                <th className={styles.num}>membros</th>
+                <th className={styles.num}>ativos {activeGroupDays}d</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id}>
+                  <td title={c.id}>{c.name}</td>
+                  <td className={styles.nowrap} title={c.slug}>
+                    {c.season ?? c.slug}
+                  </td>
+                  <td className={styles.nowrap}>{c.provider ?? '—'}</td>
+                  <td className={c.visibility === 'pilot' ? styles.statusWarn : undefined}>
+                    {VISIBILITY_LABELS[c.visibility] ?? c.visibility}
+                  </td>
+                  <td className={styles.nowrap}>{STATUS_LABELS[c.status] ?? c.status}</td>
+                  <td
+                    className={`${styles.num} ${c.groups_current === 0 ? styles.statusMuted : ''}`}
+                  >
+                    {formatNumber(c.groups_current)}
+                  </td>
+                  <td className={styles.num}>{formatNumber(c.members)}</td>
+                  <td className={styles.num}>{formatNumber(c.active_groups_14d)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Contagem de saúde de resultados; "—" quando a API ainda não manda o campo. */
+function HealthCount({ value }: { value: number | undefined }) {
+  if (value === undefined) return <>—</>
+  return <span className={value > 0 ? styles.statusWarn : styles.statusMuted}>{value}</span>
+}
+
+/**
+ * Buraco de feed (jogo sem placar após kickoff + 3h) versus backlog de
+ * pontuação (finished sem scored_at), por temporada. Quem tem pendência vem
+ * primeiro; zeros continuam visíveis.
+ */
+function ResultsHealthTable({ competitions }: { competitions: CompetitionSnapshot[] }) {
+  if (competitions.length === 0) return null
+
+  const hasHealth = competitions.some(
+    (c) => c.overdue_no_score !== undefined || c.finished_unscored !== undefined,
+  )
+  if (!hasHealth) {
+    return (
+      <>
+        <h3 className={styles.subTitle}>Saúde dos resultados por campeonato</h3>
+        <p className={styles.hint}>Indisponível: a API ainda não envia esses números.</p>
+      </>
+    )
+  }
+
+  const pending = (c: CompetitionSnapshot) => (c.overdue_no_score ?? 0) + (c.finished_unscored ?? 0)
+  const sorted = [...competitions].sort((a, b) => pending(b) - pending(a))
+  const withOverdue = competitions.filter((c) => (c.overdue_no_score ?? 0) > 0).length
+  const withUnscored = competitions.filter((c) => (c.finished_unscored ?? 0) > 0).length
+
+  return (
+    <>
+      <h3 className={styles.subTitle}>Saúde dos resultados por campeonato</h3>
+      <p className={styles.hint}>
+        {withOverdue} temporada(s) com jogo atrasado · {withUnscored} com jogo encerrado sem
+        pontuação · atrasado = agendado ou ao vivo, sem placar completo, 3h após o início (adiados
+        ficam de fora)
+      </p>
+      <div className={styles.tableScroll}>
+        <table className={styles.table} aria-label="Saúde dos resultados por campeonato">
+          <thead>
+            <tr>
+              <th>campeonato</th>
+              <th>temporada</th>
+              <th>status</th>
+              <th className={styles.num}>atrasados sem placar</th>
+              <th className={styles.num}>encerrados sem pontuação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((c) => (
+              <tr key={c.id}>
+                <td title={c.id}>{c.name}</td>
+                <td className={styles.nowrap} title={c.slug}>
+                  {c.season ?? c.slug}
+                </td>
+                <td className={styles.nowrap}>{STATUS_LABELS[c.status] ?? c.status}</td>
+                <td className={styles.num}>
+                  <HealthCount value={c.overdue_no_score} />
+                </td>
+                <td className={styles.num}>
+                  <HealthCount value={c.finished_unscored} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+/** Top 10 de uma API anterior ao snapshot por campeonato. */
+function LegacyTopCompetitions({
+  topCompetitions,
+}: {
+  topCompetitions: BusinessResponse['topCompetitions']
+}) {
+  return (
+    <>
       <h3 className={styles.subTitle}>Campeonatos com mais grupos ativos</h3>
-      {business.topCompetitions.length === 0 ? (
+      {topCompetitions.length === 0 ? (
         <p className={styles.hint}>Nenhum grupo ativo.</p>
       ) : (
         <div>
-          {business.topCompetitions.map((c) => {
-            const max = business.topCompetitions[0].groups
+          {topCompetitions.map((c, index) => {
+            const max = topCompetitions[0].groups
             const pct = max > 0 ? Math.round((c.groups / max) * 100) : 0
             return (
-              <div key={c.competition} className={styles.miniBarRow}>
+              <div key={`${c.competition}-${index}`} className={styles.miniBarRow}>
                 <span className={styles.miniBarLabel} title={c.competition}>
                   {c.competition}
                 </span>
@@ -528,7 +818,7 @@ function BusinessSection({ business }: { business: BusinessResponse }) {
           })}
         </div>
       )}
-    </section>
+    </>
   )
 }
 
@@ -976,6 +1266,7 @@ export default function AdminMetricsPage() {
   const [days, setDays] = useState<number>(30)
   const [overview, setOverview] = useState<OverviewResponse | null>(null)
   const [business, setBusiness] = useState<BusinessResponse | null>(null)
+  const [ops, setOps] = useState<OpsResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
@@ -995,8 +1286,10 @@ export default function AdminMetricsPage() {
       apiFetch(buildApiUrl('/metrics/overview', params)),
       apiFetch(buildApiUrl('/metrics/business', params)),
       apiFetch(buildApiUrl('/metrics/archive')),
+      // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
+      apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
     ])
-      .then(async ([ovRes, bizRes, arRes]) => {
+      .then(async ([ovRes, bizRes, arRes, opsRes]) => {
         if (cancelled) return
         if (ovRes.status === 403) {
           setError('forbidden')
@@ -1007,6 +1300,7 @@ export default function AdminMetricsPage() {
         // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
         if (bizRes.ok) setBusiness((await bizRes.json()) as BusinessResponse)
         if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
+        setOps(opsRes?.ok ? ((await opsRes.json().catch(() => null)) as OpsResponse | null) : null)
       })
       .catch(() => {
         if (!cancelled) setError('failed')
@@ -1031,7 +1325,15 @@ export default function AdminMetricsPage() {
     alerts,
     archiveDays,
     archiveStats,
-  } = useMetricsData(overview, archive)
+  } = useMetricsData(overview, archive, ops)
+
+  const competitionNames: CompetitionNames = useMemo(
+    () =>
+      new Map(
+        (business?.competitions ?? []).map((c) => [c.id, { name: c.name, season: c.season }]),
+      ),
+    [business],
+  )
 
   async function runArchiveQuery(month: string) {
     setQueryMonth(month)
@@ -1084,6 +1386,7 @@ export default function AdminMetricsPage() {
             <EventsSection overview={overview} stacked={stacked} />
             <EngagementSection dauSeries={dauSeries} />
             <HealthSection overview={overview} apiCallsSeries={apiCallsSeries} />
+            <ProviderOpsSection ops={ops} names={competitionNames} />
             <LatencySection overview={overview} />
             <EmailSection overview={overview} kpis={kpis} />
             <ConcentrationSection whaleShare={whaleShare} />
