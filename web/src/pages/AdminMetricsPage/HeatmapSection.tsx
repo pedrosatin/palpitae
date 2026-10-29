@@ -311,7 +311,7 @@ function HeatmapBody({
       {estimated && (
         <p className={styles.samplingWarning}>
           O Analytics Engine amostrou estes eventos, com média de _sample_interval igual a{' '}
-          {Number(data.avgSampleInterval).toFixed(2)}. As contagens são estimativas, marcadas com ≈.
+          {Number(data.avgSampleInterval).toFixed(2)}. As contagens são estimativas. O total e as descrições das células usam ≈.
         </p>
       )}
       <CoverageNotice data={data} noun={measure.noun} firstSeen={firstSeen} />

@@ -367,7 +367,7 @@ Limites de leitura. A célula soma todas as ocorrências daquele dia da semana e
 sem normalizar: com 30 ou 90 dias, alguns dias da semana ocorrem uma vez a mais e pesam mais. A
 janela é `NOW() - N dias`, então a primeira e a última hora são parciais. A consulta tem teto de
 5000 linhas, acima do máximo possível (cerca de 4370). Com `avgSampleInterval` acima de 1,01 a
-página avisa e marca valores e total com "≈", porque nesse caso são estimativas.
+página avisa que as contagens são estimativas e marca o total e as descrições das células com "≈".
 
 Quando falta coleta, a página não desenha zero. Tipo sem nenhum evento (`firstSeenAt` nulo) mostra
 o aviso e esconde a grade. Primeiro evento mais novo que o período mostra a data em BRT, com folga
