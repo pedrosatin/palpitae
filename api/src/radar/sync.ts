@@ -42,7 +42,129 @@ function isRelevant(league: ProviderLeague): boolean {
   return RADAR_COUNTRIES.has(league.country) || findEntry(league.country, league.name) !== undefined
 }
 
-/** Executa `tasks` com um teto de concorrência, ignorando as que falharem. */
+async function writeCompetitions(
+  db: D1Database,
+  leagues: ProviderLeague[],
+  matchCounts: Map<string, number>,
+  today: string,
+): Promise<void> {
+  // `is_current` é reconstruído a cada execução: uma temporada que saiu do
+  // catálogo tem que parar de aparecer como "acontecendo agora".
+  const statements = [
+    // Migração de provedor (ADR-015): fora as linhas órfãs da API-Football,
+    // cuja conta foi suspensa. Idempotente — depois da primeira execução os
+    // DELETEs não removem nada. O `daily` vem primeiro: sem FK garantida em
+    // runtime, a linha filha órfã não pode sobrar.
+    db
+      .prepare(`DELETE FROM competition_radar_daily WHERE radar_id LIKE ?`)
+      .bind(`${LEGACY_PROVIDER}:%`),
+    db.prepare(`DELETE FROM competition_radar WHERE provider = ?`).bind(LEGACY_PROVIDER),
+    db.prepare(`UPDATE competition_radar SET is_current = 0 WHERE provider = ?`).bind(PROVIDER),
+  ]
+
+  for (const league of leagues) {
+    const entry = findEntry(league.country, league.name)
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO competition_radar
+             (id, sport, provider, external_id, name, country, type, logo_url,
+              season, starts_on, ends_on, is_current, wiki_article)
+           VALUES (?, 'football', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+           ON CONFLICT (provider, external_id, season) DO UPDATE SET
+             name = excluded.name,
+             country = excluded.country,
+             type = excluded.type,
+             logo_url = excluded.logo_url,
+             starts_on = excluded.starts_on,
+             ends_on = excluded.ends_on,
+             is_current = 1,
+             wiki_article = excluded.wiki_article,
+             last_seen_at = datetime('now')`,
+        )
+        .bind(
+          radarId(league.externalId, league.season),
+          PROVIDER,
+          league.externalId,
+          league.name,
+          league.country,
+          league.type,
+          league.logoUrl,
+          league.season,
+          league.startsOn,
+          league.endsOn,
+          entry?.article ?? null,
+        ),
+      db
+        .prepare(
+          `INSERT INTO competition_radar_daily (radar_id, day, matches_today)
+           VALUES (?, ?, ?)
+           ON CONFLICT (radar_id, day) DO UPDATE SET matches_today = excluded.matches_today`,
+        )
+        .bind(
+          radarId(league.externalId, league.season),
+          today,
+          matchCounts.get(league.externalId) ?? 0,
+        ),
+    )
+  }
+
+  await db.batch(statements)
+}
+
+async function writePageviews(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  mapped: ProviderLeague[],
+  today: string,
+  now: Date,
+): Promise<{ pageviewErrors: number; pageviewRows: number }> {
+  // Interesse do público — só para as competições com artigo curado.
+  const from = isoDay(now, -PAGEVIEW_WINDOW_DAYS)
+  const pageviewStatements: D1PreparedStatement[] = []
+  let pageviewErrors = 0
+
+  await runLimited(
+    mapped.map((league) => async () => {
+      const article = findEntry(league.country, league.name)?.article
+      if (!article) return
+      try {
+        const byDay = await fetchPageviews(article, from, today)
+        for (const [day, views] of byDay) {
+          pageviewStatements.push(
+            db
+              .prepare(
+                `INSERT INTO competition_radar_daily (radar_id, day, pageviews)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT (radar_id, day) DO UPDATE SET pageviews = excluded.pageviews`,
+              )
+              .bind(radarId(league.externalId, league.season), day, views),
+          )
+        }
+      } catch (err) {
+        // Artigo com título errado não pode derrubar o resto do snapshot.
+        pageviewErrors++
+        logError(ae, 'radar_sync_error', `[radar] Pageviews falhou para "${article}":`, err, {
+          blobs: ['wikipedia', article],
+        })
+      }
+    }),
+    PAGEVIEW_CONCURRENCY,
+  )
+
+  if (pageviewStatements.length > 0) {
+    const batches = []
+    for (let i = 0; i < pageviewStatements.length; i += 100) {
+      const chunk = pageviewStatements.slice(i, i + 100)
+      batches.push(db.batch(chunk))
+    }
+    await Promise.all(batches)
+  }
+
+  return { pageviewErrors, pageviewRows: pageviewStatements.length }
+}
+
+/** Executa \`tasks\` com um teto de concorrência, ignorando as que falharem. */
 async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
   const queue = [...tasks]
   const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
@@ -123,116 +245,15 @@ export async function syncRadar(
     return
   }
 
-  // `is_current` é reconstruído a cada execução: uma temporada que saiu do
-  // catálogo tem que parar de aparecer como "acontecendo agora".
-  const statements = [
-    // Migração de provedor (ADR-015): fora as linhas órfãs da API-Football,
-    // cuja conta foi suspensa. Idempotente — depois da primeira execução os
-    // DELETEs não removem nada. O `daily` vem primeiro: sem FK garantida em
-    // runtime, a linha filha órfã não pode sobrar.
-    db.prepare(`DELETE FROM competition_radar_daily WHERE radar_id LIKE ?`).bind(
-      `${LEGACY_PROVIDER}:%`,
-    ),
-    db.prepare(`DELETE FROM competition_radar WHERE provider = ?`).bind(LEGACY_PROVIDER),
-    db.prepare(`UPDATE competition_radar SET is_current = 0 WHERE provider = ?`).bind(PROVIDER),
-  ]
+  await writeCompetitions(db, leagues, matchCounts, today)
 
-  for (const league of leagues) {
-    const entry = findEntry(league.country, league.name)
-    statements.push(
-      db
-        .prepare(
-          `INSERT INTO competition_radar
-             (id, sport, provider, external_id, name, country, type, logo_url,
-              season, starts_on, ends_on, is_current, wiki_article)
-           VALUES (?, 'football', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-           ON CONFLICT (provider, external_id, season) DO UPDATE SET
-             name = excluded.name,
-             country = excluded.country,
-             type = excluded.type,
-             logo_url = excluded.logo_url,
-             starts_on = excluded.starts_on,
-             ends_on = excluded.ends_on,
-             is_current = 1,
-             wiki_article = excluded.wiki_article,
-             last_seen_at = datetime('now')`,
-        )
-        .bind(
-          radarId(league.externalId, league.season),
-          PROVIDER,
-          league.externalId,
-          league.name,
-          league.country,
-          league.type,
-          league.logoUrl,
-          league.season,
-          league.startsOn,
-          league.endsOn,
-          entry?.article ?? null,
-        ),
-      db
-        .prepare(
-          `INSERT INTO competition_radar_daily (radar_id, day, matches_today)
-           VALUES (?, ?, ?)
-           ON CONFLICT (radar_id, day) DO UPDATE SET matches_today = excluded.matches_today`,
-        )
-        .bind(
-          radarId(league.externalId, league.season),
-          today,
-          matchCounts.get(league.externalId) ?? 0,
-        ),
-    )
-  }
-
-  await db.batch(statements)
-
-  // Interesse do público — só para as competições com artigo curado.
-  const from = isoDay(now, -PAGEVIEW_WINDOW_DAYS)
   const mapped = leagues.filter((l) => findEntry(l.country, l.name))
-  const pageviewStatements: D1PreparedStatement[] = []
-  let pageviewErrors = 0
-
-  await runLimited(
-    mapped.map((league) => async () => {
-      const article = findEntry(league.country, league.name)?.article
-      if (!article) return
-      try {
-        const byDay = await fetchPageviews(article, from, today)
-        for (const [day, views] of byDay) {
-          pageviewStatements.push(
-            db
-              .prepare(
-                `INSERT INTO competition_radar_daily (radar_id, day, pageviews)
-                 VALUES (?, ?, ?)
-                 ON CONFLICT (radar_id, day) DO UPDATE SET pageviews = excluded.pageviews`,
-              )
-              .bind(radarId(league.externalId, league.season), day, views),
-          )
-        }
-      } catch (err) {
-        // Artigo com título errado não pode derrubar o resto do snapshot.
-        pageviewErrors++
-        logError(ae, 'radar_sync_error', `[radar] Pageviews falhou para "${article}":`, err, {
-          blobs: ['wikipedia', article],
-        })
-      }
-    }),
-    PAGEVIEW_CONCURRENCY,
-  )
-
-  if (pageviewStatements.length > 0) {
-    const batches = []
-    for (let i = 0; i < pageviewStatements.length; i += 100) {
-      const chunk = pageviewStatements.slice(i, i + 100)
-      batches.push(db.batch(chunk))
-    }
-    await Promise.all(batches)
-  }
+  const { pageviewErrors, pageviewRows } = await writePageviews(db, ae, mapped, today, now)
 
   logEvent(ae, 'radar_sync_run', {
     blobs: [pageviewErrors > 0 ? 'partial' : 'ok'],
     // competições, mapeadas, linhas de pageviews, duração
-    doubles: [leagues.length, mapped.length, pageviewStatements.length, Date.now() - startedAt],
+    doubles: [leagues.length, mapped.length, pageviewRows, Date.now() - startedAt],
   })
 
   console.info(
@@ -241,7 +262,7 @@ export async function syncRadar(
       route: 'cron syncRadar',
       leagues: leagues.length,
       mapped: mapped.length,
-      pageview_rows: pageviewStatements.length,
+      pageview_rows: pageviewRows,
       total_ms: Date.now() - startedAt,
     }),
   )
