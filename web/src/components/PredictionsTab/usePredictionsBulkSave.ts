@@ -9,17 +9,79 @@ import type { Match, Prediction } from '../MatchCard'
 
 type PredictionMap = Map<string, Prediction>
 
-export function usePredictionsBulkSave(
-  groupId: string,
-  roundMatches: Match[],
-  predictions: PredictionMap,
-  setPredictions: Dispatch<SetStateAction<PredictionMap>>,
-  selectedRound: string | undefined,
-  allMatches: Match[] = roundMatches,
-) {
+function applyPredictionUpdate(
+  prev: PredictionMap,
+  matchId: string,
+  home: number,
+  away: number,
+  penaltyWinner: 'home' | 'away' | null,
+  allMatches: Match[]
+): PredictionMap {
+  const next = new Map(prev)
+  const existing = prev.get(matchId)
+  const match = allMatches.find((m) => m.id === matchId)
+  next.set(matchId, {
+    id: existing?.id ?? '',
+    match_id: matchId,
+    predicted_home_score: home,
+    predicted_away_score: away,
+    predicted_penalty_winner: penaltyWinner,
+    classified_points: existing?.classified_points ?? 0,
+    predicted_classified: match
+      ? predictedClassified(
+          match,
+          home,
+          away,
+          penaltyWinner,
+          match.leg1_match_id ? prev.get(match.leg1_match_id) : undefined,
+        )
+      : null,
+    points_awarded: existing?.points_awarded ?? 0,
+    penalty_points: existing?.penalty_points ?? 0,
+    locked: 0,
+    updated_at: new Date().toISOString(),
+  })
+  for (const context of allMatches) {
+    const pick = next.get(context.id)
+    if (!pick) continue
+    next.set(context.id, {
+      ...pick,
+      predicted_classified: predictedClassified(
+        context,
+        pick.predicted_home_score,
+        pick.predicted_away_score,
+        pick.predicted_penalty_winner ?? null,
+        context.leg1_match_id ? next.get(context.leg1_match_id) : undefined,
+      ),
+    })
+  }
+  return next
+}
+
+function usePredictionDrafts() {
   const [drafts, setDrafts] = useState<Map<string, { home: string; away: string }>>(new Map())
   const [penaltyDrafts, setPenaltyDrafts] = useState<Map<string, 'home' | 'away' | null>>(new Map())
 
+  function handleDraftChange(matchId: string, home: string, away: string) {
+    setDrafts((prev) => {
+      const next = new Map(prev)
+      next.set(matchId, { home, away })
+      return next
+    })
+  }
+
+  function handlePenaltyDraftChange(matchId: string, winner: 'home' | 'away' | null) {
+    setPenaltyDrafts((prev) => {
+      const next = new Map(prev)
+      next.set(matchId, winner)
+      return next
+    })
+  }
+
+  return { drafts, penaltyDrafts, handleDraftChange, handlePenaltyDraftChange }
+}
+
+function useBulkSaveStatus(selectedRound: string | undefined) {
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
   const [hasSavedPredictions, setHasSavedPredictions] = useState(false)
@@ -45,6 +107,48 @@ export function usePredictionsBulkSave(
     return () => clearSavedAllTimer()
   }, [])
 
+  function startSavedAllTimer() {
+    setSavedAll(true)
+    savedAllTimerRef.current = setTimeout(() => setSavedAll(false), 2500)
+  }
+
+  return {
+    savingAll,
+    setSavingAll,
+    savedAll,
+    setSavedAll,
+    hasSavedPredictions,
+    setHasSavedPredictions,
+    bulkError,
+    setBulkError,
+    clearSavedAllTimer,
+    startSavedAllTimer,
+  }
+}
+
+export function usePredictionsBulkSave(
+  groupId: string,
+  roundMatches: Match[],
+  predictions: PredictionMap,
+  setPredictions: Dispatch<SetStateAction<PredictionMap>>,
+  selectedRound: string | undefined,
+  allMatches: Match[] = roundMatches,
+) {
+  const { drafts, penaltyDrafts, handleDraftChange, handlePenaltyDraftChange } = usePredictionDrafts()
+
+  const {
+    savingAll,
+    setSavingAll,
+    savedAll,
+    setSavedAll,
+    hasSavedPredictions,
+    setHasSavedPredictions,
+    bulkError,
+    setBulkError,
+    clearSavedAllTimer,
+    startSavedAllTimer,
+  } = useBulkSaveStatus(selectedRound)
+
   function handleSaved(
     matchId: string,
     home: number,
@@ -52,63 +156,9 @@ export function usePredictionsBulkSave(
     penaltyWinner: 'home' | 'away' | null,
   ) {
     setHasSavedPredictions(true)
-    setPredictions((prev) => {
-      const next = new Map(prev)
-      const existing = prev.get(matchId)
-      const match = allMatches.find((m) => m.id === matchId)
-      next.set(matchId, {
-        id: existing?.id ?? '',
-        match_id: matchId,
-        predicted_home_score: home,
-        predicted_away_score: away,
-        predicted_penalty_winner: penaltyWinner,
-        classified_points: existing?.classified_points ?? 0,
-        predicted_classified: match
-          ? predictedClassified(
-              match,
-              home,
-              away,
-              penaltyWinner,
-              match.leg1_match_id ? prev.get(match.leg1_match_id) : undefined,
-            )
-          : null,
-        points_awarded: existing?.points_awarded ?? 0,
-        penalty_points: existing?.penalty_points ?? 0,
-        locked: 0,
-        updated_at: new Date().toISOString(),
-      })
-      for (const context of allMatches) {
-        const pick = next.get(context.id)
-        if (!pick) continue
-        next.set(context.id, {
-          ...pick,
-          predicted_classified: predictedClassified(
-            context,
-            pick.predicted_home_score,
-            pick.predicted_away_score,
-            pick.predicted_penalty_winner ?? null,
-            context.leg1_match_id ? next.get(context.leg1_match_id) : undefined,
-          ),
-        })
-      }
-      return next
-    })
-  }
-
-  function handleDraftChange(matchId: string, home: string, away: string) {
-    setDrafts((prev) => {
-      const next = new Map(prev)
-      next.set(matchId, { home, away })
-      return next
-    })
-  }
-
-  function handlePenaltyDraftChange(matchId: string, winner: 'home' | 'away' | null) {
-    setPenaltyDrafts((prev) => {
-      const next = new Map(prev)
-      next.set(matchId, winner)
-      return next
-    })
+    setPredictions((prev) =>
+      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
+    )
   }
 
   function pendingDrafts() {
@@ -156,8 +206,7 @@ export function usePredictionsBulkSave(
       // Home cards leem pending_predictions via fetchCachedJson (TTL 30s).
       // Sem invalidar, voltar à dashboard dentro do TTL mostra N antigo.
       invalidateApiCache('groups:')
-      setSavedAll(true)
-      savedAllTimerRef.current = setTimeout(() => setSavedAll(false), 2500)
+      startSavedAllTimer()
     } catch (e) {
       setBulkError((e as Error).message)
     } finally {

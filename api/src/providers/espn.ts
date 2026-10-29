@@ -14,6 +14,8 @@
  * cada evento.
  */
 
+import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
+
 const SCOREBOARD_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
 
 /** Timeout por tentativa — o sync diário não pode travar num slug morto. */
@@ -189,10 +191,14 @@ function delay(ms: number): Promise<void> {
  * Erros 4xx (inclui 403 Akamai), timeout e falhas de rede abortam direto — o
  * chamador que consulta vários slugs já trata falha parcial, e retry em 403
  * viraria tempestade.
+ *
+ * `onAttempt` recebe provedor, status e duração de cada tentativa (status 0
+ * sem resposta); nunca altera o resultado nem lança.
  */
 export async function fetchEspnScoreboard(
   slug: string,
   yyyymmdd?: string,
+  onAttempt?: ProviderHttpObserver,
 ): Promise<EspnScoreboard> {
   return withEspnPace(async () => {
     let lastError: unknown = new Error(`ESPN: nenhuma tentativa feita para ${slug}`)
@@ -200,8 +206,24 @@ export async function fetchEspnScoreboard(
     for (let attempt = 0; attempt < 2; attempt++) {
       await awaitEspnRequestSlot(attempt > 0 ? ESPN_RETRY_BACKOFF_MS : 0)
 
-      const res = await fetch(espnScoreboardUrl(slug, yyyymmdd), {
-        signal: AbortSignal.timeout(espnTimeoutMs),
+      const startedAt = Date.now()
+      let res: Response
+      try {
+        res = await fetch(espnScoreboardUrl(slug, yyyymmdd), {
+          signal: AbortSignal.timeout(espnTimeoutMs),
+        })
+      } catch (err) {
+        notifyHttpAttempt(onAttempt, {
+          provider: 'espn',
+          status: 0,
+          durationMs: Date.now() - startedAt,
+        })
+        throw err
+      }
+      notifyHttpAttempt(onAttempt, {
+        provider: 'espn',
+        status: res.status,
+        durationMs: Date.now() - startedAt,
       })
       if (res.ok) return (await res.json()) as EspnScoreboard
 
