@@ -95,8 +95,15 @@ function mockFetch(
   businessBody: unknown = business,
   opsBody: unknown = null,
   activityBody: unknown = null,
+  heatmapBody: unknown = null,
 ) {
   return vi.fn(async (url: string) => {
+    // API sem /metrics/heatmap (deploy da web antes da API): 404.
+    if (url.includes('/metrics/heatmap')) {
+      return heatmapBody === null
+        ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
+        : { ok: true, status: 200, json: async () => heatmapBody }
+    }
     // API sem /metrics/competition-activity (deploy da web antes da API): 404.
     if (url.includes('/metrics/competition-activity')) {
       return activityBody === null
@@ -890,6 +897,90 @@ describe('AdminMetricsPage · série diária de criações por campeonato', () =
       }
     } finally {
       vi.useRealTimers()
+    }
+  })
+})
+
+// Mapa de calor (GET /metrics/heatmap).
+const heatmapBody = {
+  days: 30,
+  avgSampleInterval: 1,
+  firstSeenAt: { prediction_saved: '2020-01-01 00:00:00', login_success: '2020-01-01 00:00:00' },
+  hourly: [
+    // Quinta 14h UTC = 11h em Brasília.
+    { hour: '2026-10-29T14:00:00Z', prediction_saves: 3, predictions: 40, logins: 0 },
+    { hour: '2026-10-29T18:00:00Z', prediction_saves: 0, predictions: 0, logins: 6 },
+  ],
+}
+
+describe('AdminMetricsPage · mapa de calor', () => {
+  it('busca /metrics/heatmap com o período e mostra a grade em BRT', async () => {
+    const fetchFake = mockFetch(200, overview, business, null, null, heatmapBody)
+    vi.stubGlobal('fetch', fetchFake)
+    render(<AdminMetricsPage />)
+
+    const table = await screen.findByRole('table', {
+      name: 'Mapa de calor de palpites salvos por dia da semana e hora (BRT)',
+    })
+    const call = fetchFake.mock.calls
+      .map(([url]) => url)
+      .find((u) => u.includes('/metrics/heatmap'))
+    expect(call).toContain('days=30')
+    expect(
+      within(table).getByTitle('quinta-feira, 11h a 12h BRT: 40 palpites salvos'),
+    ).toBeInTheDocument()
+  })
+
+  it('API sem a rota (web antes da API): a página carrega e a seção diz "indisponível"', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Mapa de calor · palpites e logins')).toBeInTheDocument()
+    expect(screen.getByText(/Indisponível: a API não enviou o mapa de calor/)).toBeInTheDocument()
+    expect(screen.getByText('Saúde dos crons')).toBeInTheDocument()
+  })
+
+  it('falha de rede na rota nova não derruba a página', async () => {
+    const base = mockFetch(200, overview, business, null, null, heatmapBody)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/metrics/heatmap')) throw new Error('network')
+        return base(url)
+      }),
+    )
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText(/Indisponível: a API não enviou o mapa de calor/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Saúde dos crons')).toBeInTheDocument()
+  })
+
+  it('trocar o período refaz a consulta com 7, 30 e 90 dias', async () => {
+    const base = mockFetch(200, overview, business, null, null, heatmapBody)
+    const fetchFake = vi.fn(async (url: string) => {
+      if (!url.includes('/metrics/heatmap')) return base(url)
+      const days = Number(new URL(url, 'http://x').searchParams.get('days'))
+      return { ok: true, status: 200, json: async () => ({ ...heatmapBody, days }) }
+    })
+    vi.stubGlobal('fetch', fetchFake)
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText(/ao longo dos últimos 30 dias/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '7d' }))
+    await waitFor(() => expect(screen.getByText(/ao longo dos últimos 7 dias/)).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: '90d' }))
+    await waitFor(() =>
+      expect(screen.getByText(/ao longo dos últimos 90 dias/)).toBeInTheDocument(),
+    )
+
+    const requested = fetchFake.mock.calls
+      .map(([url]) => url)
+      .filter((u) => u.includes('/metrics/heatmap'))
+    for (const d of ['days=7', 'days=30', 'days=90']) {
+      expect(requested.some((u) => u.includes(d))).toBe(true)
     }
   })
 })

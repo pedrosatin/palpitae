@@ -13,6 +13,7 @@ import { eventLabel } from './labels'
 import CompetitionActivitySection, {
   type CompetitionActivityResponse,
 } from './CompetitionActivitySection'
+import HeatmapSection, { type HeatmapResponse } from './HeatmapSection'
 import ProviderOpsSection, {
   totalHttpFailures,
   type CompetitionNames,
@@ -1259,6 +1260,7 @@ export default function AdminMetricsPage() {
   const [business, setBusiness] = useState<BusinessResponse | null>(null)
   const [ops, setOps] = useState<OpsResponse | null>(null)
   const [activity, setActivity] = useState<CompetitionActivityResponse | null>(null)
+  const [heatmap, setHeatmap] = useState<HeatmapResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1281,8 +1283,9 @@ export default function AdminMetricsPage() {
       // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
       apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
       apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
+      apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
     ])
-      .then(async ([ovRes, bizRes, arRes, opsRes, activityRes]) => {
+      .then(async ([ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes]) => {
         if (cancelled) return
         if (ovRes.status === 403) {
           setError('forbidden')
@@ -1297,6 +1300,11 @@ export default function AdminMetricsPage() {
         setActivity(
           activityRes?.ok
             ? ((await activityRes.json().catch(() => null)) as CompetitionActivityResponse | null)
+            : null,
+        )
+        setHeatmap(
+          heatmapRes?.ok
+            ? ((await heatmapRes.json().catch(() => null)) as HeatmapResponse | null)
             : null,
         )
       })
@@ -1385,6 +1393,7 @@ export default function AdminMetricsPage() {
 
             <EventsSection overview={overview} stacked={stacked} />
             <EngagementSection dauSeries={dauSeries} />
+            <HeatmapSection data={heatmap} />
             <HealthSection overview={overview} apiCallsSeries={apiCallsSeries} />
             <ProviderOpsSection ops={ops} names={competitionNames} />
             <LatencySection overview={overview} />

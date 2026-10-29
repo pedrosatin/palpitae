@@ -1364,3 +1364,250 @@ describe('GET /metrics/archive/query', () => {
     expect(res.status).toBe(503)
   })
 })
+
+describe('GET /metrics/heatmap', () => {
+  function fetchBySql(rows: { hourly?: unknown[]; firstSeen?: unknown[]; sampling?: unknown[] }) {
+    return vi.fn(async (_url: string, init: { body: string }) => {
+      const sql = init.body
+      let data: unknown[] = []
+      if (sql.includes('MIN(timestamp)')) data = rows.firstSeen ?? []
+      else if (sql.includes('AVG(_sample_interval)')) data = rows.sampling ?? []
+      else if (sql.includes('toStartOfInterval')) data = rows.hourly ?? []
+      return { ok: true, json: async () => ({ data }) }
+    })
+  }
+
+  type HeatmapBody = {
+    days: number
+    avgSampleInterval: number
+    firstSeenAt: { prediction_saved: string | null; login_success: string | null }
+    hourly: { hour: string; prediction_saves: number; predictions: number; logins: number }[]
+  }
+
+  async function getHeatmap(fetchFake: ReturnType<typeof fetchBySql>, query = '') {
+    vi.stubGlobal('fetch', fetchFake)
+    return makeApp().request(
+      `/metrics/heatmap${query}`,
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+  }
+
+  it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
+    const app = makeApp()
+    expect((await app.request('/metrics/heatmap', {}, makeEnv())).status).toBe(401)
+    expect(
+      (
+        await app.request(
+          '/metrics/heatmap',
+          { headers: await authHeaders('outra@pessoa.com') },
+          makeEnv(),
+        )
+      ).status,
+    ).toBe(403)
+    expect(
+      (
+        await app.request(
+          '/metrics/heatmap',
+          { headers: await authHeaders(ADMIN) },
+          makeEnv({ CF_ACCOUNT_ID: undefined }),
+        )
+      ).status,
+    ).toBe(503)
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+    const res = await makeApp().request(
+      '/metrics/heatmap',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+    expect(res.status).toBe(502)
+  })
+
+  it('agrega por hora UTC, pondera pelo sampling e não sai da janela nem faz join', async () => {
+    const fetchFake = fetchBySql({})
+    const res = await getHeatmap(fetchFake, '?days=7')
+    expect(res.status).toBe(200)
+
+    const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
+      (call) => call[1].body,
+    )
+    expect(bodies).toHaveLength(3)
+    expect(bodies.some((sql) => /COUNT\(\*\)/.test(sql))).toBe(false)
+    for (const sql of bodies) {
+      expect(sql).not.toMatch(/\bJOIN\b/i)
+      expect(sql).toContain("blob1 IN ('prediction_saved', 'login_success')")
+    }
+
+    const hourly = bodies.find((sql) => sql.includes('toStartOfInterval'))
+    expect(hourly).toContain("toStartOfInterval(timestamp, INTERVAL '1' HOUR) AS hour")
+    expect(hourly).toContain('SUM(_sample_interval) AS events')
+    expect(hourly).toContain('SUM(double1 * _sample_interval) AS predictions')
+    expect(hourly).toContain('GROUP BY hour, event_type')
+    expect(hourly).toContain("INTERVAL '7' DAY")
+    expect(hourly).toMatch(/LIMIT \d+$/)
+
+    // Cobertura não herda a janela: senão um período curto sem eventos pareceria coleta ausente.
+    const first = bodies.find((sql) => sql.includes('MIN(timestamp)'))
+    expect(first).not.toContain("INTERVAL '7' DAY")
+    expect(first).toContain('GROUP BY event_type')
+
+    const sampling = bodies.find((sql) => sql.includes('AVG(_sample_interval)'))
+    expect(sampling).toContain("INTERVAL '7' DAY")
+  })
+
+  it('junta palpites e logins da mesma hora numa linha, em ordem cronológica, sem converter fuso', async () => {
+    const res = await getHeatmap(
+      fetchBySql({
+        // A SQL API devolve em ordem decrescente (LIMIT pega as horas mais recentes).
+        hourly: [
+          {
+            hour: '2026-10-29 14:00:00',
+            event_type: 'prediction_saved',
+            events: '3',
+            predictions: '40',
+          },
+          {
+            hour: '2026-10-29 14:00:00',
+            event_type: 'login_success',
+            events: '5',
+            predictions: '0',
+          },
+          {
+            hour: '2026-10-29 02:00:00',
+            event_type: 'login_success',
+            events: '2',
+            predictions: '0',
+          },
+        ],
+        firstSeen: [
+          { event_type: 'prediction_saved', first_at: '2026-08-01 10:00:00' },
+          { event_type: 'login_success', first_at: '2026-08-02 11:00:00' },
+        ],
+        sampling: [{ avg_sample_interval: '1' }],
+      }),
+      '?days=30',
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as HeatmapBody
+    expect(body.days).toBe(30)
+    expect(body.hourly).toEqual([
+      { hour: '2026-10-29T02:00:00Z', prediction_saves: 0, predictions: 0, logins: 2 },
+      { hour: '2026-10-29T14:00:00Z', prediction_saves: 3, predictions: 40, logins: 5 },
+    ])
+    expect(body.firstSeenAt).toEqual({
+      prediction_saved: '2026-08-01 10:00:00',
+      login_success: '2026-08-02 11:00:00',
+    })
+    expect(body.avgSampleInterval).toBe(1)
+  })
+
+  it('preserva contagem ponderada (estimativa) e expõe a média do sampling', async () => {
+    const res = await getHeatmap(
+      fetchBySql({
+        hourly: [
+          // _sample_interval = 10: 4 linhas viram 40 eventos; 120 palpites ponderados.
+          {
+            hour: '2026-10-29 20:00:00',
+            event_type: 'prediction_saved',
+            events: '40',
+            predictions: '120',
+          },
+        ],
+        sampling: [{ avg_sample_interval: '4.5' }],
+      }),
+    )
+    const body = (await res.json()) as HeatmapBody
+    expect(body.hourly[0]).toMatchObject({ prediction_saves: 40, predictions: 120 })
+    expect(body.avgSampleInterval).toBe(4.5)
+  })
+
+  it('sem coleta: devolve listas vazias, firstSeenAt nulo e sampling 1, nunca zeros inventados', async () => {
+    const res = await getHeatmap(fetchBySql({}))
+    const body = (await res.json()) as HeatmapBody
+    expect(body.hourly).toEqual([])
+    expect(body.firstSeenAt).toEqual({ prediction_saved: null, login_success: null })
+    expect(body.avgSampleInterval).toBe(1)
+  })
+
+  it('descarta hora inválida, ignora tipo inesperado e soma linhas repetidas da mesma hora', async () => {
+    const res = await getHeatmap(
+      fetchBySql({
+        hourly: [
+          { hour: 'lixo', event_type: 'login_success', events: '9', predictions: '0' },
+          { hour: null, event_type: 'login_success', events: '9', predictions: '0' },
+          {
+            hour: '2026-13-45 99:00:00',
+            event_type: 'login_success',
+            events: '9',
+            predictions: '0',
+          },
+          {
+            hour: '2026-10-29 10:00:00',
+            event_type: 'group_created',
+            events: '7',
+            predictions: '0',
+          },
+          {
+            hour: '2026-10-29 10:00:00',
+            event_type: 'login_success',
+            events: '1',
+            predictions: '0',
+          },
+          {
+            hour: '2026-10-29T10:30:00Z',
+            event_type: 'login_success',
+            events: '2',
+            predictions: '0',
+          },
+          {
+            hour: '2026-10-29 11:00:00',
+            event_type: 'login_success',
+            events: 'NaN',
+            predictions: '0',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as HeatmapBody
+    expect(body.hourly).toEqual([
+      { hour: '2026-10-29T10:00:00Z', prediction_saves: 0, predictions: 0, logins: 3 },
+    ])
+  })
+
+  it('média de sampling inválida ou abaixo de 1 cai em 1', async () => {
+    const res = await getHeatmap(fetchBySql({ sampling: [{ avg_sample_interval: null }] }))
+    expect(((await res.json()) as HeatmapBody).avgSampleInterval).toBe(1)
+  })
+
+  it('payload não carrega user_hash nem identificadores: só hora e contagens', async () => {
+    const res = await getHeatmap(
+      fetchBySql({
+        hourly: [
+          {
+            hour: '2026-10-29 14:00:00',
+            event_type: 'prediction_saved',
+            events: '1',
+            predictions: '2',
+            blob4: 'abc123hash',
+            user_hash: 'abc123hash',
+          },
+        ],
+      }),
+    )
+    const text = await res.text()
+    expect(text).not.toContain('abc123hash')
+    expect(Object.keys((JSON.parse(text) as HeatmapBody).hourly[0]).sort()).toEqual([
+      'hour',
+      'logins',
+      'prediction_saves',
+      'predictions',
+    ])
+  })
+})
