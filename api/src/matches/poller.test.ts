@@ -453,6 +453,7 @@ describe('pollActiveMatches', () => {
     it('passa ao sync um observer com contexto poller e a competição da rodada', async () => {
       const ae = buildFakeAe()
       const db = buildFakeDb([{ comp_id: COMP, external_id: 'WC', season: '2026', round: '1' }])
+      vi.spyOn(Math, 'random').mockReturnValue(0.99)
 
       await pollActiveMatches(
         db as unknown as D1Database,
@@ -464,7 +465,6 @@ describe('pollActiveMatches', () => {
       expect(onHttpAttempt).toBeTypeOf('function')
 
       // Erro nunca depende do sorteio: 429 sempre vira evento.
-      vi.spyOn(Math, 'random').mockReturnValue(0.99)
       onHttpAttempt?.({ provider: 'football-data', status: 429, durationMs: 80 })
       const attempts = pointsOfType(ae, 'provider_http_attempt')
       expect(attempts).toHaveLength(1)
