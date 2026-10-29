@@ -322,6 +322,24 @@ describe('pollActiveMatches', () => {
     consoleSpy.mockRestore()
   })
 
+  it('a falha geral do fallback grava blob2 vazio e a mensagem em blob3 (distingue de sucesso)', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('API down'))
+    espnFallbackMock.mockRejectedValue(new Error('ESPN down too'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ae = buildFakeAe()
+    const db = buildFakeDb([{ comp_id: 'c1', external_id: 'BSA', season: '2026', round: '30' }])
+
+    await pollActiveMatches(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
+
+    const failures = pointsOfType(ae, 'match_results_fallback')
+    expect(failures).toHaveLength(1)
+    expect(failures[0].blobs).toEqual(['match_results_fallback', '', 'ESPN down too'])
+  })
+
   it('returns success: false with err when syncFixtures fails', async () => {
     const error = new Error('Sync failed')
     syncFixturesMock.mockRejectedValue(error)
@@ -427,6 +445,51 @@ describe('pollActiveMatches', () => {
     const runs = pointsOfType(ae, 'poller_run')
     expect(runs).toHaveLength(1)
     expect(runs[0].blobs?.[1]).toBe('error')
+  })
+
+  describe('telemetria HTTP por tentativa', () => {
+    const COMP = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+
+    it('passa ao sync um observer com contexto poller e a competição da rodada', async () => {
+      const ae = buildFakeAe()
+      const db = buildFakeDb([{ comp_id: COMP, external_id: 'WC', season: '2026', round: '1' }])
+
+      await pollActiveMatches(
+        db as unknown as D1Database,
+        'key',
+        ae as unknown as AnalyticsEngineDataset,
+      )
+
+      const { onHttpAttempt } = syncFixturesMock.mock.calls[0][0]
+      expect(onHttpAttempt).toBeTypeOf('function')
+
+      // Erro nunca depende do sorteio: 429 sempre vira evento.
+      vi.spyOn(Math, 'random').mockReturnValue(0.99)
+      onHttpAttempt?.({ provider: 'football-data', status: 429, durationMs: 80 })
+      const attempts = pointsOfType(ae, 'provider_http_attempt')
+      expect(attempts).toHaveLength(1)
+      expect(attempts[0].blobs).toEqual([
+        'provider_http_attempt',
+        'football-data',
+        COMP,
+        '429',
+        'poller',
+      ])
+      expect(attempts[0].doubles).toEqual([80, 1])
+
+      // Sucesso fora da amostra não gera evento.
+      onHttpAttempt?.({ provider: 'football-data', status: 200, durationMs: 80 })
+      expect(pointsOfType(ae, 'provider_http_attempt')).toHaveLength(1)
+      vi.restoreAllMocks()
+    })
+
+    it('sem binding do Analytics Engine não cria observer', async () => {
+      const db = buildFakeDb([{ comp_id: COMP, external_id: 'WC', season: '2026', round: '1' }])
+
+      await pollActiveMatches(db as unknown as D1Database, 'key')
+
+      expect(syncFixturesMock.mock.calls[0][0].onHttpAttempt).toBeUndefined()
+    })
   })
 
   it('emits football_api_error handling a non-Error rejection correctly', async () => {
