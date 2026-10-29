@@ -1,6 +1,9 @@
+/// <reference types="node" />
+import type { DatabaseSync } from 'node:sqlite'
 import { Hono } from 'hono'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { createSqliteD1 } from '../testing/sqliteD1'
 import { metricsRouter } from './metricsRouter'
 import type { AppContext, Env } from '../types'
 
@@ -33,7 +36,10 @@ function fetchOk(data: unknown[]) {
   return vi.fn(async () => ({ ok: true, json: async () => ({ data }) }))
 }
 
+const handles: DatabaseSync[] = []
+
 afterEach(() => {
+  for (const sqlite of handles.splice(0)) sqlite.close()
   vi.restoreAllMocks()
 })
 
@@ -180,50 +186,428 @@ describe('GET /metrics/overview', () => {
   })
 })
 
-/** D1 fake que despacha por trecho do SQL — evita depender de driver real. */
-function makeD1(rows: {
-  usersInGroup?: number
-  usersWhoPredicted?: number
-  usersTotal?: number
-  usersCreated?: number
-  groupsCreated?: number
-  membership?: { user_id: string; groups: number }[]
-  topCompetitions?: { competition: string; groups: number }[]
-}): D1Database {
-  const membership = rows.membership ?? []
-  const topCompetitions = rows.topCompetitions ?? []
+/**
+ * Fixture em SQLite real (migrations aplicadas), relógio do próprio SQLite:
+ * datas relativas a datetime('now') no formato ISO com "Z" que o app grava.
+ *
+ * Brasileirão aparece em duas temporadas com o MESMO nome (2026 e 2025) para
+ * provar que a lista não agrupa só por nome. Bob está em dois grupos do 2026
+ * (membros distintos, não memberships). O grupo excluído tem membro e palpite
+ * recente que não podem vazar em nenhuma contagem.
+ */
+function createBusinessFixture(extraSql = '') {
+  const { sqlite, db } = createSqliteD1()
+  handles.push(sqlite)
+  const ago = (days: number) => `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${days} days')`
 
-  function resultFor(sql: string) {
-    if (sql.includes('FROM revoked_sessions')) return null
-    if (sql.includes('FROM group_members gm')) return { results: membership }
-    if (sql.includes('FROM groups g JOIN competitions')) return { results: topCompetitions }
-    if (sql.includes('(SELECT COUNT(DISTINCT user_id) FROM group_members) AS usersInGroup')) {
-      return {
-        usersInGroup: rows.usersInGroup ?? 0,
-        usersWhoPredicted: rows.usersWhoPredicted ?? 0,
-        usersTotal: rows.usersTotal ?? 0,
-        usersCreated: rows.usersCreated ?? 0,
-        groupsCreated: rows.groupsCreated ?? 0,
-      }
-    }
-    throw new Error(`SQL não mapeado no fake: ${sql}`)
+  sqlite.exec(`
+    INSERT INTO users (id, email, provider, provider_id, user_name, created_at) VALUES
+      ('alice', 'alice@example.com', 'google', 'g-alice', 'Alice', datetime('now', '-100 days')),
+      ('bob', 'bob@example.com', 'google', 'g-bob', 'Bob', datetime('now', '-100 days')),
+      ('carol', 'carol@example.com', 'google', 'g-carol', 'Carol', datetime('now', '-3 days')),
+      ('dave', 'dave@example.com', 'google', 'g-dave', 'Dave', datetime('now', '-100 days')),
+      ('erin', 'erin@example.com', 'google', 'g-erin', 'Erin', datetime('now', '-100 days'));
+
+    DELETE FROM competitions;
+
+    INSERT INTO competitions (id, name, slug, provider, season, status, type, visibility) VALUES
+      ('comp-br26', 'Brasileirão Série A', 'brasileirao-2026', 'football-data', '2026', 'ongoing', 'league', 'public'),
+      ('comp-br25', 'Brasileirão Série A', 'brasileirao-2025', 'football-data', '2025', 'finished', 'league', 'public'),
+      ('comp-pilot', 'Liga Piloto', 'liga-piloto-2026', 'espn', '2026', 'ongoing', 'league', 'pilot'),
+      ('comp-empty', 'Copa Vazia', 'copa-vazia-2026', 'espn', '2026', 'upcoming', 'cup', 'pilot');
+
+    INSERT INTO teams (id, name, short_name, slug) VALUES
+      ('fla', 'Flamengo', 'FLA', 'flamengo'),
+      ('pal', 'Palmeiras', 'PAL', 'palmeiras');
+
+    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, scored_at) VALUES
+      ('m-br26-1', 'comp-br26', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', 1, 0, '2026-06-01T21:00:00Z'),
+      ('m-br26-2', 'comp-br26', 'fd-2', 'football-data', 'pal', 'fla', '2026-06-08T19:00:00Z', 'finished', 2, 2, '2026-06-08T21:00:00Z'),
+      ('m-br25-1', 'comp-br25', 'fd-3', 'football-data', 'fla', 'pal', '2025-06-01T19:00:00Z', 'finished', 0, 1, '2025-06-01T21:00:00Z'),
+      ('m-pilot-1', 'comp-pilot', 'espn-1', 'espn', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', 3, 1, '2026-06-01T21:00:00Z');
+
+    INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, created_at, deleted_at) VALUES
+      ('g-br26-a', 'Bolão da Firma', 'comp-br26', 'alice', 'SECRET-AAAA', datetime('now', '-60 days'), NULL),
+      ('g-br26-b', 'Bolão da Família', 'comp-br26', 'bob', 'SECRET-BBBB', datetime('now', '-2 days'), NULL),
+      ('g-br26-del', 'Bolão Apagado', 'comp-br26', 'dave', 'SECRET-DDDD', datetime('now', '-2 days'), datetime('now', '-1 days')),
+      ('g-br25', 'Bolão Antigo', 'comp-br25', 'alice', 'SECRET-OLD1', datetime('now', '-300 days'), NULL),
+      ('g-pilot', 'Bolão Piloto', 'comp-pilot', 'carol', 'SECRET-PPPP', datetime('now', '-20 days'), NULL),
+      ('g-pilot-del', 'Piloto Apagado', 'comp-pilot', 'erin', 'SECRET-EEEE', datetime('now', '-20 days'), datetime('now', '-5 days'));
+
+    INSERT INTO group_members (id, group_id, user_id) VALUES
+      ('gm-1', 'g-br26-a', 'alice'),
+      ('gm-2', 'g-br26-a', 'bob'),
+      ('gm-3', 'g-br26-b', 'bob'),
+      ('gm-4', 'g-br26-b', 'carol'),
+      ('gm-5', 'g-br26-del', 'dave'),
+      ('gm-6', 'g-br25', 'alice'),
+      ('gm-7', 'g-pilot', 'carol'),
+      ('gm-8', 'g-pilot-del', 'erin');
+
+    INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, created_at, updated_at) VALUES
+      -- g-br26-a: dois usuários e dois jogos recentes — continua 1 grupo ativo.
+      ('p-1', 'alice', 'g-br26-a', 'm-br26-1', 1, 0, ${ago(30)}, ${ago(2)}),
+      ('p-2', 'alice', 'g-br26-a', 'm-br26-2', 2, 0, ${ago(3)}, ${ago(3)}),
+      ('p-3', 'bob', 'g-br26-a', 'm-br26-1', 0, 0, ${ago(1)}, ${ago(1)}),
+      -- g-br26-b: último palpite há 15 dias — fora da janela de 14d.
+      ('p-4', 'bob', 'g-br26-b', 'm-br26-1', 3, 1, ${ago(15)}, ${ago(15)}),
+      -- Grupos excluídos com palpite recente: não contam em nada.
+      ('p-5', 'dave', 'g-br26-del', 'm-br26-1', 1, 1, ${ago(1)}, ${ago(1)}),
+      ('p-6', 'erin', 'g-pilot-del', 'm-pilot-1', 1, 1, ${ago(1)}, ${ago(1)}),
+      ('p-7', 'alice', 'g-br25', 'm-br25-1', 2, 2, ${ago(200)}, ${ago(200)}),
+      -- g-pilot: dentro da janela por pouco (13 dias).
+      ('p-8', 'carol', 'g-pilot', 'm-pilot-1', 0, 1, ${ago(13)}, ${ago(13)});
+  `)
+  if (extraSql) sqlite.exec(extraSql)
+  return db
+}
+
+/**
+ * Jogos para a saúde de resultados, todos relativos ao relógio do SQLite.
+ * Brasileirão 2026 tem grupos, membros e palpites: se a agregação de jogos
+ * multiplicasse linhas (ou vice-versa), os números dele sairiam errados.
+ * Os horários ficam a 1 min das fronteiras para absorver o tempo do teste.
+ */
+function healthMatchesSql() {
+  const at = (...modifiers: string[]) =>
+    `strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ${modifiers.map((m) => `'${m}'`).join(', ')})`
+  const row = (
+    id: string,
+    comp: string,
+    start: string,
+    status: string,
+    extra: { home?: number; away?: number; postponed?: number; scoredAt?: string } = {},
+  ) =>
+    `('${id}', '${comp}', 'ext-${id}', 'football-data', 'fla', 'pal', ${start}, '${status}', ` +
+    `${extra.home ?? 'NULL'}, ${extra.away ?? 'NULL'}, ${extra.postponed ?? 0}, ` +
+    `${extra.scoredAt ? `'${extra.scoredAt}'` : 'NULL'})`
+  return `
+    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, postponed, scored_at) VALUES
+      -- Atrasados contados (br26): scheduled e live, 1 min além das 3h.
+      ${row('h-late-sched', 'comp-br26', at('-3 hours', '-1 minutes'), 'scheduled')},
+      ${row('h-late-live', 'comp-br26', at('-5 hours'), 'live')},
+      -- Placar parcial (só um lado) ainda é jogo sem placar.
+      ${row('h-late-partial', 'comp-br26', at('-4 hours'), 'live', { home: 1 })},
+      -- start_time com offset -03:00 (4h atrás em UTC) e com milissegundos.
+      ${row('h-late-offset', 'comp-br26', `strftime('%Y-%m-%dT%H:%M:%S-03:00', 'now', '-3 hours', '-4 hours')`, 'scheduled')},
+      ${row('h-late-ms', 'comp-br26', `strftime('%Y-%m-%dT%H:%M:%S.123Z', 'now', '-6 hours')`, 'scheduled')},
+      -- Fora da contagem de atrasados: dentro da janela de 3h, no futuro,
+      -- adiado, com placar 0x0 (zero não é ausência) e offset ainda na janela.
+      ${row('h-in-window', 'comp-br26', at('-2 hours', '-59 minutes'), 'live')},
+      ${row('h-future', 'comp-br26', at('+2 hours'), 'scheduled')},
+      ${row('h-postponed', 'comp-br26', at('-5 hours'), 'scheduled', { postponed: 1 })},
+      ${row('h-zero-zero', 'comp-br26', at('-5 hours'), 'live', { home: 0, away: 0 })},
+      ${row('h-offset-in-window', 'comp-br26', `strftime('%Y-%m-%dT%H:%M:%S-03:00', 'now', '-3 hours', '-2 hours')`, 'scheduled')},
+      -- Finished sem scored_at (contados) e com scored_at (não contado).
+      ${row('h-fin-unscored-1', 'comp-br26', at('-2 days'), 'finished', { home: 1, away: 0 })},
+      ${row('h-fin-unscored-2', 'comp-br26', at('-2 days'), 'finished')},
+      ${row('h-fin-scored', 'comp-br26', at('-2 days'), 'finished', { home: 2, away: 0, scoredAt: '2026-06-01T21:00:00Z' })},
+      -- Outra temporada com o mesmo nome: contagens separadas por id.
+      ${row('h-br25-late', 'comp-br25', at('-1 days'), 'scheduled')},
+      ${row('h-br25-unscored', 'comp-br25', at('-1 days'), 'finished', { home: 1, away: 1 })},
+      -- Piloto: finished/atrasado só em jogo adiado ou já pontuado.
+      ${row('h-pilot-postponed', 'comp-pilot', at('-9 hours'), 'live', { postponed: 1 })};
+  `
+}
+
+interface CompetitionRow {
+  id: string
+  name: string
+  slug: string
+  season: string | null
+  provider: string | null
+  visibility: string
+  status: string
+  groups_current: number
+  members: number
+  active_groups_14d: number
+  overdue_no_score: number
+  finished_unscored: number
+}
+
+describe('GET /metrics/ops', () => {
+  const COMP_A = '11111111-2222-4333-8444-555555555555'
+  const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'
+
+  /** Responde cada query da SQL API pela forma do SQL, com linhas fixas. */
+  function fetchBySql(rows: {
+    httpByProvider?: unknown[]
+    httpByCompetition?: unknown[]
+    firstSeen?: unknown[]
+    apiErrors?: unknown[]
+    fallbackRuns?: unknown[]
+    fallbackFailures?: unknown[]
+  }) {
+    return vi.fn(async (_url: string, init: { body: string }) => {
+      const sql = init.body
+      let data: unknown[] = []
+      if (sql.includes('MIN(timestamp)')) data = rows.firstSeen ?? []
+      else if (sql.includes("blob1 = 'provider_http_attempt'") && sql.includes('GROUP BY provider'))
+        data = rows.httpByProvider ?? []
+      else if (sql.includes("blob1 = 'provider_http_attempt'")) data = rows.httpByCompetition ?? []
+      else if (sql.includes("blob1 = 'football_api_error'")) data = rows.apiErrors ?? []
+      else if (sql.includes("blob1 = 'match_results_fallback'") && sql.includes("blob3 = ''"))
+        data = rows.fallbackRuns ?? []
+      else if (sql.includes("blob1 = 'match_results_fallback'")) data = rows.fallbackFailures ?? []
+      return { ok: true, json: async () => ({ data }) }
+    })
   }
 
-  return {
-    prepare: (sql: string) => {
-      const stmt = {
-        bind: () => stmt,
-        first: async () => resultFor(sql),
-        all: async () => resultFor(sql),
-      }
-      return stmt
-    },
-  } as unknown as D1Database
-}
+  async function getOps(fetchFake: ReturnType<typeof fetchBySql>, query = '') {
+    vi.stubGlobal('fetch', fetchFake)
+    return makeApp().request(
+      `/metrics/ops${query}`,
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+  }
+
+  type OpsBody = {
+    days: number
+    httpFirstSeenAt: string | null
+    httpByProvider: Record<string, unknown>[]
+    httpByCompetition: Record<string, unknown>[]
+    apiErrors: { context: string; competition_id: string; count: number }[]
+    fallback: {
+      competition_id: string
+      runs: number
+      updated: number
+      skipped: number
+      failures: number
+    }[]
+  }
+
+  it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
+    const app = makeApp()
+    expect((await app.request('/metrics/ops', {}, makeEnv())).status).toBe(401)
+    expect(
+      (
+        await app.request(
+          '/metrics/ops',
+          { headers: await authHeaders('outra@pessoa.com') },
+          makeEnv(),
+        )
+      ).status,
+    ).toBe(403)
+    expect(
+      (
+        await app.request(
+          '/metrics/ops',
+          { headers: await authHeaders(ADMIN) },
+          makeEnv({ CF_ACCOUNT_ID: undefined }),
+        )
+      ).status,
+    ).toBe(503)
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+    expect(res.status).toBe(502)
+  })
+
+  it('agrega pela janela e pelo peso: _sample_interval × double2, nunca COUNT(*)', async () => {
+    const fetchFake = fetchBySql({})
+    const res = await getOps(fetchFake, '?days=7')
+    expect(res.status).toBe(200)
+
+    const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
+      (c) => c[1].body,
+    )
+    expect(bodies).toHaveLength(6)
+    expect(bodies.some((sql) => /COUNT\(\*\)/.test(sql))).toBe(false)
+
+    const http = bodies.filter((sql) => sql.includes("blob1 = 'provider_http_attempt'"))
+    const windowed = http.filter((sql) => !sql.includes('MIN(timestamp)'))
+    expect(windowed).toHaveLength(2)
+    for (const sql of windowed) {
+      expect(sql).toContain("INTERVAL '7' DAY")
+      expect(sql).toContain('SUM((_sample_interval * double2)) AS attempts')
+      expect(sql).toContain('SUM(_sample_interval) AS events')
+    }
+    // O "desde quando existe coleta" não pode herdar a janela: senão um período
+    // curto sem eventos pareceria instrumentação ausente.
+    const firstSeen = http.find((sql) => sql.includes('MIN(timestamp)'))
+    expect(firstSeen).not.toContain('INTERVAL')
+
+    for (const sql of bodies.filter((q) => q.includes("blob1 = 'match_results_fallback'"))) {
+      expect(sql).toContain('SUM(_sample_interval)')
+      expect(sql).toContain("INTERVAL '7' DAY")
+    }
+  })
+
+  it('sem eventos devolve listas vazias e httpFirstSeenAt nulo (ausência ≠ zero)', async () => {
+    const res = await getOps(fetchBySql({}))
+    const body = (await res.json()) as OpsBody
+
+    expect(body.httpFirstSeenAt).toBeNull()
+    expect(body.httpByProvider).toEqual([])
+    expect(body.httpByCompetition).toEqual([])
+    expect(body.apiErrors).toEqual([])
+    expect(body.fallback).toEqual([])
+  })
+
+  it('devolve tentativas HTTP por provedor/contexto/status e por competição, com números', async () => {
+    const res = await getOps(
+      fetchBySql({
+        firstSeen: [{ first_at: '2026-10-20 10:00:00' }],
+        httpByProvider: [
+          {
+            provider: 'espn',
+            context: 'poller',
+            status: '403',
+            attempts: '12',
+            events: '12',
+            avg_ms: '210.5',
+            max_ms: '900',
+          },
+          {
+            provider: 'espn',
+            context: 'poller',
+            status: '200',
+            attempts: '300',
+            events: '30',
+            avg_ms: '80',
+            max_ms: '400',
+          },
+        ],
+        httpByCompetition: [
+          {
+            competition_id: COMP_A,
+            provider: 'espn',
+            status: '403',
+            attempts: '12',
+            events: '12',
+            avg_ms: '210',
+            max_ms: '900',
+          },
+          {
+            competition_id: '',
+            provider: 'football-data',
+            status: '429',
+            attempts: '2',
+            events: '2',
+            avg_ms: '50',
+            max_ms: '60',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.httpFirstSeenAt).toBe('2026-10-20 10:00:00')
+    expect(body.httpByProvider[0]).toEqual({
+      provider: 'espn',
+      context: 'poller',
+      status: '403',
+      attempts: 12,
+      events: 12,
+      avg_ms: 210.5,
+      max_ms: 900,
+    })
+    // 300 tentativas estimadas a partir de 30 eventos amostrados: a diferença
+    // entre `attempts` e `events` é a amostragem de 10% dos sucessos.
+    expect(body.httpByProvider[1]).toMatchObject({ attempts: 300, events: 30 })
+    expect(body.httpByCompetition.map((r) => r.competition_id)).toEqual([COMP_A, ''])
+  })
+
+  it('classifica football_api_error pela forma posicional e soma por origem e competição', async () => {
+    const res = await getOps(
+      fetchBySql({
+        apiErrors: [
+          { blob2: COMP_A, blob3: '30', count: '2' }, // poller: [comp, round]
+          { blob2: COMP_A, blob3: '31', count: '1' }, // mesma comp, outra rodada
+          { blob2: 'fixture_discovery', blob3: COMP_B, count: '4' },
+          { blob2: 'sync_endpoint', blob3: 'football-data.org respondeu 500', count: '1' },
+          { blob2: 'sync_endpoint', blob3: 'outra mensagem', count: '2' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.apiErrors).toEqual([
+      { context: 'fixture_discovery', competition_id: COMP_B, count: 4 },
+      { context: 'poller', competition_id: COMP_A, count: 3 },
+      { context: 'sync_endpoint', competition_id: '', count: 3 },
+    ])
+    // Mensagem livre do provedor nunca sai no payload.
+    expect(JSON.stringify(body)).not.toContain('respondeu 500')
+  })
+
+  it('une execuções e falhas do fallback por competição, ordenando falhas primeiro', async () => {
+    const res = await getOps(
+      fetchBySql({
+        fallbackRuns: [
+          { competition_id: COMP_A, runs: '10', updated: '3', skipped: '7' },
+          { competition_id: COMP_B, runs: '5', updated: '0', skipped: '0' },
+        ],
+        fallbackFailures: [
+          { competition_id: COMP_B, failures: '2' },
+          { competition_id: '', failures: '1' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.fallback).toEqual([
+      { competition_id: COMP_B, runs: 5, updated: 0, skipped: 0, failures: 2 },
+      { competition_id: '', runs: 0, updated: 0, skipped: 0, failures: 1 },
+      { competition_id: COMP_A, runs: 10, updated: 3, skipped: 7, failures: 0 },
+    ])
+  })
+
+  it('descarta como "sem liga" qualquer valor de competição que não seja UUID (blob legado)', async () => {
+    const res = await getOps(
+      fetchBySql({
+        fallbackRuns: [{ competition_id: 'ESPN down too', runs: '1', updated: '0', skipped: '0' }],
+        httpByCompetition: [
+          {
+            competition_id: 'texto livre',
+            provider: 'espn',
+            status: '200',
+            attempts: '10',
+            events: '1',
+            avg_ms: '1',
+            max_ms: '1',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.fallback[0].competition_id).toBe('')
+    expect(body.httpByCompetition[0].competition_id).toBe('')
+    expect(JSON.stringify(body)).not.toContain('texto livre')
+    expect(JSON.stringify(body)).not.toContain('ESPN down too')
+  })
+
+  it('não emite logEvent (endpoints /metrics são leitura)', async () => {
+    const ae = { writeDataPoint: vi.fn() }
+    vi.stubGlobal('fetch', fetchBySql({}))
+    await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ AE: ae as unknown as AnalyticsEngineDataset }),
+    )
+    expect(ae.writeDataPoint).not.toHaveBeenCalled()
+  })
+})
 
 describe('GET /metrics/business', () => {
   it('401 sem sessão', async () => {
-    const res = await makeApp().request('/metrics/business', {}, makeEnv({ DB: makeD1({}) }))
+    const res = await makeApp().request(
+      '/metrics/business',
+      {},
+      makeEnv({ DB: createBusinessFixture() }),
+    )
     expect(res.status).toBe(401)
   })
 
@@ -231,55 +615,176 @@ describe('GET /metrics/business', () => {
     const res = await makeApp().request(
       '/metrics/business',
       { headers: await authHeaders('outra@pessoa.com') },
-      makeEnv({ DB: makeD1({}) }),
+      makeEnv({ DB: createBusinessFixture() }),
     )
     expect(res.status).toBe(403)
   })
 
-  it('happy path: KPIs do D1 e média/mediana de grupos por usuário', async () => {
-    const db = makeD1({
-      usersInGroup: 12,
-      usersWhoPredicted: 9,
-      usersTotal: 20,
-      usersCreated: 3,
-      groupsCreated: 2,
-      membership: [
-        { user_id: 'u1', groups: 1 },
-        { user_id: 'u2', groups: 2 },
-        { user_id: 'u3', groups: 3 },
-      ],
-      topCompetitions: [{ competition: 'Brasileirão', groups: 5 }],
-    })
-
+  it('KPIs do D1 ignoram grupos soft-deleted', async () => {
     const res = await makeApp().request(
       '/metrics/business?days=7',
       { headers: await authHeaders(ADMIN) },
-      makeEnv({ DB: db }),
+      makeEnv({ DB: createBusinessFixture() }),
     )
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as {
-      days: number
-      usersTotal: number
-      usersInGroup: number
-      usersWhoPredicted: number
-      usersCreatedInPeriod: number
-      groupsCreatedInPeriod: number
-      avgGroupsPerUser: number
-      medianGroupsPerUser: number
-      topCompetitions: { competition: string; groups: number }[]
-    }
-    expect(body).toEqual({
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
       days: 7,
-      usersTotal: 20,
-      usersInGroup: 12,
-      usersWhoPredicted: 9,
-      usersCreatedInPeriod: 3,
-      groupsCreatedInPeriod: 2,
+      usersTotal: 5,
+      // dave e erin só estão (e só palpitaram) em grupos excluídos.
+      usersInGroup: 3,
+      usersWhoPredicted: 3,
+      usersCreatedInPeriod: 1,
+      // g-br26-b; g-br26-del também é recente, mas está excluído.
+      groupsCreatedInPeriod: 1,
+      // alice 2, bob 2, carol 2 grupos não excluídos.
       avgGroupsPerUser: 2,
       medianGroupsPerUser: 2,
-      topCompetitions: [{ competition: 'Brasileirão', groups: 5 }],
+      activeGroupDays: 14,
     })
+  })
+
+  it('lista todas as temporadas, inclusive sem grupo, sem multiplicar contagens', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: createBusinessFixture() }),
+    )
+
+    const body = (await res.json()) as {
+      competitions: CompetitionRow[]
+      topCompetitions: { competition: string; groups: number }[]
+    }
+    expect(body.competitions).toEqual([
+      {
+        id: 'comp-br26',
+        name: 'Brasileirão Série A',
+        slug: 'brasileirao-2026',
+        season: '2026',
+        provider: 'football-data',
+        visibility: 'public',
+        status: 'ongoing',
+        groups_current: 2,
+        members: 3,
+        active_groups_14d: 1,
+        overdue_no_score: 0,
+        finished_unscored: 0,
+      },
+      {
+        id: 'comp-br25',
+        name: 'Brasileirão Série A',
+        slug: 'brasileirao-2025',
+        season: '2025',
+        provider: 'football-data',
+        visibility: 'public',
+        status: 'finished',
+        groups_current: 1,
+        members: 1,
+        active_groups_14d: 0,
+        overdue_no_score: 0,
+        finished_unscored: 0,
+      },
+      {
+        id: 'comp-pilot',
+        name: 'Liga Piloto',
+        slug: 'liga-piloto-2026',
+        season: '2026',
+        provider: 'espn',
+        visibility: 'pilot',
+        status: 'ongoing',
+        groups_current: 1,
+        members: 1,
+        active_groups_14d: 1,
+        overdue_no_score: 0,
+        finished_unscored: 0,
+      },
+      {
+        id: 'comp-empty',
+        name: 'Copa Vazia',
+        slug: 'copa-vazia-2026',
+        season: '2026',
+        provider: 'espn',
+        visibility: 'pilot',
+        status: 'upcoming',
+        groups_current: 0,
+        members: 0,
+        active_groups_14d: 0,
+        overdue_no_score: 0,
+        finished_unscored: 0,
+      },
+    ])
+    // Formato legado para o front ainda não atualizado: só quem tem grupo.
+    expect(body.topCompetitions).toEqual([
+      { competition: 'Brasileirão Série A', groups: 2 },
+      { competition: 'Brasileirão Série A', groups: 1 },
+      { competition: 'Liga Piloto', groups: 1 },
+    ])
+  })
+
+  it('conta jogos atrasados sem placar e finished sem scored_at por temporada', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: createBusinessFixture(healthMatchesSql()) }),
+    )
+
+    const { competitions } = (await res.json()) as { competitions: CompetitionRow[] }
+    const health = Object.fromEntries(
+      competitions.map((c) => [
+        c.id,
+        { overdue: c.overdue_no_score, unscored: c.finished_unscored },
+      ]),
+    )
+    expect(health).toEqual({
+      // 5 atrasados: scheduled 3h01, live, parcial, offset -03:00 e milissegundos.
+      // Ficam de fora: janela de 3h, futuro, adiado, 0x0 e offset na janela.
+      // 2 finished sem scored_at; o pontuado e os do fixture-base não contam.
+      'comp-br26': { overdue: 5, unscored: 2 },
+      'comp-br25': { overdue: 1, unscored: 1 },
+      // Só tem um jogo adiado e um finished já pontuado: zeros explícitos.
+      'comp-pilot': { overdue: 0, unscored: 0 },
+      // Sem nenhum jogo: continua na lista, zerada.
+      'comp-empty': { overdue: 0, unscored: 0 },
+    })
+  })
+
+  it('a saúde de resultados não altera grupos, membros nem ativos da temporada', async () => {
+    const [withMatches, baseline] = await Promise.all(
+      [healthMatchesSql(), ''].map(async (extra) => {
+        const res = await makeApp().request(
+          '/metrics/business',
+          { headers: await authHeaders(ADMIN) },
+          makeEnv({ DB: createBusinessFixture(extra) }),
+        )
+        const { competitions } = (await res.json()) as { competitions: CompetitionRow[] }
+        return competitions.map((c) => [c.id, c.groups_current, c.members, c.active_groups_14d])
+      }),
+    )
+    expect(withMatches).toEqual(baseline)
+    expect(withMatches[0]).toEqual(['comp-br26', 2, 3, 1])
+  })
+
+  it('não expõe e-mails, ids de usuário, nomes de grupo, convites nem ids de jogo', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: createBusinessFixture(healthMatchesSql()) }),
+    )
+
+    const raw = await res.text()
+    for (const leaked of [
+      '@example.com',
+      'alice',
+      'Bolão',
+      'SECRET-',
+      'g-br26-a',
+      'm-br26',
+      'h-late',
+      'h-fin',
+    ]) {
+      expect(raw).not.toContain(leaked)
+    }
   })
 })
 
