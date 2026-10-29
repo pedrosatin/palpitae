@@ -784,9 +784,9 @@ router.delete('/:id', requireAuth, async (c) => {
   const db = c.env.DB
 
   const group = await db
-    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
+    .prepare('SELECT owner_user_id, competition_id FROM groups WHERE id = ? AND deleted_at IS NULL')
     .bind(groupId)
-    .first<{ owner_user_id: string }>()
+    .first<{ owner_user_id: string; competition_id: string }>()
 
   if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
@@ -802,7 +802,7 @@ router.delete('/:id', requireAuth, async (c) => {
     .run()
 
   logEvent(c.env.AE, 'group_deleted', {
-    blobs: [groupId, await hashUserId(userId)],
+    blobs: [groupId, await hashUserId(userId), group.competition_id],
   })
 
   return c.json({ success: true })
