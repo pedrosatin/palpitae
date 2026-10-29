@@ -228,6 +228,16 @@ payload só leva agregados: nada de e-mail, id de usuário, nome de grupo ou
 código de convite. `topCompetitions` (top 10 com grupo) continua na resposta
 para o front anterior.
 
+A mesma linha traz a **saúde de resultados** da temporada, também só contagens
+de jogos: `overdue_no_score` (jogos `scheduled`/`live`, não adiados, com
+`home_score` ou `away_score` nulo e `start_time` há 3 horas ou mais) sinaliza
+buraco de feed; `finished_unscored` (jogos `finished` com `scored_at` nulo)
+sinaliza backlog de pontuação, e inclui `finished` sem placar, que o scoring não
+alcança. `start_time` é comparado via `datetime()`, então `Z`, milissegundos e
+offset não mudam o resultado. Temporada sem jogo ou sem pendência vem com
+zero. O front antigo ignora os campos novos; o novo mostra "indisponível" (ou
+"—") se a API ainda não os enviar, em vez de tratar a falta como zero.
+
 Do cold path o dashboard mostra: KPIs do acervo (dias arquivados, eventos
 arquivados via customMetadata, tamanho total, dia mais antigo), **eventos/mês
 do histórico completo** — a única visão que enxerga além da janela de ~3 meses
