@@ -704,11 +704,11 @@ function LegacyTopCompetitions({
         <p className={styles.hint}>Nenhum grupo ativo.</p>
       ) : (
         <div>
-          {topCompetitions.map((c) => {
+          {topCompetitions.map((c, index) => {
             const max = topCompetitions[0].groups
             const pct = max > 0 ? Math.round((c.groups / max) * 100) : 0
             return (
-              <div key={c.competition} className={styles.miniBarRow}>
+              <div key={`${c.competition}-${index}`} className={styles.miniBarRow}>
                 <span className={styles.miniBarLabel} title={c.competition}>
                   {c.competition}
                 </span>
