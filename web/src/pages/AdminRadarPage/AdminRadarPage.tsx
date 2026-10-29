@@ -234,161 +234,24 @@ export default function AdminRadarPage() {
         {data && !loading && (
           <>
             <section className={styles.section}>
-              <div className={styles.filters}>
-                <input
-                  className={styles.search}
-                  type="search"
-                  placeholder="Buscar competição ou país…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Buscar competição"
-                />
-                <div className={styles.statusFilters} role="group" aria-label="Filtrar por status">
-                  {STATUS_FILTERS.map((f) => (
-                    <button
-                      key={f.key}
-                      type="button"
-                      className={f.key === statusFilter ? shared.periodActive : shared.period}
-                      aria-pressed={f.key === statusFilter}
-                      onClick={() => {
-                        trackEvent('click_admin_radar_filtrar_status', { status: f.key })
-                        setStatusFilter(f.key)
-                        // "A começar" só faz sentido ordenado pela estreia; o
-                        // interesse volta a mandar ao sair desse recorte.
-                        setSort(f.key === 'upcoming' ? 'start' : 'interest')
-                      }}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-                <label className={styles.toggle}>
-                  <input
-                    type="checkbox"
-                    checked={onlyUnsupported}
-                    onChange={(e) => {
-                      trackEvent('click_admin_radar_filtrar_nao_suportadas')
-                      setOnlyUnsupported(e.target.checked)
-                    }}
-                  />
-                  Só não suportadas
-                </label>
-              </div>
-
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>
-                      <SortButton current={sort} value="name" onSort={setSort}>
-                        Competição
-                      </SortButton>
-                    </th>
-                    <th>
-                      <SortButton current={sort} value="start" onSort={setSort}>
-                        Status
-                      </SortButton>
-                    </th>
-                    <th className={styles.num}>
-                      <SortButton current={sort} value="matches" onSort={setSort}>
-                        Jogos
-                      </SortButton>
-                    </th>
-                    <th className={styles.num}>
-                      <SortButton current={sort} value="interest" onSort={setSort}>
-                        Interesse BR
-                      </SortButton>
-                    </th>
-                    <th>Tendência</th>
-                    <th className={styles.num}>Grupos</th>
-                    <th>Veredito</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((item) => {
-                    const call = verdict(item, medianInterest)
-                    return (
-                      <tr key={item.id}>
-                        <td>
-                          <span className={styles.compName}>{item.name}</span>
-                          <span className={styles.compMeta}>
-                            {item.country} · {item.season} · {formatDay(item.startsOn)} →{' '}
-                            {formatDay(item.endsOn)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={styles[`status_${item.status}`]}>
-                            {STATUS_LABEL[item.status]}
-                          </span>
-                          {item.status === 'upcoming' && countdown(item.startsOn) && (
-                            <span className={styles.countdown}>{countdown(item.startsOn)}</span>
-                          )}
-                        </td>
-                        <td className={styles.num}>
-                          {formatNumber(item.matchesInPeriod)}
-                          {item.matchesToday > 0 && (
-                            <span className={styles.todayBadge}>{item.matchesToday} hoje</span>
-                          )}
-                        </td>
-                        <td className={styles.num}>
-                          {item.pageviewsAvg === null ? (
-                            <span className={styles.muted}>sem artigo</span>
-                          ) : (
-                            <span className={styles.interestCell}>
-                              {formatNumber(item.pageviewsAvg)}
-                              <Sparkline series={item.pageviewsSeries} />
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          className={
-                            item.pageviewsTrend !== null && item.pageviewsTrend > 0
-                              ? styles.trendUp
-                              : item.pageviewsTrend !== null && item.pageviewsTrend < 0
-                                ? styles.trendDown
-                                : styles.muted
-                          }
-                        >
-                          {formatTrend(item.pageviewsTrend)}
-                        </td>
-                        <td className={styles.num}>
-                          {item.supported ? formatNumber(item.internalGroups) : '—'}
-                        </td>
-                        <td>
-                          {item.supported ? (
-                            <span className={styles.supported}>✓ no Palpitae</span>
-                          ) : call ? (
-                            <span className={call.level}>{call.label}</span>
-                          ) : (
-                            <span className={styles.muted}>—</span>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-
-              {visible.length === 0 && (
-                <p className={styles.hint}>Nenhuma competição com os filtros atuais.</p>
-              )}
+              <RadarFilters
+                search={search}
+                setSearch={setSearch}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                onlyUnsupported={onlyUnsupported}
+                setOnlyUnsupported={setOnlyUnsupported}
+                setSort={setSort}
+              />
+              <RadarTable
+                visible={visible}
+                sort={sort}
+                setSort={setSort}
+                medianInterest={medianInterest}
+              />
             </section>
 
-            {unmapped.length > 0 && (
-              <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Sem sinal de interesse</h2>
-                <p className={styles.hint}>
-                  Em andamento, mas sem artigo da Wikipédia mapeado — para medi-las, adicione uma
-                  entrada em <code>api/src/radar/articles.ts</code>.
-                </p>
-                <ul className={styles.unmappedList}>
-                  {unmapped.map((item) => (
-                    <li key={item.id}>
-                      {item.name} <span className={styles.muted}>({item.country})</span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
+            {unmapped.length > 0 && <UnmappedList unmapped={unmapped} />}
           </>
         )}
       </>
@@ -419,5 +282,196 @@ function SortButton({
       {children}
       {current === value && ' ↓'}
     </button>
+  )
+}
+
+function RadarFilters({
+  search,
+  setSearch,
+  statusFilter,
+  setStatusFilter,
+  onlyUnsupported,
+  setOnlyUnsupported,
+  setSort,
+}: {
+  search: string
+  setSearch: (value: string) => void
+  statusFilter: StatusFilter
+  setStatusFilter: (value: StatusFilter) => void
+  onlyUnsupported: boolean
+  setOnlyUnsupported: (value: boolean) => void
+  setSort: (value: SortKey) => void
+}) {
+  return (
+    <div className={styles.filters}>
+      <input
+        className={styles.search}
+        type="search"
+        placeholder="Buscar competição ou país…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        aria-label="Buscar competição"
+      />
+      <div className={styles.statusFilters} role="group" aria-label="Filtrar por status">
+        {STATUS_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            className={f.key === statusFilter ? shared.periodActive : shared.period}
+            aria-pressed={f.key === statusFilter}
+            onClick={() => {
+              trackEvent('click_admin_radar_filtrar_status', { status: f.key })
+              setStatusFilter(f.key)
+              setSort(f.key === 'upcoming' ? 'start' : 'interest')
+            }}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <label className={styles.toggle}>
+        <input
+          type="checkbox"
+          checked={onlyUnsupported}
+          onChange={(e) => {
+            trackEvent('click_admin_radar_filtrar_nao_suportadas')
+            setOnlyUnsupported(e.target.checked)
+          }}
+        />
+        Só não suportadas
+      </label>
+    </div>
+  )
+}
+
+function RadarTable({
+  visible,
+  sort,
+  setSort,
+  medianInterest,
+}: {
+  visible: RadarItem[]
+  sort: SortKey
+  setSort: (value: SortKey) => void
+  medianInterest: number
+}) {
+  return (
+    <>
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            <th>
+              <SortButton current={sort} value="name" onSort={setSort}>
+                Competição
+              </SortButton>
+            </th>
+            <th>
+              <SortButton current={sort} value="start" onSort={setSort}>
+                Status
+              </SortButton>
+            </th>
+            <th className={styles.num}>
+              <SortButton current={sort} value="matches" onSort={setSort}>
+                Jogos
+              </SortButton>
+            </th>
+            <th className={styles.num}>
+              <SortButton current={sort} value="interest" onSort={setSort}>
+                Interesse BR
+              </SortButton>
+            </th>
+            <th>Tendência</th>
+            <th className={styles.num}>Grupos</th>
+            <th>Veredito</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visible.map((item) => {
+            const call = verdict(item, medianInterest)
+            return (
+              <tr key={item.id}>
+                <td>
+                  <span className={styles.compName}>{item.name}</span>
+                  <span className={styles.compMeta}>
+                    {item.country} · {item.season} · {formatDay(item.startsOn)} →{' '}
+                    {formatDay(item.endsOn)}
+                  </span>
+                </td>
+                <td>
+                  <span className={styles[`status_${item.status}`]}>
+                    {STATUS_LABEL[item.status]}
+                  </span>
+                  {item.status === 'upcoming' && countdown(item.startsOn) && (
+                    <span className={styles.countdown}>{countdown(item.startsOn)}</span>
+                  )}
+                </td>
+                <td className={styles.num}>
+                  {formatNumber(item.matchesInPeriod)}
+                  {item.matchesToday > 0 && (
+                    <span className={styles.todayBadge}>{item.matchesToday} hoje</span>
+                  )}
+                </td>
+                <td className={styles.num}>
+                  {item.pageviewsAvg === null ? (
+                    <span className={styles.muted}>sem artigo</span>
+                  ) : (
+                    <span className={styles.interestCell}>
+                      {formatNumber(item.pageviewsAvg)}
+                      <Sparkline series={item.pageviewsSeries} />
+                    </span>
+                  )}
+                </td>
+                <td
+                  className={
+                    item.pageviewsTrend !== null && item.pageviewsTrend > 0
+                      ? styles.trendUp
+                      : item.pageviewsTrend !== null && item.pageviewsTrend < 0
+                        ? styles.trendDown
+                        : styles.muted
+                  }
+                >
+                  {formatTrend(item.pageviewsTrend)}
+                </td>
+                <td className={styles.num}>
+                  {item.supported ? formatNumber(item.internalGroups) : '—'}
+                </td>
+                <td>
+                  {item.supported ? (
+                    <span className={styles.supported}>✓ no Palpitae</span>
+                  ) : call ? (
+                    <span className={call.level}>{call.label}</span>
+                  ) : (
+                    <span className={styles.muted}>—</span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {visible.length === 0 && (
+        <p className={styles.hint}>Nenhuma competição com os filtros atuais.</p>
+      )}
+    </>
+  )
+}
+
+function UnmappedList({ unmapped }: { unmapped: RadarItem[] }) {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>Sem sinal de interesse</h2>
+      <p className={styles.hint}>
+        Em andamento, mas sem artigo da Wikipédia mapeado — para medi-las, adicione uma entrada em{' '}
+        <code>api/src/radar/articles.ts</code>.
+      </p>
+      <ul className={styles.unmappedList}>
+        {unmapped.map((item) => (
+          <li key={item.id}>
+            {item.name} <span className={styles.muted}>({item.country})</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
