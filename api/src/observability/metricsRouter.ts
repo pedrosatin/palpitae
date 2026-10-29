@@ -221,6 +221,186 @@ metricsRouter.get('/overview', async (c) => {
   }
 })
 
+type AeRow = Record<string, unknown>
+
+/** UUID de competição; qualquer outra coisa em blob de competição é lixo legado. */
+const COMPETITION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Id válido ou vazio ("sem liga"): nunca devolve texto livre de blob antigo. */
+function competitionIdOrEmpty(raw: unknown): string {
+  const id = String(raw ?? '')
+  return COMPETITION_ID_RE.test(id) ? id : ''
+}
+
+/**
+ * Origem de um `football_api_error` pela forma posicional (docs/observability.md):
+ * endpoint → [sync_endpoint, msg]; descoberta → [fixture_discovery, comp, msg];
+ * poller → [comp, round, msg].
+ */
+function footballApiErrorOrigin(
+  blob2: string,
+  blob3: string,
+): {
+  context: 'sync_endpoint' | 'fixture_discovery' | 'poller'
+  competition_id: string
+} {
+  if (blob2 === 'sync_endpoint') return { context: 'sync_endpoint', competition_id: '' }
+  if (blob2 === 'fixture_discovery') {
+    return { context: 'fixture_discovery', competition_id: competitionIdOrEmpty(blob3) }
+  }
+  return { context: 'poller', competition_id: competitionIdOrEmpty(blob2) }
+}
+
+/**
+ * Operação dos provedores (ESPN e football-data) a partir do Analytics Engine:
+ * tentativas HTTP, erros de sync e fallback de resultados, por processo,
+ * provedor e campeonato. Só agregados e UUIDs de competição.
+ *
+ * Contagens HTTP: `attempts` = SUM(_sample_interval * double2). double2 é o
+ * peso do evento (1 para falha, 10 para sucesso amostrado a 10%), então erro
+ * é contagem e sucesso é estimativa. `events` = SUM(_sample_interval) é o que
+ * foi de fato registrado. `httpFirstSeenAt` (sem filtro de janela) separa
+ * "nenhuma tentativa" de "instrumentação ainda não publicada".
+ *
+ * Posições: provider_http_attempt → blob2 provider, blob3 competition_id,
+ * blob4 status, blob5 contexto, double1 duration_ms, double2 peso;
+ * match_results_fallback → blob2 competition_id; sucesso: double1 atualizados,
+ * double2 pulados; falha: blob3 = mensagem.
+ */
+metricsRouter.get('/ops', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  const days = parseDays(c.req.query('days'))
+  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const httpWeight = '(_sample_interval * double2)'
+  const httpMeasures =
+    `SUM(${httpWeight}) AS attempts, SUM(_sample_interval) AS events, ` +
+    `SUM(double1 * ${httpWeight}) / SUM(${httpWeight}) AS avg_ms, MAX(double1) AS max_ms`
+
+  try {
+    const [
+      httpByProvider,
+      httpByCompetition,
+      httpFirstSeen,
+      apiErrors,
+      fallbackRuns,
+      fallbackFailures,
+    ] = await Promise.all([
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS provider, blob5 AS context, blob4 AS status, ${httpMeasures} ` +
+          `FROM ${DATASET} WHERE blob1 = 'provider_http_attempt' AND ${since} ` +
+          `GROUP BY provider, context, status ORDER BY attempts DESC LIMIT 200`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob3 AS competition_id, blob2 AS provider, blob4 AS status, ${httpMeasures} ` +
+          `FROM ${DATASET} WHERE blob1 = 'provider_http_attempt' AND ${since} ` +
+          `GROUP BY competition_id, provider, status ORDER BY attempts DESC LIMIT 1000`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT MIN(timestamp) AS first_at FROM ${DATASET} WHERE blob1 = 'provider_http_attempt'`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2, blob3, SUM(_sample_interval) AS count ` +
+          `FROM ${DATASET} WHERE blob1 = 'football_api_error' AND ${since} ` +
+          `GROUP BY blob2, blob3 ORDER BY count DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS competition_id, SUM(_sample_interval) AS runs, ` +
+          `SUM(double1 * _sample_interval) AS updated, SUM(double2 * _sample_interval) AS skipped ` +
+          `FROM ${DATASET} WHERE blob1 = 'match_results_fallback' AND blob3 = '' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY runs DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS competition_id, SUM(_sample_interval) AS failures ` +
+          `FROM ${DATASET} WHERE blob1 = 'match_results_fallback' AND blob3 != '' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY failures DESC LIMIT 500`,
+      ),
+    ])
+
+    const sumBy = (rows: AeRow[], key: (r: AeRow) => string, value: string) => {
+      const out = new Map<string, number>()
+      for (const r of rows) out.set(key(r), (out.get(key(r)) ?? 0) + Number(r[value] ?? 0))
+      return out
+    }
+    const errorsByOrigin = new Map<
+      string,
+      { context: string; competition_id: string; count: number }
+    >()
+    for (const r of apiErrors) {
+      const origin = footballApiErrorOrigin(String(r.blob2 ?? ''), String(r.blob3 ?? ''))
+      const key = `${origin.context}|${origin.competition_id}`
+      const entry = errorsByOrigin.get(key) ?? { ...origin, count: 0 }
+      entry.count += Number(r.count ?? 0)
+      errorsByOrigin.set(key, entry)
+    }
+
+    const failuresByComp = sumBy(
+      fallbackFailures,
+      (r) => competitionIdOrEmpty(r.competition_id),
+      'failures',
+    )
+    const fallbackByComp = new Map<
+      string,
+      { competition_id: string; runs: number; updated: number; skipped: number; failures: number }
+    >()
+    const fallbackEntry = (id: string) => {
+      const entry = fallbackByComp.get(id) ?? {
+        competition_id: id,
+        runs: 0,
+        updated: 0,
+        skipped: 0,
+        failures: 0,
+      }
+      fallbackByComp.set(id, entry)
+      return entry
+    }
+    for (const r of fallbackRuns) {
+      const entry = fallbackEntry(competitionIdOrEmpty(r.competition_id))
+      entry.runs += Number(r.runs ?? 0)
+      entry.updated += Number(r.updated ?? 0)
+      entry.skipped += Number(r.skipped ?? 0)
+    }
+    for (const [id, failures] of failuresByComp) fallbackEntry(id).failures += failures
+
+    const mapHttp = (r: AeRow) => ({
+      provider: String(r.provider ?? ''),
+      status: String(r.status ?? ''),
+      attempts: Number(r.attempts ?? 0),
+      events: Number(r.events ?? 0),
+      avg_ms: Number(r.avg_ms ?? 0),
+      max_ms: Number(r.max_ms ?? 0),
+    })
+
+    return c.json({
+      days,
+      httpFirstSeenAt: (httpFirstSeen[0]?.first_at as string | null | undefined) ?? null,
+      httpByProvider: httpByProvider.map((r) => ({
+        ...mapHttp(r),
+        context: String(r.context ?? ''),
+      })),
+      httpByCompetition: httpByCompetition.map((r) => ({
+        ...mapHttp(r),
+        competition_id: competitionIdOrEmpty(r.competition_id),
+      })),
+      apiErrors: [...errorsByOrigin.values()].sort((a, b) => b.count - a.count),
+      fallback: [...fallbackByComp.values()].sort(
+        (a, b) => b.failures - a.failures || b.runs - a.runs,
+      ),
+    })
+  } catch (err) {
+    console.error('[metrics] falha na SQL API (ops):', err)
+    return c.json({ error: 'Falha ao consultar o Analytics Engine' }, 502)
+  }
+})
+
 /** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
 const ACTIVE_GROUP_DAYS = 14
 
