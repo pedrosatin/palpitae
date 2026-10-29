@@ -1,6 +1,9 @@
+/// <reference types="node" />
+import type { DatabaseSync } from 'node:sqlite'
 import { Hono } from 'hono'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { createSqliteD1 } from '../testing/sqliteD1'
 import { metricsRouter } from './metricsRouter'
 import type { AppContext, Env } from '../types'
 
@@ -33,7 +36,10 @@ function fetchOk(data: unknown[]) {
   return vi.fn(async () => ({ ok: true, json: async () => ({ data }) }))
 }
 
+const handles: DatabaseSync[] = []
+
 afterEach(() => {
+  for (const sqlite of handles.splice(0)) sqlite.close()
   vi.restoreAllMocks()
 })
 
@@ -180,50 +186,101 @@ describe('GET /metrics/overview', () => {
   })
 })
 
-/** D1 fake que despacha por trecho do SQL — evita depender de driver real. */
-function makeD1(rows: {
-  usersInGroup?: number
-  usersWhoPredicted?: number
-  usersTotal?: number
-  usersCreated?: number
-  groupsCreated?: number
-  membership?: { user_id: string; groups: number }[]
-  topCompetitions?: { competition: string; groups: number }[]
-}): D1Database {
-  const membership = rows.membership ?? []
-  const topCompetitions = rows.topCompetitions ?? []
+/**
+ * Fixture em SQLite real (migrations aplicadas), relógio do próprio SQLite:
+ * datas relativas a datetime('now') no formato ISO com "Z" que o app grava.
+ *
+ * Brasileirão aparece em duas temporadas com o MESMO nome (2026 e 2025) para
+ * provar que a lista não agrupa só por nome. Bob está em dois grupos do 2026
+ * (membros distintos, não memberships). O grupo excluído tem membro e palpite
+ * recente que não podem vazar em nenhuma contagem.
+ */
+function createBusinessFixture() {
+  const { sqlite, db } = createSqliteD1()
+  handles.push(sqlite)
+  const ago = (days: number) => `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${days} days')`
 
-  function resultFor(sql: string) {
-    if (sql.includes('FROM revoked_sessions')) return null
-    if (sql.includes('FROM group_members gm')) return { results: membership }
-    if (sql.includes('FROM groups g JOIN competitions')) return { results: topCompetitions }
-    if (sql.includes('(SELECT COUNT(DISTINCT user_id) FROM group_members) AS usersInGroup')) {
-      return {
-        usersInGroup: rows.usersInGroup ?? 0,
-        usersWhoPredicted: rows.usersWhoPredicted ?? 0,
-        usersTotal: rows.usersTotal ?? 0,
-        usersCreated: rows.usersCreated ?? 0,
-        groupsCreated: rows.groupsCreated ?? 0,
-      }
-    }
-    throw new Error(`SQL não mapeado no fake: ${sql}`)
-  }
+  sqlite.exec(`
+    INSERT INTO users (id, email, provider, provider_id, user_name, created_at) VALUES
+      ('alice', 'alice@example.com', 'google', 'g-alice', 'Alice', datetime('now', '-100 days')),
+      ('bob', 'bob@example.com', 'google', 'g-bob', 'Bob', datetime('now', '-100 days')),
+      ('carol', 'carol@example.com', 'google', 'g-carol', 'Carol', datetime('now', '-3 days')),
+      ('dave', 'dave@example.com', 'google', 'g-dave', 'Dave', datetime('now', '-100 days')),
+      ('erin', 'erin@example.com', 'google', 'g-erin', 'Erin', datetime('now', '-100 days'));
 
-  return {
-    prepare: (sql: string) => {
-      const stmt = {
-        bind: () => stmt,
-        first: async () => resultFor(sql),
-        all: async () => resultFor(sql),
-      }
-      return stmt
-    },
-  } as unknown as D1Database
+    DELETE FROM competitions;
+
+    INSERT INTO competitions (id, name, slug, provider, season, status, type, visibility) VALUES
+      ('comp-br26', 'Brasileirão Série A', 'brasileirao-2026', 'football-data', '2026', 'ongoing', 'league', 'public'),
+      ('comp-br25', 'Brasileirão Série A', 'brasileirao-2025', 'football-data', '2025', 'finished', 'league', 'public'),
+      ('comp-pilot', 'Liga Piloto', 'liga-piloto-2026', 'espn', '2026', 'ongoing', 'league', 'pilot'),
+      ('comp-empty', 'Copa Vazia', 'copa-vazia-2026', 'espn', '2026', 'upcoming', 'cup', 'pilot');
+
+    INSERT INTO teams (id, name, short_name, slug) VALUES
+      ('fla', 'Flamengo', 'FLA', 'flamengo'),
+      ('pal', 'Palmeiras', 'PAL', 'palmeiras');
+
+    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status) VALUES
+      ('m-br26-1', 'comp-br26', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished'),
+      ('m-br26-2', 'comp-br26', 'fd-2', 'football-data', 'pal', 'fla', '2026-06-08T19:00:00Z', 'finished'),
+      ('m-br25-1', 'comp-br25', 'fd-3', 'football-data', 'fla', 'pal', '2025-06-01T19:00:00Z', 'finished'),
+      ('m-pilot-1', 'comp-pilot', 'espn-1', 'espn', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished');
+
+    INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, created_at, deleted_at) VALUES
+      ('g-br26-a', 'Bolão da Firma', 'comp-br26', 'alice', 'SECRET-AAAA', datetime('now', '-60 days'), NULL),
+      ('g-br26-b', 'Bolão da Família', 'comp-br26', 'bob', 'SECRET-BBBB', datetime('now', '-2 days'), NULL),
+      ('g-br26-del', 'Bolão Apagado', 'comp-br26', 'dave', 'SECRET-DDDD', datetime('now', '-2 days'), datetime('now', '-1 days')),
+      ('g-br25', 'Bolão Antigo', 'comp-br25', 'alice', 'SECRET-OLD1', datetime('now', '-300 days'), NULL),
+      ('g-pilot', 'Bolão Piloto', 'comp-pilot', 'carol', 'SECRET-PPPP', datetime('now', '-20 days'), NULL),
+      ('g-pilot-del', 'Piloto Apagado', 'comp-pilot', 'erin', 'SECRET-EEEE', datetime('now', '-20 days'), datetime('now', '-5 days'));
+
+    INSERT INTO group_members (id, group_id, user_id) VALUES
+      ('gm-1', 'g-br26-a', 'alice'),
+      ('gm-2', 'g-br26-a', 'bob'),
+      ('gm-3', 'g-br26-b', 'bob'),
+      ('gm-4', 'g-br26-b', 'carol'),
+      ('gm-5', 'g-br26-del', 'dave'),
+      ('gm-6', 'g-br25', 'alice'),
+      ('gm-7', 'g-pilot', 'carol'),
+      ('gm-8', 'g-pilot-del', 'erin');
+
+    INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, created_at, updated_at) VALUES
+      -- g-br26-a: dois usuários e dois jogos recentes — continua 1 grupo ativo.
+      ('p-1', 'alice', 'g-br26-a', 'm-br26-1', 1, 0, ${ago(30)}, ${ago(2)}),
+      ('p-2', 'alice', 'g-br26-a', 'm-br26-2', 2, 0, ${ago(3)}, ${ago(3)}),
+      ('p-3', 'bob', 'g-br26-a', 'm-br26-1', 0, 0, ${ago(1)}, ${ago(1)}),
+      -- g-br26-b: último palpite há 15 dias — fora da janela de 14d.
+      ('p-4', 'bob', 'g-br26-b', 'm-br26-1', 3, 1, ${ago(15)}, ${ago(15)}),
+      -- Grupos excluídos com palpite recente: não contam em nada.
+      ('p-5', 'dave', 'g-br26-del', 'm-br26-1', 1, 1, ${ago(1)}, ${ago(1)}),
+      ('p-6', 'erin', 'g-pilot-del', 'm-pilot-1', 1, 1, ${ago(1)}, ${ago(1)}),
+      ('p-7', 'alice', 'g-br25', 'm-br25-1', 2, 2, ${ago(200)}, ${ago(200)}),
+      -- g-pilot: dentro da janela por pouco (13 dias).
+      ('p-8', 'carol', 'g-pilot', 'm-pilot-1', 0, 1, ${ago(13)}, ${ago(13)});
+  `)
+  return db
+}
+
+interface CompetitionRow {
+  id: string
+  name: string
+  slug: string
+  season: string | null
+  provider: string | null
+  visibility: string
+  status: string
+  groups_current: number
+  members: number
+  active_groups_14d: number
 }
 
 describe('GET /metrics/business', () => {
   it('401 sem sessão', async () => {
-    const res = await makeApp().request('/metrics/business', {}, makeEnv({ DB: makeD1({}) }))
+    const res = await makeApp().request(
+      '/metrics/business',
+      {},
+      makeEnv({ DB: createBusinessFixture() }),
+    )
     expect(res.status).toBe(401)
   })
 
@@ -231,55 +288,116 @@ describe('GET /metrics/business', () => {
     const res = await makeApp().request(
       '/metrics/business',
       { headers: await authHeaders('outra@pessoa.com') },
-      makeEnv({ DB: makeD1({}) }),
+      makeEnv({ DB: createBusinessFixture() }),
     )
     expect(res.status).toBe(403)
   })
 
-  it('happy path: KPIs do D1 e média/mediana de grupos por usuário', async () => {
-    const db = makeD1({
-      usersInGroup: 12,
-      usersWhoPredicted: 9,
-      usersTotal: 20,
-      usersCreated: 3,
-      groupsCreated: 2,
-      membership: [
-        { user_id: 'u1', groups: 1 },
-        { user_id: 'u2', groups: 2 },
-        { user_id: 'u3', groups: 3 },
-      ],
-      topCompetitions: [{ competition: 'Brasileirão', groups: 5 }],
-    })
-
+  it('KPIs do D1 ignoram grupos soft-deleted', async () => {
     const res = await makeApp().request(
       '/metrics/business?days=7',
       { headers: await authHeaders(ADMIN) },
-      makeEnv({ DB: db }),
+      makeEnv({ DB: createBusinessFixture() }),
     )
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as {
-      days: number
-      usersTotal: number
-      usersInGroup: number
-      usersWhoPredicted: number
-      usersCreatedInPeriod: number
-      groupsCreatedInPeriod: number
-      avgGroupsPerUser: number
-      medianGroupsPerUser: number
-      topCompetitions: { competition: string; groups: number }[]
-    }
-    expect(body).toEqual({
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body).toMatchObject({
       days: 7,
-      usersTotal: 20,
-      usersInGroup: 12,
-      usersWhoPredicted: 9,
-      usersCreatedInPeriod: 3,
-      groupsCreatedInPeriod: 2,
+      usersTotal: 5,
+      // dave e erin só estão (e só palpitaram) em grupos excluídos.
+      usersInGroup: 3,
+      usersWhoPredicted: 3,
+      usersCreatedInPeriod: 1,
+      // g-br26-b; g-br26-del também é recente, mas está excluído.
+      groupsCreatedInPeriod: 1,
+      // alice 2, bob 2, carol 2 grupos não excluídos.
       avgGroupsPerUser: 2,
       medianGroupsPerUser: 2,
-      topCompetitions: [{ competition: 'Brasileirão', groups: 5 }],
+      activeGroupDays: 14,
     })
+  })
+
+  it('lista todas as temporadas, inclusive sem grupo, sem multiplicar contagens', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: createBusinessFixture() }),
+    )
+
+    const body = (await res.json()) as {
+      competitions: CompetitionRow[]
+      topCompetitions: { competition: string; groups: number }[]
+    }
+    expect(body.competitions).toEqual([
+      {
+        id: 'comp-br26',
+        name: 'Brasileirão Série A',
+        slug: 'brasileirao-2026',
+        season: '2026',
+        provider: 'football-data',
+        visibility: 'public',
+        status: 'ongoing',
+        groups_current: 2,
+        members: 3,
+        active_groups_14d: 1,
+      },
+      {
+        id: 'comp-br25',
+        name: 'Brasileirão Série A',
+        slug: 'brasileirao-2025',
+        season: '2025',
+        provider: 'football-data',
+        visibility: 'public',
+        status: 'finished',
+        groups_current: 1,
+        members: 1,
+        active_groups_14d: 0,
+      },
+      {
+        id: 'comp-pilot',
+        name: 'Liga Piloto',
+        slug: 'liga-piloto-2026',
+        season: '2026',
+        provider: 'espn',
+        visibility: 'pilot',
+        status: 'ongoing',
+        groups_current: 1,
+        members: 1,
+        active_groups_14d: 1,
+      },
+      {
+        id: 'comp-empty',
+        name: 'Copa Vazia',
+        slug: 'copa-vazia-2026',
+        season: '2026',
+        provider: 'espn',
+        visibility: 'pilot',
+        status: 'upcoming',
+        groups_current: 0,
+        members: 0,
+        active_groups_14d: 0,
+      },
+    ])
+    // Formato legado para o front ainda não atualizado: só quem tem grupo.
+    expect(body.topCompetitions).toEqual([
+      { competition: 'Brasileirão Série A', groups: 2 },
+      { competition: 'Brasileirão Série A', groups: 1 },
+      { competition: 'Liga Piloto', groups: 1 },
+    ])
+  })
+
+  it('não expõe e-mails, ids de usuário, nomes de grupo nem convites', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: createBusinessFixture() }),
+    )
+
+    const raw = await res.text()
+    for (const leaked of ['@example.com', 'alice', 'Bolão', 'SECRET-', 'g-br26-a']) {
+      expect(raw).not.toContain(leaked)
+    }
   })
 })
 

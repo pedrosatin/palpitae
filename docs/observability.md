@@ -215,6 +215,19 @@ traduzidos pra linguagem de negócio (`EVENT_LABELS` em
 `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os números
 viraram estimativa.
 
+Do D1 (`GET /metrics/business`, estado real, sem sampling) vêm os KPIs de
+produto e o snapshot de **grupos por campeonato**: uma linha por temporada
+cadastrada em `competitions`, inclusive as sem grupo, com id, nome, slug,
+temporada, provider, visibilidade (`public`/`pilot`) e status. Contagens por
+linha: grupos não excluídos, membros (usuários distintos nesses grupos) e grupos
+ativos (com palpite salvo ou editado, por `predictions.updated_at`, nos últimos
+14 dias, relógio UTC do D1). Grupos soft-deleted (`deleted_at`) não entram em
+nenhuma contagem, inclusive "usuários em algum grupo" e "usuários que já
+palpitaram". A página filtra a lista por visibilidade e status no cliente. O
+payload só leva agregados: nada de e-mail, id de usuário, nome de grupo ou
+código de convite. `topCompetitions` (top 10 com grupo) continua na resposta
+para o front anterior.
+
 Do cold path o dashboard mostra: KPIs do acervo (dias arquivados, eventos
 arquivados via customMetadata, tamanho total, dia mais antigo), **eventos/mês
 do histórico completo** — a única visão que enxerga além da janela de ~3 meses
