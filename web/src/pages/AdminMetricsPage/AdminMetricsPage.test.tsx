@@ -281,6 +281,8 @@ const businessWithCompetitions = {
       groups_current: 31,
       members: 140,
       active_groups_14d: 18,
+      overdue_no_score: 2,
+      finished_unscored: 0,
     },
     {
       id: 'comp-br25',
@@ -293,6 +295,8 @@ const businessWithCompetitions = {
       groups_current: 11,
       members: 60,
       active_groups_14d: 0,
+      overdue_no_score: 0,
+      finished_unscored: 3,
     },
     {
       id: 'comp-liga-pilot',
@@ -305,6 +309,8 @@ const businessWithCompetitions = {
       groups_current: 4,
       members: 15,
       active_groups_14d: 3,
+      overdue_no_score: 1,
+      finished_unscored: 0,
     },
     {
       id: 'comp-copa-vazia',
@@ -317,15 +323,29 @@ const businessWithCompetitions = {
       groups_current: 0,
       members: 0,
       active_groups_14d: 0,
+      overdue_no_score: 0,
+      finished_unscored: 0,
     },
   ],
   topCompetitions: [{ competition: 'Brasileirão Série A', groups: 31 }],
 }
 
-function competitionCells(name: RegExp) {
-  return within(screen.getByRole('row', { name }))
+function groupsTable() {
+  return screen.getByRole('table', { name: 'Grupos por campeonato' })
+}
+
+function healthTable() {
+  return screen.getByRole('table', { name: 'Saúde dos resultados por campeonato' })
+}
+
+function rowCells(table: HTMLElement, name: RegExp) {
+  return within(within(table).getByRole('row', { name }))
     .getAllByRole('cell')
     .map((c) => c.textContent)
+}
+
+function competitionCells(name: RegExp) {
+  return rowCells(groupsTable(), name)
 }
 
 describe('AdminMetricsPage · grupos por campeonato', () => {
@@ -388,9 +408,11 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
       'aria-pressed',
       'true',
     )
-    expect(screen.queryByRole('row', { name: /Brasileirão/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('row', { name: /Liga Piloto/ })).toBeInTheDocument()
-    expect(screen.getByRole('row', { name: /Copa Vazia/ })).toBeInTheDocument()
+    expect(
+      within(groupsTable()).queryByRole('row', { name: /Brasileirão/ }),
+    ).not.toBeInTheDocument()
+    expect(within(groupsTable()).getByRole('row', { name: /Liga Piloto/ })).toBeInTheDocument()
+    expect(within(groupsTable()).getByRole('row', { name: /Copa Vazia/ })).toBeInTheDocument()
     expect(screen.getByText(/2 de 4 temporada\(s\) · 1 sem grupo/)).toBeInTheDocument()
     expect(trackEvent).toHaveBeenCalledWith('click_admin_metrics_filtro_campeonato', {
       filter: 'visibility',
@@ -398,14 +420,18 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
     })
 
     await user.click(within(status).getByRole('button', { name: 'Em andamento' }))
-    expect(screen.getByRole('row', { name: /Liga Piloto/ })).toBeInTheDocument()
-    expect(screen.queryByRole('row', { name: /Copa Vazia/ })).not.toBeInTheDocument()
+    expect(within(groupsTable()).getByRole('row', { name: /Liga Piloto/ })).toBeInTheDocument()
+    expect(within(groupsTable()).queryByRole('row', { name: /Copa Vazia/ })).not.toBeInTheDocument()
 
     await user.click(within(visibility).getByRole('button', { name: 'Todas' }))
     await user.click(within(status).getByRole('button', { name: 'Encerrados' }))
-    expect(screen.getByRole('row', { name: /Brasileirão Série A 2025/ })).toBeInTheDocument()
-    expect(screen.getByRole('row', { name: /Copa Vazia/ })).toBeInTheDocument()
-    expect(screen.queryByRole('row', { name: /Brasileirão Série A 2026/ })).not.toBeInTheDocument()
+    expect(
+      within(groupsTable()).getByRole('row', { name: /Brasileirão Série A 2025/ }),
+    ).toBeInTheDocument()
+    expect(within(groupsTable()).getByRole('row', { name: /Copa Vazia/ })).toBeInTheDocument()
+    expect(
+      within(groupsTable()).queryByRole('row', { name: /Brasileirão Série A 2026/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('avisa quando nenhum campeonato atende aos filtros', async () => {
@@ -429,5 +455,149 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
     expect(await screen.findByText('Campeonatos com mais grupos ativos')).toBeInTheDocument()
     expect(screen.getByText('Brasileirão')).toBeInTheDocument()
     expect(screen.queryByText('Grupos por campeonato')).not.toBeInTheDocument()
+  })
+})
+
+describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
+  it('mostra atrasados e encerrados sem pontuação por temporada, pendências primeiro', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Saúde dos resultados por campeonato')).toBeInTheDocument()
+    const table = healthTable()
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual([
+      'campeonato',
+      'temporada',
+      'status',
+      'atrasados sem placar',
+      'encerrados sem pontuação',
+    ])
+    expect(
+      screen.getByText(/2 temporada\(s\) com jogo atrasado · 1 com jogo encerrado sem pontuação/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/3h após o início \(adiados ficam de fora\)/)).toBeInTheDocument()
+
+    // Mesmo nome em duas temporadas: cada uma com seus números.
+    expect(rowCells(table, /Brasileirão Série A 2026/)).toEqual([
+      'Brasileirão Série A',
+      '2026',
+      'em andamento',
+      '2',
+      '0',
+    ])
+    expect(rowCells(table, /Brasileirão Série A 2025/)).toEqual([
+      'Brasileirão Série A',
+      '2025',
+      'encerrado',
+      '0',
+      '3',
+    ])
+    // Zero explícito, não ausência.
+    expect(rowCells(table, /Copa Vazia/)).toEqual(['Copa Vazia', '2026', 'encerrado', '0', '0'])
+
+    // Maior pendência (3) → 2 → 1 → sem pendência.
+    const order = within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map(
+        (r) =>
+          within(r).getAllByRole('cell')[0].textContent +
+          ' ' +
+          within(r).getAllByRole('cell')[1].textContent,
+      )
+    expect(order).toEqual([
+      'Brasileirão Série A 2025',
+      'Brasileirão Série A 2026',
+      'Liga Piloto 2026',
+      'Copa Vazia 2026',
+    ])
+  })
+
+  it('não é afetada pelos filtros da lista de grupos', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Saúde dos resultados por campeonato')
+    await user.click(screen.getByRole('button', { name: 'Piloto' }))
+
+    expect(
+      within(groupsTable()).queryByRole('row', { name: /Brasileirão/ }),
+    ).not.toBeInTheDocument()
+    expect(within(healthTable()).getAllByRole('row')).toHaveLength(5)
+  })
+
+  it('mostra zeros e nenhum alerta quando não há pendência', async () => {
+    const clean = {
+      ...businessWithCompetitions,
+      competitions: businessWithCompetitions.competitions.map((c) => ({
+        ...c,
+        overdue_no_score: 0,
+        finished_unscored: 0,
+      })),
+    }
+    vi.stubGlobal('fetch', mockFetch(200, overview, clean))
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Saúde dos resultados por campeonato')
+    expect(
+      screen.getByText(/0 temporada\(s\) com jogo atrasado · 0 com jogo encerrado sem pontuação/),
+    ).toBeInTheDocument()
+    expect(rowCells(healthTable(), /Brasileirão Série A 2026/).slice(3)).toEqual(['0', '0'])
+  })
+
+  it('avisa que não há dados quando a API ainda não manda os números', async () => {
+    const withoutHealth = {
+      ...businessWithCompetitions,
+      competitions: businessWithCompetitions.competitions.map(
+        ({ overdue_no_score: _o, finished_unscored: _u, ...rest }) => rest,
+      ),
+    }
+    vi.stubGlobal('fetch', mockFetch(200, overview, withoutHealth))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Saúde dos resultados por campeonato')).toBeInTheDocument()
+    expect(
+      screen.getByText('Indisponível: a API ainda não envia esses números.'),
+    ).toBeInTheDocument()
+    // Sem tabela: ausência não vira zero. A lista de grupos segue normal.
+    expect(
+      screen.queryByRole('table', { name: 'Saúde dos resultados por campeonato' }),
+    ).not.toBeInTheDocument()
+    expect(groupsTable()).toBeInTheDocument()
+  })
+
+  it('usa "—" na linha que veio sem os números', async () => {
+    const [first, ...rest] = businessWithCompetitions.competitions
+    const { overdue_no_score: _o, finished_unscored: _u, ...legacyRow } = first
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(200, overview, { ...businessWithCompetitions, competitions: [legacyRow, ...rest] }),
+    )
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Saúde dos resultados por campeonato')
+    expect(rowCells(healthTable(), /Brasileirão Série A 2026/).slice(3)).toEqual(['—', '—'])
+    expect(rowCells(healthTable(), /Brasileirão Série A 2025/).slice(3)).toEqual(['0', '3'])
+  })
+
+  it('não mostra a seção na API antiga (só top 10) nem sem temporadas cadastradas', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    const { unmount } = render(<AdminMetricsPage />)
+    await screen.findByText('Campeonatos com mais grupos ativos')
+    expect(screen.queryByText('Saúde dos resultados por campeonato')).not.toBeInTheDocument()
+    unmount()
+
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(200, overview, { ...businessWithCompetitions, competitions: [] }),
+    )
+    render(<AdminMetricsPage />)
+    await screen.findByText('Grupos por campeonato')
+    expect(screen.queryByText('Saúde dos resultados por campeonato')).not.toBeInTheDocument()
   })
 })

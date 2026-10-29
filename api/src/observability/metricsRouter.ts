@@ -224,6 +224,9 @@ metricsRouter.get('/overview', async (c) => {
 /** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
 const ACTIVE_GROUP_DAYS = 14
 
+/** Tolerância após o kickoff antes de um jogo sem placar contar como atrasado. */
+const OVERDUE_RESULT_HOURS = 3
+
 /**
  * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
  * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
@@ -239,6 +242,12 @@ const ACTIVE_GROUP_DAYS = 14
  *   members           → usuários distintos nesses grupos
  *   active_groups_14d → grupos com palpite salvo/editado (updated_at) nos
  *                       últimos ACTIVE_GROUP_DAYS dias, relógio UTC do D1
+ *   overdue_no_score  → jogos scheduled/live, não adiados, sem placar completo
+ *                       (home_score ou away_score nulo) e com início há mais de
+ *                       OVERDUE_RESULT_HOURS horas: buraco de feed
+ *   finished_unscored → jogos finished com scored_at nulo: backlog de pontuação
+ *                       (inclui finished sem placar, que o scoring não alcança)
+ *                       Os dois contam só jogos, nunca ids nem times.
  *
  * `topCompetitions` continua no payload para o front antigo (deploys de API e
  * web não são atômicos); o front novo usa `competitions`.
@@ -277,14 +286,17 @@ metricsRouter.get('/business', async (c) => {
       )
       .all(),
     // Snapshot por temporada. datetime(p.updated_at) normaliza o ISO com "Z"
-    // gravado pelo app para o formato do datetime('now') antes de comparar.
+    // gravado pelo app para o formato do datetime('now') antes de comparar;
+    // datetime(m.start_time) faz o mesmo (aceita "Z", milissegundos e offset).
     db
       .prepare(
         `SELECT c.id AS id, c.name AS name, c.slug AS slug, c.season AS season, ` +
           `c.provider AS provider, c.visibility AS visibility, c.status AS status, ` +
           `COALESCE(gc.groups_current, 0) AS groups_current, ` +
           `COALESCE(mc.members, 0) AS members, ` +
-          `COALESCE(ac.active_groups_14d, 0) AS active_groups_14d ` +
+          `COALESCE(ac.active_groups_14d, 0) AS active_groups_14d, ` +
+          `COALESCE(mh.overdue_no_score, 0) AS overdue_no_score, ` +
+          `COALESCE(mh.finished_unscored, 0) AS finished_unscored ` +
           `FROM competitions c ` +
           `LEFT JOIN (SELECT competition_id, COUNT(*) AS groups_current FROM groups ` +
           `WHERE deleted_at IS NULL GROUP BY competition_id) gc ON gc.competition_id = c.id ` +
@@ -295,9 +307,15 @@ metricsRouter.get('/business', async (c) => {
           `FROM predictions p JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL ` +
           `WHERE datetime(p.updated_at) > datetime('now', ?) ` +
           `GROUP BY g.competition_id) ac ON ac.competition_id = c.id ` +
+          `LEFT JOIN (SELECT competition_id, ` +
+          `SUM(CASE WHEN status IN ('scheduled', 'live') AND postponed = 0 ` +
+          `AND (home_score IS NULL OR away_score IS NULL) ` +
+          `AND datetime(start_time) <= datetime('now', ?) THEN 1 ELSE 0 END) AS overdue_no_score, ` +
+          `SUM(CASE WHEN status = 'finished' AND scored_at IS NULL THEN 1 ELSE 0 END) AS finished_unscored ` +
+          `FROM matches GROUP BY competition_id) mh ON mh.competition_id = c.id ` +
           `ORDER BY groups_current DESC, c.name ASC, c.season ASC, c.id ASC`,
       )
-      .bind(`-${ACTIVE_GROUP_DAYS} days`)
+      .bind(`-${ACTIVE_GROUP_DAYS} days`, `-${OVERDUE_RESULT_HOURS} hours`)
       .all<{
         id: string
         name: string
@@ -309,6 +327,8 @@ metricsRouter.get('/business', async (c) => {
         groups_current: number
         members: number
         active_groups_14d: number
+        overdue_no_score: number
+        finished_unscored: number
       }>(),
   ])
 
