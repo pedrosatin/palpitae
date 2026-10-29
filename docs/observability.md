@@ -327,7 +327,14 @@ campeonato**, também separada do `/overview` pelo mesmo motivo. Agrega no perí
 - grupos criados por campeonato, de `group_created` (blob3), com `SUM(_sample_interval)`;
 - palpites salvos e envios por campeonato, de `prediction_saved` (blob6), com
   `SUM(double1 * _sample_interval)` e `SUM(_sample_interval)`;
-- `predictionsDimensionSince`, o primeiro `prediction_saved` com a dimensão, sem filtro de período.
+- `predictionsDimensionSince`, o primeiro `prediction_saved` com a dimensão, sem filtro de período;
+- `groupsDaily`, as criações de grupo por dia UTC (`YYYY-MM-DD`) × campeonato, de `group_created`
+  (blob3) com `SUM(_sample_interval)`, na mesma janela. Só vêm dias com criação; o cliente preenche os
+  dias zerados e desenha barras empilhadas por campeonato (os 8 maiores do período, o resto em
+  "Outros"). A consulta tem teto de 5000 linhas, do dia mais recente para o mais antigo; ao bater no
+  teto a resposta traz `groupsDailyTruncated: true` e o painel avisa que os dias antigos podem estar
+  incompletos. O primeiro dia da janela é parcial (a janela é `NOW() - N dias`, não meia-noite): o
+  que cai fora dos N dias do eixo fica só na tabela, com aviso.
 
 A SQL API não faz join com o D1: o Worker pega os UUIDs que voltaram do Analytics Engine e resolve
 nome e temporada em `competitions` numa query só (`json_each`). Id que não existe mais no D1 sai com
@@ -335,7 +342,9 @@ nome e temporada nulos e a página mostra "Campeonato" mais os 8 primeiros carac
 é UUID vira "sem liga", sem texto livre no payload. Como o evento histórico não tem a dimensão, os
 palpites anteriores ao deploy aparecem na linha "sem liga", e a página avisa quando a dimensão é mais
 nova que o período selecionado ou ainda não foi coletada: isso é falta de dado, não zero atividade.
-Sob sampling do Analytics Engine as contagens são estimativas.
+Sob sampling do Analytics Engine as contagens são estimativas, inclusive as da série diária. A
+série não leva nome de grupo, código de convite nem user_hash: só dia, UUID de campeonato validado e
+contagem. Web nova com API anterior à série mostra a tabela e "série diária indisponível".
 
 Do cold path o dashboard mostra: KPIs do acervo (dias arquivados, eventos
 arquivados via customMetadata, tamanho total, dia mais antigo), **eventos/mês

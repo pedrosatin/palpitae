@@ -826,3 +826,70 @@ describe('AdminMetricsPage · atividade por campeonato', () => {
     expect(screen.getByText('Saúde dos crons')).toBeInTheDocument()
   })
 })
+
+describe('AdminMetricsPage · série diária de criações por campeonato', () => {
+  it('trocar para 7d, 30d e 90d refaz a consulta e redesenha o eixo do período', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-29T15:00:00Z'))
+    try {
+      const base = mockFetch(200, overview, business, null, activityBody)
+      const fetchFake = vi.fn(async (url: string) => {
+        if (!url.includes('/metrics/competition-activity')) return base(url)
+        const days = Number(new URL(url, 'http://x').searchParams.get('days'))
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ...activityBody,
+            days,
+            groupsDaily: [
+              { day: '2026-10-28', competition_id: 'comp-br26', groups_created: 2 },
+              // 25 dias atrás: só cabe no eixo de 30 e 90 dias.
+              { day: '2026-10-04', competition_id: 'comp-br26', groups_created: 5 },
+            ],
+          }),
+        }
+      })
+      vi.stubGlobal('fetch', fetchFake)
+      const user = userEvent.setup()
+      render(<AdminMetricsPage />)
+
+      const chartName = 'Grupos criados por dia, por campeonato'
+      let chart = await screen.findByRole('img', { name: chartName })
+      expect(screen.getByText(/Grupos criados por dia · últimos 30 dias/)).toBeInTheDocument()
+      expect(
+        within(chart).getByText('2026-10-04 · Brasileirão Série A 2026: 5'),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: '7d' }))
+      await waitFor(() =>
+        expect(screen.getByText(/Grupos criados por dia · últimos 7 dias/)).toBeInTheDocument(),
+      )
+      chart = screen.getByRole('img', { name: chartName })
+      expect(
+        within(chart).getByText('2026-10-28 · Brasileirão Série A 2026: 2'),
+      ).toBeInTheDocument()
+      expect(within(chart).queryByText(/2026-10-04/)).not.toBeInTheDocument()
+      expect(screen.getByText(/5 grupos criados no dia parcial/)).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: '90d' }))
+      await waitFor(() =>
+        expect(screen.getByText(/Grupos criados por dia · últimos 90 dias/)).toBeInTheDocument(),
+      )
+      expect(
+        within(screen.getByRole('img', { name: chartName })).getByText(
+          '2026-10-04 · Brasileirão Série A 2026: 5',
+        ),
+      ).toBeInTheDocument()
+
+      const requested = fetchFake.mock.calls
+        .map(([url]) => url)
+        .filter((u) => u.includes('/metrics/competition-activity'))
+      for (const d of ['days=7', 'days=30', 'days=90']) {
+        expect(requested.some((u) => u.includes(d))).toBe(true)
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

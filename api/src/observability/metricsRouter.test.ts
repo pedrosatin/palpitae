@@ -606,11 +606,17 @@ describe('GET /metrics/competition-activity', () => {
   const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'
   const COMP_GONE = '99999999-0000-4000-8000-000000000000'
 
-  function fetchBySql(rows: { groups?: unknown[]; predictions?: unknown[]; since?: unknown[] }) {
+  function fetchBySql(rows: {
+    groups?: unknown[]
+    predictions?: unknown[]
+    since?: unknown[]
+    daily?: unknown[]
+  }) {
     return vi.fn(async (_url: string, init: { body: string }) => {
       const sql = init.body
       let data: unknown[] = []
       if (sql.includes('MIN(timestamp)')) data = rows.since ?? []
+      else if (sql.includes('toStartOfInterval')) data = rows.daily ?? []
       else if (sql.includes("blob1 = 'group_created'")) data = rows.groups ?? []
       else if (sql.includes("blob1 = 'prediction_saved'")) data = rows.predictions ?? []
       return { ok: true, json: async () => ({ data }) }
@@ -631,6 +637,8 @@ describe('GET /metrics/competition-activity', () => {
   type ActivityBody = {
     days: number
     predictionsDimensionSince: string | null
+    groupsDaily: { day: string; competition_id: string; groups_created: number }[]
+    groupsDailyTruncated: boolean
     competitions: {
       competition_id: string
       name: string | null
@@ -700,10 +708,12 @@ describe('GET /metrics/competition-activity', () => {
     const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
       (call) => call[1].body,
     )
-    expect(bodies).toHaveLength(3)
+    expect(bodies).toHaveLength(4)
     expect(bodies.some((sql) => /COUNT\(\*\)/.test(sql))).toBe(false)
 
-    const groups = bodies.find((sql) => sql.includes("blob1 = 'group_created'"))
+    const groups = bodies.find(
+      (sql) => sql.includes("blob1 = 'group_created'") && !sql.includes('toStartOfInterval'),
+    )
     expect(groups).toContain('blob3 AS competition_id')
     expect(groups).toContain('SUM(_sample_interval) AS groups')
     expect(groups).toContain("INTERVAL '7' DAY")
@@ -715,6 +725,16 @@ describe('GET /metrics/competition-activity', () => {
     expect(predictions).toContain('SUM(_sample_interval) AS saves')
     expect(predictions).toContain('SUM(double1 * _sample_interval) AS predictions')
     expect(predictions).toContain("INTERVAL '7' DAY")
+
+    // Série diária: dia UTC × competition_id, ponderada, na mesma janela, com teto.
+    const daily = bodies.find((sql) => sql.includes('toStartOfInterval'))
+    expect(daily).toContain("toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day")
+    expect(daily).toContain("blob1 = 'group_created'")
+    expect(daily).toContain('blob3 AS competition_id')
+    expect(daily).toContain('SUM(_sample_interval) AS groups')
+    expect(daily).toContain('GROUP BY day, competition_id')
+    expect(daily).toContain("INTERVAL '7' DAY")
+    expect(daily).toMatch(/LIMIT \d+$/)
 
     // Cobertura da dimensão não herda a janela: senão um período curto sem
     // eventos pareceria coleta ausente.
@@ -828,6 +848,126 @@ describe('GET /metrics/competition-activity', () => {
     expect(JSON.stringify(body)).not.toContain('texto livre')
   })
 
+  it('série diária: datas e campeonatos distintos, ordenada por dia, dia normalizado para YYYY-MM-DD', async () => {
+    const res = await getActivity(
+      fetchBySql({
+        groups: [
+          { competition_id: COMP_A, groups: '5' },
+          { competition_id: COMP_B, groups: '2' },
+        ],
+        // A SQL API entrega do dia mais recente para o mais antigo (ORDER BY day DESC).
+        daily: [
+          { day: '2026-10-28 00:00:00', competition_id: COMP_B, groups: '2' },
+          { day: '2026-10-28 00:00:00', competition_id: COMP_A, groups: '1' },
+          { day: '2026-10-26 00:00:00', competition_id: COMP_A, groups: '4' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.groupsDaily).toEqual([
+      { day: '2026-10-26', competition_id: COMP_A, groups_created: 4 },
+      { day: '2026-10-28', competition_id: COMP_A, groups_created: 1 },
+      { day: '2026-10-28', competition_id: COMP_B, groups_created: 2 },
+    ])
+    expect(body.groupsDailyTruncated).toBe(false)
+    // O total por campeonato continua vindo da consulta própria (compatibilidade).
+    expect(body.competitions.map((c) => [c.competition_id, c.groups_created])).toEqual([
+      [COMP_A, 5],
+      [COMP_B, 2],
+    ])
+  })
+
+  it('série diária com histórico sem dimensão: blob vazio e lixo viram "sem liga" e somam no mesmo dia', async () => {
+    const res = await getActivity(
+      fetchBySql({
+        daily: [
+          { day: '2026-10-20 00:00:00', competition_id: '', groups: '3' },
+          { day: '2026-10-20 00:00:00', competition_id: 'texto livre', groups: '2' },
+          { day: '2026-10-21 00:00:00', competition_id: COMP_A, groups: '1' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.groupsDaily).toEqual([
+      { day: '2026-10-20', competition_id: '', groups_created: 5 },
+      { day: '2026-10-21', competition_id: COMP_A, groups_created: 1 },
+    ])
+    expect(JSON.stringify(body)).not.toContain('texto livre')
+  })
+
+  it('série diária preserva a ponderação fracionária do sampling e descarta linha sem dia ou valor válido', async () => {
+    const res = await getActivity(
+      fetchBySql({
+        daily: [
+          { day: '2026-10-22 00:00:00', competition_id: COMP_A, groups: 12.5 },
+          { day: 'ontem', competition_id: COMP_A, groups: '9' },
+          { day: null, competition_id: COMP_A, groups: '9' },
+          { day: '2026-10-23 00:00:00', competition_id: COMP_A, groups: 'NaN' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.groupsDaily).toEqual([
+      { day: '2026-10-22', competition_id: COMP_A, groups_created: 12.5 },
+    ])
+  })
+
+  it('id que só aparece na série diária ganha total e nome, sem ficar órfão na UI', async () => {
+    const res = await getActivity(
+      fetchBySql({
+        groups: [],
+        daily: [{ day: '2026-10-22 00:00:00', competition_id: COMP_B, groups: '3' }],
+      }),
+    )
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.competitions).toEqual([
+      {
+        competition_id: COMP_B,
+        name: 'Libertadores',
+        season: '2026',
+        groups_created: 3,
+        prediction_saves: 0,
+        predictions: 0,
+      },
+    ])
+  })
+
+  it('série diária no teto da SQL API: sinaliza truncamento em vez de passar por completa', async () => {
+    const daily = Array.from({ length: 5000 }, (_, i) => ({
+      day: `2026-08-${String((i % 28) + 1).padStart(2, '0')} 00:00:00`,
+      competition_id: COMP_A,
+      groups: '1',
+    }))
+    const res = await getActivity(fetchBySql({ daily }))
+    const body = (await res.json()) as ActivityBody
+    expect(body.groupsDailyTruncated).toBe(true)
+
+    const below = await getActivity(fetchBySql({ daily: daily.slice(0, 4999) }))
+    expect(((await below.json()) as ActivityBody).groupsDailyTruncated).toBe(false)
+  })
+
+  it('o período chega à série diária: 7, 30 e 90 dias; inválido cai em 30', async () => {
+    for (const [query, expected] of [
+      ['?days=7', 7],
+      ['?days=30', 30],
+      ['?days=90', 90],
+      ['?days=999', 90],
+      ['?days=abc', 30],
+    ] as const) {
+      const fetchFake = fetchBySql({})
+      const res = await getActivity(fetchFake, query)
+      expect(((await res.json()) as ActivityBody).days).toBe(expected)
+      const daily = (fetchFake.mock.calls as unknown as [string, { body: string }][])
+        .map((call) => call[1].body)
+        .find((sql) => sql.includes('toStartOfInterval'))
+      expect(daily).toContain(`INTERVAL '${expected}' DAY`)
+    }
+  })
+
   it('sem eventos devolve lista vazia sem consultar o D1', async () => {
     const db = competitionsDb()
     const prepare = vi.spyOn(db, 'prepare')
@@ -835,6 +975,8 @@ describe('GET /metrics/competition-activity', () => {
     const body = (await res.json()) as ActivityBody
 
     expect(body.competitions).toEqual([])
+    expect(body.groupsDaily).toEqual([])
+    expect(body.groupsDailyTruncated).toBe(false)
     expect(body.predictionsDimensionSince).toBeNull()
     expect(prepare.mock.calls.some(([sql]) => sql.includes('FROM competitions'))).toBe(false)
   })
@@ -845,6 +987,15 @@ describe('GET /metrics/competition-activity', () => {
       'fetch',
       fetchBySql({
         groups: [{ competition_id: COMP_A, groups: '1', blob4: 'deadbeefdeadbeef' }],
+        daily: [
+          {
+            day: '2026-10-22 00:00:00',
+            competition_id: COMP_A,
+            groups: '1',
+            blob4: 'deadbeefdeadbeef',
+            blob2: 'g-1',
+          },
+        ],
         predictions: [
           {
             competition_id: COMP_A,

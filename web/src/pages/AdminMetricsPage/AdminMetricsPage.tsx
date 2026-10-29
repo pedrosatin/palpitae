@@ -8,6 +8,7 @@ import AdminPageShell from '../AdminPageShell'
 import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
+import { lastDays } from './dates'
 import { eventLabel } from './labels'
 import CompetitionActivitySection, {
   type CompetitionActivityResponse,
@@ -125,19 +126,6 @@ interface ArchiveQueryResponse {
 
 // Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
 const MAX_CHART_TYPES = SERIES_COLORS.length
-
-/** Últimos `days` dias UTC, do mais antigo pro mais novo (YYYY-MM-DD). */
-function lastDays(days: number, endOffset = 0): string[] {
-  const today = new Date()
-  const keys: string[] = []
-  for (let back = days - 1 + endOffset; back >= endOffset; back--) {
-    const d = new Date(
-      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - back),
-    )
-    keys.push(d.toISOString().slice(0, 10))
-  }
-  return keys
-}
 
 /**
  * Monta as barras empilhadas: um segmento por tipo de evento por dia, tipos
