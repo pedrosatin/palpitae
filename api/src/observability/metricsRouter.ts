@@ -221,22 +221,40 @@ metricsRouter.get('/overview', async (c) => {
   }
 })
 
+/** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
+const ACTIVE_GROUP_DAYS = 14
+
 /**
  * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
  * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
  * base), não a janela de `days`; só contagens "criados no período" respeitam
- * `days`. Ignora grupos soft-deleted (deleted_at) nas contagens de grupo.
+ * `days`. Ignora grupos soft-deleted (deleted_at) em todas as contagens que
+ * passam por grupo, inclusive usuários em grupo e usuários que palpitaram.
+ *
+ * `competitions` é o snapshot por temporada: TODAS as linhas de competitions,
+ * inclusive as sem grupo (contagens zeradas). Cada métrica vem de uma
+ * subquery agregada por competition_id antes do LEFT JOIN — juntar grupos,
+ * membros e palpites numa query só multiplicaria as contagens.
+ *   groups_current    → grupos não excluídos
+ *   members           → usuários distintos nesses grupos
+ *   active_groups_14d → grupos com palpite salvo/editado (updated_at) nos
+ *                       últimos ACTIVE_GROUP_DAYS dias, relógio UTC do D1
+ *
+ * `topCompetitions` continua no payload para o front antigo (deploys de API e
+ * web não são atômicos); o front novo usa `competitions`.
  */
 metricsRouter.get('/business', async (c) => {
   const days = parseDays(c.req.query('days'))
   const db = c.env.DB
 
-  const [rollupCounts, groupMembership, topCompetitions] = await Promise.all([
+  const [rollupCounts, groupMembership, competitions] = await Promise.all([
     db
       .prepare(
         `SELECT
-          (SELECT COUNT(DISTINCT user_id) FROM group_members) AS usersInGroup,
-          (SELECT COUNT(DISTINCT user_id) FROM predictions) AS usersWhoPredicted,
+          (SELECT COUNT(DISTINCT gm.user_id) FROM group_members gm
+            JOIN groups g ON g.id = gm.group_id AND g.deleted_at IS NULL) AS usersInGroup,
+          (SELECT COUNT(DISTINCT p.user_id) FROM predictions p
+            JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL) AS usersWhoPredicted,
           (SELECT COUNT(*) FROM users) AS usersTotal,
           (SELECT COUNT(*) FROM users WHERE created_at > datetime('now', ?)) AS usersCreated,
           (SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL AND created_at > datetime('now', ?)) AS groupsCreated`,
@@ -258,15 +276,40 @@ metricsRouter.get('/business', async (c) => {
           `GROUP BY gm.user_id`,
       )
       .all(),
-    // Campeonatos com mais grupos ativos.
+    // Snapshot por temporada. datetime(p.updated_at) normaliza o ISO com "Z"
+    // gravado pelo app para o formato do datetime('now') antes de comparar.
     db
       .prepare(
-        `SELECT c.name AS competition, COUNT(*) AS groups ` +
-          `FROM groups g JOIN competitions c ON c.id = g.competition_id ` +
-          `WHERE g.deleted_at IS NULL ` +
-          `GROUP BY c.id ORDER BY groups DESC LIMIT 10`,
+        `SELECT c.id AS id, c.name AS name, c.slug AS slug, c.season AS season, ` +
+          `c.provider AS provider, c.visibility AS visibility, c.status AS status, ` +
+          `COALESCE(gc.groups_current, 0) AS groups_current, ` +
+          `COALESCE(mc.members, 0) AS members, ` +
+          `COALESCE(ac.active_groups_14d, 0) AS active_groups_14d ` +
+          `FROM competitions c ` +
+          `LEFT JOIN (SELECT competition_id, COUNT(*) AS groups_current FROM groups ` +
+          `WHERE deleted_at IS NULL GROUP BY competition_id) gc ON gc.competition_id = c.id ` +
+          `LEFT JOIN (SELECT g.competition_id AS competition_id, COUNT(DISTINCT gm.user_id) AS members ` +
+          `FROM group_members gm JOIN groups g ON g.id = gm.group_id AND g.deleted_at IS NULL ` +
+          `GROUP BY g.competition_id) mc ON mc.competition_id = c.id ` +
+          `LEFT JOIN (SELECT g.competition_id AS competition_id, COUNT(DISTINCT p.group_id) AS active_groups_14d ` +
+          `FROM predictions p JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL ` +
+          `WHERE datetime(p.updated_at) > datetime('now', ?) ` +
+          `GROUP BY g.competition_id) ac ON ac.competition_id = c.id ` +
+          `ORDER BY groups_current DESC, c.name ASC, c.season ASC, c.id ASC`,
       )
-      .all(),
+      .bind(`-${ACTIVE_GROUP_DAYS} days`)
+      .all<{
+        id: string
+        name: string
+        slug: string
+        season: string | null
+        provider: string | null
+        visibility: string
+        status: string
+        groups_current: number
+        members: number
+        active_groups_14d: number
+      }>(),
   ])
 
   const groupCounts = (groupMembership.results as { user_id: string; groups: number }[])
@@ -277,6 +320,13 @@ metricsRouter.get('/business', async (c) => {
   const medianGroupsPerUser =
     groupCounts.length > 0 ? groupCounts[Math.floor(groupCounts.length / 2)] : 0
 
+  const competitionRows = competitions.results
+  // Formato legado: só campeonatos com grupo, top 10 (já vem ordenado por grupos).
+  const topCompetitions = competitionRows
+    .filter((r) => r.groups_current > 0)
+    .slice(0, 10)
+    .map((r) => ({ competition: r.name, groups: r.groups_current }))
+
   return c.json({
     days,
     usersTotal: rollupCounts?.usersTotal ?? 0,
@@ -286,7 +336,9 @@ metricsRouter.get('/business', async (c) => {
     groupsCreatedInPeriod: rollupCounts?.groupsCreated ?? 0,
     avgGroupsPerUser,
     medianGroupsPerUser,
-    topCompetitions: topCompetitions.results,
+    activeGroupDays: ACTIVE_GROUP_DAYS,
+    competitions: competitionRows,
+    topCompetitions,
   })
 })
 

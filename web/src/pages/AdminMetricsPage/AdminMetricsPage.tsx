@@ -68,7 +68,25 @@ interface BusinessResponse {
   groupsCreatedInPeriod: number
   avgGroupsPerUser: number
   medianGroupsPerUser: number
+  // Ausentes numa API anterior ao snapshot por campeonato — a página cai no
+  // top 10 legado (`topCompetitions`) enquanto o deploy da API não chega.
+  activeGroupDays?: number
+  competitions?: CompetitionSnapshot[]
   topCompetitions: { competition: string; groups: number }[]
+}
+
+// Uma linha por temporada cadastrada (inclusive sem grupo) — só agregados.
+interface CompetitionSnapshot {
+  id: string
+  name: string
+  slug: string
+  season: string | null
+  provider: string | null
+  visibility: string
+  status: string
+  groups_current: number
+  members: number
+  active_groups_14d: number
 }
 
 interface ArchiveResponse {
@@ -506,13 +524,173 @@ function BusinessSection({ business }: { business: BusinessResponse }) {
         />
       </div>
 
+      {business.competitions ? (
+        <CompetitionsTable
+          competitions={business.competitions}
+          activeGroupDays={business.activeGroupDays ?? 14}
+        />
+      ) : (
+        <LegacyTopCompetitions topCompetitions={business.topCompetitions} />
+      )}
+    </section>
+  )
+}
+
+const VISIBILITY_FILTERS = [
+  { value: 'all', label: 'Todas' },
+  { value: 'public', label: 'Públicas' },
+  { value: 'pilot', label: 'Piloto' },
+]
+
+const STATUS_FILTERS = [
+  { value: 'all', label: 'Todos' },
+  { value: 'ongoing', label: 'Em andamento' },
+  { value: 'upcoming', label: 'Próximos' },
+  { value: 'finished', label: 'Encerrados' },
+]
+
+const VISIBILITY_LABELS: Record<string, string> = { public: 'pública', pilot: 'piloto' }
+
+const STATUS_LABELS: Record<string, string> = {
+  ongoing: 'em andamento',
+  upcoming: 'próximo',
+  finished: 'encerrado',
+}
+
+function FilterPills({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: { value: string; label: string }[]
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div className={styles.filterRow}>
+      <span className={styles.filterLabel}>{label}</span>
+      <div className={`${shared.periods} ${styles.filterPills}`} role="group" aria-label={label}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={o.value === value}
+            className={o.value === value ? shared.periodActive : shared.period}
+            onClick={() => onChange(o.value)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CompetitionsTable({
+  competitions,
+  activeGroupDays,
+}: {
+  competitions: CompetitionSnapshot[]
+  activeGroupDays: number
+}) {
+  const [visibility, setVisibility] = useState('all')
+  const [status, setStatus] = useState('all')
+
+  const filtered = competitions.filter(
+    (c) =>
+      (visibility === 'all' || c.visibility === visibility) &&
+      (status === 'all' || c.status === status),
+  )
+  const withoutGroups = filtered.filter((c) => c.groups_current === 0).length
+
+  function changeFilter(filter: 'visibility' | 'status', value: string) {
+    trackEvent('click_admin_metrics_filtro_campeonato', { filter, value })
+    if (filter === 'visibility') setVisibility(value)
+    else setStatus(value)
+  }
+
+  return (
+    <>
+      <h3 className={styles.subTitle}>Grupos por campeonato</h3>
+      <FilterPills
+        label="Visibilidade"
+        options={VISIBILITY_FILTERS}
+        value={visibility}
+        onChange={(v) => changeFilter('visibility', v)}
+      />
+      <FilterPills
+        label="Status"
+        options={STATUS_FILTERS}
+        value={status}
+        onChange={(v) => changeFilter('status', v)}
+      />
+      <p className={styles.hint}>
+        {filtered.length} de {competitions.length} temporada(s) · {withoutGroups} sem grupo · ativo
+        = grupo com palpite nos últimos {activeGroupDays} dias
+      </p>
+      {filtered.length === 0 ? (
+        <p className={styles.hint}>Nenhuma temporada com esses filtros.</p>
+      ) : (
+        <div className={styles.tableScroll}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>campeonato</th>
+                <th>temporada</th>
+                <th>provider</th>
+                <th>visibilidade</th>
+                <th>status</th>
+                <th className={styles.num}>grupos</th>
+                <th className={styles.num}>membros</th>
+                <th className={styles.num}>ativos {activeGroupDays}d</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((c) => (
+                <tr key={c.id}>
+                  <td title={c.id}>{c.name}</td>
+                  <td className={styles.nowrap} title={c.slug}>
+                    {c.season ?? c.slug}
+                  </td>
+                  <td className={styles.nowrap}>{c.provider ?? '—'}</td>
+                  <td className={c.visibility === 'pilot' ? styles.statusWarn : undefined}>
+                    {VISIBILITY_LABELS[c.visibility] ?? c.visibility}
+                  </td>
+                  <td className={styles.nowrap}>{STATUS_LABELS[c.status] ?? c.status}</td>
+                  <td
+                    className={`${styles.num} ${c.groups_current === 0 ? styles.statusMuted : ''}`}
+                  >
+                    {formatNumber(c.groups_current)}
+                  </td>
+                  <td className={styles.num}>{formatNumber(c.members)}</td>
+                  <td className={styles.num}>{formatNumber(c.active_groups_14d)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Top 10 de uma API anterior ao snapshot por campeonato. */
+function LegacyTopCompetitions({
+  topCompetitions,
+}: {
+  topCompetitions: BusinessResponse['topCompetitions']
+}) {
+  return (
+    <>
       <h3 className={styles.subTitle}>Campeonatos com mais grupos ativos</h3>
-      {business.topCompetitions.length === 0 ? (
+      {topCompetitions.length === 0 ? (
         <p className={styles.hint}>Nenhum grupo ativo.</p>
       ) : (
         <div>
-          {business.topCompetitions.map((c) => {
-            const max = business.topCompetitions[0].groups
+          {topCompetitions.map((c) => {
+            const max = topCompetitions[0].groups
             const pct = max > 0 ? Math.round((c.groups / max) * 100) : 0
             return (
               <div key={c.competition} className={styles.miniBarRow}>
@@ -528,7 +706,7 @@ function BusinessSection({ business }: { business: BusinessResponse }) {
           })}
         </div>
       )}
-    </section>
+    </>
   )
 }
 

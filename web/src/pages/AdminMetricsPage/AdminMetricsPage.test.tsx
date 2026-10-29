@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import { trackEvent } from '../../analytics/ga'
 import AdminMetricsPage from './AdminMetricsPage'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -88,7 +89,11 @@ const archiveQuery = {
   byDay: [{ day: yesterday, count: 42 }],
 }
 
-function mockFetch(overviewStatus = 200, overviewBody: unknown = overview) {
+function mockFetch(
+  overviewStatus = 200,
+  overviewBody: unknown = overview,
+  businessBody: unknown = business,
+) {
   return vi.fn(async (url: string) => {
     if (url.includes('/metrics/overview')) {
       return {
@@ -101,7 +106,7 @@ function mockFetch(overviewStatus = 200, overviewBody: unknown = overview) {
       return { ok: true, status: 200, json: async () => archiveQuery }
     }
     if (url.includes('/metrics/business')) {
-      return { ok: true, status: 200, json: async () => business }
+      return { ok: true, status: 200, json: async () => businessBody }
     }
     return { ok: true, status: 200, json: async () => archive }
   })
@@ -256,5 +261,173 @@ describe('AdminMetricsPage', () => {
         .filter((u: string) => u.includes('/metrics/overview'))
       expect(overviewCalls.some((u: string) => u.includes('days=7'))).toBe(true)
     })
+  })
+})
+
+// Snapshot por campeonato da API nova. Mesmo nome em duas temporadas; uma
+// temporada sem grupo nenhum; um piloto encerrado para cruzar os filtros.
+const businessWithCompetitions = {
+  ...business,
+  activeGroupDays: 14,
+  competitions: [
+    {
+      id: 'comp-br26',
+      name: 'Brasileirão Série A',
+      slug: 'brasileirao-2026',
+      season: '2026',
+      provider: 'football-data',
+      visibility: 'public',
+      status: 'ongoing',
+      groups_current: 31,
+      members: 140,
+      active_groups_14d: 18,
+    },
+    {
+      id: 'comp-br25',
+      name: 'Brasileirão Série A',
+      slug: 'brasileirao-2025',
+      season: '2025',
+      provider: 'football-data',
+      visibility: 'public',
+      status: 'finished',
+      groups_current: 11,
+      members: 60,
+      active_groups_14d: 0,
+    },
+    {
+      id: 'comp-liga-pilot',
+      name: 'Liga Piloto',
+      slug: 'liga-piloto-2026',
+      season: '2026',
+      provider: 'espn',
+      visibility: 'pilot',
+      status: 'ongoing',
+      groups_current: 4,
+      members: 15,
+      active_groups_14d: 3,
+    },
+    {
+      id: 'comp-copa-vazia',
+      name: 'Copa Vazia',
+      slug: 'copa-vazia-2026',
+      season: '2026',
+      provider: 'espn',
+      visibility: 'pilot',
+      status: 'finished',
+      groups_current: 0,
+      members: 0,
+      active_groups_14d: 0,
+    },
+  ],
+  topCompetitions: [{ competition: 'Brasileirão Série A', groups: 31 }],
+}
+
+function competitionCells(name: RegExp) {
+  return within(screen.getByRole('row', { name }))
+    .getAllByRole('cell')
+    .map((c) => c.textContent)
+}
+
+describe('AdminMetricsPage · grupos por campeonato', () => {
+  it('lista todas as temporadas, inclusive as sem grupo, com ativos 14d', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Grupos por campeonato')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'ativos 14d' })).toBeInTheDocument()
+    expect(screen.getByText(/4 de 4 temporada\(s\) · 1 sem grupo/)).toBeInTheDocument()
+    expect(screen.getByText(/palpite nos últimos 14 dias/)).toBeInTheDocument()
+    // O top 10 legado sai quando a API manda a lista completa.
+    expect(screen.queryByText('Campeonatos com mais grupos ativos')).not.toBeInTheDocument()
+
+    // Mesmo nome em temporadas diferentes vira duas linhas.
+    expect(competitionCells(/Brasileirão Série A 2026/)).toEqual([
+      'Brasileirão Série A',
+      '2026',
+      'football-data',
+      'pública',
+      'em andamento',
+      '31',
+      '140',
+      '18',
+    ])
+    expect(competitionCells(/Brasileirão Série A 2025/)).toEqual([
+      'Brasileirão Série A',
+      '2025',
+      'football-data',
+      'pública',
+      'encerrado',
+      '11',
+      '60',
+      '0',
+    ])
+    // Temporada sem grupo aparece com contagens zeradas.
+    expect(competitionCells(/Copa Vazia/)).toEqual([
+      'Copa Vazia',
+      '2026',
+      'espn',
+      'piloto',
+      'encerrado',
+      '0',
+      '0',
+      '0',
+    ])
+  })
+
+  it('filtra por visibilidade e status', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Grupos por campeonato')
+    const visibility = screen.getByRole('group', { name: 'Visibilidade' })
+    const status = screen.getByRole('group', { name: 'Status' })
+
+    await user.click(within(visibility).getByRole('button', { name: 'Piloto' }))
+    expect(within(visibility).getByRole('button', { name: 'Piloto' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.queryByRole('row', { name: /Brasileirão/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Liga Piloto/ })).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Copa Vazia/ })).toBeInTheDocument()
+    expect(screen.getByText(/2 de 4 temporada\(s\) · 1 sem grupo/)).toBeInTheDocument()
+    expect(trackEvent).toHaveBeenCalledWith('click_admin_metrics_filtro_campeonato', {
+      filter: 'visibility',
+      value: 'pilot',
+    })
+
+    await user.click(within(status).getByRole('button', { name: 'Em andamento' }))
+    expect(screen.getByRole('row', { name: /Liga Piloto/ })).toBeInTheDocument()
+    expect(screen.queryByRole('row', { name: /Copa Vazia/ })).not.toBeInTheDocument()
+
+    await user.click(within(visibility).getByRole('button', { name: 'Todas' }))
+    await user.click(within(status).getByRole('button', { name: 'Encerrados' }))
+    expect(screen.getByRole('row', { name: /Brasileirão Série A 2025/ })).toBeInTheDocument()
+    expect(screen.getByRole('row', { name: /Copa Vazia/ })).toBeInTheDocument()
+    expect(screen.queryByRole('row', { name: /Brasileirão Série A 2026/ })).not.toBeInTheDocument()
+  })
+
+  it('avisa quando nenhum campeonato atende aos filtros', async () => {
+    const onlyPublic = {
+      ...businessWithCompetitions,
+      competitions: businessWithCompetitions.competitions.filter((c) => c.visibility === 'public'),
+    }
+    vi.stubGlobal('fetch', mockFetch(200, overview, onlyPublic))
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Grupos por campeonato')
+    await user.click(screen.getByRole('button', { name: 'Piloto' }))
+    expect(screen.getByText('Nenhuma temporada com esses filtros.')).toBeInTheDocument()
+  })
+
+  it('mantém o top 10 quando a API ainda não manda a lista completa', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Campeonatos com mais grupos ativos')).toBeInTheDocument()
+    expect(screen.getByText('Brasileirão')).toBeInTheDocument()
+    expect(screen.queryByText('Grupos por campeonato')).not.toBeInTheDocument()
   })
 })
