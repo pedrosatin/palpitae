@@ -284,6 +284,120 @@ function KpiCard({
   )
 }
 
+type MetricsAlert = { key: string; label: string; level: 'warn' | 'danger' }
+
+function buildKpis(overview: OverviewResponse) {
+  const totalOf = (type: string) =>
+    Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
+  const hits = Number(overview.cache.find((c) => c.result === 'hit')?.count ?? 0)
+  const misses = Number(overview.cache.find((c) => c.result === 'miss')?.count ?? 0)
+  const cacheTotal = hits + misses
+  const groupsCreated = totalOf('group_created')
+  const groupsJoined = totalOf('group_joined')
+  return {
+    activeUsers: Number(overview.predictions.active_users ?? 0),
+    predictions: Number(overview.predictions.total ?? 0),
+    groupsCreated,
+    // Conversão de convite: entradas por grupo criado no período.
+    joinRate: groupsCreated > 0 ? (groupsJoined / groupsCreated).toFixed(1) : '—',
+    logins: totalOf('login_success'),
+    cacheHitRate: cacheTotal > 0 ? `${Math.round((hits / cacheTotal) * 100)}%` : '—',
+    emailUnsubs: totalOf('email_unsubscribed'),
+    emailResubs: totalOf('email_resubscribed'),
+  }
+}
+
+// Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
+function buildWhaleShare(overview: OverviewResponse, totalPredictions: number) {
+  if (totalPredictions === 0 || overview.whales.length === 0) return null
+  const shareOf = (n: number) =>
+    Math.min(
+      100,
+      Math.round(
+        (overview.whales.slice(0, n).reduce((sum, w) => sum + Number(w.predictions), 0) /
+          totalPredictions) *
+          100,
+      ),
+    )
+  return { top1: shareOf(1), top5: shareOf(5) }
+}
+
+// Triagem rápida: o que precisa de atenção agora, pro topo da página.
+function buildAlerts(overview: OverviewResponse): MetricsAlert[] {
+  const list: MetricsAlert[] = []
+
+  for (const r of overview.lastRuns) {
+    const info = CRON_INFO[r.event_type]
+    if (info && isStale(r.last_run, info.staleAfterMin)) {
+      list.push({
+        key: `stale-${r.event_type}`,
+        label: `${info.label} atrasado`,
+        level: 'danger',
+      })
+    }
+  }
+  if (overview.recentErrors.length > 0) {
+    list.push({
+      key: 'errors',
+      label: `${overview.recentErrors.length} erro(s) recente(s)`,
+      level: 'danger',
+    })
+  }
+  const emailFailed = Number(overview.emailHealth.failed)
+  if (emailFailed > 0) {
+    list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
+  }
+  const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
+  if (loginFailTotal > 0) {
+    list.push({ key: 'login', label: `${loginFailTotal} falha(s) de login`, level: 'warn' })
+  }
+  return list
+}
+
+type ArchiveFile = ArchiveResponse['files'][number]
+
+// Verifica a integridade do export nos últimos 14 dias.
+function buildArchiveDays(files: ArchiveFile[]) {
+  const byDay = new Map(files.map((f) => [f.key.replace('events/', '').replace('.ndjson', ''), f]))
+  const oldest = [...byDay.keys()].sort()[0].replaceAll('/', '-')
+  return lastDays(14, 1)
+    .reverse()
+    .map((day) => {
+      const key = day.replaceAll('-', '/')
+      const file = byDay.get(key) ?? null
+      return { day, file, beforeFirstExport: !file && day < oldest }
+    })
+}
+
+// Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
+// enxerga além da janela de ~3 meses do Analytics Engine.
+function buildArchiveStats(files: ArchiveFile[]) {
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
+  const totalEvents = files.reduce((sum, f) => sum + (f.events ?? 0), 0)
+  const missingMeta = files.filter((f) => f.events === null).length
+  const oldestDay = files
+    .map((f) => f.key.replace('events/', '').replace('.ndjson', '').replaceAll('/', '-'))
+    .sort()[0]
+
+  const byMonth = new Map<string, number>()
+  for (const f of files) {
+    const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-') // YYYY-MM
+    byMonth.set(month, (byMonth.get(month) ?? 0) + (f.events ?? 0))
+  }
+  const monthly = [...byMonth.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([label, total]) => ({ label, total }))
+
+  return {
+    totalDays: files.length,
+    totalBytes,
+    totalEvents,
+    missingMeta,
+    oldestDay,
+    monthly,
+  }
+}
+
 function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
   const stacked = useMemo(
     () =>
@@ -303,125 +417,30 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     [overview],
   )
 
-  const kpis = useMemo(() => {
-    if (!overview) return null
-    const totalOf = (type: string) =>
-      Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
-    const hits = Number(overview.cache.find((c) => c.result === 'hit')?.count ?? 0)
-    const misses = Number(overview.cache.find((c) => c.result === 'miss')?.count ?? 0)
-    const cacheTotal = hits + misses
-    const groupsCreated = totalOf('group_created')
-    const groupsJoined = totalOf('group_joined')
-    return {
-      activeUsers: Number(overview.predictions.active_users ?? 0),
-      predictions: Number(overview.predictions.total ?? 0),
-      groupsCreated,
-      // Conversão de convite: entradas por grupo criado no período.
-      joinRate: groupsCreated > 0 ? (groupsJoined / groupsCreated).toFixed(1) : '—',
-      logins: totalOf('login_success'),
-      cacheHitRate: cacheTotal > 0 ? `${Math.round((hits / cacheTotal) * 100)}%` : '—',
-      emailUnsubs: totalOf('email_unsubscribed'),
-      emailResubs: totalOf('email_resubscribed'),
-    }
-  }, [overview])
+  const kpis = useMemo(() => (overview ? buildKpis(overview) : null), [overview])
 
   // Sampling do AE: média > 1 significa amostragem — números viram estimativa.
   const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
   const isSampling = avgSample > 1.01
 
-  // Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
-  const whaleShare = useMemo(() => {
-    if (!overview || !kpis || kpis.predictions === 0 || overview.whales.length === 0) return null
-    const shareOf = (n: number) =>
-      Math.min(
-        100,
-        Math.round(
-          (overview.whales.slice(0, n).reduce((sum, w) => sum + Number(w.predictions), 0) /
-            kpis.predictions) *
-            100,
-        ),
-      )
-    return { top1: shareOf(1), top5: shareOf(5) }
-  }, [overview, kpis])
+  const whaleShare = useMemo(
+    () => (overview && kpis ? buildWhaleShare(overview, kpis.predictions) : null),
+    [overview, kpis],
+  )
 
-  // Triagem rápida: o que precisa de atenção agora, pro topo da página.
-  const alerts = useMemo(() => {
-    if (!overview) return []
-    const list: { key: string; label: string; level: 'warn' | 'danger' }[] = []
+  const alerts = useMemo(() => (overview ? buildAlerts(overview) : []), [overview])
 
-    for (const r of overview.lastRuns) {
-      const info = CRON_INFO[r.event_type]
-      if (info && isStale(r.last_run, info.staleAfterMin)) {
-        list.push({
-          key: `stale-${r.event_type}`,
-          label: `${info.label} atrasado`,
-          level: 'danger',
-        })
-      }
-    }
-    if (overview.recentErrors.length > 0) {
-      list.push({
-        key: 'errors',
-        label: `${overview.recentErrors.length} erro(s) recente(s)`,
-        level: 'danger',
-      })
-    }
-    const emailFailed = Number(overview.emailHealth.failed)
-    if (emailFailed > 0) {
-      list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
-    }
-    const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
-    if (loginFailTotal > 0) {
-      list.push({ key: 'login', label: `${loginFailTotal} falha(s) de login`, level: 'warn' })
-    }
-    return list
-  }, [overview])
+  const archiveFiles = archive && archive.files.length > 0 ? archive.files : null
 
-  // Verifica a integridade do export nos últimos 14 dias.
-  const archiveDays = useMemo(() => {
-    if (!archive || archive.files.length === 0) return []
-    const byDay = new Map(
-      archive.files.map((f) => [f.key.replace('events/', '').replace('.ndjson', ''), f]),
-    )
-    const oldest = [...byDay.keys()].sort()[0].replaceAll('/', '-')
-    return lastDays(14, 1)
-      .reverse()
-      .map((day) => {
-        const key = day.replaceAll('-', '/')
-        const file = byDay.get(key) ?? null
-        return { day, file, beforeFirstExport: !file && day < oldest }
-      })
-  }, [archive])
+  const archiveDays = useMemo(
+    () => (archiveFiles ? buildArchiveDays(archiveFiles) : []),
+    [archiveFiles],
+  )
 
-  // Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
-  // enxerga além da janela de ~3 meses do Analytics Engine.
-  const archiveStats = useMemo(() => {
-    if (!archive || archive.files.length === 0) return null
-    const totalBytes = archive.files.reduce((sum, f) => sum + f.size, 0)
-    const totalEvents = archive.files.reduce((sum, f) => sum + (f.events ?? 0), 0)
-    const missingMeta = archive.files.filter((f) => f.events === null).length
-    const oldestDay = archive.files
-      .map((f) => f.key.replace('events/', '').replace('.ndjson', '').replaceAll('/', '-'))
-      .sort()[0]
-
-    const byMonth = new Map<string, number>()
-    for (const f of archive.files) {
-      const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-') // YYYY-MM
-      byMonth.set(month, (byMonth.get(month) ?? 0) + (f.events ?? 0))
-    }
-    const monthly = [...byMonth.entries()]
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([label, total]) => ({ label, total }))
-
-    return {
-      totalDays: archive.files.length,
-      totalBytes,
-      totalEvents,
-      missingMeta,
-      oldestDay,
-      monthly,
-    }
-  }, [archive])
+  const archiveStats = useMemo(
+    () => (archiveFiles ? buildArchiveStats(archiveFiles) : null),
+    [archiveFiles],
+  )
 
   return {
     stacked,
@@ -437,11 +456,7 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
   }
 }
 
-function StatusStrip({
-  alerts,
-}: {
-  alerts: { key: string; label: string; level: 'warn' | 'danger' }[]
-}) {
+function StatusStrip({ alerts }: { alerts: MetricsAlert[] }) {
   if (alerts.length === 0) {
     return (
       <div className={styles.statusStrip}>
