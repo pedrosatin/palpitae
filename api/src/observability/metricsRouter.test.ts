@@ -601,6 +601,277 @@ describe('GET /metrics/ops', () => {
   })
 })
 
+describe('GET /metrics/competition-activity', () => {
+  const COMP_A = '11111111-2222-4333-8444-555555555555'
+  const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'
+  const COMP_GONE = '99999999-0000-4000-8000-000000000000'
+
+  function fetchBySql(rows: { groups?: unknown[]; predictions?: unknown[]; since?: unknown[] }) {
+    return vi.fn(async (_url: string, init: { body: string }) => {
+      const sql = init.body
+      let data: unknown[] = []
+      if (sql.includes('MIN(timestamp)')) data = rows.since ?? []
+      else if (sql.includes("blob1 = 'group_created'")) data = rows.groups ?? []
+      else if (sql.includes("blob1 = 'prediction_saved'")) data = rows.predictions ?? []
+      return { ok: true, json: async () => ({ data }) }
+    })
+  }
+
+  function competitionsDb() {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    sqlite.exec(`
+      INSERT INTO competitions (id,name,slug,season,status) VALUES
+        ('${COMP_A}','Brasileirão Série A','br-a','2026','ongoing'),
+        ('${COMP_B}','Libertadores','liberta','2026','ongoing');
+    `)
+    return db
+  }
+
+  type ActivityBody = {
+    days: number
+    predictionsDimensionSince: string | null
+    competitions: {
+      competition_id: string
+      name: string | null
+      season: string | null
+      groups_created: number
+      prediction_saves: number
+      predictions: number
+    }[]
+  }
+
+  async function getActivity(
+    fetchFake: ReturnType<typeof fetchBySql>,
+    query = '',
+    db = competitionsDb(),
+  ) {
+    vi.stubGlobal('fetch', fetchFake)
+    return makeApp().request(
+      `/metrics/competition-activity${query}`,
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: db }),
+    )
+  }
+
+  it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
+    const app = makeApp()
+    const env = makeEnv({ DB: competitionsDb() })
+    expect((await app.request('/metrics/competition-activity', {}, env)).status).toBe(401)
+    expect(
+      (
+        await app.request(
+          '/metrics/competition-activity',
+          { headers: await authHeaders('outra@pessoa.com') },
+          env,
+        )
+      ).status,
+    ).toBe(403)
+    expect(
+      (
+        await app.request(
+          '/metrics/competition-activity',
+          { headers: await authHeaders(ADMIN) },
+          makeEnv({ DB: competitionsDb(), AE_SQL_TOKEN: undefined }),
+        )
+      ).status,
+    ).toBe(503)
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+    const res = await makeApp().request(
+      '/metrics/competition-activity',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: competitionsDb() }),
+    )
+    expect(res.status).toBe(502)
+  })
+
+  it('pondera pelo sampling e filtra pela janela: nunca COUNT(*), blob3/blob6 como dimensão', async () => {
+    const fetchFake = fetchBySql({})
+    const res = await getActivity(fetchFake, '?days=7')
+    expect(res.status).toBe(200)
+
+    const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
+      (call) => call[1].body,
+    )
+    expect(bodies).toHaveLength(3)
+    expect(bodies.some((sql) => /COUNT\(\*\)/.test(sql))).toBe(false)
+
+    const groups = bodies.find((sql) => sql.includes("blob1 = 'group_created'"))
+    expect(groups).toContain('blob3 AS competition_id')
+    expect(groups).toContain('SUM(_sample_interval) AS groups')
+    expect(groups).toContain("INTERVAL '7' DAY")
+
+    const predictions = bodies.find(
+      (sql) => sql.includes("blob1 = 'prediction_saved'") && !sql.includes('MIN(timestamp)'),
+    )
+    expect(predictions).toContain('blob6 AS competition_id')
+    expect(predictions).toContain('SUM(_sample_interval) AS saves')
+    expect(predictions).toContain('SUM(double1 * _sample_interval) AS predictions')
+    expect(predictions).toContain("INTERVAL '7' DAY")
+
+    // Cobertura da dimensão não herda a janela: senão um período curto sem
+    // eventos pareceria coleta ausente.
+    const since = bodies.find((sql) => sql.includes('MIN(timestamp)'))
+    expect(since).not.toContain('INTERVAL')
+    expect(since).toContain("blob6 != ''")
+    // Sem join na SQL API: nome e temporada vêm do D1.
+    for (const sql of bodies) expect(sql).not.toMatch(/\bJOIN\b/i)
+  })
+
+  it('une criações e palpites por competição, resolve nome/temporada no D1 e ordena', async () => {
+    const res = await getActivity(
+      fetchBySql({
+        groups: [
+          { competition_id: COMP_A, groups: '4' },
+          { competition_id: COMP_B, groups: '1' },
+        ],
+        predictions: [
+          { competition_id: COMP_B, saves: '5', predictions: '120' },
+          { competition_id: COMP_A, saves: '3', predictions: '30' },
+        ],
+        since: [{ first_at: '2026-10-20 12:00:00' }],
+      }),
+    )
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.days).toBe(30)
+    expect(body.predictionsDimensionSince).toBe('2026-10-20 12:00:00')
+    expect(body.competitions).toEqual([
+      {
+        competition_id: COMP_A,
+        name: 'Brasileirão Série A',
+        season: '2026',
+        groups_created: 4,
+        prediction_saves: 3,
+        predictions: 30,
+      },
+      {
+        competition_id: COMP_B,
+        name: 'Libertadores',
+        season: '2026',
+        groups_created: 1,
+        prediction_saves: 5,
+        predictions: 120,
+      },
+    ])
+  })
+
+  it('evento histórico sem a dimensão vira "sem liga"; id sem competição no D1 fica sem nome', async () => {
+    const res = await getActivity(
+      fetchBySql({
+        groups: [{ competition_id: COMP_GONE, groups: '2' }],
+        predictions: [
+          { competition_id: '', saves: '9', predictions: '50' },
+          { competition_id: COMP_A, saves: '1', predictions: '2' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.predictionsDimensionSince).toBeNull()
+    expect(body.competitions).toEqual([
+      {
+        competition_id: COMP_GONE,
+        name: null,
+        season: null,
+        groups_created: 2,
+        prediction_saves: 0,
+        predictions: 0,
+      },
+      {
+        competition_id: '',
+        name: null,
+        season: null,
+        groups_created: 0,
+        prediction_saves: 9,
+        predictions: 50,
+      },
+      {
+        competition_id: COMP_A,
+        name: 'Brasileirão Série A',
+        season: '2026',
+        groups_created: 0,
+        prediction_saves: 1,
+        predictions: 2,
+      },
+    ])
+  })
+
+  it('blob que não é UUID é descartado e somado em "sem liga", sem vazar o texto', async () => {
+    const res = await getActivity(
+      fetchBySql({
+        predictions: [
+          { competition_id: 'texto livre', saves: '1', predictions: '4' },
+          { competition_id: '', saves: '2', predictions: '6' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.competitions).toEqual([
+      {
+        competition_id: '',
+        name: null,
+        season: null,
+        groups_created: 0,
+        prediction_saves: 3,
+        predictions: 10,
+      },
+    ])
+    expect(JSON.stringify(body)).not.toContain('texto livre')
+  })
+
+  it('sem eventos devolve lista vazia sem consultar o D1', async () => {
+    const db = competitionsDb()
+    const prepare = vi.spyOn(db, 'prepare')
+    const res = await getActivity(fetchBySql({}), '', db)
+    const body = (await res.json()) as ActivityBody
+
+    expect(body.competitions).toEqual([])
+    expect(body.predictionsDimensionSince).toBeNull()
+    expect(prepare.mock.calls.some(([sql]) => sql.includes('FROM competitions'))).toBe(false)
+  })
+
+  it('só agregados: sem user_hash, group_id nem e-mail no payload, e sem logEvent', async () => {
+    const ae = { writeDataPoint: vi.fn() }
+    vi.stubGlobal(
+      'fetch',
+      fetchBySql({
+        groups: [{ competition_id: COMP_A, groups: '1', blob4: 'deadbeefdeadbeef' }],
+        predictions: [
+          {
+            competition_id: COMP_A,
+            saves: '1',
+            predictions: '1',
+            blob2: 'g-1',
+          },
+        ],
+      }),
+    )
+    const res = await makeApp().request(
+      '/metrics/competition-activity',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({
+        DB: competitionsDb(),
+        AE: ae as unknown as AnalyticsEngineDataset,
+      }),
+    )
+    const text = JSON.stringify(await res.json())
+
+    expect(text).not.toContain('deadbeef')
+    expect(text).not.toContain('g-1')
+    expect(text).not.toContain('@')
+    expect(ae.writeDataPoint).not.toHaveBeenCalled()
+  })
+})
+
 describe('GET /metrics/business', () => {
   it('401 sem sessão', async () => {
     const res = await makeApp().request(

@@ -94,8 +94,15 @@ function mockFetch(
   overviewBody: unknown = overview,
   businessBody: unknown = business,
   opsBody: unknown = null,
+  activityBody: unknown = null,
 ) {
   return vi.fn(async (url: string) => {
+    // API sem /metrics/competition-activity (deploy da web antes da API): 404.
+    if (url.includes('/metrics/competition-activity')) {
+      return activityBody === null
+        ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
+        : { ok: true, status: 200, json: async () => activityBody }
+    }
     // API sem /metrics/ops (deploy da web antes da API): 404.
     if (url.includes('/metrics/ops')) {
       return opsBody === null
@@ -748,5 +755,74 @@ describe('AdminMetricsPage · provedores de partidas', () => {
 
     expect(await screen.findByText('Erro de sync de provedor')).toBeInTheDocument()
     expect(screen.queryByText('Erro da API Football')).not.toBeInTheDocument()
+  })
+})
+
+// Atividade por campeonato (GET /metrics/competition-activity).
+const activityBody = {
+  days: 30,
+  predictionsDimensionSince: '2020-01-01 00:00:00',
+  competitions: [
+    {
+      competition_id: 'comp-br26',
+      name: 'Brasileirão Série A',
+      season: '2026',
+      groups_created: 3,
+      prediction_saves: 40,
+      predictions: 410,
+    },
+    {
+      competition_id: '',
+      name: null,
+      season: null,
+      groups_created: 0,
+      prediction_saves: 12,
+      predictions: 90,
+    },
+  ],
+}
+
+describe('AdminMetricsPage · atividade por campeonato', () => {
+  it('busca /metrics/competition-activity com o período e mostra a tabela, com "sem liga"', async () => {
+    const fetchFake = mockFetch(200, overview, business, null, activityBody)
+    vi.stubGlobal('fetch', fetchFake)
+    render(<AdminMetricsPage />)
+
+    const table = await screen.findByRole('table', {
+      name: 'Atividade por campeonato',
+    })
+    const call = fetchFake.mock.calls
+      .map(([url]) => url)
+      .find((u) => u.includes('/metrics/competition-activity'))
+    expect(call).toContain('days=30')
+    expect(within(table).getByText('Brasileirão Série A 2026')).toBeInTheDocument()
+    expect(within(table).getByText('410')).toBeInTheDocument()
+    expect(within(table).getByText('sem liga')).toBeInTheDocument()
+  })
+
+  it('API sem a rota: a página carrega e a seção diz "indisponível"', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Atividade por campeonato')).toBeInTheDocument()
+    expect(screen.getByText(/Indisponível: a API não enviou a atividade/)).toBeInTheDocument()
+    expect(screen.getByText('Saúde dos crons')).toBeInTheDocument()
+  })
+
+  it('falha de rede na rota nova não derruba a página', async () => {
+    const base = mockFetch(200, overview, business, null, activityBody)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/metrics/competition-activity')) throw new Error('network')
+        return base(url)
+      }),
+    )
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText(/Indisponível: a API não enviou a atividade/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Saúde dos crons')).toBeInTheDocument()
   })
 })

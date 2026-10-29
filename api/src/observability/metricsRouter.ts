@@ -401,6 +401,117 @@ metricsRouter.get('/ops', async (c) => {
   }
 })
 
+/**
+ * Criações de grupo e atividade de palpites por campeonato no período, a
+ * partir do Analytics Engine. Endpoint próprio (como `/ops`) para que uma
+ * falha aqui não derrube a página e para o front novo conviver com uma API
+ * ainda sem a rota.
+ *
+ * Posições: group_created → blob3 competition_id; prediction_saved → blob6
+ * competition_id (só em eventos gravados depois do deploy do enriquecimento),
+ * double1 = nº de palpites do evento. Evento antigo sem a dimensão chega com
+ * blob6 vazio e vira a linha "sem liga" (`competition_id: ''`); não há backfill.
+ *
+ * Contagens ponderadas pelo sampling: eventos = SUM(_sample_interval),
+ * palpites = SUM(double1 * _sample_interval). A SQL API não faz join com o D1:
+ * o Worker resolve nome e temporada dos ids que vieram do AE. Id sem linha em
+ * `competitions` sai com `name` e `season` nulos. `predictionsDimensionSince`
+ * (sem filtro de janela) é o primeiro evento com a dimensão, para o painel
+ * distinguir "sem palpites" de "dimensão ainda não coletada".
+ */
+metricsRouter.get('/competition-activity', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  const days = parseDays(c.req.query('days'))
+  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+
+  try {
+    const [groupsCreated, predictionsSaved, dimensionSince] = await Promise.all([
+      runAeSql(
+        c.env,
+        `SELECT blob3 AS competition_id, SUM(_sample_interval) AS groups ` +
+          `FROM ${DATASET} WHERE blob1 = 'group_created' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY groups DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob6 AS competition_id, SUM(_sample_interval) AS saves, ` +
+          `SUM(double1 * _sample_interval) AS predictions ` +
+          `FROM ${DATASET} WHERE blob1 = 'prediction_saved' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY predictions DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT MIN(timestamp) AS first_at FROM ${DATASET} ` +
+          `WHERE blob1 = 'prediction_saved' AND blob6 != ''`,
+      ),
+    ])
+
+    const byCompetition = new Map<
+      string,
+      {
+        competition_id: string
+        groups_created: number
+        prediction_saves: number
+        predictions: number
+      }
+    >()
+    const entry = (id: string) => {
+      const row = byCompetition.get(id) ?? {
+        competition_id: id,
+        groups_created: 0,
+        prediction_saves: 0,
+        predictions: 0,
+      }
+      byCompetition.set(id, row)
+      return row
+    }
+    for (const r of groupsCreated) {
+      entry(competitionIdOrEmpty(r.competition_id)).groups_created += Number(r.groups ?? 0)
+    }
+    for (const r of predictionsSaved) {
+      const row = entry(competitionIdOrEmpty(r.competition_id))
+      row.prediction_saves += Number(r.saves ?? 0)
+      row.predictions += Number(r.predictions ?? 0)
+    }
+
+    const ids = [...byCompetition.keys()].filter((id) => id !== '')
+    const known = new Map<string, { name: string; season: string | null }>()
+    if (ids.length > 0) {
+      const found = await c.env.DB.prepare(
+        `SELECT id, name, season FROM competitions WHERE id IN (SELECT value FROM json_each(?))`,
+      )
+        .bind(JSON.stringify(ids))
+        .all<{ id: string; name: string; season: string | null }>()
+      for (const r of found.results) known.set(r.id, { name: r.name, season: r.season })
+    }
+
+    const competitions = [...byCompetition.values()]
+      .map((row) => ({
+        ...row,
+        name: known.get(row.competition_id)?.name ?? null,
+        season: known.get(row.competition_id)?.season ?? null,
+      }))
+      .sort(
+        (a, b) =>
+          b.groups_created - a.groups_created ||
+          b.predictions - a.predictions ||
+          a.competition_id.localeCompare(b.competition_id),
+      )
+
+    return c.json({
+      days,
+      predictionsDimensionSince: (dimensionSince[0]?.first_at as string | null | undefined) ?? null,
+      competitions,
+    })
+  } catch (err) {
+    console.error('[metrics] falha ao montar atividade por campeonato:', err)
+    return c.json({ error: 'Falha ao consultar a atividade por campeonato' }, 502)
+  }
+})
+
 /** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
 const ACTIVE_GROUP_DAYS = 14
 
