@@ -564,6 +564,115 @@ metricsRouter.get('/competition-activity', async (c) => {
   }
 })
 
+/** Eventos do mapa de calor: palpites salvos e logins bem-sucedidos. */
+const HEATMAP_EVENTS = `('prediction_saved', 'login_success')`
+
+/**
+ * Teto de linhas da série horária. Com no máximo 90 dias (+ o dia parcial) são
+ * ~2185 horas × 2 tipos = ~4370 linhas, então o teto nunca corta a resposta;
+ * existe só porque a SQL API pede um LIMIT explícito nas consultas deste router.
+ */
+const HEATMAP_LIMIT = 5000
+
+/** Hora UTC da SQL API (`YYYY-MM-DD HH:MM:SS`) → ISO `YYYY-MM-DDTHH:00:00Z`; inválida vira ''. */
+function normalizeHour(raw: unknown): string {
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):/.exec(String(raw ?? ''))
+  if (!m) return ''
+  const iso = `${m[1]}T${m[2]}:00:00Z`
+  return Number.isNaN(Date.parse(iso)) ? '' : iso
+}
+
+/**
+ * Atividade por hora de `prediction_saved` e `login_success` no período, para o
+ * mapa de calor dia da semana × hora. Endpoint próprio (como `/ops`): falha
+ * aqui não derruba a página e o front novo convive com uma API sem a rota.
+ *
+ * A agregação é por hora UTC (`toStartOfInterval(timestamp, INTERVAL '1' HOUR)`)
+ * e o Worker não converte fuso: a grade 7×24 e a conversão para BRT são da
+ * apresentação. Cada hora UTC vira uma linha com:
+ *   prediction_saves → envios de palpite, SUM(_sample_interval)
+ *   predictions      → palpites salvos, SUM(double1 * _sample_interval)
+ *                      (bulk/import salvam vários palpites num evento só)
+ *   logins           → SUM(_sample_interval) de login_success
+ * Só vêm horas com algum evento: o preenchimento dos zeros é do cliente.
+ *
+ * `firstSeenAt` (sem filtro de janela) é o primeiro evento de cada tipo no
+ * Analytics Engine, para o painel distinguir "sem atividade" de "coleta ainda
+ * não cobre o período". `avgSampleInterval` é a média do `_sample_interval`
+ * desses dois tipos na janela: acima de 1, o AE amostrou e as contagens são
+ * estimativa. A janela é `NOW() - N dias`, não meia-noite: a primeira e a
+ * última hora do período são parciais. O payload não leva user_hash nem
+ * identificador algum: só hora e contagens.
+ */
+metricsRouter.get('/heatmap', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  const days = parseDays(c.req.query('days'))
+  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+
+  try {
+    const [hourlyRows, firstSeenRows, samplingRows] = await Promise.all([
+      runAeSql(
+        c.env,
+        `SELECT toStartOfInterval(timestamp, INTERVAL '1' HOUR) AS hour, ` +
+          `blob1 AS event_type, SUM(_sample_interval) AS events, ` +
+          `SUM(double1 * _sample_interval) AS predictions ` +
+          `FROM ${DATASET} WHERE blob1 IN ${HEATMAP_EVENTS} AND ${since} ` +
+          `GROUP BY hour, event_type ORDER BY hour DESC LIMIT ${HEATMAP_LIMIT}`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob1 AS event_type, MIN(timestamp) AS first_at ` +
+          `FROM ${DATASET} WHERE blob1 IN ${HEATMAP_EVENTS} GROUP BY event_type`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT AVG(_sample_interval) AS avg_sample_interval ` +
+          `FROM ${DATASET} WHERE blob1 IN ${HEATMAP_EVENTS} AND ${since}`,
+      ),
+    ])
+
+    const byHour = new Map<
+      string,
+      { hour: string; prediction_saves: number; predictions: number; logins: number }
+    >()
+    for (const r of hourlyRows) {
+      const hour = normalizeHour(r.hour)
+      const events = Number(r.events ?? 0)
+      if (!hour || !Number.isFinite(events)) continue
+      const row = byHour.get(hour) ?? { hour, prediction_saves: 0, predictions: 0, logins: 0 }
+      if (r.event_type === 'prediction_saved') {
+        const predictions = Number(r.predictions ?? 0)
+        row.prediction_saves += events
+        row.predictions += Number.isFinite(predictions) ? predictions : 0
+      } else if (r.event_type === 'login_success') {
+        row.logins += events
+      }
+      byHour.set(hour, row)
+    }
+
+    const firstSeen = (type: string) =>
+      (firstSeenRows.find((r) => r.event_type === type)?.first_at as string | null | undefined) ??
+      null
+    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
+
+    return c.json({
+      days,
+      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+      firstSeenAt: {
+        prediction_saved: firstSeen('prediction_saved'),
+        login_success: firstSeen('login_success'),
+      },
+      hourly: [...byHour.values()].sort((a, b) => a.hour.localeCompare(b.hour)),
+    })
+  } catch (err) {
+    console.error('[metrics] falha ao montar o mapa de calor:', err)
+    return c.json({ error: 'Falha ao consultar o mapa de calor' }, 502)
+  }
+})
+
 /** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
 const ACTIVE_GROUP_DAYS = 14
 

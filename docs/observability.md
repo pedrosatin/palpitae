@@ -346,6 +346,34 @@ Sob sampling do Analytics Engine as contagens são estimativas, inclusive as da 
 série não leva nome de grupo, código de convite nem user_hash: só dia, UUID de campeonato validado e
 contagem. Web nova com API anterior à série mostra a tabela e "série diária indisponível".
 
+Do Analytics Engine, `GET /metrics/heatmap?days=` alimenta a seção **Mapa de calor · palpites e
+logins**, também separada do `/overview`. Agrega `prediction_saved` e `login_success` por hora UTC
+(`toStartOfInterval(timestamp, INTERVAL '1' HOUR)`) no período (7/30/90 dias). Cada linha de `hourly`
+traz `hour` (ISO UTC), `prediction_saves` (envios, `SUM(_sample_interval)`), `predictions` (palpites
+salvos, `SUM(double1 * _sample_interval)`) e `logins` (`SUM(_sample_interval)`). Só vêm horas com
+evento e o cliente preenche os zeros. A resposta também leva `firstSeenAt` por tipo, o primeiro
+evento no Analytics Engine sem filtro de período, e `avgSampleInterval`, a média do
+`_sample_interval` desses dois tipos na janela. O payload não tem `user_hash` nem identificador,
+só hora e contagem.
+
+O Worker não converte fuso. A página monta a grade 7×24 (domingo a sábado × 0h a 23h) e converte
+UTC para BRT na exibição, com UTC−3 fixo, porque o Brasil não tem horário de verão desde 2019. A
+conversão muda o dia e a semana: 02h UTC de segunda é 23h de domingo em BRT. O cabeçalho da coluna
+é a hora inicial, então a coluna "11" cobre 11h a 12h. Um seletor alterna entre "Palpites salvos",
+"Envios de palpites" (bulk e import contam como um envio) e "Logins", cada série com cor própria
+(verde para palpites, azul para logins).
+
+Limites de leitura. A célula soma todas as ocorrências daquele dia da semana e hora no período,
+sem normalizar: com 30 ou 90 dias, alguns dias da semana ocorrem uma vez a mais e pesam mais. A
+janela é `NOW() - N dias`, então a primeira e a última hora são parciais. A consulta tem teto de
+5000 linhas, acima do máximo possível (cerca de 4370). Com `avgSampleInterval` acima de 1,01 a
+página avisa que as contagens são estimativas e marca o total e as descrições das células com "≈".
+
+Quando falta coleta, a página não desenha zero. Tipo sem nenhum evento (`firstSeenAt` nulo) mostra
+o aviso e esconde a grade. Primeiro evento mais novo que o período mostra a data em BRT, com folga
+de um dia por causa da retenção de 90 dias. Web nova com API anterior à rota mostra "indisponível",
+e API nova com web antiga só tem uma rota sem uso.
+
 Do cold path o dashboard mostra: KPIs do acervo (dias arquivados, eventos
 arquivados via customMetadata, tamanho total, dia mais antigo), **eventos/mês
 do histórico completo** — a única visão que enxerga além da janela de ~3 meses
