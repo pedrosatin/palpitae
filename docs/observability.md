@@ -90,7 +90,9 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
 
 - Saúde: `poller_run` (ok/error + matches_checked, fixtures_updated, api_calls, duration_ms),
   `fixture_discovery_run` (ok/error + competitions, fixtures_updated, api_calls, duration_ms),
-  `football_api_error`,
+  `football_api_error` (erro de sync de qualquer provedor, football-data ou ESPN),
+  `match_results_fallback` (fallback de resultados pela ESPN, ADR-016),
+  `provider_http_attempt` (uma tentativa HTTP a um provedor de partidas),
   `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms)
   e `radar_sync_error` — emitidos só quando a coleta do radar roda com um Analytics
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
@@ -113,6 +115,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `radar_sync_run` | `status` (`ok`/`partial`/`error`) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
+| `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
+| `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
 | `group_joined` | `group_id` | `user_hash` | — | — |
@@ -163,6 +167,47 @@ Observação sobre `football_api_error`: tem **três formas** de chamada. No pol
 (`matches/fixtureDiscovery.ts`) é `[context='fixture_discovery', comp_id, error_message]`.
 Distinga pelo blob2: `sync_endpoint` ⇒ forma de endpoint;
 `fixture_discovery` ⇒ forma de descoberta (comp_id em blob3); senão ⇒ poller.
+
+Observação sobre `match_results_fallback`: a execução normal tem `blobs: [competition_id]`
+e doubles `[atualizados, pulados]`; a falha de uma competição vem de `logError`, com
+`[competition_id, error_message]` e sem doubles. A falha do fallback inteiro, no poller, antes
+chegava com a mensagem em blob2; agora blob2 fica vazio e a mensagem vai para blob3, o mesmo
+formato das outras falhas. Linhas antigas com a mensagem em blob2 aparecem no painel como
+execução sem liga e não entram no recorte por competição.
+
+### Tentativas HTTP aos provedores (`provider_http_attempt`)
+
+Cada `fetch` ao football-data.org ou à ESPN gera no máximo um evento, inclusive o segundo
+`fetch` do retry. A ESPN retenta respostas 429 e 5xx; o football-data.org retenta 429.
+A medição fica nos clientes (`providers/espn.ts` e
+`fetchMatchesFromApi` em `matches/sync.ts`) e não adiciona nenhuma chamada externa. O processo
+que chamou e a competição vêm do chamador, por um observer criado em
+`observability/providerHttp.ts`.
+
+- **Diferença para `api_calls`:** `api_calls` conta o plano (requests primárias planejadas).
+  O evento conta o que foi de fato tentado, com retries e chamadas do fallback.
+- **Contexto:** `poller`, `discovery` (descoberta de jogos), `fallback` (resultados pela ESPN) e
+  `sync` (`POST /matches/sync`, manual). O radar roda no GitHub Actions sem Analytics Engine e
+  não gera esse evento.
+- **Competição:** UUID de `competitions.id` quando o chamador conhece a competição. O sync manual
+  recebe o código do provedor, não o id, e grava vazio ("sem liga" no painel).
+- **Falhas:** toda falha vira evento: 4xx, 5xx e a tentativa sem resposta (`status` `0`).
+  O erro continua sendo lançado como antes; o observer nunca muda o resultado do `fetch`.
+- **Sucessos:** só ~10% (`HTTP_SUCCESS_SAMPLE_RATE`) dos 2xx/3xx viram evento. Cada evento
+  carrega o próprio peso em `double2`: 1 para falha, `1 / taxa` (10) para sucesso amostrado.
+  Assim o painel estima o total sem fixar a taxa, e mudar a taxa no futuro não corrompe o
+  histórico.
+- **Agregação:** tentativas = `SUM(_sample_interval * double2)`; eventos gravados =
+  `SUM(_sample_interval)`; duração média ponderada = `SUM(double1 * _sample_interval * double2)
+  / SUM(_sample_interval * double2)`. Falha é contagem (sujeita só ao sampling do Analytics
+  Engine); sucesso é estimativa.
+- **Privacidade:** só provedor, status, contexto, duração e UUID de competição. Nunca URL, query,
+  slug do provedor, chave de API, corpo nem mensagem de erro.
+
+Ausência de linha não é zero: o evento só existe a partir do deploy, e uma competição sem
+tentativa no período não aparece. O painel mostra "indisponível" quando a API não envia o
+recorte, "sem registro ainda" quando nunca houve evento, e a data de início da coleta quando ela
+é mais nova que o período.
 
 Observação sobre `prediction_saved`: o `kind` (single/bulk/import) cai em **blob5** porque o
 `round` (blob3) é mantido na posição mesmo vazio, pra alinhar as três variantes na mesma coluna.
@@ -215,6 +260,48 @@ traduzidos pra linguagem de negócio (`EVENT_LABELS` em
 `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os números
 viraram estimativa.
 
+Do D1 (`GET /metrics/business`, estado real, sem sampling) vêm os KPIs de
+produto e o snapshot de **grupos por campeonato**: uma linha por temporada
+cadastrada em `competitions`, inclusive as sem grupo, com id, nome, slug,
+temporada, provider, visibilidade (`public`/`pilot`) e status. Contagens por
+linha: grupos não excluídos, membros (usuários distintos nesses grupos) e grupos
+ativos (com palpite salvo ou editado, por `predictions.updated_at`, nos últimos
+14 dias, relógio UTC do D1). Grupos soft-deleted (`deleted_at`) não entram em
+nenhuma contagem, inclusive "usuários em algum grupo" e "usuários que já
+palpitaram". A página filtra a lista por visibilidade e status no cliente. O
+payload só leva agregados: nada de e-mail, id de usuário, nome de grupo ou
+código de convite. `topCompetitions` (top 10 com grupo) continua na resposta
+para o front anterior.
+
+A mesma linha traz a **saúde de resultados** da temporada, também só contagens
+de jogos: `overdue_no_score` (jogos `scheduled`/`live`, não adiados, com
+`home_score` ou `away_score` nulo e `start_time` há 3 horas ou mais) sinaliza
+buraco de feed; `finished_unscored` (jogos `finished` com `scored_at` nulo)
+sinaliza backlog de pontuação, e inclui `finished` sem placar, que o scoring não
+alcança. `start_time` é comparado via `datetime()`, então `Z`, milissegundos e
+offset não mudam o resultado. Temporada sem jogo ou sem pendência vem com
+zero. O front antigo ignora os campos novos; o novo mostra "indisponível" (ou
+"—") se a API ainda não os enviar, em vez de tratar a falta como zero.
+
+Do Analytics Engine, `GET /metrics/ops?days=` alimenta a seção **Provedores de partidas ·
+falhas e carga**, separada do `/metrics/overview` para que uma falha nela não derrube a página
+e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
+
+- tentativas HTTP por provedor, processo e status (`httpByProvider`) e por competição e provedor
+  (`httpByCompetition`), com tentativas estimadas, eventos gravados e duração;
+- `httpFirstSeenAt`, o primeiro evento HTTP no Analytics Engine, sem filtro de período;
+- erros de sync por origem (`poller`, `fixture_discovery`, `sync_endpoint`) e competição
+  (`apiErrors`), lidos de `football_api_error` pela forma posicional descrita acima;
+- execuções, jogos atualizados e falhas do fallback por competição (`fallback`).
+
+A página resolve o id da competição para nome e temporada com o snapshot de
+`/metrics/business`. Competição desconhecida aparece como "Campeonato" mais os 8 primeiros
+caracteres do id; evento sem competição aparece como "sem liga". Mensagens livres do provedor
+nunca saem no payload: valores de competição que não são UUID viram "sem liga". Falhas HTTP
+acendem um alerta de aviso no topo da página. `football_api_error` aparece nos rótulos como
+"Erro de sync de provedor", porque o poller, a descoberta e o sync manual cobrem os dois
+provedores.
+
 Do cold path o dashboard mostra: KPIs do acervo (dias arquivados, eventos
 arquivados via customMetadata, tamanho total, dia mais antigo), **eventos/mês
 do histórico completo** — a única visão que enxerga além da janela de ~3 meses
@@ -248,6 +335,7 @@ reversível por dicionário.
 - `api/src/observability/events.ts` — `logEvent`, `EventType`, `hashUserId`.
 - `api/src/observability/export.ts` — `exportEventsToR2` / `dayBounds` (cold path).
 - `api/src/observability/metricsRouter.ts` — endpoints `/metrics/*` do dashboard admin.
+- `api/src/observability/providerHttp.ts` — observer das tentativas HTTP (amostra, peso, contexto).
 - `web/src/pages/AdminMetricsPage/` — página `/admin/metricas` (sem link de navegação).
 - `api/src/observability/index.ts` — barrel (re-exporta `events` + `logRequestPerf`).
 - `api/wrangler.toml` — `[observability]`, binding `AE` (dataset `palpitae_events`), binding

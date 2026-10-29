@@ -221,22 +221,229 @@ metricsRouter.get('/overview', async (c) => {
   }
 })
 
+type AeRow = Record<string, unknown>
+
+/** UUID de competição; qualquer outra coisa em blob de competição é lixo legado. */
+const COMPETITION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Id válido ou vazio ("sem liga"): nunca devolve texto livre de blob antigo. */
+function competitionIdOrEmpty(raw: unknown): string {
+  const id = String(raw ?? '')
+  return COMPETITION_ID_RE.test(id) ? id : ''
+}
+
+/**
+ * Origem de um `football_api_error` pela forma posicional (docs/observability.md):
+ * endpoint → [sync_endpoint, msg]; descoberta → [fixture_discovery, comp, msg];
+ * poller → [comp, round, msg].
+ */
+function footballApiErrorOrigin(
+  blob2: string,
+  blob3: string,
+): {
+  context: 'sync_endpoint' | 'fixture_discovery' | 'poller'
+  competition_id: string
+} {
+  if (blob2 === 'sync_endpoint') return { context: 'sync_endpoint', competition_id: '' }
+  if (blob2 === 'fixture_discovery') {
+    return { context: 'fixture_discovery', competition_id: competitionIdOrEmpty(blob3) }
+  }
+  return { context: 'poller', competition_id: competitionIdOrEmpty(blob2) }
+}
+
+/**
+ * Operação dos provedores (ESPN e football-data) a partir do Analytics Engine:
+ * tentativas HTTP, erros de sync e fallback de resultados, por processo,
+ * provedor e campeonato. Só agregados e UUIDs de competição.
+ *
+ * Contagens HTTP: `attempts` = SUM(_sample_interval * double2). double2 é o
+ * peso do evento (1 para falha, 10 para sucesso amostrado a 10%), então erro
+ * é contagem e sucesso é estimativa. `events` = SUM(_sample_interval) é o que
+ * foi de fato registrado. `httpFirstSeenAt` (sem filtro de janela) separa
+ * "nenhuma tentativa" de "instrumentação ainda não publicada".
+ *
+ * Posições: provider_http_attempt → blob2 provider, blob3 competition_id,
+ * blob4 status, blob5 contexto, double1 duration_ms, double2 peso;
+ * match_results_fallback → blob2 competition_id; sucesso: double1 atualizados,
+ * double2 pulados; falha: blob3 = mensagem.
+ */
+metricsRouter.get('/ops', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  const days = parseDays(c.req.query('days'))
+  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const httpWeight = '(_sample_interval * double2)'
+  const httpMeasures =
+    `SUM(${httpWeight}) AS attempts, SUM(_sample_interval) AS events, ` +
+    `SUM(double1 * ${httpWeight}) / SUM(${httpWeight}) AS avg_ms, MAX(double1) AS max_ms`
+
+  try {
+    const [
+      httpByProvider,
+      httpByCompetition,
+      httpFirstSeen,
+      apiErrors,
+      fallbackRuns,
+      fallbackFailures,
+    ] = await Promise.all([
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS provider, blob5 AS context, blob4 AS status, ${httpMeasures} ` +
+          `FROM ${DATASET} WHERE blob1 = 'provider_http_attempt' AND ${since} ` +
+          `GROUP BY provider, context, status ORDER BY attempts DESC LIMIT 200`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob3 AS competition_id, blob2 AS provider, blob4 AS status, ${httpMeasures} ` +
+          `FROM ${DATASET} WHERE blob1 = 'provider_http_attempt' AND ${since} ` +
+          `GROUP BY competition_id, provider, status ORDER BY attempts DESC LIMIT 1000`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT MIN(timestamp) AS first_at FROM ${DATASET} WHERE blob1 = 'provider_http_attempt'`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2, blob3, SUM(_sample_interval) AS count ` +
+          `FROM ${DATASET} WHERE blob1 = 'football_api_error' AND ${since} ` +
+          `GROUP BY blob2, blob3 ORDER BY count DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS competition_id, SUM(_sample_interval) AS runs, ` +
+          `SUM(double1 * _sample_interval) AS updated, SUM(double2 * _sample_interval) AS skipped ` +
+          `FROM ${DATASET} WHERE blob1 = 'match_results_fallback' AND blob3 = '' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY runs DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS competition_id, SUM(_sample_interval) AS failures ` +
+          `FROM ${DATASET} WHERE blob1 = 'match_results_fallback' AND blob3 != '' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY failures DESC LIMIT 500`,
+      ),
+    ])
+
+    const sumBy = (rows: AeRow[], key: (r: AeRow) => string, value: string) => {
+      const out = new Map<string, number>()
+      for (const r of rows) out.set(key(r), (out.get(key(r)) ?? 0) + Number(r[value] ?? 0))
+      return out
+    }
+    const errorsByOrigin = new Map<
+      string,
+      { context: string; competition_id: string; count: number }
+    >()
+    for (const r of apiErrors) {
+      const origin = footballApiErrorOrigin(String(r.blob2 ?? ''), String(r.blob3 ?? ''))
+      const key = `${origin.context}|${origin.competition_id}`
+      const entry = errorsByOrigin.get(key) ?? { ...origin, count: 0 }
+      entry.count += Number(r.count ?? 0)
+      errorsByOrigin.set(key, entry)
+    }
+
+    const failuresByComp = sumBy(
+      fallbackFailures,
+      (r) => competitionIdOrEmpty(r.competition_id),
+      'failures',
+    )
+    const fallbackByComp = new Map<
+      string,
+      { competition_id: string; runs: number; updated: number; skipped: number; failures: number }
+    >()
+    const fallbackEntry = (id: string) => {
+      const entry = fallbackByComp.get(id) ?? {
+        competition_id: id,
+        runs: 0,
+        updated: 0,
+        skipped: 0,
+        failures: 0,
+      }
+      fallbackByComp.set(id, entry)
+      return entry
+    }
+    for (const r of fallbackRuns) {
+      const entry = fallbackEntry(competitionIdOrEmpty(r.competition_id))
+      entry.runs += Number(r.runs ?? 0)
+      entry.updated += Number(r.updated ?? 0)
+      entry.skipped += Number(r.skipped ?? 0)
+    }
+    for (const [id, failures] of failuresByComp) fallbackEntry(id).failures += failures
+
+    const mapHttp = (r: AeRow) => ({
+      provider: String(r.provider ?? ''),
+      status: String(r.status ?? ''),
+      attempts: Number(r.attempts ?? 0),
+      events: Number(r.events ?? 0),
+      avg_ms: Number(r.avg_ms ?? 0),
+      max_ms: Number(r.max_ms ?? 0),
+    })
+
+    return c.json({
+      days,
+      httpFirstSeenAt: (httpFirstSeen[0]?.first_at as string | null | undefined) ?? null,
+      httpByProvider: httpByProvider.map((r) => ({
+        ...mapHttp(r),
+        context: String(r.context ?? ''),
+      })),
+      httpByCompetition: httpByCompetition.map((r) => ({
+        ...mapHttp(r),
+        competition_id: competitionIdOrEmpty(r.competition_id),
+      })),
+      apiErrors: [...errorsByOrigin.values()].sort((a, b) => b.count - a.count),
+      fallback: [...fallbackByComp.values()].sort(
+        (a, b) => b.failures - a.failures || b.runs - a.runs,
+      ),
+    })
+  } catch (err) {
+    console.error('[metrics] falha na SQL API (ops):', err)
+    return c.json({ error: 'Falha ao consultar o Analytics Engine' }, 502)
+  }
+})
+
+/** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
+const ACTIVE_GROUP_DAYS = 14
+
+/** Tolerância após o kickoff antes de um jogo sem placar contar como atrasado. */
+const OVERDUE_RESULT_HOURS = 3
+
 /**
  * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
  * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
  * base), não a janela de `days`; só contagens "criados no período" respeitam
- * `days`. Ignora grupos soft-deleted (deleted_at) nas contagens de grupo.
+ * `days`. Ignora grupos soft-deleted (deleted_at) em todas as contagens que
+ * passam por grupo, inclusive usuários em grupo e usuários que palpitaram.
+ *
+ * `competitions` é o snapshot por temporada: TODAS as linhas de competitions,
+ * inclusive as sem grupo (contagens zeradas). Cada métrica vem de uma
+ * subquery agregada por competition_id antes do LEFT JOIN — juntar grupos,
+ * membros e palpites numa query só multiplicaria as contagens.
+ *   groups_current    → grupos não excluídos
+ *   members           → usuários distintos nesses grupos
+ *   active_groups_14d → grupos com palpite salvo/editado (updated_at) nos
+ *                       últimos ACTIVE_GROUP_DAYS dias, relógio UTC do D1
+ *   overdue_no_score  → jogos scheduled/live, não adiados, sem placar completo
+ *                       (home_score ou away_score nulo) e com início há mais de
+ *                       OVERDUE_RESULT_HOURS horas: buraco de feed
+ *   finished_unscored → jogos finished com scored_at nulo: backlog de pontuação
+ *                       (inclui finished sem placar, que o scoring não alcança)
+ *                       Os dois contam só jogos, nunca ids nem times.
+ *
+ * `topCompetitions` continua no payload para o front antigo (deploys de API e
+ * web não são atômicos); o front novo usa `competitions`.
  */
 metricsRouter.get('/business', async (c) => {
   const days = parseDays(c.req.query('days'))
   const db = c.env.DB
 
-  const [rollupCounts, groupMembership, topCompetitions] = await Promise.all([
+  const [rollupCounts, groupMembership, competitions] = await Promise.all([
     db
       .prepare(
         `SELECT
-          (SELECT COUNT(DISTINCT user_id) FROM group_members) AS usersInGroup,
-          (SELECT COUNT(DISTINCT user_id) FROM predictions) AS usersWhoPredicted,
+          (SELECT COUNT(DISTINCT gm.user_id) FROM group_members gm
+            JOIN groups g ON g.id = gm.group_id AND g.deleted_at IS NULL) AS usersInGroup,
+          (SELECT COUNT(DISTINCT p.user_id) FROM predictions p
+            JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL) AS usersWhoPredicted,
           (SELECT COUNT(*) FROM users) AS usersTotal,
           (SELECT COUNT(*) FROM users WHERE created_at > datetime('now', ?)) AS usersCreated,
           (SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL AND created_at > datetime('now', ?)) AS groupsCreated`,
@@ -258,15 +465,51 @@ metricsRouter.get('/business', async (c) => {
           `GROUP BY gm.user_id`,
       )
       .all(),
-    // Campeonatos com mais grupos ativos.
+    // Snapshot por temporada. datetime(p.updated_at) normaliza o ISO com "Z"
+    // gravado pelo app para o formato do datetime('now') antes de comparar;
+    // datetime(m.start_time) faz o mesmo (aceita "Z", milissegundos e offset).
     db
       .prepare(
-        `SELECT c.name AS competition, COUNT(*) AS groups ` +
-          `FROM groups g JOIN competitions c ON c.id = g.competition_id ` +
-          `WHERE g.deleted_at IS NULL ` +
-          `GROUP BY c.id ORDER BY groups DESC LIMIT 10`,
+        `SELECT c.id AS id, c.name AS name, c.slug AS slug, c.season AS season, ` +
+          `c.provider AS provider, c.visibility AS visibility, c.status AS status, ` +
+          `COALESCE(gc.groups_current, 0) AS groups_current, ` +
+          `COALESCE(mc.members, 0) AS members, ` +
+          `COALESCE(ac.active_groups_14d, 0) AS active_groups_14d, ` +
+          `COALESCE(mh.overdue_no_score, 0) AS overdue_no_score, ` +
+          `COALESCE(mh.finished_unscored, 0) AS finished_unscored ` +
+          `FROM competitions c ` +
+          `LEFT JOIN (SELECT competition_id, COUNT(*) AS groups_current FROM groups ` +
+          `WHERE deleted_at IS NULL GROUP BY competition_id) gc ON gc.competition_id = c.id ` +
+          `LEFT JOIN (SELECT g.competition_id AS competition_id, COUNT(DISTINCT gm.user_id) AS members ` +
+          `FROM group_members gm JOIN groups g ON g.id = gm.group_id AND g.deleted_at IS NULL ` +
+          `GROUP BY g.competition_id) mc ON mc.competition_id = c.id ` +
+          `LEFT JOIN (SELECT g.competition_id AS competition_id, COUNT(DISTINCT p.group_id) AS active_groups_14d ` +
+          `FROM predictions p JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL ` +
+          `WHERE datetime(p.updated_at) > datetime('now', ?) ` +
+          `GROUP BY g.competition_id) ac ON ac.competition_id = c.id ` +
+          `LEFT JOIN (SELECT competition_id, ` +
+          `SUM(CASE WHEN status IN ('scheduled', 'live') AND postponed = 0 ` +
+          `AND (home_score IS NULL OR away_score IS NULL) ` +
+          `AND datetime(start_time) <= datetime('now', ?) THEN 1 ELSE 0 END) AS overdue_no_score, ` +
+          `SUM(CASE WHEN status = 'finished' AND scored_at IS NULL THEN 1 ELSE 0 END) AS finished_unscored ` +
+          `FROM matches GROUP BY competition_id) mh ON mh.competition_id = c.id ` +
+          `ORDER BY groups_current DESC, c.name ASC, c.season ASC, c.id ASC`,
       )
-      .all(),
+      .bind(`-${ACTIVE_GROUP_DAYS} days`, `-${OVERDUE_RESULT_HOURS} hours`)
+      .all<{
+        id: string
+        name: string
+        slug: string
+        season: string | null
+        provider: string | null
+        visibility: string
+        status: string
+        groups_current: number
+        members: number
+        active_groups_14d: number
+        overdue_no_score: number
+        finished_unscored: number
+      }>(),
   ])
 
   const groupCounts = (groupMembership.results as { user_id: string; groups: number }[])
@@ -277,6 +520,13 @@ metricsRouter.get('/business', async (c) => {
   const medianGroupsPerUser =
     groupCounts.length > 0 ? groupCounts[Math.floor(groupCounts.length / 2)] : 0
 
+  const competitionRows = competitions.results
+  // Formato legado: só campeonatos com grupo, top 10 (já vem ordenado por grupos).
+  const topCompetitions = competitionRows
+    .filter((r) => r.groups_current > 0)
+    .slice(0, 10)
+    .map((r) => ({ competition: r.name, groups: r.groups_current }))
+
   return c.json({
     days,
     usersTotal: rollupCounts?.usersTotal ?? 0,
@@ -286,7 +536,9 @@ metricsRouter.get('/business', async (c) => {
     groupsCreatedInPeriod: rollupCounts?.groupsCreated ?? 0,
     avgGroupsPerUser,
     medianGroupsPerUser,
-    topCompetitions: topCompetitions.results,
+    activeGroupDays: ACTIVE_GROUP_DAYS,
+    competitions: competitionRows,
+    topCompetitions,
   })
 })
 
