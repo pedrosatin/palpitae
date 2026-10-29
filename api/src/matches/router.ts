@@ -4,6 +4,7 @@ import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess } from '../auth/permissions'
 import { logError, logEvent, logRequestPerf } from '../observability'
+import { createProviderHttpObserver } from '../observability/providerHttp'
 import type { AppContext } from '../types'
 import { isEspnPrimaryCompetition } from './espnSync'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
@@ -391,6 +392,7 @@ router.post('/sync', requireAuth, async (c) => {
       dates,
       apiKey,
       db: c.env.DB,
+      onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
     })
     await scoreUnprocessedMatches(result.competitionId, c.env.DB)
     return c.json({ ok: true, synced: result })

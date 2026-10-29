@@ -192,6 +192,46 @@ describe('discoverFixtures', () => {
     expect(apiCalls).toBe(2)
   })
 
+  it('passa ao sync um observer com contexto discovery e a competição de cada chamada', async () => {
+    const ae = buildFakeAe()
+    const db = buildFakeDb([
+      { id: 'c1', external_id: 'WC', season: '2026', provider: 'football-data' },
+      { id: 'c2', external_id: 'bra.1', season: '2026', provider: 'espn' },
+    ])
+
+    await discoverFixtures(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
+
+    vi.spyOn(Math, 'random').mockReturnValue(0.99)
+    for (const [opts] of syncFixturesMock.mock.calls) {
+      opts.onHttpAttempt?.({
+        provider: opts.competitionCode === 'WC' ? 'football-data' : 'espn',
+        status: 403,
+        durationMs: 15,
+      })
+    }
+    vi.restoreAllMocks()
+
+    const attempts = pointsOfType(ae, 'provider_http_attempt')
+    expect(attempts.map((p) => p.blobs?.slice(1)).sort()).toEqual([
+      ['espn', 'c2', '403', 'discovery'],
+      ['football-data', 'c1', '403', 'discovery'],
+    ])
+  })
+
+  it('sem binding do Analytics Engine não cria observer', async () => {
+    const db = buildFakeDb([
+      { id: 'c1', external_id: 'WC', season: '2026', provider: 'football-data' },
+    ])
+
+    await discoverFixtures(db as unknown as D1Database, 'key')
+
+    expect(syncFixturesMock.mock.calls[0][0].onHttpAttempt).toBeUndefined()
+  })
+
   it('handles scoreUnprocessedMatches failure without losing fixturesUpdated count', async () => {
     syncFixturesMock.mockResolvedValueOnce({ matches: 5 } as never)
     scoreMock.mockRejectedValueOnce(new Error('Scoring Error'))

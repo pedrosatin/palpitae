@@ -325,6 +325,282 @@ interface CompetitionRow {
   finished_unscored: number
 }
 
+describe('GET /metrics/ops', () => {
+  const COMP_A = '11111111-2222-4333-8444-555555555555'
+  const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'
+
+  /** Responde cada query da SQL API pela forma do SQL, com linhas fixas. */
+  function fetchBySql(rows: {
+    httpByProvider?: unknown[]
+    httpByCompetition?: unknown[]
+    firstSeen?: unknown[]
+    apiErrors?: unknown[]
+    fallbackRuns?: unknown[]
+    fallbackFailures?: unknown[]
+  }) {
+    return vi.fn(async (_url: string, init: { body: string }) => {
+      const sql = init.body
+      let data: unknown[] = []
+      if (sql.includes('MIN(timestamp)')) data = rows.firstSeen ?? []
+      else if (sql.includes("blob1 = 'provider_http_attempt'") && sql.includes('GROUP BY provider'))
+        data = rows.httpByProvider ?? []
+      else if (sql.includes("blob1 = 'provider_http_attempt'")) data = rows.httpByCompetition ?? []
+      else if (sql.includes("blob1 = 'football_api_error'")) data = rows.apiErrors ?? []
+      else if (sql.includes("blob1 = 'match_results_fallback'") && sql.includes("blob3 = ''"))
+        data = rows.fallbackRuns ?? []
+      else if (sql.includes("blob1 = 'match_results_fallback'")) data = rows.fallbackFailures ?? []
+      return { ok: true, json: async () => ({ data }) }
+    })
+  }
+
+  async function getOps(fetchFake: ReturnType<typeof fetchBySql>, query = '') {
+    vi.stubGlobal('fetch', fetchFake)
+    return makeApp().request(
+      `/metrics/ops${query}`,
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+  }
+
+  type OpsBody = {
+    days: number
+    httpFirstSeenAt: string | null
+    httpByProvider: Record<string, unknown>[]
+    httpByCompetition: Record<string, unknown>[]
+    apiErrors: { context: string; competition_id: string; count: number }[]
+    fallback: {
+      competition_id: string
+      runs: number
+      updated: number
+      skipped: number
+      failures: number
+    }[]
+  }
+
+  it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
+    const app = makeApp()
+    expect((await app.request('/metrics/ops', {}, makeEnv())).status).toBe(401)
+    expect(
+      (
+        await app.request(
+          '/metrics/ops',
+          { headers: await authHeaders('outra@pessoa.com') },
+          makeEnv(),
+        )
+      ).status,
+    ).toBe(403)
+    expect(
+      (
+        await app.request(
+          '/metrics/ops',
+          { headers: await authHeaders(ADMIN) },
+          makeEnv({ CF_ACCOUNT_ID: undefined }),
+        )
+      ).status,
+    ).toBe(503)
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+    expect(res.status).toBe(502)
+  })
+
+  it('agrega pela janela e pelo peso: _sample_interval × double2, nunca COUNT(*)', async () => {
+    const fetchFake = fetchBySql({})
+    const res = await getOps(fetchFake, '?days=7')
+    expect(res.status).toBe(200)
+
+    const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
+      (c) => c[1].body,
+    )
+    expect(bodies).toHaveLength(6)
+    expect(bodies.some((sql) => /COUNT\(\*\)/.test(sql))).toBe(false)
+
+    const http = bodies.filter((sql) => sql.includes("blob1 = 'provider_http_attempt'"))
+    const windowed = http.filter((sql) => !sql.includes('MIN(timestamp)'))
+    expect(windowed).toHaveLength(2)
+    for (const sql of windowed) {
+      expect(sql).toContain("INTERVAL '7' DAY")
+      expect(sql).toContain('SUM((_sample_interval * double2)) AS attempts')
+      expect(sql).toContain('SUM(_sample_interval) AS events')
+    }
+    // O "desde quando existe coleta" não pode herdar a janela: senão um período
+    // curto sem eventos pareceria instrumentação ausente.
+    const firstSeen = http.find((sql) => sql.includes('MIN(timestamp)'))
+    expect(firstSeen).not.toContain('INTERVAL')
+
+    for (const sql of bodies.filter((q) => q.includes("blob1 = 'match_results_fallback'"))) {
+      expect(sql).toContain('SUM(_sample_interval)')
+      expect(sql).toContain("INTERVAL '7' DAY")
+    }
+  })
+
+  it('sem eventos devolve listas vazias e httpFirstSeenAt nulo (ausência ≠ zero)', async () => {
+    const res = await getOps(fetchBySql({}))
+    const body = (await res.json()) as OpsBody
+
+    expect(body.httpFirstSeenAt).toBeNull()
+    expect(body.httpByProvider).toEqual([])
+    expect(body.httpByCompetition).toEqual([])
+    expect(body.apiErrors).toEqual([])
+    expect(body.fallback).toEqual([])
+  })
+
+  it('devolve tentativas HTTP por provedor/contexto/status e por competição, com números', async () => {
+    const res = await getOps(
+      fetchBySql({
+        firstSeen: [{ first_at: '2026-10-20 10:00:00' }],
+        httpByProvider: [
+          {
+            provider: 'espn',
+            context: 'poller',
+            status: '403',
+            attempts: '12',
+            events: '12',
+            avg_ms: '210.5',
+            max_ms: '900',
+          },
+          {
+            provider: 'espn',
+            context: 'poller',
+            status: '200',
+            attempts: '300',
+            events: '30',
+            avg_ms: '80',
+            max_ms: '400',
+          },
+        ],
+        httpByCompetition: [
+          {
+            competition_id: COMP_A,
+            provider: 'espn',
+            status: '403',
+            attempts: '12',
+            events: '12',
+            avg_ms: '210',
+            max_ms: '900',
+          },
+          {
+            competition_id: '',
+            provider: 'football-data',
+            status: '429',
+            attempts: '2',
+            events: '2',
+            avg_ms: '50',
+            max_ms: '60',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.httpFirstSeenAt).toBe('2026-10-20 10:00:00')
+    expect(body.httpByProvider[0]).toEqual({
+      provider: 'espn',
+      context: 'poller',
+      status: '403',
+      attempts: 12,
+      events: 12,
+      avg_ms: 210.5,
+      max_ms: 900,
+    })
+    // 300 tentativas estimadas a partir de 30 eventos amostrados: a diferença
+    // entre `attempts` e `events` é a amostragem de 10% dos sucessos.
+    expect(body.httpByProvider[1]).toMatchObject({ attempts: 300, events: 30 })
+    expect(body.httpByCompetition.map((r) => r.competition_id)).toEqual([COMP_A, ''])
+  })
+
+  it('classifica football_api_error pela forma posicional e soma por origem e competição', async () => {
+    const res = await getOps(
+      fetchBySql({
+        apiErrors: [
+          { blob2: COMP_A, blob3: '30', count: '2' }, // poller: [comp, round]
+          { blob2: COMP_A, blob3: '31', count: '1' }, // mesma comp, outra rodada
+          { blob2: 'fixture_discovery', blob3: COMP_B, count: '4' },
+          { blob2: 'sync_endpoint', blob3: 'football-data.org respondeu 500', count: '1' },
+          { blob2: 'sync_endpoint', blob3: 'outra mensagem', count: '2' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.apiErrors).toEqual([
+      { context: 'fixture_discovery', competition_id: COMP_B, count: 4 },
+      { context: 'poller', competition_id: COMP_A, count: 3 },
+      { context: 'sync_endpoint', competition_id: '', count: 3 },
+    ])
+    // Mensagem livre do provedor nunca sai no payload.
+    expect(JSON.stringify(body)).not.toContain('respondeu 500')
+  })
+
+  it('une execuções e falhas do fallback por competição, ordenando falhas primeiro', async () => {
+    const res = await getOps(
+      fetchBySql({
+        fallbackRuns: [
+          { competition_id: COMP_A, runs: '10', updated: '3', skipped: '7' },
+          { competition_id: COMP_B, runs: '5', updated: '0', skipped: '0' },
+        ],
+        fallbackFailures: [
+          { competition_id: COMP_B, failures: '2' },
+          { competition_id: '', failures: '1' },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.fallback).toEqual([
+      { competition_id: COMP_B, runs: 5, updated: 0, skipped: 0, failures: 2 },
+      { competition_id: '', runs: 0, updated: 0, skipped: 0, failures: 1 },
+      { competition_id: COMP_A, runs: 10, updated: 3, skipped: 7, failures: 0 },
+    ])
+  })
+
+  it('descarta como "sem liga" qualquer valor de competição que não seja UUID (blob legado)', async () => {
+    const res = await getOps(
+      fetchBySql({
+        fallbackRuns: [{ competition_id: 'ESPN down too', runs: '1', updated: '0', skipped: '0' }],
+        httpByCompetition: [
+          {
+            competition_id: 'texto livre',
+            provider: 'espn',
+            status: '200',
+            attempts: '10',
+            events: '1',
+            avg_ms: '1',
+            max_ms: '1',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.fallback[0].competition_id).toBe('')
+    expect(body.httpByCompetition[0].competition_id).toBe('')
+    expect(JSON.stringify(body)).not.toContain('texto livre')
+    expect(JSON.stringify(body)).not.toContain('ESPN down too')
+  })
+
+  it('não emite logEvent (endpoints /metrics são leitura)', async () => {
+    const ae = { writeDataPoint: vi.fn() }
+    vi.stubGlobal('fetch', fetchBySql({}))
+    await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ AE: ae as unknown as AnalyticsEngineDataset }),
+    )
+    expect(ae.writeDataPoint).not.toHaveBeenCalled()
+  })
+})
+
 describe('GET /metrics/business', () => {
   it('401 sem sessão', async () => {
     const res = await makeApp().request(

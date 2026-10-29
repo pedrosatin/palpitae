@@ -93,8 +93,15 @@ function mockFetch(
   overviewStatus = 200,
   overviewBody: unknown = overview,
   businessBody: unknown = business,
+  opsBody: unknown = null,
 ) {
   return vi.fn(async (url: string) => {
+    // API sem /metrics/ops (deploy da web antes da API): 404.
+    if (url.includes('/metrics/ops')) {
+      return opsBody === null
+        ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
+        : { ok: true, status: 200, json: async () => opsBody }
+    }
     if (url.includes('/metrics/overview')) {
       return {
         ok: overviewStatus === 200,
@@ -599,5 +606,147 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
     render(<AdminMetricsPage />)
     await screen.findByText('Grupos por campeonato')
     expect(screen.queryByText('Saúde dos resultados por campeonato')).not.toBeInTheDocument()
+  })
+})
+
+// Provedores: tentativas HTTP, erros de sync e fallback (GET /metrics/ops).
+const opsBody = {
+  days: 30,
+  httpFirstSeenAt: '2020-01-01 00:00:00',
+  httpByProvider: [
+    {
+      provider: 'espn',
+      context: 'poller',
+      status: '403',
+      attempts: 7,
+      events: 7,
+      avg_ms: 220,
+      max_ms: 900,
+    },
+    {
+      provider: 'espn',
+      context: 'poller',
+      status: '200',
+      attempts: 200,
+      events: 20,
+      avg_ms: 90,
+      max_ms: 400,
+    },
+  ],
+  httpByCompetition: [
+    {
+      competition_id: 'comp-liga-pilot',
+      provider: 'espn',
+      status: '403',
+      attempts: 7,
+      events: 7,
+      avg_ms: 220,
+      max_ms: 900,
+    },
+  ],
+  apiErrors: [{ context: 'fixture_discovery', competition_id: 'comp-liga-pilot', count: 2 }],
+  fallback: [{ competition_id: 'comp-br26', runs: 6, updated: 1, skipped: 5, failures: 0 }],
+}
+
+describe('AdminMetricsPage · provedores de partidas', () => {
+  it('busca /metrics/ops com o período e mostra falhas por provedor, processo e campeonato', async () => {
+    const fetchFake = mockFetch(200, overview, businessWithCompetitions, opsBody)
+    vi.stubGlobal('fetch', fetchFake)
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Provedores de partidas · falhas e carga')).toBeInTheDocument()
+    const opsCall = fetchFake.mock.calls.map(([url]) => url).find((u) => u.includes('/metrics/ops'))
+    expect(opsCall).toContain('days=30')
+
+    const byProcess = screen.getByRole('table', { name: 'Tentativas HTTP por provedor e processo' })
+    expect(within(byProcess).getByText('ESPN')).toBeInTheDocument()
+    expect(within(byProcess).getByText('Poller de resultados')).toBeInTheDocument()
+    expect(within(byProcess).getByText('403 ×7')).toBeInTheDocument()
+
+    // Nomes vêm do snapshot de campeonatos (mesma tela, /metrics/business).
+    const byCompetition = screen.getByRole('table', { name: 'Tentativas HTTP por campeonato' })
+    expect(within(byCompetition).getByText('Liga Piloto 2026')).toBeInTheDocument()
+    const syncTable = screen.getByRole('table', {
+      name: 'Erros de sync e fallback por campeonato',
+    })
+    expect(within(syncTable).getByText('Liga Piloto 2026')).toBeInTheDocument()
+    expect(within(syncTable).getByText('Brasileirão Série A 2026')).toBeInTheDocument()
+    expect(within(syncTable).getByText('Descoberta de jogos ×2')).toBeInTheDocument()
+  })
+
+  it('falhas HTTP acendem um alerta no topo', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions, opsBody))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText(/7 falha\(s\) HTTP de provedor/)).toBeInTheDocument()
+  })
+
+  it('sem falhas HTTP não cria o alerta', async () => {
+    const calm = {
+      ...opsBody,
+      httpByProvider: opsBody.httpByProvider.filter((r) => r.status === '200'),
+    }
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions, calm))
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Provedores de partidas · falhas e carga')
+    expect(screen.queryByText(/falha\(s\) HTTP de provedor/)).not.toBeInTheDocument()
+  })
+
+  it('API sem /metrics/ops: o restante da página carrega e a seção diz "indisponível"', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Provedores de partidas · falhas e carga')).toBeInTheDocument()
+    expect(screen.getByText(/Indisponível: a API não enviou a telemetria/)).toBeInTheDocument()
+    expect(screen.getByText('Saúde dos crons')).toBeInTheDocument()
+    expect(screen.queryByText(/falha\(s\) HTTP de provedor/)).not.toBeInTheDocument()
+  })
+
+  it('falha de rede em /metrics/ops não derruba a página', async () => {
+    const base = mockFetch(200, overview, businessWithCompetitions, opsBody)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/metrics/ops')) throw new Error('network')
+        return base(url)
+      }),
+    )
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText(/Indisponível: a API não enviou a telemetria/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Saúde dos crons')).toBeInTheDocument()
+  })
+
+  it('sem nenhum evento HTTP gravado avisa falta de dado em vez de zero falhas', async () => {
+    const empty = { ...opsBody, httpFirstSeenAt: null, httpByProvider: [], httpByCompetition: [] }
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions, empty))
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText(/Nenhuma tentativa HTTP foi registrada ainda/),
+    ).toBeInTheDocument()
+  })
+
+  it('rotula o erro de sync nos erros recentes sem chamá-lo de API Football', async () => {
+    const withErrors = {
+      ...overview,
+      recentErrors: [
+        {
+          timestamp: '2026-06-29 14:30:00',
+          event_type: 'football_api_error',
+          blob2: 'fixture_discovery',
+          blob3: 'comp-1',
+          blob4: 'ESPN respondeu 403',
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', mockFetch(200, withErrors, businessWithCompetitions, opsBody))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText('Erro de sync de provedor')).toBeInTheDocument()
+    expect(screen.queryByText('Erro da API Football')).not.toBeInTheDocument()
   })
 })

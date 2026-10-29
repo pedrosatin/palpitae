@@ -9,6 +9,11 @@ import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
 import { eventLabel } from './labels'
+import ProviderOpsSection, {
+  totalHttpFailures,
+  type CompetitionNames,
+  type OpsResponse,
+} from './ProviderOpsSection'
 
 /**
  * Dashboard admin de métricas server-side (Analytics Engine + R2).
@@ -327,7 +332,7 @@ function buildWhaleShare(overview: OverviewResponse, totalPredictions: number) {
 }
 
 // Triagem rápida: o que precisa de atenção agora, pro topo da página.
-function buildAlerts(overview: OverviewResponse): MetricsAlert[] {
+function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): MetricsAlert[] {
   const list: MetricsAlert[] = []
 
   for (const r of overview.lastRuns) {
@@ -345,6 +350,14 @@ function buildAlerts(overview: OverviewResponse): MetricsAlert[] {
       key: 'errors',
       label: `${overview.recentErrors.length} erro(s) recente(s)`,
       level: 'danger',
+    })
+  }
+  const httpFailures = totalHttpFailures(ops)
+  if (httpFailures > 0) {
+    list.push({
+      key: 'provider-http',
+      label: `${httpFailures} falha(s) HTTP de provedor`,
+      level: 'warn',
     })
   }
   const emailFailed = Number(overview.emailHealth.failed)
@@ -402,7 +415,11 @@ function buildArchiveStats(files: ArchiveFile[]) {
   }
 }
 
-function useMetricsData(overview: OverviewResponse | null, archive: ArchiveResponse | null) {
+function useMetricsData(
+  overview: OverviewResponse | null,
+  archive: ArchiveResponse | null,
+  ops: OpsResponse | null,
+) {
   const stacked = useMemo(
     () =>
       overview
@@ -432,7 +449,7 @@ function useMetricsData(overview: OverviewResponse | null, archive: ArchiveRespo
     [overview, kpis],
   )
 
-  const alerts = useMemo(() => (overview ? buildAlerts(overview) : []), [overview])
+  const alerts = useMemo(() => (overview ? buildAlerts(overview, ops) : []), [overview, ops])
 
   const archiveFiles = archive && archive.files.length > 0 ? archive.files : null
 
@@ -1249,6 +1266,7 @@ export default function AdminMetricsPage() {
   const [days, setDays] = useState<number>(30)
   const [overview, setOverview] = useState<OverviewResponse | null>(null)
   const [business, setBusiness] = useState<BusinessResponse | null>(null)
+  const [ops, setOps] = useState<OpsResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1268,8 +1286,10 @@ export default function AdminMetricsPage() {
       apiFetch(buildApiUrl('/metrics/overview', params)),
       apiFetch(buildApiUrl('/metrics/business', params)),
       apiFetch(buildApiUrl('/metrics/archive')),
+      // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
+      apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
     ])
-      .then(async ([ovRes, bizRes, arRes]) => {
+      .then(async ([ovRes, bizRes, arRes, opsRes]) => {
         if (cancelled) return
         if (ovRes.status === 403) {
           setError('forbidden')
@@ -1280,6 +1300,7 @@ export default function AdminMetricsPage() {
         // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
         if (bizRes.ok) setBusiness((await bizRes.json()) as BusinessResponse)
         if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
+        setOps(opsRes?.ok ? ((await opsRes.json().catch(() => null)) as OpsResponse | null) : null)
       })
       .catch(() => {
         if (!cancelled) setError('failed')
@@ -1304,7 +1325,15 @@ export default function AdminMetricsPage() {
     alerts,
     archiveDays,
     archiveStats,
-  } = useMetricsData(overview, archive)
+  } = useMetricsData(overview, archive, ops)
+
+  const competitionNames: CompetitionNames = useMemo(
+    () =>
+      new Map(
+        (business?.competitions ?? []).map((c) => [c.id, { name: c.name, season: c.season }]),
+      ),
+    [business],
+  )
 
   async function runArchiveQuery(month: string) {
     setQueryMonth(month)
@@ -1357,6 +1386,7 @@ export default function AdminMetricsPage() {
             <EventsSection overview={overview} stacked={stacked} />
             <EngagementSection dauSeries={dauSeries} />
             <HealthSection overview={overview} apiCallsSeries={apiCallsSeries} />
+            <ProviderOpsSection ops={ops} names={competitionNames} />
             <LatencySection overview={overview} />
             <EmailSection overview={overview} kpis={kpis} />
             <ConcentrationSection whaleShare={whaleShare} />
