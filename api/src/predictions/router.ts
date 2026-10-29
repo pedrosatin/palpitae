@@ -97,8 +97,11 @@ async function fetchRowTies(
   }
 
   const ties = new Map<string, TieInfo<TieMatch>>()
-  for (const [competitionId, phases] of phasesByCompetition) {
-    const tieMatches = await fetchTieMatches(db, competitionId, phases)
+  const promises = Array.from(phasesByCompetition).map(async ([competitionId, phases]) => {
+    return await fetchTieMatches(db, competitionId, phases)
+  })
+  const results = await Promise.all(promises)
+  for (const tieMatches of results) {
     for (const [matchId, tie] of indexTies(tieMatches)) ties.set(matchId, tie)
   }
   return ties
@@ -1037,8 +1040,11 @@ async function fetchBulkTieContext(
   if (phasesByCompetition.size === 0) return { roleByMatch, leg1ScoreByMatch }
 
   const ties = new Map<string, TieInfo<TieMatch>>()
-  for (const [competitionId, phases] of phasesByCompetition) {
-    const tieMatches = await fetchTieMatches(db, competitionId, phases)
+  const promises = Array.from(phasesByCompetition).map(async ([competitionId, phases]) => {
+    return await fetchTieMatches(db, competitionId, phases)
+  })
+  const results = await Promise.all(promises)
+  for (const tieMatches of results) {
     for (const [matchId, tie] of indexTies(tieMatches)) ties.set(matchId, tie)
   }
 
