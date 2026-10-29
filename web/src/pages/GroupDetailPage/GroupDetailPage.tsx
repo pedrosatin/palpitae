@@ -67,6 +67,34 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     setRenameOpen(true)
   }
 
+  async function handlePointsClassifiedChanged() {
+    const response = await apiFetch(`${config.apiUrl}/groups/${groupId}`)
+    if (!response.ok)
+      throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
+    const data = (await response.json()) as { group: typeof group }
+    setGroup(data.group)
+    setSettingsVersion((value) => value + 1)
+  }
+
+  function handleGroupRenamed(name: string) {
+    setGroup((prev) => (prev ? { ...prev, name } : prev))
+  }
+
+  function handleRotateInvite() {
+    rotateInvite((inviteCode) =>
+      setGroup((prev) => (prev ? { ...prev, invite_code: inviteCode } : prev)),
+    )
+  }
+
+  const header = (
+    <Header
+      user={user}
+      onCreateGroup={() => setCreateOpen(true)}
+      onJoinGroup={() => setJoinOpen(true)}
+      onLogout={onLogout}
+    />
+  )
+
   const modals = (
     <>
       <CreateGroupModal
@@ -85,63 +113,21 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         groupId={groupId!}
         currentName={group?.name ?? ''}
         currentPointsClassified={group?.points_classified ?? 0}
-        onPointsClassifiedChanged={async () => {
-          const response = await apiFetch(`${config.apiUrl}/groups/${groupId}`)
-          if (!response.ok)
-            throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
-          const data = (await response.json()) as { group: typeof group }
-          setGroup(data.group)
-          setSettingsVersion((value) => value + 1)
-        }}
-        onRenamed={(name) => setGroup((prev) => (prev ? { ...prev, name } : prev))}
+        onPointsClassifiedChanged={handlePointsClassifiedChanged}
+        onRenamed={handleGroupRenamed}
       />
       {confirmDialog}
     </>
   )
 
+  let content
   if (loading) {
-    return (
+    content = <p className={styles.loadingText}>Carregando grupo...</p>
+  } else if (error || !group) {
+    content = <ErrorState message={error ?? 'Grupo não encontrado'} />
+  } else {
+    content = (
       <>
-        <Header
-          user={user}
-          onCreateGroup={() => setCreateOpen(true)}
-          onJoinGroup={() => setJoinOpen(true)}
-          onLogout={onLogout}
-        />
-        <main className={styles.root}>
-          <p className={styles.loadingText}>Carregando grupo...</p>
-        </main>
-        {modals}
-      </>
-    )
-  }
-
-  if (error || !group) {
-    return (
-      <>
-        <Header
-          user={user}
-          onCreateGroup={() => setCreateOpen(true)}
-          onJoinGroup={() => setJoinOpen(true)}
-          onLogout={onLogout}
-        />
-        <main className={styles.root}>
-          <ErrorState message={error ?? 'Grupo não encontrado'} />
-        </main>
-        {modals}
-      </>
-    )
-  }
-
-  return (
-    <>
-      <Header
-        user={user}
-        onCreateGroup={() => setCreateOpen(true)}
-        onJoinGroup={() => setJoinOpen(true)}
-        onLogout={onLogout}
-      />
-      <main className={styles.root}>
         {/* Group header */}
         <GroupHeader
           group={group}
@@ -159,11 +145,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
             inviteCode={group.invite_code}
             groupName={group.name}
             rotating={rotatingInvite}
-            onRotate={() =>
-              rotateInvite((inviteCode) =>
-                setGroup((prev) => (prev ? { ...prev, invite_code: inviteCode } : prev)),
-              )
-            }
+            onRotate={handleRotateInvite}
           />
         )}
 
@@ -186,7 +168,14 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           isAdmin={isAdmin}
           userId={user.id}
         />
-      </main>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {header}
+      <main className={styles.root}>{content}</main>
       {modals}
     </>
   )
