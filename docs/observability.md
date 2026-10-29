@@ -178,7 +178,8 @@ execução sem liga e não entram no recorte por competição.
 ### Tentativas HTTP aos provedores (`provider_http_attempt`)
 
 Cada `fetch` ao football-data.org ou à ESPN gera no máximo um evento, inclusive o segundo
-`fetch` do retry de 429/5xx. A medição fica nos clientes (`providers/espn.ts` e
+`fetch` do retry. A ESPN retenta respostas 429 e 5xx; o football-data.org retenta 429.
+A medição fica nos clientes (`providers/espn.ts` e
 `fetchMatchesFromApi` em `matches/sync.ts`) e não adiciona nenhuma chamada externa. O processo
 que chamou e a competição vêm do chamador, por um observer criado em
 `observability/providerHttp.ts`.
