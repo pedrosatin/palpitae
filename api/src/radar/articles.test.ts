@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { findEntry, RADAR_ENTRIES } from './articles'
+import { findEntry, RADAR_ENTRIES, RADAR_COUNTRIES } from './articles'
 
 describe('curadoria do radar', () => {
+  it('inclui todos os países mapeados em RADAR_ENTRIES e alguns essenciais', () => {
+    const mappedCountries = new Set(RADAR_ENTRIES.map((e) => e.country))
+    for (const country of mappedCountries) {
+      expect(RADAR_COUNTRIES.has(country)).toBe(true)
+    }
+    expect(RADAR_COUNTRIES.has('Brazil')).toBe(true)
+    expect(RADAR_COUNTRIES.has('World')).toBe(true)
+  })
+
   it('casa nomes ignorando caixa, acento e pontuação', () => {
     expect(findEntry('Brazil', 'Copa do Brasil')?.article).toBe('Copa do Brasil de Futebol')
     expect(findEntry('brazil', 'COPA DO BRASIL')?.article).toBe('Copa do Brasil de Futebol')
