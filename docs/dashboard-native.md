@@ -7,15 +7,6 @@ esquema posicional dos eventos idem (fonte de verdade única, não duplicar aqui
 
 ## Ideias pendentes
 
-### Mapa de calor por horário
-
-Como os eventos têm timestamp no Analytics Engine, dá pra montar um mapa de
-calor (dia da semana × hora) de logins/palpites, mostrando quando o tráfego é
-maior — ajuda a escolher horário de manutenção e o melhor horário dos e-mails
-de lembrete. Implementação: agrupar por `toStartOfInterval(timestamp,
-INTERVAL '1' HOUR)` na SQL API e montar a grade 7×24 no front (converter
-UTC→BRT na exibição). Esforço médio.
-
 ### Linha de referência de quota da API Football
 
 O gráfico de chamadas/dia já existe; falta uma linha de referência visual do
