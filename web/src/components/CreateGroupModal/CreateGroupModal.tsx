@@ -7,7 +7,7 @@ import CreateGroupSuccessView from './components/CreateGroupSuccessView'
 import ScoringRulesField from './components/ScoringRulesField'
 import VisibilityField from './components/VisibilityField'
 import { useCreateGroupForm } from './hooks/useCreateGroupForm'
-import type { CreatedGroup } from './types'
+import type { Competition, CreatedGroup } from './types'
 
 interface CreateGroupModalProps {
   isOpen: boolean
@@ -18,6 +18,7 @@ interface CreateGroupModalProps {
 export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateGroupModalProps) {
   const {
     competitions,
+    competitionGroups,
     loadingCompetitions,
     name,
     setName,
@@ -42,6 +43,22 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
     handleClose,
     handleSubmit,
   } = useCreateGroupForm({ isOpen, onClose, onCreated })
+
+  // Grupos já calculados no hook no carregamento (fonte única de verdade);
+  // sem um dos grupos não há <optgroup> — um título sozinho só adicionaria ruído.
+  const groups = competitionGroups
+  const hasBothGroups = groups.ongoing.length > 0 && groups.upcoming.length > 0
+  const selected = competitions.find((c) => c.id === competitionId)
+  const selectedOngoing = selected?.status === 'ongoing'
+
+  function renderOptions(list: Competition[]) {
+    return list.map((c) => (
+      <option key={c.id} value={c.id}>
+        {c.name}
+        {c.season ? ` ${c.season}` : ''}
+      </option>
+    ))
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Criar grupo">
@@ -83,13 +100,21 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
                 onChange={(e) => setCompetitionId(e.target.value)}
                 required
               >
-                {competitions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.season ? ` ${c.season}` : ''}
-                  </option>
-                ))}
+                {hasBothGroups ? (
+                  <>
+                    <optgroup label="Em andamento">{renderOptions(groups.ongoing)}</optgroup>
+                    <optgroup label="Em breve">{renderOptions(groups.upcoming)}</optgroup>
+                  </>
+                ) : (
+                  renderOptions(competitions)
+                )}
               </Select>
+            )}
+            {selectedOngoing && (
+              <p role="status" className={styles.statusHint}>
+                Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que
+                faltam.
+              </p>
             )}
           </div>
 
