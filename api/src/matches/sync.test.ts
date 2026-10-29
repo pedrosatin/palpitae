@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
 import {
+  MATCH_UPSERT_SQL,
   batchStatements,
   isoSeconds,
   resolveCanonicalScore,
@@ -962,5 +963,23 @@ describe('slugify', () => {
 
   it('handles already slugified strings', () => {
     expect(slugify('already-slugified-string')).toBe('already-slugified-string')
+  })
+})
+
+describe('MATCH_UPSERT_SQL', () => {
+  it('should be a valid SQL statement', () => {
+    expect(MATCH_UPSERT_SQL).toContain('INSERT INTO matches')
+    expect(MATCH_UPSERT_SQL).toContain('ON CONFLICT (external_id, provider) DO UPDATE SET')
+    expect(MATCH_UPSERT_SQL).toContain('locked_at')
+  })
+
+  it('should have matching number of columns and placeholders', () => {
+    const insertMatch = MATCH_UPSERT_SQL.match(/INSERT INTO matches \(([\s\S]*?)\)\s*VALUES \(([\s\S]*?)\)/)
+    expect(insertMatch).not.toBeNull()
+    if (insertMatch) {
+      const columns = insertMatch[1].split(',').map(c => c.trim()).filter(c => c.length > 0)
+      const placeholders = insertMatch[2].split(',').map(c => c.trim()).filter(c => c === '?')
+      expect(columns.length).toBe(placeholders.length)
+    }
   })
 })
