@@ -63,7 +63,7 @@ Cliente: `fetchEspnScoreboard` em `api/src/providers/espn.ts`. Sem credencial. M
 | Chamador | Gatilho | Chamadas por execução (sem retry) |
 |---|---|---|
 | Discovery ESPN-primária | `0 6 * * *` | 9 datas × E competições (ontem UTC … hoje+7) |
-| Poller ESPN-primária | `0,30 * * * *` | até ~2 datas por competição com pendência (dia UTC do jogo e o anterior) |
+| Poller ESPN-primária | `0,30 * * * *` | até 3 datas por competição quando jogos pendentes abrangem dois dias UTC (dia do jogo e o anterior) |
 | Fallback (`scoreWindowFromEspn`) | após sync do poller em competições FD | até 3 datas por competição FD elegível |
 | `POST /matches/sync` (código ESPN) | admin | lista `dates` validada só como `YYYYMMDD[]`; **sem teto de nove** em `validateSyncParams` / `isValidDatesList` |
 | Radar (`radar-sync.yml` + `radarSync.ts`) | GitHub Actions `0 7 * * *` | 40 slugs (`ESPN_LEAGUES`) + Wikimedia pageviews |
