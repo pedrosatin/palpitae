@@ -324,6 +324,13 @@ function buildWhaleShare(overview: OverviewResponse, totalPredictions: number) {
   return { top1: shareOf(1), top5: shareOf(5) }
 }
 
+/**
+ * Eventos que ficam só na lista de inspeção "Erros recentes".
+ * Não disparam o chip genérico do topo: login tem alerta proporcional próprio;
+ * oauth_error é etapa anterior ao callback e também entra na inspeção.
+ */
+const RECENT_ERROR_INSPECTION_ONLY = new Set(['login_failure', 'oauth_error'])
+
 // Triagem rápida: o que precisa de atenção agora, pro topo da página.
 function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): MetricsAlert[] {
   const list: MetricsAlert[] = []
@@ -338,10 +345,13 @@ function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): Metri
       })
     }
   }
-  if (overview.recentErrors.length > 0) {
+  const actionableRecentErrors = overview.recentErrors.filter(
+    (e) => !RECENT_ERROR_INSPECTION_ONLY.has(e.event_type),
+  )
+  if (actionableRecentErrors.length > 0) {
     list.push({
       key: 'errors',
-      label: `${overview.recentErrors.length} erro(s) recente(s)`,
+      label: `${actionableRecentErrors.length} erro(s) recente(s)`,
       level: 'danger',
     })
   }
@@ -357,6 +367,8 @@ function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): Metri
   if (emailFailed > 0) {
     list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
   }
+  // totals só lista event_types presentes no período (GROUP BY); ausência de
+  // login_success é zero legítimo, não "dado faltando".
   const loginSuccess = Number(
     overview.totals.find((t) => t.event_type === 'login_success')?.count ?? 0,
   )
@@ -364,6 +376,7 @@ function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): Metri
   const loginAlert = evaluateLoginFailureAlert({
     loginSuccess,
     loginFailures: loginFailTotal,
+    avgSampleInterval: Number(overview.sampling.avg_sample_interval ?? 1),
   })
   if (loginAlert) {
     list.push({ key: 'login', label: loginAlert.label, level: 'warn' })
@@ -1051,8 +1064,11 @@ function LoginFailuresSection({ overview }: { overview: OverviewResponse }) {
     <section className={styles.section}>
       <h2 className={styles.sectionTitle}>Falhas de login por motivo</h2>
       <p className={styles.hint}>
-        O alerta do topo só acende com volume mínimo e proporção elevada na janela
-        selecionada (não por falha isolada). Detalhes em docs/observability.md.
+        O alerta do topo usa a proporção falhas / (login_success + login_failure) na
+        janela selecionada, com volume mínimo. oauth_error, abandono e callbacks que
+        nunca chegaram ficam fora do denominador. Inspecione cada motivo (incluindo
+        state_mismatch) e reavalie; o limiar é heurística. Detalhes em
+        docs/observability.md.
       </p>
       {overview.loginFailures.length === 0 ? (
         <p className={styles.hint}>Nenhuma falha no período. 🎉</p>

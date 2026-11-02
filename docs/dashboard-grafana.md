@@ -102,11 +102,14 @@ mas vira aproximação se houver amostragem pesada.)
 ### Bônus — alertas
 
 Grafana free inclui alerting: ex. alerta se `poller_run` com `status='error'`
-passar de N na última hora. Para login, preferir proporção com volume mínimo
-(falhas / (sucessos + falhas) ≥ 15% após ≥10 tentativas na janela), alinhado ao
-painel nativo em `loginFailureAlert.ts` — não alertar por um único
-`login_failure`. Alertas push automáticos continuam o diferencial principal
-sobre o dashboard nativo, que já mostra a faixa de status no topo.
+passar de N na última hora. Para login, alinhar ao painel nativo em
+`loginFailureAlert.ts`: proporção falhas / (login_success + login_failure) ≥
+15% após ≥10 callbacks na janela, sem alertar por um único `login_failure`.
+oauth_error, abandono e callbacks ausentes ficam fora desse denominador. A
+janela longa é média lenta (rajadas diluem; 7d pode não atingir o mínimo).
+15%/10 é heurística. Alertas push automáticos são o diferencial principal
+sobre o dashboard nativo, que já mostra a faixa de status no topo; o painel
+nativo desta fatia não configura push.
 
 ## Variável de período (opcional)
 
