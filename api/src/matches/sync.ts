@@ -371,7 +371,9 @@ async function upsertTeams(
     `INSERT INTO teams (id, name, short_name, slug, logo_url, external_id, provider)
      VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (external_id, provider) DO UPDATE SET
-       logo_url   = excluded.logo_url`,
+       logo_url   = excluded.logo_url
+     -- Sem mudança, sem gravação (o sync reenvia todos os times a cada tick).
+     WHERE teams.logo_url IS NOT excluded.logo_url`,
   )
 
   for (const team of teamMap.values()) {
@@ -583,7 +585,27 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
          THEN NULL ELSE matches.scored_at END
      -- Uma resposta atrasada do provedor não pode desfazer um resultado final
      -- (inclusive obtido pelo fallback). Correções finais continuam aceitas.
-     WHERE matches.status != 'finished' OR excluded.status = 'finished'`
+     WHERE (matches.status != 'finished' OR excluded.status = 'finished')
+       -- Só grava quando algum campo do SET muda. O sync reenvia a rodada inteira
+       -- a cada tick e quase sempre nada mudou; sem este filtro cada jogo custava
+       -- uma gravação da linha e dos índices (~75% das gravações do D1). Cada
+       -- linha espelha um campo do SET acima (scored_at só muda junto com placar
+       -- ou penalty_winner): ao acrescentar um campo no SET, acrescente aqui.
+       AND (
+         (matches.locked_at IS NULL
+           AND (matches.status IN ('live', 'finished') OR excluded.locked_at IS NOT NULL))
+         OR matches.status             IS NOT excluded.status
+         OR matches.postponed          IS NOT excluded.postponed
+         OR matches.home_score         IS NOT excluded.home_score
+         OR matches.away_score         IS NOT excluded.away_score
+         OR (excluded.postponed IS NOT 1 AND matches.start_time IS NOT excluded.start_time)
+         OR matches.group_name         IS NOT excluded.group_name
+         OR matches.leg                IS NOT excluded.leg
+         OR matches.duration           IS NOT excluded.duration
+         OR matches.penalty_winner     IS NOT excluded.penalty_winner
+         OR matches.home_penalty_goals IS NOT excluded.home_penalty_goals
+         OR matches.away_penalty_goals IS NOT excluded.away_penalty_goals
+       )`
 
 async function upsertMatches(
   db: D1Database,
