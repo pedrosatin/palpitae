@@ -707,6 +707,151 @@ describe('AdminMetricsPage · provedores de partidas', () => {
     expect(screen.queryByText(/falha\(s\) HTTP de provedor/)).not.toBeInTheDocument()
   })
 
+  it('alerta de login proporcional acende com volume e taxa elevados', async () => {
+    // Fixture: 12 sucessos + 3 falhas = 20% de 15 (≥10 e ≥15%).
+    // recentErrors do overview tem só oauth_error → não dispara chip genérico.
+    vi.stubGlobal('fetch', mockFetch(200, overview, business))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText(/3 falha\(s\) de login \(20% de 15\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/erro\(s\) recente\(s\)/)).not.toBeInTheDocument()
+    expect(screen.getByText(/access_denied/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/proporção falhas \/ \(login_success \+ login_failure\)/),
+    ).toBeInTheDocument()
+  })
+
+  it('falha isolada de login com volume baixo não acende o alerta do topo', async () => {
+    const lowVolume = {
+      ...overview,
+      totals: [
+        { event_type: 'login_success', count: '6' },
+        { event_type: 'group_created', count: '2' },
+        { event_type: 'group_joined', count: '5' },
+      ],
+      loginFailures: [{ reason: 'session_expired', count: '1' }],
+      recentErrors: [
+        {
+          timestamp: '2026-06-29 14:30:00',
+          event_type: 'login_failure',
+          blob2: 'session_expired',
+          blob3: '',
+          blob4: '',
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', mockFetch(200, lowVolume, business))
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Falhas de login por motivo')
+    expect(screen.getAllByText('session_expired').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText(/falha\(s\) de login \(/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/erro\(s\) recente\(s\)/)).not.toBeInTheDocument()
+    // Evento permanece na lista de inspeção.
+    expect(screen.getByText('Falha de login')).toBeInTheDocument()
+  })
+
+  it('recentErrors com login_failure e outro erro: chip genérico só conta o outro', async () => {
+    const mixed = {
+      ...overview,
+      totals: [
+        { event_type: 'login_success', count: '6' },
+        { event_type: 'group_created', count: '2' },
+      ],
+      loginFailures: [{ reason: 'session_expired', count: '1' }],
+      recentErrors: [
+        {
+          timestamp: '2026-06-29 14:30:00',
+          event_type: 'login_failure',
+          blob2: 'session_expired',
+          blob3: '',
+          blob4: '',
+        },
+        {
+          timestamp: '2026-06-29 14:31:00',
+          event_type: 'oauth_error',
+          blob2: 'access_denied',
+          blob3: '',
+          blob4: '',
+        },
+        {
+          timestamp: '2026-06-29 14:32:00',
+          event_type: 'football_api_error',
+          blob2: 'fixture_discovery',
+          blob3: 'comp-1',
+          blob4: 'ESPN respondeu 403',
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', mockFetch(200, mixed, business))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText(/1 erro\(s\) recente\(s\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/falha\(s\) de login \(/)).not.toBeInTheDocument()
+    expect(screen.getByText('Falha de login')).toBeInTheDocument()
+    expect(screen.getByText('Erro de OAuth')).toBeInTheDocument()
+    expect(screen.getByText('Erro de sync de provedor')).toBeInTheDocument()
+  })
+
+  it('contagens fracionárias com sampling marcam o alerta de login como estimativa', async () => {
+    const sampled = {
+      ...overview,
+      totals: [
+        { event_type: 'login_success', count: '12.6' },
+        { event_type: 'group_created', count: '2' },
+      ],
+      loginFailures: [{ reason: 'session_expired', count: '2.4' }],
+      recentErrors: [],
+      sampling: { avg_sample_interval: '1.15' },
+    }
+    vi.stubGlobal('fetch', mockFetch(200, sampled, business))
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText(/≈2 falha\(s\) de login \(16% de ≈15\)/),
+    ).toBeInTheDocument()
+  })
+
+  it('troca de janela refaz o overview e recalcula o alerta de login', async () => {
+    const fetchFake = vi.fn(async (url: string) => {
+      if (url.includes('/metrics/overview')) {
+        const days = new URL(url, 'http://local').searchParams.get('days')
+        const body =
+          days === '7'
+            ? {
+                ...overview,
+                days: 7,
+                totals: [
+                  { event_type: 'login_success', count: '6' },
+                  { event_type: 'group_created', count: '1' },
+                ],
+                loginFailures: [{ reason: 'session_expired', count: '1' }],
+                recentErrors: [],
+              }
+            : overview
+        return { ok: true, status: 200, json: async () => body }
+      }
+      if (url.includes('/metrics/business')) {
+        return { ok: true, status: 200, json: async () => business }
+      }
+      if (url.includes('/metrics/archive')) {
+        return { ok: true, status: 200, json: async () => archive }
+      }
+      return { ok: false, status: 404, json: async () => ({}) }
+    })
+    vi.stubGlobal('fetch', fetchFake)
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText(/3 falha\(s\) de login \(20% de 15\)/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '7d' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText(/falha\(s\) de login \(/)).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('session_expired')).toBeInTheDocument()
+  })
+
   it('API sem /metrics/ops: o restante da página carrega e a seção diz "indisponível"', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
     render(<AdminMetricsPage />)

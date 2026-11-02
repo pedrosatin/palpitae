@@ -126,7 +126,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `member_removed` | `group_id` | `user_hash` (do removido) | `reason` (`self`=saiu sozinho / `admin`=removido pelo dono) | — |
 | `login_success` | `user_hash` | — | — | — |
 | `logout_all` | `user_hash` | — | — | — |
-| `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`) | `error_message` (só em `exchange_failed`) | — | — |
+| `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`) | — | — | — |
 | `oauth_error` | `error_code` | — | — | — |
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
 | `security_storage_error` | `source` (`request_limits`/`logout`/`logout_all`/`cleanup`) | `category` (`read`/`write`/`oauth`) em `request_limits`; `error_message` nos demais | `error_message` (só em `request_limits`) | — |
@@ -278,6 +278,96 @@ traduzidos pra linguagem de negócio (`EVENT_LABELS` em
 é a chave do esquema posicional acima). Há ainda um vigia de sampling: se
 `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os números
 viraram estimativa.
+
+### Alerta proporcional de falhas de login
+
+A faixa de status no topo de `/admin/metricas` acende só com volume e proporção
+elevados na janela do painel. A regra vive em
+`web/src/pages/AdminMetricsPage/loginFailureAlert.ts` (7/30/90 dias; padrão 30).
+
+Denominador = callbacks registrados com `login_success` ou `login_failure`
+(agregados com `SUM(_sample_interval)`). Volume mínimo = 10 callbacks.
+Proporção = falhas / callbacks ≥ 15%.
+
+Pontos cegos fora do denominador: `oauth_error` (Google recusou antes do
+callback com cookies), abandono (usuário não voltou) e ausência de callback.
+A proporção mede só esses callbacks registrados. `oauth_error` e
+`login_failure` continuam na lista Erros recentes para inspeção; o chip
+genérico de erros recentes no topo ignora esses dois tipos (login tem alerta
+próprio; oauth é etapa anterior).
+
+A tabela Falhas de login por motivo lista cada `reason` mesmo com o alerta do
+topo apagado. Conduta operacional: abrir a tabela por motivo, checar erros
+recentes e reavaliar antes de tratar o chip como incidente.
+
+#### Janela
+
+A seleção 7/30/90d é média lenta. Rajadas curtas podem diluir-se na janela
+longa. Em 7d o volume mínimo pode ficar abaixo do limiar. O canal desta fatia
+é o próprio painel; alerta automático push fica fora do escopo aqui. O guia
+opcional de Grafana está em
+[`docs/dashboard-grafana.md`](dashboard-grafana.md).
+
+#### Heurística 15% / 10
+
+Os limiares são calibração operacional, com risco de falso alerta e de degraus
+ao trocar a janela. Com os dados da calibração o painel já acende em 30d.
+
+#### Sampling
+
+Contagens usam `SUM(_sample_interval)` e podem ser fracionárias. O rótulo do
+alerta arredonda; se a média de sampling for >1 ou a contagem for fracionária,
+o rótulo marca estimativa (`≈`).
+
+#### Ausência de `login_success` em `totals`
+
+A SQL do overview agrupa por `event_type` e só devolve tipos presentes no
+período. Zero sucessos com falhas listadas é zero legítimo nesse contrato. Esta
+fatia não adiciona detecção de integridade para esse caso.
+
+Calibração com leitura autorizada do Analytics Engine em 2026-11-02 (sessão
+admin, sem PII; sampling médio ~1,05–1,10):
+
+| Janela | sucessos | falhas | callbacks | proporção |
+|---|---|---|---|---|
+| 7d | 6 | 1 | 7 | 14% |
+| 30d | 21 | 5 | 26 | 19% |
+| 90d | 196 | 11 | 207 | 5% |
+
+Semanas com volume ≥15 em ago/2026 ficaram em 0–8%. O limiar de 15% fica acima
+desse patamar e perto de 3× o baseline de 90d; o mínimo de 10 evita alerta na
+janela de 7d com uma única falha. Com os números do dia da calibração, 30d
+acende e 7d/90d não.
+
+#### `session_expired`
+
+O motivo é gravado quando faltam os cookies temporários `oauth_state` /
+`oauth_nonce` / `oauth_verifier` no callback (TTL de 5 minutos em
+`auth/router.ts`). Em 90d, 10 das 11 falhas foram `session_expired` e 1 foi
+`exchange_failed`. Causas compatíveis com o código, sem confirmação por evento:
+fluxo OAuth demorou mais que 5 minutos, cookies de terceiros/bloqueio, contexto
+de navegação diferente do início do login, limpeza de cookies no meio do fluxo.
+O Analytics Engine não registra cookies, tokens, code verifier nem valores
+OAuth; a telemetria não distingue qual causa ocorreu em cada linha. O motivo
+sozinho não basta para concluir incidente de provedor.
+
+#### `exchange_failed`
+
+Gravado no `catch` do callback em `auth/router.ts` com
+`blobs: ['exchange_failed']` (só o motivo em `blob2`). O código atual grava
+apenas o motivo no Analytics Engine; o detalhe fica no `console.error` do
+Worker. A falha observada na calibração foi resposta 520 na troca de código.
+
+#### `state_mismatch`
+
+Motivo distinto: o `state` do cookie temporário difere do `state` devolvido no
+callback. Avaliar separadamente na tabela por motivo. A proporção agregada
+deixa esse caso sem regra específica.
+
+#### Segundo método de login
+
+Estudo futuro (e-mail com link de uso único, passkey ou IdP adicional vinculado
+à conta local). Fora desta fatia; ver `.scratch/research/fallbacks-servicos.md`.
 
 Do D1 (`GET /metrics/business`, estado real, sem sampling) vêm os KPIs de
 produto e o snapshot de **grupos por campeonato**: uma linha por temporada
