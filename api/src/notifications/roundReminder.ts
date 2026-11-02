@@ -85,15 +85,8 @@ type RoundGroup = {
   matches: MatchInfo[]
 }
 
-/**
- * Fetches all (competition, round, user, group) rows that need reminders today,
- * groups them by competition+round, and attaches match info for each round.
- * Returns an empty map when no round starts today.
- */
-async function fetchUsersNeedingReminder(db: D1Database): Promise<D1Result<ReminderRow>> {
-  return db
-    .prepare(
-      `SELECT DISTINCT
+/** Exportado para o teste de plano de consulta (roundReminder.queryPlan.test.ts). */
+export const USERS_NEEDING_REMINDER_SQL = `SELECT DISTINCT
          c.id    AS competition_id,
          c.name  AS competition_name,
          m.round AS round,
@@ -123,15 +116,10 @@ async function fetchUsersNeedingReminder(db: D1Database): Promise<D1Result<Remin
              AND p.group_id = g.id
              AND pm.competition_id = c.id
              AND pm.round = m.round
-         )`,
-    )
-    .all<ReminderRow>()
-}
+         )`
 
-async function fetchScheduledMatches(db: D1Database): Promise<D1Result<MatchRow>> {
-  return db
-    .prepare(
-      `SELECT
+/** Exportado para o teste de plano de consulta (roundReminder.queryPlan.test.ts). */
+export const SCHEDULED_MATCHES_SQL = `SELECT
          c.id         AS competition_id,
          c.name       AS competition_name,
          m.round      AS round,
@@ -151,8 +139,22 @@ async function fetchScheduledMatches(db: D1Database): Promise<D1Result<MatchRow>
            WHERE m2.competition_id = m.competition_id
              AND m2.round = m.round
          ) = date('now', '-3 hours')
-       ORDER BY m.start_time ASC`,
-    )
+       ORDER BY m.start_time ASC`
+
+/**
+ * Fetches all (competition, round, user, group) rows that need reminders today,
+ * groups them by competition+round, and attaches match info for each round.
+ * Returns an empty map when no round starts today.
+ */
+async function fetchUsersNeedingReminder(db: D1Database): Promise<D1Result<ReminderRow>> {
+  return db
+    .prepare(USERS_NEEDING_REMINDER_SQL)
+    .all<ReminderRow>()
+}
+
+async function fetchScheduledMatches(db: D1Database): Promise<D1Result<MatchRow>> {
+  return db
+    .prepare(SCHEDULED_MATCHES_SQL)
     .all<MatchRow>()
 }
 

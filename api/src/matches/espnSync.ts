@@ -374,7 +374,11 @@ async function upsertEspnTeams(
      ON CONFLICT (external_id, provider) DO UPDATE SET
        name       = excluded.name,
        short_name = excluded.short_name,
-       logo_url   = excluded.logo_url`,
+       logo_url   = excluded.logo_url
+     -- Sem mudança, sem gravação (o sync reenvia todos os times a cada tick).
+     WHERE teams.name       IS NOT excluded.name
+        OR teams.short_name IS NOT excluded.short_name
+        OR teams.logo_url   IS NOT excluded.logo_url`,
   )
 
   const statements = Array.from(teamMap.values()).map((team) =>
