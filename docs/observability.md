@@ -279,6 +279,57 @@ traduzidos pra linguagem de negócio (`EVENT_LABELS` em
 `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os números
 viraram estimativa.
 
+### Alerta proporcional de falhas de login
+
+A faixa de status no topo de `/admin/metricas` **não** acende por uma falha
+isolada. A regra vive em
+`web/src/pages/AdminMetricsPage/loginFailureAlert.ts` e usa a janela
+selecionada no painel (7/30/90 dias; padrão 30):
+
+- **Tentativas** = `login_success` + `login_failure` (agregados com
+  `SUM(_sample_interval)`).
+- **Volume mínimo** = 10 tentativas.
+- **Proporção** = falhas / tentativas ≥ 15%.
+- `oauth_error` fica fora da proporção (Google devolveu erro antes do callback
+  com cookies) e continua na lista de erros recentes.
+- A tabela **Falhas de login por motivo** segue listando cada `reason` mesmo
+  quando o alerta do topo está apagado.
+
+Calibração com leitura autorizada do Analytics Engine em 2026-11-02 (sessão
+admin, sem PII; sampling médio ~1,05–1,10):
+
+| Janela | sucessos | falhas | tentativas | proporção |
+|---|---|---|---|---|
+| 7d | 6 | 1 | 7 | 14% |
+| 30d | 21 | 5 | 26 | 19% |
+| 90d | 196 | 11 | 207 | 5% |
+
+Semanas com volume ≥15 em ago/2026 ficaram em 0–8%. O limiar de 15% fica acima
+desse patamar saudável e perto de 3× o baseline de 90d; o mínimo de 10 evita
+alerta na janela de 7d com uma única falha. Com os números do dia da calibração,
+30d acende e 7d/90d não.
+
+**Canal:** o canal imediato é o próprio painel. Canal automático gratuito
+(Grafana Cloud alerting ou e-mail dedicado) permanece estudo — não há cron de
+alerta de login nem conta Grafana do produto configurada nesta fatia. O guia
+opcional está em [`docs/dashboard-grafana.md`](dashboard-grafana.md).
+
+**`session_expired` — evidência e limites.** No código, o motivo é gravado
+quando faltam os cookies temporários `oauth_state` / `oauth_nonce` /
+`oauth_verifier` no callback (TTL de 5 minutos em `auth/router.ts`). Em 90d,
+10 das 11 falhas foram `session_expired` e 1 foi `exchange_failed` (resposta
+520 na troca de código; mensagem truncada no blob, sem token). Causas possíveis
+compatíveis com o código, **sem confirmação por evento**: fluxo OAuth demorou
+mais que 5 minutos, cookies de terceiros/bloqueio, contexto de navegação
+diferente do início do login, limpeza de cookies no meio do fluxo. O Analytics
+Engine **não** registra cookies, tokens, code verifier nem valores OAuth; por
+isso a telemetria não distingue qual causa ocorreu em cada linha. Não presumir
+incidente de provedor só porque o motivo aparece.
+
+**Segundo método de login:** permanece estudo futuro (e-mail com link de uso
+único, passkey ou IdP adicional vinculado à conta local). Não faz parte desta
+fatia; ver pesquisa em `.scratch/research/fallbacks-servicos.md`.
+
 Do D1 (`GET /metrics/business`, estado real, sem sampling) vêm os KPIs de
 produto e o snapshot de **grupos por campeonato**: uma linha por temporada
 cadastrada em `competitions`, inclusive as sem grupo, com id, nome, slug,

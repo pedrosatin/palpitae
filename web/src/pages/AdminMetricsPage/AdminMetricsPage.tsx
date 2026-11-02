@@ -10,6 +10,7 @@ import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
 import { lastDays } from './dates'
 import { eventLabel } from './labels'
+import { evaluateLoginFailureAlert } from './loginFailureAlert'
 import CompetitionActivitySection, {
   type CompetitionActivityResponse,
 } from './CompetitionActivitySection'
@@ -356,9 +357,16 @@ function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): Metri
   if (emailFailed > 0) {
     list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
   }
+  const loginSuccess = Number(
+    overview.totals.find((t) => t.event_type === 'login_success')?.count ?? 0,
+  )
   const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
-  if (loginFailTotal > 0) {
-    list.push({ key: 'login', label: `${loginFailTotal} falha(s) de login`, level: 'warn' })
+  const loginAlert = evaluateLoginFailureAlert({
+    loginSuccess,
+    loginFailures: loginFailTotal,
+  })
+  if (loginAlert) {
+    list.push({ key: 'login', label: loginAlert.label, level: 'warn' })
   }
   return list
 }
@@ -1042,6 +1050,10 @@ function LoginFailuresSection({ overview }: { overview: OverviewResponse }) {
   return (
     <section className={styles.section}>
       <h2 className={styles.sectionTitle}>Falhas de login por motivo</h2>
+      <p className={styles.hint}>
+        O alerta do topo só acende com volume mínimo e proporção elevada na janela
+        selecionada (não por falha isolada). Detalhes em docs/observability.md.
+      </p>
       {overview.loginFailures.length === 0 ? (
         <p className={styles.hint}>Nenhuma falha no período. 🎉</p>
       ) : (

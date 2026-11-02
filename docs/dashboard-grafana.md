@@ -102,8 +102,11 @@ mas vira aproximação se houver amostragem pesada.)
 ### Bônus — alertas
 
 Grafana free inclui alerting: ex. alerta se `poller_run` com `status='error'`
-passar de N na última hora, ou se `login_failure` disparar. É o principal
-diferencial sobre o dashboard nativo.
+passar de N na última hora. Para login, preferir proporção com volume mínimo
+(falhas / (sucessos + falhas) ≥ 15% após ≥10 tentativas na janela), alinhado ao
+painel nativo em `loginFailureAlert.ts` — não alertar por um único
+`login_failure`. Alertas push automáticos continuam o diferencial principal
+sobre o dashboard nativo, que já mostra a faixa de status no topo.
 
 ## Variável de período (opcional)
 
@@ -116,7 +119,7 @@ Dashboard settings → Variables → `period` (custom: `7,30,90`) e use
 |---|---|---|
 | Setup | conta + token + plugin | já deployado |
 | Gráficos | ricos, zoom, anotações | SVG simples |
-| Alertas | ✅ grátis | ❌ (exigiria cron + e-mail) |
+| Alertas | ✅ push grátis (se configurado) | faixa de status no painel; push exigiria cron + e-mail ou Grafana |
 | R2 (cold path) | ❌ | ✅ lista arquivos |
 | Dependência externa | Grafana Cloud + token de conta lá fora | zero |
 | Custo | free tier (limites folgados p/ 1 pessoa) | zero |

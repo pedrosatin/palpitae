@@ -707,6 +707,36 @@ describe('AdminMetricsPage · provedores de partidas', () => {
     expect(screen.queryByText(/falha\(s\) HTTP de provedor/)).not.toBeInTheDocument()
   })
 
+  it('alerta de login proporcional acende com volume e taxa elevados', async () => {
+    // Fixture: 12 sucessos + 3 falhas = 20% de 15 (≥10 e ≥15%).
+    vi.stubGlobal('fetch', mockFetch(200, overview, business))
+    render(<AdminMetricsPage />)
+
+    expect(await screen.findByText(/3 falha\(s\) de login \(20% de 15\)/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/alerta do topo só acende com volume mínimo e proporção elevada/),
+    ).toBeInTheDocument()
+  })
+
+  it('falha isolada de login com volume baixo não acende o alerta do topo', async () => {
+    const lowVolume = {
+      ...overview,
+      totals: [
+        { event_type: 'login_success', count: '6' },
+        { event_type: 'group_created', count: '2' },
+        { event_type: 'group_joined', count: '5' },
+      ],
+      loginFailures: [{ reason: 'session_expired', count: '1' }],
+      recentErrors: [],
+    }
+    vi.stubGlobal('fetch', mockFetch(200, lowVolume, business))
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Falhas de login por motivo')
+    expect(screen.getByText('session_expired')).toBeInTheDocument()
+    expect(screen.queryByText(/falha\(s\) de login \(/)).not.toBeInTheDocument()
+  })
+
   it('API sem /metrics/ops: o restante da página carrega e a seção diz "indisponível"', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
     render(<AdminMetricsPage />)
