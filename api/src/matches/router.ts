@@ -79,7 +79,9 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
     params.push(status)
   }
 
-  query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC`
+  // m.rowid desempata jogos no mesmo horário pela ordem de inserção. Sem ele a
+  // ordem dos empates dependeria do índice que o planner escolhe.
+  query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC, m.rowid ASC`
 
   return { query, params }
 }
