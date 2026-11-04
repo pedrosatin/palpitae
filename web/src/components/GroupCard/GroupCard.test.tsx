@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import GroupCard, { pendingPredictionsLabel } from './GroupCard'
@@ -56,10 +56,19 @@ describe('GroupCard', () => {
     expect(screen.getByRole('link', { name: /Abrir grupo/i })).toHaveAttribute('href', '/grupos/group-1')
   })
 
-  it('calls onClick when the card button is clicked', async () => {
+  it('calls onClick when the card link is clicked', async () => {
     render(<GroupCard group={baseGroup} onClick={onClick} />)
     await userEvent.click(screen.getByRole('link', { name: /Abrir grupo/i }))
     expect(onClick).toHaveBeenCalledOnce()
+  })
+
+  it('allows the browser to handle Ctrl-click', () => {
+    render(<GroupCard group={baseGroup} onClick={onClick} />)
+    const link = screen.getByRole('link', { name: /Abrir grupo/i })
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true })
+    fireEvent(link, event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(onClick).not.toHaveBeenCalled()
   })
 
   it('does not show pending hint when pending_predictions is 0', () => {
