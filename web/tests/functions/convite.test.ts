@@ -93,8 +93,8 @@ describe('buildInviteMeta', () => {
     ).toBe('1 participante · grátis, sem apostas')
   })
 
-  it('returns null without data so the generic OG stays', () => {
-    expect(buildInviteMeta(null)).toBeNull()
+  it('identifies the invite even without group data', () => {
+    expect(buildInviteMeta(null)?.title).toContain('convite')
   })
 })
 
@@ -279,8 +279,12 @@ describe('onRequest (workerd)', () => {
     )
     expect(metaContent(html, 'name', 'twitter:title')).toBe(title.replaceAll('"', '&quot;'))
     expect(metaContent(html, 'name', 'twitter:description')).toBe(description)
-    // Imagem continua a genérica.
-    expect(metaContent(html, 'property', 'og:image')).toBe('https://palpitae.com.br/og-image-brasileirao-2026.png')
+    expect(metaContent(html, 'property', 'og:image')).toBe('https://palpitae.com.br/og-convite.png')
+    expect(metaContent(html, 'name', 'twitter:image')).toBe(
+      'https://palpitae.com.br/og-convite.png',
+    )
+    expect(metaContent(html, 'property', 'og:image:alt')).toContain('Convite')
+    expect(metaContent(html, 'name', 'twitter:image:alt')).toContain('Convite')
     // O resto da SPA segue intacto.
     expect(html).toContain('<div id="root"')
   })
@@ -325,18 +329,18 @@ describe('onRequest (workerd)', () => {
         throw new Error('down')
       },
     ],
-  ])('falls back to the generic OG on %s (still noindex)', async (_label, handler) => {
+  ])('falls back to invite OG on %s (still noindex)', async (_label, handler) => {
     apiHandler = handler
 
     const { res, html } = await get('/convite/ABCD-EF23')
 
     expect(res.status).toBe(200)
-    expect(html).toContain(`<title>${GENERIC_TITLE}</title>`)
-    expect(metaContent(html, 'property', 'og:title')).toBe(GENERIC_TITLE)
+    expect(metaContent(html, 'property', 'og:title')).toContain('convite')
+    expect(metaContent(html, 'property', 'og:image')).toBe('https://palpitae.com.br/og-convite.png')
     expect(metaContent(html, 'name', 'robots')).toBe('noindex')
   })
 
-  it('falls back to the generic OG when the API is slower than the timeout', async () => {
+  it('falls back to invite OG when the API is slower than the timeout', async () => {
     apiHandler = () =>
       new Promise((resolve) => setTimeout(() => resolve(apiJson(OK_BODY)), API_TIMEOUT_MS + 1000))
 
@@ -345,7 +349,7 @@ describe('onRequest (workerd)', () => {
 
     expect(res.status).toBe(200)
     expect(Date.now() - started).toBeLessThan(API_TIMEOUT_MS + 900)
-    expect(html).toContain(`<title>${GENERIC_TITLE}</title>`)
+    expect(metaContent(html, 'property', 'og:title')).toContain('convite')
   }, 10_000)
 
   it('serves a person the original HTML without calling the API (still noindex)', async () => {
