@@ -229,7 +229,7 @@ test.describe('Happy Path - Palpitae', () => {
     await expect(page.locator('h2').filter({ hasText: 'Seus grupos' })).toBeVisible()
 
     // Clicar no grupo recém-criado
-    await page.getByRole('button', { name: /Os Craques do Bairro/ }).click()
+    await page.getByRole('link', { name: /Os Craques do Bairro/ }).click()
 
     // Verificar se está na GroupDetailPage e navegar para a aba de Palpitar
     await page.click('a:has-text("Palpitar")')
