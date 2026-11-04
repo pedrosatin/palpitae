@@ -7,8 +7,8 @@
  * endpoint público da API (`GET /public/invites/:code`). No navegador a SPA
  * assume e redireciona para `/?convite=CODE` (ver `InviteRedirect` em App.tsx).
  *
- * Se o código for inválido ou se a API falhar, passar de API_TIMEOUT_MS ou
- * responder fora do formato, o HTML sai com o OG genérico da home. A página
+ * Se a API falhar, passar de API_TIMEOUT_MS ou responder fora do formato,
+ * o crawler recebe um convite genérico. Códigos inválidos mantêm o OG da home. A página
  * sempre sai com `noindex`, porque o link dá acesso a um grupo privado.
  *
  * Só crawlers de preview (WhatsApp, Telegram, X, Slack etc., ver
@@ -20,8 +20,7 @@
  * segredo, como o proxy de `/api/*`. Assim a API conta a quota pelo IP de quem pediu
  * o preview, e não pelo balde anônimo compartilhado dos Workers.
  *
- * og:image segue a genérica (/og-image-brasileirao-2026.png); imagem dinâmica por grupo fica
- * para depois.
+ * A imagem é compartilhada entre os convites; o nome do grupo aparece no título.
  */
 
 import { CLIENT_IP_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
@@ -159,11 +158,15 @@ export async function fetchInvitePreview(
 }
 
 /**
- * Monta título e descrição do card. Devolve null sem dados do grupo, e o HTML
- * mantém o OG genérico.
+ * Monta título e descrição do card, com fallback quando faltam dados do grupo.
  */
-export function buildInviteMeta(preview: InvitePreview | null): InviteMeta | null {
-  if (!preview) return null
+export function buildInviteMeta(preview: InvitePreview | null): InviteMeta {
+  if (!preview) {
+    return {
+      title: 'Você recebeu um convite para um bolão no Palpitae',
+      description: 'Abra o link para entrar no grupo e palpitar com a galera.',
+    }
+  }
   const participants =
     preview.memberCount === 1 ? '1 participante' : `${preview.memberCount} participantes`
   const parts = [preview.competitionName, participants, 'grátis, sem apostas'].filter(Boolean)
@@ -207,6 +210,16 @@ export function rewriteInviteHtml(
           el.setInnerContent(meta.title)
         },
       })
+      .on('meta[property="og:image"]', setContent(`${SITE_URL}/og-convite.png`))
+      .on('meta[name="twitter:image"]', setContent(`${SITE_URL}/og-convite.png`))
+      .on(
+        'meta[property="og:image:alt"]',
+        setContent('Convite para entrar em um bolão no Palpitae'),
+      )
+      .on(
+        'meta[name="twitter:image:alt"]',
+        setContent('Convite para entrar em um bolão no Palpitae'),
+      )
       .on('meta[name="description"]', setContent(meta.description))
       .on('meta[property="og:title"]', setContent(meta.title))
       .on('meta[property="og:description"]', setContent(meta.description))
@@ -253,7 +266,7 @@ export async function onRequest(context: PagesContext): Promise<Response> {
           )
         : null
     const pageUrl = code ? `${SITE_URL}/convite/${code}` : `${SITE_URL}/`
-    return rewriteInviteHtml(shell, buildInviteMeta(preview), pageUrl)
+    return rewriteInviteHtml(shell, code && crawler ? buildInviteMeta(preview) : null, pageUrl)
   } catch {
     // Se a reescrita falhar, devolve o index.html original e a SPA abre o convite.
     return shell
