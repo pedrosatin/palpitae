@@ -94,7 +94,12 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
 
   return (
     <Card hoverable className={isFinished ? `${styles.card} ${styles.finished}` : styles.card}>
-      <button className={styles.cardBtn} onClick={onClick} aria-label={openLabel}>
+      <a className={styles.cardBtn} href={`/grupos/${group.id}`} onClick={(event) => {
+        if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0) {
+          event.preventDefault()
+          onClick()
+        }
+      }} aria-label={openLabel}>
         <div className={styles.header}>
           <h3 className={styles.name}>{group.name}</h3>
           <div className={styles.badges}>
@@ -130,7 +135,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
         {hasPending && pendingLabel && (
           <p className={styles.pendingHint}>{pendingLabel} · ir a Palpitar</p>
         )}
-      </button>
+      </a>
 
       {isFinished && (
         <div className={styles.finishedFooter}>

@@ -51,23 +51,28 @@ describe('GroupCard', () => {
     expect(screen.queryByText('Admin')).not.toBeInTheDocument()
   })
 
+  it('links to the group', () => {
+    render(<GroupCard group={baseGroup} onClick={onClick} />)
+    expect(screen.getByRole('link', { name: /Abrir grupo/i })).toHaveAttribute('href', '/grupos/group-1')
+  })
+
   it('calls onClick when the card button is clicked', async () => {
     render(<GroupCard group={baseGroup} onClick={onClick} />)
-    await userEvent.click(screen.getByRole('button', { name: /Abrir grupo/i }))
+    await userEvent.click(screen.getByRole('link', { name: /Abrir grupo/i }))
     expect(onClick).toHaveBeenCalledOnce()
   })
 
   it('does not show pending hint when pending_predictions is 0', () => {
     render(<GroupCard group={baseGroup} onClick={onClick} />)
     expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Abrir grupo Meu Grupo' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Abrir grupo Meu Grupo' })).toBeInTheDocument()
   })
 
   it('shows singular pending hint and enriches the open label when count is 1', () => {
     render(<GroupCard group={{ ...baseGroup, pending_predictions: 1 }} onClick={onClick} />)
     expect(screen.getByText('1 palpite pendente · ir a Palpitar')).toBeInTheDocument()
     expect(
-      screen.getByRole('button', {
+      screen.getByRole('link', {
         name: 'Abrir grupo Meu Grupo, 1 palpite pendente',
       }),
     ).toBeInTheDocument()
