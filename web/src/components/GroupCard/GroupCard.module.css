@@ -248,7 +248,7 @@
 }
 
 /* ─── Rodapé do card encerrado: compartilhar resultado ──────────────────────
-   Fora do <button> principal (botão aninhado é HTML inválido). Discreto — o
+   Fora do link principal (botão aninhado é HTML inválido). Discreto — o
    convite a divulgar não deve competir com o pódio. */
 
 .finishedFooter {
@@ -290,4 +290,9 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.cardBtn,
+.cardBtn:hover {
+  text-decoration: none;
 }
