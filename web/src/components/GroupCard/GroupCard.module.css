@@ -37,6 +37,9 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  /* Quando título e badges não cabem na mesma linha, as badges descem em vez de
+     cobrir o título. */
+  flex-wrap: wrap;
   gap: var(--space-3);
 }
 
@@ -44,10 +47,12 @@
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   margin: 0;
-  flex: 1;
-  /* Permite o título encolher abaixo do min-content e ceder espaço; sem isso as
-     badges (flex-shrink:0) transbordam a borda direita do card. */
+  /* Base auto: a largura do texto decide a quebra do header. Com base 0 o título
+     encolheria até a badge encostar nele e a quebra nunca aconteceria. */
+  flex: 1 1 auto;
   min-width: 0;
+  /* Nome sem espaços maior que o card quebra em vez de vazar. */
+  overflow-wrap: anywhere;
   color: var(--color-text-primary);
 }
 
@@ -55,12 +60,14 @@
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .badgeWrapper {
   position: relative;
   display: inline-flex;
+  min-width: 0;
   max-width: 7.5rem;
 }
 
