@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { apiFetch } from '../../lib/api'
 import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
@@ -32,6 +32,7 @@ export function useGroupDetail(groupId: string | undefined) {
 
 export function useGroupTabs(group: GroupDetail | null) {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { pathname } = useLocation()
   const rawTab = parseTab(searchParams.get('tab'))
   const showStandings = isStandingsTabEligible(group?.competition_type, group?.competition_code)
   const activeTab =
@@ -61,7 +62,8 @@ export function useGroupTabs(group: GroupDetail | null) {
       params.set('tab', tab)
     }
     const qs = params.toString()
-    return qs ? `?${qs}` : '.'
+    if (tab === DEFAULT_TAB) return qs ? `${pathname}?${qs}` : pathname
+    return `?${qs}`
   }
 
   function handleTabClick(e: React.MouseEvent<HTMLAnchorElement>, tab: Tab) {

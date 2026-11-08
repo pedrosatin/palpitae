@@ -416,11 +416,29 @@ describe('useGroupTabs', () => {
   it('tabHref computes correct links', () => {
     const { result } = renderHook(() => useGroupTabs(mockGroup), {
       wrapper: ({ children }) =>
-        React.createElement(MemoryRouter, { initialEntries: ['/?tab=leaderboard'] }, children),
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ['/grupos/abc?tab=leaderboard'] },
+          children,
+        ),
     })
 
     expect(result.current.tabHref('standings')).toBe('?tab=standings')
-    expect(result.current.tabHref('predictions')).toBe('.') // DEFAULT_TAB deletes the tab param
+    expect(result.current.tabHref('predictions')).toBe('/grupos/abc')
+  })
+
+  it('tabHref da aba padrão mantém outros parâmetros', () => {
+    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+      wrapper: ({ children }) =>
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ['/grupos/abc?tab=members&x=1'] },
+          children,
+        ),
+    })
+
+    expect(result.current.tabHref('predictions')).toBe('/grupos/abc?x=1')
+    expect(result.current.tabHref('members')).toBe('?tab=members&x=1')
   })
 
   it('does not prevent default or call setActiveTab if modifier key is pressed', () => {
