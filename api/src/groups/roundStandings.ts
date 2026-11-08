@@ -8,8 +8,12 @@ export interface RoundMemberRow {
   joined_at: string
   total_points: number
   exact_hits: number
+  /** Pontos só na rodada de referência, o que a coluna mostra. */
   round_points: number
-  round_exact: number
+  /** Pontos da rodada de referência e das rodadas numeradas posteriores. */
+  since_points: number
+  /** Exatos da rodada de referência e das rodadas numeradas posteriores. */
+  since_exact: number
 }
 
 export interface RoundStanding {
@@ -45,11 +49,16 @@ function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMembe
 
 /**
  * Pontos de cada membro na rodada e a variação de posição, na ordem atual do
- * ranking. A posição anterior aplica a mesma ordem aos totais sem a rodada.
+ * ranking, que já tem os jogos pontuados da rodada em andamento.
+ *
+ * A posição anterior aplica a mesma ordem aos totais sem a rodada de referência
+ * e sem as rodadas numeradas posteriores. Descontar só a referência compararia
+ * com um estado que nunca existiu. Jogo remarcado de rodada anterior conta como
+ * ponto de antes.
  */
 export function computeRoundStandings(rows: RoundMemberRow[]): RoundStanding[] {
-  const pointsBefore: Score = (row) => row.total_points - row.round_points
-  const exactBefore: Score = (row) => row.exact_hits - row.round_exact
+  const pointsBefore: Score = (row) => row.total_points - row.since_points
+  const exactBefore: Score = (row) => row.exact_hits - row.since_exact
   const positionBefore = new Map(
     ranked(rows, pointsBefore, exactBefore).map((row, index) => [row.user_id, index + 1]),
   )
@@ -149,7 +158,7 @@ async function findReferenceRound(db: D1Database, groupId: string): Promise<stri
   return pickReferenceRound(results)
 }
 
-/** Membros atuais com os totais e a soma da rodada. Sem palpite na rodada, a soma é 0. */
+/** Membros atuais com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
 async function fetchRoundMembers(
   db: D1Database,
   groupId: string,
@@ -163,24 +172,28 @@ async function fetchRoundMembers(
          COALESCE(l.total_points, 0) AS total_points,
          COALESCE(l.exact_hits, 0) AS exact_hits,
          COALESCE(r.round_points, 0) AS round_points,
-         COALESCE(r.round_exact, 0) AS round_exact
+         COALESCE(r.since_points, 0) AS since_points,
+         COALESCE(r.since_exact, 0) AS since_exact
        FROM group_members gm
        INNER JOIN users u ON gm.user_id = u.id
        LEFT JOIN leaderboard l ON gm.group_id = l.group_id AND gm.user_id = l.user_id
        LEFT JOIN (
          SELECT
            p.user_id,
-           SUM(${PREDICTION_POINTS_SQL}) AS round_points,
-           SUM(${EXACT_HIT_SQL}) AS round_exact
+           SUM(CASE WHEN m.round = ? THEN ${PREDICTION_POINTS_SQL} ELSE 0 END) AS round_points,
+           SUM(${PREDICTION_POINTS_SQL}) AS since_points,
+           SUM(${EXACT_HIT_SQL}) AS since_exact
          FROM predictions p
          JOIN groups g ON g.id = p.group_id
          JOIN matches m ON m.id = p.match_id AND m.competition_id = g.competition_id
-         WHERE p.group_id = ? AND m.round = ?
+         WHERE p.group_id = ?
+           AND m.round GLOB '[0-9]*' AND m.round NOT GLOB '*[^0-9]*'
+           AND CAST(m.round AS INTEGER) >= CAST(? AS INTEGER)
          GROUP BY p.user_id
        ) r ON gm.user_id = r.user_id
        WHERE gm.group_id = ?`,
     )
-    .bind(groupId, round, groupId)
+    .bind(round, groupId, round, groupId)
     .all<RoundMemberRow>()
   return results
 }

@@ -18,7 +18,8 @@ function member(overrides: Partial<RoundMemberRow> & { user_id: string }): Round
     total_points: 0,
     exact_hits: 0,
     round_points: 0,
-    round_exact: 0,
+    since_points: overrides.round_points ?? 0,
+    since_exact: 0,
     ...overrides,
   }
 }
@@ -55,8 +56,8 @@ describe('computeRoundStandings', () => {
 
   it('desempata por exatos, tirando da posição anterior os exatos da rodada', () => {
     const rows = [
-      member({ user_id: 'a', total_points: 10, exact_hits: 3, round_points: 3, round_exact: 3 }),
-      member({ user_id: 'b', total_points: 10, exact_hits: 2, round_points: 3, round_exact: 0 }),
+      member({ user_id: 'a', total_points: 10, exact_hits: 3, round_points: 3, since_exact: 3 }),
+      member({ user_id: 'b', total_points: 10, exact_hits: 2, round_points: 3 }),
     ]
 
     // Antes da rodada, os dois tinham 7 pontos, com 0 e 2 exatos. Passa `a` à frente.
@@ -97,6 +98,38 @@ describe('computeRoundStandings', () => {
     ]
 
     expect(changes(rows)).toEqual({ a: null, b: null, c: null })
+  })
+
+  it('devolve null na primeira rodada mesmo com a rodada seguinte pontuada em parte', () => {
+    const rows = [
+      member({ user_id: 'alice', total_points: 6, round_points: 6, since_points: 6 }),
+      member({ user_id: 'bob', total_points: 6, round_points: 3, since_points: 6 }),
+    ]
+
+    expect(changes(rows)).toEqual({ alice: null, bob: null })
+  })
+
+  it('tira da posição anterior a rodada de referência e a seguinte, e mostra só a referência', () => {
+    const rows = [
+      member({ user_id: 'alice', total_points: 20, round_points: 3, since_points: 12 }),
+      member({ user_id: 'bob', total_points: 18, round_points: 5, since_points: 5 }),
+    ]
+
+    // Antes da referência, alice tinha 8 e bob tinha 13. Descontando só a referência, seria 17 a 13.
+    expect(computeRoundStandings(rows)).toEqual([
+      { user_id: 'alice', round_points: 3, position_change: 1 },
+      { user_id: 'bob', round_points: 5, position_change: -1 },
+    ])
+  })
+
+  it('tira do desempate anterior os exatos da rodada posterior', () => {
+    const rows = [
+      member({ user_id: 'a', total_points: 10, exact_hits: 2, since_points: 4, since_exact: 2 }),
+      member({ user_id: 'b', total_points: 10, exact_hits: 1, since_points: 4 }),
+    ]
+
+    // Antes da referência, os dois tinham 6 pontos, com 0 e 1 exato. Passa `a` à frente.
+    expect(changes(rows)).toEqual({ a: 1, b: -1 })
   })
 
   it('mantém 0 pontos de rodada e calcula a variação de quem não palpitou', () => {
@@ -590,6 +623,91 @@ describe('GET /groups/:id/round-standings', () => {
         { user_id: 'carol', round_points: 0, position_change: 0 },
       ],
     })
+  })
+
+  it('devolve position_change null com a rodada 1 fechada e a rodada 2 pontuada em parte', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    const first = addMatch({ round: '1', start: BEFORE })
+    const saturday = addMatch({ round: '2', start: ROUND_START })
+    addMatch({ round: '2', status: 'scheduled', start: AFTER })
+    addPick('alice', first, { awarded: 6 })
+    addPick('bob', first, { awarded: 3 })
+    addPick('alice', saturday, { awarded: 0 })
+    addPick('bob', saturday, { awarded: 3 })
+    setBoard('alice', 6, 0)
+    setBoard('bob', 6, 2)
+
+    const body = await standings()
+
+    expect(body.round).toBe('1')
+    expect(body.standings.map((s) => s.position_change)).toEqual([null, null, null])
+    expect(body.standings.find((s) => s.user_id === 'alice')?.round_points).toBe(6)
+    expect(body.standings.find((s) => s.user_id === 'bob')?.round_points).toBe(3)
+  })
+
+  it('ignora a referência e a rodada seguinte na posição anterior, e mostra só a referência', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    const earlier = addMatch({ round: '1', start: BEFORE })
+    const reference = addMatch({ round: '2', start: ROUND_START })
+    const next = addMatch({ round: '3', start: AFTER })
+    addMatch({ round: '3', status: 'scheduled', start: LATER })
+    addPick('alice', earlier, { awarded: 5 })
+    addPick('bob', earlier, { awarded: 8 })
+    addPick('alice', reference, { awarded: 1 })
+    addPick('alice', next, { awarded: 9 })
+    setBoard('alice', 15, 0)
+    setBoard('bob', 8, 0)
+
+    expect(await standings()).toEqual({
+      round: '2',
+      standings: [
+        { user_id: 'alice', round_points: 1, position_change: 1 },
+        { user_id: 'bob', round_points: 0, position_change: -1 },
+        { user_id: 'carol', round_points: 0, position_change: 0 },
+      ],
+    })
+  })
+
+  it('tira do desempate anterior os exatos da rodada seguinte', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    const earlier = addMatch({ round: '1', start: BEFORE })
+    const reference = addMatch({ round: '2', start: ROUND_START })
+    const next = addMatch({ round: '3', start: AFTER })
+    addMatch({ round: '3', status: 'scheduled', start: LATER })
+    // Na rodada 1, os dois fazem 3 pontos e só bob crava. Na rodada 3, só alice crava.
+    addPick('alice', earlier, { awarded: 1, penalty: 2 })
+    addPick('bob', earlier, { awarded: 3 })
+    addPick('alice', reference, { awarded: 1 })
+    addPick('bob', reference, { awarded: 1 })
+    addPick('alice', next, { awarded: 3 })
+    addPick('bob', next, { awarded: 1, penalty: 2 })
+    setBoard('alice', 7, 1)
+    setBoard('bob', 7, 1)
+
+    const body = await standings()
+
+    expect(body.standings.map((s) => [s.user_id, s.position_change])).toEqual([
+      ['alice', 1],
+      ['bob', -1],
+      ['carol', 0],
+    ])
+  })
+
+  it('não soma rodada sem número ao que veio da referência em diante', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    // Rodada 0 existe na ESPN. `CAST` de uma fase sem número também dá 0.
+    const zero = addMatch({ round: '0', start: BEFORE })
+    const loose = addMatch({ round: 'REGULAR_SEASON', start: AFTER })
+    addPick('alice', zero, { awarded: 1 })
+    addPick('bob', zero, { awarded: 3 })
+    addPick('alice', loose, { awarded: 5 })
+    setBoard('alice', 6, 0)
+    setBoard('bob', 3, 1)
+
+    const body = await standings()
+
+    expect(body.round).toBe('0')
+    expect(body.standings.map((s) => s.position_change)).toEqual([0, 0, 0])
   })
 
   it('devolve position_change null na primeira rodada pontuada', async () => {
