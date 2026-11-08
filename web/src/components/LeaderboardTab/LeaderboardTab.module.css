@@ -37,6 +37,13 @@
   text-align: center;
 }
 
+/* "Rodada 34" em caixa alta precisa de mais largura que as outras colunas numéricas. */
+.thRound {
+  width: 6.5rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .labelShort {
   display: none;
   text-decoration: none;
@@ -71,6 +78,25 @@
   font-weight: var(--font-weight-bold);
   color: var(--color-text-muted);
   width: 2.5rem;
+  /* Número e seta somam pouco mais que o avatar, e a linha quase não cresce. */
+  line-height: var(--line-height-tight);
+}
+
+/* Flex para a seta centralizar mesmo quando passa da largura do conteúdo da célula. */
+.positionChange {
+  display: flex;
+  justify-content: center;
+  font-size: var(--font-size-xs);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.changeUp {
+  color: var(--color-primary);
+}
+
+.changeDown {
+  color: var(--color-danger);
 }
 
 .nameCell {
@@ -126,14 +152,33 @@
 }
 
 .tdPts,
-.tdExact {
+.tdExact,
+.tdRound {
   text-align: center;
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
-.tdExact {
+.tdExact,
+.tdRound {
   color: var(--color-text-secondary);
+}
+
+/* A coluna da rodada encurta já no corte do celular. Com "Rodada 34" entre 481 e
+   600 px, o nome ficaria sem espaço ao lado das badges. */
+@media (max-width: 600px) {
+  .thRound {
+    width: 3rem;
+    letter-spacing: 0;
+  }
+
+  .thRound .labelLong {
+    display: none;
+  }
+
+  .thRound .labelShort {
+    display: inline;
+  }
 }
 
 /* Até 480 px, a tabela usa rótulos curtos, colunas numéricas estreitas e badges
