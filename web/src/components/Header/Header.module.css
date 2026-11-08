@@ -126,21 +126,84 @@
   white-space: nowrap;
 }
 
+/* Ícones e inicial do avatar ficam ocultos acima de 600 px. */
+.actionIcon,
+.avatarFallback {
+  display: none;
+}
+
+.avatarFallback {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-elevated);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 /* ─── Mobile ─────────────────────────────────────────────────────────────── */
 
+/*
+ * Uma linha só: logo, dois botões-ícone (alvo de 44 px) e o avatar.
+ * O .actionLabel tira o texto dos botões da tela e o mantém na árvore de
+ * acessibilidade, então o nome acessível é o mesmo do desktop.
+ * Altura: 8 + 44 + 8 + 1 (borda) = 61 px.
+ */
 @media (max-width: 600px) {
   .inner {
-    padding: var(--space-3) var(--space-4);
-    flex-wrap: wrap;
+    padding: var(--space-2) var(--space-4);
     gap: var(--space-3);
   }
 
   .actions {
-    flex-wrap: wrap;
     gap: var(--space-2);
   }
 
+  .actions .actionButton {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .actionIcon {
+    display: block;
+    width: 20px;
+    height: 20px;
+  }
+
+  .actionLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .userMenu {
+    padding-left: var(--space-2);
+    margin-left: 0;
+  }
+
+  .userMenuTrigger {
+    min-height: 44px;
+    padding: 0 var(--space-1);
+  }
+
   .nickname {
-    max-width: 100px;
+    display: none;
+  }
+
+  .avatarFallback {
+    display: flex;
   }
 }
