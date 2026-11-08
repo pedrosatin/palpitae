@@ -858,3 +858,87 @@ it('mostra a escolha de resultado em edição na volta quando a ida aguarda salv
   expect(screen.getByRole('radio', { name: 'Casa' })).toHaveAttribute('aria-checked', 'true')
   expect(screen.getByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).toBeInTheDocument()
 })
+
+describe('MatchCard placar da ida e agregado', () => {
+  const leg1 = makeMatch({
+    id: 'leg1',
+    tie_role: 'leg1',
+    status: 'finished',
+    start_time: '2020-01-01T00:00:00Z',
+    home_team_name: 'Argentina',
+    away_team_name: 'Brasil',
+    home_score: 1,
+    away_score: 0,
+  })
+  const leg2 = makeMatch({ tie_role: 'leg2', leg1_match_id: 'leg1' })
+
+  function renderLeg2(overrides: Partial<Match>, props: Partial<Parameters<typeof MatchCard>[0]>) {
+    return render(
+      <MatchCard
+        match={{ ...leg2, ...overrides }}
+        prediction={undefined}
+        groupId="g"
+        onSaved={vi.fn()}
+        {...props}
+      />,
+    )
+  }
+
+  it('mostra o placar real da ida na volta ainda aberta', () => {
+    renderLeg2({}, { leg1Match: leg1 })
+    expect(screen.getByText('Ida: Argentina 1 × 0 Brasil')).toBeInTheDocument()
+    expect(screen.queryByText(/^Agregado/)).not.toBeInTheDocument()
+  })
+
+  it('mostra o agregado previsto quando a ida foi palpitada e a volta está completa', async () => {
+    renderLeg2(
+      {},
+      { leg1Prediction: makePrediction({ predicted_home_score: 2, predicted_away_score: 0 }) },
+    )
+    expect(screen.queryByText(/Agregado previsto/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    expect(screen.getByText('Agregado previsto 1 × 3')).toBeInTheDocument()
+  })
+
+  it('não mostra nada novo com a ida sem resultado', () => {
+    renderLeg2(
+      {},
+      { leg1Match: { ...leg1, status: 'scheduled', home_score: null, away_score: null } },
+    )
+    expect(screen.queryByText(/^Ida:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Agregado/)).not.toBeInTheDocument()
+  })
+
+  it('não mostra nada no jogo de ida nem no jogo único', () => {
+    renderCard(makeMatch({ tie_role: 'leg1' }), undefined)
+    renderCard(makeMatch({ tie_role: 'single' }), undefined)
+    expect(screen.queryByText(/^Ida:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Agregado/)).not.toBeInTheDocument()
+  })
+
+  it('mostra o agregado e quem avançou na volta encerrada', () => {
+    renderLeg2(
+      { status: 'finished', start_time: '2020-02-01T00:00:00Z', home_score: 1, away_score: 1 },
+      { leg1Match: leg1 },
+    )
+    expect(screen.getByText('Ida: Argentina 1 × 0 Brasil')).toBeInTheDocument()
+    expect(screen.getByText('Agregado 1 × 2 · Argentina avançou')).toBeInTheDocument()
+  })
+
+  it('diz que o classificado saiu nos pênaltis', () => {
+    renderLeg2(
+      {
+        status: 'finished',
+        start_time: '2020-02-01T00:00:00Z',
+        home_score: 1,
+        away_score: 0,
+        penalty_winner: 'home',
+        home_penalty_goals: 4,
+        away_penalty_goals: 3,
+      },
+      { leg1Match: leg1 },
+    )
+    expect(screen.getByText('Agregado 1 × 1 · Brasil avançou nos pênaltis')).toBeInTheDocument()
+  })
+})

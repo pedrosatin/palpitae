@@ -1,4 +1,5 @@
 import { formatMatchDate } from '../../lib/matchTime'
+import { predictedAggregateText, tieSummary } from '../../lib/tieSummary'
 import CheckIcon from '../CheckIcon'
 import InfoHint from '../InfoHint/InfoHint'
 import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
@@ -15,6 +16,8 @@ interface MatchCardProps {
   match: Match
   prediction: Prediction | undefined
   leg1Prediction?: Prediction
+  /** Jogo de ida do confronto, para mostrar o placar real e o agregado na volta. */
+  leg1Match?: Match
   leg1Pending?: boolean
   groupId: string
   /**
@@ -88,6 +91,10 @@ export default function MatchCard(props: MatchCardProps) {
       : penaltyWinner === 'away'
         ? match.away_team_short_name
         : null
+  const summary = tieSummary(match, props.leg1Match)
+  const predictedAggregate = locked
+    ? null
+    : predictedAggregateText(match, home, away, props.leg1Prediction)
   const penaltyDecided = penaltyWinner !== null && !reopenPenalty
 
   const penaltyInline = !showPenaltyPicker ? null : penaltyDecided ? (
@@ -168,6 +175,13 @@ export default function MatchCard(props: MatchCardProps) {
             label="fase eliminatória"
             text="O placar considera tempo regulamentar + prorrogação. Na volta, os pênaltis dependem do agregado dos seus dois palpites."
           />
+        )}
+        {(summary || predictedAggregate) && (
+          <div className={styles.tieInfo}>
+            {summary && <p>{summary.leg1}</p>}
+            {summary?.aggregate && <p className={styles.tieAggregate}>{summary.aggregate}</p>}
+            {predictedAggregate && <p>{predictedAggregate}</p>}
+          </div>
         )}
         {locked ? (
           <LockedPredictionView
