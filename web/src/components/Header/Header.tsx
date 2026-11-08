@@ -24,7 +24,10 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
   const canCreateGroup = user.feature_flags?.create_group ?? false
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
-  const displayName = user.nickname ?? user.email
+  const displayName = user.nickname?.trim() || user.email
+  // Guarda a URL que falhou para voltar à inicial sem esconder uma foto nova.
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
+  const showAvatar = Boolean(user.avatar_url) && user.avatar_url !== failedAvatarUrl
 
   useEffect(() => {
     if (!menuOpen) return
@@ -87,12 +90,17 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
               aria-haspopup="true"
               aria-label={`Menu de ${displayName}`}
             >
-              {user.avatar_url ? (
-                <img src={user.avatar_url} alt="" className={styles.avatar} />
+              {showAvatar ? (
+                <img
+                  src={user.avatar_url}
+                  alt=""
+                  className={styles.avatar}
+                  onError={() => setFailedAvatarUrl(user.avatar_url ?? null)}
+                />
               ) : (
                 // Só aparece no celular, onde o nome some e sobra o avatar.
                 <span className={styles.avatarFallback} aria-hidden="true">
-                  {displayName.charAt(0).toUpperCase()}
+                  {Array.from(displayName)[0]?.toUpperCase()}
                 </span>
               )}
               <span className={styles.nickname}>{displayName}</span>

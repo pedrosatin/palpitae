@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -108,6 +108,28 @@ describe('Header', () => {
   it('renders an initial as avatar fallback when the user has no avatar', () => {
     renderHeader({ user: { email: 'user@example.com', nickname: 'pedro' } })
     expect(screen.getByText('P')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('keeps an emoji whole as the avatar initial', () => {
+    renderHeader({ user: { email: 'user@example.com', nickname: '🐯 Tigrão' } })
+    expect(screen.getByText('🐯')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it.each(['', '   '])('falls back to the email when the nickname is %j', (nickname) => {
+    renderHeader({ user: { email: 'user@example.com', nickname } })
+    expect(screen.getByRole('button', { name: 'Menu de user@example.com' })).toBeInTheDocument()
+    expect(screen.getByText('U')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('swaps a broken avatar for the initial', () => {
+    const { container } = renderHeader({
+      user: { ...baseUser, avatar_url: 'https://example.com/broken.png' },
+    })
+    const img = container.querySelector('img[src="https://example.com/broken.png"]')
+    expect(img).not.toBeNull()
+    fireEvent.error(img!)
+    expect(container.querySelector('img[src="https://example.com/broken.png"]')).toBeNull()
+    expect(screen.getByText('T')).toHaveAttribute('aria-hidden', 'true')
   })
 
   it('renders logo as a link to home', () => {

@@ -126,7 +126,7 @@
   white-space: nowrap;
 }
 
-/* Ícones e avatar de reserva só existem no celular; no desktop nada muda. */
+/* Ícones e inicial do avatar ficam ocultos acima de 600 px. */
 .actionIcon,
 .avatarFallback {
   display: none;
@@ -148,9 +148,10 @@
 /* ─── Mobile ─────────────────────────────────────────────────────────────── */
 
 /*
- * Uma linha só: logo, dois botões-ícone (alvo de 44 px) e o avatar. O texto
- * dos botões fica visível só para leitor de tela, então o nome acessível é o
- * mesmo do desktop. Altura: 8 + 44 + 8 + 1 (borda) = 61 px.
+ * Uma linha só: logo, dois botões-ícone (alvo de 44 px) e o avatar.
+ * O .actionLabel tira o texto dos botões da tela e o mantém na árvore de
+ * acessibilidade, então o nome acessível é o mesmo do desktop.
+ * Altura: 8 + 44 + 8 + 1 (borda) = 61 px.
  */
 @media (max-width: 600px) {
   .inner {
