@@ -1,4 +1,5 @@
 import { trackEvent } from '../../analytics/ga'
+import { leftoverMatchesText } from '../../lib/rounds'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
 import MatchCard, { type Match } from '../MatchCard'
@@ -81,6 +82,7 @@ export default function PredictionsTab({
     roundMatches,
     labelFor,
     postponedByRound,
+    rescheduledByRound,
     prev,
     next,
     setRoundIndex,
@@ -106,23 +108,34 @@ export default function PredictionsTab({
     handlePenaltyDraftChange,
   } = usePredictionsTab(groupId, competitionId)
 
-  // Avisa sobre UMA rodada adiada: a mais próxima ANTES da aberta.
+  // Avisa sobre UMA rodada com palpite aberto fora de hora: a mais próxima ANTES
+  // da aberta. Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em
+  // rodadas que ficaram para trás (ADR-019): nos dois casos a rodada não é o
+  // default e o usuário não tem por que visitá-la.
   //
-  // Olhar pra trás porque jogo adiado é sempre passado — ele guarda o horário
-  // original, que já venceu. E mostrar só a mais próxima porque o Brasileirão
-  // acumula adiados distantes (a rodada 4 tem um Flamengo×Mirassol parado desde
-  // fevereiro): avisar do mais antigo primeiro fazia o usuário pular 17 rodadas
-  // pra trás e só então descobrir que a 21 também tinha. O seletor continua
-  // marcando todas, então nada some — só sai do caminho.
+  // Olhar pra trás porque essas rodadas são sempre antigas. E mostrar só a mais
+  // próxima porque o Brasileirão acumula adiados distantes (a rodada 4 tem um
+  // Flamengo×Mirassol parado desde fevereiro): avisar do mais antigo primeiro
+  // fazia o usuário pular 17 rodadas pra trás e só então descobrir que a 21
+  // também tinha. O seletor continua marcando todas, então nada some — só sai
+  // do caminho.
   //
-  // Estando numa rodada adiada não há aviso nenhum: os cards já mostram o badge,
-  // e apontar para a adiada anterior recriaria o encadeamento (22 → 21 → 4).
-  const postponedBefore = postponedByRound.has(selectedRound)
+  // Estando numa dessas rodadas não há aviso nenhum: os cards já mostram o jogo,
+  // e apontar para a anterior recriaria o encadeamento (22 → 21 → 4).
+  const hasLeftover = (round: string) =>
+    postponedByRound.has(round) || rescheduledByRound.has(round)
+  const leftoverBefore = hasLeftover(selectedRound)
     ? []
-    : roundKeys.slice(0, Math.max(0, safeIndex)).filter((round) => postponedByRound.has(round))
-  const previousPostponedRound = postponedBefore[postponedBefore.length - 1]
-  const postponedElsewhere = previousPostponedRound
-    ? { round: previousPostponedRound, count: postponedByRound.get(previousPostponedRound)! }
+    : roundKeys.slice(0, Math.max(0, safeIndex)).filter(hasLeftover)
+  const previousLeftoverRound = leftoverBefore[leftoverBefore.length - 1]
+  const leftoverElsewhere = previousLeftoverRound
+    ? {
+        round: previousLeftoverRound,
+        text: leftoverMatchesText(
+          postponedByRound.get(previousLeftoverRound) ?? 0,
+          rescheduledByRound.get(previousLeftoverRound) ?? 0,
+        ),
+      }
     : undefined
 
   if (loading) {
@@ -163,27 +176,28 @@ export default function PredictionsTab({
         onPrev={prev}
         onNext={next}
         postponedByRound={postponedByRound}
+        rescheduledByRound={rescheduledByRound}
         onSelect={(round) => {
           trackEvent('change_predictions_rodada', { round })
           setRoundIndex(roundKeys.indexOf(round))
         }}
       />
 
-      {/* Atalho para a rodada com jogo adiado. Sem isso o palpite reaberto fica
-          invisível: a rodada não é o default e o usuário não tem por que visitá-la. */}
-      {postponedElsewhere && (
+      {/* Atalho para a rodada com jogo adiado ou remarcado. Sem isso o palpite
+          aberto fica invisível: a rodada não é o default e o usuário não tem por
+          que visitá-la. */}
+      {leftoverElsewhere && (
         <p className={styles.postponedHint}>
-          <strong>{labelFor(postponedElsewhere.round)}</strong> tem {postponedElsewhere.count} jogo
-          {postponedElsewhere.count > 1 ? 's' : ''} adiado
-          {postponedElsewhere.count > 1 ? 's' : ''} — o palpite segue aberto.{' '}
+          <strong>{labelFor(leftoverElsewhere.round)}</strong> tem {leftoverElsewhere.text}. O
+          palpite segue aberto.{' '}
           <button
             type="button"
             className={styles.postponedHintLink}
             onClick={() => {
               trackEvent('click_predictions_rodada_adiada', {
-                round: postponedElsewhere.round,
+                round: leftoverElsewhere.round,
               })
-              setRoundIndex(roundKeys.indexOf(postponedElsewhere.round))
+              setRoundIndex(roundKeys.indexOf(leftoverElsewhere.round))
             }}
           >
             Ver rodada

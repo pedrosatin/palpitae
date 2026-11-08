@@ -4,23 +4,35 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import PredictionsTab from './PredictionsTab'
 import { makeMatch } from '../matchFixtures'
+import { isLeftoverRound } from '../../lib/rounds'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-function mockFetch(matches: ReturnType<typeof makeMatch>[]) {
+function mockFetch(matches: ReturnType<typeof makeMatch>[], apiDefaultRound?: string) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
+    if (u.includes('/matches') && apiDefaultRound !== undefined) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ matches, default_round: apiDefaultRound }),
+      } as Response)
+    }
     if (u.includes('/matches')) {
+      // Sem `apiDefaultRound`, imita a ordem de api/src/matches/defaultRound.ts:
+      // rodada com jogo futuro, com as que ficaram para trás no fim da fila e
+      // desempate pelo último jogo. Empate exato pede `apiDefaultRound`.
       const nowIso = new Date().toISOString()
-      const roundMaxStart = new Map<string, string>()
-      for (const m of matches) {
-        const cur = roundMaxStart.get(m.round)
-        if (!cur || m.start_time > cur) roundMaxStart.set(m.round, m.start_time)
-      }
-      const activeRound = [...roundMaxStart.entries()]
+      const byRound = new Map<string, ReturnType<typeof makeMatch>[]>()
+      for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m])
+      const activeRound = [...byRound.entries()]
+        .map(([round, list]) => {
+          const max = list.reduce((acc, m) => (m.start_time > acc ? m.start_time : acc), '')
+          const leftover = isLeftoverRound(list, Date.now()) ? 1 : 0
+          return [round, max, leftover] as const
+        })
         .filter(([, max]) => max > nowIso)
-        .sort(([, a], [, b]) => (a < b ? -1 : 1))[0]
+        .sort(([, a, la], [, b, lb]) => la - lb || (a < b ? -1 : 1))[0]
       const chronologicalLast = matches.reduce<ReturnType<typeof makeMatch> | undefined>(
         (acc, m) => (!acc || m.start_time >= acc.start_time ? m : acc),
         undefined,
@@ -564,7 +576,9 @@ describe('PredictionsTab – rodada com jogo adiado', () => {
     await waitFor(() => {
       expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
     })
-    expect(screen.getByText(/2 jogos adiados/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 jogos adiados/i)).toHaveTextContent(
+      'Rodada 21 tem 2 jogos adiados. O palpite segue aberto. Ver rodada',
+    )
     expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
   })
 
@@ -692,5 +706,103 @@ describe('PredictionsTab – múltiplas rodadas com jogo adiado', () => {
       expect(screen.getByRole('option', { name: 'Rodada 4 · 1 adiado' })).toBeInTheDocument()
     })
     expect(screen.getByRole('option', { name: 'Rodada 21 · 2 adiados' })).toBeInTheDocument()
+  })
+})
+
+// ─── Jogo remarcado numa rodada que ficou para trás (ADR-019) ──────────────
+
+describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  const days = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString()
+
+  // Brasileirão em 07/11/2026: a rodada 21 tem 9 jogos encerrados de julho a
+  // outubro e Chapecoense × Vasco remarcado para 14/11, sem flag de adiado. A 35
+  // é toda futura e é o default.
+  function rescheduledRound21() {
+    return [
+      ...Array.from({ length: 9 }, (_, i) =>
+        makeMatch({ id: `m21-${i}`, round: '21', status: 'finished', start_time: days(-100 + i * 10) }),
+      ),
+      makeMatch({ id: 'm21-cha-vas', round: '21', status: 'scheduled', start_time: days(7) }),
+      makeMatch({ id: 'm34', round: '34', status: 'finished', start_time: days(-5) }),
+      makeMatch({ id: 'm35a', round: '35', status: 'scheduled', start_time: days(6.9) }),
+      makeMatch({ id: 'm35b', round: '35', status: 'scheduled', start_time: days(12) }),
+    ]
+  }
+
+  it('abre na rodada 35 e avisa do jogo remarcado da 21 com atalho', async () => {
+    const user = userEvent.setup({ delay: null })
+    mockFetch(rescheduledRound21())
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('35')
+    })
+    expect(screen.getByText(/1 jogo remarcado/i)).toHaveTextContent(
+      'Rodada 21 tem 1 jogo remarcado. O palpite segue aberto. Ver rodada',
+    )
+    expect(screen.getByRole('option', { name: 'Rodada 21 · 1 remarcado' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_adiada', { round: '21' })
+    expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+
+  it('no empate de fim de temporada a dica aponta a rodada que a API não escolheu', async () => {
+    // Rodadas 9 e 21 com um remarcado no mesmo horário e a 38 encerrada. A API
+    // devolve a 21 (ADR-019). A 9 fica com a dica e o remarcado continua visível.
+    const user = userEvent.setup({ delay: null })
+    const rescheduledAt = days(7)
+    const leftover = (round: string, from: number) => [
+      ...Array.from({ length: 9 }, (_, i) =>
+        makeMatch({ id: `m${round}-${i}`, round, status: 'finished', start_time: days(from + i) }),
+      ),
+      makeMatch({ id: `m${round}-remarcado`, round, status: 'scheduled', start_time: rescheduledAt }),
+    ]
+    mockFetch(
+      [
+        ...leftover('9', -170),
+        ...leftover('21', -110),
+        ...Array.from({ length: 10 }, (_, i) =>
+          makeMatch({ id: `m38-${i}`, round: '38', status: 'finished', start_time: days(-6) }),
+        ),
+      ],
+      '21',
+    )
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    })
+    expect(screen.getByText(/1 jogo remarcado/i)).toHaveTextContent(
+      'Rodada 9 tem 1 jogo remarcado. O palpite segue aberto. Ver rodada',
+    )
+    expect(screen.getByRole('option', { name: 'Rodada 9 · 1 remarcado' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Rodada 21' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('9')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_adiada', { round: '9' })
+  })
+
+  it('rodada em andamento não vira aviso de remarcado', async () => {
+    mockFetch([
+      makeMatch({ id: 'm1', round: '20', status: 'finished', start_time: days(-1) }),
+      makeMatch({ id: 'm2', round: '20', status: 'scheduled', start_time: days(1) }),
+      makeMatch({ id: 'm3', round: '21', status: 'scheduled', start_time: days(5) }),
+    ])
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('20')
+    })
+    expect(screen.queryByText(/remarcado/i)).not.toBeInTheDocument()
   })
 })

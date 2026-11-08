@@ -2,6 +2,7 @@ import { type Context, Hono } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess } from '../auth/permissions'
+import { defaultRoundSql, roundRuleBinds } from '../matches/defaultRound'
 import { isMatchLocked, lockedSql } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { isKnockoutPhase, roundLabel } from '../matches/rounds'
@@ -523,15 +524,8 @@ router.get('/user', requireAuth, async (c) => {
       )
       .bind(groupId, groupId, targetUserId, now),
     db
-      .prepare(
-        `SELECT round FROM matches
-         WHERE competition_id = (SELECT competition_id FROM groups WHERE id = ?)
-         GROUP BY round
-         HAVING MAX(start_time) > ?
-         ORDER BY MAX(start_time) ASC
-         LIMIT 1`,
-      )
-      .bind(groupId, now),
+      .prepare(defaultRoundSql('(SELECT competition_id FROM groups WHERE id = ?)'))
+      .bind(...roundRuleBinds(now), groupId),
     db
       .prepare(
         `SELECT round FROM matches
