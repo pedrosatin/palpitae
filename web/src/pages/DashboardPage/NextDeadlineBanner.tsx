@@ -7,13 +7,8 @@ import {
   pendingCountText,
   type DeadlineBanner,
 } from '../../lib/dashboardStatus'
+import { predictionsPath } from '../../lib/rounds'
 import styles from './NextDeadlineBanner.module.css'
-
-/** Link para a aba Palpitar do grupo, aberta na rodada do jogo quando há um. */
-function predictionsHref(groupId: string, round: string | null): string {
-  const base = `/grupos/${groupId}`
-  return round ? `${base}?rodada=${encodeURIComponent(round)}` : base
-}
 
 /**
  * Faixa do topo do painel. Com jogo sem palpite, mostra o que fecha primeiro e
@@ -61,7 +56,7 @@ export default function NextDeadlineBanner({
       </div>
       <Link
         className={styles.action}
-        to={predictionsHref(banner.groupId, match?.round ?? null)}
+        to={predictionsPath(banner.groupId, match?.round ?? null)}
         onClick={() => trackEvent('click_dashboard_proximo_prazo', { group_id: banner.groupId })}
       >
         Palpitar em {banner.groupName}

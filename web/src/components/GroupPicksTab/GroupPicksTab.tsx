@@ -2,24 +2,26 @@ import { useEffect, useState } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
+import { useNow } from '../../hooks/useNow'
 import { apiFetch } from '../../lib/api'
+import { roundReminder, type GroupMember, type OpenPickers } from '../../lib/groupReminder'
+import { formatMatchDate } from '../../lib/matchTime'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import ErrorState from '../ErrorState'
 import type { Match } from '../MatchCard'
 import PenaltyBadge from '../PenaltyBadge'
 import RoundHeader from '../RoundHeader/RoundHeader'
+import { MatchPickers, RoundReminderSummary } from './GroupPicksPresence'
 import styles from './GroupPicksTab.module.css'
+
+const TICK_MS = 30_000
 
 interface GroupPicksTabProps {
   groupId: string
   competitionId: string
+  groupName?: string
   predictionsVisibility?: string
-}
-
-interface GroupMember {
-  user_id: string
-  display: string
 }
 
 interface MemberPrediction {
@@ -40,6 +42,8 @@ interface GroupPicksResponse {
   self_user_id: string
   members: GroupMember[]
   predictions: MemberPrediction[]
+  /** Ausente na API antiga. Sem o campo, a aba não afirma quem palpitou. */
+  open_pickers?: OpenPickers
 }
 
 interface PickRow {
@@ -104,19 +108,22 @@ function MatchPicksCard({
   members,
   selfUserId,
   hidden,
+  open,
+  pickers,
 }: {
   match: Match
   memberPicks: MemberPrediction[]
   members: GroupMember[]
   selfUserId: string
   hidden: boolean
+  /** Jogo ainda aberto, pelo servidor e pelo relógio local. */
+  open: boolean
+  /** Membros que já palpitaram este jogo aberto. `null` quando não se sabe. */
+  pickers: GroupMember[] | null
 }) {
   const isFinished = match.status === 'finished'
   const serverLocked = serverConfirmsLock(match, memberPicks)
   const rows = buildPickRows(memberPicks, members, serverLocked || !hidden)
-  // O aviso usa o relógio local e some no horário de início, mesmo que a resposta
-  // da API ainda seja de antes do travamento. A lista de membros não usa esse relógio.
-  const showHiddenNotice = hidden && !serverLocked && !isMatchLocked(match, undefined)
 
   return (
     <div className={styles.matchCard}>
@@ -148,6 +155,20 @@ function MatchPicksCard({
         </span>
       </div>
 
+      {open && (
+        <p className={styles.matchTime}>
+          {match.postponed ? 'data a definir' : formatMatchDate(match.start_time)}
+        </p>
+      )}
+      {open && pickers && (
+        <MatchPickers
+          pickers={pickers}
+          memberCount={members.length}
+          selfUserId={selfUserId}
+          showInitials={hidden}
+        />
+      )}
+
       {rows.length > 0 ? (
         <ul className={styles.pickList}>
           {rows.map(({ user_id, user_display, pick: p }) => {
@@ -178,14 +199,11 @@ function MatchPicksCard({
           })}
         </ul>
       ) : (
-        <p className={styles.hidden}>
-          🔒 Os palpites dos outros membros aparecem quando o jogo começar.
-        </p>
-      )}
-      {rows.length > 0 && showHiddenNotice && (
-        <p className={styles.hidden}>
-          Os palpites dos outros membros aparecem quando o jogo começar.
-        </p>
+        !open && (
+          <p className={styles.hidden}>
+            🔒 Os palpites dos outros membros aparecem quando o jogo começar.
+          </p>
+        )
       )}
     </div>
   )
@@ -219,8 +237,10 @@ function PickScore({ match, pick: p }: { match: Match; pick: MemberPrediction })
 export default function GroupPicksTab({
   groupId,
   competitionId,
+  groupName = '',
   predictionsVisibility = 'hidden',
 }: GroupPicksTabProps) {
+  const now = useNow(TICK_MS)
   const [matches, setMatches] = useState<Match[]>([])
   const [picks, setPicks] = useState<GroupPicksResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -275,6 +295,24 @@ export default function GroupPicksTab({
     picksByMatch.get(p.match_id)!.push(p)
   }
 
+  const members = picks.members ?? []
+  const openPickers = picks.open_pickers
+  const hidden = predictionsVisibility === 'hidden'
+  // O relógio local fecha o jogo no horário de início, mesmo que a resposta da API
+  // seja de antes do travamento. A prova do servidor fecha o jogo com o relógio atrasado.
+  const isOpen = (match: Match) =>
+    !serverConfirmsLock(match, picksByMatch.get(match.id) ?? []) &&
+    !isMatchLocked(match, undefined, now)
+  const openMatches = roundMatches.filter(isOpen)
+  const reminder = openPickers ? roundReminder(openMatches, members, openPickers) : null
+  const showHiddenNotice = hidden && openMatches.length > 0
+
+  const pickersOf = (match: Match): GroupMember[] | null => {
+    if (!openPickers || !isOpen(match)) return null
+    const picked = new Set(openPickers[match.id])
+    return members.filter((m) => picked.has(m.user_id))
+  }
+
   return (
     <div className={styles.root}>
       <RoundHeader
@@ -291,15 +329,37 @@ export default function GroupPicksTab({
         }}
       />
 
+      {(reminder || showHiddenNotice) && (
+        <section className={styles.roundSummary} aria-label="Palpites da rodada">
+          {reminder && (
+            <RoundReminderSummary
+              reminder={reminder}
+              selfUserId={picks.self_user_id}
+              groupId={groupId}
+              groupName={groupName}
+              round={selectedRound}
+              roundLabel={labelFor(selectedRound)}
+            />
+          )}
+          {showHiddenNotice && (
+            <p className={styles.hidden}>
+              Os palpites dos outros membros aparecem quando o jogo começar.
+            </p>
+          )}
+        </section>
+      )}
+
       <div className={styles.matchList}>
         {roundMatches.map((match) => (
           <MatchPicksCard
             key={match.id}
             match={match}
             memberPicks={picksByMatch.get(match.id) ?? []}
-            members={picks.members ?? []}
+            members={members}
             selfUserId={picks.self_user_id}
-            hidden={predictionsVisibility === 'hidden'}
+            hidden={hidden}
+            open={isOpen(match)}
+            pickers={pickersOf(match)}
           />
         ))}
       </div>
