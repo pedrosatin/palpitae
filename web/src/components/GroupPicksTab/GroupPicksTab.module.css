@@ -116,6 +116,12 @@
   color: var(--color-text-primary);
 }
 
+.noPick {
+  flex: 0 1 auto;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
 .pickPoints {
   flex-shrink: 0;
   font-size: var(--font-size-xs, 0.75rem);

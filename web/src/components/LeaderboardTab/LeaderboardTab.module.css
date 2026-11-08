@@ -4,6 +4,10 @@
 
 .table {
   width: 100%;
+  /* Com table-layout fixed, o cabeçalho define as larguras. As colunas numéricas
+     não crescem, e a do nome fica com o espaço restante e corta o nome com
+     reticências em vez de alargar a tabela. */
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
 }
@@ -31,6 +35,25 @@
 .thExact {
   width: 5rem;
   text-align: center;
+}
+
+.labelShort {
+  display: none;
+  text-decoration: none;
+}
+
+/* Nome completo da coluna para leitor de tela. Os rótulos visíveis ficam com
+   aria-hidden porque a forma curta sozinha seria lida como "Pts" ou "Ex.". */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .row,
@@ -64,10 +87,24 @@
   width: 2.5rem;
 }
 
-.tdName {
+.nameCell {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.nameBody {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.badges {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-1);
 }
 
 .avatar {
@@ -93,6 +130,10 @@
 }
 
 .displayName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text-primary);
   font-weight: var(--font-weight-medium);
 }
@@ -124,6 +165,52 @@
 
 .tdExact {
   color: var(--color-text-secondary);
+}
+
+/* Até 480 px, a tabela usa rótulos curtos, colunas numéricas estreitas e badges
+   menores abaixo do nome, para caber sem rolagem horizontal. */
+@media (max-width: 480px) {
+  .table th,
+  .table td {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .thPos,
+  .tdPos {
+    width: 2rem;
+  }
+
+  .thPts,
+  .thExact {
+    width: 3rem;
+    letter-spacing: 0;
+  }
+
+  .labelLong {
+    display: none;
+  }
+
+  .labelShort {
+    display: inline;
+  }
+
+  .nameBody {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .displayName {
+    max-width: 100%;
+  }
+
+  .ownerBadge,
+  .youBadge {
+    font-size: 0.625rem;
+    line-height: 1.4;
+    padding: 0 var(--space-1);
+  }
 }
 
 .loading {
