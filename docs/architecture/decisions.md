@@ -191,8 +191,12 @@ O limite de um e-mail por usuário por dia fica no banco, na tabela `email_remin
 
 A reserva é uma gravação só por execução porque cada consulta ao D1 conta no limite de subrequests do Worker junto com os envios ao Resend.
 
+O plano da conta Cloudflare não está confirmado (`docs/architecture/capacidade-coordenacao-provedores.md`, item 8), então vale o pior caso: Free, com 50 subrequests por invocação. A execução gasta 4 consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de segurança do `scheduled`) e deixa 1 de folga, o que dá um teto de 45 `fetch` ao Resend, reenvios incluídos. Cada tentativa de `sendWithRetry` desconta do saldo. Com o saldo zerado, a fila encerra antes de chamar a rede, cada destinatário restante registra `email_reminder_failed` com `reason = subrequest_budget` e as reservas dele são devolvidas, como na cota esgotada. Quem ficou sem e-mail entra na próxima execução do mesmo dia, se houver, e a reserva impede repetir para quem já recebeu. Se o plano for confirmado como Paid, o teto pode subir em `RESEND_FETCH_BUDGET`.
+
 ### Consequences
 
 - Risco aceito: uma invocação interrompida entre a reserva e o envio deixa os restantes sem e-mail naquele dia. Perder um aviso é preferível a repetir o e-mail.
 - Quem nunca palpita recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
+- Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. O cron roda 1x por dia, então esse excedente só recebe se alguém disparar nova execução.
+- Risco aceito: a competição piloto (`PILOT_EMAILS`) não é filtrada. Quem sai da lista continua em `group_members` e recebe e-mail com link que dá 404.
 - `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia e o número de jogos listados.
