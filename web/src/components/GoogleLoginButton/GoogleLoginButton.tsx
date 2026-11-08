@@ -17,8 +17,10 @@ export default function GoogleLoginButton() {
   function handleClick() {
     trackEvent('click_login_google')
     markLoginStarted()
-    const redirect =
-      window.location.search || window.location.pathname !== '/' ? window.location.search : ''
+    // O link do lembrete por e-mail abre `/grupos/:id?rodada=`. Sem o caminho, quem
+    // entra por ele cai no painel depois do login.
+    const { pathname, search } = window.location
+    const redirect = pathname.startsWith('/grupos/') ? `${pathname}${search}` : search
     const url = new URL(`${config.authUrl}/auth/google`)
     if (redirect) url.searchParams.set('redirect', redirect)
     window.location.href = url.toString()

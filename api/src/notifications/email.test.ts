@@ -27,6 +27,15 @@ describe('EmailError', () => {
     const error = new EmailError(429, 'Rate Limited', 'invalid')
     expect(error.retryAfterMs).toBeUndefined()
   })
+
+  it.each([
+    [429, '{"name":"daily_quota_exceeded"}', true],
+    [429, '{"name":"monthly_quota_exceeded"}', true],
+    [429, '{"name":"rate_limit_exceeded"}', false],
+    [422, '{"name":"daily_quota_exceeded"}', false],
+  ])('marca cota esgotada só em 429 de cota (%i %s)', (status, body, expected) => {
+    expect(new EmailError(status, body).quotaExceeded).toBe(expected)
+  })
 })
 
 describe('sendEmail', () => {
@@ -65,6 +74,28 @@ describe('sendEmail', () => {
 
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
     expect(body).not.toHaveProperty('text')
+  })
+
+  it('envia o Idempotency-Key como cabeçalho HTTP, fora dos cabeçalhos do e-mail', async () => {
+    await sendEmail('key', {
+      to: 'a@x.com',
+      subject: 'Oi',
+      html: '<p>hi</p>',
+      idempotencyKey: 'lembrete-diario/u1/2026-11-18',
+    })
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect((init!.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'lembrete-diario/u1/2026-11-18',
+    )
+    expect(JSON.parse(init!.body as string)).not.toHaveProperty('headers')
+  })
+
+  it('omite o Idempotency-Key quando não é informado', async () => {
+    await sendEmail('key', { to: 'a@x.com', subject: 'Oi', html: '<p>hi</p>' })
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect(init!.headers as Record<string, string>).not.toHaveProperty('Idempotency-Key')
   })
 
   it('does not throw on a 2xx response', async () => {

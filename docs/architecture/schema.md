@@ -232,6 +232,20 @@ A private competition created by a user for a specific competition.
 
 ---
 
+### `email_reminder_sends`
+
+Registro do lembrete diário por e-mail (migration 0036, ADR-020). No máximo uma linha por usuário e dia.
+
+| Column          | Type    | Notes                           |
+| --------------- | ------- | ------------------------------- |
+| `user_id`       | TEXT FK | References `users.id`           |
+| `reminder_date` | TEXT    | Dia em Brasília, YYYY-MM-DD     |
+| `created_at`    | TEXT    | Instante da reserva, UTC        |
+
+Primary key: `(user_id, reminder_date)`. O cron apaga as linhas com mais de 7 dias.
+
+---
+
 ### `group_members`
 
 Users in a group.

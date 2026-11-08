@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { pendingSummarySql } from '../groups/pendingPredictions'
-import { SCHEDULED_MATCHES_SQL, USERS_NEEDING_REMINDER_SQL } from './roundReminder'
+import { PENDING_MATCHES_SQL } from './roundReminder'
 
 // Guarda contra a volta do custo jogos × jogos no D1 (migration 0034). As
 // subqueries de "rodada atual" e "início da rodada" são correlacionadas a cada
@@ -38,11 +38,13 @@ describe('planos de consulta das subqueries por rodada', () => {
     expect(steps.filter((s) => /^SCAN (m|mr|p)\b/.test(s))).toEqual([])
   })
 
-  it('lembrete: início da rodada vem do índice, não de varredura da competição', () => {
-    for (const sql of [SCHEDULED_MATCHES_SQL, USERS_NEEDING_REMINDER_SQL]) {
-      const steps = plan(sql)
-      expect(steps.some((s) => s.startsWith('SEARCH m2 ') && BY_COMPETITION_AND_ROUND.test(s))).toBe(true)
-      expect(steps.filter((s) => /^SCAN (m|m2|pm)\b/.test(s))).toEqual([])
-    }
+  it('lembrete parte dos jogos do dia pelo índice de horário, sem varrer tabela', () => {
+    const steps = plan(PENDING_MATCHES_SQL, 4)
+    expect(steps[0]).toBe(
+      'SEARCH m USING INDEX idx_matches_start_time (start_time>? AND start_time<?)',
+    )
+    expect(steps.filter((s) => s.startsWith('SCAN'))).toEqual([])
+    // A ordem por horário vem do próprio índice, sem ordenar em memória.
+    expect(steps.filter((s) => s.includes('TEMP B-TREE'))).toEqual([])
   })
 })

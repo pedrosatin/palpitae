@@ -12,6 +12,10 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import type { User } from '../../types'
 import styles from './SettingsPage.module.css'
 
+// Descreve o cron de api/src/notifications/roundReminder.ts. Mudou a regra, muda o texto.
+const REMINDER_RULE =
+  'Nos dias em que você tem jogo sem palpite, enviamos um e-mail às 7h, horário de Brasília, com os jogos daquele dia e o horário em que cada um fecha. Se já palpitou todos, você não recebe nada.'
+
 function useNotificationPreferences() {
   const [roundReminders, setRoundReminders] = useState<boolean | null>(null)
   const [pending, setPending] = useState<boolean | null>(null)
@@ -198,10 +202,8 @@ export default function SettingsPage({ user, onLogout, onLogoutAll }: SettingsPa
 
             <label className={styles.row}>
               <span className={styles.rowText}>
-                <span className={styles.rowLabel}>Lembretes de rodada</span>
-                <span className={styles.rowHint}>
-                  Receba um e-mail no dia anterior ao primeiro jogo de cada rodada.
-                </span>
+                <span className={styles.rowLabel}>Lembretes de palpite</span>
+                <span className={styles.rowHint}>{REMINDER_RULE}</span>
               </span>
               <input
                 type="checkbox"
@@ -244,12 +246,10 @@ export default function SettingsPage({ user, onLogout, onLogoutAll }: SettingsPa
       <Modal
         isOpen={pending !== null}
         onClose={handleCancel}
-        title={pending ? 'Ativar lembretes de rodada' : 'Desativar lembretes de rodada'}
+        title={pending ? 'Ativar lembretes de palpite' : 'Desativar lembretes de palpite'}
       >
         <p className={styles.modalText}>
-          {pending
-            ? 'Você receberá um e-mail no dia anterior ao primeiro jogo de cada rodada.'
-            : 'Você não receberá mais e-mails de lembrete de rodada.'}
+          {pending ? REMINDER_RULE : 'Você não receberá mais e-mails de lembrete de palpite.'}
         </p>
         <div className={styles.modalActions}>
           <Button variant="secondary" type="button" onClick={handleCancel}>

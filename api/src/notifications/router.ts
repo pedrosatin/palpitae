@@ -55,7 +55,7 @@ function unsubscribeFormPage(token: string) {
         <div
           style="max-width: 480px; margin: 64px auto; padding: 32px; background: white; border-radius: 12px; text-align: center;"
         >
-          <h1 style="font-size: 20px;">Cancelar lembretes de rodada?</h1>
+          <h1 style="font-size: 20px;">Cancelar lembretes de palpite?</h1>
           <p style="color: #6b7280;">Você não receberá mais e-mails de lembrete do Palpitae.</p>
           <form
             method="POST"
