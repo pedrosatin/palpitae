@@ -36,12 +36,17 @@ export function fetchCompetitionMatches(
  * fetched matches: derive the distinct rounds in order, then defer to
  * `applyDefaultRound`. Both the predictions and group-picks tabs ran this
  * inline after loading matches.
+ *
+ * `requestedRound` vem do `?rodada=` do link do painel. Se a rodada existe na
+ * competição, ela vence a rodada padrão. Senão o link cai na padrão.
  */
 export function applyDefaultRoundFromMatches(
   matches: Match[],
   defaultRound: string | null | undefined,
   setRoundIndex: (i: number) => void,
+  requestedRound?: string | null,
 ): void {
   const rounds = [...new Set(matches.map((m) => m.round))]
-  applyDefaultRound(defaultRound, rounds, setRoundIndex)
+  const round = requestedRound && rounds.includes(requestedRound) ? requestedRound : defaultRound
+  applyDefaultRound(round, rounds, setRoundIndex)
 }

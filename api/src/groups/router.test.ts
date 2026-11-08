@@ -63,7 +63,13 @@ function createGroupsListDbMock() {
                       created_at: '2026-01-01T00:00:00Z',
                       member_count: 3,
                       user_points: 12,
-                      pending_predictions: 2,
+                      pending_summary: JSON.stringify({
+                        pending: 2,
+                        deadline: null,
+                        next_match_at: null,
+                        round: null,
+                        round_ends_at: null,
+                      }),
                     },
                   ],
                 }

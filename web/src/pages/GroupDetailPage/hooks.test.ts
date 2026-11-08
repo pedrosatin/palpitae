@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useGroupActions, useGroupDetail, useGroupTabs, useTabsOffset } from './hooks'
-import { useNavigate, NavigateFunction, MemoryRouter } from 'react-router-dom'
+import { useNavigate, NavigateFunction, MemoryRouter, useLocation } from 'react-router-dom'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { trackEvent } from '../../analytics/ga'
@@ -350,6 +350,60 @@ describe('useGroupTabs', () => {
     })
 
     expect(result.current.activeTab).toBe('leaderboard')
+  })
+
+  it('lê a rodada pedida pelo link do painel e abre a aba Palpitar', () => {
+    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+      wrapper: ({ children }) =>
+        React.createElement(MemoryRouter, { initialEntries: ['/grupos/g1?rodada=21'] }, children),
+    })
+
+    expect(result.current.activeTab).toBe('predictions')
+    expect(result.current.requestedRound).toBe('21')
+  })
+
+  it('tira a rodada pedida da URL sem mexer nos outros parâmetros', () => {
+    const { result } = renderHook(
+      () => ({ tabs: useGroupTabs(mockGroup), location: useLocation() }),
+      {
+        wrapper: ({ children }) =>
+          React.createElement(
+            MemoryRouter,
+            { initialEntries: ['/grupos/g1?rodada=21&x=1'] },
+            children,
+          ),
+      },
+    )
+
+    act(() => {
+      result.current.tabs.clearRequestedRound()
+    })
+
+    expect(result.current.tabs.requestedRound).toBeNull()
+    expect(result.current.location.pathname).toBe('/grupos/g1')
+    expect(result.current.location.search).toBe('?x=1')
+  })
+
+  it('a troca de aba descarta a rodada pedida', () => {
+    const { result } = renderHook(
+      () => ({ tabs: useGroupTabs(mockGroup), location: useLocation() }),
+      {
+        wrapper: ({ children }) =>
+          React.createElement(
+            MemoryRouter,
+            { initialEntries: ['/grupos/g1?rodada=21&x=1'] },
+            children,
+          ),
+      },
+    )
+
+    expect(result.current.tabs.tabHref('members')).toBe('?x=1&tab=members')
+    act(() => {
+      result.current.tabs.handleTabClick({ preventDefault: vi.fn() } as any, 'leaderboard')
+    })
+
+    expect(result.current.tabs.requestedRound).toBeNull()
+    expect(result.current.location.search).toBe('?x=1&tab=leaderboard')
   })
 
   it('falls back to default if standings tab is requested but cup is not standings-eligible', () => {

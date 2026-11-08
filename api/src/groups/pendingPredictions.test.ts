@@ -2,7 +2,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
-import { pendingPredictionsSql } from './pendingPredictions'
+import { parsePendingSummary, pendingSummarySql } from './pendingPredictions'
 import { lockedSql } from '../matches/locking'
 import { signJwt } from '../auth/jwt'
 import { createSqliteD1 } from '../testing/sqliteD1'
@@ -143,6 +143,18 @@ type GroupsBody = {
     pending_predictions: number
     user_points: number
     user_position: number
+    next_deadline: {
+      match_id: string
+      start_time: string
+      round: string
+      round_label: string
+      home_team: string
+      away_team: string
+    } | null
+    next_match_at: string | null
+    current_round_label: string | null
+    round_ends_at: string | null
+    live_matches: number
   }>
 }
 
@@ -250,9 +262,273 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
   })
 })
 
-describe('pendingPredictionsSql unit tests', () => {
+describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
+  async function groupsFor(
+    setup: (sqlite: DatabaseSync, env: Env) => void = () => {},
+  ): Promise<GroupsBody['groups']> {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'))
+    try {
+      const { sqlite, request, env } = await createFixture()
+      setup(sqlite, env)
+      const res = await request('alice')
+      expect(res.status).toBe(200)
+      return ((await res.json()) as GroupsBody).groups
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  function predict(sqlite: DatabaseSync, ...matchIds: string[]) {
+    for (const matchId of matchIds) {
+      sqlite.exec(`
+        INSERT INTO predictions (
+          id, group_id, user_id, match_id,
+          predicted_home_score, predicted_away_score, created_at, updated_at
+        ) VALUES (
+          'p-${matchId}', 'group-a', 'alice', '${matchId}', 1, 0,
+          '2026-06-14T00:00:00Z', '2026-06-14T00:00:00Z'
+        );
+      `)
+    }
+  }
+
+  it('aponta o jogo sem palpite que fecha primeiro, com rodada e times', async () => {
+    const groups = await groupsFor()
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.next_deadline).toEqual({
+      match_id: 'm-r2-open-1',
+      start_time: '2026-06-20T19:00:00Z',
+      round: '2',
+      round_label: 'Rodada 2',
+      home_team: 'Flamengo',
+      away_team: 'Corinthians',
+    })
+    expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
+    expect(groupA?.current_round_label).toBe('Rodada 2')
+    // O jogo travado de 23/06 não conta. A rodada fecha no último jogo aberto.
+    expect(groupA?.round_ends_at).toBe('2026-06-22T19:00:00Z')
+    expect(groupA?.live_matches).toBe(0)
+  })
+
+  it('passa o prazo para o jogo seguinte e mantém o próximo jogo já palpitado', async () => {
+    const groups = await groupsFor((sqlite) => predict(sqlite, 'm-r2-open-1'))
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(3)
+    expect(groupA?.next_deadline?.match_id).toBe('m-r2-open-2')
+    expect(groupA?.next_deadline?.start_time).toBe('2026-06-21T19:00:00Z')
+    expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
+  })
+
+  it('aponta o remarcado de rodada que ficou para trás quando ele fecha antes', async () => {
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(`
+        INSERT INTO matches (
+          id, competition_id, external_id, provider,
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+        ) VALUES
+          ('m-r1-2', 'comp-a', 'fd-r1-2', 'football-data', 'cor', 'sao', '2026-06-02T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-02T19:00:00Z'),
+          ('m-r1-remarcado', 'comp-a', 'fd-r1-3', 'football-data', 'sao', 'pal', '2026-06-18T19:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+      `),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    // A rodada 1 ficou para trás e segue fora da rodada padrão. O remarcado conta
+    // como pendente e vira o prazo, com a rodada dele para o link do painel.
+    expect(groupA?.pending_predictions).toBe(5)
+    expect(groupA?.current_round_label).toBe('Rodada 2')
+    expect(groupA?.next_deadline).toMatchObject({
+      match_id: 'm-r1-remarcado',
+      round: '1',
+      round_label: 'Rodada 1',
+      home_team: 'São Paulo',
+      away_team: 'Palmeiras',
+    })
+    expect(groupA?.round_ends_at).toBe('2026-06-22T19:00:00Z')
+  })
+
+  it('conta o adiado sem data como pendente, mas sem prazo', async () => {
+    const groups = await groupsFor((sqlite) =>
+      predict(sqlite, 'm-r2-open-1', 'm-r2-open-2', 'm-r2-open-3'),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(1)
+    expect(groupA?.next_deadline).toBeNull()
+    expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
+  })
+
+  it('deixa o adiado de horário futuro fora do prazo e do próximo jogo', async () => {
+    // Adiado antes do apito: o sync guarda o horário original, 18/06, ainda futuro.
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(`
+        UPDATE matches SET start_time = '2026-06-18T19:00:00Z' WHERE id = 'm-r2-postponed';
+      `),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(4)
+    expect(groupA?.next_deadline?.match_id).toBe('m-r2-open-1')
+    expect(groupA?.next_deadline?.start_time).toBe('2026-06-20T19:00:00Z')
+    expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
+  })
+
+  it('no empate de horário prefere o jogo da rodada padrão ao remarcado', async () => {
+    // O remarcado da rodada 1 tem o id menor e o mesmo horário do primeiro jogo da 2.
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(`
+        INSERT INTO matches (
+          id, competition_id, external_id, provider,
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+        ) VALUES
+          ('m-r1-2', 'comp-a', 'fd-r1-2', 'football-data', 'cor', 'sao', '2026-06-02T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-02T19:00:00Z'),
+          ('m-r1-remarcado', 'comp-a', 'fd-r1-3', 'football-data', 'sao', 'pal', '2026-06-20T19:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+      `),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(5)
+    expect(groupA?.next_deadline).toMatchObject({ match_id: 'm-r2-open-1', round: '2' })
+  })
+
+  it.each([
+    [
+      'dos jogos ao vivo',
+      'AS live_matches',
+      { live_matches: 0, next_deadline: { match_id: 'm-r2-open-1' } },
+    ],
+    ['do jogo de prazo', 'AS home_team', { live_matches: 1, next_deadline: null }],
+  ])('lista os grupos quando a consulta %s falha', async (_query, marker, expected) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const groups = await groupsFor((sqlite, env) => {
+        sqlite.exec(`
+          INSERT INTO matches (
+            id, competition_id, external_id, provider,
+            home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+          ) VALUES
+            ('m-live', 'comp-a', 'fd-l1', 'football-data', 'pal', 'fla', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+        `)
+        const prepare = env.DB.prepare.bind(env.DB)
+        vi.spyOn(env.DB, 'prepare').mockImplementation((sql: string) => {
+          if (sql.includes(marker)) throw new Error('D1 indisponível')
+          return prepare(sql)
+        })
+      })
+      const groupA = groups.find((g) => g.id === 'group-a')
+
+      expect(groupA).toMatchObject({ pending_predictions: 4, ...expected })
+      expect(error).toHaveBeenCalledOnce()
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('rodada toda palpitada fica sem prazo e mantém o próximo jogo', async () => {
+    const groups = await groupsFor((sqlite) =>
+      predict(sqlite, 'm-r2-open-1', 'm-r2-open-2', 'm-r2-open-3', 'm-r2-postponed'),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(0)
+    expect(groupA?.next_deadline).toBeNull()
+    expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
+    expect(groupA?.current_round_label).toBe('Rodada 2')
+    expect(groupA?.round_ends_at).toBe('2026-06-22T19:00:00Z')
+  })
+
+  it('conta só os jogos começados e sem resultado da competição do grupo', async () => {
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(`
+        INSERT INTO matches (
+          id, competition_id, external_id, provider,
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+        ) VALUES
+          -- Começou há 1 h e segue sem resultado, então está ao vivo
+          ('m-live-1', 'comp-a', 'fd-l1', 'football-data', 'pal', 'fla', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL),
+          ('m-live-2', 'comp-a', 'fd-l2', 'football-data', 'cor', 'sao', '2026-06-15T10:30:00Z', 'scheduled', '1', NULL, 0, '2026-06-15T10:30:00Z'),
+          -- Encerrado na janela
+          ('m-done', 'comp-a', 'fd-l3', 'football-data', 'sao', 'pal', '2026-06-15T10:00:00Z', 'finished', '1', NULL, 0, '2026-06-15T10:00:00Z'),
+          -- Adiado com horário na janela
+          ('m-adiado', 'comp-a', 'fd-l4', 'football-data', 'fla', 'sao', '2026-06-15T11:30:00Z', 'scheduled', '1', NULL, 1, NULL),
+          -- Começou há 4 h e segue sem resultado, fora da janela do poller
+          ('m-velho', 'comp-a', 'fd-l5', 'football-data', 'cor', 'fla', '2026-06-15T08:00:00Z', 'scheduled', '1', NULL, 0, NULL),
+          -- Outra competição
+          ('m-outra', 'comp-empty', 'fd-l6', 'football-data', 'pal', 'cor', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+      `),
+    )
+
+    expect(groups.find((g) => g.id === 'group-a')?.live_matches).toBe(2)
+    expect(groups.find((g) => g.id === 'group-a')?.pending_predictions).toBe(4)
+    expect(groups.find((g) => g.id === 'group-empty')?.live_matches).toBe(1)
+  })
+
+  it('grupo sem jogos e grupo encerrado saem sem prazo e sem rodada', async () => {
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(`
+        INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility) VALUES
+          ('comp-done', 'Copa Encerrada', 'copa-encerrada', '2025', 'finished', 'cup', '["FINAL"]', 'public');
+        INSERT INTO matches (
+          id, competition_id, external_id, provider,
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+        ) VALUES
+          ('m-done-final', 'comp-done', 'fd-d1', 'football-data', 'fla', 'pal', '2026-06-15T11:00:00Z', 'scheduled', 'FINAL', 'FINAL', 0, NULL);
+        INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code) VALUES
+          ('group-done', 'Encerrado', 'comp-done', 'alice', 'IIII-JJJJ');
+        INSERT INTO group_members (group_id, user_id, joined_at) VALUES
+          ('group-done', 'alice', '2026-01-01T00:00:00Z');
+      `),
+    )
+
+    for (const id of ['group-empty', 'group-done']) {
+      const group = groups.find((g) => g.id === id)
+      expect(group).toMatchObject({
+        pending_predictions: 0,
+        next_deadline: null,
+        next_match_at: null,
+        current_round_label: null,
+        round_ends_at: null,
+        live_matches: 0,
+      })
+    }
+  })
+})
+
+describe('parsePendingSummary', () => {
+  it('separa o horário e o id do jogo de prazo', () => {
+    expect(
+      parsePendingSummary(
+        '{"pending":2,"deadline":"2026-11-14T21:30:00Z|0|abc-123","next_match_at":"2026-11-14T21:30:00Z","round":"35","round_ends_at":"2026-11-20T00:30:00Z"}',
+      ),
+    ).toEqual({
+      pending: 2,
+      deadline: { start_time: '2026-11-14T21:30:00Z', match_id: 'abc-123' },
+      next_match_at: '2026-11-14T21:30:00Z',
+      round: '35',
+      round_ends_at: '2026-11-20T00:30:00Z',
+    })
+  })
+
+  it('devolve o resumo vazio para valor nulo ou JSON inválido', () => {
+    const empty = {
+      pending: 0,
+      deadline: null,
+      next_match_at: null,
+      round: null,
+      round_ends_at: null,
+    }
+    expect(parsePendingSummary(null)).toEqual(empty)
+    expect(parsePendingSummary('{')).toEqual(empty)
+    expect(parsePendingSummary('{"pending":0,"deadline":null}')).toEqual(empty)
+    expect(parsePendingSummary('{"pending":0,"deadline":"2026-11-14T21:30:00Z|abc"}')).toEqual(empty)
+  })
+})
+
+describe('pendingSummarySql unit tests', () => {
   it('returns correctly formatted sql string with default alias', () => {
-    const sql = pendingPredictionsSql()
+    const sql = pendingSummarySql()
     expect(sql.trim().replace(/\s+/g, ' ')).toContain(
       `ON m.competition_id = g.competition_id AND m.round = r.round`
     )
@@ -265,7 +541,7 @@ describe('pendingPredictionsSql unit tests', () => {
   })
 
   it('returns correctly formatted sql string with custom alias', () => {
-    const sql = pendingPredictionsSql('customAlias')
+    const sql = pendingSummarySql('customAlias')
     expect(sql.trim().replace(/\s+/g, ' ')).toContain(
       `ON m.competition_id = customAlias.competition_id AND m.round = r.round`
     )

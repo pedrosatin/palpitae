@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import GroupTabContent from '../../pages/GroupDetailPage/GroupTabContent'
 import type { GroupDetail } from '../../pages/GroupDetailPage/types'
+import { fetchGroupsList } from '../../lib/groupsList'
 import { makeMatch } from '../matchFixtures'
 import PredictionsTab from './PredictionsTab'
 import { usePredictionsTab } from './usePredictionsTab'
@@ -63,6 +64,20 @@ describe('Barra de importação', () => {
     state.completed.clear() // Nova conta, sem conclusão no backend.
     render(<PredictionsTab groupId="target" competitionId="c" />)
     await screen.findByText('Importar palpites de:')
+  })
+
+  it('lê os grupos da lista do painel em cache, sem buscar de novo', async () => {
+    const { fetchMock } = setup()
+    const groupsCalls = () =>
+      fetchMock.mock.calls.filter(([url]) => String(url).includes('/groups')).length
+    await fetchGroupsList('u1')
+    expect(groupsCalls()).toBe(1)
+
+    render(<PredictionsTab groupId="target" competitionId="c" userId="u1" />)
+
+    expect(await screen.findByText('Importar palpites de:')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Origem/ })).toBeInTheDocument()
+    expect(groupsCalls()).toBe(1)
   })
 
   it('avisa dos palpites bloqueados que ficaram de fora junto com a origem', async () => {

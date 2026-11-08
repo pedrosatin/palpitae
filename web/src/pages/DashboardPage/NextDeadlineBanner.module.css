@@ -1,0 +1,114 @@
+/* Faixa "Próximo prazo" no topo do painel. Com pendência ela é o primeiro
+   elemento com a cor da marca na tela, porque é a ação da visita. Sem pendência
+   vira uma linha discreta. */
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-8);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  background-color: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+}
+
+.banner[data-kind='clear'] {
+  padding: var(--space-4) var(--space-5);
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.label {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-primary);
+}
+
+.match {
+  margin: 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Link com cara de botão primário. Alvo de toque de 44 px. */
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  max-width: 100%;
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: background-color var(--transition-fast);
+}
+
+.action:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.clear {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.check {
+  color: var(--color-primary);
+}
+
+@media (max-width: 600px) {
+  .banner {
+    padding: var(--space-4);
+    margin-bottom: var(--space-6);
+  }
+
+  .action {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action {
+    transition: none;
+  }
+}

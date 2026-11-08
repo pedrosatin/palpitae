@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import GroupDetailPage from './GroupDetailPage'
 
@@ -11,8 +11,21 @@ const mockTrackEvent = vi.mocked(ga.trackEvent)
 // ─── Mock heavy child components ───────────────────────────────────────────
 
 vi.mock('../../components/PredictionsTab', () => ({
-  default: ({ groupId }: { groupId: string }) => (
-    <div data-testid="predictions-tab">PredictionsTab:{groupId}</div>
+  default: ({
+    groupId,
+    initialRound,
+    onInitialRoundApplied,
+  }: {
+    groupId: string
+    initialRound?: string | null
+    onInitialRoundApplied?: () => void
+  }) => (
+    <div data-testid="predictions-tab">
+      PredictionsTab:{groupId}
+      {initialRound && (
+        <button onClick={onInitialRoundApplied}>Aplicar rodada {initialRound}</button>
+      )}
+    </div>
   ),
 }))
 
@@ -119,9 +132,15 @@ function mockGroupFetchSequence(...responses: Array<{ ok?: boolean; body?: unkno
 
 // ─── Render helper ─────────────────────────────────────────────────────────
 
+function LocationProbe() {
+  const location = useLocation()
+  return <output data-testid="location">{location.pathname + location.search}</output>
+}
+
 function renderPage(path = '/groups/abc', routePattern = '/groups/:groupId') {
   return render(
     <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
       <Routes>
         <Route
           path={routePattern}
@@ -170,6 +189,22 @@ describe('GroupDetailPage – routing & fetch', () => {
 
     // Component renders <Navigate to="/" replace /> → should show Home
     expect(screen.getByText('Home')).toBeInTheDocument()
+  })
+})
+
+describe('GroupDetailPage – rodada do painel', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('passa a rodada do link à aba Palpitar e a tira da URL depois de aplicada', async () => {
+    mockGroupFetch()
+    renderPage('/groups/abc?rodada=21&x=1')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Aplicar rodada 21' }))
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/groups/abc?x=1')
+    expect(screen.queryByRole('button', { name: /Aplicar rodada/ })).not.toBeInTheDocument()
   })
 })
 
