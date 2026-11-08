@@ -269,10 +269,8 @@ describe('ga', () => {
     it('initGa sends the first page without group id or invite code', async () => {
       const { initGa } = await import('./ga')
       initGa()
-      const config = calls().find(([command]) => command === 'config')
-      expect(config).toEqual([
-        'config',
-        'G-123',
+      expect(calls().find(([command]) => command === 'set')).toEqual([
+        'set',
         {
           page_location: `${window.location.origin}/grupos/:id?tab=ranking`,
           page_title: 'Grupo | Palpitae',
@@ -281,14 +279,19 @@ describe('ga', () => {
       expect(JSON.stringify(calls())).not.toContain(groupId)
     })
 
+    it('initGa keeps page fields out of config, where they would override later updates', async () => {
+      const { initGa } = await import('./ga')
+      initGa()
+      expect(calls().find(([command]) => command === 'config')).toEqual(['config', 'G-123'])
+    })
+
     it('initGa ignores a document title rewritten with the group name', async () => {
       const previousTitle = document.title
       document.title = 'Entra no bolão "NOME PRIVADO" no Palpitae'
       window.history.pushState({}, '', '/?convite=ABC')
       const { initGa } = await import('./ga')
       initGa()
-      const config = calls().find(([command]) => command === 'config')
-      expect(config?.[2]).toEqual({
+      expect(calls().find(([command]) => command === 'set')?.[1]).toEqual({
         page_location: `${window.location.origin}/`,
         page_title: 'Início | Palpitae',
       })
@@ -303,7 +306,7 @@ describe('ga', () => {
       const page = { page_location: 'https://x.test/entrar', page_title: 'Entrar | Palpitae' }
       trackPageView(page, 'https://x.test/')
       expect(calls()).toEqual([
-        ['set', page],
+        ['set', { ...page, page_referrer: 'https://x.test/' }],
         ['event', 'page_view', { ...page, page_referrer: 'https://x.test/' }],
       ])
     })
