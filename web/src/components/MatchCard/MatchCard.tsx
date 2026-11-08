@@ -30,6 +30,10 @@ interface MatchCardProps {
   onDraftChange?: (matchId: string, home: string, away: string) => void
   /** Reports the current penalty-winner draft so "Salvar todos" can include it. */
   onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
+  /** Rascunho não salvo que o card mostra ao montar, no lugar do palpite salvo. */
+  draft?: { home: string; away: string }
+  /** Pênalti não salvo; `undefined` = sem rascunho, vale o palpite salvo. */
+  penaltyDraft?: 'home' | 'away' | null
 }
 
 function formatDate(iso: string): string {

@@ -9,6 +9,7 @@ import * as ga from './analytics/ga'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
 import { fetchCachedJson, invalidateApiCache } from './lib/api-cache'
+import { draftStorageKey } from './lib/predictionDraftStorage'
 
 vi.mock('./analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -437,6 +438,43 @@ describe('App', () => {
       expect(nextAccount.groups).toEqual([])
     },
   )
+
+  it.each([
+    { reason: 'logout', effect: 'apaga', kept: false },
+    { reason: 'logout-all', effect: 'apaga', kept: false },
+    { reason: 'expired', effect: 'mantém', kept: true },
+  ])('$reason $effect os rascunhos de palpite', async ({ reason, kept }) => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'test@example.com' } }),
+    })
+    fetchMock.mockResolvedValueOnce({ ok: true })
+    const drafts = [draftStorageKey('1', 'g1'), draftStorageKey('outro', 'g2')]
+    for (const key of drafts) localStorage.setItem(key, '{}')
+    localStorage.setItem('palpitae:analytics-consent', 'granted')
+    render(
+      <MemoryRouter initialEntries={[reason === 'logout-all' ? '/configuracoes' : '/']}>
+        <App />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId(reason === 'logout-all' ? 'settings-page' : 'dashboard-page')
+
+    if (reason === 'expired') {
+      await waitFor(() => window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)))
+    } else {
+      await userEvent
+        .setup({ delay: null })
+        .click(
+          reason === 'logout-all'
+            ? screen.getByText('Logout everywhere')
+            : screen.getByTestId('logout-button'),
+        )
+    }
+    await screen.findByTestId(reason === 'logout-all' ? 'login-page' : 'landing-page')
+
+    for (const key of drafts) expect(localStorage.getItem(key) !== null).toBe(kept)
+    expect(localStorage.getItem('palpitae:analytics-consent')).toBe('granted')
+  })
 
   it('handles logout and falls back to unauthenticated routes', async () => {
     captureGuideOrigin('?from=guia_planilha-de-bolao')

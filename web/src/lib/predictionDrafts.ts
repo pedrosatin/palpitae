@@ -89,6 +89,24 @@ function hasPredictionChange(
   return scoreChanged || penaltyChanged
 }
 
+/** Palpite salvo com o placar trocado pelo rascunho, para o agregado da volta. */
+function withDraftScore(
+  matchId: string,
+  draft: ScoreDraft,
+  saved: Prediction | undefined,
+): Prediction {
+  return {
+    ...saved,
+    id: '',
+    match_id: matchId,
+    predicted_home_score: Number(draft.home),
+    predicted_away_score: Number(draft.away),
+    points_awarded: 0,
+    locked: 0,
+    updated_at: '',
+  }
+}
+
 /**
  * Collects the drafts in `roundMatches` that are unlocked, complete and
  * actually different from what is already saved.
@@ -105,16 +123,7 @@ export function collectRoundDrafts({
     if (isMatchLocked(match, predictions.get(match.id))) continue
     const draft = drafts.get(match.id)
     if (!draft || draft.home === '' || draft.away === '') continue
-    effectivePredictions.set(match.id, {
-      ...predictions.get(match.id),
-      id: '',
-      match_id: match.id,
-      predicted_home_score: Number(draft.home),
-      predicted_away_score: Number(draft.away),
-      points_awarded: 0,
-      locked: 0,
-      updated_at: '',
-    })
+    effectivePredictions.set(match.id, withDraftScore(match.id, draft, predictions.get(match.id)))
   }
 
   for (const match of roundMatches) {
@@ -150,4 +159,134 @@ export function collectRoundDrafts({
   }
 
   return out
+}
+
+/**
+ * Rascunho de um campo do card. `base` é o palpite salvo no momento da
+ * digitação, no formato de `savedBase`. `at` é a hora da edição, em ms.
+ */
+export type DraftEntry<T> = { value: T; base: string; at: number }
+
+/** Rascunhos com base e hora, como ficam no estado da aba e no storage. */
+export type DraftEntries = {
+  drafts: Map<string, DraftEntry<ScoreDraft>>
+  penaltyDrafts: Map<string, DraftEntry<PenaltyWinner>>
+}
+
+/** Só os valores dos rascunhos, como os cards e o "Salvar todos" leem. */
+export type UnsavedDrafts = {
+  drafts: Map<string, ScoreDraft>
+  penaltyDrafts: Map<string, PenaltyWinner>
+}
+
+export type PruneUnsavedDraftsInput = DraftEntries & {
+  matches: Match[]
+  predictions: Map<string, Prediction>
+}
+
+/** Placar e pênalti salvos, como `1:0:null`. Jogo sem palpite vira `sem palpite`. */
+export function savedBase(prediction: Prediction | undefined): string {
+  if (!prediction) return 'sem palpite'
+  const penalty = prediction.predicted_penalty_winner ?? 'null'
+  return `${prediction.predicted_home_score}:${prediction.predicted_away_score}:${penalty}`
+}
+
+/**
+ * Tira os rascunhos digitados sobre um palpite salvo que depois mudou. Sem
+ * nada a tirar, devolve o mesmo objeto e o estado não muda.
+ */
+export function dropStaleDrafts(
+  entries: DraftEntries,
+  predictions: Map<string, Prediction>,
+): DraftEntries {
+  function fresh<T>(map: Map<string, DraftEntry<T>>) {
+    let next: Map<string, DraftEntry<T>> | null = null
+    for (const [matchId, entry] of map) {
+      if (entry.base === savedBase(predictions.get(matchId))) continue
+      next ??= new Map(map)
+      next.delete(matchId)
+    }
+    return next ?? map
+  }
+  const drafts = fresh(entries.drafts)
+  const penaltyDrafts = fresh(entries.penaltyDrafts)
+  if (drafts === entries.drafts && penaltyDrafts === entries.penaltyDrafts) return entries
+  return { drafts, penaltyDrafts }
+}
+
+/**
+ * Rascunhos que ainda valem guardar. O jogo precisa estar na lista e aberto, e
+ * o palpite salvo dele não pode ter mudado desde a digitação.
+ *
+ * Placar e pênalti são julgados em separado. O placar fica quando está completo
+ * e difere do salvo. O pênalti fica quando difere do salvo e o placar resolvido
+ * ainda pede a escolha, com a regra de `collectRoundDrafts`. Na volta, o
+ * rascunho da ida só conta se ela estiver na mesma rodada.
+ */
+export function pruneUnsavedDrafts({
+  matches,
+  predictions,
+  drafts,
+  penaltyDrafts,
+}: PruneUnsavedDraftsInput): DraftEntries {
+  const byId = new Map(matches.map((m) => [m.id, m]))
+  function isCurrent(matchId: string, entry: DraftEntry<unknown>) {
+    const match = byId.get(matchId)
+    const saved = predictions.get(matchId)
+    return match !== undefined && !isMatchLocked(match, saved) && entry.base === savedBase(saved)
+  }
+  function currentScore(matchId: string) {
+    const entry = drafts.get(matchId)
+    return entry && isCurrent(matchId, entry) ? entry.value : undefined
+  }
+  function leg1Prediction(match: Match) {
+    if (!match.leg1_match_id) return undefined
+    const saved = predictions.get(match.leg1_match_id)
+    const leg1 = byId.get(match.leg1_match_id)
+    const draft = currentScore(match.leg1_match_id)
+    if (!leg1 || leg1.round !== match.round || !draft || draft.home === '' || draft.away === '') {
+      return saved
+    }
+    return withDraftScore(leg1.id, draft, saved)
+  }
+
+  const keptDrafts = new Map<string, DraftEntry<ScoreDraft>>()
+  for (const [matchId, entry] of drafts) {
+    const { home, away } = entry.value
+    if (!isCurrent(matchId, entry) || home === '' || away === '') continue
+    const saved = predictions.get(matchId)
+    const sameAsSaved =
+      saved !== undefined &&
+      Number(home) === saved.predicted_home_score &&
+      Number(away) === saved.predicted_away_score
+    if (!sameAsSaved) keptDrafts.set(matchId, entry)
+  }
+
+  const keptPenalties = new Map<string, DraftEntry<PenaltyWinner>>()
+  for (const [matchId, entry] of penaltyDrafts) {
+    if (!isCurrent(matchId, entry)) continue
+    const match = byId.get(matchId)!
+    const saved = predictions.get(matchId)
+    if (entry.value === (saved?.predicted_penalty_winner ?? null)) continue
+    const scores = resolveDraftScores(currentScore(matchId), saved)
+    if (scores && needsPenaltyPick(match, scores.home, scores.away, leg1Prediction(match))) {
+      keptPenalties.set(matchId, entry)
+    }
+  }
+  return { drafts: keptDrafts, penaltyDrafts: keptPenalties }
+}
+
+export function draftValues({ drafts, penaltyDrafts }: DraftEntries): UnsavedDrafts {
+  const values = <T>(map: Map<string, DraftEntry<T>>) =>
+    new Map([...map].map(([matchId, entry]) => [matchId, entry.value]))
+  return { drafts: values(drafts), penaltyDrafts: values(penaltyDrafts) }
+}
+
+/** Rodadas com algum rascunho, para o seletor mostrar onde eles estão. */
+export function roundsWithDrafts(matches: Match[], { drafts, penaltyDrafts }: DraftEntries) {
+  const rounds = new Set<string>()
+  for (const match of matches) {
+    if (drafts.has(match.id) || penaltyDrafts.has(match.id)) rounds.add(match.round)
+  }
+  return rounds
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { needsPenaltyPick } from '../../lib/predictedTie'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
@@ -21,6 +21,8 @@ export interface UseMatchCardProps {
   ) => void
   onDraftChange?: (matchId: string, home: string, away: string) => void
   onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
+  draft?: { home: string; away: string }
+  penaltyDraft?: 'home' | 'away' | null
 }
 
 function useMatchStatus(match: Match, prediction: Prediction | undefined) {
@@ -38,30 +40,53 @@ function useMatchStatus(match: Match, prediction: Prediction | undefined) {
   return { isPostponed, locked, isFinished, hasPrediction }
 }
 
-function useMatchDraft(prediction: Prediction | undefined) {
+function outcomeOf(home: number, away: number): Outcome {
+  return home > away ? 'home' : home < away ? 'away' : 'draw'
+}
+
+/**
+ * Estado dos campos do card. Começa pelo rascunho guardado (`draft`,
+ * `penaltyDraft`), se houver, senão pelo palpite salvo; depois segue o palpite
+ * salvo sempre que ele muda (salvar, importar).
+ */
+function useMatchDraft(
+  prediction: Prediction | undefined,
+  draft?: { home: string; away: string },
+  penaltyDraft?: 'home' | 'away' | null,
+) {
   const [home, setHome] = useState<string>(
-    prediction !== undefined ? String(prediction.predicted_home_score) : '0',
+    draft?.home ?? (prediction !== undefined ? String(prediction.predicted_home_score) : '0'),
   )
   const [away, setAway] = useState<string>(
-    prediction !== undefined ? String(prediction.predicted_away_score) : '0',
+    draft?.away ?? (prediction !== undefined ? String(prediction.predicted_away_score) : '0'),
   )
   const [penaltyWinner, setPenaltyWinner] = useState<'home' | 'away' | null>(
-    prediction?.predicted_penalty_winner ?? null,
+    penaltyDraft !== undefined ? penaltyDraft : (prediction?.predicted_penalty_winner ?? null),
   )
-  const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(null)
+  const [pendingOutcome, setPendingOutcome] = useState<'home' | 'draw' | 'away' | null>(() =>
+    draft && draft.home !== '' && draft.away !== ''
+      ? outcomeOf(Number(draft.home), Number(draft.away))
+      : null,
+  )
   const [reopenPenalty, setReopenPenalty] = useState(false)
 
   const persistedHome = prediction?.predicted_home_score
   const persistedAway = prediction?.predicted_away_score
   const persistedPenalty = prediction?.predicted_penalty_winner ?? null
+  // Só reage quando o palpite salvo muda. Na montagem, o valor inicial pode ser
+  // um rascunho restaurado, e o efeito não deve sobrescrevê-lo.
+  const persistedKey = `${persistedHome}:${persistedAway}:${persistedPenalty}`
+  const lastPersistedKey = useRef(persistedKey)
   useEffect(() => {
+    if (lastPersistedKey.current === persistedKey) return
+    lastPersistedKey.current = persistedKey
     if (persistedHome !== undefined && persistedAway !== undefined) {
       setHome(String(persistedHome))
       setAway(String(persistedAway))
       setPenaltyWinner(persistedPenalty)
       setPendingOutcome(null)
     }
-  }, [persistedHome, persistedAway, persistedPenalty])
+  }, [persistedKey, persistedHome, persistedAway, persistedPenalty])
 
   return {
     home,
@@ -153,11 +178,7 @@ function matchControls({
   const selectedOutcome: Outcome | null =
     pendingOutcome ??
     (prediction !== undefined
-      ? prediction.predicted_home_score > prediction.predicted_away_score
-        ? 'home'
-        : prediction.predicted_home_score < prediction.predicted_away_score
-          ? 'away'
-          : 'draw'
+      ? outcomeOf(prediction.predicted_home_score, prediction.predicted_away_score)
       : null)
 
   const showPenaltyPicker =
@@ -171,7 +192,10 @@ function matchControls({
       ? Number(home) !== prediction.predicted_home_score ||
         Number(away) !== prediction.predicted_away_score
       : true
-  const penaltyChanged = (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
+  // Sem a escolha na tela, o salvamento manda pênalti nulo. Um vencedor escolhido
+  // antes de o empate se desfazer não conta como mudança.
+  const penaltyChanged =
+    showPenaltyPicker && (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
   const hasChanged = scoreChanged || penaltyChanged
   const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
   const canSave =
@@ -189,6 +213,8 @@ export function useMatchCard({
   onSaved,
   onDraftChange,
   onPenaltyDraftChange,
+  draft,
+  penaltyDraft,
 }: UseMatchCardProps) {
   const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction)
 
@@ -203,7 +229,7 @@ export function useMatchCard({
     setPendingOutcome,
     reopenPenalty,
     setReopenPenalty,
-  } = useMatchDraft(prediction)
+  } = useMatchDraft(prediction, draft, penaltyDraft)
 
   const { saving, saved, error, persist } = useMatchPersistence(groupId, match.id, onSaved)
 

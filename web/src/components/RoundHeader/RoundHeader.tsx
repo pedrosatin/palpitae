@@ -22,6 +22,11 @@ interface RoundHeaderProps {
    * trás (fora do default_round, ver api/src/matches/defaultRound.ts).
    */
   rescheduledByRound?: Map<string, number>
+  /**
+   * Rodadas com rascunho de palpite não salvo. O aviso de saída conta todas as
+   * rodadas, e o marcador mostra onde está cada rascunho.
+   */
+  unsavedRounds?: Set<string>
   id?: string
   className?: string
 }
@@ -36,16 +41,17 @@ export default function RoundHeader({
   onSelect,
   postponedByRound,
   rescheduledByRound,
+  unsavedRounds,
   id = 'round-select',
   className,
 }: RoundHeaderProps) {
   // `<option>` só renderiza texto — nada de badge aqui, o marcador vai no rótulo.
   const optionLabel = (r: string) => {
-    const marker = leftoverMatchesMarker(
-      postponedByRound?.get(r) ?? 0,
-      rescheduledByRound?.get(r) ?? 0,
-    )
-    return marker ? `${labelFor(r)} · ${marker}` : labelFor(r)
+    const markers = [
+      leftoverMatchesMarker(postponedByRound?.get(r) ?? 0, rescheduledByRound?.get(r) ?? 0),
+      unsavedRounds?.has(r) ? 'não salvo' : '',
+    ].filter(Boolean)
+    return markers.length > 0 ? `${labelFor(r)} · ${markers.join(', ')}` : labelFor(r)
   }
 
   return (

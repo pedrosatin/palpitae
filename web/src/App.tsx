@@ -6,6 +6,7 @@ import { captureGuideOrigin, clearGuideOrigin } from './analytics/guideOrigin'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
 import { invalidateApiCache } from './lib/api-cache'
+import { clearStoredDrafts } from './lib/predictionDraftStorage'
 import LandingPage from './pages/LandingPage'
 
 /**
@@ -158,6 +159,8 @@ export default function App({
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
   }, [])
 
+  // Logout explícito apaga os rascunhos de palpite deste navegador. A sessão
+  // expirada mantém, porque a pessoa volta a entrar e recupera o que digitou.
   function handleLogout() {
     clearGuideOrigin()
     // Raw fetch on purpose: the user is leaving deliberately — a 401 from an
@@ -166,6 +169,8 @@ export default function App({
       method: 'POST',
       credentials: 'include',
     }).finally(() => {
+      // Junto com a troca de tela, para a aba Palpitar aberta não regravar antes de desmontar.
+      clearStoredDrafts()
       invalidateApiCache()
       setUser(null)
       setStatus('unauthenticated')
@@ -175,6 +180,7 @@ export default function App({
   // "Sair de todos os dispositivos" já apagou o cookie e as sessões no servidor.
   function handleLoggedOutEverywhere() {
     clearGuideOrigin()
+    clearStoredDrafts()
     invalidateApiCache()
     setUser(null)
     setStatus('unauthenticated')
