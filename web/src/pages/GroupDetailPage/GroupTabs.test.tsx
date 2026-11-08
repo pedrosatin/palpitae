@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import GroupTabs from './GroupTabs'
+import GroupTabs, { revealActiveTab } from './GroupTabs'
 import { type Tab } from './types'
 
 describe('GroupTabs', () => {
@@ -73,5 +73,41 @@ describe('GroupTabs', () => {
     renderWithRouter(<GroupTabs {...defaultProps} tabsOffset={42} />)
     const container = screen.getByTestId('group-tabs')
     expect(container).toHaveStyle({ '--tabs-offset': '42px' })
+  })
+
+  it('marca só a aba ativa com aria-current', () => {
+    renderWithRouter(<GroupTabs {...defaultProps} activeTab={'group-picks' as Tab} />)
+    expect(screen.getByRole('link', { name: 'Grupo' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Palpitar' })).not.toHaveAttribute('aria-current')
+  })
+})
+
+describe('revealActiveTab', () => {
+  const build = (scrollLeft: number, tab: { left: number; width: number }) => {
+    const container = document.createElement('div')
+    const active = document.createElement('a')
+    Object.defineProperty(container, 'clientWidth', { value: 358 })
+    Object.defineProperty(active, 'offsetLeft', { value: tab.left })
+    Object.defineProperty(active, 'offsetWidth', { value: tab.width })
+    container.scrollLeft = scrollLeft
+    return { container, active }
+  }
+
+  it('leva a aba escondida à direita até a borda direita', () => {
+    const { container, active } = build(0, { left: 350, width: 97 })
+    revealActiveTab(container, active)
+    expect(container.scrollLeft).toBe(89)
+  })
+
+  it('leva a aba escondida à esquerda até a borda esquerda', () => {
+    const { container, active } = build(120, { left: 40, width: 80 })
+    revealActiveTab(container, active)
+    expect(container.scrollLeft).toBe(40)
+  })
+
+  it('não rola quando a aba já cabe', () => {
+    const { container, active } = build(0, { left: 10, width: 80 })
+    revealActiveTab(container, active)
+    expect(container.scrollLeft).toBe(0)
   })
 })
