@@ -194,8 +194,13 @@ describe('fetchEspnScoreboard', () => {
     expect(fetch).toHaveBeenCalledTimes(3)
     expect(peak).toBe(1)
     expect(startedAt).toHaveLength(3)
+    // O setTimeout usa o relógio monotônico e o Date.now o de parede. Os dois arredondam
+    // diferente, então o intervalo medido pode sair 1 ms menor com o pacing correto.
+    const timerToleranceMs = 5
     for (let i = 1; i < startedAt.length; i++) {
-      expect(startedAt[i]! - startedAt[i - 1]!).toBeGreaterThanOrEqual(ESPN_MIN_INTERVAL_MS)
+      expect(startedAt[i]! - startedAt[i - 1]!).toBeGreaterThanOrEqual(
+        ESPN_MIN_INTERVAL_MS - timerToleranceMs,
+      )
     }
   }, 15_000)
 
