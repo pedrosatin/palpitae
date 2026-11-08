@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
-import { apiFetch } from '../../lib/api'
+import { fetchGroupPredictions } from '../../lib/groupPredictions'
 import { roundReminder, type GroupMember, type OpenPickers } from '../../lib/groupReminder'
 import { formatMatchDate } from '../../lib/matchTime'
 import { isMatchLocked } from '../../lib/predictionDrafts'
@@ -253,12 +252,7 @@ export default function GroupPicksTab({
 
     Promise.all([
       fetchCompetitionMatches(competitionId),
-      apiFetch(`${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`).then(
-        (r) => {
-          if (!r.ok) throw new Error('Erro ao carregar palpites do grupo')
-          return r.json() as Promise<GroupPicksResponse>
-        },
-      ),
+      fetchGroupPredictions<GroupPicksResponse>(groupId),
     ])
       .then(([matchesData, picksData]) => {
         setMatches(matchesData.matches)

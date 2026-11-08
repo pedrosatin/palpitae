@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
-import { apiFetch } from '../../lib/api'
+import { fetchGroupPredictions } from '../../lib/groupPredictions'
 import type { GroupMember } from '../../lib/groupReminder'
 import {
   highlightText,
@@ -54,14 +53,12 @@ function useGroupRoundData(groupId: string, enabled: boolean, finishedKey: strin
   useEffect(() => {
     if (!enabled) return
     let active = true
-    apiFetch(`${config.apiUrl}/predictions/group?group_id=${encodeURIComponent(groupId)}`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('falha')
-        const body = (await res.json()) as {
-          self_user_id?: string
-          members?: GroupMember[]
-          predictions?: GroupRoundPick[]
-        }
+    fetchGroupPredictions<{
+      self_user_id?: string
+      members?: GroupMember[]
+      predictions?: GroupRoundPick[]
+    }>(groupId)
+      .then((body) => {
         if (
           !body.self_user_id ||
           !Array.isArray(body.members) ||
@@ -146,6 +143,8 @@ export default function RoundSummary({
         return
       }
       await shareOrDownloadImage(blob, roundShareFileName(roundLabel), roundShareText(data))
+    } catch {
+      setShareError(true)
     } finally {
       setSharing(false)
     }

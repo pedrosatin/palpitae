@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { invalidateApiCache } from '../../lib/api-cache'
 import { makeMatch } from '../matchFixtures'
 import type { Match, Prediction } from '../MatchCard'
 import RoundSummary from './RoundSummary'
@@ -12,6 +13,8 @@ vi.mock('../../lib/roundShareCard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/roundShareCard')>()),
   renderRoundShareCardBlob: (...args: unknown[]) => mockRender(...args),
 }))
+
+beforeEach(() => invalidateApiCache())
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -168,5 +171,30 @@ describe('RoundSummary', () => {
 
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
     expect(create).toHaveBeenCalled()
+  })
+
+  it('trocar entre rodadas encerradas reaproveita a resposta do grupo', async () => {
+    const fetchSpy = mockGroupApi([groupPick('me', 'a', 2, 1, 3)])
+    const mine = new Map([['a', own('a', 2, 1, 3)]])
+    const props = { groupId: 'g1', roundLabel: 'Rodada 34', predictions: mine, pointsExact: 3 }
+    const { rerender } = render(<RoundSummary {...props} roundMatches={[done('a', 2, 1)]} />)
+    await screen.findByRole('button', { name: 'Compartilhar rodada' })
+
+    rerender(<RoundSummary {...props} roundLabel="Rodada 35" roundMatches={[done('b', 1, 1)]} />)
+    rerender(<RoundSummary {...props} roundMatches={[done('a', 2, 1)]} />)
+    await screen.findByRole('button', { name: 'Compartilhar rodada' })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('avisa quando a geração do cartão falha', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)])
+    mockRender.mockRejectedValue(new Error('canvas'))
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar rodada' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível gerar a imagem')
+    expect(screen.getByRole('button', { name: 'Compartilhar rodada' })).toBeEnabled()
   })
 })
