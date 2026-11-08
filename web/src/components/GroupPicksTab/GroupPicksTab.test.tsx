@@ -524,8 +524,8 @@ describe('GroupPicksTab quem já palpitou', () => {
 
     const text = new URL(open.mock.calls[0][0] as string).searchParams.get('text') as string
     expect(text).toBe(
-      'Rodada 35 do bolão Realidade do BR. Bruno e Carla ainda não palpitaram. ' +
-        `O primeiro jogo fecha sáb, 14/11 às 18:30. ${window.location.origin}/grupos/g1?rodada=35`,
+      'Rodada 35 do bolão "Realidade do BR". Bruno e Carla ainda não palpitaram. ' +
+        `O próximo prazo é sáb, 14/11 às 18:30. ${window.location.origin}/grupos/g1?rodada=35`,
     )
     expect(text).not.toMatch(/[—–]/)
     expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_lembrete_whatsapp')
@@ -612,7 +612,7 @@ describe('GroupPicksTab quem já palpitou', () => {
     expect(screen.queryByText(/Faltam palpitar/)).not.toBeInTheDocument()
   })
 
-  it('no grupo "Sempre visível" mantém a lista e soma só a contagem', async () => {
+  it('no grupo "Sempre visível" mantém a lista e mostra a contagem sem iniciais', async () => {
     mockFetch([makeMatch({ id: 'm1', round: '35', start_time: KICKOFF })], {
       self_user_id: 'user-1',
       members: roster,

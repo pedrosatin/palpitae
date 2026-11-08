@@ -200,6 +200,16 @@ describe('WhatsAppShareButton', () => {
     expect(open).not.toHaveBeenCalled()
   })
 
+  it('não faz nada quando o toque duplo com o menu aberto gera InvalidStateError', async () => {
+    stubPointer(true)
+    enableWebShare(() => Promise.reject(new DOMException('already open', 'InvalidStateError')))
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+
+    await userEvent.click(renderButton())
+
+    expect(open).not.toHaveBeenCalled()
+  })
+
   it('cai no link do WhatsApp quando o menu nativo falha', async () => {
     stubPointer(true)
     enableWebShare(() => Promise.reject(new DOMException('blocked', 'NotAllowedError')))

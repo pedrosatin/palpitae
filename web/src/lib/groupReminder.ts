@@ -63,8 +63,17 @@ export function joinNames(names: string[], limit = names.length): string {
 export function missingLabel(missing: GroupMember[], selfUserId: string): string {
   const others = missing.filter((m) => m.user_id !== selfUserId).map((m) => m.display)
   if (others.length === 0) return 'Só falta você palpitar'
-  const names = others.length < missing.length ? [...others, 'você'] : others
-  return `${names.length === 1 ? 'Falta' : 'Faltam'} palpitar: ${joinNames(names, SUMMARY_MAX_NAMES)}`
+  if (others.length === missing.length) {
+    return `${others.length === 1 ? 'Falta' : 'Faltam'} palpitar: ${joinNames(others, SUMMARY_MAX_NAMES)}`
+  }
+  // A vaga de "você" é reservada, para ele nunca cair dentro do "e mais N".
+  const shown = others.slice(0, SUMMARY_MAX_NAMES - 1)
+  const rest = others.length - shown.length
+  const text =
+    rest > 0
+      ? `${[...shown, 'você'].join(', ')} e mais ${rest}`
+      : joinNames([...shown, 'você'])
+  return `${shown.length === 0 ? 'Falta' : 'Faltam'} palpitar: ${text}`
 }
 
 /** Contagem do card, como `4 de 6 palpitaram`. */
@@ -81,8 +90,14 @@ export function memberInitials(display: string): string {
   return `${first[0]}${second ?? ''}`.toUpperCase()
 }
 
+/** E-mail mascarado que a API usa quando o membro não tem apelido nem nome, como `pe***@gmail.com`. */
+const MASKED_EMAIL_RE = /^.{1,2}\*\*\*@\S+$/
+
 /** Primeiro nome de cada membro. Quem divide o primeiro nome com outro fica com o nome inteiro. */
-function shortNames(displays: string[]): string[] {
+function shortNames(rawDisplays: string[]): string[] {
+  const displays = rawDisplays.map((display) =>
+    MASKED_EMAIL_RE.test(display.trim()) ? 'Palpiteiro' : display,
+  )
   const first = displays.map((display) => display.trim().split(/\s+/)[0])
   return first.map((name, index) =>
     first.indexOf(name) === first.lastIndexOf(name) ? name : displays[index].trim(),
@@ -111,8 +126,8 @@ export function buildReminderMessage({
   const names = shortNames(missing)
   const verb = names.length === 1 ? 'ainda não palpitou' : 'ainda não palpitaram'
   const compose = (shown: number) =>
-    `${roundLabel} do bolão ${groupName}. ${joinNames(names, shown)} ${verb}. ` +
-    `O primeiro jogo fecha ${formatClosingDate(deadline)}.`
+    `${roundLabel} do bolão "${groupName}". ${joinNames(names, shown)} ${verb}. ` +
+    `O próximo prazo é ${formatClosingDate(deadline)}.`
 
   let shown = Math.min(names.length, MESSAGE_MAX_NAMES)
   while (shown > 1 && `${compose(shown)} ${link}`.length > MESSAGE_MAX_CHARS) shown -= 1

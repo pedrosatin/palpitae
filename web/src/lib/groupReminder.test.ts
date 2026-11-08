@@ -72,6 +72,18 @@ describe('missingLabel', () => {
     expect(missingLabel([members[0], members[1]], 'u1')).toBe('Faltam palpitar: Ana e você')
   })
 
+  it('reserva a vaga de "você" quando faltam mais de 10 pessoas', () => {
+    const many: GroupMember[] = Array.from({ length: 12 }, (_, i) => ({
+      user_id: `x${i}`,
+      display: `Membro ${i + 1}`,
+    }))
+    const label = missingLabel([...many, members[0]], 'u1')
+    expect(label).toBe(
+      'Faltam palpitar: Membro 1, Membro 2, Membro 3, Membro 4, Membro 5, Membro 6, ' +
+        'Membro 7, Membro 8, Membro 9, você e mais 3',
+    )
+  })
+
   it('usa o singular com uma pessoa', () => {
     expect(missingLabel([members[1]], 'u1')).toBe('Falta palpitar: Ana')
   })
@@ -114,9 +126,20 @@ describe('buildReminderMessage', () => {
   it('traz rodada, grupo, nomes e o dia da semana calculado', () => {
     const message = buildReminderMessage({ ...base, missing: ['Ana Lima', 'Bruno'] })
     expect(message).toBe(
-      'Rodada 35 do bolão Realidade do BR. Ana e Bruno ainda não palpitaram. ' +
-        'O primeiro jogo fecha sáb, 14/11 às 18:30.',
+      'Rodada 35 do bolão "Realidade do BR". Ana e Bruno ainda não palpitaram. ' +
+        'O próximo prazo é sáb, 14/11 às 18:30.',
     )
+  })
+
+  it('cita o nome do grupo entre aspas', () => {
+    const message = buildReminderMessage({ ...base, groupName: 'Bolão da Firma', missing: ['Ana'] })
+    expect(message).toContain('do bolão "Bolão da Firma". Ana')
+  })
+
+  it('troca e-mail mascarado por "Palpiteiro"', () => {
+    const message = buildReminderMessage({ ...base, missing: ['pe***@gmail.com', 'Ana'] })
+    expect(message).toContain('Palpiteiro e Ana ainda não palpitaram.')
+    expect(message).not.toContain('***')
   })
 
   it('não usa travessão', () => {

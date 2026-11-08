@@ -24,8 +24,8 @@ function whatsappUrlFor(message: string, shareLink: string): string {
 }
 
 /**
- * Celular com menu nativo. Navegadores de desktop também têm `navigator.share`, mas
- * ali o caminho direto é abrir o WhatsApp.
+ * Exige `pointer: coarse` porque navegadores de desktop também expõem `navigator.share`,
+ * e ali o botão abre o WhatsApp direto.
  */
 function hasPhoneShareSheet(): boolean {
   return (
@@ -61,8 +61,14 @@ export function WhatsAppShareButton({
         await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
         return
       } catch (err) {
-        // Cancelar o menu não abre nada. Outra falha cai no link do WhatsApp.
-        if (err instanceof DOMException && err.name === 'AbortError') return
+        // Cancelar o menu, ou tocar de novo com ele aberto (InvalidStateError), não abre
+        // nada. Outra falha cai no link do WhatsApp.
+        if (
+          err instanceof DOMException &&
+          (err.name === 'AbortError' || err.name === 'InvalidStateError')
+        ) {
+          return
+        }
       }
     }
     window.open(whatsappUrlFor(message, shareLink), '_blank', 'noopener,noreferrer')
