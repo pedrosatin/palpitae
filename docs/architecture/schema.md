@@ -453,6 +453,7 @@ CREATE TABLE IF NOT EXISTS group_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_group_members_group ON group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id, group_id);
 
 -- Predictions
 CREATE TABLE IF NOT EXISTS predictions (
