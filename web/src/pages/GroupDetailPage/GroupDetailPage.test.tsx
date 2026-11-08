@@ -350,7 +350,7 @@ describe('GroupDetailPage – invite section', () => {
 
     await screen.findByTestId('group-tabs')
     expect(screen.queryByRole('button', { name: /convidar membros/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Convidar membros' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /convidar membros/i })).not.toBeInTheDocument()
     expect(screen.queryByText('INV001')).not.toBeInTheDocument()
   })
 })

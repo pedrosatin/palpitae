@@ -24,7 +24,7 @@ function GroupInviteSection({
   rotating,
 }: GroupInviteSectionProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
-  // Só tem efeito no celular: lá o convite começa recolhido (ver CSS).
+  // Só vale no celular, onde o CSS começa com o convite recolhido.
   const [expanded, setExpanded] = useState(false)
   const bodyId = useId()
 
@@ -49,31 +49,33 @@ function GroupInviteSection({
   }
 
   function toggleExpanded() {
-    trackEvent('click_group_detail_convite_toggle', { open: !expanded })
+    trackEvent('click_group_detail_abrir_convite', { open: !expanded })
     setExpanded((value) => !value)
   }
 
-  // O botão e o título ficam sempre no DOM; o CSS decide qual aparece. No
-  // desktop (> 600 px) o título mostra e o conteúdo fica sempre aberto. No
-  // celular o botão aparece e o conteúdo só abre com `data-expanded`, para as
-  // abas e os jogos caberem na primeira tela. Só CSS, sem matchMedia: o
-  // primeiro render já sai certo e não pisca.
+  // O texto do título e o botão ficam no mesmo h2, e o CSS mostra um dos dois.
+  // Acima de 600 px aparece o título e o conteúdo fica aberto. No celular
+  // aparece o botão, e o conteúdo só abre com `data-expanded`. O h2 continua na
+  // navegação por títulos nos dois casos. Sem matchMedia, o primeiro render já
+  // sai no estado certo.
   return (
     <section className={styles.inviteSection} data-expanded={expanded || undefined}>
-      <h2 className={styles.inviteTitle}>Convidar membros</h2>
-      <button
-        type="button"
-        className={styles.inviteToggle}
-        aria-expanded={expanded}
-        aria-controls={bodyId}
-        onClick={toggleExpanded}
-      >
-        <span>Convidar membros</span>
-        <span className={styles.inviteToggleHint}>código e link</span>
-        <span className={styles.inviteChevron} aria-hidden="true">
-          ▾
-        </span>
-      </button>
+      <h2 className={styles.inviteTitle}>
+        <span className={styles.inviteTitleText}>Convidar membros</span>
+        <button
+          type="button"
+          className={styles.inviteToggle}
+          aria-expanded={expanded}
+          aria-controls={bodyId}
+          onClick={toggleExpanded}
+        >
+          <span>Convidar membros</span>
+          <span className={styles.inviteToggleHint}>código e link</span>
+          <span className={styles.inviteChevron} aria-hidden="true">
+            ▾
+          </span>
+        </button>
+      </h2>
       <div id={bodyId} className={styles.inviteBody}>
         <div className={styles.inviteRow}>
           <div className={styles.codeBox}>

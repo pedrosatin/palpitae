@@ -18,7 +18,10 @@ export interface GroupDetail {
   competition_type: CompetitionType | null
   /** Código canônico (`competitions.external_id`), ex. bra.camp.gaucho. */
   competition_code: string | null
-  /** Derivado no servidor: 'finished' quando a competição não tem jogo pendente. */
+  /**
+   * O servidor deriva o valor dos jogos. Liga vira 'finished' quando não tem
+   * jogo pendente. Copa precisa também da final encerrada.
+   */
   competition_status?: 'upcoming' | 'ongoing' | 'finished' | null
   is_admin: boolean
   invite_code: string | null

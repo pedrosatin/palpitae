@@ -242,7 +242,7 @@
 }
 
 /* Linha compacta do celular. No desktop o convite fica sempre aberto e o
-   botão some; o media query de baixo inverte. */
+   botão some. O media query abaixo inverte. */
 .inviteToggle {
   display: none;
 }
@@ -254,6 +254,10 @@
   }
 
   .inviteTitle {
+    margin: 0;
+  }
+
+  .inviteTitleText {
     display: none;
   }
 

@@ -40,7 +40,7 @@ describe('GroupInviteSection', () => {
   it('renders correctly with invite code and link', () => {
     render(<GroupInviteSection {...defaultProps} />)
 
-    expect(screen.getByRole('heading', { name: 'Convidar membros' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /convidar membros/i })).toBeInTheDocument()
     expect(screen.getByText('TEST1234')).toBeInTheDocument()
 
     const expectedLink = `${window.location.origin}/convite/TEST1234`
@@ -117,6 +117,8 @@ describe('GroupInviteSection', () => {
 
     const toggle = screen.getByRole('button', { name: /convidar membros/i })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    // Padrão disclosure da APG. O botão fica dentro do título da seção.
+    expect(screen.getByRole('heading', { level: 2 })).toContainElement(toggle)
 
     const bodyId = toggle.getAttribute('aria-controls')
     expect(bodyId).toBeTruthy()
@@ -127,8 +129,8 @@ describe('GroupInviteSection', () => {
     const section = container.querySelector('section')!
     expect(section).not.toHaveAttribute('data-expanded')
 
-    // Tudo que existe hoje continua dentro do conteúdo controlado pelo botão,
-    // então nada some no desktop, onde o conteúdo fica sempre aberto.
+    // Código, link, compartilhar e troca de código ficam dentro do conteúdo
+    // controlado pelo botão. No desktop ele fica sempre aberto.
     expect(body).toHaveTextContent('TEST1234')
     expect(body).toHaveTextContent(`${window.location.origin}/convite/TEST1234`)
     expect(body).toContainElement(screen.getByTestId('share-buttons'))
@@ -143,14 +145,14 @@ describe('GroupInviteSection', () => {
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(section).toHaveAttribute('data-expanded')
-    expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_convite_toggle', {
+    expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_abrir_convite', {
       open: true,
     })
 
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(section).not.toHaveAttribute('data-expanded')
-    expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_convite_toggle', {
+    expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_abrir_convite', {
       open: false,
     })
   })

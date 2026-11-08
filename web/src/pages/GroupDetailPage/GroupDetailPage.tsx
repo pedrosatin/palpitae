@@ -147,7 +147,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           leaving={leaving}
         />
 
-        {/* Admin: invite section. Grupo encerrado não recebe mais gente. */}
+        {/* Convite do admin. Fica escondido quando a competição acabou. */}
         {isAdmin && group.invite_code && !isFinished && (
           <GroupInviteSection
             inviteCode={group.invite_code}
