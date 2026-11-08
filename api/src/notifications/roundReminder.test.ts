@@ -333,11 +333,10 @@ describe('sendRoundReminders', () => {
 
       await run(db)
 
-      expect(
-        sentBodies()
-          .map((email) => email.to)
-          .sort(),
-      ).toEqual(['ana@example.com', 'bia@example.com'])
+      expect(sentBodies().map((email) => email.to).sort()).toEqual([
+        'ana@example.com',
+        'bia@example.com',
+      ])
     })
 
     it('nova execução no mesmo dia não envia de novo, nem com jogo novo', async () => {

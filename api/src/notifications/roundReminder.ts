@@ -20,12 +20,13 @@ const MAX_SEND_ATTEMPTS = 3
 
 // O plano da conta Cloudflare não está confirmado (docs/architecture/
 // capacidade-coordenacao-provedores.md), então vale o pior caso: Free, com 50
-// subrequests por invocação. O D1 conta junto com o `fetch`. A execução gasta 3
-// consultas fixas (SELECT, batch de reserva e DELETE da devolução) e deixa 2 de
-// folga. Sobram 45 `fetch` ao Resend, contando cada reenvio.
+// subrequests por invocação. O D1 conta junto com o `fetch`. A invocação gasta 4
+// consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de
+// segurança do `scheduled`) e deixa 1 de folga. Sobram 45 `fetch` ao Resend, contando
+// cada reenvio.
 const SUBREQUEST_LIMIT = 50
-const D1_SUBREQUESTS = 3
-const SUBREQUEST_MARGIN = 2
+const D1_SUBREQUESTS = 4
+const SUBREQUEST_MARGIN = 1
 export const RESEND_FETCH_BUDGET = SUBREQUEST_LIMIT - D1_SUBREQUESTS - SUBREQUEST_MARGIN
 
 /** Contador dos `fetch` ao Resend desta execução. */
@@ -63,9 +64,9 @@ async function sendWithRetry(
     } catch (err) {
       const emailError = err instanceof EmailError ? err : undefined
       const status = emailError?.status ?? 0
-      const transient =
-        !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
+      const transient = !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
       if (!transient || attempt >= MAX_SEND_ATTEMPTS) throw err
+      if (budget.used >= budget.max) throw new SubrequestBudgetError()
       await sleep(emailError?.retryAfterMs ?? 500 * 2 ** (attempt - 1))
     }
   }
@@ -274,9 +275,7 @@ async function claimRecipients(
   day: ReminderDay,
 ): Promise<Set<string>> {
   const [, claim] = await db.batch<{ user_id: string }>([
-    db
-      .prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?')
-      .bind(day.retentionCutoff),
+    db.prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?').bind(day.retentionCutoff),
     db
       .prepare(
         `INSERT INTO email_reminder_sends (user_id, reminder_date)
@@ -445,7 +444,7 @@ async function dispatchDigests(
  * rodada. Quem palpitou todos os jogos do dia ou cancelou os lembretes não recebe.
  * Vale no máximo um e-mail por usuário por dia (`email_reminder_sends`, ADR-020).
  *
- * `nowMs` existe para os testes fixarem o dia.
+ * `nowMs` e `fetchBudget` existem para os testes fixarem o dia e o saldo.
  */
 export async function sendRoundReminders(
   db: D1Database,
