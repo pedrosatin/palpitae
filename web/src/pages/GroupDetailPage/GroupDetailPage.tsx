@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useParams, Navigate } from 'react-router-dom'
+import { Link, useNavigate, useParams, Navigate } from 'react-router-dom'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
@@ -46,6 +46,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const [joinOpen, setJoinOpen] = useState(false)
 
   const isAdmin = group?.is_admin ?? false
+  const isFinished = group?.competition_status === 'finished'
 
   useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
 
@@ -124,7 +125,14 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   if (loading) {
     content = <p className={styles.loadingText}>Carregando grupo...</p>
   } else if (error || !group) {
-    content = <ErrorState message={error ?? 'Grupo não encontrado'} />
+    content = (
+      <>
+        <ErrorState message={error ?? 'Grupo não encontrado'} />
+        <Link to="/" className={styles.backLink}>
+          ← Voltar para Meus grupos
+        </Link>
+      </>
+    )
   } else {
     content = (
       <>
@@ -139,8 +147,8 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           leaving={leaving}
         />
 
-        {/* Admin: invite section */}
-        {isAdmin && group.invite_code && (
+        {/* Convite do admin. Fica escondido quando a competição acabou. */}
+        {isAdmin && group.invite_code && !isFinished && (
           <GroupInviteSection
             inviteCode={group.invite_code}
             groupName={group.name}

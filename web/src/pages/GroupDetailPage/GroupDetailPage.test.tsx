@@ -86,6 +86,7 @@ const baseGroup = {
   competition_name: 'Copa do Mundo',
   competition_type: null as 'league' | 'cup' | null,
   competition_code: null as string | null,
+  competition_status: 'ongoing' as 'upcoming' | 'ongoing' | 'finished' | null,
   is_admin: false,
   invite_code: 'INV001',
   created_at: '2026-01-01T00:00:00Z',
@@ -311,6 +312,65 @@ describe('GroupDetailPage – leave group', () => {
     await waitFor(() => {
       expect(screen.getByText('Home')).toBeInTheDocument()
     })
+  })
+})
+
+describe('GroupDetailPage – invite section', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows the invite (collapsed on mobile) to the admin of an ongoing group, above the tabs', async () => {
+    mockGroupFetch({ ...baseGroup, is_admin: true })
+
+    renderPage()
+
+    const toggle = await screen.findByRole('button', { name: /convidar membros/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText('INV001')).toBeInTheDocument()
+
+    const tabs = screen.getByTestId('group-tabs')
+    expect(toggle.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('hides the invite from non-admin members', async () => {
+    mockGroupFetch({ ...baseGroup, is_admin: false })
+
+    renderPage()
+
+    await screen.findByTestId('group-tabs')
+    expect(screen.queryByRole('button', { name: /convidar membros/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('INV001')).not.toBeInTheDocument()
+  })
+
+  it('hides the invite when the competition is finished', async () => {
+    mockGroupFetch({ ...baseGroup, is_admin: true, competition_status: 'finished' })
+
+    renderPage()
+
+    await screen.findByTestId('group-tabs')
+    expect(screen.queryByRole('button', { name: /convidar membros/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /convidar membros/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('INV001')).not.toBeInTheDocument()
+  })
+})
+
+describe('GroupDetailPage – group not found', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('offers a way back to Meus grupos', async () => {
+    mockGroupFetch(baseGroup, false)
+
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Grupo não encontrado')
+    const back = screen.getByRole('link', { name: /voltar para meus grupos/i })
+    expect(back).toHaveAttribute('href', '/')
+
+    await userEvent.click(back)
+    expect(screen.getByText('Home')).toBeInTheDocument()
   })
 })
 
