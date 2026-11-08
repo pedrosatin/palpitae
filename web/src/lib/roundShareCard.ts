@@ -154,7 +154,7 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
   if (data.isRoundLeader) {
     ctx.fillStyle = LIME
     ctx.font = `800 40px ${FONT}`
-    fillTracked(ctx, 'REI DA RODADA', W / 2, 226, 8)
+    ctx.fillText('REI DA RODADA', W / 2, 226)
   }
 
   // Rodada.
