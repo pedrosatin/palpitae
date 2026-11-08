@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import indexHtml from '../index.html?raw'
+import { catalogFaqAnswer } from './pages/LandingPage/competitionCatalog'
 
 /**
  * Executa no jsdom os scripts inline do `index.html`, os mesmos que o navegador
@@ -30,6 +31,19 @@ function runBody() {
 function currentUrl() {
   return window.location.pathname + window.location.search + window.location.hash
 }
+
+describe('index.html JSON-LD', () => {
+  it('repete no FAQ o mesmo texto de campeonatos que a landing mostra', () => {
+    const blocks = [
+      ...indexHtml.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g),
+    ].map((m) => JSON.parse(m[1]))
+    const faq = blocks.find((b) => b['@type'] === 'FAQPage')
+    const answer = faq.mainEntity.find(
+      (q: { name: string }) => q.name === 'Quais campeonatos tem no Palpitae?',
+    )
+    expect(answer.acceptedAnswer.text).toBe(catalogFaqAnswer())
+  })
+})
 
 describe('index.html inline scripts', () => {
   beforeEach(() => {

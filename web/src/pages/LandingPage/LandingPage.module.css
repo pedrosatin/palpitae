@@ -306,6 +306,53 @@
   line-height: var(--line-height-relaxed, 1.6);
 }
 
+/* ─── Campeonatos ─────────────────────────────────────────────────────── */
+
+.competitions {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.competitionGroups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-10);
+  text-align: left;
+}
+
+.competitionGroup {
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+}
+
+.competitionRegion {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.competitionList {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.competitionItem {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* ─── FAQ ─────────────────────────────────────────────────────────────── */
 
 .faq {
