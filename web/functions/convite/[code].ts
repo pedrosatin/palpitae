@@ -5,20 +5,23 @@
  * do HTML, sem executar JS. Esta Function devolve o mesmo `index.html` da SPA
  * com `<title>`, `og:*` e `twitter:*` trocados pelos dados do grupo, buscados no
  * endpoint público da API (`GET /public/invites/:code`). No navegador a SPA
- * assume e redireciona para `/?convite=CODE` (ver `InviteRedirect` em App.tsx).
+ * assume e mostra a página de convite ao visitante (ver `InvitePage`). Quem já
+ * tem sessão vai para `/?convite=CODE`.
  *
- * Se a API falhar, passar de API_TIMEOUT_MS ou responder fora do formato,
- * o crawler recebe um convite genérico. Códigos inválidos mantêm o OG da home. A página
- * sempre sai com `noindex`, porque o link dá acesso a um grupo privado.
+ * Se a API falhar, passar do tempo limite ou responder fora do formato, a
+ * página sai com o texto de convite genérico e a SPA busca os dados sozinha.
+ * Códigos inválidos mantêm o OG da home. A página sempre sai com `noindex`,
+ * porque o link dá acesso a um grupo privado.
  *
- * Só crawlers de preview (WhatsApp, Telegram, X, Slack etc., ver
- * `isPreviewCrawler`) disparam a busca na API. Um humano abrindo o link recebe
- * o HTML original com `noindex`, e a SPA leva direto ao convite sem esperar a
- * API. A busca usa `cf.cacheTtl` para o edge guardar a resposta por 5 min.
+ * Crawlers de preview (WhatsApp, Telegram, X, Slack etc., ver
+ * `isPreviewCrawler`) e pessoas disparam a busca na API. A pessoa tem um tempo
+ * limite menor porque o HTML não pode segurar a abertura do link, e recebe os
+ * dados em `data-convite` no `#root`, para a SPA pintar o convite sem outra
+ * chamada. A busca usa `cf.cacheTtlByStatus` para o edge guardar a resposta.
  *
- * Com `PROXY_SHARED_SECRET` configurado, a busca repassa o IP do crawler e o
+ * Com `PROXY_SHARED_SECRET` configurado, a busca repassa o IP do visitante e o
  * segredo, como o proxy de `/api/*`. Assim a API conta a quota pelo IP de quem pediu
- * o preview, e não pelo balde anônimo compartilhado dos Workers.
+ * o convite, e não pelo balde anônimo compartilhado dos Workers.
  *
  * A imagem é compartilhada entre os convites; o nome do grupo aparece no título.
  */
@@ -66,14 +69,17 @@ declare const HTMLRewriter: { new (): HTMLRewriterLike }
 
 export const DEFAULT_API_URL = 'https://api.palpitae.com.br'
 export const API_TIMEOUT_MS = 1500
+/** Tempo limite da busca para uma pessoa abrindo o link. A SPA cobre o resto. */
+export const VISITOR_API_TIMEOUT_MS = 800
 const SITE_URL = 'https://palpitae.com.br'
 
 // Mesmo formato validado pela API (api/src/public/router.ts). Validar aqui poupa
 // a chamada quando o link vem truncado ou adulterado.
 const INVITE_CODE_RE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/
 
-/** Quanto tempo o edge guarda a resposta da API (mesmo max-age da rota). */
+/** Quanto tempo o edge guarda cada resposta da API (mesmos max-age da rota). */
 export const API_CACHE_TTL_S = 300
+export const API_MISS_CACHE_TTL_S = 60
 
 // Crawlers que montam card de link. A lista nomeada cobre os que não trazem
 // "bot" no nome (facebookexternalhit, WhatsApp, Embedly...); o `bot` genérico
@@ -83,13 +89,16 @@ const PREVIEW_CRAWLER_RE =
 
 /** Fetch options do runtime da Cloudflare (sem @cloudflare/workers-types aqui). */
 interface CfRequestInit extends RequestInit {
-  cf?: { cacheTtl?: number; cacheEverything?: boolean }
+  cf?: { cacheTtlByStatus?: Record<string, number>; cacheEverything?: boolean }
 }
 
 export interface InvitePreview {
   groupName: string
   competitionName: string | null
   memberCount: number
+  adminName: string | null
+  pointsExact: number | null
+  pointsWinner: number | null
 }
 
 export interface InviteMeta {
@@ -105,6 +114,10 @@ export function isPreviewCrawler(userAgent: string | null | undefined): boolean 
 export function normalizeInviteCode(raw: string | string[] | undefined): string | null {
   const value = (Array.isArray(raw) ? raw[0] : raw)?.trim().toUpperCase() ?? ''
   return INVITE_CODE_RE.test(value) ? value : null
+}
+
+function scoringPoints(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
 }
 
 /**
@@ -131,13 +144,29 @@ export async function fetchInvitePreview(
       headers,
       signal: controller.signal,
       // Cache de verdade no edge. O Cache-Control da API sozinho não basta,
-      // porque subrequests de um Worker só passam pelo cache com `cf`.
-      cf: { cacheTtl: API_CACHE_TTL_S, cacheEverything: true },
+      // porque subrequests de um Worker só passam pelo cache com `cf`. Erro e
+      // 429 não entram, porque o 429 de um visitante apareceria para os outros.
+      cf: {
+        cacheEverything: true,
+        cacheTtlByStatus: {
+          '200-299': API_CACHE_TTL_S,
+          '404': API_MISS_CACHE_TTL_S,
+          '429': 0,
+          '500-599': 0,
+        },
+      },
     }
     const res = await fetchImpl(`${base}/public/invites/${encodeURIComponent(code)}`, init)
     if (res.status !== 200) return null
     const body = (await res.json()) as {
-      invite?: { group_name?: unknown; competition_name?: unknown; member_count?: unknown }
+      invite?: {
+        group_name?: unknown
+        competition_name?: unknown
+        member_count?: unknown
+        admin_name?: unknown
+        points_exact?: unknown
+        points_winner?: unknown
+      }
     }
     const invite = body.invite
     if (!invite || typeof invite.group_name !== 'string' || !invite.group_name.trim()) return null
@@ -149,6 +178,12 @@ export async function fetchInvitePreview(
           ? invite.competition_name.trim()
           : null,
       memberCount: Number.isFinite(count) && count > 0 ? Math.floor(count) : 0,
+      adminName:
+        typeof invite.admin_name === 'string' && invite.admin_name.trim()
+          ? invite.admin_name.trim()
+          : null,
+      pointsExact: scoringPoints(invite.points_exact),
+      pointsWinner: scoringPoints(invite.points_winner),
     }
   } catch {
     return null
@@ -177,6 +212,27 @@ export function buildInviteMeta(preview: InvitePreview | null): InviteMeta {
 }
 
 /**
+ * Dados do convite para a SPA, no formato da resposta da API. O valor vai em
+ * `encodeURIComponent` porque o HTMLRewriter só escapa aspas. Um `&quot;`
+ * digitado no nome do grupo voltaria como aspas e quebraria o JSON.
+ */
+export function serializeInviteEmbed(code: string, preview: InvitePreview): string {
+  return encodeURIComponent(
+    JSON.stringify({
+      code,
+      invite: {
+        group_name: preview.groupName,
+        competition_name: preview.competitionName,
+        member_count: preview.memberCount,
+        admin_name: preview.adminName,
+        points_exact: preview.pointsExact,
+        points_winner: preview.pointsWinner,
+      },
+    }),
+  )
+}
+
+/**
  * Aplica as meta tags do convite sobre o HTML da SPA. O HTMLRewriter escapa
  * texto e atributos, então o nome do grupo (texto livre do usuário) não injeta
  * markup.
@@ -185,6 +241,7 @@ export function rewriteInviteHtml(
   response: Response,
   meta: InviteMeta | null,
   pageUrl: string,
+  embed: string | null = null,
 ): Response {
   const setContent = (value: string) => ({
     element(el: RewriterElement) {
@@ -227,6 +284,14 @@ export function rewriteInviteHtml(
       .on('meta[name="twitter:description"]', setContent(meta.description))
   }
 
+  if (embed) {
+    rewriter = rewriter.on('#root', {
+      element(el) {
+        el.setAttribute('data-convite', embed)
+      },
+    })
+  }
+
   const headers = new Headers(response.headers)
   headers.set('Content-Type', 'text/html; charset=utf-8')
   headers.set('X-Robots-Tag', 'noindex')
@@ -255,20 +320,25 @@ export async function onRequest(context: PagesContext): Promise<Response> {
       env.PROXY_SHARED_SECRET && clientIp
         ? { clientIp, secret: env.PROXY_SHARED_SECRET }
         : undefined
-    const preview =
-      code && crawler
-        ? await fetchInvitePreview(
-            code,
-            env.API_URL || DEFAULT_API_URL,
-            fetch,
-            API_TIMEOUT_MS,
-            forward,
-          )
-        : null
+    const preview = code
+      ? await fetchInvitePreview(
+          code,
+          env.API_URL || DEFAULT_API_URL,
+          fetch,
+          crawler ? API_TIMEOUT_MS : VISITOR_API_TIMEOUT_MS,
+          forward,
+        )
+      : null
     const pageUrl = code ? `${SITE_URL}/convite/${code}` : `${SITE_URL}/`
-    return rewriteInviteHtml(shell, code && crawler ? buildInviteMeta(preview) : null, pageUrl)
+    return rewriteInviteHtml(
+      shell,
+      code ? buildInviteMeta(preview) : null,
+      pageUrl,
+      // Crawler não roda JS, então o nome do admin fica fora do HTML dele.
+      code && preview && !crawler ? serializeInviteEmbed(code, preview) : null,
+    )
   } catch {
-    // Se a reescrita falhar, devolve o index.html original e a SPA abre o convite.
+    // Se a reescrita falhar, devolve o index.html original e a SPA busca o convite.
     return shell
   }
 }

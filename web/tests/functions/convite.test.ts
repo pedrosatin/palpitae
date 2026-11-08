@@ -7,10 +7,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   API_TIMEOUT_MS,
   API_CACHE_TTL_S,
+  API_MISS_CACHE_TTL_S,
+  VISITOR_API_TIMEOUT_MS,
   buildInviteMeta,
   fetchInvitePreview,
   isPreviewCrawler,
   normalizeInviteCode,
+  serializeInviteEmbed,
 } from '../../functions/convite/[code]'
 
 const FUNCTION_PATH = fileURLToPath(new URL('../../functions/convite/[code].ts', import.meta.url))
@@ -26,7 +29,23 @@ function apiJson(body: unknown, status = 200) {
 }
 
 const OK_BODY = {
-  invite: { group_name: 'Os Craques', competition_name: 'Brasileirão 2026', member_count: 7 },
+  invite: {
+    group_name: 'Os Craques',
+    competition_name: 'Brasileirão 2026',
+    member_count: 7,
+    admin_name: 'Pedro',
+    points_exact: 3,
+    points_winner: 1,
+  },
+}
+
+const OK_PREVIEW = {
+  groupName: 'Os Craques',
+  competitionName: 'Brasileirão 2026',
+  memberCount: 7,
+  adminName: 'Pedro',
+  pointsExact: 3,
+  pointsWinner: 1,
 }
 
 describe('normalizeInviteCode', () => {
@@ -75,13 +94,7 @@ describe('isPreviewCrawler', () => {
 
 describe('buildInviteMeta', () => {
   it('builds title and description from the group data', () => {
-    expect(
-      buildInviteMeta({
-        groupName: 'Os Craques',
-        competitionName: 'Brasileirão 2026',
-        memberCount: 7,
-      }),
-    ).toEqual({
+    expect(buildInviteMeta(OK_PREVIEW)).toEqual({
       title: 'Entra no bolão "Os Craques" no Palpitae',
       description: 'Brasileirão 2026 · 7 participantes · grátis, sem apostas',
     })
@@ -89,12 +102,26 @@ describe('buildInviteMeta', () => {
 
   it('uses the singular for one member and skips a missing competition', () => {
     expect(
-      buildInviteMeta({ groupName: 'Solo', competitionName: null, memberCount: 1 })?.description,
+      buildInviteMeta({ ...OK_PREVIEW, groupName: 'Solo', competitionName: null, memberCount: 1 })
+        ?.description,
     ).toBe('1 participante · grátis, sem apostas')
   })
 
   it('identifies the invite even without group data', () => {
     expect(buildInviteMeta(null)?.title).toContain('convite')
+  })
+})
+
+describe('serializeInviteEmbed', () => {
+  it('preserva aspas e entidades do nome num valor seguro para atributo', () => {
+    const groupName = 'A&quot;B "<script>"'
+    const value = serializeInviteEmbed('ABCD-EF23', { ...OK_PREVIEW, groupName })
+
+    expect(value).not.toMatch(/[&"<>]/)
+    expect(JSON.parse(decodeURIComponent(value))).toEqual({
+      code: 'ABCD-EF23',
+      invite: { ...OK_BODY.invite, group_name: groupName },
+    })
   })
 })
 
@@ -108,13 +135,32 @@ describe('fetchInvitePreview', () => {
       'https://api.test/public/invites/ABCD-EF23',
       expect.objectContaining({
         signal: expect.any(AbortSignal),
-        cf: { cacheTtl: API_CACHE_TTL_S, cacheEverything: true },
+        cf: {
+          cacheEverything: true,
+          cacheTtlByStatus: {
+            '200-299': API_CACHE_TTL_S,
+            '404': API_MISS_CACHE_TTL_S,
+            '429': 0,
+            '500-599': 0,
+          },
+        },
       }),
     )
+    expect(preview).toEqual(OK_PREVIEW)
+  })
+
+  it('mapeia admin e pontuação ausentes para null', async () => {
+    const preview = await fetchInvitePreview('ABCD-EF23', 'https://api.test', async () =>
+      apiJson({ invite: { group_name: 'Antigo', competition_name: null, member_count: 2 } }),
+    )
+
     expect(preview).toEqual({
-      groupName: 'Os Craques',
-      competitionName: 'Brasileirão 2026',
-      memberCount: 7,
+      groupName: 'Antigo',
+      competitionName: null,
+      memberCount: 2,
+      adminName: null,
+      pointsExact: null,
+      pointsWinner: null,
     })
   })
 
@@ -256,6 +302,11 @@ describe('onRequest (workerd)', () => {
     return { res, html: await res.text() }
   }
 
+  function embeddedInvite(html: string) {
+    const match = html.match(/data-convite="([^"]*)"/)
+    return match ? JSON.parse(decodeURIComponent(match[1])) : null
+  }
+
   function metaContent(html: string, attr: 'name' | 'property', key: string) {
     const match = html.match(new RegExp(`<meta\\s+${attr}="${key}"\\s+content="([^"]*)"`))
     return match?.[1]
@@ -352,27 +403,73 @@ describe('onRequest (workerd)', () => {
     expect(metaContent(html, 'property', 'og:title')).toContain('convite')
   }, 10_000)
 
-  it('serves a person the original HTML without calling the API (still noindex)', async () => {
+  it('entrega à pessoa o título, a descrição e os dados embutidos, com noindex', async () => {
     apiHandler = () => apiJson(OK_BODY)
 
+    const { res, html } = await get('/convite/abcd-ef23', BROWSER_UA)
+
+    expect(res.status).toBe(200)
+    expect(apiCalls).toEqual(['https://api.test/public/invites/ABCD-EF23'])
+    expect(html).toContain('<title>Entra no bolão "Os Craques" no Palpitae</title>')
+    expect(metaContent(html, 'name', 'description')).toBe(
+      'Brasileirão 2026 · 7 participantes · grátis, sem apostas',
+    )
+    expect(metaContent(html, 'name', 'robots')).toBe('noindex')
+    expect(res.headers.get('X-Robots-Tag')).toBe('noindex')
+    expect(embeddedInvite(html)).toEqual({ code: 'ABCD-EF23', invite: OK_BODY.invite })
+  })
+
+  it('deixa o nome do admin fora do HTML do crawler', async () => {
+    apiHandler = () => apiJson(OK_BODY)
+
+    const { html } = await get('/convite/ABCD-EF23')
+
+    expect(html).not.toContain('data-convite')
+    expect(html).not.toContain('Pedro')
+  })
+
+  it.each([
+    ['API 404', () => apiJson({ error: 'Convite não encontrado' }, 404)],
+    ['API 429', () => apiJson({ error: 'Muitas requisições' }, 429)],
+    ['API 500', () => apiJson({ error: 'x' }, 500)],
+  ])(
+    'entrega à pessoa o texto genérico de convite, sem dados embutidos, em %s',
+    async (_l, handler) => {
+      apiHandler = handler
+
+      const { res, html } = await get('/convite/ABCD-EF23', BROWSER_UA)
+
+      expect(res.status).toBe(200)
+      expect(html).toContain('<title>Você recebeu um convite para um bolão no Palpitae</title>')
+      expect(html).not.toContain('data-convite')
+    },
+  )
+
+  it('não segura o HTML da pessoa além do tempo limite de visitante', async () => {
+    apiHandler = () =>
+      new Promise((resolve) => setTimeout(() => resolve(apiJson(OK_BODY)), API_TIMEOUT_MS + 1000))
+
+    const started = Date.now()
     const { res, html } = await get('/convite/ABCD-EF23', BROWSER_UA)
 
     expect(res.status).toBe(200)
-    expect(apiCalls).toEqual([])
-    expect(html).toContain(`<title>${GENERIC_TITLE}</title>`)
-    expect(metaContent(html, 'property', 'og:title')).toBe(GENERIC_TITLE)
-    expect(metaContent(html, 'name', 'robots')).toBe('noindex')
-    expect(res.headers.get('X-Robots-Tag')).toBe('noindex')
-  })
+    expect(Date.now() - started).toBeLessThan(VISITOR_API_TIMEOUT_MS + 600)
+    expect(html).not.toContain('data-convite')
+    expect(html).toContain('<title>Você recebeu um convite')
+  }, 10_000)
 
-  it('does not call the API for a malformed code', async () => {
+  it.each([
+    ['crawler', WHATSAPP_UA],
+    ['pessoa', BROWSER_UA],
+  ])('não chama a API para código malformado aberto por %s', async (_label, userAgent) => {
     apiHandler = () => apiJson(OK_BODY)
 
-    const { res, html } = await get('/convite/nao-e-codigo')
+    const { res, html } = await get('/convite/nao-e-codigo', userAgent)
 
     expect(res.status).toBe(200)
     expect(apiCalls).toEqual([])
     expect(html).toContain(`<title>${GENERIC_TITLE}</title>`)
+    expect(html).not.toContain('data-convite')
     expect(metaContent(html, 'name', 'robots')).toBe('noindex')
   })
 })

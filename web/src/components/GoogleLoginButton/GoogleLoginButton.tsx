@@ -3,6 +3,14 @@ import { markLoginStarted } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import styles from './GoogleLoginButton.module.css'
 
+interface GoogleLoginButtonProps {
+  label?: string
+  /** Destino depois do login, como query da raiz. Sem ele, vale a query da URL atual. */
+  redirect?: string
+  /** Roda antes de sair para o Google. */
+  onBeforeRedirect?: () => void
+}
+
 /**
  * "Sign in with Google" button.
  *
@@ -13,28 +21,28 @@ import styles from './GoogleLoginButton.module.css'
  * Styled per Google's Sign-In Button branding guidelines:
  *   white surface, Google multicolour "G" logo, dark label text.
  */
-export default function GoogleLoginButton() {
+export default function GoogleLoginButton({
+  label = 'Entrar com Google',
+  redirect,
+  onBeforeRedirect,
+}: GoogleLoginButtonProps) {
   function handleClick() {
     trackEvent('click_login_google')
     markLoginStarted()
+    onBeforeRedirect?.()
     // O link do lembrete por e-mail abre `/grupos/:id?rodada=`. Sem o caminho, quem
     // entra por ele cai no painel depois do login.
     const { pathname, search } = window.location
-    const redirect = pathname.startsWith('/grupos/') ? `${pathname}${search}` : search
+    const target = redirect ?? (pathname.startsWith('/grupos/') ? `${pathname}${search}` : search)
     const url = new URL(`${config.authUrl}/auth/google`)
-    if (redirect) url.searchParams.set('redirect', redirect)
+    if (target) url.searchParams.set('redirect', target)
     window.location.href = url.toString()
   }
 
   return (
-    <button
-      type="button"
-      className={styles.button}
-      onClick={handleClick}
-      aria-label="Entrar com Google"
-    >
+    <button type="button" className={styles.button} onClick={handleClick} aria-label={label}>
       <GoogleLogo className={styles.icon} />
-      <span>Entrar com Google</span>
+      <span>{label}</span>
     </button>
   )
 }

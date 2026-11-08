@@ -1,9 +1,17 @@
 import { Hono } from 'hono'
 import { describe, expect, it, vi } from 'vitest'
-import { publicRouter } from './router'
+import { createSqliteD1 } from '../testing/sqliteD1'
+import { publicAdminName, publicRouter } from './router'
 import type { AppContext } from '../types'
 
-type Row = { group_name: string; competition_name: string | null; member_count: number }
+type Row = {
+  group_name: string
+  competition_name: string | null
+  member_count: number
+  admin_name?: string | null
+  points_exact?: number | null
+  points_winner?: number | null
+}
 
 function createDbMock(rows: Record<string, Row>) {
   const prepare = vi.fn((sql: string) => ({
@@ -29,11 +37,18 @@ function request(path: string, db: D1Database) {
 }
 
 const VALID: Record<string, Row> = {
-  'ABCD-EF23': { group_name: 'Os Craques', competition_name: 'Brasileirão 2026', member_count: 7 },
+  'ABCD-EF23': {
+    group_name: 'Os Craques',
+    competition_name: 'Brasileirão 2026',
+    member_count: 7,
+    admin_name: 'Pedro Satin',
+    points_exact: 3,
+    points_winner: 1,
+  },
 }
 
 describe('GET /public/invites/:code', () => {
-  it('returns only group name, competition name and member count for a valid code', async () => {
+  it('devolve só os campos do convite para um código válido', async () => {
     const { db } = createDbMock(VALID)
 
     const res = await request('/public/invites/ABCD-EF23', db)
@@ -46,14 +61,20 @@ describe('GET /public/invites/:code', () => {
         group_name: 'Os Craques',
         competition_name: 'Brasileirão 2026',
         member_count: 7,
+        admin_name: 'Pedro',
+        points_exact: 3,
+        points_winner: 1,
       },
     })
-    // Nada de ids, dono, membros, limite de vagas ou o próprio código.
+    // Nada de ids, e-mails, demais membros, limite de vagas ou o próprio código.
     expect(Object.keys(body)).toEqual(['invite'])
     expect(Object.keys(body.invite).sort()).toEqual([
+      'admin_name',
       'competition_name',
       'group_name',
       'member_count',
+      'points_exact',
+      'points_winner',
     ])
   })
 
@@ -64,8 +85,15 @@ describe('GET /public/invites/:code', () => {
 
     const sql = prepare.mock.calls[0]?.[0] ?? ''
     const aliases = [...sql.matchAll(/\bAS (\w+)/g)].map((m) => m[1])
-    expect(aliases).toEqual(['group_name', 'competition_name', 'member_count'])
-    expect(sql).not.toMatch(/owner|email|nickname|max_members|users/)
+    expect(aliases).toEqual([
+      'group_name',
+      'competition_name',
+      'member_count',
+      'admin_name',
+      'points_exact',
+      'points_winner',
+    ])
+    expect(sql).not.toMatch(/email|max_members|avatar|g\.id AS|u\.id AS/)
     expect(sql).toContain('deleted_at IS NULL')
   })
 
@@ -118,7 +146,14 @@ describe('GET /public/invites/:code', () => {
     const res = await request('/public/invites/ABCD-EF23', db)
 
     expect(await res.json()).toEqual({
-      invite: { group_name: 'Sem campeonato', competition_name: null, member_count: 3 },
+      invite: {
+        group_name: 'Sem campeonato',
+        competition_name: null,
+        member_count: 3,
+        admin_name: null,
+        points_exact: null,
+        points_winner: null,
+      },
     })
   })
 
@@ -145,5 +180,72 @@ describe('GET /public/invites/:code', () => {
     const res = await request('/public/invites/ABCD-EF23', db)
 
     expect(res.status).not.toBe(401)
+  })
+})
+
+describe('publicAdminName', () => {
+  it('mantém só o primeiro nome', () => {
+    expect(publicAdminName('  Pedro   Satin ')).toBe('Pedro')
+    expect(publicAdminName('Ana')).toBe('Ana')
+  })
+
+  it.each([null, undefined, '', '   ', 'pedro@example.com', 'pe***@example.com Silva'])(
+    'esconde %s',
+    (raw) => {
+      expect(publicAdminName(raw)).toBeNull()
+    },
+  )
+})
+
+describe('GET /public/invites/:code com SQL real', () => {
+  function seedInvite(nickname: string | null, userName: string | null) {
+    const { sqlite, db } = createSqliteD1()
+    sqlite
+      .prepare(
+        `INSERT INTO users (id, email, provider, provider_id, user_name)
+         VALUES ('dono', 'dono.secreto@example.com', 'google', 'g-dono', ?),
+                ('membro', 'membro.secreto@example.com', 'google', 'g-membro', 'Maria Membro')`,
+      )
+      .run(userName)
+    sqlite.prepare(`INSERT INTO profiles (user_id, nickname) VALUES ('dono', ?)`).run(nickname)
+    sqlite.exec(`
+      INSERT INTO competitions (id, name, slug, season, status, penalty_phases, visibility)
+      VALUES ('comp-x', 'Brasileirão X', 'brasileirao-x', '2026', 'ongoing', '[]', 'public');
+      INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner)
+      VALUES ('g1', 'Realidade do BR', 'comp-x', 'dono', 'ABCD-EF23', 5, 2);
+      INSERT INTO group_members (id, group_id, user_id, role) VALUES
+        ('m1', 'g1', 'dono', 'owner'),
+        ('m2', 'g1', 'membro', 'member');
+    `)
+    return { sqlite, db }
+  }
+
+  it.each([
+    ['usa o apelido', 'Pedro Satin', 'Outro Nome', 'Pedro'],
+    ['cai no nome do Google sem apelido', null, 'Ana Souza', 'Ana'],
+    ['ignora apelido em branco', '   ', 'Ana Souza', 'Ana'],
+    ['devolve null sem nome, sem recorrer ao e-mail', null, null, null],
+  ])('%s', async (_label, nickname, userName, expected) => {
+    const { sqlite, db } = seedInvite(nickname, userName)
+    try {
+      const res = await request('/public/invites/ABCD-EF23', db)
+
+      expect(res.status).toBe(200)
+      const raw = await res.text()
+      expect(JSON.parse(raw)).toEqual({
+        invite: {
+          group_name: 'Realidade do BR',
+          competition_name: 'Brasileirão X',
+          member_count: 2,
+          admin_name: expected,
+          points_exact: 5,
+          points_winner: 2,
+        },
+      })
+      expect(raw).not.toContain('@')
+      expect(raw).not.toContain('Maria')
+    } finally {
+      sqlite.close()
+    }
   })
 })
