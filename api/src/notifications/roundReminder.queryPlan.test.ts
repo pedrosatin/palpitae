@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { pendingPredictionsSql } from '../groups/pendingPredictions'
+import { pendingSummarySql } from '../groups/pendingPredictions'
 import { SCHEDULED_MATCHES_SQL, USERS_NEEDING_REMINDER_SQL } from './roundReminder'
 
 // Guarda contra a volta do custo jogos × jogos no D1 (migration 0034). As
@@ -22,7 +22,7 @@ const BY_COMPETITION_ONLY = /idx_matches_comp_round_start \(competition_id=\?\)/
 
 describe('planos de consulta das subqueries por rodada', () => {
   it('pendências do GET /groups buscam os jogos da rodada pelo índice', () => {
-    const steps = plan(`SELECT g.id, ${pendingPredictionsSql('g')} FROM groups g`, 5)
+    const steps = plan(`SELECT g.id, ${pendingSummarySql('g')} FROM groups g`, 7)
     // Uma busca do índice coberto por competição numera as rodadas candidatas.
     // Os jogos vêm de uma busca por competição e rodada. Com JOIN no lugar do
     // CROSS JOIN, o SQLite busca m só por competição e lê a competição inteira
@@ -31,7 +31,11 @@ describe('planos de consulta das subqueries por rodada', () => {
       'SEARCH mr USING COVERING INDEX idx_matches_comp_round_start (competition_id=?)',
     ])
     expect(steps.filter((s) => s.startsWith('SEARCH m ') && BY_COMPETITION_AND_ROUND.test(s))).toHaveLength(1)
-    expect(steps.filter((s) => /^SCAN (m|mr)\b/.test(s))).toEqual([])
+    // O palpite de cada jogo vem do índice único, sem ler a linha.
+    expect(steps.filter((s) => s.startsWith('SEARCH p '))).toEqual([
+      'SEARCH p USING COVERING INDEX sqlite_autoindex_predictions_2 (user_id=? AND group_id=? AND match_id=?) LEFT-JOIN',
+    ])
+    expect(steps.filter((s) => /^SCAN (m|mr|p)\b/.test(s))).toEqual([])
   })
 
   it('lembrete: início da rodada vem do índice, não de varredura da competição', () => {

@@ -9,7 +9,9 @@ import ErrorState from '../../components/ErrorState'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
+import { deadlineBanner, sortByUrgency } from '../../lib/dashboardStatus'
 import { useDashboardGroups } from './hooks/useDashboardGroups'
+import NextDeadlineBanner from './NextDeadlineBanner'
 import styles from './DashboardPage.module.css'
 
 interface User {
@@ -122,29 +124,39 @@ function FinishedGroupsSection({ groups }: { groups: GroupWithStats[] }) {
 }
 
 function GroupsList({ groups }: { groups: GroupWithStats[] }) {
-  const ongoing = groups.filter((g) => g.competition_status !== 'finished')
+  // Os grupos em andamento seguem a ordem de urgência, com o jogo sem palpite que
+  // fecha antes no topo. Encerrados mantêm a ordem da API.
+  const ongoing = sortByUrgency(groups.filter((g) => g.competition_status !== 'finished'))
   const finished = groups.filter((g) => g.competition_status === 'finished')
+  const banner = deadlineBanner(ongoing)
+  const bannerNode = banner && <NextDeadlineBanner banner={banner} nowMs={Date.now()} />
 
   // Sem grupos encerrados: mantém a visão simples de sempre, sem seções extras.
   if (finished.length === 0) {
     return (
-      <div className={styles.groupsContainer}>
-        <h2 className={styles.sectionTitle}>Seus grupos</h2>
-        <GroupsGrid groups={ongoing} />
-      </div>
+      <>
+        {bannerNode}
+        <div className={styles.groupsContainer}>
+          <h2 className={styles.sectionTitle}>Seus grupos</h2>
+          <GroupsGrid groups={ongoing} />
+        </div>
+      </>
     )
   }
 
   return (
-    <div className={styles.sections}>
-      {ongoing.length > 0 && (
-        <section className={styles.groupsContainer}>
-          <h2 className={styles.sectionTitle}>Em andamento</h2>
-          <GroupsGrid groups={ongoing} />
-        </section>
-      )}
-      <FinishedGroupsSection groups={finished} />
-    </div>
+    <>
+      {bannerNode}
+      <div className={styles.sections}>
+        {ongoing.length > 0 && (
+          <section className={styles.groupsContainer}>
+            <h2 className={styles.sectionTitle}>Em andamento</h2>
+            <GroupsGrid groups={ongoing} />
+          </section>
+        )}
+        <FinishedGroupsSection groups={finished} />
+      </div>
+    </>
   )
 }
 

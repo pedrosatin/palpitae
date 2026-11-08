@@ -75,6 +75,17 @@ describe('competitionMatches', () => {
       )
     })
 
+    it('prefere a rodada pedida quando ela existe na competição', () => {
+      const matches = [{ round: '21' }, { round: '35' }] as any[]
+      const setRoundIndex = vi.fn()
+
+      applyDefaultRoundFromMatches(matches, '35', setRoundIndex, '21')
+      expect(applyDefaultRound).toHaveBeenLastCalledWith('21', ['21', '35'], setRoundIndex)
+
+      applyDefaultRoundFromMatches(matches, '35', setRoundIndex, '99')
+      expect(applyDefaultRound).toHaveBeenLastCalledWith('35', ['21', '35'], setRoundIndex)
+    })
+
     it('handles empty matches array', () => {
       const setRoundIndex = vi.fn()
 
