@@ -35,6 +35,14 @@ describe('planos de consulta do GET /groups', () => {
     expect(steps.filter((s) => TABLE_SCAN.test(s))).toEqual([])
   })
 
+  it.each([false, true])('membros do usuário vêm do índice por user_id, piloto=%s', (pilot) => {
+    const steps = plan(groupsListSql(pilot))
+    expect(steps.filter((s) => s.startsWith('SEARCH gm '))).toEqual([
+      'SEARCH gm USING COVERING INDEX idx_group_members_user (user_id=?)',
+    ])
+    expect(steps.some((s) => s.startsWith('SCAN gm'))).toBe(false)
+  })
+
   it('jogos ao vivo vêm só da janela de horário', () => {
     const steps = plan(LIVE_MATCHES_SQL)
     expect(steps).toContain(
