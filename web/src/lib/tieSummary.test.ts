@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Match, Prediction } from '../components/MatchCard/types'
-import { predictedAggregateText, tieSummary } from './tieSummary'
+import { findLeg2, predictedAggregateText, tieDateHint, tieSummary } from './tieSummary'
 
 function match(overrides: Partial<Match>): Match {
   return {
@@ -121,5 +121,56 @@ describe('predictedAggregateText', () => {
     expect(
       predictedAggregateText(match({ tie_role: 'single' }), '2', '1', prediction(1, 0)),
     ).toBeNull()
+  })
+})
+
+describe('tieDateHint', () => {
+  const scheduledLeg1 = {
+    ...leg1,
+    status: 'scheduled' as const,
+    home_score: null,
+    away_score: null,
+    start_time: '2026-11-14T21:00:00Z',
+  }
+  const leg2 = match({
+    id: 'leg2',
+    tie_role: 'leg2',
+    leg1_match_id: 'leg1',
+    start_time: '2026-11-08T22:00:00Z',
+  })
+
+  it('diz o dia da ida no card da volta enquanto a ida não tem resultado', () => {
+    expect(tieDateHint(leg2, scheduledLeg1, undefined)).toBe('Ida em sáb, 14/11')
+  })
+
+  it('jogo adiado sai sem data, porque guarda o horário antigo', () => {
+    expect(tieDateHint(leg2, { ...scheduledLeg1, postponed: 1 }, undefined)).toBe(
+      'Ida: data a definir',
+    )
+    expect(
+      tieDateHint(match({ id: 'ida', tie_role: 'leg1' }), undefined, { ...leg2, postponed: 1 }),
+    ).toBe('Volta: data a definir')
+  })
+
+  it('deixa o placar falar quando a ida já terminou', () => {
+    expect(tieDateHint(leg2, leg1, undefined)).toBeNull()
+  })
+
+  it('diz o dia da volta no card da ida', () => {
+    expect(tieDateHint(leg1, undefined, leg2)).toBe('Volta em dom, 08/11')
+  })
+
+  it('não mostra nada em jogo único', () => {
+    const single = match({ tie_role: 'single' })
+    expect(tieDateHint(single, scheduledLeg1, leg2)).toBeNull()
+    expect(tieDateHint(match({}), undefined, undefined)).toBeNull()
+  })
+})
+
+describe('findLeg2', () => {
+  it('acha a volta pelo id da ida', () => {
+    const leg2 = match({ id: 'leg2', tie_role: 'leg2', leg1_match_id: 'leg1' })
+    expect(findLeg2(leg1, [leg1, leg2])?.id).toBe('leg2')
+    expect(findLeg2(leg2, [leg1, leg2])).toBeUndefined()
   })
 })

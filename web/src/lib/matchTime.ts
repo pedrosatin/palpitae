@@ -34,6 +34,12 @@ export function formatMatchDate(iso: string): string {
   return `${weekday}, ${date} · ${time}`
 }
 
+/** Só o dia, como `sáb, 14/11`. */
+export function formatMatchDay(iso: string): string {
+  const { weekday, date } = dateParts(iso)
+  return `${weekday}, ${date}`
+}
+
 /** Fechamento por extenso, como `sáb, 14/11 às 18:30`. */
 export function formatClosingDate(iso: string): string {
   const { weekday, date, time } = dateParts(iso)

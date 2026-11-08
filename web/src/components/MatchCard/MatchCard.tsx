@@ -18,6 +18,8 @@ interface MatchCardProps {
   leg1Prediction?: Prediction
   /** Jogo de ida do confronto, para mostrar o placar real e o agregado na volta. */
   leg1Match?: Match
+  /** Jogo de volta, para o card da ida dizer quando ele acontece. */
+  leg2Match?: Match
   leg1Pending?: boolean
   groupId: string
   /**
@@ -175,6 +177,7 @@ export default function MatchCard(props: MatchCardProps) {
         <TieInfo
           match={match}
           leg1Match={props.leg1Match}
+          leg2Match={props.leg2Match}
           home={home}
           away={away}
           leg1Prediction={props.leg1Prediction}
