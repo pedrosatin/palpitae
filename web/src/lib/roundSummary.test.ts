@@ -145,17 +145,29 @@ describe('highlightText', () => {
     isYou,
   })
 
-  it('um destaque', () => {
-    expect(highlightText([row('Ana', 12)])).toBe('Ana fez 12 pontos, a maior da rodada')
+  it('um líder leva o título', () => {
+    expect(highlightText([row('Ana', 7)])).toBe('Ana levou o título de rei da rodada, com 7 pontos')
   })
 
   it('chama quem vê de você', () => {
-    expect(highlightText([row('Ana', 1, true)])).toBe('Você fez 1 ponto, a maior da rodada')
+    expect(highlightText([row('Ana', 1, true)])).toBe(
+      'Você levou o título de rei da rodada, com 1 ponto',
+    )
+  })
+
+  it('no empate, os líderes dividem o título e quem vê vem primeiro', () => {
+    expect(highlightText([row('Ana', 7), row('Bruno', 7, true)])).toBe(
+      'Você e Ana dividiram o título de rei da rodada, com 7 pontos',
+    )
+  })
+
+  it('sem líder não há frase', () => {
+    expect(highlightText([])).toBeNull()
   })
 
   it('empate lista até 3 nomes e resume o resto', () => {
     expect(highlightText([row('Ana', 9), row('Bruno', 9), row('Carla', 9)])).toBe(
-      'Ana, Bruno e Carla fizeram 9 pontos, a maior da rodada',
+      'Ana, Bruno e Carla dividiram o título de rei da rodada, com 9 pontos',
     )
     expect(
       highlightText([
@@ -165,7 +177,7 @@ describe('highlightText', () => {
         row('Davi', 9),
         row('Eva', 9),
       ]),
-    ).toBe('Ana, Bruno, Carla e mais 2 fizeram 9 pontos, a maior da rodada')
+    ).toBe('Ana, Bruno, Carla e mais 2 dividiram o título de rei da rodada, com 9 pontos')
   })
 })
 

@@ -106,16 +106,19 @@
   min-width: 0;
 }
 
+/* Os selos passam para a linha de baixo quando não cabem ao lado do nome. */
 .nameBody {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
   min-width: 0;
 }
 
 .badges {
   display: inline-flex;
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  min-width: 0;
   gap: var(--space-1);
 }
 
@@ -134,7 +137,9 @@
 }
 
 .ownerBadge,
-.youBadge {
+.youBadge,
+.kingBadge,
+.streakBadge {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
@@ -149,6 +154,16 @@
 .youBadge {
   background-color: var(--color-surface-elevated);
   color: var(--color-text-muted);
+}
+
+.kingBadge {
+  background-color: color-mix(in srgb, var(--color-warning) 15%, transparent);
+  color: var(--color-warning);
+}
+
+.streakBadge {
+  background-color: var(--color-surface-elevated);
+  color: var(--color-text-secondary);
 }
 
 .tdPts,
@@ -211,16 +226,20 @@
 
   .nameBody {
     flex-direction: column;
+    flex-wrap: nowrap;
     align-items: flex-start;
     gap: 2px;
   }
 
-  .displayName {
+  .displayName,
+  .badges {
     max-width: 100%;
   }
 
   .ownerBadge,
-  .youBadge {
+  .youBadge,
+  .kingBadge,
+  .streakBadge {
     font-size: 0.625rem;
     line-height: 1.4;
     padding: 0 var(--space-1);
