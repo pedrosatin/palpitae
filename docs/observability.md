@@ -97,7 +97,7 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   e `radar_sync_error` — emitidos só quando a coleta do radar roda com um Analytics
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
   `logEvent` vira no-op e o registro fica no log do workflow.
-- Negócio: `prediction_saved` (single/bulk/import), `group_created`, `group_joined`,
+- Negócio: `prediction_saved` (single/bulk/import/replicate), `group_created`, `group_joined`,
   `group_renamed`, `group_invite_rotated`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
   `logout_all`, `oauth_error`, `matches_cache` (hit/miss).
 
@@ -117,7 +117,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
-| `prediction_saved` | `group_id` | `round` (vazio em bulk/import — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
+| `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
 | `group_joined` | `group_id` | `user_hash` | — | — |
 | `group_renamed` | `group_id` | `user_hash` | — | — |
@@ -210,8 +210,8 @@ tentativa no período não aparece. O painel mostra "indisponível" quando a API
 recorte, "sem registro ainda" quando nunca houve evento, e a data de início da coleta quando ela
 é mais nova que o período.
 
-Observação sobre `prediction_saved`: o `kind` (single/bulk/import) cai em **blob5** porque o
-`round` (blob3) é mantido na posição mesmo vazio, pra alinhar as três variantes na mesma coluna.
+Observação sobre `prediction_saved`: o `kind` (single/bulk/import/replicate) cai em **blob5** porque o
+`round` (blob3) é mantido na posição mesmo vazio, pra alinhar as quatro variantes na mesma coluna. O `replicate` ("Aplicar também em") grava `double1` com o número de palpites escritos nos outros grupos.
 
 ### Dimensão `competition_id` em `prediction_saved` e `group_deleted`
 

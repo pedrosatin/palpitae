@@ -249,6 +249,7 @@ router.get('/', requireAuth, async (c) => {
         .bind(...groupsListBinds(nowIso, userId))
         .all<
           GroupRow & {
+            points_exact: number
             user_position: number
             user_points: number
             pending_summary: string | null
@@ -292,6 +293,7 @@ router.get('/', requireAuth, async (c) => {
         competition_type: group.competition_type ?? null,
         competition_code: group.competition_code ?? null,
         competition_status: group.competition_status ?? null,
+        points_exact: group.points_exact,
         is_admin: group.admin_id === userId,
         created_at: group.created_at,
         member_count: group.member_count,

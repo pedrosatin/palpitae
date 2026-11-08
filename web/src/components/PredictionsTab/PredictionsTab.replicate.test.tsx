@@ -24,8 +24,8 @@ type Replicate = { source_group_id: string; target_group_ids: string[]; match_id
 
 function mockApi({
   siblings = [
-    { id: 'g2', name: 'Borracharia', competition_id: 'c1', competition_status: 'ongoing' },
-    { id: 'g3', name: 'Open the tcheka', competition_id: 'c1', competition_status: 'ongoing' },
+    { id: 'g2', name: 'Bolão Alfa', competition_id: 'c1', competition_status: 'ongoing' },
+    { id: 'g3', name: 'Bolão Beta', competition_id: 'c1', competition_status: 'ongoing' },
     { id: 'gx', name: 'Outro campeonato', competition_id: 'c2', competition_status: 'ongoing' },
   ] as Record<string, unknown>[],
   response = {
@@ -37,18 +37,23 @@ function mockApi({
     locked_matches: [],
     missing_matches: [],
   } as Record<string, unknown>,
-  replicateFails = false,
+  replicateFails = 0,
+  matches = [makeMatch({ id: 'm1' })],
 } = {}) {
   const replicateCalls: Replicate[] = []
+  let failuresLeft = replicateFails
   const json = (body: unknown, ok = true) =>
     Promise.resolve({ ok, json: async () => body } as Response)
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
     const u = url.toString()
-    if (u.includes('/matches'))
-      return json({ matches: [makeMatch({ id: 'm1' })], default_round: '1' })
+    if (u.includes('/matches')) return json({ matches, default_round: '1' })
     if (u.includes('/predictions/replicate')) {
       replicateCalls.push(JSON.parse(init!.body as string) as Replicate)
-      return replicateFails ? json({ error: 'Indisponível' }, false) : json(response)
+      if (failuresLeft > 0) {
+        failuresLeft -= 1
+        return json({ error: 'Indisponível' }, false)
+      }
+      return json(response)
     }
     if (u.includes('/predictions/bulk'))
       return json({
@@ -59,14 +64,16 @@ function mockApi({
     if (u.includes('/predictions') && init?.method === 'PUT') return json({ ok: true })
     if (u.includes('/predictions')) return json({ predictions: [saved()] })
     if (u.includes('/groups'))
-      return json({ groups: [{ id: 'g1', name: 'Realidade', competition_id: 'c1' }, ...siblings] })
+      return json({ groups: [{ id: 'g1', name: 'Bolão Gama', competition_id: 'c1' }, ...siblings] })
     return Promise.reject(new Error(`Unexpected fetch: ${u}`))
   })
   return { replicateCalls }
 }
 
-function renderTab() {
-  return render(<PredictionsTab groupId="g1" competitionId="c1" userId="u1" />)
+function renderTab(pointsExact?: number) {
+  return render(
+    <PredictionsTab groupId="g1" competitionId="c1" userId="u1" pointsExact={pointsExact} />,
+  )
 }
 
 describe('Aplicar o palpite nos outros grupos', () => {
@@ -79,7 +86,7 @@ describe('Aplicar o palpite nos outros grupos', () => {
   it('lista os outros grupos do mesmo campeonato antes de salvar', async () => {
     mockApi()
     renderTab()
-    const option = await screen.findByLabelText('Aplicar também em: Borracharia, Open the tcheka')
+    const option = await screen.findByLabelText('Aplicar também em: Bolão Alfa, Bolão Beta')
     expect(option).not.toBeChecked()
   })
 
@@ -113,7 +120,7 @@ describe('Aplicar o palpite nos outros grupos', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
     expect(await screen.findByText(/Salvo em 3 grupos\./)).toBeInTheDocument()
     expect(
-      screen.getByText(/Palpite diferente substituído em Borracharia \(1 jogo\)\./),
+      screen.getByText(/Palpite diferente substituído em Bolão Alfa \(1 jogo\)\./),
     ).toBeInTheDocument()
     expect(api.replicateCalls).toEqual([
       { source_group_id: 'g1', target_group_ids: ['g2', 'g3'], match_ids: ['m1'] },
@@ -146,22 +153,104 @@ describe('Aplicar o palpite nos outros grupos', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
     expect(
       await screen.findByText(
-        'Salvo em 2 grupos. 2 jogos já travados ficaram de fora. Não aplicado em Open the tcheka.',
+        'Salvo em 2 grupos. 2 jogos já bloqueados ficaram de fora. Não aplicado em Bolão Beta.',
       ),
     ).toBeInTheDocument()
   })
 
   it('mostra o erro da replicação sem perder o palpite salvo', async () => {
-    mockApi({ replicateFails: true })
+    mockApi({ replicateFails: 1 })
     renderTab()
     await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
     await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
     expect(
       await screen.findByText(
-        'Salvo neste grupo, mas não foi possível aplicar nos outros. Indisponível',
+        'Salvo só neste grupo. Não foi possível aplicar nos outros. Indisponível',
       ),
     ).toBeInTheDocument()
+  })
+
+  it('mostra a confirmação na barra fixa de Salvar todos, com aria-live', async () => {
+    mockApi()
+    renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    const confirmation = await screen.findByText(/Salvo em 3 grupos\./)
+    const bar = screen.getByRole('button', { name: /salvar todos|tudo salvo/i }).parentElement
+    expect(bar).toContainElement(confirmation)
+    expect(confirmation.closest('[aria-live="polite"]')).not.toBeNull()
+    const option = screen.getByLabelText(/Aplicar também em/)
+    expect(bar).not.toContainElement(option)
+  })
+
+  it('oferece tentar de novo com os mesmos jogos depois de uma falha', async () => {
+    const api = mockApi({ replicateFails: 1 })
+    renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Tentar de novo' }))
+    expect(await screen.findByText(/Salvo em 3 grupos\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Não foi possível aplicar/)).not.toBeInTheDocument()
+    expect(api.replicateCalls).toHaveLength(2)
+    expect(api.replicateCalls[1]).toEqual(api.replicateCalls[0])
+  })
+
+  it('limita a 10 grupos e explica quantos ficam de fora', async () => {
+    const siblings = Array.from({ length: 12 }, (_, i) => ({
+      id: `s${i}`,
+      name: `Bolão ${i}`,
+      competition_id: 'c1',
+      competition_status: 'ongoing',
+    }))
+    const api = mockApi({ siblings })
+    renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    expect(
+      screen.getByText(/O limite é de 10 grupos por vez\. 2 grupos ficam de fora\./),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await waitFor(() => expect(api.replicateCalls).toHaveLength(1))
+    expect(api.replicateCalls[0].target_group_ids).toHaveLength(10)
+  })
+
+  it('num grupo só vencedor, não lista os grupos que pontuam o placar exato', async () => {
+    mockApi({
+      siblings: [
+        { id: 'g2', name: 'Bolão Alfa', competition_id: 'c1', points_exact: 3 },
+        { id: 'g3', name: 'Bolão Beta', competition_id: 'c1', points_exact: 0 },
+      ],
+    })
+    renderTab(0)
+    expect(await screen.findByLabelText('Aplicar também em: Bolão Beta')).toBeInTheDocument()
+  })
+
+  it('mantém a confirmação anterior quando outro salvamento chega', async () => {
+    mockApi()
+    renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await screen.findByText(/Salvo em 3 grupos\./)
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await waitFor(() => expect(screen.getAllByText(/Salvo em 3 grupos\./)).toHaveLength(2))
+  })
+
+  it('limpa a confirmação ao trocar de rodada', async () => {
+    mockApi({
+      matches: [makeMatch({ id: 'm1' }), makeMatch({ id: 'm2', round: '2' })],
+    })
+    renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await screen.findByText(/Salvo em 3 grupos\./)
+    await userEvent.click(screen.getByRole('button', { name: 'Próxima rodada' }))
+    await waitFor(() => expect(screen.queryByText(/Salvo em 3 grupos\./)).not.toBeInTheDocument())
   })
 
   it('guarda a escolha por usuário e campeonato e a restaura ao remontar', async () => {

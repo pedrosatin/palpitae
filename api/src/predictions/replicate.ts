@@ -1,6 +1,8 @@
 import type { Context } from 'hono'
 import { hasPilotAccess } from '../auth/permissions'
-import { isMatchLocked } from '../matches/locking'
+import { competitionStatusSql } from '../groups/competitionStatus'
+import { isMatchLocked, lockedSql } from '../matches/locking'
+import { resolveTwoLegClassified } from '../matches/scoring'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { fetchTieMatches, indexTies, type TieInfo, type TieMatch } from '../matches/ties'
 import { hashUserId, logEvent } from '../observability'
@@ -50,13 +52,21 @@ export type ReplicateGroupResult = {
 }
 
 /**
- * Placar gravado num grupo "só vencedor" (`points_exact = 0`): o resultado do
- * palpite vira 1x0, 0x0 ou 0x1, o mesmo que os botões de Casa, Empate e Fora gravam.
+ * Num grupo "só vencedor" (`points_exact = 0`), o resultado do palpite vira 1x0,
+ * 0x0 ou 0x1, os placares dos botões Casa, Empate e Fora.
  */
 export function outcomeScore(home: number, away: number): { home: number; away: number } {
   if (home > away) return { home: 1, away: 0 }
   if (home < away) return { home: 0, away: 1 }
   return { home: 0, away: 0 }
+}
+
+/**
+ * Origem "só vencedor" não grava em destino que pontua o placar exato. O botão
+ * grava 1x0 e apagaria um placar que o destino pode ter palpitado.
+ */
+function acceptsFrom(source: GroupRow, target: GroupRow): boolean {
+  return source.points_exact > 0 || target.points_exact === 0
 }
 
 function scoreFor(group: GroupRow, source: SourceRow): { home: number; away: number } {
@@ -83,7 +93,7 @@ async function fetchMemberGroups(
 ): Promise<Map<string, GroupRow>> {
   const { results } = await db
     .prepare(
-      `SELECT g.id, g.competition_id, g.points_exact, c.status AS competition_status, c.visibility
+      `SELECT g.id, g.competition_id, g.points_exact, ${competitionStatusSql('g', 'c')} AS competition_status, c.visibility
        FROM groups g
        JOIN competitions c ON c.id = g.competition_id
        JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = ?
@@ -145,25 +155,57 @@ async function fetchTies(
   return indexTies(await fetchTieMatches(db, competitionId, new Set(rows.map((r) => r.phase))))
 }
 
+function sameOutcome(current: ExistingRow, home: number, away: number): boolean {
+  return (
+    Math.sign(current.predicted_home_score - current.predicted_away_score) ===
+    Math.sign(home - away)
+  )
+}
+
+/** Classificado que o palpite da origem prevê para a volta, ou null se ela não decide. */
+function derivedClassified(
+  sourceGroupId: string,
+  source: SourceRow,
+  tie: TieInfo<TieMatch> | undefined,
+  sourceByMatch: Map<string, SourceRow>,
+  existing: Map<string, ExistingRow>,
+): 'home' | 'away' | null {
+  if (!tie?.partner) return null
+  const leg1 =
+    sourceByMatch.get(tie.partner.id) ?? existing.get(`${sourceGroupId}:${tie.partner.id}`)
+  if (!leg1) return null
+  return resolveTwoLegClassified(
+    { homeScore: leg1.predicted_home_score, awayScore: leg1.predicted_away_score },
+    {
+      homeScore: source.predicted_home_score,
+      awayScore: source.predicted_away_score,
+      penaltyWinner: null,
+    },
+  )
+}
+
 type Plan = {
   statements: D1PreparedStatement[]
   results: ReplicateGroupResult[]
-  invalidPenalty: number
 }
 
 function planWrites(input: {
   db: D1Database
   userId: string
+  sourceGroupId: string
   now: string
   targets: GroupRow[]
   open: SourceRow[]
   ties: Map<string, TieInfo<TieMatch>>
   existing: Map<string, ExistingRow>
 }): Plan {
-  const { db, userId, now, targets, open, ties, existing } = input
+  const { db, userId, sourceGroupId, now, targets, open, ties, existing } = input
+  // O jogo é relido na própria escrita. Se ele travou depois das consultas, nada é gravado.
   const insert = db.prepare(
     `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     SELECT ?, ?, ?, m.id, ?, ?, ?, ?, ?
+     FROM matches m
+     WHERE m.id = ? AND NOT ${lockedSql('m')}
      ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
        predicted_home_score     = excluded.predicted_home_score,
        predicted_away_score     = excluded.predicted_away_score,
@@ -173,7 +215,6 @@ function planWrites(input: {
   const sourceByMatch = new Map(open.map((r) => [r.match_id, r]))
   const statements: D1PreparedStatement[] = []
   const results: ReplicateGroupResult[] = []
-  let invalidPenalty = 0
 
   for (const group of targets) {
     const result: ReplicateGroupResult = { group_id: group.id, saved: 0, replaced: 0 }
@@ -198,25 +239,34 @@ function planWrites(input: {
           }
         }
       }
+      const current = existing.get(`${group.id}:${source.match_id}`)
+      let rawPenaltyWinner = source.predicted_penalty_winner
+      const tiedHere =
+        leg1Score !== null && home + leg1Score.awayScore === away + leg1Score.homeScore
+      if (role === 'leg2' && tiedHere && !rawPenaltyWinner) {
+        // A origem não empata o agregado e guarda null. Vale o pick que o destino já tinha,
+        // senão o classificado que a origem previu.
+        rawPenaltyWinner =
+          current?.predicted_penalty_winner ??
+          derivedClassified(sourceGroupId, source, tie, sourceByMatch, existing)
+      }
       const penalty = resolvePenaltyPick({
         eligible: matchGoesToPenalties(parsePenaltyPhases(source.penalty_phases), source.phase),
         role,
         home,
         away,
-        rawPenaltyWinner: source.predicted_penalty_winner,
+        rawPenaltyWinner,
         leg1Score,
       })
-      if (!penalty.ok) {
-        invalidPenalty += 1
-        continue
-      }
+      if (!penalty.ok) continue
 
-      const current = existing.get(`${group.id}:${source.match_id}`)
-      const same =
+      // Num destino "só vencedor" vale o resultado, não o placar gravado.
+      const sameScore =
         current !== undefined &&
-        current.predicted_home_score === home &&
-        current.predicted_away_score === away &&
-        current.predicted_penalty_winner === penalty.value
+        (group.points_exact === 0
+          ? sameOutcome(current, home, away)
+          : current.predicted_home_score === home && current.predicted_away_score === away)
+      const same = sameScore && current?.predicted_penalty_winner === penalty.value
       result.saved += 1
       if (same) continue
       if (current) result.replaced += 1
@@ -225,18 +275,19 @@ function planWrites(input: {
           crypto.randomUUID(),
           userId,
           group.id,
-          source.match_id,
           home,
           away,
           penalty.value,
           now,
+          now,
+          source.match_id,
           now,
         ),
       )
     }
     results.push(result)
   }
-  return { statements, results, invalidPenalty }
+  return { statements, results }
 }
 
 /**
@@ -244,18 +295,17 @@ function planWrites(input: {
  *
  * Aplica os palpites que o usuário já salvou num grupo aos outros grupos do mesmo
  * campeonato. O front chama depois de salvar, com a opção "Aplicar também em"
- * marcada. A origem é o palpite gravado em `source_group_id`, nunca um placar
- * enviado no corpo, então não há como gravar num grupo um placar que o usuário
- * não tem na origem.
+ * marcada. O placar vem do palpite gravado em `source_group_id`. O corpo traz só os ids.
  *
  * Regras:
  *   - o usuário precisa ser membro (sem banimento) da origem e de cada destino;
  *   - destino de outro campeonato ou de campeonato encerrado fica de fora;
+ *   - origem "só vencedor" não grava em destino que pontua placar exato, que fica de fora;
  *   - jogo travado nunca é gravado (`isMatchLocked`) e vem em `locked_matches`;
- *   - um grupo "só vencedor" (`points_exact = 0`) recebe o resultado do placar;
+ *   - um destino "só vencedor" (`points_exact = 0`) recebe o resultado do placar;
  *   - o palpite que o destino já tinha é substituído e contado em `replaced`;
- *   - o custo no D1 não cresce com o número de grupos: uma consulta para os
- *     grupos, uma para a origem, uma para os palpites existentes e uma escrita em lote.
+ *   - o número de SELECTs não cresce com o número de grupos, e as escritas saem em
+ *     lotes de `BATCH_SIZE`.
  *
  * Body: { source_group_id, target_group_ids: string[], match_ids: string[] }
  *
@@ -272,7 +322,11 @@ export async function handleReplicatePost(c: Context<AppContext>) {
 
   let body: Record<string, unknown>
   try {
-    body = await c.req.json<Record<string, unknown>>()
+    const parsed = await c.req.json<unknown>()
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return c.json({ error: 'Body JSON inválido' }, 400)
+    }
+    body = parsed as Record<string, unknown>
   } catch {
     return c.json({ error: 'Body JSON inválido' }, 400)
   }
@@ -309,7 +363,9 @@ export async function handleReplicatePost(c: Context<AppContext>) {
   for (const id of targetGroupIds) {
     const group = groups.get(id) as GroupRow
     const usable =
-      group.competition_id === sourceGroup.competition_id && group.competition_status !== 'finished'
+      group.competition_id === sourceGroup.competition_id &&
+      group.competition_status !== 'finished' &&
+      acceptsFrom(sourceGroup, group)
     if (usable) eligible.push(group)
     else skippedGroups.push(id)
   }
@@ -337,10 +393,19 @@ export async function handleReplicatePost(c: Context<AppContext>) {
     const existing = await fetchExisting(
       db,
       userId,
-      eligible.map((g) => g.id),
+      [sourceGroupId, ...eligible.map((g) => g.id)],
       Array.from(lookupIds),
     )
-    const plan = planWrites({ db, userId, now, targets: eligible, open, ties, existing })
+    const plan = planWrites({
+      db,
+      userId,
+      sourceGroupId,
+      now,
+      targets: eligible,
+      open,
+      ties,
+      existing,
+    })
     results = plan.results
     const chunks: D1PreparedStatement[][] = []
     for (let i = 0; i < plan.statements.length; i += BATCH_SIZE) {

@@ -24,12 +24,19 @@ function setup() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
   const selects: string[] = []
+  const hooks: { beforeBatch?: () => void } = {}
   const counted = new Proxy(db, {
     get(target, prop, receiver) {
       if (prop === 'prepare') {
         return (sql: string) => {
           if (/^\s*SELECT/i.test(sql)) selects.push(sql)
           return target.prepare(sql)
+        }
+      }
+      if (prop === 'batch') {
+        return (statements: D1PreparedStatement[]) => {
+          hooks.beforeBatch?.()
+          return target.batch(statements)
         }
       }
       return Reflect.get(target, prop, receiver)
@@ -66,13 +73,13 @@ function setup() {
   `)
   const app = new Hono<AppContext>()
   app.route('/predictions', predictionsRouter)
-  async function replicate(body: unknown, user = 'a') {
+  async function replicate(body: unknown, user = 'a', raw?: string) {
     const token = await signJwt({ sub: user, email: `${user}@test.com` }, 'secret', 3600)
     const response = await app.fetch(
       new Request('https://test/predictions/replicate', {
         method: 'POST',
         headers: { Cookie: `session=${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: raw ?? JSON.stringify(body),
       }),
       { DB: counted, JWT_SECRET: 'secret' } as AppContext['Bindings'],
     )
@@ -85,7 +92,7 @@ function setup() {
          FROM predictions WHERE user_id = 'a' AND group_id = ? AND match_id = ?`,
       )
       .get(group, match) as { h: number; a: number; pen: string | null } | undefined
-  return { replicate, stored, selects, sqlite }
+  return { replicate, stored, selects, sqlite, hooks }
 }
 
 describe('outcomeScore', () => {
@@ -276,6 +283,127 @@ describe('POST /predictions/replicate', () => {
       400,
     )
     expect(await send({ target_group_ids: ['g2'], match_ids: ['m1'] })).toBe(400)
+  })
+
+  it('trata corpo JSON null ou que não é objeto como 400', async () => {
+    const { replicate } = setup()
+    expect((await replicate(null, 'a', 'null')).status).toBe(400)
+    expect((await replicate(null, 'a', '[1]')).status).toBe(400)
+    expect((await replicate(null, 'a', '"texto"')).status).toBe(400)
+  })
+
+  it('não grava origem só vencedor em destino que pontua placar exato', async () => {
+    const { replicate, stored, sqlite } = setup()
+    sqlite.exec(
+      `INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+       VALUES ('pw','a','g3','m1',1,0), ('pw2','a','g3','m2',0,0);
+       INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+       VALUES ('x1','a','g2','m2',3,1)`,
+    )
+    const { body } = await replicate({
+      source_group_id: 'g3',
+      target_group_ids: ['g2', 'src'],
+      match_ids: ['m1', 'm2'],
+    })
+    expect(body.skipped_groups).toEqual(['g2', 'src'])
+    expect(body.groups).toEqual([])
+    expect(stored('g2', 'm2')).toMatchObject({ h: 3, a: 1 })
+    expect(stored('src', 'm1')).toMatchObject({ h: 3, a: 1 })
+  })
+
+  it('grava origem de placar exato em destino só vencedor', async () => {
+    const { replicate, stored } = setup()
+    const { body } = await replicate({
+      source_group_id: 'src',
+      target_group_ids: ['g3'],
+      match_ids: ['m1'],
+    })
+    expect(body.skipped_groups).toEqual([])
+    expect(stored('g3', 'm1')).toMatchObject({ h: 1, a: 0 })
+  })
+
+  it('não conta como substituído o destino só vencedor que já tinha o mesmo resultado', async () => {
+    const { replicate, stored, sqlite } = setup()
+    sqlite.exec(
+      `INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+       VALUES ('ow','a','g3','m1',2,0)`,
+    )
+    const { body } = await replicate({
+      source_group_id: 'src',
+      target_group_ids: ['g3'],
+      match_ids: ['m1'],
+    })
+    expect(body.groups).toEqual([{ group_id: 'g3', saved: 1, replaced: 0 }])
+    expect(stored('g3', 'm1')).toMatchObject({ h: 2, a: 0 })
+  })
+
+  it('usa o status de campeonato derivado dos jogos, não a coluna crua', async () => {
+    const { replicate, stored, sqlite } = setup()
+    sqlite.exec(`
+      INSERT INTO competitions (id,name,slug,status,type) VALUES ('liga','Liga','liga','upcoming','league');
+      INSERT INTO teams (id,name,slug) VALUES ('t1','T1','t1'), ('t2','T2','t2');
+      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round)
+        VALUES ('lm','liga','e20','test','t1','t2','2020-01-01T00:00:00Z','finished','1');
+      INSERT INTO groups (id,name,competition_id,owner_user_id,invite_code) VALUES ('l1','L1','liga','a','l1'), ('l2','L2','liga','a','l2');
+      INSERT INTO group_members (id,group_id,user_id) VALUES ('7','l1','a'), ('8','l2','a');
+    `)
+    const { body } = await replicate({
+      source_group_id: 'l1',
+      target_group_ids: ['l2'],
+      match_ids: ['lm'],
+    })
+    expect(body.skipped_groups).toEqual(['l2'])
+    expect(stored('l2', 'lm')).toBeUndefined()
+  })
+
+  it('não grava o jogo que travou entre a leitura e a escrita', async () => {
+    const { replicate, stored, sqlite, hooks } = setup()
+    hooks.beforeBatch = () => sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
+    await replicate({
+      source_group_id: 'src',
+      target_group_ids: ['g2'],
+      match_ids: ['m1', 'm2'],
+    })
+    expect(stored('g2', 'm1')).toMatchObject({ h: 0, a: 0 })
+    expect(stored('g2', 'm2')).toMatchObject({ h: 1, a: 1 })
+  })
+
+  describe('pênaltis na volta', () => {
+    function twoLegs(sqlite: ReturnType<typeof setup>['sqlite'], leg1Status = 'scheduled') {
+      sqlite.exec(`
+        INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,phase,leg) VALUES
+          ('ida','c','e6','test','h','v','2099-03-01T00:00:00Z','${leg1Status}','SEMI_FINALS','SEMI_FINALS',1),
+          ('volta','c','e7','test','v','h','2099-03-08T00:00:00Z','scheduled','SEMI_FINALS','SEMI_FINALS',2);
+      `)
+    }
+
+    it('mantém o pick do destino quando a origem não empata o agregado', async () => {
+      const { replicate, stored, sqlite } = setup()
+      twoLegs(sqlite, 'finished')
+      sqlite.exec(`
+        INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner) VALUES
+          ('si','a','src','ida',3,1,NULL), ('sv','a','src','volta',1,0,NULL),
+          ('di','a','g2','ida',2,1,NULL), ('dv','a','g2','volta',0,0,'home');
+      `)
+      await replicate({ source_group_id: 'src', target_group_ids: ['g2'], match_ids: ['volta'] })
+      expect(stored('g2', 'volta')).toEqual({ h: 1, a: 0, pen: 'home' })
+    })
+
+    it('deriva o pick do classificado da origem quando o destino só vencedor empata', async () => {
+      const { replicate, stored, sqlite } = setup()
+      twoLegs(sqlite)
+      sqlite.exec(`
+        INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner) VALUES
+          ('si','a','src','ida',3,0,NULL), ('sv','a','src','volta',2,1,NULL);
+      `)
+      await replicate({
+        source_group_id: 'src',
+        target_group_ids: ['g3'],
+        match_ids: ['ida', 'volta'],
+      })
+      expect(stored('g3', 'ida')).toMatchObject({ h: 1, a: 0 })
+      expect(stored('g3', 'volta')).toEqual({ h: 1, a: 0, pen: 'away' })
+    })
   })
 
   it('faz o mesmo número de consultas com um ou com vários grupos', async () => {

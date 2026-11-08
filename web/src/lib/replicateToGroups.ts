@@ -1,6 +1,9 @@
 import { config } from '../config'
 import { apiFetch } from './api'
 
+/** Limite de grupos de destino por requisição, o mesmo da API. */
+export const MAX_REPLICATE_TARGETS = 10
+
 export type ReplicateResponse = {
   groups: { group_id: string; saved: number; replaced: number }[]
   skipped_groups: string[]
@@ -70,7 +73,7 @@ export function describeReplicate(
   if (result.locked_matches.length > 0) {
     const n = result.locked_matches.length
     parts.push(
-      n === 1 ? '1 jogo já travado ficou de fora.' : `${n} jogos já travados ficaram de fora.`,
+      n === 1 ? '1 jogo já bloqueado ficou de fora.' : `${n} jogos já bloqueados ficaram de fora.`,
     )
   }
   if (result.skipped_groups.length > 0) {

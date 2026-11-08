@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { describeReplicate, type ReplicateResponse } from './replicateToGroups'
 
 const names: Record<string, string> = {
-  a: 'Borracharia',
-  b: 'Open the tcheka',
+  a: 'Bolão Alfa',
+  b: 'Bolão Beta',
   c: 'Copa dos amigos',
 }
 const nameOf = (id: string) => names[id]
@@ -31,7 +31,7 @@ describe('describeReplicate', () => {
       result({ groups: [{ group_id: 'a', saved: 0, replaced: 0 }], locked_matches: ['m'] }),
       nameOf,
     )
-    expect(message).toBe('Salvo em 1 grupo. 1 jogo já travado ficou de fora.')
+    expect(message).toBe('Salvo em 1 grupo. 1 jogo já bloqueado ficou de fora.')
   })
 
   it('avisa onde o palpite substituiu outro diferente', () => {
@@ -46,14 +46,14 @@ describe('describeReplicate', () => {
       nameOf,
     )
     expect(message).toBe(
-      'Salvo em 4 grupos. Palpite diferente substituído em Borracharia (1 jogo) e Open the tcheka (2 jogos).',
+      'Salvo em 4 grupos. Palpite diferente substituído em Bolão Alfa (1 jogo) e Bolão Beta (2 jogos).',
     )
   })
 
   it('lista os grupos que ficaram de fora', () => {
     const message = describeReplicate(result({ skipped_groups: ['a', 'b', 'c'] }), nameOf)
     expect(message).toBe(
-      'Salvo em 1 grupo. Não aplicado em Borracharia, Open the tcheka e Copa dos amigos.',
+      'Salvo em 1 grupo. Não aplicado em Bolão Alfa, Bolão Beta e Copa dos amigos.',
     )
   })
 })
