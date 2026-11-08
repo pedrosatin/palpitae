@@ -46,7 +46,7 @@ describe('GroupCard', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument()
   })
 
-  it('puts the badges in their own row right after the title, with the full competition name', () => {
+  it('renders the badges right after the title with the full competition name', () => {
     const competition_name = 'Campeonato Brasileiro Série A'
     render(
       <GroupCard
@@ -56,17 +56,18 @@ describe('GroupCard', () => {
     )
     const title = screen.getByRole('heading', { name: 'Champions' })
     const badges = title.nextElementSibling as HTMLElement
-    // Mesma estrutura para nome curto ou longo: a linha de badges vem logo
-    // depois do título, como irmã dele.
+    // A linha de badges é o irmão seguinte do título.
     expect(badges).not.toBeNull()
     expect(Array.from(badges.children).map((badge) => badge.textContent)).toEqual([
       'Admin',
       competition_name,
     ])
-    // Nome inteiro no texto e no tooltip.
-    expect(badges.querySelector(`[data-tooltip="${competition_name}"]`)).toHaveTextContent(
-      competition_name,
-    )
+  })
+
+  it('does not repeat the competition name in a hover tooltip', () => {
+    // O tooltip cobria o título e repetia o texto da badge.
+    const { container } = render(<GroupCard group={baseGroup} onClick={onClick} />)
+    expect(container.querySelector('[data-tooltip]')).toBeNull()
   })
 
   it('does not show Admin badge for non-admin users', () => {

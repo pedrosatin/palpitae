@@ -58,9 +58,14 @@ async function mockDashboard(page: Page) {
 function measureHeaders(page: Page) {
   return page.locator('a[href^="/grupos/"] h3').evaluateAll((titles) =>
     titles.map((title) => {
-      const range = document.createRange()
-      range.selectNodeContents(title)
-      const textRects = [...range.getClientRects()]
+      const lineRects = (element: Element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return [...range.getClientRects()]
+      }
+      const countLines = (rects: DOMRect[]) =>
+        new Set(rects.map((rect) => Math.round(rect.top))).size
+      const textRects = lineRects(title)
       const badgeRects = [...title.parentElement!.querySelectorAll('span')].map((badge) =>
         badge.getBoundingClientRect(),
       )
@@ -72,11 +77,12 @@ function measureHeaders(page: Page) {
       const right = linkBox.right - parseFloat(linkStyle.paddingRight)
       const isInside = (rect: DOMRect) => rect.left >= left - 0.5 && rect.right <= right + 0.5
       const titleBottom = Math.max(...textRects.map((rect) => rect.bottom))
-      const competition = title.parentElement!.querySelector<HTMLElement>('[data-tooltip] > span')!
+      // A badge de campeonato é a última da linha, depois da de Admin.
+      const competition = title.nextElementSibling!.lastElementChild as HTMLElement
 
       return {
         name: title.textContent,
-        lines: new Set(textRects.map((rect) => Math.round(rect.top))).size,
+        lines: countLines(textRects),
         badges: badgeRects.length,
         overlaps: textRects.some((text) =>
           badgeRects.some(
@@ -91,8 +97,9 @@ function measureHeaders(page: Page) {
         badgesInsideCard: badgeRects.every(isInside),
         // Badges sempre na linha de baixo, com nome curto ou longo.
         badgesBelowTitle: badgeRects.every((badge) => badge.top >= titleBottom - 0.5),
-        // Campeonato inteiro, sem reticências: o texto não excede a caixa da badge.
+        // Campeonato inteiro, sem reticências. O texto não excede a caixa da badge.
         competitionTruncated: competition.scrollWidth > competition.clientWidth + 0.5,
+        competitionLines: countLines(lineRects(competition)),
       }
     }),
   )
@@ -122,6 +129,14 @@ test.describe('Cabeçalho do card de grupo', () => {
 
       // Uma palavra que cabe no card não se parte.
       expect(headers.find((header) => header.name === 'Champions')?.lines).toBe(1)
+
+      // Com o card largo, o campeonato cabe numa linha. Um max-width estreito na
+      // badge voltaria a quebrar o nome.
+      if (width >= 1024) {
+        for (const header of headers) {
+          expect(header.competitionLines, header.name ?? '').toBe(1)
+        }
+      }
     })
   }
 })

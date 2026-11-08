@@ -16,7 +16,7 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [joinOpen, setJoinOpen] = useState(false)
-  // Grupo do convite em que o usuário já está: a página leva direto para ele.
+  // Grupo do convite em que o usuário já está. A página navega direto para ele.
   const [matchedInviteGroupId, setMatchedInviteGroupId] = useState<string | null>(null)
 
   const fetchGroups = useCallback(

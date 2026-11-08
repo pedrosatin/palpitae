@@ -170,7 +170,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     // cuida do próprio estado de finalização.
   }
 
-  /** Abre o grupo vindo do convite; troca a entrada `?convite=` do histórico. */
+  /** Abre o grupo. Com `?convite=` na URL, substitui essa entrada do histórico. */
   const openGroupFromInvite = useCallback(
     (groupId: string) => {
       navigate(`/grupos/${groupId}`, pendingInvite ? { replace: true } : undefined)
@@ -183,8 +183,8 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     openGroupFromInvite(group.id)
   }
 
-  // Convite de um grupo em que o usuário já está: vai direto para o grupo em vez
-  // de deixar o painel parado com `?convite=` na URL.
+  // Se o convite é de um grupo em que o usuário já está, navega para o grupo em
+  // vez de deixar o painel parado com `?convite=` na URL.
   useEffect(() => {
     if (matchedInviteGroupId) openGroupFromInvite(matchedInviteGroupId)
   }, [matchedInviteGroupId, openGroupFromInvite])
