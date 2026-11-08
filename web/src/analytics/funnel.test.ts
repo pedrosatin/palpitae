@@ -32,11 +32,10 @@ describe('funnel events', () => {
     })
   })
 
-  it('trackJoinGroup sends join_group with source and group id', () => {
-    trackJoinGroup('convite_link', 'g1')
+  it('trackJoinGroup sends join_group with the entry method and no group id', () => {
+    trackJoinGroup('convite_link')
     expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
-      source: 'convite_link',
-      group_id: 'g1',
+      entry_method: 'convite_link',
     })
   })
 

@@ -57,7 +57,7 @@ export default function NextDeadlineBanner({
       <Link
         className={styles.action}
         to={predictionsPath(banner.groupId, match?.round ?? null)}
-        onClick={() => trackEvent('click_dashboard_proximo_prazo', { group_id: banner.groupId })}
+        onClick={() => trackEvent('click_dashboard_proximo_prazo')}
       >
         Palpitar em {banner.groupName}
       </Link>

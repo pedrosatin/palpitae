@@ -11,6 +11,7 @@ import {
 import { trackLoginIfPending } from './analytics/funnel'
 import { trackEvent } from './analytics/ga'
 import { captureGuideOrigin, clearGuideOrigin } from './analytics/guideOrigin'
+import { useGaPageView } from './analytics/useGaPageView'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
 import { invalidateApiCache } from './lib/api-cache'
@@ -131,6 +132,7 @@ export default function App({
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
   const location = useLocation()
+  useGaPageView()
   const capturedLocation = useRef<string | null>(null)
 
   useEffect(() => {
