@@ -11,6 +11,7 @@ import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
+import { usePredictionsReplicate } from './usePredictionsReplicate'
 
 type PredictionMap = Map<string, Prediction>
 /** Grupo de origem → jogos abertos que o usuário palpitou lá. `null`: API antiga, sem o campo. */
@@ -20,7 +21,12 @@ type PredictionsResponse = {
   import_completed?: boolean
   import_sources?: Record<string, string[]>
 }
-type SiblingGroup = { id: string; name: string }
+type SiblingGroup = {
+  id: string
+  name: string
+  competition_status?: string | null
+  points_exact?: number
+}
 
 /** Palpites do usuário no grupo por jogo, com o marcador e as origens da importação. */
 async function fetchGroupPredictions(groupId: string): Promise<{
@@ -341,6 +347,7 @@ export function usePredictionsTab(
   userId?: string,
   requestedRound?: string | null,
   onRequestedRoundApplied?: () => void,
+  pointsExact = 3,
 ) {
   const {
     matches,
@@ -407,6 +414,20 @@ export function usePredictionsTab(
   )
 
   const {
+    replicateTargets,
+    replicateOverflow,
+    replicateEnabled,
+    replicating,
+    replicateFeedback,
+    handleReplicateToggle,
+    replicate,
+    retryReplicate,
+  } = usePredictionsReplicate(
+    { groupId, competitionId, userId, round: selectedRound, pointsExact },
+    otherGroups,
+  )
+
+  const {
     savingAll,
     savedAll,
     hasSavedPredictions,
@@ -422,19 +443,31 @@ export function usePredictionsTab(
     selectedRound,
     matches,
     unsavedDrafts,
+    replicate,
   )
 
+  // Com a opção marcada, o palpite salvo no card vai também para os outros grupos.
+  function handleSavedAndReplicate(
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) {
+    handleSaved(matchId, home, away, penaltyWinner)
+    void replicate([matchId])
+  }
+
   // Usa `isMatchLocked`, a regra de `collectRoundDrafts`. Sem jogo aberto na rodada
-  // exibida, a barra "Salvar todos" sai da tela. Ela continua enquanto um envio está
-  // em andamento ou mostra o erro dele, mesmo que o último jogo aberto comece no meio.
+  // exibida, a barra "Salvar todos" sai da tela. Ela fica enquanto um envio está em
+  // andamento, mostra o erro dele e leva a confirmação de "Aplicar também em".
+  const hasOpenMatch = roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id)))
   const showSaveBar =
-    roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id))) ||
-    savingAll ||
-    bulkError !== null
+    hasOpenMatch || savingAll || bulkError !== null || replicating || replicateFeedback.length > 0
 
   return {
     importCompleted,
     showSaveBar,
+    hasOpenMatch,
     unsavedDrafts,
     unsavedRounds,
     matches,
@@ -468,7 +501,14 @@ export function usePredictionsTab(
     importFeedback,
     importedFromName,
     handleImport,
-    handleSaved,
+    handleSaved: handleSavedAndReplicate,
+    replicateTargets,
+    replicateOverflow,
+    replicateEnabled,
+    replicating,
+    replicateFeedback,
+    handleReplicateToggle,
+    retryReplicate,
     handleDraftChange,
     handlePenaltyDraftChange,
   }

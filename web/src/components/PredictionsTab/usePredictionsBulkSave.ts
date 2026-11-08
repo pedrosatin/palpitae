@@ -15,7 +15,7 @@ function applyPredictionUpdate(
   home: number,
   away: number,
   penaltyWinner: 'home' | 'away' | null,
-  allMatches: Match[]
+  allMatches: Match[],
 ): PredictionMap {
   const next = new Map(prev)
   const existing = prev.get(matchId)
@@ -111,6 +111,8 @@ export function usePredictionsBulkSave(
   selectedRound: string | undefined,
   allMatches: Match[],
   { drafts, penaltyDrafts }: UnsavedDrafts,
+  /** Chamado com os jogos gravados depois de um "Salvar todos". */
+  onBulkSaved?: (matchIds: string[]) => void,
 ) {
   const {
     savingAll,
@@ -183,6 +185,7 @@ export function usePredictionsBulkSave(
       // Sem invalidar, voltar à dashboard dentro do TTL mostra N antigo.
       invalidateApiCache('groups:')
       startSavedAllTimer()
+      if (data.saved.length > 0) onBulkSaved?.(data.saved)
     } catch (e) {
       setBulkError((e as Error).message)
     } finally {

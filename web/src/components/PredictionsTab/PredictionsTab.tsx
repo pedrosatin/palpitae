@@ -6,6 +6,7 @@ import ErrorState from '../ErrorState'
 import MatchCard, { type Match } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import PredictionsImportBar from './PredictionsImportBar'
+import PredictionsReplicateBar from './PredictionsReplicateBar'
 import RoundProgress from './RoundProgress'
 import RoundSummary from './RoundSummary'
 import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
@@ -112,6 +113,7 @@ export default function PredictionsTab({
     pendingCount,
     handleSaveAll,
     showSaveBar,
+    hasOpenMatch,
     importCompleted,
     importExpanded,
     setImportExpanded,
@@ -125,9 +127,23 @@ export default function PredictionsTab({
     importedFromName,
     handleImport,
     handleSaved,
+    replicateTargets,
+    replicateOverflow,
+    replicateEnabled,
+    replicating,
+    replicateFeedback,
+    handleReplicateToggle,
+    retryReplicate,
     handleDraftChange,
     handlePenaltyDraftChange,
-  } = usePredictionsTab(groupId, competitionId, userId, initialRound, onInitialRoundApplied)
+  } = usePredictionsTab(
+    groupId,
+    competitionId,
+    userId,
+    initialRound,
+    onInitialRoundApplied,
+    pointsExact,
+  )
   // Um relógio só para o cabeçalho e os cards. Quando um jogo começa com a aba
   // aberta, o cabeçalho tira o jogo e o card trava no mesmo tique.
   const now = useNow(TICK_MS)
@@ -174,8 +190,12 @@ export default function PredictionsTab({
     return <p className={styles.empty}>Nenhum jogo encontrado para esta competição.</p>
   }
 
+  const hasReplicateStatus = replicating || replicateFeedback.length > 0
+
   return (
-    <div className={`${styles.root} ${showSaveBar ? styles.rootWithSaveBar : ''}`}>
+    <div
+      className={`${styles.root} ${showSaveBar ? styles.rootWithSaveBar : ''} ${hasReplicateStatus ? styles.rootWithSaveBarTall : ''}`}
+    >
       <PredictionsImportBar
         {...{
           otherGroups,
@@ -243,8 +263,33 @@ export default function PredictionsTab({
         </p>
       )}
 
+      <PredictionsReplicateBar
+        {...{
+          replicateTargets,
+          replicateOverflow,
+          replicateEnabled,
+          handleReplicateToggle,
+        }}
+        showOption={hasOpenMatch}
+      />
+
       {showSaveBar && (
         <div className={styles.saveAllBar}>
+          <div className={styles.saveAllStatus} aria-live="polite">
+            {replicating && (
+              <span className={styles.replicateInfo}>Aplicando nos outros grupos...</span>
+            )}
+            {replicateFeedback.map((f) => (
+              <span key={f.id} className={f.ok ? styles.importSuccess : styles.importError}>
+                {f.message}
+              </span>
+            ))}
+            {replicateFeedback.some((f) => !f.ok) && !replicating && (
+              <button type="button" className={styles.retryLink} onClick={retryReplicate}>
+                Tentar de novo
+              </button>
+            )}
+          </div>
           {bulkError && <span className={styles.error}>{bulkError}</span>}
           <Button
             size="sm"

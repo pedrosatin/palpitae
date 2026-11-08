@@ -23,6 +23,7 @@ export function groupsListSql(canSeePilot: boolean): string {
           c.external_id AS competition_code,
           ${competitionStatusSql('g', 'c')} AS competition_status,
           g.owner_user_id AS admin_id,
+          g.points_exact,
           g.invite_code,
           g.created_at,
           (
