@@ -10,6 +10,45 @@
   padding-bottom: calc(3.5rem + var(--space-3));
 }
 
+/* Seletor de rodada e progresso juntos, mais próximos que os blocos da aba. */
+.roundHeading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Contador e próximo fechamento. Em tela estreita, o fechamento desce de linha. */
+.roundProgress {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.progressPending,
+.progressDone {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Mesmas cores do estado no card: amarelo para o que falta, verde para completo. */
+.progressPending {
+  color: var(--color-warning);
+}
+
+.progressDone {
+  color: var(--color-primary);
+}
+
+.progressClosing {
+  color: var(--color-text-secondary);
+}
+
 .saveAllBar {
   display: flex;
   align-items: center;

@@ -1,13 +1,18 @@
 import { trackEvent } from '../../analytics/ga'
+import { useNow } from '../../hooks/useNow'
 import { leftoverMatchesText } from '../../lib/rounds'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
 import MatchCard, { type Match } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import PredictionsImportBar from './PredictionsImportBar'
+import RoundProgress from './RoundProgress'
 import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
 import { usePredictionsTab } from './usePredictionsTab'
 import styles from './PredictionsTab.module.css'
+
+/** Intervalo do relógio da aba. O "fecha em ..." mostra minutos. */
+const TICK_MS = 30_000
 
 interface PredictionsTabProps {
   groupId: string
@@ -113,6 +118,9 @@ export default function PredictionsTab({
     handleDraftChange,
     handlePenaltyDraftChange,
   } = usePredictionsTab(groupId, competitionId, userId)
+  // Um relógio só para o cabeçalho e os cards. Quando um jogo começa com a aba
+  // aberta, o cabeçalho tira o jogo e o card trava no mesmo tique.
+  const now = useNow(TICK_MS)
 
   // Avisa sobre UMA rodada com palpite aberto fora de hora: a mais próxima ANTES
   // da aberta. Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em
@@ -174,22 +182,25 @@ export default function PredictionsTab({
           setImportExpanded,
         }}
       />
-      <RoundHeader
-        id="predictions-round-select"
-        roundKeys={roundKeys}
-        safeIndex={safeIndex}
-        selectedRound={selectedRound}
-        labelFor={labelFor}
-        onPrev={prev}
-        onNext={next}
-        postponedByRound={postponedByRound}
-        rescheduledByRound={rescheduledByRound}
-        unsavedRounds={unsavedRounds}
-        onSelect={(round) => {
-          trackEvent('change_predictions_rodada', { round })
-          setRoundIndex(roundKeys.indexOf(round))
-        }}
-      />
+      <div className={styles.roundHeading}>
+        <RoundHeader
+          id="predictions-round-select"
+          roundKeys={roundKeys}
+          safeIndex={safeIndex}
+          selectedRound={selectedRound}
+          labelFor={labelFor}
+          onPrev={prev}
+          onNext={next}
+          postponedByRound={postponedByRound}
+          rescheduledByRound={rescheduledByRound}
+          unsavedRounds={unsavedRounds}
+          onSelect={(round) => {
+            trackEvent('change_predictions_rodada', { round })
+            setRoundIndex(roundKeys.indexOf(round))
+          }}
+        />
+        <RoundProgress roundMatches={roundMatches} predictions={predictions} now={now} />
+      </div>
 
       {/* Atalho para a rodada com jogo adiado ou remarcado. Sem isso o palpite
           aberto fica invisível: a rodada não é o default e o usuário não tem por
@@ -257,6 +268,7 @@ export default function PredictionsTab({
                 onSaved={handleSaved}
                 onDraftChange={handleDraftChange}
                 onPenaltyDraftChange={handlePenaltyDraftChange}
+                now={now}
               />
             ))}
           </div>

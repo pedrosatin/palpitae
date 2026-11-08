@@ -5,6 +5,7 @@ import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
+import { predictionStatus } from './predictionStatus'
 
 export interface UseMatchCardProps {
   match: Match
@@ -23,9 +24,10 @@ export interface UseMatchCardProps {
   onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
   draft?: { home: string; away: string }
   penaltyDraft?: 'home' | 'away' | null
+  now?: number
 }
 
-function useMatchStatus(match: Match, prediction: Prediction | undefined) {
+function useMatchStatus(match: Match, prediction: Prediction | undefined, now?: number) {
   // Jogo adiado nunca trava: o `start_time` guardado ainda é o horário original
   // (já passou), então a checagem por data sozinha travaria o palpite para sempre.
   // Exceção: jogo que o sync já viu iniciado (`locked_at`) trava mesmo se adiado.
@@ -33,7 +35,8 @@ function useMatchStatus(match: Match, prediction: Prediction | undefined) {
   const isPostponed = Boolean(match.postponed)
   const locked =
     Boolean(match.locked_at) ||
-    (!isPostponed && (Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)))
+    (!isPostponed &&
+      (Boolean(prediction?.locked) || (now ?? Date.now()) >= Date.parse(match.start_time)))
   const isFinished = match.status === 'finished'
   const hasPrediction = prediction !== undefined
 
@@ -47,7 +50,8 @@ function outcomeOf(home: number, away: number): Outcome {
 /**
  * Estado dos campos do card. Começa pelo rascunho guardado (`draft`,
  * `penaltyDraft`), se houver, senão pelo palpite salvo; depois segue o palpite
- * salvo sempre que ele muda (salvar, importar).
+ * salvo sempre que ele muda (salvar, importar). Jogo sem palpite começa com os
+ * dois campos vazios, e um 0×0 só aparece quando o usuário escolhe.
  */
 function useMatchDraft(
   prediction: Prediction | undefined,
@@ -55,10 +59,10 @@ function useMatchDraft(
   penaltyDraft?: 'home' | 'away' | null,
 ) {
   const [home, setHome] = useState<string>(
-    draft?.home ?? (prediction !== undefined ? String(prediction.predicted_home_score) : '0'),
+    draft?.home ?? (prediction !== undefined ? String(prediction.predicted_home_score) : ''),
   )
   const [away, setAway] = useState<string>(
-    draft?.away ?? (prediction !== undefined ? String(prediction.predicted_away_score) : '0'),
+    draft?.away ?? (prediction !== undefined ? String(prediction.predicted_away_score) : ''),
   )
   const [penaltyWinner, setPenaltyWinner] = useState<'home' | 'away' | null>(
     penaltyDraft !== undefined ? penaltyDraft : (prediction?.predicted_penalty_winner ?? null),
@@ -187,20 +191,22 @@ function matchControls({
     away !== '' &&
     needsPenaltyPick(match, Number(home), Number(away), leg1Prediction)
 
-  const scoreChanged =
-    prediction !== undefined
-      ? Number(home) !== prediction.predicted_home_score ||
-        Number(away) !== prediction.predicted_away_score
-      : true
   // Sem a escolha na tela, o salvamento manda pênalti nulo. Um vencedor escolhido
   // antes de o empate se desfazer não conta como mudança.
-  const penaltyChanged =
-    showPenaltyPicker && (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
-  const hasChanged = scoreChanged || penaltyChanged
+  const status = predictionStatus({ prediction, home, away, penaltyWinner, showPenaltyPicker })
   const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
   const canSave =
-    !leg1Pending && !locked && home !== '' && away !== '' && !saving && hasChanged && penaltyReady
-  return { selectedOutcome, showPenaltyPicker, canSave }
+    !leg1Pending &&
+    !locked &&
+    home !== '' &&
+    away !== '' &&
+    !saving &&
+    status !== 'saved' &&
+    penaltyReady
+  // Palpite salvo que agora pede o vencedor nos pênaltis, por mudança na ida, tem o
+  // estado "falta pênalti" e segue com "Atualizar" desabilitado.
+  const saveDone = status === 'saved' && !saving
+  return { selectedOutcome, showPenaltyPicker, canSave, status, saveDone }
 }
 
 export function useMatchCard({
@@ -215,8 +221,9 @@ export function useMatchCard({
   onPenaltyDraftChange,
   draft,
   penaltyDraft,
+  now,
 }: UseMatchCardProps) {
-  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction)
+  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction, now)
 
   const {
     home,
@@ -233,7 +240,7 @@ export function useMatchCard({
 
   const { saving, saved, error, persist } = useMatchPersistence(groupId, match.id, onSaved)
 
-  const { selectedOutcome, showPenaltyPicker, canSave } = matchControls({
+  const { selectedOutcome, showPenaltyPicker, canSave, status, saveDone } = matchControls({
     match,
     prediction,
     leg1Prediction,
@@ -281,7 +288,8 @@ export function useMatchCard({
     setPenaltyWinner(winner)
     setReopenPenalty(false)
     onPenaltyDraftChange?.(match.id, winner)
-    if (outcomeOnly && !leg1Pending) {
+    // Campo vazio viraria 0 em `Number('')` e gravaria um 0×0 que ninguém escolheu.
+    if (outcomeOnly && !leg1Pending && home !== '' && away !== '') {
       await persist(Number(home), Number(away), winner)
     }
   }
@@ -323,6 +331,8 @@ export function useMatchCard({
     saved,
     error,
     canSave,
+    status,
+    saveDone,
     home,
     away,
     penaltyWinner,

@@ -297,7 +297,7 @@ describe('PredictionsTab – Initialisation', () => {
     vi.restoreAllMocks()
   })
 
-  it('counts a new draft after changing only one score from the 0 default', async () => {
+  it('conta o rascunho de jogo sem palpite só quando os dois placares foram escolhidos', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches)
 
@@ -308,11 +308,13 @@ describe('PredictionsTab – Initialisation', () => {
     })
 
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    expect(screen.getByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
 
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
     expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
   })
 
-  it('includes a default 0×0 knockout draw in "Salvar todos" when only the penalty winner is set', async () => {
+  it('inclui no "Salvar todos" o 0×0 de mata-mata escolhido pelo usuário com o vencedor nos pênaltis', async () => {
     const matches = [
       makeMatch({
         id: 'm1',
@@ -352,7 +354,12 @@ describe('PredictionsTab – Initialisation', () => {
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
     await waitFor(() => screen.getByRole('button', { name: /^Salvar todos$/i }))
 
-    // Score stays at the 0×0 default; user only picks the shootout winner.
+    // Campos vazios não são empate, então a escolha dos pênaltis não aparece.
+    expect(screen.queryByRole('radio', { name: 'BRA' })).not.toBeInTheDocument()
+
+    // O 0×0 só existe quando o usuário escolhe os dois zeros.
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
     await userEvent.click(screen.getByRole('radio', { name: 'BRA' }))
 
     const saveAll = await screen.findByRole('button', {
@@ -475,6 +482,7 @@ describe('PredictionsTab – analytics', () => {
     await waitFor(() => screen.getByRole('button', { name: /^Salvar todos$/i }))
 
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar todos \(1\)/i }))
 
     expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_salvar_todos', {

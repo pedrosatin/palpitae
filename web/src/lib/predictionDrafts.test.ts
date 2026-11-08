@@ -194,6 +194,18 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
       }),
     ).toEqual([])
   })
+
+  it('não inventa 0×0 para jogo sem palpite que só tem o rascunho do pênalti', () => {
+    const match = makeMatch({ id: 'm1', start_time: future, decides_on_penalties: true })
+    expect(
+      collectRoundDrafts({
+        roundMatches: [match],
+        drafts: new Map(),
+        penaltyDrafts: new Map([['m1', 'home']]),
+        predictions: new Map(),
+      }),
+    ).toEqual([])
+  })
 })
 
 /** Rascunho digitado sobre `saved`, ou sobre jogo sem palpite. */

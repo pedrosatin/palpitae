@@ -29,25 +29,29 @@ export type CollectRoundDraftsInput = {
  * locked_at, status live/finished ou prediction.locked fecham; postponed com
  * horário passado e sem lock explícito permanece aberto (start_time original).
  */
-export function isMatchLocked(match: Match, prediction: Prediction | undefined): boolean {
+export function isMatchLocked(
+  match: Match,
+  prediction: Prediction | undefined,
+  nowMs: number = Date.now(),
+): boolean {
   if (match.locked_at) return true
   if (match.status === 'live' || match.status === 'finished') return true
   if (prediction?.locked) return true
   if (match.postponed) return false
-  return new Date() >= new Date(match.start_time)
+  return nowMs >= Date.parse(match.start_time)
 }
 
 /**
- * Resolves the two score fields for a match, falling back to the saved
- * prediction (or `0`) when a field has no draft. Returns `null` when either
- * field is an empty string — an in-progress edit that must not be saved.
+ * Resolve os dois campos do placar. Sem rascunho, vale o palpite salvo. Devolve
+ * `null` quando um campo fica vazio, seja edição pela metade ou jogo sem palpite
+ * e sem rascunho. O card começa vazio, e um 0×0 só existe quando o usuário escolhe.
  */
 function resolveDraftScores(
   draft: ScoreDraft | undefined,
   prediction: Prediction | undefined,
 ): { home: number; away: number } | null {
-  const homeStr = draft?.home ?? (prediction ? String(prediction.predicted_home_score) : '0')
-  const awayStr = draft?.away ?? (prediction ? String(prediction.predicted_away_score) : '0')
+  const homeStr = draft?.home ?? (prediction ? String(prediction.predicted_home_score) : '')
+  const awayStr = draft?.away ?? (prediction ? String(prediction.predicted_away_score) : '')
   if (homeStr === '' || awayStr === '') return null
   return { home: Number(homeStr), away: Number(awayStr) }
 }
