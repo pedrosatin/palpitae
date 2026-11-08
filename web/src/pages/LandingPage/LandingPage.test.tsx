@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import LandingPage from './LandingPage'
 import { LANDING_GUIDE_LINKS } from './guideLinks'
+import { catalogEyebrow, catalogFaqAnswer, groupCatalog } from './competitionCatalog'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -69,6 +70,33 @@ describe('LandingPage – âncoras do nav', () => {
     for (const hash of hashes) {
       expect(container.querySelector(`#${hash}`), `sem seção para #${hash}`).not.toBeNull()
     }
+  })
+})
+
+describe('LandingPage – campeonatos', () => {
+  it('lista os campeonatos do catálogo por região, na seção e no FAQ', () => {
+    renderPage()
+    const section = screen.getByRole('region', { name: 'Escolha o campeonato do seu bolão' })
+    for (const group of groupCatalog()) {
+      expect(within(section).getByRole('heading', { name: group.label })).toBeInTheDocument()
+      for (const name of group.names) {
+        expect(within(section).getByText(name)).toBeInTheDocument()
+      }
+    }
+    expect(screen.getByText(catalogFaqAnswer())).toBeInTheDocument()
+    expect(screen.getByText(catalogEyebrow())).toBeInTheDocument()
+  })
+
+  it('não cita um campeonato com temporada no selo nem no FAQ', () => {
+    renderPage()
+    expect(screen.queryByText(/Série A 2026/)).not.toBeInTheDocument()
+  })
+
+  it('descreve a tela de palpites no texto alternativo', () => {
+    renderPage()
+    const shot = screen.getByAltText(/Tela de palpites de uma rodada/)
+    expect(shot).toHaveAttribute('width')
+    expect(shot).toHaveAttribute('height')
   })
 })
 

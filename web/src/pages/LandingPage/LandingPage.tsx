@@ -3,6 +3,7 @@ import GoogleLoginButton from '../../components/GoogleLoginButton'
 import { trackEvent } from '../../analytics/ga'
 import styles from './LandingPage.module.css'
 import { LANDING_GUIDE_LINKS } from './guideLinks'
+import { catalogEyebrow, catalogFaqAnswer, groupCatalog } from './competitionCatalog'
 
 /**
  * Public landing page — the marketing/preview face of Palpitae shown to
@@ -21,6 +22,7 @@ export default function LandingPage() {
       <main>
         <Hero />
         <Features />
+        <Competitions />
         <Scoring />
         <Faq />
         <Guides />
@@ -82,7 +84,7 @@ function Hero() {
   return (
     <section className={styles.hero}>
       <div className={styles.heroCopy}>
-        <span className={styles.eyebrow}>Brasileirão Série A 2026</span>
+        <span className={styles.eyebrow}>{catalogEyebrow()}</span>
         <h1 className={styles.heroTitle}>
           Bolões de futebol <span className={styles.accent}>com seus amigos</span>
         </h1>
@@ -134,10 +136,37 @@ function Features() {
         title="Dê seus palpites rodada a rodada"
         description="Cravou o placar? Ajuste os números de cada jogo e salve um por um — ou de uma vez com 'Salvar todos'. Navegue entre as rodadas e palpite com antecedência."
         shot="/screenshots/palpites.png"
-        shotAlt="Tela de previsões com cards de jogos e seletores de placar"
+        shotAlt="Tela de palpites de uma rodada, com um card por jogo, os escudos dos times e botões de mais e menos para ajustar o placar de cada um"
         shotWidth={1100}
         shotHeight={712}
       />
+    </section>
+  )
+}
+
+function Competitions() {
+  return (
+    <section id="campeonatos" className={styles.competitions} aria-labelledby="campeonatos-titulo">
+      <h2 id="campeonatos-titulo" className={styles.sectionTitle}>
+        Escolha o campeonato do seu bolão
+      </h2>
+      <p className={styles.sectionLead}>
+        Cada grupo acompanha um campeonato. Estes estão abertos para criar bolão.
+      </p>
+      <div className={styles.competitionGroups}>
+        {groupCatalog().map((group) => (
+          <div key={group.region} className={styles.competitionGroup}>
+            <h3 className={styles.competitionRegion}>{group.label}</h3>
+            <ul className={styles.competitionList}>
+              {group.names.map((name) => (
+                <li key={name} className={styles.competitionItem}>
+                  {name}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </section>
   )
 }
@@ -221,7 +250,7 @@ function Faq() {
         />
         <FaqItem
           q="Quais campeonatos tem no Palpitae?"
-          a="O campeonato com jogos em andamento no Palpitae é o Brasileirão Série A 2026. A Copa do Mundo 2026 terminou, e os grupos dela mostram a classificação final. Cada grupo acompanha um campeonato."
+          a={catalogFaqAnswer()}
         />
       </dl>
     </section>
