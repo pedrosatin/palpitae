@@ -1,4 +1,5 @@
 import { formatMatchDate } from '../../lib/matchTime'
+import TieInfo from './TieInfo'
 import CheckIcon from '../CheckIcon'
 import InfoHint from '../InfoHint/InfoHint'
 import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
@@ -15,6 +16,8 @@ interface MatchCardProps {
   match: Match
   prediction: Prediction | undefined
   leg1Prediction?: Prediction
+  /** Jogo de ida do confronto, para mostrar o placar real e o agregado na volta. */
+  leg1Match?: Match
   leg1Pending?: boolean
   groupId: string
   /**
@@ -169,6 +172,14 @@ export default function MatchCard(props: MatchCardProps) {
             text="O placar considera tempo regulamentar + prorrogação. Na volta, os pênaltis dependem do agregado dos seus dois palpites."
           />
         )}
+        <TieInfo
+          match={match}
+          leg1Match={props.leg1Match}
+          home={home}
+          away={away}
+          leg1Prediction={props.leg1Prediction}
+          locked={locked}
+        />
         {locked ? (
           <LockedPredictionView
             hasPrediction={hasPrediction}
