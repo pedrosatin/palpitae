@@ -7,6 +7,7 @@ import MatchCard, { type Match } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import PredictionsImportBar from './PredictionsImportBar'
 import RoundProgress from './RoundProgress'
+import RoundSummary from './RoundSummary'
 import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
 import { usePredictionsTab } from './usePredictionsTab'
 import styles from './PredictionsTab.module.css'
@@ -16,6 +17,8 @@ const TICK_MS = 30_000
 
 interface PredictionsTabProps {
   groupId: string
+  /** Nome do grupo, usado no cartão da rodada. */
+  groupName?: string
   competitionId: string
   /** Liga a guarda dos rascunhos não salvos no navegador, numa chave por usuário e grupo. */
   userId?: string
@@ -78,6 +81,7 @@ function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
 
 export default function PredictionsTab({
   groupId,
+  groupName,
   competitionId,
   userId,
   pointsExact = 3,
@@ -207,6 +211,15 @@ export default function PredictionsTab({
         />
         <RoundProgress roundMatches={roundMatches} predictions={predictions} now={now} />
       </div>
+
+      <RoundSummary
+        groupId={groupId}
+        groupName={groupName}
+        roundLabel={labelFor(selectedRound)}
+        roundMatches={roundMatches}
+        predictions={predictions}
+        pointsExact={pointsExact}
+      />
 
       {/* Atalho para a rodada com jogo adiado ou remarcado. Sem isso o palpite
           aberto fica invisível: a rodada não é o default e o usuário não tem por

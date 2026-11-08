@@ -3,6 +3,7 @@ import Modal from '../Modal'
 import Button from '../Button'
 import { trackEvent } from '../../analytics/ga'
 import { buildShareCardData, renderShareCardBlob, type ShareCardData } from '../../lib/shareCard'
+import { canShareImageFiles, downloadBlob } from '../../lib/shareImage'
 import type { GroupWithStats } from '../GroupCard'
 import styles from './ShareGroupModal.module.css'
 
@@ -21,32 +22,6 @@ function shareText(data: ShareCardData): string {
 function fileName(data: ShareCardData): string {
   const slug = data.isChampion ? 'campeao' : `${data.position}-lugar`
   return `palpitae-${slug}.png`
-}
-
-function download(blob: Blob, name: string): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  // Revoga no próximo tick — revogar antes de o navegador iniciar o download
-  // interrompe o salvamento em alguns browsers.
-  setTimeout(() => URL.revokeObjectURL(url), 0)
-}
-
-/**
- * O navegador consegue compartilhar um arquivo de imagem via share sheet nativo?
- * Verdadeiro no mobile (iOS/Android), falso no desktop — onde "compartilhar"
- * seria só um download disfarçado. Sondamos com um File vazio para não duplicar
- * o botão de baixar quando não há share real.
- */
-function canShareImageFiles(): boolean {
-  if (typeof navigator === 'undefined' || !navigator.canShare) return false
-  try {
-    return navigator.canShare({ files: [new File([], 'r.png', { type: 'image/png' })] })
-  } catch {
-    return false
-  }
 }
 
 /**
@@ -107,7 +82,7 @@ export default function ShareGroupModal({ isOpen, onClose, group }: ShareGroupMo
     const blob = blobRef.current
     const data = dataRef.current
     if (!blob || !data) return
-    download(blob, fileName(data))
+    downloadBlob(blob, fileName(data))
     trackEvent('click_share_baixar')
   }
 

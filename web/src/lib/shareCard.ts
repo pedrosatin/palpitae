@@ -13,13 +13,13 @@ import type { GroupWithStats } from '../components/GroupCard'
 export const SHARE_CARD_WIDTH = 1080
 export const SHARE_CARD_HEIGHT = 1350
 
-const INK = '#0d0d0d'
-const LIME = '#49f21b'
-const BONE = '#ffffff'
-const ASH = '#a3a3a3'
-const BORDER = '#2a2a2a'
+export const INK = '#0d0d0d'
+export const LIME = '#49f21b'
+export const BONE = '#ffffff'
+export const ASH = '#a3a3a3'
+export const BORDER = '#2a2a2a'
 
-const FONT =
+export const FONT =
   "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif"
 
 export interface ShareCardEntry {
@@ -82,12 +82,12 @@ function stripScheme(origin: string): string {
  * exibir sobrenome de terceiros seria vazamento de dado pessoal. Você continua
  * sendo "Você".
  */
-function firstName(display: string): string {
+export function firstName(display: string): string {
   return display.trim().split(/\s+/)[0] || display
 }
 
 /** Desenha texto com tracking (espaçamento entre letras) — canvas não tem nativo. */
-function fillTracked(
+export function fillTracked(
   ctx: CanvasRenderingContext2D,
   text: string,
   cx: number,
@@ -104,7 +104,7 @@ function fillTracked(
 }
 
 /** Corta texto com reticências para caber em maxWidth. */
-function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+export function truncate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
   if (ctx.measureText(text).width <= maxWidth) return text
   let t = text
   while (t.length > 1 && ctx.measureText(t + '…').width > maxWidth) t = t.slice(0, -1)
@@ -233,7 +233,7 @@ export function drawShareCard(ctx: CanvasRenderingContext2D, data: ShareCardData
   ctx.fillText(data.domain, W / 2, H - 50)
 }
 
-function hline(ctx: CanvasRenderingContext2D, x1: number, y: number, x2: number): void {
+export function hline(ctx: CanvasRenderingContext2D, x1: number, y: number, x2: number): void {
   ctx.beginPath()
   ctx.moveTo(x1, y)
   ctx.lineTo(x2, y)
