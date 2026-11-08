@@ -18,23 +18,53 @@ const SEND_LOG_RETENTION_DAYS = 7
 // é permanente (endereço inválido, por exemplo) e falha na hora.
 const MAX_SEND_ATTEMPTS = 3
 
+// O plano da conta Cloudflare não está confirmado (docs/architecture/
+// capacidade-coordenacao-provedores.md), então vale o pior caso: Free, com 50
+// subrequests por invocação. O D1 conta junto com o `fetch`. A execução gasta 3
+// consultas fixas (SELECT, batch de reserva e DELETE da devolução) e deixa 2 de
+// folga. Sobram 45 `fetch` ao Resend, contando cada reenvio.
+const SUBREQUEST_LIMIT = 50
+const D1_SUBREQUESTS = 3
+const SUBREQUEST_MARGIN = 2
+export const RESEND_FETCH_BUDGET = SUBREQUEST_LIMIT - D1_SUBREQUESTS - SUBREQUEST_MARGIN
+
+/** Contador dos `fetch` ao Resend desta execução. */
+type FetchBudget = { used: number; max: number }
+
+/** O teto de subrequests chegou. Quem não enviou volta para a próxima execução. */
+class SubrequestBudgetError extends Error {
+  constructor() {
+    super('Teto de subrequests da execução atingido')
+    this.name = 'SubrequestBudgetError'
+  }
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * Envia um e-mail, repetindo em 429 de limite por segundo e em 5xx ou erro de rede,
  * com espera exponencial que respeita o Retry-After do Resend. Cota esgotada e
- * outros 4xx falham na primeira tentativa. Lança o erro quando as tentativas acabam,
+ * outros 4xx falham na primeira tentativa. Cada tentativa gasta o saldo de `fetch` da
+ * execução, e sem saldo lança `SubrequestBudgetError`. Lança o erro quando as tentativas acabam,
  * e quem chama contabiliza a falha e segue.
  */
-async function sendWithRetry(apiKey: string, msg: Parameters<typeof sendEmail>[1]): Promise<void> {
+async function sendWithRetry(
+  apiKey: string,
+  msg: Parameters<typeof sendEmail>[1],
+  budget: FetchBudget,
+): Promise<void> {
   for (let attempt = 1; ; attempt++) {
+    // Cada tentativa é um `fetch`. Sem saldo, para antes de chamar a rede.
+    if (budget.used >= budget.max) throw new SubrequestBudgetError()
+    budget.used++
     try {
       await sendEmail(apiKey, msg)
       return
     } catch (err) {
       const emailError = err instanceof EmailError ? err : undefined
       const status = emailError?.status ?? 0
-      const transient = !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
+      const transient =
+        !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
       if (!transient || attempt >= MAX_SEND_ATTEMPTS) throw err
       await sleep(emailError?.retryAfterMs ?? 500 * 2 ** (attempt - 1))
     }
@@ -244,7 +274,9 @@ async function claimRecipients(
   day: ReminderDay,
 ): Promise<Set<string>> {
   const [, claim] = await db.batch<{ user_id: string }>([
-    db.prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?').bind(day.retentionCutoff),
+    db
+      .prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?')
+      .bind(day.retentionCutoff),
     db
       .prepare(
         `INSERT INTO email_reminder_sends (user_id, reminder_date)
@@ -277,6 +309,7 @@ async function releaseClaims(db: D1Database, userIds: string[], day: ReminderDay
 }
 
 function failureReason(err: unknown): string {
+  if (err instanceof SubrequestBudgetError) return 'subrequest_budget'
   if (!(err instanceof EmailError)) return 'unknown'
   return err.quotaExceeded ? 'quota_exceeded' : `http_${err.status}`
 }
@@ -288,6 +321,8 @@ type DispatchOptions = {
   unsub: UnsubConfig | undefined
   ae: AnalyticsEngineDataset | undefined
   day: ReminderDay
+  /** Saldo de `fetch` ao Resend. Os testes reduzem para exercitar o teto. */
+  fetchBudget?: number
 }
 
 type DispatchResult = {
@@ -298,11 +333,20 @@ type DispatchResult = {
 
 /**
  * Envia um e-mail por usuário, sem endereço compartilhado. Uma falha não derruba
- * os demais. Cota esgotada encerra a fila, porque toda tentativa seguinte falharia.
+ * os demais. Cota esgotada ou teto de subrequests encerram a fila, porque toda
+ * tentativa seguinte falharia. Quem fica de fora volta em `failedUserIds`.
  */
 async function dispatchDigests(
   digests: Digest[],
-  { resendApiKey, appUrl, apiBaseUrl, unsub, ae, day }: DispatchOptions,
+  {
+    resendApiKey,
+    appUrl,
+    apiBaseUrl,
+    unsub,
+    ae,
+    day,
+    fetchBudget = RESEND_FETCH_BUDGET,
+  }: DispatchOptions,
 ): Promise<DispatchResult> {
   // Hash e token saem em paralelo antes dos envios. O try/catch por usuário impede
   // que um token com erro derrube o lote.
@@ -324,7 +368,9 @@ async function dispatchDigests(
 
   let sent = 0
   let matchesListed = 0
+  const budget: FetchBudget = { used: 0, max: fetchBudget }
   let quotaExceeded = false
+  let budgetExhausted = false
   const failedUserIds: string[] = []
 
   for (const { digest, hashedId, unsubToken, tokenError } of prepared) {
@@ -339,6 +385,11 @@ async function dispatchDigests(
 
     if (quotaExceeded) {
       recordFailure('quota_exceeded')
+      continue
+    }
+
+    if (budgetExhausted) {
+      recordFailure('subrequest_budget')
       continue
     }
 
@@ -357,15 +408,19 @@ async function dispatchDigests(
           }
         : undefined
 
-      await sendWithRetry(resendApiKey, {
-        to: digest.email,
-        subject,
-        html: buildEmailHtml({ digest, subject, appUrl, unsubUrl }),
-        text: buildEmailText({ digest, subject, appUrl, unsubUrl }),
-        headers,
-        // Se a resposta se perder, a nova tentativa não gera um segundo e-mail.
-        idempotencyKey: `lembrete-diario/${digest.userId}/${day.date}`,
-      })
+      await sendWithRetry(
+        resendApiKey,
+        {
+          to: digest.email,
+          subject,
+          html: buildEmailHtml({ digest, subject, appUrl, unsubUrl }),
+          text: buildEmailText({ digest, subject, appUrl, unsubUrl }),
+          headers,
+          // Se a resposta se perder, a nova tentativa não gera um segundo e-mail.
+          idempotencyKey: `lembrete-diario/${digest.userId}/${day.date}`,
+        },
+        budget,
+      )
       sent++
       matchesListed += matchCount
       // user_hash do id, nunca o e-mail cru (regra LGPD).
@@ -376,6 +431,7 @@ async function dispatchDigests(
     } catch (err) {
       recordFailure(failureReason(err))
       quotaExceeded = err instanceof EmailError && err.quotaExceeded
+      budgetExhausted = err instanceof SubrequestBudgetError
       console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
     }
   }
@@ -398,6 +454,7 @@ export async function sendRoundReminders(
   appUrl: string = APP_URL,
   unsub?: UnsubConfig,
   nowMs: number = Date.now(),
+  fetchBudget?: number,
 ): Promise<void> {
   const startedAt = Date.now()
 
@@ -439,6 +496,7 @@ export async function sendRoundReminders(
     unsub,
     ae,
     day,
+    fetchBudget,
   })
   await releaseClaims(db, failedUserIds, day)
 
