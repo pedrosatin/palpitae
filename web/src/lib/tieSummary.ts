@@ -61,6 +61,13 @@ export function findLeg2(match: Match, all: Match[]): Match | undefined {
   return all.find((m) => m.leg1_match_id === match.id)
 }
 
+/** Dia do jogo. Adiado guarda o horário antigo, então sai sem data. */
+function legDay(label: 'Ida' | 'Volta', leg: Match): string {
+  return leg.postponed
+    ? `${label}: data a definir`
+    : `${label} em ${formatMatchDay(leg.start_time)}`
+}
+
 /**
  * Quando é o outro jogo do confronto. Na volta, mostra o dia da ida enquanto ela
  * não tem resultado. Na ida, mostra o dia da volta. Jogo único não mostra nada.
@@ -70,9 +77,7 @@ export function tieDateHint(
   leg1: Match | undefined,
   leg2: Match | undefined,
 ): string | null {
-  if (match.tie_role === 'leg2' && leg1 && !hasScore(leg1)) {
-    return `Ida em ${formatMatchDay(leg1.start_time)}`
-  }
-  if (match.tie_role === 'leg1' && leg2) return `Volta em ${formatMatchDay(leg2.start_time)}`
+  if (match.tie_role === 'leg2' && leg1 && !hasScore(leg1)) return legDay('Ida', leg1)
+  if (match.tie_role === 'leg1' && leg2) return legDay('Volta', leg2)
   return null
 }

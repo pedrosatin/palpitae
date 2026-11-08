@@ -143,6 +143,15 @@ describe('tieDateHint', () => {
     expect(tieDateHint(leg2, scheduledLeg1, undefined)).toBe('Ida em sáb, 14/11')
   })
 
+  it('jogo adiado sai sem data, porque guarda o horário antigo', () => {
+    expect(tieDateHint(leg2, { ...scheduledLeg1, postponed: 1 }, undefined)).toBe(
+      'Ida: data a definir',
+    )
+    expect(
+      tieDateHint(match({ id: 'ida', tie_role: 'leg1' }), undefined, { ...leg2, postponed: 1 }),
+    ).toBe('Volta: data a definir')
+  })
+
   it('deixa o placar falar quando a ida já terminou', () => {
     expect(tieDateHint(leg2, leg1, undefined)).toBeNull()
   })
