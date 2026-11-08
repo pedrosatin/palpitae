@@ -374,3 +374,24 @@
 .modalRoundNav {
   margin-bottom: var(--space-4);
 }
+
+.rulesNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) var(--space-3) 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.rulesLink {
+  min-height: 32px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -41,7 +41,9 @@ describe('predictedTieScore', () => {
   it('returns just home and away if not leg2', () => {
     const match = makeMatch({ tie_role: 'leg1' })
     expect(predictedTieScore(match, 2, 1)).toEqual({ home: 2, away: 1 })
-    expect(predictedTieScore(match, 2, 1, { predicted_home_score: 3, predicted_away_score: 0 } as any)).toEqual({ home: 2, away: 1 })
+    expect(
+      predictedTieScore(match, 2, 1, { predicted_home_score: 3, predicted_away_score: 0 } as any),
+    ).toEqual({ home: 2, away: 1 })
   })
 
   it('returns null if leg2 but leg1 prediction is missing', () => {

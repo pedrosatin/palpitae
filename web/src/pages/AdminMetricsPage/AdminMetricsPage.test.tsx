@@ -807,9 +807,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
     vi.stubGlobal('fetch', mockFetch(200, sampled, business))
     render(<AdminMetricsPage />)
 
-    expect(
-      await screen.findByText(/≈2 falha\(s\) de login \(16% de ≈15\)/),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/≈2 falha\(s\) de login \(16% de ≈15\)/)).toBeInTheDocument()
   })
 
   it('troca de janela refaz o overview e recalcula o alerta de login', async () => {

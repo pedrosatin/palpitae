@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import styles from './Modal.module.css'
@@ -12,6 +12,15 @@ interface ModalProps {
 }
 
 export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Leva o foco para dentro do diálogo, a menos que um campo já o tenha pedido.
+  useEffect(() => {
+    if (!isOpen) return
+    const dialog = dialogRef.current
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus()
+  }, [isOpen])
+
   useEffect(() => {
     if (!isOpen) return
     function handleKeyDown(e: KeyboardEvent) {
@@ -25,7 +34,12 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
 
   return (
     <div className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true">
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={styles.modal}
+        ref={dialogRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={styles.header}>
           <h2 className={styles.title}>{title}</h2>
           <Button

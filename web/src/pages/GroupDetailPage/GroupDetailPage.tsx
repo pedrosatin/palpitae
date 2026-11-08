@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
+import GroupRulesModal from '../../components/GroupRulesModal'
 import GroupHeader from './GroupHeader'
 import GroupInviteSection from './GroupInviteSection'
 import RenameGroupModal from './RenameGroupModal'
@@ -32,14 +33,8 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const { groupId } = useParams<{ groupId: string }>()
 
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
-  const {
-    activeTab,
-    showStandings,
-    tabHref,
-    handleTabClick,
-    requestedRound,
-    clearRequestedRound,
-  } = useGroupTabs(group)
+  const { activeTab, showStandings, tabHref, handleTabClick, requestedRound, clearRequestedRound } =
+    useGroupTabs(group)
   const tabsOffset = useTabsOffset()
   const {
     leaveGroup,
@@ -55,6 +50,8 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const [renameOpen, setRenameOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
+  const [rulesOpen, setRulesOpen] = useState(false)
+  const rulesOpenerRef = useRef<HTMLElement | null>(null)
 
   const isAdmin = group?.is_admin ?? false
   const isFinished = group?.competition_status === 'finished'
@@ -100,6 +97,18 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     setSettingsVersion((value) => value + 1)
   }
 
+  function openRules(opener: HTMLElement) {
+    trackEvent('click_group_detail_regras')
+    rulesOpenerRef.current = opener
+    setRulesOpen(true)
+  }
+
+  function closeRules() {
+    setRulesOpen(false)
+    rulesOpenerRef.current?.focus()
+    rulesOpenerRef.current = null
+  }
+
   function handleGroupRenamed(name: string) {
     setGroup((prev) => (prev ? { ...prev, name } : prev))
   }
@@ -140,6 +149,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         onPointsClassifiedChanged={handlePointsClassifiedChanged}
         onRenamed={handleGroupRenamed}
       />
+      {group && <GroupRulesModal isOpen={rulesOpen} onClose={closeRules} group={group} />}
       {confirmDialog}
     </>
   )
@@ -170,6 +180,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           group={group}
           isAdmin={isAdmin}
           onOpenRename={openRename}
+          onOpenRules={openRules}
           onDeleteGroup={deleteGroup}
           deleting={deleting}
           onLeaveGroup={leaveGroup}
@@ -204,6 +215,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           showStandings={showStandings}
           isAdmin={isAdmin}
           userId={user.id}
+          onOpenRules={openRules}
           requestedRound={requestedRound}
           onRequestedRoundApplied={clearRequestedRound}
         />

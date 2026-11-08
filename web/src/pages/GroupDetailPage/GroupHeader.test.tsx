@@ -159,3 +159,37 @@ describe('GroupHeader', () => {
     })
   })
 })
+
+describe('GroupHeader regras', () => {
+  const group = {
+    name: 'My Group',
+    competition_id: 'comp1',
+    competition_name: 'Competition One',
+    member_count: 2,
+    user_position: 1,
+    user_points: 0,
+  }
+
+  it.each([false, true])('oferece Regras do grupo no menu (admin: %s)', async (isAdmin) => {
+    const user = userEvent.setup({ delay: null })
+    const onOpenRules = vi.fn()
+    render(
+      <GroupHeader
+        group={group}
+        isAdmin={isAdmin}
+        onOpenRename={vi.fn()}
+        onOpenRules={onOpenRules}
+        onDeleteGroup={vi.fn()}
+        deleting={false}
+        onLeaveGroup={vi.fn()}
+        leaving={false}
+      />,
+    )
+
+    const kebab = screen.getByRole('button', { name: 'Opções do grupo' })
+    await user.click(kebab)
+    await user.click(screen.getByRole('menuitem', { name: 'Regras do grupo' }))
+
+    expect(onOpenRules).toHaveBeenCalledWith(kebab)
+  })
+})

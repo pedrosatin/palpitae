@@ -60,11 +60,7 @@ function Header() {
         >
           Pontuação
         </a>
-        <a
-          href="#guias"
-          className={styles.navLink}
-          onClick={() => trackEvent('click_nav_guias')}
-        >
+        <a href="#guias" className={styles.navLink} onClick={() => trackEvent('click_nav_guias')}>
           Guias
         </a>
         <a href="#faq" className={styles.navLink} onClick={() => trackEvent('click_nav_faq')}>

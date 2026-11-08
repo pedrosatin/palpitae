@@ -14,6 +14,11 @@ function renderModal(props?: Partial<Parameters<typeof Modal>[0]>) {
 }
 
 describe('Modal', () => {
+  it('leva o foco para dentro do diálogo ao abrir', () => {
+    renderModal()
+    expect(screen.getByRole('dialog').firstElementChild).toHaveFocus()
+  })
+
   it('renders nothing when isOpen is false', () => {
     renderModal({ isOpen: false })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

@@ -112,8 +112,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
             )}
             {selectedOngoing && (
               <p role="status" className={styles.statusHint}>
-                Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que
-                faltam.
+                Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que faltam.
               </p>
             )}
           </div>

@@ -66,9 +66,7 @@ export type LoginFailureAlert = {
   label: string
 }
 
-export function evaluateLoginFailureAlert(
-  input: LoginFailureAlertInput,
-): LoginFailureAlert | null {
+export function evaluateLoginFailureAlert(input: LoginFailureAlertInput): LoginFailureAlert | null {
   const successes = Math.max(0, Number(input.loginSuccess) || 0)
   const failures = Math.max(0, Number(input.loginFailures) || 0)
   const callbacks = successes + failures

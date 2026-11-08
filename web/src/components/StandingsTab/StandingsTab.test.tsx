@@ -121,24 +121,21 @@ describe('standingsBucket', () => {
   })
 
   it('collapses Gaúcho GROUP_STAGE into GENERAL_RANKING by canonical code', () => {
-    expect(
-      standingsBucket(
-        { phase: 'GROUP_STAGE', group_name: null },
-        'bra.camp.gaucho',
-      ),
-    ).toBe(GENERAL_RANKING)
-    expect(
-      standingsBucket({ phase: 'GROUP_STAGE', group_name: 'A' }, 'bra.camp.gaucho'),
-    ).toBe(GENERAL_RANKING)
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null }, 'bra.camp.gaucho')).toBe(
+      GENERAL_RANKING,
+    )
+    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: 'A' }, 'bra.camp.gaucho')).toBe(
+      GENERAL_RANKING,
+    )
   })
 
   it('does not collapse other competitions GROUP_STAGE without named group', () => {
     expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null }, 'bra.copa_do_brazil')).toBe(
       null,
     )
-    expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: 'A' }, 'conmebol.libertadores')).toBe(
-      'A',
-    )
+    expect(
+      standingsBucket({ phase: 'GROUP_STAGE', group_name: 'A' }, 'conmebol.libertadores'),
+    ).toBe('A')
     expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null }, null)).toBe(null)
     expect(standingsBucket({ phase: 'GROUP_STAGE', group_name: null }, undefined)).toBe(null)
   })
@@ -150,9 +147,9 @@ describe('standingsBucket', () => {
         'bra.camp.gaucho',
       ),
     ).toBe('Relegation Group')
-    expect(
-      standingsBucket({ phase: 'QUARTER_FINALS', group_name: null }, 'bra.camp.gaucho'),
-    ).toBe(null)
+    expect(standingsBucket({ phase: 'QUARTER_FINALS', group_name: null }, 'bra.camp.gaucho')).toBe(
+      null,
+    )
   })
 
   it('ignores knockout phases without group_name', () => {
@@ -947,11 +944,18 @@ describe('StandingsTab — Gaúcho classificatória (ranking geral)', () => {
     const standings = computeStandings(matches, GAUCHO)
     expect(standings.has(GENERAL_RANKING)).toBe(true)
     expect(standings.has('Relegation Group')).toBe(true)
-    expect(standings.get(GENERAL_RANKING)!.map((t) => t.team_id).sort()).toEqual(['arg', 'bra'])
-    expect(standings.get('Relegation Group')!.map((t) => t.team_id).sort()).toEqual([
-      'aim',
-      'sao',
-    ])
+    expect(
+      standings
+        .get(GENERAL_RANKING)!
+        .map((t) => t.team_id)
+        .sort(),
+    ).toEqual(['arg', 'bra'])
+    expect(
+      standings
+        .get('Relegation Group')!
+        .map((t) => t.team_id)
+        .sort(),
+    ).toEqual(['aim', 'sao'])
     expect(standings.get(GENERAL_RANKING)!.find((t) => t.team_id === 'ypir')).toBeUndefined()
   })
 
@@ -990,16 +994,13 @@ describe('StandingsTab — Gaúcho classificatória (ranking geral)', () => {
   it('does not enable the Gaúcho exception when competitionCode is missing', async () => {
     mockFetch([gsMatch({ id: 'g-null', home_score: 1, away_score: 0 })])
     render(<StandingsTab competitionId="gaucho" competitionType="cup" />)
-    expect(
-      await screen.findByText('Esta competição não tem fase de grupos.'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Esta competição não tem fase de grupos.')).toBeInTheDocument()
     expect(screen.queryByText('Ranking geral')).not.toBeInTheDocument()
   })
 })
 
 describe('StandingsTab — empty state for eligible regional cups', () => {
-  const EMPTY_CLASSIFICATION =
-    'Ainda não há jogos das fases de classificação para montar a tabela.'
+  const EMPTY_CLASSIFICATION = 'Ainda não há jogos das fases de classificação para montar a tabela.'
   const NO_GROUPS = 'Esta competição não tem fase de grupos.'
 
   beforeEach(() => {
@@ -1015,11 +1016,7 @@ describe('StandingsTab — empty state for eligible regional cups', () => {
     async (code, competitionId) => {
       mockFetch([])
       render(
-        <StandingsTab
-          competitionId={competitionId}
-          competitionType="cup"
-          competitionCode={code}
-        />,
+        <StandingsTab competitionId={competitionId} competitionType="cup" competitionCode={code} />,
       )
       expect(await screen.findByText(EMPTY_CLASSIFICATION)).toBeInTheDocument()
       expect(screen.queryByText(NO_GROUPS)).not.toBeInTheDocument()

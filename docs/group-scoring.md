@@ -156,6 +156,16 @@ configuração, bônus e ranking no mesmo batch transacional, preservando pontos
 placar e pênaltis. A atualização não altera outros grupos nem as marcações de jogos
 já pontuados. O cron lê o valor vigente da regra ao gravar o bônus de classificado.
 
+## Regras do grupo na interface
+
+Qualquer membro abre "Regras do grupo" pelo menu "Opções do grupo" ou pelo link
+"Como pontua" abaixo do ranking. O texto vem de `web/src/lib/groupRules.ts` e usa os
+campos que `GET /groups/:id` já devolve. Os bônus de classificado e pênaltis só
+aparecem em competição de mata-mata e quando o valor é maior que zero. O ranking
+mostra o desempate na ordem do `ORDER BY` do servidor: pontos, placares exatos e
+quem entrou primeiro. Os exatos saem da lista quando o placar exato não vale mais
+que o resultado, porque nesse caso `exact_hits` fica sempre em zero.
+
 ## Observabilidade
 
 `logEvent('group_created', ...)` carrega `predictions_visibility` (blob5) e

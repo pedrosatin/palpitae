@@ -30,9 +30,10 @@ export function partitionSelectableCompetitions(
 }
 
 /** Lista única do select: andamento primeiro, depois as por começar. */
-export function selectableCompetitions(
-  competitions: Competition[],
-): { list: Competition[]; groups: CompetitionSelectGroups } {
+export function selectableCompetitions(competitions: Competition[]): {
+  list: Competition[]
+  groups: CompetitionSelectGroups
+} {
   const groups = partitionSelectableCompetitions(competitions)
   return { list: [...groups.ongoing, ...groups.upcoming], groups }
 }

@@ -12,6 +12,8 @@ interface GroupHeaderProps {
   }
   isAdmin: boolean
   onOpenRename: () => void
+  /** Abre as regras. Recebe o botão do menu para devolver o foco ao fechar. */
+  onOpenRules?: (opener: HTMLElement) => void
   onDeleteGroup: () => void
   deleting: boolean
   onLeaveGroup: () => void
@@ -21,6 +23,7 @@ interface GroupHeaderProps {
 interface GroupMenuProps {
   isAdmin: boolean
   onOpenRename: () => void
+  onOpenRules?: (opener: HTMLElement) => void
   onDeleteGroup: () => void
   deleting: boolean
   onLeaveGroup: () => void
@@ -30,6 +33,7 @@ interface GroupMenuProps {
 function GroupMenu({
   isAdmin,
   onOpenRename,
+  onOpenRules,
   onDeleteGroup,
   deleting,
   onLeaveGroup,
@@ -37,6 +41,7 @@ function GroupMenu({
 }: GroupMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const kebabRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -62,6 +67,7 @@ function GroupMenu({
   return (
     <div className={styles.menuWrap} ref={menuRef}>
       <button
+        ref={kebabRef}
         className={styles.kebabBtn}
         onClick={() => setMenuOpen((o) => !o)}
         aria-label="Opções do grupo"
@@ -72,6 +78,18 @@ function GroupMenu({
       </button>
       {menuOpen && (
         <div className={styles.menu} role="menu">
+          {onOpenRules && (
+            <button
+              className={styles.menuItemNeutral}
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false)
+                if (kebabRef.current) onOpenRules(kebabRef.current)
+              }}
+            >
+              Regras do grupo
+            </button>
+          )}
           {isAdmin ? (
             <>
               <button
@@ -119,6 +137,7 @@ export function GroupHeader({
   group,
   isAdmin,
   onOpenRename,
+  onOpenRules,
   onDeleteGroup,
   deleting,
   onLeaveGroup,
@@ -133,6 +152,7 @@ export function GroupHeader({
           <GroupMenu
             isAdmin={isAdmin}
             onOpenRename={onOpenRename}
+            onOpenRules={onOpenRules}
             onDeleteGroup={onDeleteGroup}
             deleting={deleting}
             onLeaveGroup={onLeaveGroup}

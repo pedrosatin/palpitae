@@ -3,7 +3,13 @@ import { partitionSelectableCompetitions, selectableCompetitions } from './compe
 import type { Competition } from './types'
 
 function comp(partial: Partial<Competition> & { id: string }): Competition {
-  return { name: `Comp ${partial.id}`, slug: partial.id, season: '2026', status: 'upcoming', ...partial }
+  return {
+    name: `Comp ${partial.id}`,
+    slug: partial.id,
+    season: '2026',
+    status: 'upcoming',
+    ...partial,
+  }
 }
 
 describe('partitionSelectableCompetitions', () => {

@@ -28,9 +28,7 @@ async function fetchGroupPredictions(groupId: string): Promise<{
   importCompleted: boolean
   importSources: ImportSources
 }> {
-  const res = await apiFetch(
-    `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
-  )
+  const res = await apiFetch(`${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`)
   if (!res.ok) throw new Error('Erro ao carregar palpites')
   const data = (await res.json()) as PredictionsResponse
   const predictions: PredictionMap = new Map()

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
@@ -73,8 +73,20 @@ vi.mock('../../components/StandingsTab', async (importOriginal) => {
 })
 
 vi.mock('../../components/LeaderboardTab', () => ({
-  default: ({ groupId }: { groupId: string }) => (
-    <div data-testid="leaderboard-tab">LeaderboardTab:{groupId}</div>
+  default: ({
+    groupId,
+    tiebreakNote,
+    onOpenRules,
+  }: {
+    groupId: string
+    tiebreakNote?: string
+    onOpenRules?: (opener: HTMLElement) => void
+  }) => (
+    <div data-testid="leaderboard-tab">
+      LeaderboardTab:{groupId}
+      <span>{tiebreakNote}</span>
+      <button onClick={(e) => onOpenRules?.(e.currentTarget)}>Como pontua</button>
+    </div>
   ),
 }))
 
@@ -107,6 +119,11 @@ const baseGroup = {
   user_position: 1,
   user_points: 10,
   exact_hits: 2,
+  points_exact: 3,
+  points_winner: 1,
+  points_penalty: 1,
+  points_classified: 0,
+  predictions_visibility: 'hidden',
 }
 
 function mockGroupFetch(group = baseGroup, ok = true) {
@@ -707,5 +724,69 @@ describe('GroupDetailPage – standings tab gate (competition_type)', () => {
     expect(screen.queryByTestId('standings-tab')).not.toBeInTheDocument()
     // painel default (Palpitar) ativo no lugar de um painel vazio
     expect(screen.getByRole('link', { name: /Palpitar/i })).toHaveClass(/tabActive/i)
+  })
+})
+
+describe('GroupDetailPage – regras do grupo', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('abre as regras pelo menu do cabeçalho para um membro não admin e devolve o foco ao fechar com Esc', async () => {
+    const user = userEvent.setup()
+    mockGroupFetch()
+    renderPage('/groups/abc')
+
+    const kebab = await screen.findByRole('button', { name: 'Opções do grupo' })
+    await user.click(kebab)
+    await user.click(screen.getByRole('menuitem', { name: 'Regras do grupo' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('Placar exato vale 3 pontos.')).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Os palpites dos outros só aparecem depois que o jogo começa.'),
+    ).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(kebab).toHaveFocus()
+  })
+
+  it('mostra visibilidade pública e bônus do mata-mata', async () => {
+    const user = userEvent.setup()
+    mockGroupFetch({
+      ...baseGroup,
+      competition_type: 'cup',
+      points_classified: 2,
+      predictions_visibility: 'public',
+    })
+    renderPage('/groups/abc')
+
+    await user.click(await screen.findByRole('button', { name: 'Opções do grupo' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Regras do grupo' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText(/Os palpites de todos ficam visíveis/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Classificado vale mais 2 pontos/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Pênaltis valem mais 1 ponto/)).toBeInTheDocument()
+  })
+
+  it('abre as regras pelo link do ranking e devolve o foco ao link', async () => {
+    const user = userEvent.setup()
+    mockGroupFetch()
+    renderPage('/groups/abc')
+
+    await user.click(await screen.findByRole('link', { name: /Ranking/i }))
+    expect(
+      await screen.findByText(/Desempate: mais pontos, depois mais placares exatos/),
+    ).toBeInTheDocument()
+    const link = screen.getByRole('button', { name: 'Como pontua' })
+    await user.click(link)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Fechar' }))
+
+    expect(link).toHaveFocus()
   })
 })

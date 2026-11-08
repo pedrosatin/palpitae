@@ -785,7 +785,12 @@ describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
   function rescheduledRound21() {
     return [
       ...Array.from({ length: 9 }, (_, i) =>
-        makeMatch({ id: `m21-${i}`, round: '21', status: 'finished', start_time: days(-100 + i * 10) }),
+        makeMatch({
+          id: `m21-${i}`,
+          round: '21',
+          status: 'finished',
+          start_time: days(-100 + i * 10),
+        }),
       ),
       makeMatch({ id: 'm21-cha-vas', round: '21', status: 'scheduled', start_time: days(7) }),
       makeMatch({ id: 'm34', round: '34', status: 'finished', start_time: days(-5) }),
@@ -823,7 +828,12 @@ describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
       ...Array.from({ length: 9 }, (_, i) =>
         makeMatch({ id: `m${round}-${i}`, round, status: 'finished', start_time: days(from + i) }),
       ),
-      makeMatch({ id: `m${round}-remarcado`, round, status: 'scheduled', start_time: rescheduledAt }),
+      makeMatch({
+        id: `m${round}-remarcado`,
+        round,
+        status: 'scheduled',
+        start_time: rescheduledAt,
+      }),
     ]
     mockFetch(
       [

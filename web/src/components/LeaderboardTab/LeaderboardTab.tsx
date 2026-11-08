@@ -9,9 +9,18 @@ import type { Member } from './types'
 interface LeaderboardTabProps {
   groupId: string
   currentUserId: string
+  /** Critério de desempate mostrado sob a tabela. */
+  tiebreakNote?: string
+  /** Abre as regras do grupo. Recebe o botão para devolver o foco ao fechar. */
+  onOpenRules?: (opener: HTMLElement) => void
 }
 
-export default function LeaderboardTab({ groupId, currentUserId }: LeaderboardTabProps) {
+export default function LeaderboardTab({
+  groupId,
+  currentUserId,
+  tiebreakNote,
+  onOpenRules,
+}: LeaderboardTabProps) {
   const { members, loading, error } = useGroupMembers(groupId)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
 
@@ -108,6 +117,24 @@ export default function LeaderboardTab({ groupId, currentUserId }: LeaderboardTa
           </tbody>
         </table>
       </div>
+
+      {(tiebreakNote || onOpenRules) && (
+        <p className={styles.rulesNote}>
+          {tiebreakNote && <span>{tiebreakNote}</span>}
+          {onOpenRules && (
+            <button
+              type="button"
+              className={styles.rulesLink}
+              onClick={(event) => {
+                trackEvent('click_leaderboard_como_pontua')
+                onOpenRules(event.currentTarget)
+              }}
+            >
+              Como pontua
+            </button>
+          )}
+        </p>
+      )}
 
       {selectedMember && (
         <PredictionsModal member={selectedMember} groupId={groupId} onClose={closeModal} />

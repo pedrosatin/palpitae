@@ -459,7 +459,13 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
         }),
         ongoingGroup('borracharia', 'Borracharia', {
           pending_predictions: 2,
-          next_deadline: { ...deadline, match_id: 'm-r35', start_time: '2026-11-18T22:00:00Z', round: '35', round_label: 'Rodada 35' },
+          next_deadline: {
+            ...deadline,
+            match_id: 'm-r35',
+            start_time: '2026-11-18T22:00:00Z',
+            round: '35',
+            round_label: 'Rodada 35',
+          },
           next_match_at: '2026-11-14T21:30:00Z',
         }),
         ongoingGroup('copa', 'Copa BR', { live_matches: 1, next_match_at: '2026-11-19T22:00:00Z' }),
@@ -485,7 +491,9 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     const banner = await screen.findByRole('region', { name: 'Próximo prazo' })
     // O status de todos os grupos vem no mesmo GET /groups.
     expect(fetchSpy).toHaveBeenCalledTimes(1)
-    expect(within(banner).getByText('Chapecoense × Vasco fecha sáb, 14/11 às 18:30')).toBeInTheDocument()
+    expect(
+      within(banner).getByText('Chapecoense × Vasco fecha sáb, 14/11 às 18:30'),
+    ).toBeInTheDocument()
     expect(within(banner).getByText('Rodada 21 · 12 sem palpite em 2 grupos')).toBeInTheDocument()
     const action = within(banner).getByRole('link', { name: 'Palpitar em Realidade do BR' })
     expect(action).toHaveAttribute('href', '/grupos/realidade?rodada=21')
