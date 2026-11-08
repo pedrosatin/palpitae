@@ -269,6 +269,11 @@ export default function PredictionsTab({
                 leg1Pending={
                   leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts).pending
                 }
+                leg1Match={
+                  match.leg1_match_id
+                    ? matches.find((m) => m.id === match.leg1_match_id)
+                    : undefined
+                }
                 groupId={groupId}
                 outcomeOnly={pointsExact === 0}
                 onSaved={handleSaved}

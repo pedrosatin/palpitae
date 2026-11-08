@@ -90,6 +90,10 @@ A API de jogos retorna `decides_on_penalties`, `tie_role` e `leg1_match_id`. O v
 entre jogos não contém palpites de usuários. A interface combina esse vínculo
 com os palpites do próprio usuário para decidir se mostra o seletor.
 
+O card da volta mostra o placar real da ida e, com a volta encerrada, o agregado
+e quem avançou. Com a volta aberta e a ida palpitada, mostra o agregado previsto.
+É só informação e não muda a pontuação.
+
 ### Placar canônico (regressão do bug do `fullTime`)
 
 O palpite compara contra `regularTime + extraTime` (sem os gols de pênalti). Em
