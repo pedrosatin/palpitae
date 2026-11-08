@@ -11,6 +11,7 @@ import { parsePendingSummary, type PendingSummary } from './pendingPredictions'
 import { fetchDeadlineMatches, groupsListBinds, groupsListSql, type DeadlineMatch } from './groupsList'
 import { fetchLiveMatchesByCompetition } from './liveMatches'
 import { competitionStatusSql } from './competitionStatus'
+import { getRoundStandings } from './roundStandings'
 
 const router = new Hono<AppContext>()
 
@@ -864,7 +865,7 @@ router.get('/:id/members', requireAuth, async (c) => {
        LEFT JOIN profiles p ON gm.user_id = p.user_id
        LEFT JOIN leaderboard l ON gm.group_id = l.group_id AND gm.user_id = l.user_id
        WHERE gm.group_id = ?
-       ORDER BY total_points DESC, exact_hits DESC, gm.joined_at ASC`,
+       ORDER BY total_points DESC, exact_hits DESC, gm.joined_at ASC, gm.user_id ASC`,
     )
     .bind(groupId)
     .all<{
@@ -878,6 +879,22 @@ router.get('/:id/members', requireAuth, async (c) => {
     }>()
 
   return c.json({ members: members.results })
+})
+
+/**
+ * GET /groups/:id/round-standings
+ *
+ * Pontos de cada membro na última rodada encerrada e a variação de posição (ADR-021).
+ * Mesmo acesso de GET /groups/:id/members.
+ *
+ * Response:
+ * { round: "34", standings: [{ user_id, round_points, position_change }] }
+ * Sem rodada de referência: { round: null, standings: [] }
+ */
+router.get('/:id/round-standings', requireAuth, async (c) => {
+  const gate = await requireGroupMembership(c)
+  if ('error' in gate) return gate.error
+  return c.json(await getRoundStandings(gate.db, gate.groupId))
 })
 
 /**

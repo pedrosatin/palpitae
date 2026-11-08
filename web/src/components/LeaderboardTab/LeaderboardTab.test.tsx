@@ -28,13 +28,28 @@ const members = [
   },
 ]
 
-function mockFetch() {
+type RoundStandingsBody = {
+  round: string | null
+  standings: { user_id: string; round_points: number; position_change: number | null }[]
+}
+
+const noRound: RoundStandingsBody = { round: null, standings: [] }
+
+function mockFetch(roundStandings: RoundStandingsBody | Error | Promise<Response> = noRound) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
     if (u.includes('/predictions/user')) {
       return Promise.resolve({
         ok: true,
         json: async () => ({ predictions: [] }),
+      } as Response)
+    }
+    if (u.includes('/round-standings')) {
+      if (roundStandings instanceof Promise) return roundStandings
+      if (roundStandings instanceof Error) return Promise.reject(roundStandings)
+      return Promise.resolve({
+        ok: true,
+        json: async () => roundStandings,
       } as Response)
     }
     if (u.includes('/members')) {
@@ -74,6 +89,161 @@ describe('LeaderboardTab header and badges', () => {
     const badges = screen.getByText('admin').parentElement as HTMLElement
     expect(badges).toContainElement(screen.getByText('você'))
     expect(badges.parentElement).toContainElement(screen.getByText('Pedro'))
+  })
+})
+
+describe('LeaderboardTab rodada', () => {
+  const round34: RoundStandingsBody = {
+    round: '34',
+    standings: [
+      { user_id: 'u1', round_points: 7, position_change: 2 },
+      { user_id: 'u2', round_points: 0, position_change: -1 },
+    ],
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function rowOf(name: string) {
+    return screen.getByText(name).closest('tr') as HTMLElement
+  }
+
+  it('mostra a coluna da rodada entre Jogador e Pontos, com nome completo para leitor de tela', async () => {
+    mockFetch(round34)
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(headers[1]).toBe('Jogador')
+    expect(headers[3]).toContain('Pontos')
+
+    const column = screen.getByRole('columnheader', { name: 'Pontos na rodada 34' })
+    expect(within(column).getByText('Rodada 34')).toHaveAttribute('aria-hidden', 'true')
+    expect(within(column).getByText('R34')).toHaveAttribute('aria-hidden', 'true')
+    expect(within(column).getByText('Pontos na rodada 34')).not.toHaveAttribute('aria-hidden')
+  })
+
+  it('mostra +N para pontos positivos e 0 para zero', async () => {
+    mockFetch(round34)
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(within(rowOf('Pedro')).getByText('+7')).toBeInTheDocument()
+    expect(within(rowOf('Ana')).getByText('0')).toBeInTheDocument()
+  })
+
+  it('mostra traço para membro sem linha na resposta', async () => {
+    mockFetch({
+      round: '34',
+      standings: [{ user_id: 'u1', round_points: 7, position_change: 0 }],
+    })
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(within(rowOf('Ana')).getByText('–')).toBeInTheDocument()
+  })
+
+  it('mostra as setas com a variação em texto para leitor de tela', async () => {
+    mockFetch(round34)
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    const pedro = within(rowOf('Pedro'))
+    expect(pedro.getByText('▲2')).toHaveAttribute('aria-hidden', 'true')
+    expect(pedro.getByText('subiu 2 posições')).toBeInTheDocument()
+    const ana = within(rowOf('Ana'))
+    expect(ana.getByText('▼1')).toHaveAttribute('aria-hidden', 'true')
+    expect(ana.getByText('caiu 1 posição')).toBeInTheDocument()
+  })
+
+  it('não mostra seta para variação 0 ou null', async () => {
+    mockFetch({
+      round: '34',
+      standings: [
+        { user_id: 'u1', round_points: 7, position_change: 0 },
+        { user_id: 'u2', round_points: 3, position_change: null },
+      ],
+    })
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.queryByText(/[▲▼]/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/subiu|caiu/)).not.toBeInTheDocument()
+  })
+
+  it('não mostra a coluna nem o aviso com round null', async () => {
+    mockFetch(noRound)
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.getAllByRole('columnheader')).toHaveLength(4)
+    expect(screen.queryByText(/As setas comparam/)).not.toBeInTheDocument()
+  })
+
+  it('mostra o aviso das setas quando há ao menos uma variação', async () => {
+    mockFetch(round34)
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(
+      screen.getByText('As setas comparam com a posição antes da rodada 34.'),
+    ).toBeInTheDocument()
+  })
+
+  it('não mostra o aviso das setas na primeira rodada, em que toda variação é null', async () => {
+    mockFetch({
+      round: '1',
+      standings: [
+        { user_id: 'u1', round_points: 7, position_change: null },
+        { user_id: 'u2', round_points: 3, position_change: null },
+      ],
+    })
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.getByRole('columnheader', { name: 'Pontos na rodada 1' })).toBeInTheDocument()
+    expect(screen.queryByText(/As setas comparam/)).not.toBeInTheDocument()
+  })
+
+  it('segue sem erro de tela e sem coluna quando o endpoint da rodada falha', async () => {
+    mockFetch(new Error('falhou'))
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.getAllByRole('columnheader')).toHaveLength(4)
+    expect(screen.queryByText(/[▲▼]/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('só desenha a tabela depois da resposta da rodada', async () => {
+    let finish: (r: Response) => void = () => {}
+    mockFetch(new Promise<Response>((resolve) => (finish = resolve)))
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() =>
+      expect(vi.mocked(globalThis.fetch).mock.calls.map((c) => c[0].toString())).toEqual(
+        expect.arrayContaining([expect.stringContaining('/members')]),
+      ),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByText('Ana')).not.toBeInTheDocument()
+    expect(screen.getByText('Carregando classificação...')).toBeInTheDocument()
+
+    finish({ ok: true, json: async () => round34 } as Response)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.getByRole('columnheader', { name: 'Pontos na rodada 34' })).toBeInTheDocument()
+  })
+
+  it('mostra o erro assim que a lista de membros falha, sem esperar a rodada', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      if (url.toString().includes('/round-standings')) return new Promise<Response>(() => {})
+      return Promise.resolve({ ok: false, json: async () => ({}) } as Response)
+    })
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Erro ao carregar membros'))
   })
 })
 

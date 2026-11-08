@@ -148,11 +148,18 @@ type Leg1PredictionInfo = {
   predicted_away_score: number
 }
 
+/** Pontos de um palpite no ranking. Exige o alias `p` para `predictions`. */
+export const PREDICTION_POINTS_SQL = 'p.points_awarded + p.penalty_points + p.classified_points'
+
+/** 1 quando o palpite cravou o placar. Exige os aliases `p` (`predictions`) e `g` (`groups`). */
+export const EXACT_HIT_SQL =
+  'CASE WHEN g.points_exact > g.points_winner AND p.points_awarded = g.points_exact THEN 1 ELSE 0 END'
+
 function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
   return db
     .prepare(`INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
-    SELECT p.group_id, p.user_id, SUM(p.points_awarded + p.penalty_points + p.classified_points),
-      SUM(CASE WHEN g.points_exact > g.points_winner AND p.points_awarded = g.points_exact THEN 1 ELSE 0 END), ?
+    SELECT p.group_id, p.user_id, SUM(${PREDICTION_POINTS_SQL}),
+      SUM(${EXACT_HIT_SQL}), ?
     FROM predictions p JOIN groups g ON g.id = p.group_id
     WHERE p.group_id IN (SELECT value FROM json_each(?)) GROUP BY p.group_id, p.user_id
     ON CONFLICT (group_id, user_id) DO UPDATE SET total_points = excluded.total_points,
