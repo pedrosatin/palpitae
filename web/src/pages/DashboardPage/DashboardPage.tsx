@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Button from '../../components/Button'
 import CreateGroupModal from '../../components/CreateGroupModal'
@@ -156,10 +156,11 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
   const canCreateGroup = user.feature_flags?.create_group ?? false
 
-  const { groups, loading, error, joinOpen, setJoinOpen, fetchGroups } = useDashboardGroups({
-    userId: user.id,
-    normalizedPendingInvite,
-  })
+  const { groups, loading, error, joinOpen, setJoinOpen, matchedInviteGroupId, fetchGroups } =
+    useDashboardGroups({
+      userId: user.id,
+      normalizedPendingInvite,
+    })
 
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -169,10 +170,24 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     // cuida do próprio estado de finalização.
   }
 
+  /** Abre o grupo vindo do convite; troca a entrada `?convite=` do histórico. */
+  const openGroupFromInvite = useCallback(
+    (groupId: string) => {
+      navigate(`/grupos/${groupId}`, pendingInvite ? { replace: true } : undefined)
+    },
+    [navigate, pendingInvite],
+  )
+
   function handleGroupJoined(group: { id: string; name: string }) {
     invalidateApiCache('groups:')
-    navigate(`/grupos/${group.id}`, pendingInvite ? { replace: true } : undefined)
+    openGroupFromInvite(group.id)
   }
+
+  // Convite de um grupo em que o usuário já está: vai direto para o grupo em vez
+  // de deixar o painel parado com `?convite=` na URL.
+  useEffect(() => {
+    if (matchedInviteGroupId) openGroupFromInvite(matchedInviteGroupId)
+  }, [matchedInviteGroupId, openGroupFromInvite])
 
   return (
     <>
@@ -184,7 +199,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
       />
 
       <main className={styles.root}>
-        {loading ? (
+        {loading || matchedInviteGroupId ? (
           <div className={styles.loadingContainer}>
             <p>Carregando...</p>
           </div>

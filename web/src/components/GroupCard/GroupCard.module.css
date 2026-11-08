@@ -34,25 +34,20 @@
 /* ─── Header ────────────────────────────────────────────────────────────── */
 
 .header {
-  /* Ancora o tooltip da badge: se a badge descer para a esquerda, o tooltip segue
-     preso à direita do header e não corta na borda da tela. */
-  position: relative;
+  /* Título em cima, badges sempre numa linha própria logo abaixo. Com as badges
+     ao lado do título, nomes curtos e longos davam cards de estrutura diferente
+     na mesma linha do grid; empilhadas, a posição é a mesma em todo card e o
+     título nunca é coberto. */
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  /* Quando título e badges não cabem na mesma linha, as badges descem em vez de
-     cobrir o título. */
-  flex-wrap: wrap;
-  gap: var(--space-3);
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
 }
 
 .name {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   margin: 0;
-  /* Base auto: a largura do texto decide a quebra do header. Com base 0 o título
-     encolheria até a badge encostar nele e a quebra nunca aconteceria. */
-  flex: 1 1 auto;
   min-width: 0;
   /* Nome sem espaços maior que o card quebra em vez de vazar. */
   overflow-wrap: anywhere;
@@ -60,7 +55,11 @@
 }
 
 .badges {
+  /* Ancora o tooltip da badge de campeonato no início da linha de badges, para
+     ele não cortar na borda da tela. */
+  position: relative;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
   min-width: 0;
@@ -69,14 +68,15 @@
 .badgeWrapper {
   display: inline-flex;
   min-width: 0;
-  max-width: 7.5rem;
+  max-width: 100%;
 }
 
 .badgeWrapper::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 6px);
-  right: 0;
+  left: 0;
+  max-width: 100%;
   z-index: 20;
   padding: var(--space-2) var(--space-3);
   background-color: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
@@ -86,7 +86,6 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
-  white-space: nowrap;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.15s;
@@ -103,10 +102,11 @@
   font-weight: var(--font-weight-semibold);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
+  /* Nome do campeonato inteiro: se não couber na largura do card, quebra entre
+     palavras em vez de virar "Liga dos Cam…". */
+  white-space: normal;
+  overflow-wrap: break-word;
+  min-width: 0;
 }
 
 .ownerBadge {

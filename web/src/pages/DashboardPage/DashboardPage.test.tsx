@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import { config } from '../../config'
 import DashboardPage from './DashboardPage'
@@ -67,7 +67,7 @@ describe('DashboardPage', () => {
     expect(String(fetchSpy.mock.calls[0]?.[0])).toBe('/api/groups?invite_code=INV123')
   })
 
-  it('does not open the join modal from convite query when the user already belongs to that group', async () => {
+  it('opens the group with replace when the convite belongs to a group the user already joined', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockGroupsResponse(
         [
@@ -87,16 +87,22 @@ describe('DashboardPage', () => {
       ),
     )
 
+    function GroupRoute() {
+      const location = useLocation()
+      const navigationType = useNavigationType()
+      return <p>{`grupo ${location.pathname} ${navigationType}`}</p>
+    }
+
     render(
       <MemoryRouter initialEntries={['/?convite=INV123']}>
-        <DashboardPage user={user} onLogout={vi.fn()} />
+        <Routes>
+          <Route path="/" element={<DashboardPage user={user} onLogout={vi.fn()} />} />
+          <Route path="/grupos/:id" element={<GroupRoute />} />
+        </Routes>
       </MemoryRouter>,
     )
 
-    await waitFor(() => {
-      expect(screen.getByText('Seus grupos')).toBeInTheDocument()
-    })
-
+    expect(await screen.findByText('grupo /grupos/g1 REPLACE')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 

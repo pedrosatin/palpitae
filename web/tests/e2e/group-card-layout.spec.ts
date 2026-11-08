@@ -71,6 +71,8 @@ function measureHeaders(page: Page) {
       const left = linkBox.left + parseFloat(linkStyle.paddingLeft)
       const right = linkBox.right - parseFloat(linkStyle.paddingRight)
       const isInside = (rect: DOMRect) => rect.left >= left - 0.5 && rect.right <= right + 0.5
+      const titleBottom = Math.max(...textRects.map((rect) => rect.bottom))
+      const competition = title.parentElement!.querySelector<HTMLElement>('[data-tooltip] > span')!
 
       return {
         name: title.textContent,
@@ -87,14 +89,18 @@ function measureHeaders(page: Page) {
         ),
         textInsideCard: textRects.every(isInside),
         badgesInsideCard: badgeRects.every(isInside),
+        // Badges sempre na linha de baixo, com nome curto ou longo.
+        badgesBelowTitle: badgeRects.every((badge) => badge.top >= titleBottom - 0.5),
+        // Campeonato inteiro, sem reticências: o texto não excede a caixa da badge.
+        competitionTruncated: competition.scrollWidth > competition.clientWidth + 0.5,
       }
     }),
   )
 }
 
 test.describe('Cabeçalho do card de grupo', () => {
-  for (const width of [320, 360, 412, 1024]) {
-    test(`título e badges não se sobrepõem em ${width}px`, async ({ page }) => {
+  for (const width of [320, 360, 390, 412, 1024, 1491]) {
+    test(`badges abaixo do título, sem sobreposição nem corte, em ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 })
       await mockDashboard(page)
       await page.goto('/')
@@ -109,10 +115,12 @@ test.describe('Cabeçalho do card de grupo', () => {
           overlaps: false,
           textInsideCard: true,
           badgesInsideCard: true,
+          badgesBelowTitle: true,
+          competitionTruncated: false,
         })
       }
 
-      // As badges cedem a linha: uma palavra que cabe no card não se parte.
+      // Uma palavra que cabe no card não se parte.
       expect(headers.find((header) => header.name === 'Champions')?.lines).toBe(1)
     })
   }
