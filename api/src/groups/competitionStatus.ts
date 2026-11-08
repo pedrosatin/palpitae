@@ -27,27 +27,32 @@ export const TITLE_FINAL_PHASES = ['FINAL', 'PLAYOFFS_FINAL', 'TACA_GUANABARA_FI
  * Nos outros casos vale a coluna.
  *
  * O fragmento usa os aliases do grupo e da competição, `g` e `c` por padrão,
- * com a competição vinda de `LEFT JOIN competitions c`. Não usa binds. Cada
+ * com a competição vinda de `LEFT JOIN competitions c`. Sem grupo na consulta
+ * (lista de competições), `competitionIdExpr` aponta o id, como `c.id`. Não usa binds. Cada
  * subquery busca os jogos pelo prefixo `competition_id` de
  * `idx_matches_comp_round_start`. A busca da final roda por último e só para
  * copa sem jogo pendente.
  */
-export function competitionStatusSql(groupAlias = 'g', competitionAlias = 'c'): string {
+export function competitionStatusSql(
+  groupAlias = 'g',
+  competitionAlias = 'c',
+  competitionIdExpr = `${groupAlias}.competition_id`,
+): string {
   const finalPhases = TITLE_FINAL_PHASES.map((phase) => `'${phase}'`).join(', ')
   return `CASE
             WHEN ${competitionAlias}.status = 'finished' THEN 'finished'
             WHEN EXISTS (
-              SELECT 1 FROM matches m WHERE m.competition_id = ${groupAlias}.competition_id
+              SELECT 1 FROM matches m WHERE m.competition_id = ${competitionIdExpr}
             )
             AND NOT EXISTS (
               SELECT 1 FROM matches m
-              WHERE m.competition_id = ${groupAlias}.competition_id AND m.status != 'finished'
+              WHERE m.competition_id = ${competitionIdExpr} AND m.status != 'finished'
             )
             AND (
               ${competitionAlias}.type = 'league'
               OR EXISTS (
                 SELECT 1 FROM matches m
-                WHERE m.competition_id = ${groupAlias}.competition_id
+                WHERE m.competition_id = ${competitionIdExpr}
                   AND m.phase IN (${finalPhases})
               )
             )
