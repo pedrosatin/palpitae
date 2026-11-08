@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import { isMatchLocked } from '../../lib/predictionDrafts'
+import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 
@@ -255,7 +256,8 @@ function usePredictionsImport(
   }
 }
 
-export function usePredictionsTab(groupId: string, competitionId: string) {
+/** `userId` liga a guarda dos rascunhos no navegador; sem ele, ficam só na memória. */
+export function usePredictionsTab(groupId: string, competitionId: string, userId?: string) {
   const {
     matches,
     predictions,
@@ -317,6 +319,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
 
   const {
     drafts,
+    unsavedDrafts,
     savingAll,
     savedAll,
     hasSavedPredictions,
@@ -333,11 +336,13 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     setPredictions,
     selectedRound,
     matches,
+    userId ? draftStorageKey(userId, groupId) : null,
   )
 
   return {
     importCompleted,
     drafts,
+    unsavedDrafts,
     matches,
     predictions,
     loading,

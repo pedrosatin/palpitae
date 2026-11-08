@@ -151,3 +151,47 @@ export function collectRoundDrafts({
 
   return out
 }
+
+export type UnsavedDrafts = {
+  drafts: Map<string, ScoreDraft>
+  penaltyDrafts: Map<string, PenaltyWinner>
+}
+
+export type PruneUnsavedDraftsInput = UnsavedDrafts & {
+  matches: Match[]
+  predictions: Map<string, Prediction>
+}
+
+/**
+ * Rascunhos que ainda valem guardar: de jogo conhecido e aberto, completos e
+ * diferentes do palpite salvo. Placar e pênalti são julgados em separado — um
+ * placar igual ao salvo sai, o pênalti alterado do mesmo jogo fica.
+ */
+export function pruneUnsavedDrafts({
+  matches,
+  predictions,
+  drafts,
+  penaltyDrafts,
+}: PruneUnsavedDraftsInput): UnsavedDrafts {
+  const open = new Set(
+    matches.filter((m) => !isMatchLocked(m, predictions.get(m.id))).map((m) => m.id),
+  )
+  const keptDrafts = new Map<string, ScoreDraft>()
+  for (const [matchId, draft] of drafts) {
+    if (!open.has(matchId) || draft.home === '' || draft.away === '') continue
+    const saved = predictions.get(matchId)
+    const sameAsSaved =
+      saved !== undefined &&
+      Number(draft.home) === saved.predicted_home_score &&
+      Number(draft.away) === saved.predicted_away_score
+    if (!sameAsSaved) keptDrafts.set(matchId, draft)
+  }
+  const keptPenalties = new Map<string, PenaltyWinner>()
+  for (const [matchId, winner] of penaltyDrafts) {
+    if (!open.has(matchId)) continue
+    if (winner !== (predictions.get(matchId)?.predicted_penalty_winner ?? null)) {
+      keptPenalties.set(matchId, winner)
+    }
+  }
+  return { drafts: keptDrafts, penaltyDrafts: keptPenalties }
+}

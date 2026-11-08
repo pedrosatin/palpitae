@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeMatch } from '../components/matchFixtures'
-import { collectRoundDrafts } from './predictionDrafts'
+import { collectRoundDrafts, pruneUnsavedDrafts } from './predictionDrafts'
 import type { Prediction } from '../components/MatchCard'
 
 const past = new Date(Date.now() - 3_600_000).toISOString()
@@ -186,5 +186,75 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
         predictions: new Map([['m1', pred()]]),
       }),
     ).toEqual([])
+  })
+})
+
+describe('pruneUnsavedDrafts', () => {
+  const open = makeMatch({ id: 'm1' })
+
+  it('mantém placar diferente do salvo e descarta o igual', () => {
+    const { drafts } = pruneUnsavedDrafts({
+      matches: [open, makeMatch({ id: 'm2' })],
+      predictions: new Map([
+        ['m1', pred()],
+        ['m2', pred({ match_id: 'm2', predicted_home_score: 2, predicted_away_score: 2 })],
+      ]),
+      drafts: new Map([
+        ['m1', { home: '3', away: '0' }],
+        ['m2', { home: '2', away: '2' }],
+      ]),
+      penaltyDrafts: new Map(),
+    })
+    expect([...drafts]).toEqual([['m1', { home: '3', away: '0' }]])
+  })
+
+  it('mantém rascunho de jogo sem palpite salvo, inclusive 0×0', () => {
+    const { drafts } = pruneUnsavedDrafts({
+      matches: [open],
+      predictions: new Map(),
+      drafts: new Map([['m1', { home: '0', away: '0' }]]),
+      penaltyDrafts: new Map(),
+    })
+    expect(drafts.get('m1')).toEqual({ home: '0', away: '0' })
+  })
+
+  it('descarta jogo travado, jogo desconhecido e campo vazio', () => {
+    const result = pruneUnsavedDrafts({
+      matches: [
+        makeMatch({ id: 'started', start_time: past }),
+        makeMatch({ id: 'live', status: 'live' }),
+        makeMatch({ id: 'typing' }),
+      ],
+      predictions: new Map(),
+      drafts: new Map([
+        ['started', { home: '1', away: '0' }],
+        ['live', { home: '1', away: '0' }],
+        ['gone', { home: '1', away: '0' }],
+        ['typing', { home: '', away: '2' }],
+      ]),
+      penaltyDrafts: new Map([
+        ['started', 'home'],
+        ['gone', 'away'],
+      ]),
+    })
+    expect(result.drafts.size).toBe(0)
+    expect(result.penaltyDrafts.size).toBe(0)
+  })
+
+  it('julga o pênalti em separado do placar', () => {
+    const result = pruneUnsavedDrafts({
+      matches: [open, makeMatch({ id: 'm2' })],
+      predictions: new Map([
+        ['m1', pred({ predicted_home_score: 1, predicted_away_score: 1, predicted_penalty_winner: 'home' })],
+        ['m2', pred({ match_id: 'm2', predicted_penalty_winner: 'away' })],
+      ]),
+      drafts: new Map([['m1', { home: '1', away: '1' }]]),
+      penaltyDrafts: new Map([
+        ['m1', 'away'],
+        ['m2', 'away'],
+      ]),
+    })
+    expect(result.drafts.size).toBe(0)
+    expect([...result.penaltyDrafts]).toEqual([['m1', 'away']])
   })
 })

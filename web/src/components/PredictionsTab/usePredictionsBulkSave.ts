@@ -1,10 +1,17 @@
-import { useState, useRef, useEffect, Dispatch, SetStateAction } from 'react'
+import { useState, useRef, useEffect, useMemo, Dispatch, SetStateAction } from 'react'
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
+import { useBeforeUnloadWarning } from '../../hooks/useBeforeUnloadWarning'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { predictedClassified } from '../../lib/predictedTie'
-import { collectRoundDrafts } from '../../lib/predictionDrafts'
+import {
+  collectRoundDrafts,
+  pruneUnsavedDrafts,
+  type PenaltyWinner,
+  type ScoreDraft,
+} from '../../lib/predictionDrafts'
+import { emptyDrafts, readStoredDrafts, writeStoredDrafts } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
 
 type PredictionMap = Map<string, Prediction>
@@ -58,9 +65,13 @@ function applyPredictionUpdate(
   return next
 }
 
-function usePredictionDrafts() {
-  const [drafts, setDrafts] = useState<Map<string, { home: string; away: string }>>(new Map())
-  const [penaltyDrafts, setPenaltyDrafts] = useState<Map<string, 'home' | 'away' | null>>(new Map())
+/** Rascunhos em memória, começando pelo que ficou guardado no navegador. */
+function usePredictionDrafts(storageKey: string | null) {
+  const [stored] = useState(() => (storageKey ? readStoredDrafts(storageKey) : emptyDrafts()))
+  const [drafts, setDrafts] = useState<Map<string, ScoreDraft>>(stored.drafts)
+  const [penaltyDrafts, setPenaltyDrafts] = useState<Map<string, PenaltyWinner>>(
+    stored.penaltyDrafts,
+  )
 
   function handleDraftChange(matchId: string, home: string, away: string) {
     setDrafts((prev) => {
@@ -133,8 +144,24 @@ export function usePredictionsBulkSave(
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
   selectedRound: string | undefined,
   allMatches: Match[] = roundMatches,
+  storageKey: string | null = null,
 ) {
-  const { drafts, penaltyDrafts, handleDraftChange, handlePenaltyDraftChange } = usePredictionDrafts()
+  const { drafts, penaltyDrafts, handleDraftChange, handlePenaltyDraftChange } =
+    usePredictionDrafts(storageKey)
+
+  // Só o que ainda difere do salvo, em jogo aberto, vai para o storage e
+  // segura o aviso de saída. Salvar (um card ou todos) atualiza `predictions`
+  // e tira o jogo daqui sozinho.
+  const unsavedDrafts = useMemo(
+    () => pruneUnsavedDrafts({ matches: allMatches, predictions, drafts, penaltyDrafts }),
+    [allMatches, predictions, drafts, penaltyDrafts],
+  )
+  // Antes de os jogos chegarem, tudo pareceria desconhecido e o storage seria apagado.
+  const matchesLoaded = allMatches.length > 0
+  useEffect(() => {
+    if (storageKey && matchesLoaded) writeStoredDrafts(storageKey, unsavedDrafts)
+  }, [storageKey, matchesLoaded, unsavedDrafts])
+  useBeforeUnloadWarning(unsavedDrafts.drafts.size + unsavedDrafts.penaltyDrafts.size > 0)
 
   const {
     savingAll,
@@ -218,6 +245,7 @@ export function usePredictionsBulkSave(
 
   return {
     drafts,
+    unsavedDrafts,
     savingAll,
     savedAll,
     hasSavedPredictions,
