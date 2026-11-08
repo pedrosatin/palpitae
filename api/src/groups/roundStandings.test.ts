@@ -5,7 +5,12 @@ import worker from '../index'
 import { signJwt } from '../auth/jwt'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
-import { computeRoundStandings, type RoundMemberRow } from './roundStandings'
+import {
+  computeRoundStandings,
+  pickReferenceRound,
+  type RoundMemberRow,
+  type RoundPhaseRow,
+} from './roundStandings'
 
 function member(overrides: Partial<RoundMemberRow> & { user_id: string }): RoundMemberRow {
   return {
@@ -107,6 +112,113 @@ describe('computeRoundStandings', () => {
   })
 })
 
+const BEFORE = '2026-04-01T19:00:00Z'
+const ROUND_START = '2026-05-01T19:00:00Z'
+const AFTER = '2026-06-01T19:00:00Z'
+const LATER = '2026-07-01T19:00:00Z'
+
+function roundRow(overrides: Partial<RoundPhaseRow> = {}): RoundPhaseRow {
+  return {
+    round: '8',
+    phase: 'REGULAR_SEASON',
+    finished: 1,
+    pending: 0,
+    first_start: ROUND_START,
+    last_scored: ROUND_START,
+    ...overrides,
+  }
+}
+
+function knockoutRow(lastScored: string | null, phase = 'LAST_16'): RoundPhaseRow {
+  return roundRow({ round: phase, phase, first_start: BEFORE, last_scored: lastScored })
+}
+
+describe('pickReferenceRound', () => {
+  it('escolhe a rodada encerrada de maior número, em ordem numérica', () => {
+    expect(pickReferenceRound([roundRow({ round: '9' }), roundRow({ round: '21' })])).toBe('21')
+  })
+
+  it('ignora a rodada com jogo pendente e vale a anterior', () => {
+    expect(pickReferenceRound([roundRow({ round: '5' }), roundRow({ pending: 1 })])).toBe('5')
+  })
+
+  it('ignora a rodada sem jogo pontuado', () => {
+    expect(pickReferenceRound([roundRow({ round: '5' }), roundRow({ finished: 0 })])).toBe('5')
+  })
+
+  it('devolve null sem rodada numerada', () => {
+    expect(
+      pickReferenceRound([
+        roundRow({ round: 'REGULAR_SEASON' }),
+        roundRow({ round: null, phase: null }),
+        roundRow({ round: '' }),
+      ]),
+    ).toBeNull()
+  })
+
+  it('soma as fases da mesma rodada, em qualquer ordem', () => {
+    const open = roundRow({ phase: 'LEAGUE_STAGE', pending: 1 })
+    const closed = roundRow()
+    const earlier = roundRow({ round: '5' })
+
+    expect(pickReferenceRound([earlier, closed, open])).toBe('5')
+    expect(pickReferenceRound([earlier, open, closed])).toBe('5')
+  })
+
+  it('usa o menor início entre as fases da mesma rodada, em qualquer ordem', () => {
+    const first = roundRow({ first_start: BEFORE })
+    const second = roundRow({ phase: 'LEAGUE_STAGE', first_start: AFTER })
+
+    expect(pickReferenceRound([first, second, knockoutRow(ROUND_START)])).toBeNull()
+    expect(pickReferenceRound([second, first, knockoutRow(ROUND_START)])).toBeNull()
+  })
+
+  it('devolve null com a rodada 8 fechada e a rodada 3 remarcada para depois do mata-mata', () => {
+    expect(
+      pickReferenceRound([
+        roundRow({ round: '3', first_start: LATER, last_scored: LATER }),
+        roundRow(),
+        knockoutRow(AFTER),
+      ]),
+    ).toBeNull()
+  })
+
+  it('devolve null com jogo remarcado da própria rodada depois do LAST_16', () => {
+    expect(pickReferenceRound([roundRow({ last_scored: LATER }), knockoutRow(AFTER)])).toBeNull()
+  })
+
+  it('não bloqueia com fase não eliminatória depois da rodada, seja qual for o round', () => {
+    const after = { first_start: AFTER, last_scored: AFTER }
+
+    expect(
+      pickReferenceRound([
+        roundRow({ round: '21', first_start: BEFORE, last_scored: BEFORE }),
+        roundRow({ round: '34' }),
+        roundRow({ round: 'REGULAR_SEASON', phase: 'REGULAR_SEASON', ...after }),
+        roundRow({ round: 'GROUP_STAGE', phase: 'GROUP_STAGE', ...after }),
+        roundRow({ round: null, phase: 'LEAGUE_STAGE', ...after }),
+        roundRow({ round: null, phase: null, ...after }),
+      ]),
+    ).toBe('34')
+  })
+
+  it('não bloqueia com LAST_16 encerrado sem pontuação', () => {
+    expect(pickReferenceRound([roundRow(), knockoutRow(null)])).toBe('8')
+  })
+
+  it('não bloqueia com fase eliminatória preliminar anterior ao início da rodada', () => {
+    expect(pickReferenceRound([roundRow(), knockoutRow(BEFORE, 'FIRST_STAGE')])).toBe('8')
+  })
+
+  it('não bloqueia com jogo eliminatório no mesmo horário do início da rodada', () => {
+    expect(pickReferenceRound([roundRow(), knockoutRow(ROUND_START)])).toBe('8')
+  })
+
+  it('devolve null com mata-mata pontuado depois do início da rodada', () => {
+    expect(pickReferenceRound([roundRow(), knockoutRow(AFTER)])).toBeNull()
+  })
+})
+
 const handles: DatabaseSync[] = []
 
 afterEach(() => {
@@ -116,6 +228,8 @@ afterEach(() => {
 
 interface MatchSeed {
   round: string | null
+  /** Sem valor, a rodada numerada vira `REGULAR_SEASON` e a outra usa o próprio `round`. */
+  phase?: string | null
   status?: 'scheduled' | 'live' | 'finished'
   postponed?: 0 | 1
   start?: string
@@ -206,8 +320,8 @@ async function createFixture() {
       .prepare(
         `INSERT INTO matches (
            id, competition_id, external_id, provider, home_team_id, away_team_id,
-           start_time, status, round, postponed, scored_at
-         ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, ?)`,
+           start_time, status, round, phase, postponed, scored_at
+         ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -216,6 +330,11 @@ async function createFixture() {
         seed.start ?? '2026-06-01T19:00:00Z',
         status,
         seed.round,
+        seed.phase !== undefined
+          ? seed.phase
+          : seed.round !== null && /^\d+$/.test(seed.round)
+            ? 'REGULAR_SEASON'
+            : seed.round,
         seed.postponed ?? 0,
         status === 'finished' && !seed.unscored ? '2026-06-02T00:00:00Z' : null,
       )
@@ -307,10 +426,19 @@ describe('GET /groups/:id/round-standings', () => {
     expect((await standings()).round).toBe('5')
   })
 
-  it('exige jogo pontuado mesmo com o resto da rodada adiado', async () => {
+  it('mantém aberta a rodada com jogo encerrado sem pontuação e postponed 1', async () => {
     const { standings, addMatch } = await createFixture()
     addMatch({ round: '5' })
+    addMatch({ round: '6' })
     addMatch({ round: '6', unscored: true, postponed: 1 })
+
+    expect((await standings()).round).toBe('5')
+  })
+
+  it('não conta a rodada só com jogos adiados', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: '5' })
+    addMatch({ round: '6', status: 'scheduled', postponed: 1 })
 
     expect((await standings()).round).toBe('5')
   })
@@ -348,30 +476,67 @@ describe('GET /groups/:id/round-standings', () => {
     expect(await standings()).toEqual({ round: null, standings: [] })
   })
 
-  it('devolve null quando o mata-mata encerrou depois da rodada', async () => {
+  it('devolve null quando o mata-mata foi pontuado depois da rodada', async () => {
     const { standings, addMatch } = await createFixture()
-    addMatch({ round: '8', start: '2026-05-01T19:00:00Z' })
-    addMatch({ round: 'LAST_16', start: '2026-06-01T19:00:00Z' })
-    addMatch({ round: 'LAST_16', status: 'scheduled', start: '2026-06-08T19:00:00Z' })
+    addMatch({ round: '8', start: ROUND_START })
+    addMatch({ round: 'LAST_16', start: AFTER })
+    addMatch({ round: 'LAST_16', status: 'scheduled', start: LATER })
 
     expect(await standings()).toEqual({ round: null, standings: [] })
   })
 
-  it('não bloqueia com fase preliminar sem número antes das rodadas', async () => {
+  it('devolve null com a rodada 8 fechada e a rodada 3 remarcada para depois do mata-mata', async () => {
     const { standings, addMatch } = await createFixture()
-    addMatch({ round: 'FIRST_STAGE', start: '2026-02-01T19:00:00Z' })
-    addMatch({ round: '1', start: '2026-04-01T19:00:00Z' })
+    addMatch({ round: '3', start: LATER })
+    addMatch({ round: '8', start: ROUND_START })
+    addMatch({ round: 'LAST_16', start: AFTER })
 
-    expect((await standings()).round).toBe('1')
+    expect(await standings()).toEqual({ round: null, standings: [] })
   })
 
-  it('não bloqueia com jogo REGULAR_SEASON ou round NULL anterior à rodada', async () => {
+  it('devolve null com jogo remarcado da própria rodada depois do LAST_16', async () => {
     const { standings, addMatch } = await createFixture()
-    addMatch({ round: 'REGULAR_SEASON', start: '2026-03-01T19:00:00Z' })
-    addMatch({ round: null, start: '2026-03-02T19:00:00Z' })
-    addMatch({ round: '7', start: '2026-04-01T19:00:00Z' })
+    addMatch({ round: '8', start: ROUND_START })
+    addMatch({ round: '8', start: LATER })
+    addMatch({ round: 'LAST_16', start: AFTER })
 
-    expect((await standings()).round).toBe('7')
+    expect(await standings()).toEqual({ round: null, standings: [] })
+  })
+
+  it('separa as fases de uma mesma rodada ao procurar o mata-mata', async () => {
+    const { standings, addMatch } = await createFixture()
+    // O último jogo não é eliminatório. Sem agrupar por fase, a linha da rodada ficaria com ele.
+    addMatch({ round: '8', start: ROUND_START })
+    addMatch({ round: '8', phase: 'LAST_16', start: AFTER })
+    addMatch({ round: '8', start: LATER })
+
+    expect(await standings()).toEqual({ round: null, standings: [] })
+  })
+
+  it('não bloqueia com REGULAR_SEASON e round NULL de fase não eliminatória depois da rodada 34', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: '21', start: BEFORE })
+    addMatch({ round: '34', start: ROUND_START })
+    addMatch({ round: 'REGULAR_SEASON', phase: 'REGULAR_SEASON', start: AFTER })
+    addMatch({ round: null, phase: 'REGULAR_SEASON', start: LATER })
+
+    expect((await standings()).round).toBe('34')
+  })
+
+  it('não bloqueia com LAST_16 encerrado e ainda sem pontuação', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: '8', start: ROUND_START })
+    addMatch({ round: 'LAST_16', start: AFTER, unscored: true })
+
+    expect((await standings()).round).toBe('8')
+  })
+
+  it('não bloqueia com fase eliminatória preliminar anterior ao início da rodada', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: 'FIRST_STAGE', phase: 'FIRST_STAGE', start: BEFORE })
+    addMatch({ round: '1', start: ROUND_START })
+
+    expect((await standings()).round).toBe('1')
   })
 
   it('mantém a referência enquanto o mata-mata só tem jogos futuros', async () => {

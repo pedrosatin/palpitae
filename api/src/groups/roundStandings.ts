@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { isKnockoutPhase } from '../matches/rounds'
 import { EXACT_HIT_SQL, PREDICTION_POINTS_SQL } from '../matches/scoring'
 
 /** Membro com os totais do ranking e o que ele fez na rodada de referência. */
@@ -65,47 +66,87 @@ export function computeRoundStandings(rows: RoundMemberRow[]): RoundStanding[] {
   }))
 }
 
+/** Agregado dos jogos da competição numa combinação de rodada e fase. */
+export interface RoundPhaseRow {
+  round: string | null
+  phase: string | null
+  finished: number
+  pending: number
+  first_start: string
+  last_scored: string | null
+}
+
+interface NumberedRound {
+  round: string
+  finished: number
+  pending: number
+  firstStart: string
+}
+
+/** Soma as linhas de cada rodada numerada. Uma rodada pode ter mais de uma fase. */
+function numberedRounds(rows: RoundPhaseRow[]): NumberedRound[] {
+  const byRound = new Map<string, NumberedRound>()
+  for (const row of rows) {
+    if (row.round === null || !/^\d+$/.test(row.round)) continue
+    const seen = byRound.get(row.round)
+    byRound.set(row.round, {
+      round: row.round,
+      finished: (seen?.finished ?? 0) + row.finished,
+      pending: (seen?.pending ?? 0) + row.pending,
+      firstStart: seen && seen.firstStart < row.first_start ? seen.firstStart : row.first_start,
+    })
+  }
+  return [...byRound.values()]
+}
+
 /**
- * Rodada de referência do grupo (ADR-021), a encerrada de maior número.
+ * Rodada de referência do grupo (ADR-021), ou `null` quando o mata-mata já começou.
  *
- * A rodada só encerra depois de pontuada. Jogo `finished` sem `scored_at` ainda
- * não deu pontos aos palpites e mantém a rodada pendente.
+ * A referência é a rodada numerada de maior número com jogo pontuado e nada
+ * pendente. Só essa é avaliada. Se uma fase eliminatória tem jogo pontuado depois
+ * do início dela, a resposta é `null`, sem tentar uma rodada menor. Fase não
+ * eliminatória nunca bloqueia, seja qual for o `round`.
+ */
+export function pickReferenceRound(rows: RoundPhaseRow[]): string | null {
+  const reference = numberedRounds(rows)
+    .filter((round) => round.finished > 0 && round.pending === 0)
+    .sort((a, b) => Number(b.round) - Number(a.round))[0]
+  if (!reference) return null
+
+  const knockoutStarted = rows.some(
+    (row) =>
+      isKnockoutPhase(row.phase) &&
+      row.last_scored !== null &&
+      row.last_scored > reference.firstStart,
+  )
+  return knockoutStarted ? null : reference.round
+}
+
+/**
+ * Agregados dos jogos da competição do grupo, por rodada e fase.
  *
- * Rodada numerada deixa de ser candidata quando uma rodada não numerada tem jogo
- * encerrado depois do último jogo encerrado dela. É o que tira a coluna quando o
- * mata-mata começa. Fase preliminar anterior às rodadas e jogo solto com `round`
- * `REGULAR_SEASON` ou `NULL` anterior à rodada não bloqueiam.
- *
- * `numbered` usa `COALESCE` porque `matches.round` aceita `NULL`, e `GLOB` com
- * `NULL` deixaria a rodada fora das duas contagens.
+ * `pending` conta jogo aberto e não adiado e jogo encerrado sem `scored_at`. O
+ * segundo caso vale mesmo com `postponed = 1`, porque a football-data grava
+ * `SUSPENDED` com essa flag e o fallback da ESPN encerra o jogo sem mexer nela.
  */
 async function findReferenceRound(db: D1Database, groupId: string): Promise<string | null> {
-  const row = await db
+  const { results } = await db
     .prepare(
-      `WITH rounds AS (
-         SELECT
-           m.round,
-           COALESCE(m.round, '') GLOB '[0-9]*' AND COALESCE(m.round, '') NOT GLOB '*[^0-9]*' AS numbered,
-           SUM(m.status = 'finished' AND m.scored_at IS NOT NULL) AS finished,
-           SUM((m.status <> 'finished' OR m.scored_at IS NULL) AND m.postponed = 0) AS pending,
-           MAX(CASE WHEN m.status = 'finished' THEN m.start_time END) AS last_finished
-         FROM groups g
-         JOIN matches m ON m.competition_id = g.competition_id
-         WHERE g.id = ?
-         GROUP BY m.round
-       )
-       SELECT r.round
-       FROM rounds r
-       WHERE r.numbered = 1 AND r.finished > 0 AND r.pending = 0
-         AND NOT EXISTS (
-           SELECT 1 FROM rounds o WHERE o.numbered = 0 AND o.last_finished > r.last_finished
-         )
-       ORDER BY CAST(r.round AS INTEGER) DESC
-       LIMIT 1`,
+      `SELECT
+         m.round,
+         m.phase,
+         SUM(m.status = 'finished' AND m.scored_at IS NOT NULL) AS finished,
+         SUM((m.status <> 'finished' AND m.postponed = 0) OR (m.status = 'finished' AND m.scored_at IS NULL)) AS pending,
+         MIN(m.start_time) AS first_start,
+         MAX(CASE WHEN m.status = 'finished' AND m.scored_at IS NOT NULL THEN m.start_time END) AS last_scored
+       FROM groups g
+       JOIN matches m ON m.competition_id = g.competition_id
+       WHERE g.id = ?
+       GROUP BY m.round, m.phase`,
     )
     .bind(groupId)
-    .first<{ round: string }>()
-  return row?.round ?? null
+    .all<RoundPhaseRow>()
+  return pickReferenceRound(results)
 }
 
 /** Membros atuais com os totais e a soma da rodada. Sem palpite na rodada, a soma é 0. */
