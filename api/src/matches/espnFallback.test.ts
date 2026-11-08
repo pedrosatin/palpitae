@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
+import { FOOTBALL_DATA_CLUB_NAMES } from './clubNames'
 import { FOOTBALL_DATA_TO_ESPN, scoreWindowFromEspn } from './espnFallback'
 
 // ---------------------------------------------------------------------------
@@ -171,6 +172,59 @@ describe('scoreWindowFromEspn', () => {
     expect(points).toHaveLength(1)
     expect(points[0].blobs[1]).toBe('c1')
     expect(points[0].doubles).toEqual([1, 0])
+  })
+
+  it('casa uma rodada inteira com os nomes populares do Brasileirão, sem confundir Atlético-MG e Athletico-PR', async () => {
+    // `sync` traz o nome que o sync grava (clubNames.ts). `espn` traz o displayName
+    // que a ESPN devolve em bra.1, conferido no endpoint /teams. Os jogos começam
+    // no mesmo horário, então cada um precisa casar exatamente um evento.
+    const fixtures = [
+      { sync: ['Flamengo', 'Corinthians'], espn: ['Flamengo', 'Corinthians'] },
+      { sync: ['Atlético-MG', 'Athletico-PR'], espn: ['Atlético-MG', 'Athletico-PR'] },
+      { sync: ['Botafogo', 'Vitória'], espn: ['Botafogo', 'Vitória'] },
+      { sync: ['Palmeiras', 'São Paulo'], espn: ['Palmeiras', 'São Paulo'] },
+      { sync: ['Vasco', 'Fluminense'], espn: ['Vasco da Gama', 'Fluminense'] },
+      { sync: ['Grêmio', 'Internacional'], espn: ['Grêmio', 'Internacional'] },
+      { sync: ['Cruzeiro', 'Bahia'], espn: ['Cruzeiro', 'Bahia'] },
+      { sync: ['Bragantino', 'Santos'], espn: ['Red Bull Bragantino', 'Santos'] },
+      { sync: ['Mirassol', 'Remo'], espn: ['Mirassol', 'Remo'] },
+      { sync: ['Chapecoense', 'Coritiba'], espn: ['Chapecoense', 'Coritiba'] },
+    ] as const
+    // A rodada cobre os 20 clubes do mapa.
+    expect(fixtures.flatMap((f) => f.sync).sort()).toEqual(
+      Object.values(FOOTBALL_DATA_CLUB_NAMES).sort(),
+    )
+    mockFetch({
+      '20261005': fixtures.map(({ espn: [home, away] }, i) =>
+        espnEvent({ date: IN_WINDOW_START, home, away, homeScore: String(i), awayScore: '0' }),
+      ),
+    })
+    const { sqlite, db } = createSqliteD1()
+    try {
+      sqlite.exec(`INSERT INTO competitions (id,name,slug,status,external_id,provider,season)
+        VALUES ('c1','Brasileirão','brasileirao','ongoing','BSA','football-data','2026')`)
+      const insertTeam = sqlite.prepare('INSERT INTO teams (id,name,slug) VALUES (?,?,?)')
+      const insertMatch = sqlite.prepare(
+        `INSERT INTO matches (id,external_id,provider,competition_id,home_team_id,away_team_id,start_time,status,round)
+         VALUES (?,?,'football-data','c1',?,?,?,'scheduled','1')`,
+      )
+      fixtures.forEach(({ sync: [home, away] }, i) => {
+        insertTeam.run(`h${i}`, home, `h${i}`)
+        insertTeam.run(`a${i}`, away, `a${i}`)
+        insertMatch.run(`m${i}`, `m${i}`, `h${i}`, `a${i}`, IN_WINDOW_START)
+      })
+
+      const result = await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+      expect(result.get('c1')).toBe(fixtures.length)
+      expect(
+        sqlite.prepare('SELECT id, status, home_score, away_score FROM matches ORDER BY id').all(),
+      ).toEqual(
+        fixtures.map((_, i) => ({ id: `m${i}`, status: 'finished', home_score: i, away_score: 0 })),
+      )
+    } finally {
+      sqlite.close()
+    }
   })
 
   it('busca o scoreboard da data UTC de cada jogo E do dia anterior (bucket da ESPN é dia ET)', async () => {
