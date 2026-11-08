@@ -11,6 +11,7 @@ import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
+import { usePredictionsReplicate } from './usePredictionsReplicate'
 
 type PredictionMap = Map<string, Prediction>
 /** Grupo de origem → jogos abertos que o usuário palpitou lá. `null`: API antiga, sem o campo. */
@@ -20,7 +21,7 @@ type PredictionsResponse = {
   import_completed?: boolean
   import_sources?: Record<string, string[]>
 }
-type SiblingGroup = { id: string; name: string }
+type SiblingGroup = { id: string; name: string; competition_status?: string | null }
 
 /** Palpites do usuário no grupo por jogo, com o marcador e as origens da importação. */
 async function fetchGroupPredictions(groupId: string): Promise<{
@@ -386,6 +387,15 @@ export function usePredictionsTab(
   )
 
   const {
+    replicateTargets,
+    replicateEnabled,
+    replicating,
+    replicateFeedback,
+    handleReplicateToggle,
+    replicate,
+  } = usePredictionsReplicate(groupId, competitionId, userId, otherGroups)
+
+  const {
     roundKeys,
     safeIndex,
     selectedRound,
@@ -422,7 +432,19 @@ export function usePredictionsTab(
     selectedRound,
     matches,
     unsavedDrafts,
+    replicate,
   )
+
+  // Palpite salvo no card: aplica o jogo nos outros grupos se a opção estiver marcada.
+  function handleSavedAndReplicate(
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) {
+    handleSaved(matchId, home, away, penaltyWinner)
+    void replicate([matchId])
+  }
 
   // Usa `isMatchLocked`, a regra de `collectRoundDrafts`. Sem jogo aberto na rodada
   // exibida, a barra "Salvar todos" sai da tela. Ela continua enquanto um envio está
@@ -468,7 +490,12 @@ export function usePredictionsTab(
     importFeedback,
     importedFromName,
     handleImport,
-    handleSaved,
+    handleSaved: handleSavedAndReplicate,
+    replicateTargets,
+    replicateEnabled,
+    replicating,
+    replicateFeedback,
+    handleReplicateToggle,
     handleDraftChange,
     handlePenaltyDraftChange,
   }

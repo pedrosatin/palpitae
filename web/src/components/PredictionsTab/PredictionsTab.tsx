@@ -6,6 +6,7 @@ import ErrorState from '../ErrorState'
 import MatchCard, { type Match } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import PredictionsImportBar from './PredictionsImportBar'
+import PredictionsReplicateBar from './PredictionsReplicateBar'
 import RoundProgress from './RoundProgress'
 import RoundSummary from './RoundSummary'
 import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
@@ -125,6 +126,11 @@ export default function PredictionsTab({
     importedFromName,
     handleImport,
     handleSaved,
+    replicateTargets,
+    replicateEnabled,
+    replicating,
+    replicateFeedback,
+    handleReplicateToggle,
     handleDraftChange,
     handlePenaltyDraftChange,
   } = usePredictionsTab(groupId, competitionId, userId, initialRound, onInitialRoundApplied)
@@ -242,6 +248,17 @@ export default function PredictionsTab({
           </button>
         </p>
       )}
+
+      <PredictionsReplicateBar
+        {...{
+          replicateTargets,
+          replicateEnabled,
+          replicating,
+          replicateFeedback,
+          handleReplicateToggle,
+        }}
+        showOption={showSaveBar}
+      />
 
       {showSaveBar && (
         <div className={styles.saveAllBar}>
