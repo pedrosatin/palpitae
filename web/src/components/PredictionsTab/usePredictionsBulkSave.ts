@@ -15,7 +15,7 @@ function applyPredictionUpdate(
   home: number,
   away: number,
   penaltyWinner: 'home' | 'away' | null,
-  allMatches: Match[],
+  allMatches: Match[]
 ): PredictionMap {
   const next = new Map(prev)
   const existing = prev.get(matchId)
@@ -133,7 +133,7 @@ export function usePredictionsBulkSave(
   ) {
     setHasSavedPredictions(true)
     setPredictions((prev) =>
-      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches),
+      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
     )
   }
 

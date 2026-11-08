@@ -80,12 +80,12 @@ vi.mock('../../components/LeaderboardTab', () => ({
   }: {
     groupId: string
     tiebreakNote?: string
-    onOpenRules?: (opener: HTMLElement) => void
+    onOpenRules?: () => void
   }) => (
     <div data-testid="leaderboard-tab">
       LeaderboardTab:{groupId}
       <span>{tiebreakNote}</span>
-      <button onClick={(e) => onOpenRules?.(e.currentTarget)}>Como pontua</button>
+      <button onClick={() => onOpenRules?.()}>Como pontua</button>
     </div>
   ),
 }))
@@ -727,7 +727,7 @@ describe('GroupDetailPage – standings tab gate (competition_type)', () => {
   })
 })
 
-describe('GroupDetailPage – regras do grupo', () => {
+describe('GroupDetailPage, regras do grupo', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
@@ -751,6 +751,7 @@ describe('GroupDetailPage – regras do grupo', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(kebab).toHaveFocus()
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_detail_regras')
   })
 
   it('mostra visibilidade pública e bônus do mata-mata', async () => {
@@ -779,7 +780,7 @@ describe('GroupDetailPage – regras do grupo', () => {
 
     await user.click(await screen.findByRole('link', { name: /Ranking/i }))
     expect(
-      await screen.findByText(/Desempate: mais pontos, depois mais placares exatos/),
+      await screen.findByText(/Ordem do ranking: mais pontos, depois mais placares exatos/),
     ).toBeInTheDocument()
     const link = screen.getByRole('button', { name: 'Como pontua' })
     await user.click(link)

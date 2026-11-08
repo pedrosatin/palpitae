@@ -190,6 +190,7 @@ describe('GroupHeader regras', () => {
     await user.click(kebab)
     await user.click(screen.getByRole('menuitem', { name: 'Regras do grupo' }))
 
-    expect(onOpenRules).toHaveBeenCalledWith(kebab)
+    expect(onOpenRules).toHaveBeenCalledOnce()
+    expect(kebab).toHaveFocus()
   })
 })

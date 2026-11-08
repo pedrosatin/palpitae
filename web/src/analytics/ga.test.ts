@@ -52,6 +52,7 @@ describe('ga', () => {
       expect(getStoredConsent()).toBeNull()
     })
 
+
     it('returns "denied" when localStorage has a recent denied timestamp', () => {
       vi.useFakeTimers()
       const now = Date.now()

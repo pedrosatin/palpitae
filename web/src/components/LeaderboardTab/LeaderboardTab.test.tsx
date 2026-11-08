@@ -106,18 +106,18 @@ describe('LeaderboardTab regras', () => {
       <LeaderboardTab
         groupId="g1"
         currentUserId="u1"
-        tiebreakNote="Desempate: mais pontos."
+        tiebreakNote="Ordem do ranking: mais pontos."
         onOpenRules={onOpenRules}
       />,
     )
 
     await waitFor(() => screen.getByText('Ana'))
-    expect(screen.getByText('Desempate: mais pontos.')).toBeInTheDocument()
+    expect(screen.getByText('Ordem do ranking: mais pontos.')).toBeInTheDocument()
 
     const link = screen.getByRole('button', { name: 'Como pontua' })
     await userEvent.click(link)
 
-    expect(onOpenRules).toHaveBeenCalledWith(link)
+    expect(onOpenRules).toHaveBeenCalledOnce()
   })
 
   it('não mostra a linha de regras sem as props', async () => {

@@ -1064,10 +1064,11 @@ function LoginFailuresSection({ overview }: { overview: OverviewResponse }) {
     <section className={styles.section}>
       <h2 className={styles.sectionTitle}>Falhas de login por motivo</h2>
       <p className={styles.hint}>
-        O alerta do topo usa a proporção falhas / (login_success + login_failure) na janela
-        selecionada, com volume mínimo. oauth_error, abandono e callbacks que nunca chegaram ficam
-        fora do denominador. Inspecione cada motivo (incluindo state_mismatch) e reavalie; o limiar
-        é heurística. Detalhes em docs/observability.md.
+        O alerta do topo usa a proporção falhas / (login_success + login_failure) na
+        janela selecionada, com volume mínimo. oauth_error, abandono e callbacks que
+        nunca chegaram ficam fora do denominador. Inspecione cada motivo (incluindo
+        state_mismatch) e reavalie; o limiar é heurística. Detalhes em
+        docs/observability.md.
       </p>
       {overview.loginFailures.length === 0 ? (
         <p className={styles.hint}>Nenhuma falha no período. 🎉</p>

@@ -81,11 +81,7 @@ describe('CreateGroupModal', () => {
     // Com os dois grupos presentes, os <optgroup> separam andamento e futuro.
     expect(screen.getByRole('group', { name: 'Em andamento' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Em breve' })).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que faltam.',
-      ),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que faltam.')).toBeInTheDocument()
   })
 
   it('renders a flat list when there is only one status', async () => {
@@ -131,10 +127,9 @@ describe('CreateGroupModal', () => {
       expect(screen.getByRole('option', { name: /Zebra Cup/ })).toBeInTheDocument()
     })
     // Ordem do DOM: "Em andamento" precede "Em breve", mesmo com o nome vindo depois.
-    expect(screen.getAllByRole('group').map((group) => group.getAttribute('label'))).toEqual([
-      'Em andamento',
-      'Em breve',
-    ])
+    expect(
+      screen.getAllByRole('group').map((group) => group.getAttribute('label')),
+    ).toEqual(['Em andamento', 'Em breve'])
   })
 
   it('announces the ongoing hint to screen readers', async () => {

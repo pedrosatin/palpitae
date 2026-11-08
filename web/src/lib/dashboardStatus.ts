@@ -249,8 +249,7 @@ const localFormat = new Intl.DateTimeFormat('en-CA', {
 function localParts(ms: number) {
   const parts: Record<string, string> = {}
   for (const part of localFormat.formatToParts(new Date(ms))) parts[part.type] = part.value
-  const dayNumber =
-    Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) / DAY_MS
+  const dayNumber = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)) / DAY_MS
   return {
     dayNumber,
     date: `${parts.day}/${parts.month}`,

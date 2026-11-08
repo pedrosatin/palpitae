@@ -77,10 +77,7 @@ describe('GroupCard', () => {
 
   it('links to the group', () => {
     render(<GroupCard group={baseGroup} onClick={onClick} />)
-    expect(screen.getByRole('link', { name: /Abrir grupo/i })).toHaveAttribute(
-      'href',
-      '/grupos/group-1',
-    )
+    expect(screen.getByRole('link', { name: /Abrir grupo/i })).toHaveAttribute('href', '/grupos/group-1')
   })
 
   it('calls onClick when the card link is clicked', async () => {

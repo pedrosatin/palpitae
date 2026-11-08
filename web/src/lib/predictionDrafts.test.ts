@@ -101,7 +101,9 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
         roundMatches: [match],
         drafts: new Map([['m-postponed', { home: '1', away: '0' }]]),
         penaltyDrafts: new Map(),
-        predictions: new Map([['m-postponed', pred({ match_id: 'm-postponed', locked: 1 })]]),
+        predictions: new Map([
+          ['m-postponed', pred({ match_id: 'm-postponed', locked: 1 })],
+        ]),
       }),
     ).toEqual([])
   })
@@ -282,25 +284,11 @@ describe('pruneUnsavedDrafts', () => {
       matches: [open, knockout],
       predictions: new Map([
         ['m1', pred({ predicted_home_score: 2, predicted_away_score: 2 })],
-        [
-          'm2',
-          pred({
-            match_id: 'm2',
-            predicted_home_score: 1,
-            predicted_away_score: 1,
-            predicted_penalty_winner: 'away',
-          }),
-        ],
+        ['m2', pred({ match_id: 'm2', predicted_home_score: 1, predicted_away_score: 1, predicted_penalty_winner: 'away' })],
       ]),
       drafts: new Map([['m1', typed({ home: '3', away: '0' }, pred())]]),
       penaltyDrafts: new Map([
-        [
-          'm2',
-          typed<'home' | 'away' | null>(
-            'home',
-            pred({ match_id: 'm2', predicted_home_score: 1, predicted_away_score: 1 }),
-          ),
-        ],
+        ['m2', typed<'home' | 'away' | null>('home', pred({ match_id: 'm2', predicted_home_score: 1, predicted_away_score: 1 }))],
       ]),
     })
     expect(result.drafts.size).toBe(0)
@@ -309,17 +297,8 @@ describe('pruneUnsavedDrafts', () => {
 
   it('julga o pênalti em separado do placar', () => {
     const knockout = makeMatch({ id: 'm1', decides_on_penalties: true })
-    const m1Saved = pred({
-      predicted_home_score: 1,
-      predicted_away_score: 1,
-      predicted_penalty_winner: 'home',
-    })
-    const m2Saved = pred({
-      match_id: 'm2',
-      predicted_home_score: 0,
-      predicted_away_score: 0,
-      predicted_penalty_winner: 'away',
-    })
+    const m1Saved = pred({ predicted_home_score: 1, predicted_away_score: 1, predicted_penalty_winner: 'home' })
+    const m2Saved = pred({ match_id: 'm2', predicted_home_score: 0, predicted_away_score: 0, predicted_penalty_winner: 'away' })
     const result = pruneUnsavedDrafts({
       matches: [knockout, makeMatch({ id: 'm2', decides_on_penalties: true })],
       predictions: new Map([
@@ -341,23 +320,9 @@ describe('pruneUnsavedDrafts', () => {
     const result = pruneUnsavedDrafts({
       matches: [knockout, makeMatch({ id: 'group-stage' })],
       predictions: new Map([['m1', pred({ predicted_home_score: 1, predicted_away_score: 1 })]]),
-      drafts: new Map([
-        [
-          'm1',
-          typed(
-            { home: '2', away: '1' },
-            pred({ predicted_home_score: 1, predicted_away_score: 1 }),
-          ),
-        ],
-      ]),
+      drafts: new Map([['m1', typed({ home: '2', away: '1' }, pred({ predicted_home_score: 1, predicted_away_score: 1 }))]]),
       penaltyDrafts: new Map([
-        [
-          'm1',
-          typed<'home' | 'away' | null>(
-            'home',
-            pred({ predicted_home_score: 1, predicted_away_score: 1 }),
-          ),
-        ],
+        ['m1', typed<'home' | 'away' | null>('home', pred({ predicted_home_score: 1, predicted_away_score: 1 }))],
         ['group-stage', typed<'home' | 'away' | null>('home')],
       ]),
     })
@@ -367,12 +332,7 @@ describe('pruneUnsavedDrafts', () => {
 
   it('na volta, usa o rascunho da ida da mesma rodada para o agregado', () => {
     const leg1 = makeMatch({ id: 'ida', tie_role: 'leg1' })
-    const leg2 = makeMatch({
-      id: 'volta',
-      tie_role: 'leg2',
-      leg1_match_id: 'ida',
-      decides_on_penalties: true,
-    })
+    const leg2 = makeMatch({ id: 'volta', tie_role: 'leg2', leg1_match_id: 'ida', decides_on_penalties: true })
     const idaSaved = pred({ match_id: 'ida', predicted_home_score: 1, predicted_away_score: 0 })
     const voltaSaved = pred({ match_id: 'volta', predicted_home_score: 1, predicted_away_score: 0 })
     const input = {

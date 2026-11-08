@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { trackEvent } from '../../analytics/ga'
 import styles from './GroupDetailPage.module.css'
 
 interface GroupHeaderProps {
@@ -12,8 +13,7 @@ interface GroupHeaderProps {
   }
   isAdmin: boolean
   onOpenRename: () => void
-  /** Abre as regras. Recebe o botão do menu para devolver o foco ao fechar. */
-  onOpenRules?: (opener: HTMLElement) => void
+  onOpenRules?: () => void
   onDeleteGroup: () => void
   deleting: boolean
   onLeaveGroup: () => void
@@ -23,7 +23,7 @@ interface GroupHeaderProps {
 interface GroupMenuProps {
   isAdmin: boolean
   onOpenRename: () => void
-  onOpenRules?: (opener: HTMLElement) => void
+  onOpenRules?: () => void
   onDeleteGroup: () => void
   deleting: boolean
   onLeaveGroup: () => void
@@ -83,8 +83,11 @@ function GroupMenu({
               className={styles.menuItemNeutral}
               role="menuitem"
               onClick={() => {
+                trackEvent('click_group_detail_regras')
+                // O item some ao fechar o menu. O foco vai ao botão do menu para o Modal devolvê-lo ali.
+                kebabRef.current?.focus()
                 setMenuOpen(false)
-                if (kebabRef.current) onOpenRules(kebabRef.current)
+                onOpenRules()
               }}
             >
               Regras do grupo

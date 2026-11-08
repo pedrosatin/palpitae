@@ -11,8 +11,7 @@ interface LeaderboardTabProps {
   currentUserId: string
   /** Critério de desempate mostrado sob a tabela. */
   tiebreakNote?: string
-  /** Abre as regras do grupo. Recebe o botão para devolver o foco ao fechar. */
-  onOpenRules?: (opener: HTMLElement) => void
+  onOpenRules?: () => void
 }
 
 export default function LeaderboardTab({
@@ -125,9 +124,9 @@ export default function LeaderboardTab({
             <button
               type="button"
               className={styles.rulesLink}
-              onClick={(event) => {
+              onClick={() => {
                 trackEvent('click_leaderboard_como_pontua')
-                onOpenRules(event.currentTarget)
+                onOpenRules()
               }}
             >
               Como pontua

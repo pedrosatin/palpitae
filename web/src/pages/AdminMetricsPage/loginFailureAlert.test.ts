@@ -7,12 +7,16 @@ import {
 
 describe('evaluateLoginFailureAlert', () => {
   it('não alerta com zero falhas mesmo com volume alto', () => {
-    expect(evaluateLoginFailureAlert({ loginSuccess: 50, loginFailures: 0 })).toBeNull()
+    expect(
+      evaluateLoginFailureAlert({ loginSuccess: 50, loginFailures: 0 }),
+    ).toBeNull()
   })
 
   it('não alerta por falha isolada abaixo do volume mínimo', () => {
     // Fronteira real 7d (2026-11-02): 6 sucessos + 1 falha → N=7 < 10
-    expect(evaluateLoginFailureAlert({ loginSuccess: 6, loginFailures: 1 })).toBeNull()
+    expect(
+      evaluateLoginFailureAlert({ loginSuccess: 6, loginFailures: 1 }),
+    ).toBeNull()
     expect(
       evaluateLoginFailureAlert({
         loginSuccess: LOGIN_FAILURE_MIN_CALLBACKS - 2,
@@ -23,7 +27,9 @@ describe('evaluateLoginFailureAlert', () => {
 
   it('não alerta no volume mínimo se a proporção fica abaixo do limiar', () => {
     // Baseline 90d ~5%: 11 falhas em 207 callbacks
-    expect(evaluateLoginFailureAlert({ loginSuccess: 196, loginFailures: 11 })).toBeNull()
+    expect(
+      evaluateLoginFailureAlert({ loginSuccess: 196, loginFailures: 11 }),
+    ).toBeNull()
     // 1/10 = 10% < 15%, com volume exatamente no mínimo
     expect(
       evaluateLoginFailureAlert({
@@ -73,11 +79,15 @@ describe('evaluateLoginFailureAlert', () => {
         loginFailures: Number.NaN,
       }),
     ).toBeNull()
-    expect(evaluateLoginFailureAlert({ loginSuccess: -3, loginFailures: -1 })).toBeNull()
+    expect(
+      evaluateLoginFailureAlert({ loginSuccess: -3, loginFailures: -1 }),
+    ).toBeNull()
   })
 
   it('login bem-sucedido dominante com poucas falhas não acende', () => {
-    expect(evaluateLoginFailureAlert({ loginSuccess: 40, loginFailures: 2 })).toBeNull()
+    expect(
+      evaluateLoginFailureAlert({ loginSuccess: 40, loginFailures: 2 }),
+    ).toBeNull()
   })
 
   it('ausência de sucessos com falhas suficientes acende (zero legítimo)', () => {

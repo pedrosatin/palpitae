@@ -14,7 +14,7 @@ interface GroupTabContentProps {
   showStandings: boolean
   isAdmin: boolean
   userId: string
-  onOpenRules?: (opener: HTMLElement) => void
+  onOpenRules?: () => void
   /** Rodada do `?rodada=` da URL, em que a aba Palpitar abre. */
   requestedRound?: string | null
   /** Chamado quando a aba Palpitar abre na rodada pedida, para tirá-la da URL. */

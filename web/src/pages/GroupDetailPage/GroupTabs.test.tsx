@@ -44,9 +44,7 @@ describe('GroupTabs', () => {
   })
 
   it('renders Tabela tab when showStandings is true', () => {
-    renderWithRouter(
-      <GroupTabs {...defaultProps} showStandings={true} activeTab={'standings' as Tab} />,
-    )
+    renderWithRouter(<GroupTabs {...defaultProps} showStandings={true} activeTab={'standings' as Tab} />)
     const standingsTab = screen.getByRole('link', { name: 'Tabela' })
     expect(standingsTab).toBeInTheDocument()
     expect(standingsTab).toHaveAttribute('href', '/test/standings')

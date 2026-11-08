@@ -49,9 +49,9 @@ describe('groupRoundStatus e texto do card', () => {
   }
 
   it('mostra os jogos sem palpite e quando fecha o primeiro', () => {
-    expect(text({ pending_predictions: 10, next_deadline: deadline('2026-11-14T21:30:00Z') })).toBe(
-      '10 sem palpite · fecha sáb 18:30',
-    )
+    expect(
+      text({ pending_predictions: 10, next_deadline: deadline('2026-11-14T21:30:00Z') }),
+    ).toBe('10 sem palpite · fecha sáb 18:30')
   })
 
   it('mostra só a contagem quando o pendente é adiado sem data', () => {
@@ -59,13 +59,15 @@ describe('groupRoundStatus e texto do card', () => {
   })
 
   it('mostra a rodada completa e o próximo jogo', () => {
-    expect(text({ current_round_label: 'Rodada 35', next_match_at: '2026-11-14T21:30:00Z' })).toBe(
-      'Rodada 35 completa ✓ · próximo jogo sáb 18:30',
-    )
+    expect(
+      text({ current_round_label: 'Rodada 35', next_match_at: '2026-11-14T21:30:00Z' }),
+    ).toBe('Rodada 35 completa ✓ · próximo jogo sáb 18:30')
   })
 
   it('mostra os jogos ao vivo quando não há pendência', () => {
-    expect(text({ live_matches: 2, next_match_at: '2026-11-14T21:30:00Z' })).toBe('2 jogos ao vivo')
+    expect(text({ live_matches: 2, next_match_at: '2026-11-14T21:30:00Z' })).toBe(
+      '2 jogos ao vivo',
+    )
     expect(text({ live_matches: 1 })).toBe('1 jogo ao vivo')
   })
 
@@ -96,9 +98,9 @@ describe('groupRoundStatus e texto do card', () => {
     const label = (fields: Partial<RoundStatusFields>) =>
       groupRoundStatusLabel(groupRoundStatus(group('g', fields))!, NOW)
 
-    expect(label({ current_round_label: 'Rodada 35', next_match_at: '2026-11-14T21:30:00Z' })).toBe(
-      'Rodada 35 completa, próximo jogo sáb 18:30',
-    )
+    expect(
+      label({ current_round_label: 'Rodada 35', next_match_at: '2026-11-14T21:30:00Z' }),
+    ).toBe('Rodada 35 completa, próximo jogo sáb 18:30')
     expect(
       label({ pending_predictions: 10, next_deadline: deadline('2026-11-14T21:30:00Z') }),
     ).toBe('10 sem palpite, fecha sáb 18:30')

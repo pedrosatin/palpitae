@@ -22,7 +22,7 @@ function pontos(value: number): string {
 
 function scoringLines(exact: number, winner: number): string[] {
   if (exact === 0) {
-    return [`Acertar o resultado (vitória de um time ou empate) vale ${pontos(winner)}.`]
+    return [`Acertar quem vence ou o empate vale ${pontos(winner)}.`]
   }
   const lines = [`Placar exato vale ${pontos(exact)}.`]
   lines.push(
@@ -40,12 +40,12 @@ function bonusLines(rules: GroupRulesInput): string[] {
   const penalty = rules.points_penalty ?? 0
   if (classified > 0) {
     lines.push(
-      `Classificado vale mais ${pontos(classified)} por acertar quem avança no confronto. O sistema deduz isso dos seus placares.`,
+      `Classificado vale mais ${pontos(classified)} por acertar quem avança no confronto. Seus palpites definem o classificado. Em ida e volta, sem palpite em um dos jogos, o bônus não conta.`,
     )
   }
   if (penalty > 0) {
     lines.push(
-      `Pênaltis valem mais ${pontos(penalty)} por palpitar empate e acertar o vencedor da disputa.`,
+      `Pênaltis valem mais ${pontos(penalty)} por acertar o vencedor da disputa quando seu palpite empata o jogo único ou o agregado da ida e volta.`,
     )
   }
   return lines
@@ -64,7 +64,7 @@ export function tiebreakCriteria(exact: number, winner: number): string[] {
 }
 
 export function tiebreakSummary(exact: number, winner: number): string {
-  return `Desempate: ${tiebreakCriteria(exact, winner).join(', depois ')}.`
+  return `Ordem do ranking: ${tiebreakCriteria(exact, winner).join(', depois ')}.`
 }
 
 export function buildGroupRules(input: GroupRulesInput): GroupRules {
@@ -77,7 +77,9 @@ export function buildGroupRules(input: GroupRulesInput): GroupRules {
         ? 'Os palpites de todos ficam visíveis o tempo todo.'
         : 'Os palpites dos outros só aparecem depois que o jogo começa.',
     period:
-      'Vale o placar do tempo normal mais a prorrogação. Os gols da disputa de pênaltis não entram no placar.',
+      input.competition_type === 'league'
+        ? 'Vale o placar final, com os acréscimos.'
+        : 'Vale o placar do tempo normal mais a prorrogação, quando houver. Os gols da disputa de pênaltis não entram no placar.',
     tiebreak: tiebreakCriteria(input.points_exact, input.points_winner),
   }
 }

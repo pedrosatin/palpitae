@@ -14,11 +14,15 @@ interface ModalProps {
 export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // Leva o foco para dentro do diálogo, a menos que um campo já o tenha pedido.
+  // Leva o foco para dentro do diálogo e o devolve ao fechar.
+  // Se um campo já pediu o foco, não mexe.
   useEffect(() => {
     if (!isOpen) return
     const dialog = dialogRef.current
-    if (dialog && !dialog.contains(document.activeElement)) dialog.focus()
+    if (!dialog || dialog.contains(document.activeElement)) return
+    const previous = document.activeElement as HTMLElement | null
+    dialog.focus()
+    return () => previous?.focus()
   }, [isOpen])
 
   useEffect(() => {

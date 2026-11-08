@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
@@ -51,7 +51,6 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
-  const rulesOpenerRef = useRef<HTMLElement | null>(null)
 
   const isAdmin = group?.is_admin ?? false
   const isFinished = group?.competition_status === 'finished'
@@ -97,16 +96,12 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     setSettingsVersion((value) => value + 1)
   }
 
-  function openRules(opener: HTMLElement) {
-    trackEvent('click_group_detail_regras')
-    rulesOpenerRef.current = opener
+  function openRules() {
     setRulesOpen(true)
   }
 
   function closeRules() {
     setRulesOpen(false)
-    rulesOpenerRef.current?.focus()
-    rulesOpenerRef.current = null
   }
 
   function handleGroupRenamed(name: string) {

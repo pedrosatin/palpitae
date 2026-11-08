@@ -33,7 +33,7 @@ export default function GroupRulesModal({ isOpen, onClose, group }: GroupRulesMo
       <Section title="Palpites dos outros" lines={[rules.visibility]} />
       <Section title="Tempo de jogo" lines={[rules.period]} />
       <section className={styles.section}>
-        <h3 className={styles.heading}>Desempate no ranking</h3>
+        <h3 className={styles.heading}>Ordem do ranking</h3>
         <ol className={styles.list}>
           {rules.tiebreak.map((item) => (
             <li key={item}>{item}</li>
