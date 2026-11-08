@@ -341,13 +341,18 @@
     opacity var(--transition-fast);
 }
 
-.saveBtn:hover:not(:disabled) {
+.saveBtn:hover:not(:disabled):not([aria-disabled='true']) {
   background-color: var(--color-primary-hover);
 }
 
 .saveBtn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* Durante o envio o botão segue focável e ignora o clique. */
+.saveBtn[aria-disabled='true'] {
+  cursor: progress;
 }
 
 /* Palpite salvo e sem mudança. É estado, então não tem fundo de ação nem opacidade

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatClosingDate } from '../../lib/matchTime'
@@ -7,7 +7,10 @@ import type { Match, Prediction } from '../MatchCard'
 import PredictionsTab from './PredictionsTab'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -69,6 +72,33 @@ describe('PredictionsTab – progresso da rodada', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent('1 de 3 palpitados')
     expect(screen.getByText('próximo jogo fecha em 2 h 15 min')).toBeInTheDocument()
+  })
+
+  it('quando o jogo começa com a aba aberta, o cabeçalho e o card mudam no mesmo tique', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    mockApi([
+      makeMatch({ id: 'm1', start_time: inMs(MIN) }),
+      makeMatch({ id: 'm2', start_time: inMs(5 * HOUR), ...teams('Chile', 'Peru') }),
+    ])
+    renderTab()
+
+    expect(await screen.findByText('próximo jogo fecha em 1 min')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('0 de 2 palpitados')
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, sem palpite' }),
+    ).toBeInTheDocument()
+
+    // Roda os efeitos da montagem, que ligam o relógio, antes de avançar a hora.
+    await act(async () => {})
+    act(() => {
+      vi.advanceTimersByTime(2 * MIN)
+    })
+
+    expect(screen.getByText('próximo jogo fecha em 4 h 58 min')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('0 de 1 palpitado')
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, bloqueado' }),
+    ).toBeInTheDocument()
   })
 
   it('com 24 h ou mais até o fechamento, mostra a data com dia da semana', async () => {

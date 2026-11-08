@@ -1,4 +1,4 @@
-/** Marca de confirmação. Decorativa: o texto ao lado diz o estado. */
+/** Marca de confirmação decorativa. O texto ao lado diz o estado. */
 export default function CheckIcon({ className }: { className?: string }) {
   return (
     <svg

@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import MatchCard, { type Match, type Prediction, OUTCOMES } from './MatchCard'
@@ -92,7 +93,7 @@ describe('MatchCard – estado do palpite', () => {
     expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled()
   })
 
-  it('palpite salvo mostra "Salvo" com a marca, sem desabilitar o botão nem anunciar ação', () => {
+  it('palpite salvo mostra "Salvo" com a marca, sem `disabled` e sem o botão "Atualizar"', () => {
     // Palpite 1×2 e campos 1×2: nada mudou.
     renderCard(makeMatch(), makePrediction())
 
@@ -115,6 +116,60 @@ describe('MatchCard – estado do palpite', () => {
 
     expect(fetchSpy).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
+  })
+
+  it('o botão não recebe `disabled` do clique ao "Salvo" e segue com o foco', async () => {
+    let respond: (res: Response) => void = () => {}
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          respond = resolve
+        }),
+    )
+    const match = makeMatch()
+    // O pai troca o palpite ao salvar, como a aba Palpitar.
+    function Parent() {
+      const [prediction, setPrediction] = useState<Prediction | undefined>(undefined)
+      return (
+        <MatchCard
+          match={match}
+          prediction={prediction}
+          groupId="group-1"
+          onSaved={(_id, home, away) =>
+            setPrediction(
+              makePrediction({ predicted_home_score: home, predicted_away_score: away }),
+            )
+          }
+        />
+      )
+    }
+    const user = userEvent.setup()
+    render(<Parent />)
+    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await user.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
+
+    const button = screen.getByRole('button', { name: 'Salvar' })
+    const changes: MutationRecord[] = []
+    const observer = new MutationObserver((records) => changes.push(...records))
+    observer.observe(button, { attributes: true, attributeFilter: ['disabled'] })
+
+    await user.click(button)
+    expect(button).toHaveTextContent('...')
+    expect(button).not.toBeDisabled()
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    // Outro clique durante o envio não reenvia.
+    await user.click(button)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    expect(await screen.findByRole('button', { name: 'Salvo' })).toBe(button)
+    changes.push(...observer.takeRecords())
+    observer.disconnect()
+
+    expect(changes).toHaveLength(0)
+    expect(button).not.toBeDisabled()
+    expect(document.activeElement).toBe(button)
+    fetchMock.mockRestore()
   })
 
   it('alterar o placar salvo muda o rótulo para "alterado, não salvo" e o botão para "Atualizar"', async () => {
@@ -702,6 +757,12 @@ describe('MatchCard agregado de ida e volta', () => {
     expect(screen.getByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).toBeInTheDocument()
     // Falta o vencedor nos pênaltis, então o botão segue como ação desabilitada.
     expect(screen.getByRole('button', { name: 'Atualizar' })).toBeDisabled()
+    // O palpite salvo ficou incompleto. O selo e o anúncio dizem o que falta.
+    expect(screen.getByText('falta pênalti')).toBeInTheDocument()
+    expect(screen.queryByText('palpite salvo')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, falta pênalti' }),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: 'BRA' }))
     await user.click(screen.getByRole('button', { name: 'Atualizar' }))
     expect(onSaved).toHaveBeenCalledWith('match-1', 2, 0, 'home')

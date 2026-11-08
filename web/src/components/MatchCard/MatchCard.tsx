@@ -37,12 +37,16 @@ interface MatchCardProps {
   draft?: { home: string; away: string }
   /** Pênalti não salvo; `undefined` = sem rascunho, vale o palpite salvo. */
   penaltyDraft?: 'home' | 'away' | null
+  /** Hora que trava o card, a mesma do cabeçalho da rodada. Sem ela, vale `Date.now()`. */
+  now?: number
 }
 
+// "falta pênalti" usa o contorno amarelo de "sem palpite". Os dois pedem uma escolha.
 const STATUS_CLASS: Record<PredictionStatus, string> = {
   empty: styles.statusEmpty,
   saved: styles.statusSaved,
   dirty: styles.statusDirty,
+  penalty: styles.statusEmpty,
 }
 
 export default function MatchCard(props: MatchCardProps) {
@@ -480,14 +484,15 @@ function ScoreInputView({
       </div>
       {penaltyInline}
       {/* Palpite salvo e sem mudança mostra "Salvo", sem opacidade reduzida. O botão
-          continua o mesmo elemento, e o foco fica nele depois de salvar. Por isso
-          `aria-disabled` no lugar de `disabled`, que tiraria o foco. */}
+          continua o mesmo elemento do clique ao "Salvo". Durante o envio e no "Salvo"
+          ele usa `aria-disabled` no lugar de `disabled`, que tiraria o foco dele.
+          `handleSave` ignora o clique nesses dois estados. */}
       <button
         type="button"
         className={`${styles.saveBtn} ${saveDone ? styles.saveBtnDone : ''}`}
         onClick={handleSave}
-        disabled={!saveDone && !canSave}
-        aria-disabled={saveDone || undefined}
+        disabled={!canSave && !saveDone && !saving}
+        aria-disabled={saveDone || saving || undefined}
       >
         {saving ? (
           '...'

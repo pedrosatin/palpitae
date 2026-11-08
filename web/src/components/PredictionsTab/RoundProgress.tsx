@@ -1,16 +1,14 @@
-import { useNow } from '../../hooks/useNow'
 import { closingText } from '../../lib/matchTime'
 import { progressLabel, roundProgress } from '../../lib/roundProgress'
 import CheckIcon from '../CheckIcon'
 import type { Match, Prediction } from '../MatchCard'
 import styles from './PredictionsTab.module.css'
 
-/** Intervalo do relógio do "fecha em ...". A contagem mostra minutos. */
-const TICK_MS = 30_000
-
 interface RoundProgressProps {
   roundMatches: Match[]
   predictions: Map<string, Prediction>
+  /** Hora do relógio da aba, a mesma que trava os cards. */
+  now: number
 }
 
 /**
@@ -19,8 +17,7 @@ interface RoundProgressProps {
  * leitor de tela anuncia o novo total. A linha some quando a rodada não tem jogo
  * aberto.
  */
-export default function RoundProgress({ roundMatches, predictions }: RoundProgressProps) {
-  const now = useNow(TICK_MS)
+export default function RoundProgress({ roundMatches, predictions, now }: RoundProgressProps) {
   const progress = roundProgress(roundMatches, predictions, now)
   if (!progress) return null
   const complete = progress.predicted === progress.total

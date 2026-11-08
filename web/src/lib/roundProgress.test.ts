@@ -85,6 +85,29 @@ describe('roundProgress', () => {
     })
   })
 
+  it('volta salva sem pênalti cujo agregado empata conta no total e fica fora dos palpitados', () => {
+    const round = [
+      makeMatch({
+        id: 'volta',
+        start_time: at(3),
+        tie_role: 'leg2',
+        leg1_match_id: 'ida',
+        decides_on_penalties: true,
+      }),
+    ]
+    // Ida 2×0 e volta 2×0 empatam no agregado.
+    const ida = pred('ida', { predicted_home_score: 2, predicted_away_score: 0 })
+    const volta = pred('volta', { predicted_home_score: 2, predicted_away_score: 0 })
+
+    expect(roundProgress(round, predictions(ida, volta), NOW)).toEqual({
+      predicted: 0,
+      total: 1,
+      nextClosing: at(3),
+    })
+    const comPenalti = { ...volta, predicted_penalty_winner: 'home' as const }
+    expect(roundProgress(round, predictions(ida, comPenalti), NOW)?.predicted).toBe(1)
+  })
+
   it('palpite travado pelo servidor fecha o jogo mesmo antes do horário', () => {
     const round = [makeMatch({ id: 'a', start_time: at(3) })]
 

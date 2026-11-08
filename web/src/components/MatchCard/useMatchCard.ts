@@ -24,9 +24,10 @@ export interface UseMatchCardProps {
   onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
   draft?: { home: string; away: string }
   penaltyDraft?: 'home' | 'away' | null
+  now?: number
 }
 
-function useMatchStatus(match: Match, prediction: Prediction | undefined) {
+function useMatchStatus(match: Match, prediction: Prediction | undefined, now?: number) {
   // Jogo adiado nunca trava: o `start_time` guardado ainda é o horário original
   // (já passou), então a checagem por data sozinha travaria o palpite para sempre.
   // Exceção: jogo que o sync já viu iniciado (`locked_at`) trava mesmo se adiado.
@@ -34,7 +35,8 @@ function useMatchStatus(match: Match, prediction: Prediction | undefined) {
   const isPostponed = Boolean(match.postponed)
   const locked =
     Boolean(match.locked_at) ||
-    (!isPostponed && (Boolean(prediction?.locked) || new Date() >= new Date(match.start_time)))
+    (!isPostponed &&
+      (Boolean(prediction?.locked) || (now ?? Date.now()) >= Date.parse(match.start_time)))
   const isFinished = match.status === 'finished'
   const hasPrediction = prediction !== undefined
 
@@ -201,9 +203,9 @@ function matchControls({
     !saving &&
     status !== 'saved' &&
     penaltyReady
-  // "Salvo" só quando não falta nada. Palpite salvo que agora pede o vencedor nos
-  // pênaltis, por mudança na ida, segue com "Atualizar" desabilitado.
-  const saveDone = status === 'saved' && penaltyReady && !saving
+  // Palpite salvo que agora pede o vencedor nos pênaltis, por mudança na ida, tem o
+  // estado "falta pênalti" e segue com "Atualizar" desabilitado.
+  const saveDone = status === 'saved' && !saving
   return { selectedOutcome, showPenaltyPicker, canSave, status, saveDone }
 }
 
@@ -219,8 +221,9 @@ export function useMatchCard({
   onPenaltyDraftChange,
   draft,
   penaltyDraft,
+  now,
 }: UseMatchCardProps) {
-  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction)
+  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction, now)
 
   const {
     home,

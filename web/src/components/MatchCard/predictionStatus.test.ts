@@ -38,4 +38,16 @@ describe('predictionStatus', () => {
     expect(predictionStatus({ ...input, showPenaltyPicker: true })).toBe('dirty')
     expect(predictionStatus({ ...input, showPenaltyPicker: false })).toBe('saved')
   })
+
+  it('palpite salvo sem pênalti que passou a pedir a escolha é "penalty"', () => {
+    const noPenalty = { ...saved, predicted_penalty_winner: null }
+    const input = { prediction: noPenalty, home: '2', away: '2', penaltyWinner: null }
+    expect(predictionStatus({ ...input, showPenaltyPicker: true })).toBe('penalty')
+    expect(predictionStatus({ ...input, showPenaltyPicker: false })).toBe('saved')
+  })
+
+  it('sem palpite, empate com a escolha na tela e sem vencedor é "penalty"', () => {
+    const input = { prediction: undefined, home: '1', away: '1', penaltyWinner: null }
+    expect(predictionStatus({ ...input, showPenaltyPicker: true })).toBe('penalty')
+  })
 })
