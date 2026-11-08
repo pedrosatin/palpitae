@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams, Navigate } from 'react-route
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
+import GroupRulesModal from '../../components/GroupRulesModal'
 import GroupHeader from './GroupHeader'
 import GroupInviteSection from './GroupInviteSection'
 import RenameGroupModal from './RenameGroupModal'
@@ -55,6 +56,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const [renameOpen, setRenameOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
+  const [rulesOpen, setRulesOpen] = useState(false)
 
   const isAdmin = group?.is_admin ?? false
   const isFinished = group?.competition_status === 'finished'
@@ -100,6 +102,14 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     setSettingsVersion((value) => value + 1)
   }
 
+  function openRules() {
+    setRulesOpen(true)
+  }
+
+  function closeRules() {
+    setRulesOpen(false)
+  }
+
   function handleGroupRenamed(name: string) {
     setGroup((prev) => (prev ? { ...prev, name } : prev))
   }
@@ -140,6 +150,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         onPointsClassifiedChanged={handlePointsClassifiedChanged}
         onRenamed={handleGroupRenamed}
       />
+      {group && <GroupRulesModal isOpen={rulesOpen} onClose={closeRules} group={group} />}
       {confirmDialog}
     </>
   )
@@ -170,6 +181,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           group={group}
           isAdmin={isAdmin}
           onOpenRename={openRename}
+          onOpenRules={openRules}
           onDeleteGroup={deleteGroup}
           deleting={deleting}
           onLeaveGroup={leaveGroup}
@@ -204,6 +216,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           showStandings={showStandings}
           isAdmin={isAdmin}
           userId={user.id}
+          onOpenRules={openRules}
           requestedRound={requestedRound}
           onRequestedRoundApplied={clearRequestedRound}
         />
