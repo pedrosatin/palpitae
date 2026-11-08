@@ -180,12 +180,12 @@
 
 .importSuccess {
   font-size: var(--font-size-sm);
-  color: #1e7a0e;
+  color: var(--color-primary);
 }
 
 .importError {
   font-size: var(--font-size-sm);
-  color: var(--color-error, #c0392b);
+  color: var(--color-danger);
 }
 
 /* Aviso de rodada com jogo adiado — mesma cor do badge "adiado" do MatchCard. */

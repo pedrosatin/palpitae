@@ -233,7 +233,7 @@
 }
 
 .pointsGreen {
-  color: #1f9d55;
+  color: var(--color-primary);
 }
 
 .pointsZero {

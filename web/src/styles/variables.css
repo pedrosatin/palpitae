@@ -48,9 +48,9 @@
   /** Main body text — high contrast on dark backgrounds */
   --color-text-primary: #ffffff;
   /** Secondary / supporting text */
-  --color-text-secondary: #a3a3a3;
-  /** Disabled or placeholder text */
-  --color-text-muted: #555555;
+  --color-text-secondary: #b3b3b3;
+  /** Tertiary text, labels and placeholders. 4.5:1 or more on every surface */
+  --color-text-muted: #8f8f8f;
 
   /* ─── Typography ────────────────────────────────────────────────────────── */
 

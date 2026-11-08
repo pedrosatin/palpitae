@@ -18,6 +18,8 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.ts'],
     testTimeout: 10000,
     css: {
+      // Deixa o texto de variables.css legível via ?raw em tokens.test.ts.
+      include: [/variables\.css/],
       modules: {
         classNameStrategy: 'non-scoped',
       },

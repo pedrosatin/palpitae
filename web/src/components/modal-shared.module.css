@@ -86,7 +86,6 @@
   padding: var(--space-3) var(--space-4);
   width: 100%;
   box-sizing: border-box;
-  outline: none;
   transition: border-color 0.15s;
 }
 
