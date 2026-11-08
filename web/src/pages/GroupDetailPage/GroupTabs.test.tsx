@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import GroupTabs, { revealActiveTab } from './GroupTabs'
+import GroupTabs, { revealActiveTab, scrollEdges } from './GroupTabs'
 import { type Tab } from './types'
 
 describe('GroupTabs', () => {
@@ -96,18 +96,36 @@ describe('revealActiveTab', () => {
   it('leva a aba escondida à direita até a borda direita', () => {
     const { container, active } = build(0, { left: 350, width: 97 })
     revealActiveTab(container, active)
-    expect(container.scrollLeft).toBe(89)
+    expect(container.scrollLeft).toBe(121)
   })
 
   it('leva a aba escondida à esquerda até a borda esquerda', () => {
     const { container, active } = build(120, { left: 40, width: 80 })
     revealActiveTab(container, active)
-    expect(container.scrollLeft).toBe(40)
+    expect(container.scrollLeft).toBe(8)
   })
 
   it('não rola quando a aba já cabe', () => {
     const { container, active } = build(0, { left: 10, width: 80 })
     revealActiveTab(container, active)
     expect(container.scrollLeft).toBe(0)
+  })
+})
+
+describe('scrollEdges', () => {
+  it('não marca nenhum lado quando tudo cabe', () => {
+    expect(scrollEdges(0, 358, 358)).toEqual({ canScrollStart: false, canScrollEnd: false })
+  })
+
+  it('marca só o fim no início da rolagem', () => {
+    expect(scrollEdges(0, 358, 500)).toEqual({ canScrollStart: false, canScrollEnd: true })
+  })
+
+  it('marca os dois lados no meio', () => {
+    expect(scrollEdges(60, 358, 500)).toEqual({ canScrollStart: true, canScrollEnd: true })
+  })
+
+  it('marca só o início no fim da rolagem', () => {
+    expect(scrollEdges(142, 358, 500)).toEqual({ canScrollStart: true, canScrollEnd: false })
   })
 })

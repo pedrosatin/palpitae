@@ -11,8 +11,12 @@ interface GroupTabsProps {
   onTabClick: (e: React.MouseEvent<HTMLAnchorElement>, tab: Tab) => void
 }
 
+const FADE_SIZE = 28
+const REVEAL_MARGIN = 32
+
 /**
- * Rola a barra na horizontal até a aba ativa ficar inteira à vista.
+ * Rola a barra na horizontal até a aba ativa ficar inteira à vista, com folga
+ * para não ficar sob o fade das pontas.
  * Não mexe na rolagem vertical da página, ao contrário de scrollIntoView.
  */
 export function revealActiveTab(container: HTMLElement, active: HTMLElement) {
@@ -20,8 +24,28 @@ export function revealActiveTab(container: HTMLElement, active: HTMLElement) {
   const right = left + active.offsetWidth
   const viewLeft = container.scrollLeft
   const viewRight = viewLeft + container.clientWidth
-  if (left < viewLeft) container.scrollLeft = left
-  else if (right > viewRight) container.scrollLeft = right - container.clientWidth
+  if (left - REVEAL_MARGIN < viewLeft) container.scrollLeft = Math.max(0, left - REVEAL_MARGIN)
+  else if (right + REVEAL_MARGIN > viewRight) {
+    container.scrollLeft = right - container.clientWidth + REVEAL_MARGIN
+  }
+}
+
+/** Diz de que lado da barra ainda há aba escondida. */
+export function scrollEdges(scrollLeft: number, clientWidth: number, scrollWidth: number) {
+  return {
+    canScrollStart: scrollLeft > 1,
+    canScrollEnd: scrollLeft + clientWidth < scrollWidth - 1,
+  }
+}
+
+function updateFades(container: HTMLElement) {
+  const { canScrollStart, canScrollEnd } = scrollEdges(
+    container.scrollLeft,
+    container.clientWidth,
+    container.scrollWidth,
+  )
+  container.style.setProperty('--fade-start', canScrollStart ? `${FADE_SIZE}px` : '0px')
+  container.style.setProperty('--fade-end', canScrollEnd ? `${FADE_SIZE}px` : '0px')
 }
 
 export default function GroupTabs({
@@ -36,8 +60,18 @@ export default function GroupTabs({
 
   useEffect(() => {
     const container = containerRef.current
-    const active = container?.querySelector<HTMLElement>('[aria-current="page"]')
-    if (container && active) revealActiveTab(container, active)
+    if (!container) return
+    const active = container.querySelector<HTMLElement>('[aria-current="page"]')
+    if (active) revealActiveTab(container, active)
+    const update = () => updateFades(container)
+    update()
+    container.addEventListener('scroll', update, { passive: true })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    observer?.observe(container)
+    return () => {
+      container.removeEventListener('scroll', update)
+      observer?.disconnect()
+    }
   }, [activeTab, showStandings, isAdmin])
 
   return (

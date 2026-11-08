@@ -21,12 +21,6 @@
   border-color: var(--color-primary);
 }
 
-/* Contorno de 2 px em verde (mais de 3:1 sobre o fundo) para o teclado. */
-.select:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
 .select option {
   background-color: var(--color-surface-elevated);
   color: var(--color-text-primary);
