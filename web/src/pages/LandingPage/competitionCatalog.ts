@@ -60,5 +60,5 @@ export function catalogFaqAnswer(
   catalog: readonly CatalogCompetition[] = COMPETITION_CATALOG,
 ): string {
   const parts = groupCatalog(catalog).map((g) => `${g.inline} com ${joinNames(g.names)}`)
-  return `Hoje dá para criar bolão ${joinNames(parts)}. Cada grupo acompanha um campeonato, e a lista cresce conforme novas competições entram.`
+  return `Hoje dá para criar bolão ${joinNames(parts)}. Cada grupo acompanha um campeonato.`
 }

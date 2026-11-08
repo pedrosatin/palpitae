@@ -24,7 +24,7 @@ describe('competitionCatalog', () => {
 
   it('monta a resposta do FAQ a partir da lista', () => {
     expect(catalogFaqAnswer(sample)).toBe(
-      'Hoje dá para criar bolão no Brasil com Liga B e na Europa com Liga A e Liga C. Cada grupo acompanha um campeonato, e a lista cresce conforme novas competições entram.',
+      'Hoje dá para criar bolão no Brasil com Liga B e na Europa com Liga A e Liga C. Cada grupo acompanha um campeonato.',
     )
   })
 
