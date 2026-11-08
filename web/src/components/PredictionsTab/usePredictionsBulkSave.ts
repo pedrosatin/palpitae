@@ -4,7 +4,7 @@ import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { predictedClassified } from '../../lib/predictedTie'
-import { collectRoundDrafts } from '../../lib/predictionDrafts'
+import { collectRoundDrafts, type UnsavedDrafts } from '../../lib/predictionDrafts'
 import type { Match, Prediction } from '../MatchCard'
 
 type PredictionMap = Map<string, Prediction>
@@ -58,29 +58,6 @@ function applyPredictionUpdate(
   return next
 }
 
-function usePredictionDrafts() {
-  const [drafts, setDrafts] = useState<Map<string, { home: string; away: string }>>(new Map())
-  const [penaltyDrafts, setPenaltyDrafts] = useState<Map<string, 'home' | 'away' | null>>(new Map())
-
-  function handleDraftChange(matchId: string, home: string, away: string) {
-    setDrafts((prev) => {
-      const next = new Map(prev)
-      next.set(matchId, { home, away })
-      return next
-    })
-  }
-
-  function handlePenaltyDraftChange(matchId: string, winner: 'home' | 'away' | null) {
-    setPenaltyDrafts((prev) => {
-      const next = new Map(prev)
-      next.set(matchId, winner)
-      return next
-    })
-  }
-
-  return { drafts, penaltyDrafts, handleDraftChange, handlePenaltyDraftChange }
-}
-
 function useBulkSaveStatus(selectedRound: string | undefined) {
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
@@ -132,10 +109,9 @@ export function usePredictionsBulkSave(
   predictions: PredictionMap,
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
   selectedRound: string | undefined,
-  allMatches: Match[] = roundMatches,
+  allMatches: Match[],
+  { drafts, penaltyDrafts }: UnsavedDrafts,
 ) {
-  const { drafts, penaltyDrafts, handleDraftChange, handlePenaltyDraftChange } = usePredictionDrafts()
-
   const {
     savingAll,
     setSavingAll,
@@ -217,7 +193,6 @@ export function usePredictionsBulkSave(
   const pendingCount = pendingDrafts().length
 
   return {
-    drafts,
     savingAll,
     savedAll,
     hasSavedPredictions,
@@ -225,7 +200,5 @@ export function usePredictionsBulkSave(
     pendingCount,
     handleSaveAll,
     handleSaved,
-    handleDraftChange,
-    handlePenaltyDraftChange,
   }
 }

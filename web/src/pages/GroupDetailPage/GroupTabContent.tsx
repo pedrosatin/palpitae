@@ -30,6 +30,7 @@ export default function GroupTabContent({
           key={`${userId}:${groupId}`}
           groupId={groupId}
           competitionId={group.competition_id}
+          userId={userId}
           pointsExact={group.points_exact}
         />
       )}

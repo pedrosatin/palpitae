@@ -12,6 +12,8 @@ import styles from './PredictionsTab.module.css'
 interface PredictionsTabProps {
   groupId: string
   competitionId: string
+  /** Liga a guarda dos rascunhos não salvos no navegador, numa chave por usuário e grupo. */
+  userId?: string
   /** Group's points for an exact score. When 0, matches use the 1X2 button UI. */
   pointsExact?: number
 }
@@ -68,10 +70,12 @@ function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
 export default function PredictionsTab({
   groupId,
   competitionId,
+  userId,
   pointsExact = 3,
 }: PredictionsTabProps) {
   const {
-    drafts,
+    unsavedDrafts,
+    unsavedRounds,
     matches,
     predictions,
     loading,
@@ -106,7 +110,7 @@ export default function PredictionsTab({
     handleSaved,
     handleDraftChange,
     handlePenaltyDraftChange,
-  } = usePredictionsTab(groupId, competitionId)
+  } = usePredictionsTab(groupId, competitionId, userId)
 
   // Avisa sobre UMA rodada com palpite aberto fora de hora: a mais próxima ANTES
   // da aberta. Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em
@@ -177,6 +181,7 @@ export default function PredictionsTab({
         onNext={next}
         postponedByRound={postponedByRound}
         rescheduledByRound={rescheduledByRound}
+        unsavedRounds={unsavedRounds}
         onSelect={(round) => {
           trackEvent('change_predictions_rodada', { round })
           setRoundIndex(roundKeys.indexOf(round))
@@ -234,8 +239,14 @@ export default function PredictionsTab({
                 key={match.id}
                 match={match}
                 prediction={predictions.get(match.id)}
-                leg1Prediction={leg1Context(match, predictions, roundMatches, drafts).prediction}
-                leg1Pending={leg1Context(match, predictions, roundMatches, drafts).pending}
+                draft={unsavedDrafts.drafts.get(match.id)}
+                penaltyDraft={unsavedDrafts.penaltyDrafts.get(match.id)}
+                leg1Prediction={
+                  leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts).prediction
+                }
+                leg1Pending={
+                  leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts).pending
+                }
                 groupId={groupId}
                 outcomeOnly={pointsExact === 0}
                 onSaved={handleSaved}

@@ -6,7 +6,9 @@ import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import { isMatchLocked } from '../../lib/predictionDrafts'
+import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
+import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 
 type PredictionMap = Map<string, Prediction>
@@ -224,6 +226,8 @@ function usePredictionsImport(
         const map = new Map<string, Prediction>()
         for (const p of predsData.predictions) map.set(p.match_id, p)
         if (current.active) {
+          // O importado muda o palpite salvo, e `usePredictionDrafts` descarta o
+          // rascunho digitado sobre o valor anterior.
           setPredictions(map)
           if (predsData.import_sources) setImportSources(predsData.import_sources)
         }
@@ -255,7 +259,8 @@ function usePredictionsImport(
   }
 }
 
-export function usePredictionsTab(groupId: string, competitionId: string) {
+/** `userId` liga a guarda dos rascunhos no navegador; sem ele, ficam só na memória. */
+export function usePredictionsTab(groupId: string, competitionId: string, userId?: string) {
   const {
     matches,
     predictions,
@@ -270,6 +275,9 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     importSources,
     setImportSources,
   } = usePredictionsFetch(groupId, competitionId)
+
+  const { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange } =
+    usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions)
 
   const {
     importExpanded,
@@ -316,7 +324,6 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
   )
 
   const {
-    drafts,
     savingAll,
     savedAll,
     hasSavedPredictions,
@@ -324,8 +331,6 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     pendingCount,
     handleSaveAll,
     handleSaved,
-    handleDraftChange,
-    handlePenaltyDraftChange,
   } = usePredictionsBulkSave(
     groupId,
     roundMatches,
@@ -333,11 +338,13 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     setPredictions,
     selectedRound,
     matches,
+    unsavedDrafts,
   )
 
   return {
     importCompleted,
-    drafts,
+    unsavedDrafts,
+    unsavedRounds,
     matches,
     predictions,
     loading,
