@@ -46,6 +46,7 @@ export type EventType =
   | 'matches_cache'
   // Notificações por e-mail
   | 'email_reminder_sent'
+  | 'email_reminder_failed'
   | 'cron_round_reminder'
   | 'cron_round_reminder_misconfig'
   | 'email_unsubscribed'

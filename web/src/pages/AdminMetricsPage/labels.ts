@@ -28,6 +28,7 @@ const EVENT_LABELS: Record<string, string> = {
   request_perf: 'Latência de request',
   // Notificações por e-mail
   email_reminder_sent: 'Lembrete enviado',
+  email_reminder_failed: 'Falha no lembrete',
   cron_round_reminder: 'Cron de lembrete',
   cron_round_reminder_misconfig: 'Lembrete mal configurado',
   email_unsubscribed: 'Descadastro de e-mail',

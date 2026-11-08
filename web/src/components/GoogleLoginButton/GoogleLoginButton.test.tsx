@@ -25,6 +25,22 @@ describe('GoogleLoginButton', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
     expect(window.location.href).toContain('/auth/google')
   })
+
+  it('volta para o grupo e a rodada do link do e-mail depois do login', async () => {
+    Object.assign(window.location, { pathname: '/grupos/g1', search: '?rodada=35' })
+    render(<GoogleLoginButton />)
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
+    expect(new URL(window.location.href).searchParams.get('redirect')).toBe(
+      '/grupos/g1?rodada=35',
+    )
+  })
+
+  it('fora de um grupo mantém só a query no redirect', async () => {
+    Object.assign(window.location, { pathname: '/', search: '?convite=ABC' })
+    render(<GoogleLoginButton />)
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
+    expect(new URL(window.location.href).searchParams.get('redirect')).toBe('?convite=ABC')
+  })
 })
 
 describe('GoogleLoginButton – analytics', () => {

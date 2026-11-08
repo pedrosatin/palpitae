@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -55,6 +55,33 @@ describe('SettingsPage', () => {
 
     const toggle = await screen.findByRole('checkbox')
     await waitFor(() => expect(toggle).not.toBeChecked())
+  })
+
+  it('descreve a regra real do lembrete, com o horário de envio', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse({ round_reminders: true }))
+
+    renderPage()
+
+    expect(await screen.findByText('Lembretes de palpite')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Nos dias em que você tem jogo sem palpite, enviamos um e-mail às 7h, horário de Brasília, com os jogos daquele dia e o horário em que cada um fecha. Se já palpitou todos, você não recebe nada.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/dia anterior/i)).not.toBeInTheDocument()
+  })
+
+  it('repete a regra no modal ao ativar os lembretes', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockResponse({ round_reminders: false }))
+
+    renderPage()
+
+    const toggle = await screen.findByRole('checkbox')
+    await waitFor(() => expect(toggle).not.toBeChecked())
+    await userEvent.click(toggle)
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/às 7h, horário de Brasília/)).toBeInTheDocument()
   })
 
   it('opens a confirmation modal when the toggle is clicked and tracks the intent', async () => {
