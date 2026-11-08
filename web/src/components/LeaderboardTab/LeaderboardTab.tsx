@@ -54,8 +54,7 @@ export default function LeaderboardTab({
     () => new Map(standings.map((standing) => [standing.user_id, standing])),
     [standings],
   )
-  const showArrowsNote =
-    round !== null && standings.some((standing) => standing.position_change !== null)
+  const showArrowsNote = round !== null && standings.some((s) => Boolean(s.position_change))
 
   const openMemberModal = useCallback((member: Member) => {
     trackEvent('click_leaderboard_ver_palpites')

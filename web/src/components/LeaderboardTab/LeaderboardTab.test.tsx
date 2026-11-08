@@ -191,6 +191,21 @@ describe('LeaderboardTab rodada', () => {
     ).toBeInTheDocument()
   })
 
+  it('não mostra o aviso das setas quando ninguém mudou de posição', async () => {
+    mockFetch({
+      round: '34',
+      standings: [
+        { user_id: 'u1', round_points: 7, position_change: 0 },
+        { user_id: 'u2', round_points: 3, position_change: 0 },
+      ],
+    })
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.getByRole('columnheader', { name: 'Pontos na rodada 34' })).toBeInTheDocument()
+    expect(screen.queryByText(/As setas comparam/)).not.toBeInTheDocument()
+  })
+
   it('não mostra o aviso das setas na primeira rodada, em que toda variação é null', async () => {
     mockFetch({
       round: '1',

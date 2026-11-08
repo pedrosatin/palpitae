@@ -227,7 +227,7 @@ O mata-mata fica fora desta coluna e de `roundScope`. Uma fase sem número não 
 
 A posição atual segue a ordem oficial, `total_points DESC, exact_hits DESC, joined_at ASC`, com `user_id ASC` como último desempate, também em `GET /groups/:id/members`, para a ordem ser determinística. A posição anterior aplica a mesma ordem a `total_points - round_points` e `exact_hits - round_exact`. `position_change` é a posição anterior menos a atual, e positivo é subiu. Quando todos os totais anteriores são 0, `position_change` é `null` para todos, porque a variação não diria nada.
 
-Na web, `LeaderboardTab` carrega membros e `round-standings` em paralelo e só desenha a tabela quando as duas respostas terminam. Falha em `round-standings` não é erro de tela, e a tabela aparece como antes, sem a coluna e sem setas. Com `round` preenchido entram a coluna da rodada entre Jogador e Pontos, a variação sob o número da posição e, se houver `position_change` diferente de `null`, um aviso do que as setas comparam.
+Na web, `LeaderboardTab` carrega membros e `round-standings` em paralelo e só desenha a tabela quando as duas respostas terminam. Falha em `round-standings` não é erro de tela, e a tabela aparece como antes, sem a coluna e sem setas. Com `round` preenchido entram a coluna da rodada entre Jogador e Pontos, a variação sob o número da posição e, se alguma posição tiver mudado, um aviso do que as setas comparam.
 
 ### Consequences
 
