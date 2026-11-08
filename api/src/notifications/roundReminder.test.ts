@@ -3,7 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { formatTimeBRT, sendRoundReminders } from './roundReminder'
+import { RESEND_FETCH_BUDGET, formatTimeBRT, sendRoundReminders } from './roundReminder'
 
 // 07:00 em Brasília de sexta 13/11/2026 e de quarta 18/11/2026.
 const FRIDAY = Date.UTC(2026, 10, 13, 10)
@@ -95,6 +95,19 @@ function addPrediction(sqlite: DatabaseSync, user: string, group: string, match:
        VALUES (?, ?, ?, ?, 1, 0)`,
     )
     .run(`p-${user}-${group}-${match}`, user, group, match)
+}
+
+/** Adiciona `count` usuários ao grupo g1, além da Ana. */
+function addMembers(sqlite: DatabaseSync, count: number) {
+  for (let i = 1; i <= count; i++) {
+    const user = `u${String(i).padStart(2, '0')}`
+    sqlite
+      .prepare(
+        `INSERT INTO users (id, email, provider, provider_id, user_name) VALUES (?, ?, 'google', ?, ?)`,
+      )
+      .run(user, `${user}@example.com`, `g-${user}`, user)
+    addMember(sqlite, 'g1', user)
+  }
 }
 
 function sentBodies() {
@@ -477,6 +490,81 @@ describe('sendRoundReminders', () => {
 
       expect(fetch).not.toHaveBeenCalled()
       expect(sqlite.prepare('SELECT * FROM email_reminder_sends').all()).toEqual([])
+    })
+  })
+
+  describe('teto de subrequests por execução', () => {
+    const TOTAL = RESEND_FETCH_BUDGET + 6
+
+    function recipientsOf(calls: ReturnType<typeof sentBodies>) {
+      return calls.map((body) => body.to)
+    }
+
+    it('para no teto de fetch, registra o motivo e devolve as reservas', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMembers(sqlite, TOTAL - 1)
+      const { ae, writeDataPoint } = fakeAe()
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(fetch).toHaveBeenCalledTimes(RESEND_FETCH_BUDGET)
+      const reserved = sqlite.prepare('SELECT user_id FROM email_reminder_sends').all()
+      expect(reserved).toHaveLength(RESEND_FETCH_BUDGET)
+      const failures = eventsOf(writeDataPoint, 'email_reminder_failed')
+      expect(failures).toHaveLength(6)
+      expect(failures.every((event) => event.blobs[3] === 'subrequest_budget')).toBe(true)
+      expect(eventsOf(writeDataPoint, 'cron_round_reminder')[0].doubles).toEqual([
+        1,
+        RESEND_FETCH_BUDGET,
+        6,
+        RESEND_FETCH_BUDGET,
+      ])
+    })
+
+    it('conta os reenvios no teto', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMembers(sqlite, 19)
+      const { ae, writeDataPoint } = fakeAe()
+      vi.mocked(fetch).mockImplementation(
+        async () => new Response('', { status: 500, headers: { 'Retry-After': '0' } }),
+      )
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(fetch).toHaveBeenCalledTimes(RESEND_FETCH_BUDGET)
+      expect(sqlite.prepare('SELECT * FROM email_reminder_sends').all()).toEqual([])
+      const reasons = eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])
+      expect(reasons).toHaveLength(20)
+      expect(reasons.filter((reason) => reason === 'http_500')).toHaveLength(15)
+      expect(reasons.filter((reason) => reason === 'subrequest_budget')).toHaveLength(5)
+    })
+
+    it('quem ficou sem e-mail recebe na execução seguinte, sem repetir para os demais', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMembers(sqlite, TOTAL - 1)
+
+      await run(db)
+      await run(db)
+
+      const recipients = recipientsOf(sentBodies())
+      expect(recipients).toHaveLength(TOTAL)
+      expect(new Set(recipients).size).toBe(TOTAL)
+      expect(sqlite.prepare('SELECT * FROM email_reminder_sends').all()).toHaveLength(TOTAL)
+    })
+
+    it('abaixo do teto envia para todos sem evento de falha', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMembers(sqlite, RESEND_FETCH_BUDGET - 1)
+      const { ae, writeDataPoint } = fakeAe()
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(fetch).toHaveBeenCalledTimes(RESEND_FETCH_BUDGET)
+      expect(eventsOf(writeDataPoint, 'email_reminder_failed')).toEqual([])
     })
   })
 
