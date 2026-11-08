@@ -71,7 +71,7 @@ comprova sua configuração ou o recebimento dos eventos em produção.
 
 `web/src/analytics/pageContext.ts` define a URL e o título enviados ao GA. Grupo vira `/grupos/:id` com título `Grupo | Palpitae`, convite vira `/convite/:code`, e a query string mantém só a lista permitida (`utm_*`, `gclid`, `from`, `tab`). O título da aba continua com o nome do grupo.
 
-O primeiro carregamento sai pelo `config`. A navegação interna sai pelo `page_view` manual de `useGaPageView`, porque o `page_view` automático de mudança de histórico ignora `page_location`. Por isso a opção **Page changes based on browser history events** da medição aprimorada fica desligada no fluxo Palpitae.
+O primeiro carregamento sai pelo `config`. A navegação interna sai pelo `page_view` manual de `useGaPageView`, porque o `page_view` automático de mudança de histórico ignora `page_location`. Por isso a opção **Page changes based on browser history events** da medição aprimorada fica desligada no fluxo Palpitae. **Form interactions** também fica desligada: o `form_start` automático envia a URL real em `form_destination`, e formulário se mede com os eventos `submit_*`.
 
 ## Convenções de nome
 
