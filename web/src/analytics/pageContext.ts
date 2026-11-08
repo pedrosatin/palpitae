@@ -12,16 +12,11 @@
  */
 const BASE_TITLE = 'Palpitae'
 
-const ALLOWED_QUERY_PARAMS = new Set([
-  'utm_source',
-  'utm_medium',
-  'utm_campaign',
-  'utm_term',
-  'utm_content',
-  'gclid',
-  'from',
-  'tab',
-])
+const ALLOWED_QUERY_PARAMS = new Set(['gclid', 'from', 'tab'])
+
+function isAllowedQueryParam(key: string): boolean {
+  return key.startsWith('utm_') || ALLOWED_QUERY_PARAMS.has(key)
+}
 
 const PRIVATE_PATHS: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/grupos\/[^/]+/, '/grupos/:id'],
@@ -50,7 +45,7 @@ function normalizePath(pathname: string): string {
 }
 
 function allowedSearch(search: string): string {
-  const kept = [...new URLSearchParams(search)].filter(([key]) => ALLOWED_QUERY_PARAMS.has(key))
+  const kept = [...new URLSearchParams(search)].filter(([key]) => isAllowedQueryParam(key))
   return kept.length > 0 ? `?${new URLSearchParams(kept).toString()}` : ''
 }
 

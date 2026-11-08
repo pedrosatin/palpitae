@@ -101,13 +101,10 @@ export function initGa(): void {
   }
 
   window.gtag('js', new Date())
-  const page = firstLoadPage()
-  const referrer = internalReferrer(document.referrer, window.location.origin)
-  window.gtag('set', page)
-  window.gtag('config', config.gaMeasurementId, {
-    ...page,
-    ...(referrer ? { page_referrer: referrer } : {}),
-  })
+  // Só `set`: o que vai no `config` tem precedência sobre `set` e prenderia os
+  // eventos seguintes na página do primeiro carregamento.
+  window.gtag('set', firstLoadPage())
+  window.gtag('config', config.gaMeasurementId)
 
   // Carrega o gtag.js fora do caminho crítico de renderização: o stub acima já
   // enfileira os hits em dataLayer, então o script real pode chegar depois do
@@ -116,11 +113,13 @@ export function initGa(): void {
   loadGtagScript()
 }
 
-function firstLoadPage(): GaPage {
+function firstLoadPage(): GaPage & { page_referrer?: string } {
   const { origin, pathname, search } = window.location
+  const referrer = internalReferrer(document.referrer, origin)
   return {
     page_location: gaPageLocation({ origin, pathname, search }),
     page_title: gaPageTitle(pathname),
+    ...(referrer ? { page_referrer: referrer } : {}),
   }
 }
 
@@ -147,8 +146,9 @@ function loadGtagScript(): void {
 
 /** Registra uma navegação interna. Os eventos seguintes herdam a mesma página. */
 export function trackPageView(page: GaPage, referrer: string): void {
-  window.gtag?.('set', page)
-  window.gtag?.('event', 'page_view', { ...page, page_referrer: referrer })
+  const params = { ...page, page_referrer: referrer }
+  window.gtag?.('set', params)
+  window.gtag?.('event', 'page_view', params)
 }
 
 /** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */

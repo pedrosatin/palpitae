@@ -24,6 +24,11 @@ describe('gaPageLocation', () => {
     )
   })
 
+  it('keeps every campaign param GA4 recognizes', () => {
+    const search = '?utm_id=c1&utm_source_platform=crm&utm_creative_format=video'
+    expect(gaPageLocation({ origin, pathname: '/', search })).toBe(`${origin}/${search}`)
+  })
+
   it('leaves public paths untouched', () => {
     expect(gaPageLocation({ origin, pathname: '/entrar', search: '?from=guia_x' })).toBe(
       `${origin}/entrar?from=guia_x`,
