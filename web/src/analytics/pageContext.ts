@@ -3,7 +3,12 @@
  *
  * Nome do grupo, id do grupo e código de convite são privados e não saem do
  * app. O título da aba continua com o nome do grupo: só o valor enviado ao GA
- * é genérico, e por isso ele vem da rota, nunca de `document.title`.
+ * é genérico. Ele vem sempre da rota, nunca de `document.title`, porque a
+ * função do convite reescreve o `<title>` do HTML com o nome do grupo, e esse
+ * título sobrevive à troca de `/convite/CODE` por `/?convite=CODE`.
+ *
+ * `rodada` fica fora da lista de propósito: o app consome esse parâmetro e o
+ * apaga da URL logo depois de abrir, o que contaria uma visualização a mais.
  */
 const BASE_TITLE = 'Palpitae'
 
@@ -16,7 +21,6 @@ const ALLOWED_QUERY_PARAMS = new Set([
   'gclid',
   'from',
   'tab',
-  'rodada',
 ])
 
 const PRIVATE_PATHS: ReadonlyArray<readonly [RegExp, string]> = [
@@ -58,13 +62,8 @@ function routeLabel(pathname: string): string | undefined {
   return ROUTE_LABELS.find(([pattern]) => pattern.test(pathname))?.[1]
 }
 
-/**
- * Título enviado ao GA. No primeiro carregamento, `firstLoadTitle` preserva o
- * título estático da home e de rotas sem rótulo próprio.
- */
-export function gaPageTitle(pathname: string, firstLoadTitle?: string): string {
+export function gaPageTitle(pathname: string): string {
   const label = routeLabel(pathname)
-  if (firstLoadTitle && (pathname === '/' || !label)) return firstLoadTitle
   return label ? `${label} | ${BASE_TITLE}` : BASE_TITLE
 }
 

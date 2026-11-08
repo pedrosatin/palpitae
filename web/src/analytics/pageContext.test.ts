@@ -17,10 +17,10 @@ describe('gaPageLocation', () => {
     )
   })
 
-  it('keeps campaign params and the tab, and drops the invite code', () => {
+  it('keeps campaign params and the tab, and drops the invite code and the round', () => {
     const search = '?utm_source=news&tab=ranking&convite=ABC123&rodada=7&outro=1'
     expect(gaPageLocation({ origin, pathname: '/', search })).toBe(
-      `${origin}/?utm_source=news&tab=ranking&rodada=7`,
+      `${origin}/?utm_source=news&tab=ranking`,
     )
   })
 
@@ -36,15 +36,7 @@ describe('gaPageTitle', () => {
     expect(gaPageTitle(`/grupos/${uuid}`)).toBe('Grupo | Palpitae')
   })
 
-  it('ignores the current document title on a group, even on first load', () => {
-    expect(gaPageTitle(`/grupos/${uuid}`, 'Titulo estatico')).toBe('Grupo | Palpitae')
-  })
-
-  it('keeps the static title when the home is the first load', () => {
-    expect(gaPageTitle('/', 'Titulo estatico')).toBe('Titulo estatico')
-  })
-
-  it('labels the home on internal navigation', () => {
+  it('labels the home', () => {
     expect(gaPageTitle('/')).toBe('Início | Palpitae')
   })
 

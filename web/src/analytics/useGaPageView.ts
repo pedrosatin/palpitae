@@ -9,17 +9,18 @@ import { gaPageLocation, gaPageTitle } from './pageContext'
  */
 export function useGaPageView(): void {
   const { pathname, search } = useLocation()
-  const previous = useRef<{ key: string; location: string } | null>(null)
+  const previous = useRef<{ pathname: string; location: string } | null>(null)
 
   useEffect(() => {
-    const key = `${pathname}${search}`
     const location = gaPageLocation({ origin: window.location.origin, pathname, search })
-    if (previous.current && previous.current.key !== key) {
+    const last = previous.current
+    // O caminho cru entra na comparação porque dois grupos têm a mesma URL normalizada.
+    if (last && (last.pathname !== pathname || last.location !== location)) {
       trackPageView(
         { page_location: location, page_title: gaPageTitle(pathname) },
-        previous.current.location,
+        last.location,
       )
     }
-    previous.current = { key, location }
+    previous.current = { pathname, location }
   }, [pathname, search])
 }
