@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as ga from '../../analytics/ga'
-import ShareButtons from './ShareButtons'
+import ShareButtons, { WhatsAppShareButton } from './ShareButtons'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -132,5 +132,90 @@ describe('ShareButtons', () => {
     const url = open.mock.calls[0][0] as string
     expect(url).toContain('twitter.com/intent/tweet')
     expect(url).toContain(`url=${encodeURIComponent(LINK)}`)
+  })
+})
+
+describe('WhatsAppShareButton', () => {
+  const MESSAGE = 'Rodada 35 do bolão Realidade do BR. Ana ainda não palpitou.'
+
+  function stubPointer(coarse: boolean) {
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: coarse }))
+  }
+
+  function renderButton() {
+    render(
+      <WhatsAppShareButton
+        label="Lembrar no WhatsApp"
+        message={MESSAGE}
+        shareLink={LINK}
+        eventContext="group_picks_lembrete"
+      />,
+    )
+    return screen.getByRole('button', { name: 'Lembrar no WhatsApp' })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('abre o menu nativo no celular e não abre o link do WhatsApp', async () => {
+    stubPointer(true)
+    const share = enableWebShare(() => Promise.resolve())
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+
+    await userEvent.click(renderButton())
+
+    expect(share).toHaveBeenCalledWith({ title: 'Palpitae', text: MESSAGE, url: LINK })
+    expect(open).not.toHaveBeenCalled()
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_lembrete_whatsapp')
+  })
+
+  it('abre o link do WhatsApp no desktop mesmo com menu nativo disponível', async () => {
+    stubPointer(false)
+    const share = enableWebShare(() => Promise.resolve())
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+
+    await userEvent.click(renderButton())
+
+    expect(share).not.toHaveBeenCalled()
+    const url = new URL(open.mock.calls[0][0] as string)
+    expect(url.hostname).toBe('wa.me')
+    expect(url.searchParams.get('text')).toBe(`${MESSAGE} ${LINK}`)
+  })
+
+  it('abre o link do WhatsApp sem matchMedia', async () => {
+    disableWebShare()
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    await userEvent.click(renderButton())
+    expect(open).toHaveBeenCalledOnce()
+  })
+
+  it('não faz nada quando o menu nativo é cancelado', async () => {
+    stubPointer(true)
+    enableWebShare(() => Promise.reject(new DOMException('cancelled', 'AbortError')))
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+
+    await userEvent.click(renderButton())
+
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('cai no link do WhatsApp quando o menu nativo falha', async () => {
+    stubPointer(true)
+    enableWebShare(() => Promise.reject(new DOMException('blocked', 'NotAllowedError')))
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+
+    await userEvent.click(renderButton())
+
+    expect(open).toHaveBeenCalledOnce()
+  })
+
+  it('fica fora do evento de convite compartilhado', async () => {
+    stubPointer(true)
+    enableWebShare(() => Promise.resolve())
+
+    await userEvent.click(renderButton())
+
+    expect(mockTrackEvent).not.toHaveBeenCalledWith('share_invite', expect.anything())
   })
 })

@@ -152,6 +152,80 @@ describe('access controls with a real SQL database', () => {
     expect(edit.status).toBe(422)
   })
 
+  describe('open_pickers em GET /predictions/group', () => {
+    type GroupFeed = {
+      predictions: { user_id: string; match_id: string; predicted_home_score: number }[]
+      open_pickers: Record<string, string[]>
+    }
+
+    it('expõe quem palpitou o jogo aberto do grupo oculto, sem placar de outro membro', async () => {
+      const { request, sqlite } = await fixture()
+      sqlite.exec("UPDATE predictions SET predicted_home_score = 77 WHERE id = 'p2'")
+
+      const response = await request('/predictions/group?group_id=group')
+      const raw = await response.text()
+      const body = JSON.parse(raw) as GroupFeed
+
+      expect(Object.keys(body.open_pickers)).toEqual(['future'])
+      expect([...body.open_pickers.future].sort()).toEqual(['member', 'other'])
+      // O palpite alheio em jogo aberto continua fora da resposta.
+      expect(body.predictions.map((p) => `${p.user_id}:${p.match_id}`).sort()).toEqual([
+        'member:future',
+        'other:past',
+      ])
+      expect(raw).not.toContain('"predicted_home_score":77')
+    })
+
+    it('deixa de fora jogo travado por horário, status ou locked_at', async () => {
+      const { request, sqlite } = await fixture()
+      const pickers = async () =>
+        ((await (await request('/predictions/group?group_id=group')).json()) as GroupFeed)
+          .open_pickers
+
+      expect(Object.keys(await pickers())).toEqual(['future'])
+
+      sqlite.exec("UPDATE matches SET status = 'live' WHERE id = 'future'")
+      expect(await pickers()).toEqual({})
+
+      sqlite.exec(
+        "UPDATE matches SET status = 'scheduled', locked_at = '2020-06-01T00:10:00Z' WHERE id = 'future'",
+      )
+      expect(await pickers()).toEqual({})
+
+      sqlite.exec(
+        "UPDATE matches SET locked_at = NULL, start_time = '2020-06-01T00:00:00Z' WHERE id = 'future'",
+      )
+      expect(await pickers()).toEqual({})
+    })
+
+    it('mantém o jogo adiado que não começou, como a regra de escrita', async () => {
+      const { request, sqlite } = await fixture()
+      sqlite.exec(
+        "UPDATE matches SET start_time = '2020-06-01T00:00:00Z', postponed = 1 WHERE id = 'future'",
+      )
+      const body = (await (await request('/predictions/group?group_id=group')).json()) as GroupFeed
+      expect([...body.open_pickers.future].sort()).toEqual(['member', 'other'])
+    })
+
+    it('tira quem saiu do grupo', async () => {
+      const { request } = await fixture()
+      expect((await request('/groups/group/members/other', 'owner', 'DELETE')).status).toBe(200)
+      const body = (await (
+        await request('/predictions/group?group_id=group', 'owner')
+      ).json()) as GroupFeed
+      expect(body.open_pickers).toEqual({ future: ['member'] })
+    })
+
+    it('no grupo público traz a mesma lista, sem repetir a leitura no banco', async () => {
+      const { request, sqlite } = await fixture()
+      sqlite.exec("UPDATE groups SET predictions_visibility = 'public'")
+      const body = (await (await request('/predictions/group?group_id=group')).json()) as GroupFeed
+      expect([...body.open_pickers.future].sort()).toEqual(['member', 'other'])
+      expect(body.open_pickers.past).toBeUndefined()
+      expect(body.predictions).toHaveLength(3)
+    })
+  })
+
   it('returns the invite only to the owner', async () => {
     const { request } = await fixture()
     expect(

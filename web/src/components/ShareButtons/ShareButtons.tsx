@@ -19,6 +19,63 @@ interface ShareButtonsProps {
 
 const DEFAULT_MESSAGE = buildInviteMessage()
 
+function whatsappUrlFor(message: string, shareLink: string): string {
+  return `https://wa.me/?text=${encodeURIComponent(`${message} ${shareLink}`)}`
+}
+
+/**
+ * Celular com menu nativo. Navegadores de desktop também têm `navigator.share`, mas
+ * ali o caminho direto é abrir o WhatsApp.
+ */
+function hasPhoneShareSheet(): boolean {
+  return (
+    typeof navigator.share === 'function' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(pointer: coarse)').matches
+  )
+}
+
+interface WhatsAppShareButtonProps {
+  label: string
+  message: string
+  shareLink: string
+  /** Prefixo do evento de clique. Vira `click_<eventContext>_whatsapp`. */
+  eventContext: string
+}
+
+/**
+ * Botão único que leva um texto pronto ao WhatsApp. No celular abre o menu nativo, e
+ * no desktop abre o link do WhatsApp. Serve a mensagens que não são convite, por isso
+ * fica fora do evento `share_invite`.
+ */
+export function WhatsAppShareButton({
+  label,
+  message,
+  shareLink,
+  eventContext,
+}: WhatsAppShareButtonProps) {
+  async function handleClick() {
+    trackEvent(`click_${eventContext}_whatsapp`)
+    if (hasPhoneShareSheet()) {
+      try {
+        await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
+        return
+      } catch (err) {
+        // Cancelar o menu não abre nada. Outra falha cai no link do WhatsApp.
+        if (err instanceof DOMException && err.name === 'AbortError') return
+      }
+    }
+    window.open(whatsappUrlFor(message, shareLink), '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <button type="button" className={`${styles.shareBtn} ${styles.tallBtn}`} onClick={handleClick}>
+      <WhatsAppIcon className={styles.icon} />
+      <span>{label}</span>
+    </button>
+  )
+}
+
 /**
  * Botões de compartilhamento do link de convite.
  *
@@ -38,8 +95,7 @@ export default function ShareButtons({
   const [copied, setCopied] = useState(false)
 
   const canWebShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
-  const fullText = `${message} ${shareLink}`
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(fullText)}`
+  const whatsappUrl = whatsappUrlFor(message, shareLink)
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
     message,
   )}&url=${encodeURIComponent(shareLink)}`

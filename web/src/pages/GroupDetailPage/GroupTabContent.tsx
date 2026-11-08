@@ -53,6 +53,7 @@ export default function GroupTabContent({
         <GroupPicksTab
           groupId={groupId}
           competitionId={group.competition_id}
+          groupName={group.name}
           predictionsVisibility={group.predictions_visibility}
         />
       )}

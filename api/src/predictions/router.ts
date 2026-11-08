@@ -17,6 +17,7 @@ import {
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { getGroupMembership, getGroupMembershipTimed } from '../groups/membership'
+import { fetchOpenPickers, indexOpenPickers } from './openPickers'
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -591,6 +592,10 @@ router.get('/user', requireAuth, async (c) => {
  *
  * The `locked` field is derived from match.start_time at runtime (ADR-004).
  *
+ * `open_pickers` lista, por jogo ainda aberto, os ids dos membros que já palpitaram.
+ * Só presença, sem placar, nos dois modos de visibilidade (ver openPickers.ts). Jogo
+ * aberto sem nenhum palpite fica fora do objeto.
+ *
  * Response:
  * {
  *   self_user_id: string,
@@ -601,7 +606,8 @@ router.get('/user', requireAuth, async (c) => {
  *       predicted_home_score, predicted_away_score, points_awarded,
  *       classified_points, predicted_classified, locked
  *     }
- *   ]
+ *   ],
+ *   open_pickers: { [match_id]: user_id[] }
  * }
  */
 router.get('/group', requireAuth, async (c) => {
@@ -628,9 +634,11 @@ router.get('/group', requireAuth, async (c) => {
   // Visibility mode is set at group creation and immutable (migration 0008).
   // 'public' shows everyone's picks in real time; 'hidden' applies the anti-copy rule.
   const groupConfig = await db
-    .prepare(`SELECT predictions_visibility FROM groups WHERE id = ? AND deleted_at IS NULL`)
+    .prepare(
+      `SELECT predictions_visibility, competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`,
+    )
     .bind(groupId)
-    .first<{ predictions_visibility: string }>()
+    .first<{ predictions_visibility: string; competition_id: string }>()
 
   if (!groupConfig) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
@@ -656,9 +664,9 @@ router.get('/group', requireAuth, async (c) => {
   const membersMs = Date.now() - membersStartedAt
 
   const predictionsStartedAt = Date.now()
-  const predictionsResult = isPublic
+  const predictionsQuery = isPublic
     ? // Public group: every member's picks are visible in real time, no anti-copy filter.
-      await db
+      db
         .prepare(
           `SELECT
              pr.match_id,
@@ -683,7 +691,7 @@ router.get('/group', requireAuth, async (c) => {
         .bind(now, groupId)
         .all<PredictionRow>()
     : // Hidden group: only the requester or a locked match can reveal a pick.
-      await db
+      db
         .prepare(
           `SELECT
              pr.match_id,
@@ -711,6 +719,19 @@ router.get('/group', requireAuth, async (c) => {
         )
         .bind(now, groupId, now, userId)
         .all<PredictionRow>()
+  // No grupo público os palpites abertos já vêm nas linhas, sem outra leitura no D1.
+  const [predictionsResult, hiddenGroupPickers] = await Promise.all([
+    predictionsQuery,
+    isPublic ? null : fetchOpenPickers(db, groupId, groupConfig.competition_id, now),
+  ])
+  const openPickers =
+    hiddenGroupPickers ??
+    indexOpenPickers(
+      predictionsResult.results.filter((r) => r.locked === 0) as {
+        match_id: string
+        user_id: string
+      }[],
+    )
   const ties = await fetchRowTies(db, predictionsResult.results)
   const predictionsMs = Date.now() - predictionsStartedAt
 
@@ -746,6 +767,7 @@ router.get('/group', requireAuth, async (c) => {
     self_user_id: userId,
     members: membersResult.results,
     predictions: predictionsOut,
+    open_pickers: openPickers,
   })
 })
 

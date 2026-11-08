@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import GroupPicksTab from './GroupPicksTab'
 import { makeMatch } from '../matchFixtures'
@@ -413,6 +413,225 @@ describe('GroupPicksTab member list', () => {
     })
     expect(screen.getByText('Isabelly').closest('li')).toHaveTextContent('1 × 0')
     expect(screen.getAllByText('sem palpite')).toHaveLength(3)
+    expect(screen.queryByText(/aparecem quando o jogo começar/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('GroupPicksTab quem já palpitou', () => {
+  // 14/11/2026 é sábado. Em Brasília o jogo começa às 18:30.
+  const NOW = '2026-11-10T12:00:00.000Z'
+  const KICKOFF = '2026-11-14T21:30:00.000Z'
+
+  const roster = [
+    { user_id: 'user-1', display: 'Pedro' },
+    { user_id: 'user-2', display: 'Ana Lima' },
+    { user_id: 'user-3', display: 'Bruno' },
+    { user_id: 'user-4', display: 'Carla' },
+  ]
+
+  function ownPick(extra: Record<string, unknown> = {}) {
+    return {
+      match_id: 'm1',
+      user_id: 'user-1',
+      user_display: 'Pedro',
+      predicted_home_score: 2,
+      predicted_away_score: 1,
+      points_awarded: 0,
+      locked: 0,
+      ...extra,
+    }
+  }
+
+  function renderHidden(
+    pickers: Record<string, string[]> | undefined,
+    predictions: Array<Record<string, unknown>> = [ownPick()],
+    matches: Match[] = [makeMatch({ id: 'm1', round: '35', start_time: KICKOFF })],
+  ) {
+    mockFetch(matches, {
+      self_user_id: 'user-1',
+      members: roster,
+      predictions,
+      ...(pickers ? { open_pickers: pickers } : {}),
+    } as GroupPicksResponse)
+    render(
+      <GroupPicksTab
+        groupId="g1"
+        competitionId="c1"
+        groupName="Realidade do BR"
+        predictionsVisibility="hidden"
+      />,
+    )
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(NOW))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('mostra data, horário e contagem no jogo aberto, sem placar de outro membro', async () => {
+    renderHidden({ m1: ['user-1', 'user-2'] })
+
+    expect(await screen.findByText('sáb, 14/11 · 18:30')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /2 de 4 palpitaram/ })).toBeInTheDocument()
+    // Só o próprio palpite chega como linha do card.
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByText('Pedro').closest('li')).toHaveTextContent('2 × 1')
+  })
+
+  it('identifica quem palpitou pelas iniciais e abre os nomes no toque', async () => {
+    renderHidden({ m1: ['user-1', 'user-2'] })
+
+    const toggle = await screen.findByRole('button', { name: /2 de 4 palpitaram/ })
+    expect(screen.getByText('AL')).toHaveAttribute('title', 'Ana Lima')
+    expect(screen.getByText('PE')).toBeInTheDocument()
+    expect(screen.queryByText('você e Ana Lima')).not.toBeInTheDocument()
+
+    await userEvent.click(toggle)
+
+    expect(screen.getByText('você e Ana Lima')).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_ver_quem_palpitou', {
+      open: true,
+    })
+  })
+
+  it('mostra o aviso de palpites ocultos uma vez por rodada', async () => {
+    renderHidden(
+      {},
+      [],
+      [
+        makeMatch({ id: 'm1', round: '35', start_time: KICKOFF }),
+        makeMatch({ id: 'm2', round: '35', start_time: KICKOFF }),
+        makeMatch({ id: 'm3', round: '35', start_time: KICKOFF }),
+      ],
+    )
+
+    expect(await screen.findAllByText(/aparecem quando o jogo começar/i)).toHaveLength(1)
+  })
+
+  it('lista quem falta e monta a mensagem do WhatsApp', async () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    renderHidden({ m1: ['user-1', 'user-2'] })
+
+    expect(await screen.findByText('Faltam palpitar: Bruno e Carla')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Lembrar no WhatsApp' }))
+
+    const text = new URL(open.mock.calls[0][0] as string).searchParams.get('text') as string
+    expect(text).toBe(
+      'Rodada 35 do bolão Realidade do BR. Bruno e Carla ainda não palpitaram. ' +
+        `O primeiro jogo fecha sáb, 14/11 às 18:30. ${window.location.origin}/grupos/g1?rodada=35`,
+    )
+    expect(text).not.toMatch(/[—–]/)
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_group_picks_lembrete_whatsapp')
+  })
+
+  it('mostra o estado completo quando todo mundo palpitou', async () => {
+    renderHidden({ m1: ['user-1', 'user-2', 'user-3', 'user-4'] })
+
+    expect(await screen.findByText(/Todo mundo palpitou/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Lembrar no WhatsApp' })).not.toBeInTheDocument()
+  })
+
+  it('mostra o lembrete para quem também não palpitou', async () => {
+    renderHidden({ m1: ['user-2', 'user-3'] }, [])
+
+    expect(await screen.findByText('Faltam palpitar: Carla e você')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Lembrar no WhatsApp' })).toBeInTheDocument()
+  })
+
+  it('esconde o lembrete quando só falta quem está vendo', async () => {
+    renderHidden({ m1: ['user-2', 'user-3', 'user-4'] }, [])
+
+    expect(await screen.findByText('Só falta você palpitar')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Lembrar no WhatsApp' })).not.toBeInTheDocument()
+  })
+
+  it('não afirma quem palpitou quando a API não traz open_pickers', async () => {
+    renderHidden(undefined)
+
+    expect(await screen.findByText('sáb, 14/11 · 18:30')).toBeInTheDocument()
+    expect(screen.queryByText(/palpitaram/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Faltam palpitar|Todo mundo palpitou/)).not.toBeInTheDocument()
+  })
+
+  it('mostra "data a definir" no jogo adiado e o tira do resumo', async () => {
+    renderHidden(
+      { m1: ['user-1', 'user-2', 'user-3', 'user-4'], m2: ['user-1'] },
+      [],
+      [
+        makeMatch({ id: 'm1', round: '35', start_time: KICKOFF }),
+        makeMatch({ id: 'm2', round: '35', start_time: '2026-10-01T21:30:00.000Z', postponed: 1 }),
+      ],
+    )
+
+    expect(await screen.findByText('data a definir')).toBeInTheDocument()
+    expect(screen.getByText('1 de 4 palpitou', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText(/Todo mundo palpitou/)).toBeInTheDocument()
+  })
+
+  it('mantém a lista de palpites em jogo iniciado, sem data nem contagem', async () => {
+    const started = '2026-11-10T11:00:00.000Z'
+    renderHidden(
+      {},
+      [ownPick({ locked: 1 })],
+      [makeMatch({ id: 'm1', round: '35', status: 'live', start_time: started })],
+    )
+
+    expect(await screen.findAllByRole('listitem')).toHaveLength(4)
+    expect(screen.getAllByText('sem palpite')).toHaveLength(3)
+    expect(screen.queryByText(/palpitaram/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Faltam palpitar/)).not.toBeInTheDocument()
+  })
+
+  it('trata o jogo como iniciado quando o relógio local passou do início sem prova do servidor', async () => {
+    const started = '2026-11-10T11:59:00.000Z'
+    renderHidden(
+      { m1: ['user-1'] },
+      [ownPick()],
+      [makeMatch({ id: 'm1', round: '35', start_time: started })],
+    )
+
+    await screen.findByText('Pedro')
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.queryByText('sem palpite')).not.toBeInTheDocument()
+    expect(screen.queryByText(/palpitou|palpitaram/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/aparecem quando o jogo começar/i)).not.toBeInTheDocument()
+  })
+
+  it('trata o jogo como travado quando o servidor confirma, mesmo com o relógio atrasado', async () => {
+    renderHidden({}, [ownPick({ locked: 1 })])
+
+    expect(await screen.findAllByRole('listitem')).toHaveLength(4)
+    expect(screen.queryByText(/palpitaram/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Faltam palpitar/)).not.toBeInTheDocument()
+  })
+
+  it('no grupo "Sempre visível" mantém a lista e soma só a contagem', async () => {
+    mockFetch([makeMatch({ id: 'm1', round: '35', start_time: KICKOFF })], {
+      self_user_id: 'user-1',
+      members: roster,
+      predictions: [ownPick()],
+      open_pickers: { m1: ['user-1'] },
+    } as GroupPicksResponse)
+    render(
+      <GroupPicksTab
+        groupId="g1"
+        competitionId="c1"
+        groupName="Realidade do BR"
+        predictionsVisibility="public"
+      />,
+    )
+
+    expect(await screen.findByText('1 de 4 palpitou')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /de 4 palpit/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(4)
+    expect(screen.getByText('Pedro').closest('li')).toHaveTextContent('2 × 1')
     expect(screen.queryByText(/aparecem quando o jogo começar/i)).not.toBeInTheDocument()
   })
 })
