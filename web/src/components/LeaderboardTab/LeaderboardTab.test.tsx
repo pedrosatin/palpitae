@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
@@ -46,6 +46,36 @@ function mockFetch() {
     return Promise.reject(new Error(`Unexpected fetch: ${u}`))
   })
 }
+
+describe('LeaderboardTab header and badges', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('names the numeric columns in full for screen readers, with short visible labels', async () => {
+    mockFetch()
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    const exact = screen.getByRole('columnheader', { name: 'Placares exatos' })
+    expect(exact).not.toHaveAttribute('aria-label')
+    expect(within(exact).getByText('Ex.')).toHaveAttribute('aria-hidden', 'true')
+    expect(within(exact).getByText('Placares exatos')).not.toHaveAttribute('aria-hidden')
+    const points = screen.getByRole('columnheader', { name: 'Pontos' })
+    expect(points).not.toHaveAttribute('aria-label')
+    expect(within(points).getByText('Pts')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('groups the admin and você badges under the member name', async () => {
+    mockFetch()
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Pedro'))
+    const badges = screen.getByText('admin').parentElement as HTMLElement
+    expect(badges).toContainElement(screen.getByText('você'))
+    expect(badges.parentElement).toContainElement(screen.getByText('Pedro'))
+  })
+})
 
 describe('LeaderboardTab – analytics', () => {
   beforeEach(() => {

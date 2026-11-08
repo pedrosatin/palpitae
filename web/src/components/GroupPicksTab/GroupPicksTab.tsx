@@ -3,6 +3,7 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
+import { isMatchLocked } from '../../lib/predictionDrafts'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import ErrorState from '../ErrorState'
 import type { Match } from '../MatchCard'
@@ -41,24 +42,81 @@ interface GroupPicksResponse {
   predictions: MemberPrediction[]
 }
 
+interface PickRow {
+  user_id: string
+  user_display: string
+  pick: MemberPrediction | null
+}
+
+/**
+ * Diz se a resposta da API é de depois do travamento do jogo. A API calcula `locked`
+ * com o relógio do servidor, e todos os palpites de um jogo vêm com o mesmo valor.
+ * Um palpite com `locked` igual a 0 mostra que a resposta é de antes do travamento,
+ * mesmo que o relógio local já tenha passado do horário de início. Sem palpite na
+ * resposta, valem o status e o `locked_at` do jogo.
+ */
+function serverConfirmsLock(match: Match, memberPicks: MemberPrediction[]): boolean {
+  if (memberPicks.some((p) => p.locked !== 1)) return false
+  return (
+    memberPicks.length > 0 ||
+    match.status === 'live' ||
+    match.status === 'finished' ||
+    Boolean(match.locked_at)
+  )
+}
+
+/**
+ * Linhas do card. Com o jogo travado, ou num grupo "Sempre visível", o card lista
+ * todos os membros, e quem não palpitou entra como "sem palpite". Num grupo com
+ * palpites ocultos, enquanto o servidor não confirma o travamento, o card mostra só
+ * o que a API devolveu, que é o palpite do próprio usuário. A API esconde os outros
+ * palpites até lá, e listar todos os membros marcaria como "sem palpite" quem já
+ * palpitou.
+ */
+function buildPickRows(
+  memberPicks: MemberPrediction[],
+  members: GroupMember[],
+  showRoster: boolean,
+): PickRow[] {
+  if (!showRoster) {
+    return memberPicks.map((p) => ({ user_id: p.user_id, user_display: p.user_display, pick: p }))
+  }
+  const byUser = new Map(memberPicks.map((p) => [p.user_id, p]))
+  const rows: PickRow[] = members.map((m) => {
+    const pick = byUser.get(m.user_id) ?? null
+    return { user_id: m.user_id, user_display: pick?.user_display ?? m.display, pick }
+  })
+  // A API lê os membros antes dos palpites e só devolve palpite de quem ainda é
+  // membro na segunda leitura. Um palpite de fora da lista só chega se a pessoa
+  // voltou ao grupo entre as duas leituras, porque o palpite de quem sai fica no banco.
+  const rostered = new Set(members.map((m) => m.user_id))
+  for (const p of memberPicks) {
+    if (!rostered.has(p.user_id)) {
+      rows.push({ user_id: p.user_id, user_display: p.user_display, pick: p })
+    }
+  }
+  return rows
+}
+
 function MatchPicksCard({
   match,
   memberPicks,
+  members,
   selfUserId,
   hidden,
 }: {
   match: Match
   memberPicks: MemberPrediction[]
+  members: GroupMember[]
   selfUserId: string
   hidden: boolean
 }) {
-  const revealed = memberPicks.length > 0
   const isFinished = match.status === 'finished'
-  const isLocked =
-    isFinished ||
-    match.status === 'live' ||
-    Boolean(match.locked_at) ||
-    (!match.postponed && new Date() >= new Date(match.start_time))
+  const serverLocked = serverConfirmsLock(match, memberPicks)
+  const rows = buildPickRows(memberPicks, members, serverLocked || !hidden)
+  // O aviso usa o relógio local e some no horário de início, mesmo que a resposta
+  // da API ainda seja de antes do travamento. A lista de membros não usa esse relógio.
+  const showHiddenNotice = hidden && !serverLocked && !isMatchLocked(match, undefined)
 
   return (
     <div className={styles.matchCard}>
@@ -90,43 +148,24 @@ function MatchPicksCard({
         </span>
       </div>
 
-      {revealed ? (
+      {rows.length > 0 ? (
         <ul className={styles.pickList}>
-          {memberPicks.map((p) => {
-            const isSelf = p.user_id === selfUserId
-            // A draw pick is ambiguous on score alone in a knockout: the
-            // penalty winner is what tells two equal scores apart.
-            const showPenaltyPick =
-              Boolean(match.decides_on_penalties) && p.predicted_penalty_winner != null
-            const penaltyTeam =
-              p.predicted_penalty_winner === 'home'
-                ? match.home_team_short_name
-                : match.away_team_short_name
-            const total = p.points_awarded + (p.penalty_points ?? 0) + (p.classified_points ?? 0)
+          {rows.map(({ user_id, user_display, pick: p }) => {
+            const isSelf = user_id === selfUserId
+            const total = p
+              ? p.points_awarded + (p.penalty_points ?? 0) + (p.classified_points ?? 0)
+              : 0
             return (
-              <li
-                key={p.user_id}
-                className={`${styles.pickRow} ${isSelf ? styles.pickRowSelf : ''}`}
-              >
+              <li key={user_id} className={`${styles.pickRow} ${isSelf ? styles.pickRowSelf : ''}`}>
                 <span className={styles.pickName}>
-                  {p.user_display}
+                  {user_display}
                   {isSelf && <span className={styles.youTag}> (você)</span>}
                 </span>
-                <span className={styles.pickScore}>
-                  {p.predicted_home_score} × {p.predicted_away_score}
-                  {p.predicted_classified && (
-                    <span>
-                      {' '}
-                      classificado:{' '}
-                      {p.predicted_classified === 'home'
-                        ? match.home_team_short_name
-                        : match.away_team_short_name}
-                    </span>
-                  )}
-                  {showPenaltyPick && (
-                    <PenaltyBadge team={penaltyTeam} tooltip="Vencedor previsto nos pênaltis" />
-                  )}
-                </span>
+                {p ? (
+                  <PickScore match={match} pick={p} />
+                ) : (
+                  <span className={styles.noPick}>sem palpite</span>
+                )}
                 {isFinished && (
                   <span
                     className={`${styles.pickPoints} ${total > 0 ? styles.pointsGreen : styles.pointsZero}`}
@@ -140,17 +179,40 @@ function MatchPicksCard({
         </ul>
       ) : (
         <p className={styles.hidden}>
-          {isLocked || !hidden
-            ? '📭 Nenhum palpite foi feito para este jogo.'
-            : '🔒 Os palpites dos outros membros aparecem quando o jogo começar.'}
+          🔒 Os palpites dos outros membros aparecem quando o jogo começar.
         </p>
       )}
-      {revealed && hidden && !isLocked && (
+      {rows.length > 0 && showHiddenNotice && (
         <p className={styles.hidden}>
           Os palpites dos outros membros aparecem quando o jogo começar.
         </p>
       )}
     </div>
+  )
+}
+
+function PickScore({ match, pick: p }: { match: Match; pick: MemberPrediction }) {
+  // A draw pick is ambiguous on score alone in a knockout: the
+  // penalty winner is what tells two equal scores apart.
+  const showPenaltyPick = Boolean(match.decides_on_penalties) && p.predicted_penalty_winner != null
+  const penaltyTeam =
+    p.predicted_penalty_winner === 'home' ? match.home_team_short_name : match.away_team_short_name
+  return (
+    <span className={styles.pickScore}>
+      {p.predicted_home_score} × {p.predicted_away_score}
+      {p.predicted_classified && (
+        <span>
+          {' '}
+          classificado:{' '}
+          {p.predicted_classified === 'home'
+            ? match.home_team_short_name
+            : match.away_team_short_name}
+        </span>
+      )}
+      {showPenaltyPick && (
+        <PenaltyBadge team={penaltyTeam} tooltip="Vencedor previsto nos pênaltis" />
+      )}
+    </span>
   )
 }
 
@@ -235,6 +297,7 @@ export default function GroupPicksTab({
             key={match.id}
             match={match}
             memberPicks={picksByMatch.get(match.id) ?? []}
+            members={picks.members ?? []}
             selfUserId={picks.self_user_id}
             hidden={predictionsVisibility === 'hidden'}
           />
