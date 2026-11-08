@@ -45,7 +45,7 @@ describe('Modal', () => {
     await user.click(screen.getByRole('button', { name: 'Abrir' }))
     expect(screen.getByRole('textbox', { name: 'Campo' })).toHaveFocus()
     await user.click(screen.getByRole('button', { name: 'Fechar' }))
-    expect(screen.getByRole('button', { name: 'Abrir' })).not.toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Abrir' })).toHaveFocus()
   })
 
   it('renders nothing when isOpen is false', () => {
