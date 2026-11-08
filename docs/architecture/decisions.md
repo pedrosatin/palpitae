@@ -139,3 +139,37 @@ Modelo multi-provider por competição, mantendo custo zero:
 - O discovery diário e o poller, hoje restritos a `provider='football-data'`, passam a incluir competições `provider='espn'`. O fallback ESPN precisa ignorar competições em que a ESPN já é primária, para não duplicar jogos.
 - Estaduais seguem fora do roadmap mesmo com ESPN disponível: janela curta e decisão de produto, não limitação de fonte.
 - Em 2026-10-19 o spike em `docs/architecture/spike-espn-serie-b.md` aprovou `bra.2` (fixture e teste de contrato). A liga pode entrar como ESPN-primária `type=league` no ticket 06 do lote 2, sem reabrir o spike de copas. No football-data, `BSB` é TIER_THREE. O sync já mapeia `2026-brasileiro-serie-b` para `REGULAR_SEASON` (#546). Sem `week`/`matchday` no scoreboard, a rodada do piloto fica `REGULAR_SEASON`.
+
+## ADR-019: Rodada padrão ignora rodada antiga com jogo remarcado
+
+**Status:** Accepted
+**Date:** 2026-11-07
+
+### Context
+
+A rodada padrão (`default_round`) era a rodada com o menor `MAX(start_time)` ainda no futuro. A ADR-013 contava com isso para os adiados: o adiado guarda o horário original, a rodada sai do default, e "a rodada 21 só volta a ser default quando aqueles jogos forem de fato o próximo compromisso do calendário".
+
+Remarcado é outro caso. Em 07/11/2026 a rodada 21 do Brasileirão tinha 9 jogos encerrados entre julho e outubro e Chapecoense × Vasco remarcado para 14/11, com `postponed = 0`. A rodada 35, toda futura, termina em 20/11. Como 14/11 vem antes de 20/11, o grupo abria na 21, uma tela quase toda encerrada, enquanto a ação do usuário era a 35. A mesma consulta estava copiada em `GET /matches`, `GET /predictions/user` e na contagem de pendentes da home.
+
+### Decision
+
+Uma rodada candidata (com jogo futuro) **fica para trás** quando a maioria dos jogos dela começou há mais de 7 dias (`start_time <= now - 7 dias`, só pelo horário). As candidatas são ordenadas por `ficou para trás` e depois por `MAX(start_time)`; a primeira é a rodada padrão. Se todas ficaram para trás, a ordem é só `MAX(start_time)`, como antes. No empate de `MAX(start_time)` vence a rodada que começou depois, e `round` fecha o desempate. A dica da aba Palpitar procura rodadas antes da aberta, então aponta a outra. Sem candidata, o default continua sendo a rodada do último jogo.
+
+A definição está em `api/src/matches/defaultRound.ts`, compartilhada pelas três consultas. O front repete só o "ficou para trás" em `web/src/lib/rounds.ts`, para a dica, e recebe a rodada padrão pronta no `default_round`.
+
+Os casos que mantêm o comportamento anterior:
+
+- Rodada em andamento: tem jogos de ontem e de amanhã, nenhuma maioria antiga.
+- Mata-mata de ida e volta numa rodada só, com uma semana de intervalo: a ida é metade dos jogos, e metade não é maioria.
+- Fim de temporada sem jogo futuro: nenhuma candidata, cai no último jogo.
+- Adiado sem data nova: guarda o horário passado (ADR-013), a rodada nem é candidata.
+
+O travamento continua o da ADR-004 (`lockedSql`): a regra só escolhe qual rodada abre, não muda quem pode palpitar.
+
+### Consequences
+
+- O jogo remarcado aparece na aba Palpitar pela dica da ADR-013, agora para adiados e remarcados ("Rodada 21 tem 1 jogo remarcado. O palpite segue aberto. Ver rodada"), e o seletor marca a rodada ("Rodada 21 · 1 remarcado"). A rodada padrão nunca ganha esse marcador, mesmo quando também ficou para trás.
+- A contagem de pendentes da home soma os jogos abertos da rodada padrão e os jogos futuros abertos das outras rodadas que ficaram para trás: o remarcado tem prazo e a home é o único lugar que avisa dele antes de o usuário abrir o grupo. Adiado sem data nova de rodada antiga continua fora da contagem. A contagem sai de uma varredura só do índice coberto da competição, que numera as candidatas e já traz a rodada padrão e as que ficaram para trás. Os jogos de cada uma vêm de `idx_matches_comp_round_start` com a rodada já resolvida. O `GET /groups` continua lendo o índice da competição uma vez por grupo.
+- Risco aceito: uma fase longa numa rodada só (`GROUP_STAGE`, `TACA_GUANABARA`, `REGULAR_SEASON`) também fica para trás depois de algumas semanas. Enquanto ela for a única candidata, a ordem só por `MAX(start_time)` a mantém como padrão; se outra fase já tiver jogos cadastrados enquanto ela ainda corre, o default pula para a outra. Hoje o sync só grava jogo de mata-mata com os times definidos. Em competição com sorteio entre fases, a seguinte só aparece depois que a anterior acaba. Em chave fixa, um jogo pode aparecer antes.
+- Risco aceito: uma rodada dividida, como 7 jogos no sábado e 3 remarcados para 11 dias depois, perde o default 7 dias depois do sábado. Os remarcados vão para a dica mesmo sendo o próximo jogo do calendário.
+- Substitui a frase da ADR-013 (removida deste arquivo em #467; o texto está no histórico do Git) sobre a rodada remarcada voltar a ser default quando seus jogos forem o próximo compromisso.

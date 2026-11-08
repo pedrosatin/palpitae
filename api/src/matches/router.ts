@@ -6,6 +6,7 @@ import { hasPilotAccess } from '../auth/permissions'
 import { logError, logEvent, logRequestPerf } from '../observability'
 import { createProviderHttpObserver } from '../observability/providerHttp'
 import type { AppContext } from '../types'
+import { defaultRoundSql, roundRuleBinds } from './defaultRound'
 import { isEspnPrimaryCompetition } from './espnSync'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 import { roundLabel } from './rounds'
@@ -111,23 +112,14 @@ async function fetchMatches(
   } else {
     const nowIso = new Date().toISOString()
     // One D1 round-trip for the full list plus the two queries that pick the
-    // default round: the first round still open (earliest with a match in the
-    // future), falling back to the most recent match chronologically. The
+    // default round: the open round from defaultRoundSql (see defaultRound.ts),
+    // falling back to the most recent match chronologically. The
     // fallback is its own query rather than result.results.at(-1) because the
     // main list is ordered by group_name first — knockout matches (NULL group)
     // sort last and would otherwise hijack the fallback.
     const batchResults = await db.batch([
       db.prepare(query).bind(...(params as string[])),
-      db
-        .prepare(
-          `SELECT round FROM matches
-           WHERE competition_id = ?
-           GROUP BY round
-           HAVING MAX(start_time) > ?
-           ORDER BY MAX(start_time) ASC
-           LIMIT 1`,
-        )
-        .bind(competitionId, nowIso),
+      db.prepare(defaultRoundSql('?')).bind(...roundRuleBinds(nowIso), competitionId),
       db
         .prepare(
           `SELECT round FROM matches

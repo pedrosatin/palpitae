@@ -1,4 +1,4 @@
-import { isGroupStageRound } from '../../lib/rounds'
+import { isGroupStageRound, leftoverMatchesMarker } from '../../lib/rounds'
 import styles from '../tab-shared.module.css'
 import Select from '../Select'
 import Button from '../Button'
@@ -17,6 +17,11 @@ interface RoundHeaderProps {
    * já passado) mas ainda tem palpite aberto. Ver ADR-013.
    */
   postponedByRound?: Map<string, number>
+  /**
+   * round -> nº de jogos remarcados para o futuro numa rodada que ficou para
+   * trás (fora do default_round, ver api/src/matches/defaultRound.ts).
+   */
+  rescheduledByRound?: Map<string, number>
   id?: string
   className?: string
 }
@@ -30,14 +35,17 @@ export default function RoundHeader({
   onNext,
   onSelect,
   postponedByRound,
+  rescheduledByRound,
   id = 'round-select',
   className,
 }: RoundHeaderProps) {
   // `<option>` só renderiza texto — nada de badge aqui, o marcador vai no rótulo.
   const optionLabel = (r: string) => {
-    const count = postponedByRound?.get(r)
-    if (!count) return labelFor(r)
-    return `${labelFor(r)} · ${count} adiado${count > 1 ? 's' : ''}`
+    const marker = leftoverMatchesMarker(
+      postponedByRound?.get(r) ?? 0,
+      rescheduledByRound?.get(r) ?? 0,
+    )
+    return marker ? `${labelFor(r)} · ${marker}` : labelFor(r)
   }
 
   return (
