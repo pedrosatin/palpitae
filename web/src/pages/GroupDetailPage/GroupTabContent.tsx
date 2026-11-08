@@ -4,6 +4,7 @@ import StandingsTab from '../../components/StandingsTab'
 import GroupPicksTab from '../../components/GroupPicksTab'
 import LeaderboardTab from '../../components/LeaderboardTab'
 import MembersTab from '../../components/MembersTab'
+import { tiebreakSummary } from '../../lib/groupRules'
 import styles from './GroupDetailPage.module.css'
 
 interface GroupTabContentProps {
@@ -13,6 +14,7 @@ interface GroupTabContentProps {
   showStandings: boolean
   isAdmin: boolean
   userId: string
+  onOpenRules?: () => void
   /** Rodada do `?rodada=` da URL, em que a aba Palpitar abre. */
   requestedRound?: string | null
   /** Chamado quando a aba Palpitar abre na rodada pedida, para tirá-la da URL. */
@@ -26,6 +28,7 @@ export default function GroupTabContent({
   showStandings,
   isAdmin,
   userId,
+  onOpenRules,
   requestedRound,
   onRequestedRoundApplied,
 }: GroupTabContentProps) {
@@ -57,7 +60,14 @@ export default function GroupTabContent({
           predictionsVisibility={group.predictions_visibility}
         />
       )}
-      {activeTab === 'leaderboard' && <LeaderboardTab groupId={groupId} currentUserId={userId} />}
+      {activeTab === 'leaderboard' && (
+        <LeaderboardTab
+          groupId={groupId}
+          currentUserId={userId}
+          tiebreakNote={tiebreakSummary(group.points_exact, group.points_winner)}
+          onOpenRules={onOpenRules}
+        />
+      )}
       {activeTab === 'members' && isAdmin && (
         <MembersTab groupId={groupId} currentUserId={userId} />
       )}

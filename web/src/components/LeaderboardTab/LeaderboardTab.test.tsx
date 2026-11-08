@@ -93,3 +93,38 @@ describe('LeaderboardTab – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_leaderboard_ver_palpites')
   })
 })
+
+describe('LeaderboardTab regras', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('mostra o desempate sob a tabela e abre as regras pelo link', async () => {
+    mockFetch()
+    const onOpenRules = vi.fn()
+    render(
+      <LeaderboardTab
+        groupId="g1"
+        currentUserId="u1"
+        tiebreakNote="Ordem do ranking: mais pontos."
+        onOpenRules={onOpenRules}
+      />,
+    )
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.getByText('Ordem do ranking: mais pontos.')).toBeInTheDocument()
+
+    const link = screen.getByRole('button', { name: 'Como pontua' })
+    await userEvent.click(link)
+
+    expect(onOpenRules).toHaveBeenCalledOnce()
+  })
+
+  it('não mostra a linha de regras sem as props', async () => {
+    mockFetch()
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    expect(screen.queryByRole('button', { name: 'Como pontua' })).not.toBeInTheDocument()
+  })
+})

@@ -36,6 +36,10 @@
   animation: slideUp 0.15s ease;
 }
 
+.modal:focus {
+  outline: none;
+}
+
 @keyframes slideUp {
   from {
     transform: translateY(12px);

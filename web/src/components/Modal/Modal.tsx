@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import styles from './Modal.module.css'
@@ -12,6 +12,26 @@ interface ModalProps {
 }
 
 export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // O autoFocus de um campo roda no commit, antes de qualquer efeito. Só durante o
+  // render o foco ainda está no elemento que abriu o modal.
+  const openerRef = useRef<HTMLElement | null>(null)
+  const wasOpenRef = useRef(false)
+  if (isOpen && !wasOpenRef.current) {
+    openerRef.current = document.activeElement as HTMLElement | null
+  }
+  wasOpenRef.current = isOpen
+
+  // Leva o foco para dentro do diálogo, se nenhum campo já o pediu, e o devolve ao fechar.
+  useEffect(() => {
+    if (!isOpen) return
+    const dialog = dialogRef.current
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus()
+    const opener = openerRef.current
+    return () => opener?.focus({ preventScroll: true })
+  }, [isOpen])
+
   useEffect(() => {
     if (!isOpen) return
     function handleKeyDown(e: KeyboardEvent) {
@@ -25,7 +45,12 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
 
   return (
     <div className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true">
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={styles.modal}
+        ref={dialogRef}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className={styles.header}>
           <h2 className={styles.title}>{title}</h2>
           <Button

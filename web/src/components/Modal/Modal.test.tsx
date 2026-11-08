@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
@@ -14,6 +15,39 @@ function renderModal(props?: Partial<Parameters<typeof Modal>[0]>) {
 }
 
 describe('Modal', () => {
+  it('leva o foco para dentro do diálogo ao abrir', () => {
+    renderModal()
+    expect(screen.getByRole('dialog').firstElementChild).toHaveFocus()
+  })
+
+  it('devolve o foco ao elemento que abriu o modal', async () => {
+    function Harness({ withInput = false }: { withInput?: boolean }) {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button onClick={() => setOpen(true)}>Abrir</button>
+          <Modal isOpen={open} onClose={() => setOpen(false)} title="Teste">
+            {withInput ? <input aria-label="Campo" autoFocus /> : <p>Corpo</p>}
+          </Modal>
+        </>
+      )
+    }
+    const user = userEvent.setup()
+    const { unmount } = render(<Harness />)
+    const opener = screen.getByRole('button', { name: 'Abrir' })
+    await user.click(opener)
+    expect(opener).not.toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Fechar' }))
+    expect(opener).toHaveFocus()
+    unmount()
+
+    render(<Harness withInput />)
+    await user.click(screen.getByRole('button', { name: 'Abrir' }))
+    expect(screen.getByRole('textbox', { name: 'Campo' })).toHaveFocus()
+    await user.click(screen.getByRole('button', { name: 'Fechar' }))
+    expect(screen.getByRole('button', { name: 'Abrir' })).toHaveFocus()
+  })
+
   it('renders nothing when isOpen is false', () => {
     renderModal({ isOpen: false })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

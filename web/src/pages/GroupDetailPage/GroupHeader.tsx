@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { trackEvent } from '../../analytics/ga'
 import styles from './GroupDetailPage.module.css'
 
 interface GroupHeaderProps {
@@ -12,6 +13,7 @@ interface GroupHeaderProps {
   }
   isAdmin: boolean
   onOpenRename: () => void
+  onOpenRules?: () => void
   onDeleteGroup: () => void
   deleting: boolean
   onLeaveGroup: () => void
@@ -21,6 +23,7 @@ interface GroupHeaderProps {
 interface GroupMenuProps {
   isAdmin: boolean
   onOpenRename: () => void
+  onOpenRules?: () => void
   onDeleteGroup: () => void
   deleting: boolean
   onLeaveGroup: () => void
@@ -30,6 +33,7 @@ interface GroupMenuProps {
 function GroupMenu({
   isAdmin,
   onOpenRename,
+  onOpenRules,
   onDeleteGroup,
   deleting,
   onLeaveGroup,
@@ -37,6 +41,7 @@ function GroupMenu({
 }: GroupMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const kebabRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -62,6 +67,7 @@ function GroupMenu({
   return (
     <div className={styles.menuWrap} ref={menuRef}>
       <button
+        ref={kebabRef}
         className={styles.kebabBtn}
         onClick={() => setMenuOpen((o) => !o)}
         aria-label="Opções do grupo"
@@ -72,6 +78,21 @@ function GroupMenu({
       </button>
       {menuOpen && (
         <div className={styles.menu} role="menu">
+          {onOpenRules && (
+            <button
+              className={styles.menuItemNeutral}
+              role="menuitem"
+              onClick={() => {
+                trackEvent('click_group_detail_regras')
+                // O item some ao fechar o menu. O foco vai ao botão do menu para o Modal devolvê-lo ali.
+                kebabRef.current?.focus()
+                setMenuOpen(false)
+                onOpenRules()
+              }}
+            >
+              Regras do grupo
+            </button>
+          )}
           {isAdmin ? (
             <>
               <button
@@ -119,6 +140,7 @@ export function GroupHeader({
   group,
   isAdmin,
   onOpenRename,
+  onOpenRules,
   onDeleteGroup,
   deleting,
   onLeaveGroup,
@@ -133,6 +155,7 @@ export function GroupHeader({
           <GroupMenu
             isAdmin={isAdmin}
             onOpenRename={onOpenRename}
+            onOpenRules={onOpenRules}
             onDeleteGroup={onDeleteGroup}
             deleting={deleting}
             onLeaveGroup={onLeaveGroup}
