@@ -97,7 +97,9 @@ describe('RoundSummary', () => {
     expect(region).toHaveTextContent('1 jogo ficou sem palpite.')
 
     expect(await screen.findByText(/2º de 3/)).toBeInTheDocument()
-    expect(screen.getByText('Bruno fez 5 pontos, a maior da rodada.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Bruno levou o título de rei da rodada, com 5 pontos.'),
+    ).toBeInTheDocument()
     expect(screen.queryByText(/ainda vale pontos/)).not.toBeInTheDocument()
   })
 
@@ -119,7 +121,9 @@ describe('RoundSummary', () => {
     ])
     renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
     expect(
-      await screen.findByText('Você, Bruno e Carla fizeram 3 pontos, a maior da rodada.'),
+      await screen.findByText(
+        'Você, Bruno e Carla dividiram o título de rei da rodada, com 3 pontos.',
+      ),
     ).toBeInTheDocument()
   })
 

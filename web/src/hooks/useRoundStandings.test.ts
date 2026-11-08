@@ -19,7 +19,7 @@ describe('useRoundStandings', () => {
   })
 
   it('carrega a rodada do grupo', async () => {
-    const standings = [{ user_id: 'u1', round_points: 7, position_change: 2 }]
+    const standings = [{ user_id: 'u1', round_points: 7, position_change: 2, streak: 4 }]
     mockApiFetch.mockResolvedValueOnce(mockResponse({ round: '34', standings }))
 
     const { result } = renderHook(() => useRoundStandings('g1'))

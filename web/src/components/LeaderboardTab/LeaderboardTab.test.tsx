@@ -30,7 +30,12 @@ const members = [
 
 type RoundStandingsBody = {
   round: string | null
-  standings: { user_id: string; round_points: number; position_change: number | null }[]
+  standings: {
+    user_id: string
+    round_points: number
+    position_change: number | null
+    streak?: number
+  }[]
 }
 
 const noRound: RoundStandingsBody = { round: null, standings: [] }
@@ -262,6 +267,100 @@ describe('LeaderboardTab rodada', () => {
     render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Erro ao carregar membros'))
+  })
+})
+
+describe('LeaderboardTab selos da rodada', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function standing(user_id: string, round_points: number, streak = 0) {
+    return { user_id, round_points, position_change: 0, streak }
+  }
+
+  async function renderWith(...rows: ReturnType<typeof standing>[]) {
+    mockFetch({ round: '34', standings: rows })
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    await waitFor(() => screen.getByText('Ana'))
+  }
+
+  function rowOf(name: string) {
+    return within(screen.getByText(name).closest('tr') as HTMLElement)
+  }
+
+  it('coroa quem fez a maior pontuação da rodada', async () => {
+    await renderWith(standing('u1', 3), standing('u2', 7))
+
+    expect(rowOf('Ana').getByText('rei da rodada')).toBeInTheDocument()
+    expect(rowOf('Pedro').queryByText('rei da rodada')).not.toBeInTheDocument()
+  })
+
+  it('coroa os dois no empate', async () => {
+    await renderWith(standing('u1', 7), standing('u2', 7))
+
+    expect(screen.getAllByText('rei da rodada')).toHaveLength(2)
+  })
+
+  it('não coroa ninguém quando ninguém pontuou', async () => {
+    await renderWith(standing('u1', 0), standing('u2', 0))
+
+    expect(screen.queryByText('rei da rodada')).not.toBeInTheDocument()
+  })
+
+  it('não coroa ninguém sem rodada de referência', async () => {
+    mockFetch(noRound)
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    await waitFor(() => screen.getByText('Ana'))
+
+    expect(screen.queryByText('rei da rodada')).not.toBeInTheDocument()
+  })
+
+  it('mostra o selo do rei no mesmo grupo dos selos de admin e você', async () => {
+    await renderWith(standing('u1', 7), standing('u2', 3))
+
+    const badges = rowOf('Pedro').getByText('admin').parentElement as HTMLElement
+    expect(badges).toContainElement(rowOf('Pedro').getByText('rei da rodada'))
+  })
+
+  it('mostra o selo de sequência a partir de 3 rodadas', async () => {
+    await renderWith(standing('u1', 1, 3), standing('u2', 1, 5))
+
+    expect(rowOf('Pedro').getByText('3 seguidas')).toBeInTheDocument()
+    expect(rowOf('Ana').getByText('5 seguidas')).toBeInTheDocument()
+  })
+
+  it('não mostra o selo de sequência com 2 rodadas', async () => {
+    await renderWith(standing('u1', 1, 2), standing('u2', 1, 0))
+
+    expect(screen.queryByText(/seguidas/)).not.toBeInTheDocument()
+  })
+
+  it('não mostra o selo de sequência quando a resposta não traz a linha do membro', async () => {
+    await renderWith(standing('u1', 1, 4))
+
+    expect(rowOf('Ana').queryByText(/seguidas/)).not.toBeInTheDocument()
+  })
+
+  it('dá o texto completo da sequência ao leitor de tela e ao title', async () => {
+    await renderWith(standing('u1', 1), standing('u2', 1, 5))
+
+    const label = '5 rodadas seguidas com todos os jogos palpitados'
+    const ana = rowOf('Ana')
+    expect(ana.getByText('5 seguidas')).toHaveAttribute('aria-hidden', 'true')
+    expect(ana.getByText(label)).toHaveClass('sr-only')
+    expect(ana.getByTitle(label)).toContainElement(ana.getByText('5 seguidas'))
+  })
+
+  it('mostra os selos a quem não é admin nem o próprio usuário', async () => {
+    await renderWith(standing('u1', 1), standing('u2', 9, 4))
+
+    const ana = rowOf('Ana')
+    expect(ana.queryByText('admin')).not.toBeInTheDocument()
+    expect(ana.queryByText('você')).not.toBeInTheDocument()
+    expect(ana.getByText('rei da rodada').parentElement).toContainElement(
+      ana.getByText('4 seguidas'),
+    )
   })
 })
 

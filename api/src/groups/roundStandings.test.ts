@@ -7,10 +7,14 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import {
   computeRoundStandings,
+  computeStreaks,
   pickReferenceRound,
+  type MemberRoundPicks,
   type RoundMemberRow,
   type RoundPhaseRow,
 } from './roundStandings'
+
+const NO_STREAKS = new Map<string, number>()
 
 function member(overrides: Partial<RoundMemberRow> & { user_id: string }): RoundMemberRow {
   return {
@@ -25,7 +29,9 @@ function member(overrides: Partial<RoundMemberRow> & { user_id: string }): Round
 }
 
 function changes(rows: RoundMemberRow[]) {
-  return Object.fromEntries(computeRoundStandings(rows).map((s) => [s.user_id, s.position_change]))
+  return Object.fromEntries(
+    computeRoundStandings(rows, NO_STREAKS).map((s) => [s.user_id, s.position_change]),
+  )
 }
 
 describe('computeRoundStandings', () => {
@@ -47,7 +53,7 @@ describe('computeRoundStandings', () => {
       member({ user_id: 'segundo', total_points: 5 }),
     ]
 
-    expect(computeRoundStandings(rows).map((s) => s.user_id)).toEqual([
+    expect(computeRoundStandings(rows, NO_STREAKS).map((s) => s.user_id)).toEqual([
       'primeiro',
       'segundo',
       'terceiro',
@@ -76,7 +82,10 @@ describe('computeRoundStandings', () => {
     ]
 
     // Antes da rodada, `novo` tinha 10 e `antigo` tinha 6. Com o empate, `antigo` fica à frente.
-    expect(computeRoundStandings(rows).map((s) => s.user_id)).toEqual(['antigo', 'novo'])
+    expect(computeRoundStandings(rows, NO_STREAKS).map((s) => s.user_id)).toEqual([
+      'antigo',
+      'novo',
+    ])
     expect(changes(rows)).toEqual({ antigo: 1, novo: -1 })
   })
 
@@ -87,7 +96,7 @@ describe('computeRoundStandings', () => {
       member({ user_id: 'Z', total_points: 10 }),
     ]
 
-    expect(computeRoundStandings(rows).map((s) => s.user_id)).toEqual(['Z', 'a', 'b'])
+    expect(computeRoundStandings(rows, NO_STREAKS).map((s) => s.user_id)).toEqual(['Z', 'a', 'b'])
   })
 
   it('devolve null para todos quando ninguém tinha ponto antes da rodada', () => {
@@ -116,9 +125,9 @@ describe('computeRoundStandings', () => {
     ]
 
     // Antes da referência, alice tinha 8 e bob tinha 13. Descontando só a referência, seria 17 a 13.
-    expect(computeRoundStandings(rows)).toEqual([
-      { user_id: 'alice', round_points: 3, position_change: 1 },
-      { user_id: 'bob', round_points: 5, position_change: -1 },
+    expect(computeRoundStandings(rows, NO_STREAKS)).toEqual([
+      { user_id: 'alice', round_points: 3, position_change: 1, streak: 0 },
+      { user_id: 'bob', round_points: 5, position_change: -1, streak: 0 },
     ])
   })
 
@@ -138,9 +147,20 @@ describe('computeRoundStandings', () => {
       member({ user_id: 'ausente', total_points: 10 }),
     ]
 
-    expect(computeRoundStandings(rows)).toEqual([
-      { user_id: 'palpitou', round_points: 8, position_change: 1 },
-      { user_id: 'ausente', round_points: 0, position_change: -1 },
+    expect(computeRoundStandings(rows, NO_STREAKS)).toEqual([
+      { user_id: 'palpitou', round_points: 8, position_change: 1, streak: 0 },
+      { user_id: 'ausente', round_points: 0, position_change: -1, streak: 0 },
+    ])
+  })
+
+  it('leva a sequência de cada membro e usa 0 para quem não tem', () => {
+    const rows = [member({ user_id: 'a', total_points: 5 }), member({ user_id: 'b' })]
+
+    const streaks = new Map([['a', 4]])
+
+    expect(computeRoundStandings(rows, streaks).map((s) => [s.user_id, s.streak])).toEqual([
+      ['a', 4],
+      ['b', 0],
     ])
   })
 })
@@ -340,7 +360,12 @@ async function createFixture() {
     expect(res.status).toBe(200)
     return (await res.json()) as {
       round: string | null
-      standings: { user_id: string; round_points: number; position_change: number | null }[]
+      standings: {
+        user_id: string
+        round_points: number
+        position_change: number | null
+        streak: number
+      }[]
     }
   }
 
@@ -407,6 +432,80 @@ async function createFixture() {
 
   return { sqlite, get, standings, addMatch, addPick, setBoard }
 }
+
+describe('computeStreaks', () => {
+  function picked(user: string, rounds: string[], picks = 1): MemberRoundPicks[] {
+    return rounds.map((round) => ({ user_id: user, round, picks }))
+  }
+
+  function streak(phases: RoundPhaseRow[], picks: MemberRoundPicks[], user = 'ana') {
+    return computeStreaks(phases, picks).get(user)
+  }
+
+  const threeRounds = [roundRow({ round: '1' }), roundRow({ round: '2' }), roundRow({ round: '3' })]
+
+  it('conta 3 rodadas seguidas da referência para trás', () => {
+    expect(streak(threeRounds, picked('ana', ['1', '2', '3']))).toBe(3)
+  })
+
+  it('para na primeira rodada encerrada sem palpite', () => {
+    const phases = [...threeRounds, roundRow({ round: '4' })]
+
+    expect(streak(phases, picked('ana', ['1', '2', '4']))).toBe(1)
+  })
+
+  it('quebra quando o membro palpitou só parte dos jogos da rodada', () => {
+    const phases = [roundRow({ round: '1' }), roundRow({ round: '2', finished: 2 })]
+
+    expect(streak(phases, picked('ana', ['1', '2']))).toBe(0)
+    expect(streak(phases, [...picked('ana', ['1']), ...picked('ana', ['2'], 2)])).toBe(2)
+  })
+
+  it('pula a rodada aberta no meio, sem contar e sem quebrar', () => {
+    const phases = [
+      roundRow({ round: '1' }),
+      roundRow({ round: '2', pending: 1 }),
+      roundRow({ round: '3' }),
+    ]
+
+    expect(streak(phases, picked('ana', ['1', '3']))).toBe(2)
+  })
+
+  it('não conta rodada sem jogo pontuado', () => {
+    const phases = [roundRow({ round: '1' }), roundRow({ round: '2', finished: 0 })]
+
+    expect(streak(phases, picked('ana', ['1']))).toBe(1)
+  })
+
+  it('dá 0 a quem não palpitou na referência, mesmo com rodadas anteriores completas', () => {
+    expect(streak(threeRounds, picked('ana', ['1', '2']))).toBe(0)
+  })
+
+  it('percorre as rodadas em ordem numérica', () => {
+    const phases = [roundRow({ round: '9' }), roundRow({ round: '10' })]
+
+    expect(streak(phases, picked('ana', ['10']))).toBe(1)
+  })
+
+  it('soma as fases da mesma rodada', () => {
+    const phases = [roundRow({ round: '5' }), roundRow({ round: '5', phase: 'LEAGUE_STAGE' })]
+
+    expect(streak(phases, picked('ana', ['5']))).toBe(0)
+    expect(streak(phases, picked('ana', ['5'], 2))).toBe(1)
+  })
+
+  it('ignora rodada sem número', () => {
+    const phases = [roundRow({ round: '1' }), roundRow({ round: 'REGULAR_SEASON', finished: 9 })]
+
+    expect(streak(phases, picked('ana', ['1']))).toBe(1)
+  })
+
+  it('calcula cada membro à parte', () => {
+    const picks = [...picked('ana', ['1', '2', '3']), ...picked('bia', ['3'])]
+
+    expect(Object.fromEntries(computeStreaks(threeRounds, picks))).toEqual({ ana: 3, bia: 1 })
+  })
+})
 
 describe('GET /groups/:id/round-standings', () => {
   it('barra quem não é membro e quem não está autenticado', async () => {
@@ -618,9 +717,9 @@ describe('GET /groups/:id/round-standings', () => {
     expect(await standings()).toEqual({
       round: '2',
       standings: [
-        { user_id: 'bob', round_points: 3, position_change: 1 },
-        { user_id: 'alice', round_points: 0, position_change: -1 },
-        { user_id: 'carol', round_points: 0, position_change: 0 },
+        { user_id: 'bob', round_points: 3, position_change: 1, streak: 2 },
+        { user_id: 'alice', round_points: 0, position_change: -1, streak: 0 },
+        { user_id: 'carol', round_points: 0, position_change: 0, streak: 0 },
       ],
     })
   })
@@ -661,9 +760,9 @@ describe('GET /groups/:id/round-standings', () => {
     expect(await standings()).toEqual({
       round: '2',
       standings: [
-        { user_id: 'alice', round_points: 1, position_change: 1 },
-        { user_id: 'bob', round_points: 0, position_change: -1 },
-        { user_id: 'carol', round_points: 0, position_change: 0 },
+        { user_id: 'alice', round_points: 1, position_change: 1, streak: 2 },
+        { user_id: 'bob', round_points: 0, position_change: -1, streak: 0 },
+        { user_id: 'carol', round_points: 0, position_change: 0, streak: 0 },
       ],
     })
   })
@@ -750,6 +849,113 @@ describe('GET /groups/:id/round-standings', () => {
     const body = await standings()
 
     expect(body.standings.map((s) => s.position_change)).toEqual([0, 0, 0])
+  })
+})
+
+describe('GET /groups/:id/round-standings com sequência', () => {
+  function streaks(body: { standings: { user_id: string; streak: number }[] }) {
+    return Object.fromEntries(body.standings.map((s) => [s.user_id, s.streak]))
+  }
+
+  it('conta 3 rodadas seguidas e devolve streak em todas as linhas', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    const first = addMatch({ round: '1' })
+    const second = addMatch({ round: '2' })
+    const third = addMatch({ round: '3' })
+    for (const match of [first, second, third]) addPick('alice', match, {})
+    for (const match of [second, third]) addPick('bob', match, {})
+
+    const body = await standings()
+
+    expect(body.round).toBe('3')
+    expect(body.standings.every((s) => typeof s.streak === 'number')).toBe(true)
+    expect(streaks(body)).toEqual({ alice: 3, bob: 2, carol: 0 })
+  })
+
+  it('quebra na rodada em que faltou palpite em um dos jogos', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    addPick('alice', addMatch({ round: '1' }), {})
+    addPick('alice', addMatch({ round: '2' }), {})
+    addMatch({ round: '2' })
+    addPick('alice', addMatch({ round: '3' }), {})
+
+    expect(streaks(await standings())).toMatchObject({ alice: 1 })
+  })
+
+  it('pula a rodada com jogo remarcado para o futuro, sem contar e sem quebrar', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    addPick('alice', addMatch({ round: '1' }), {})
+    addMatch({ round: '2' })
+    addMatch({ round: '2', status: 'scheduled', start: LATER })
+    addPick('alice', addMatch({ round: '3' }), {})
+
+    const body = await standings()
+
+    expect(body.round).toBe('3')
+    expect(streaks(body)).toMatchObject({ alice: 2 })
+  })
+
+  it('não exige jogo adiado sem data', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    addPick('alice', addMatch({ round: '1' }), {})
+    addMatch({ round: '1', status: 'scheduled', postponed: 1 })
+
+    expect(streaks(await standings())).toMatchObject({ alice: 1 })
+  })
+
+  it('não aceita palpite em jogo adiado no lugar de jogo encerrado sem palpite', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    addPick('alice', addMatch({ round: '1' }), {})
+    addMatch({ round: '1' })
+    addPick('alice', addMatch({ round: '1', status: 'scheduled', postponed: 1 }), {})
+
+    expect(streaks(await standings())).toMatchObject({ alice: 0 })
+  })
+
+  it('não exige jogo encerrado sem scored_at, porque a rodada dele segue aberta', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    addPick('alice', addMatch({ round: '1' }), {})
+    addMatch({ round: '2' })
+    addMatch({ round: '2', unscored: true })
+    addPick('alice', addMatch({ round: '3' }), {})
+
+    const body = await standings()
+
+    expect(body.round).toBe('3')
+    expect(streaks(body)).toMatchObject({ alice: 2 })
+  })
+
+  it('dá 0 a quem não palpitou na referência', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    addPick('alice', addMatch({ round: '1' }), {})
+    addMatch({ round: '2' })
+
+    const body = await standings()
+
+    expect(body.round).toBe('2')
+    expect(streaks(body)).toEqual({ alice: 0, bob: 0, carol: 0 })
+  })
+
+  it('não conta o palpite do mesmo membro em outro grupo', async () => {
+    const { sqlite, standings, addMatch, addPick } = await createFixture()
+    const match = addMatch({ round: '1' })
+    addPick('alice', match, {})
+    sqlite.exec(`
+      INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code) VALUES
+        ('group-b', 'Bolão B', 'comp-a', 'bob', 'CCCC-DDDD');
+      INSERT INTO predictions (
+        id, user_id, group_id, match_id, predicted_home_score, predicted_away_score
+      ) VALUES ('p-bob-b', 'bob', 'group-b', '${match}', 1, 0);
+    `)
+
+    expect(streaks(await standings())).toEqual({ alice: 1, bob: 0, carol: 0 })
+  })
+
+  it('segue sem linhas quando não há rodada de referência', async () => {
+    const { standings, addMatch, addPick } = await createFixture()
+    addPick('alice', addMatch({ round: 'REGULAR_SEASON' }), {})
+
+    expect(await standings()).toEqual({ round: null, standings: [] })
   })
 })
 

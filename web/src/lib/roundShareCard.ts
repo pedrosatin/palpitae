@@ -20,7 +20,13 @@ import {
   hline,
   truncate,
 } from './shareCard'
-import { pointsLabel, postponedNotice, type RoundStanding, type RoundTally } from './roundSummary'
+import {
+  pointsLabel,
+  postponedNotice,
+  roundLeaders,
+  type RoundStanding,
+  type RoundTally,
+} from './roundSummary'
 
 export interface RoundShareEntry {
   position: number
@@ -40,6 +46,8 @@ export interface RoundShareCardData {
   correct: number
   /** Top 3 da rodada e, se o jogador ficou fora dele, a linha dele. */
   standings: RoundShareEntry[]
+  /** Quem compartilha está entre os líderes da rodada, pela regra de `roundLeaders`. */
+  isRoundLeader: boolean
   notice: string | null
   domain: string
 }
@@ -84,6 +92,7 @@ export function buildRoundShareCardData(input: {
     exact: self.exact,
     correct: self.correct,
     standings: entries,
+    isRoundLeader: roundLeaders(standings).some((s) => s.isYou),
     notice: postponedNotice(input.postponed),
     domain: stripScheme(input.origin),
   }
@@ -98,7 +107,8 @@ function statsLine(data: RoundShareCardData): string {
 
 /** Texto que acompanha a imagem no compartilhamento. */
 export function roundShareText(data: RoundShareCardData): string {
-  return `Fiz ${pointsLabel(data.points)} na ${data.roundLabel.toLowerCase()} do bolão "${data.groupName}" no Palpitae. Fiquei em ${data.position}º de ${data.total}. ${data.domain}`
+  const title = data.isRoundLeader ? ' Levei o título de rei da rodada.' : ''
+  return `Fiz ${pointsLabel(data.points)} na ${data.roundLabel.toLowerCase()} do bolão "${data.groupName}" no Palpitae. Fiquei em ${data.position}º de ${data.total}.${title} ${data.domain}`
 }
 
 export function roundShareFileName(roundLabel: string): string {
@@ -139,8 +149,15 @@ export function drawRoundShareCard(ctx: CanvasRenderingContext2D, data: RoundSha
   ctx.lineWidth = 2
   hline(ctx, P, 158, W - P)
 
-  // Rodada.
+  // Título do líder, na faixa livre entre o divisor do topo e o nome da rodada.
   ctx.textAlign = 'center'
+  if (data.isRoundLeader) {
+    ctx.fillStyle = LIME
+    ctx.font = `800 40px ${FONT}`
+    fillTracked(ctx, 'REI DA RODADA', W / 2, 226, 8)
+  }
+
+  // Rodada.
   ctx.fillStyle = ASH
   ctx.font = `700 34px ${FONT}`
   fillTracked(ctx, data.roundLabel.toUpperCase(), W / 2, 280, 8)

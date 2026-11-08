@@ -21,6 +21,8 @@ export interface RoundStanding {
   round_points: number
   /** Posição anterior menos a atual. Positivo é subiu. `null` quando ninguém tinha ponto antes. */
   position_change: number | null
+  /** Rodadas encerradas seguidas, da referência para trás, com todos os jogos palpitados. */
+  streak: number
 }
 
 export interface RoundStandingsResponse {
@@ -54,9 +56,12 @@ function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMembe
  * A posição anterior aplica a mesma ordem aos totais sem a rodada de referência
  * e sem as rodadas numeradas posteriores. Descontar só a referência compararia
  * com um estado que nunca existiu. Jogo remarcado de rodada anterior conta como
- * ponto de antes.
+ * ponto de antes. Membro fora de `streaks` tem sequência 0.
  */
-export function computeRoundStandings(rows: RoundMemberRow[]): RoundStanding[] {
+export function computeRoundStandings(
+  rows: RoundMemberRow[],
+  streaks: ReadonlyMap<string, number>,
+): RoundStanding[] {
   const pointsBefore: Score = (row) => row.total_points - row.since_points
   const exactBefore: Score = (row) => row.exact_hits - row.since_exact
   const positionBefore = new Map(
@@ -72,6 +77,7 @@ export function computeRoundStandings(rows: RoundMemberRow[]): RoundStanding[] {
     user_id: row.user_id,
     round_points: row.round_points,
     position_change: hadPoints ? positionBefore.get(row.user_id)! - (index + 1) : null,
+    streak: streaks.get(row.user_id) ?? 0,
   }))
 }
 
@@ -108,6 +114,13 @@ function numberedRounds(rows: RoundPhaseRow[]): NumberedRound[] {
   return [...byRound.values()]
 }
 
+/** Rodadas numeradas com jogo pontuado e nada pendente, da maior para a menor. */
+function closedRounds(rows: RoundPhaseRow[]): NumberedRound[] {
+  return numberedRounds(rows)
+    .filter((round) => round.finished > 0 && round.pending === 0)
+    .sort((a, b) => Number(b.round) - Number(a.round))
+}
+
 /**
  * Rodada de referência do grupo (ADR-021), ou `null` quando o mata-mata já começou.
  *
@@ -117,9 +130,7 @@ function numberedRounds(rows: RoundPhaseRow[]): NumberedRound[] {
  * eliminatória nunca bloqueia, seja qual for o `round`.
  */
 export function pickReferenceRound(rows: RoundPhaseRow[]): string | null {
-  const reference = numberedRounds(rows)
-    .filter((round) => round.finished > 0 && round.pending === 0)
-    .sort((a, b) => Number(b.round) - Number(a.round))[0]
+  const reference = closedRounds(rows)[0]
   if (!reference) return null
 
   const knockoutStarted = rows.some(
@@ -131,6 +142,41 @@ export function pickReferenceRound(rows: RoundPhaseRow[]): string | null {
   return knockoutStarted ? null : reference.round
 }
 
+/** Palpites de um membro nos jogos encerrados e pontuados de uma rodada numerada. */
+export interface MemberRoundPicks {
+  user_id: string
+  round: string
+  picks: number
+}
+
+/**
+ * Sequência de rodadas palpitadas de cada membro com palpite (ADR-021).
+ *
+ * Percorre as rodadas encerradas da maior para a menor, e a maior é a referência.
+ * Rodada aberta fica fora da lista, então não conta e não quebra a sequência. A
+ * sequência para na primeira rodada com menos palpites que jogos pontuados.
+ */
+export function computeStreaks(
+  phases: RoundPhaseRow[],
+  picks: MemberRoundPicks[],
+): Map<string, number> {
+  const rounds = closedRounds(phases)
+  const picksByUser = new Map<string, Map<string, number>>()
+  for (const row of picks) {
+    const byRound = picksByUser.get(row.user_id) ?? new Map<string, number>()
+    picksByUser.set(row.user_id, byRound.set(row.round, row.picks))
+  }
+
+  const streaks = new Map<string, number>()
+  for (const [userId, byRound] of picksByUser) {
+    const firstMissing = rounds.findIndex(
+      (round) => (byRound.get(round.round) ?? 0) < round.finished,
+    )
+    streaks.set(userId, firstMissing === -1 ? rounds.length : firstMissing)
+  }
+  return streaks
+}
+
 /**
  * Agregados dos jogos da competição do grupo, por rodada e fase.
  *
@@ -138,7 +184,7 @@ export function pickReferenceRound(rows: RoundPhaseRow[]): string | null {
  * segundo caso vale mesmo com `postponed = 1`, porque a football-data grava
  * `SUSPENDED` com essa flag e o fallback da ESPN encerra o jogo sem mexer nela.
  */
-async function findReferenceRound(db: D1Database, groupId: string): Promise<string | null> {
+async function fetchRoundPhases(db: D1Database, groupId: string): Promise<RoundPhaseRow[]> {
   const { results } = await db
     .prepare(
       `SELECT
@@ -155,7 +201,7 @@ async function findReferenceRound(db: D1Database, groupId: string): Promise<stri
     )
     .bind(groupId)
     .all<RoundPhaseRow>()
-  return pickReferenceRound(results)
+  return results
 }
 
 /** Membros atuais com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
@@ -198,11 +244,37 @@ async function fetchRoundMembers(
   return results
 }
 
+/**
+ * Palpites do grupo nos jogos encerrados e pontuados, por membro e rodada numerada.
+ * Palpite em jogo adiado fica de fora, para não cobrir a falta de outro jogo da rodada.
+ */
+async function fetchMemberRoundPicks(db: D1Database, groupId: string): Promise<MemberRoundPicks[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT p.user_id, m.round, COUNT(*) AS picks
+       FROM predictions p
+       JOIN groups g ON g.id = p.group_id
+       JOIN matches m ON m.id = p.match_id AND m.competition_id = g.competition_id
+       WHERE p.group_id = ?
+         AND m.status = 'finished' AND m.scored_at IS NOT NULL
+         AND m.round GLOB '[0-9]*' AND m.round NOT GLOB '*[^0-9]*'
+       GROUP BY p.user_id, m.round`,
+    )
+    .bind(groupId)
+    .all<MemberRoundPicks>()
+  return results
+}
+
 export async function getRoundStandings(
   db: D1Database,
   groupId: string,
 ): Promise<RoundStandingsResponse> {
-  const round = await findReferenceRound(db, groupId)
+  const phases = await fetchRoundPhases(db, groupId)
+  const round = pickReferenceRound(phases)
   if (round === null) return { round: null, standings: [] }
-  return { round, standings: computeRoundStandings(await fetchRoundMembers(db, groupId, round)) }
+  const [members, picks] = await Promise.all([
+    fetchRoundMembers(db, groupId, round),
+    fetchMemberRoundPicks(db, groupId),
+  ])
+  return { round, standings: computeRoundStandings(members, computeStreaks(phases, picks)) }
 }

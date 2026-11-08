@@ -7,6 +7,8 @@ export interface RoundStanding {
   round_points: number
   /** Positivo é subiu. `null` quando ninguém tinha ponto antes da rodada. */
   position_change: number | null
+  /** Rodadas encerradas seguidas, da referência para trás, com todos os jogos palpitados. */
+  streak: number
 }
 
 interface RoundStandings {

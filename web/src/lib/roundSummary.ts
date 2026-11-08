@@ -160,8 +160,8 @@ export function highlightText(leaders: RoundStanding[]): string | null {
   const ordered = [...leaders.filter((l) => l.isYou), ...leaders.filter((l) => !l.isYou)]
   const names = ordered.map((l) => (l.isYou ? 'você' : l.display))
   const subject = joinNames(names, LEADER_NAMES)
-  const verb = leaders.length === 1 ? 'fez' : 'fizeram'
-  const text = `${subject} ${verb} ${pointsLabel(leaders[0].points)}, a maior da rodada`
+  const verb = leaders.length === 1 ? 'levou' : 'dividiram'
+  const text = `${subject} ${verb} o título de rei da rodada, com ${pointsLabel(leaders[0].points)}`
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
