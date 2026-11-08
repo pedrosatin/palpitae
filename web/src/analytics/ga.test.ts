@@ -281,6 +281,21 @@ describe('ga', () => {
       expect(JSON.stringify(calls())).not.toContain(groupId)
     })
 
+    it('initGa ignores a document title rewritten with the group name', async () => {
+      const previousTitle = document.title
+      document.title = 'Entra no bolão "NOME PRIVADO" no Palpitae'
+      window.history.pushState({}, '', '/?convite=ABC')
+      const { initGa } = await import('./ga')
+      initGa()
+      const config = calls().find(([command]) => command === 'config')
+      expect(config?.[2]).toEqual({
+        page_location: `${window.location.origin}/`,
+        page_title: 'Início | Palpitae',
+      })
+      expect(JSON.stringify(calls())).not.toContain('NOME PRIVADO')
+      document.title = previousTitle
+    })
+
     it('trackPageView updates the page for later events and sends a page_view', async () => {
       const { initGa, trackPageView } = await import('./ga')
       initGa()

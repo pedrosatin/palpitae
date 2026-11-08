@@ -42,6 +42,24 @@ describe('useGaPageView', () => {
     )
   })
 
+  it('ignores the round param being consumed from the URL', () => {
+    const { result } = setup(`/grupos/${firstId}?rodada=21`)
+    act(() => result.current(`/grupos/${firstId}`, { replace: true }))
+    expect(mockTrackPageView).not.toHaveBeenCalled()
+  })
+
+  it('ignores changes in params that never reach GA', () => {
+    const { result } = setup(`/grupos/${firstId}?convite=ABC`)
+    act(() => result.current(`/grupos/${firstId}`))
+    expect(mockTrackPageView).not.toHaveBeenCalled()
+  })
+
+  it('counts a tab change', () => {
+    const { result } = setup(`/grupos/${firstId}`)
+    act(() => result.current(`/grupos/${firstId}?tab=ranking`))
+    expect(mockTrackPageView).toHaveBeenCalledTimes(1)
+  })
+
   it('counts a move between two groups, whose normalized URL is the same', () => {
     const { result } = setup(`/grupos/${firstId}`)
     act(() => result.current(`/grupos/${secondId}`))

@@ -120,7 +120,7 @@ function firstLoadPage(): GaPage {
   const { origin, pathname, search } = window.location
   return {
     page_location: gaPageLocation({ origin, pathname, search }),
-    page_title: gaPageTitle(pathname, document.title),
+    page_title: gaPageTitle(pathname),
   }
 }
 
