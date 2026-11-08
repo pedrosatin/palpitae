@@ -20,6 +20,74 @@ type PredictionsResponse = {
   import_completed?: boolean
   import_sources?: Record<string, string[]>
 }
+type SiblingGroup = { id: string; name: string }
+
+/** Palpites do usuário no grupo por jogo, com o marcador e as origens da importação. */
+async function fetchGroupPredictions(groupId: string): Promise<{
+  predictions: PredictionMap
+  importCompleted: boolean
+  importSources: ImportSources
+}> {
+  const res = await apiFetch(
+    `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
+  )
+  if (!res.ok) throw new Error('Erro ao carregar palpites')
+  const data = (await res.json()) as PredictionsResponse
+  const predictions: PredictionMap = new Map()
+  for (const p of data.predictions) predictions.set(p.match_id, p)
+  return {
+    predictions,
+    importCompleted: data.import_completed === true,
+    importSources: data.import_sources ?? null,
+  }
+}
+
+/** Importa os palpites de `sourceId` para `groupId`. Erro da API vira exceção com a mensagem dela. */
+async function postPredictionsImport(
+  sourceId: string,
+  groupId: string,
+  onlyMissing: boolean,
+): Promise<{ imported: number; skipped: number }> {
+  const res = await apiFetch(`${config.apiUrl}/predictions/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source_group_id: sourceId,
+      target_group_id: groupId,
+      ...(onlyMissing ? { only_missing: true } : {}),
+    }),
+  })
+  const data = (await res.json()) as {
+    ok?: boolean
+    error?: string
+    imported?: number
+    locked_skipped?: number
+  }
+  if (!res.ok) throw new Error(data.error ?? 'Erro ao importar palpites')
+  return { imported: data.imported ?? 0, skipped: data.locked_skipped ?? 0 }
+}
+
+/**
+ * Aviso depois da importação. Com palpite importado, o aviso "Palpites importados
+ * de <grupo>." já confirma o sucesso. Aqui fica só o que ele não diz.
+ */
+function importResultMessage(imported: number, skipped: number): string {
+  const skippedMsg =
+    skipped === 0
+      ? ''
+      : skipped === 1
+        ? '1 palpite já bloqueado foi ignorado.'
+        : `${skipped} palpites já bloqueados foram ignorados.`
+  return [imported > 0 ? '' : 'Nenhum palpite importado.', skippedMsg].filter(Boolean).join(' ')
+}
+
+/**
+ * Grupo escolhido no seletor. Sem escolha válida, vale o primeiro de `options`,
+ * o grupo com mais palpites faltando.
+ */
+function pickImportSource(options: { id: string }[], id: string): string {
+  return options.some((g) => g.id === id) ? id : (options[0]?.id ?? '')
+}
 
 function usePredictionsFetch(
   groupId: string,
@@ -49,22 +117,14 @@ function usePredictionsFetch(
     setLoading(true)
     setError(null)
 
-    Promise.all([
-      fetchCompetitionMatches(competitionId),
-      apiFetch(`${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`).then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar palpites')
-        return r.json() as Promise<PredictionsResponse>
-      }),
-    ])
+    Promise.all([fetchCompetitionMatches(competitionId), fetchGroupPredictions(groupId)])
       .then(([matchesData, predictionsData]) => {
         if (!active) return
-        setImportCompleted(predictionsData.import_completed === true)
-        setImportSources(predictionsData.import_sources ?? null)
+        setImportCompleted(predictionsData.importCompleted)
+        setImportSources(predictionsData.importSources)
         setMatches(matchesData.matches)
         setDefaultRound(matchesData.default_round ?? null)
-        const map = new Map<string, Prediction>()
-        for (const p of predictionsData.predictions) map.set(p.match_id, p)
-        setPredictions(map)
+        setPredictions(predictionsData.predictions)
 
         const { round, onApplied } = requested.current
         applyDefaultRoundFromMatches(
@@ -108,7 +168,7 @@ function usePredictionsFetch(
  * travaram com a página aberta.
  */
 function deriveImportOptions(
-  otherGroups: { id: string; name: string }[],
+  otherGroups: SiblingGroup[],
   importSources: ImportSources,
   predictions: PredictionMap,
   matches: Match[],
@@ -131,6 +191,36 @@ function deriveImportOptions(
   }
 }
 
+/** Outros grupos do usuário na mesma competição, de onde a importação traz palpites. */
+function useSiblingGroups(
+  groupId: string,
+  competitionId: string,
+  userId: string | undefined,
+): SiblingGroup[] {
+  const [siblings, setSiblings] = useState<SiblingGroup[]>([])
+
+  useEffect(() => {
+    let active = true
+    setSiblings([])
+    // Vindo do painel, a lista já está no cache em memória e não há nova busca.
+    fetchGroupsList(userId)
+      .then((data) => {
+        if (!active) return
+        // Sem pré-seleção: o padrão é o primeiro de `importOptions`, o grupo com mais
+        // palpites faltando.
+        setSiblings(
+          data.groups.filter((g) => g.competition_id === competitionId && g.id !== groupId),
+        )
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [groupId, competitionId, userId])
+
+  return siblings
+}
+
 function usePredictionsImport(
   groupId: string,
   competitionId: string,
@@ -144,8 +234,8 @@ function usePredictionsImport(
   setImportSources: Dispatch<SetStateAction<ImportSources>>,
 ) {
   const scope = useRef({ active: true })
+  const otherGroups = useSiblingGroups(groupId, competitionId, userId)
   const [importExpanded, setImportExpanded] = useState(false)
-  const [otherGroups, setOtherGroups] = useState<{ id: string; name: string }[]>([])
   const [importSourceId, setImportSourceId] = useState<string>('')
   const [importing, setImporting] = useState(false)
   // Grupo da última importação feita nesta visita. A API guarda só o marcador
@@ -159,24 +249,11 @@ function usePredictionsImport(
   useEffect(() => {
     const current = { active: true }
     scope.current = current
-    setOtherGroups([])
     setImportSourceId('')
     setImporting(false)
     setImportFeedback(null)
     setImportExpanded(false)
     setImportedFromName(null)
-    // Vindo do painel, a lista já está no cache em memória e não há nova busca.
-    fetchGroupsList(userId)
-      .then((data) => {
-        if (!current.active) return
-        const siblings = data.groups.filter(
-          (g) => g.competition_id === competitionId && g.id !== groupId,
-        )
-        // Sem pré-seleção: o padrão é o primeiro de `importOptions`, o grupo com mais
-        // palpites faltando.
-        setOtherGroups(siblings)
-      })
-      .catch(() => {})
     return () => {
       current.active = false
     }
@@ -190,9 +267,7 @@ function usePredictionsImport(
     importCompleted,
     importExpanded,
   )
-  const selectedSourceId = importOptions.some((g) => g.id === importSourceId)
-    ? importSourceId
-    : (importOptions[0]?.id ?? '')
+  const selectedSourceId = pickImportSource(importOptions, importSourceId)
 
   async function handleImport() {
     const current = scope.current
@@ -205,37 +280,9 @@ function usePredictionsImport(
     setImporting(true)
     setImportFeedback(null)
     try {
-      const res = await apiFetch(`${config.apiUrl}/predictions/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_group_id: sourceId,
-          target_group_id: groupId,
-          ...(onlyMissing ? { only_missing: true } : {}),
-        }),
-      })
-      const data = (await res.json()) as {
-        ok?: boolean
-        error?: string
-        imported?: number
-        locked_skipped?: number
-      }
-      if (!res.ok) throw new Error(data.error ?? 'Erro ao importar palpites')
-
+      const { imported, skipped } = await postPredictionsImport(sourceId, groupId, onlyMissing)
       if (!current.active) return
-      const imported = data.imported ?? 0
-      const skipped = data.locked_skipped ?? 0
-      const skippedMsg =
-        skipped === 0
-          ? ''
-          : skipped === 1
-            ? '1 palpite já bloqueado foi ignorado.'
-            : `${skipped} palpites já bloqueados foram ignorados.`
-      // Com palpite importado, o aviso "Palpites importados de <grupo>." já confirma
-      // o sucesso. Aqui fica só o que ele não diz.
-      const msg = [imported > 0 ? '' : 'Nenhum palpite importado.', skippedMsg]
-        .filter(Boolean)
-        .join(' ')
+      const msg = importResultMessage(imported, skipped)
       if (imported > 0) {
         setImportCompleted(true)
         setImportedFromName(otherGroups.find((g) => g.id === sourceId)?.name ?? null)
@@ -245,18 +292,12 @@ function usePredictionsImport(
       }
       if (msg) setImportFeedback({ ok: true, message: msg })
       try {
-        const predsRes = await apiFetch(
-          `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
-        )
-        if (!predsRes.ok) throw new Error('Erro ao atualizar palpites')
-        const predsData = (await predsRes.json()) as PredictionsResponse
-        const map = new Map<string, Prediction>()
-        for (const p of predsData.predictions) map.set(p.match_id, p)
+        const refreshed = await fetchGroupPredictions(groupId)
         if (current.active) {
           // O importado muda o palpite salvo, e `usePredictionDrafts` descarta o
           // rascunho digitado sobre o valor anterior.
-          setPredictions(map)
-          if (predsData.import_sources) setImportSources(predsData.import_sources)
+          setPredictions(refreshed.predictions)
+          if (refreshed.importSources) setImportSources(refreshed.importSources)
         }
       } catch {
         if (current.active)
