@@ -159,3 +159,48 @@ describe('PredictionsTab – rascunho guardado no navegador', () => {
     expect(fireBeforeUnload()).toBe(true)
   })
 })
+
+describe('PredictionsTab – rascunho e importação', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+  afterEach(() => localStorage.clear())
+
+  it('importar o jogo descarta o rascunho dele; remontar mostra o importado e contador 0', async () => {
+    let current: Prediction[] = []
+    const imported = saved({ predicted_home_score: 3, predicted_away_score: 2 })
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const u = url.toString()
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
+      if (u.includes('/matches'))
+        return json({ matches: [makeMatch({ id: 'm1' })], default_round: '1' })
+      if (u.includes('/groups'))
+        return json({ groups: [{ id: 'origem', name: 'Origem', competition_id: 'c1' }] })
+      if (u.includes('/predictions/import')) {
+        current = [imported]
+        return json({ ok: true, imported: 1, locked_skipped: 0 })
+      }
+      if (u.includes('/predictions')) return json({ predictions: current })
+      throw new Error(`Unexpected fetch: ${u}`)
+    })
+    const user = userEvent.setup()
+
+    const first = renderTab()
+    await user.click(await screen.findByRole('button', { name: /Aumentar placar Argentina/i }))
+    expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
+    await waitFor(() => expect(localStorage.getItem(KEY)).not.toBeNull())
+
+    await user.click(screen.getByRole('button', { name: 'Importar' }))
+    expect(await screen.findByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
+    expect(screen.getByLabelText('Placar Brasil')).toHaveValue(3)
+    await waitFor(() => expect(localStorage.getItem(KEY)).toBeNull())
+    expect(fireBeforeUnload()).toBe(false)
+    first.unmount()
+
+    renderTab()
+    expect(await screen.findByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
+    expect(screen.getByLabelText('Placar Brasil')).toHaveValue(3)
+    expect(screen.getByLabelText('Placar Argentina')).toHaveValue(2)
+  })
+})

@@ -152,6 +152,30 @@ export function collectRoundDrafts({
   return out
 }
 
+/**
+ * Jogos cujo palpite salvo mudou entre dois retratos (antes e depois de uma
+ * importação). A API de importação devolve só contagens, então é a diferença
+ * de placar ou pênalti que diz o que foi gravado.
+ */
+export function changedPredictionIds(
+  before: Map<string, Prediction>,
+  after: Map<string, Prediction>,
+): string[] {
+  const changed: string[] = []
+  for (const [matchId, next] of after) {
+    const prev = before.get(matchId)
+    if (
+      !prev ||
+      prev.predicted_home_score !== next.predicted_home_score ||
+      prev.predicted_away_score !== next.predicted_away_score ||
+      (prev.predicted_penalty_winner ?? null) !== (next.predicted_penalty_winner ?? null)
+    ) {
+      changed.push(matchId)
+    }
+  }
+  return changed
+}
+
 export type UnsavedDrafts = {
   drafts: Map<string, ScoreDraft>
   penaltyDrafts: Map<string, PenaltyWinner>

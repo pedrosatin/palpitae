@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeMatch } from '../components/matchFixtures'
-import { collectRoundDrafts, pruneUnsavedDrafts } from './predictionDrafts'
+import { changedPredictionIds, collectRoundDrafts, pruneUnsavedDrafts } from './predictionDrafts'
 import type { Prediction } from '../components/MatchCard'
 
 const past = new Date(Date.now() - 3_600_000).toISOString()
@@ -256,5 +256,22 @@ describe('pruneUnsavedDrafts', () => {
     })
     expect(result.drafts.size).toBe(0)
     expect([...result.penaltyDrafts]).toEqual([['m1', 'away']])
+  })
+})
+
+describe('changedPredictionIds', () => {
+  it('lista jogo novo e jogo com placar ou pênalti trocado, e ignora o igual', () => {
+    const before = new Map([
+      ['same', pred({ match_id: 'same' })],
+      ['score', pred({ match_id: 'score' })],
+      ['penalty', pred({ match_id: 'penalty', predicted_penalty_winner: 'home' })],
+    ])
+    const after = new Map([
+      ['same', pred({ match_id: 'same', updated_at: '2026-02-01T00:00:00Z' })],
+      ['score', pred({ match_id: 'score', predicted_home_score: 3 })],
+      ['penalty', pred({ match_id: 'penalty', predicted_penalty_winner: 'away' })],
+      ['new', pred({ match_id: 'new' })],
+    ])
+    expect(changedPredictionIds(before, after)).toEqual(['score', 'penalty', 'new'])
   })
 })

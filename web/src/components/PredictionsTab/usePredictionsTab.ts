@@ -5,9 +5,10 @@ import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
-import { isMatchLocked } from '../../lib/predictionDrafts'
+import { changedPredictionIds, isMatchLocked } from '../../lib/predictionDrafts'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
+import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 
 type PredictionMap = Map<string, Prediction>
@@ -121,6 +122,7 @@ function usePredictionsImport(
   setImportCompleted: Dispatch<SetStateAction<boolean>>,
   importSources: ImportSources,
   setImportSources: Dispatch<SetStateAction<ImportSources>>,
+  discardDrafts: (matchIds: string[]) => void,
 ) {
   const scope = useRef({ active: true })
   const [importExpanded, setImportExpanded] = useState(false)
@@ -225,6 +227,9 @@ function usePredictionsImport(
         const map = new Map<string, Prediction>()
         for (const p of predsData.predictions) map.set(p.match_id, p)
         if (current.active) {
+          // O importado substitui o rascunho desses jogos: sem isso, o rascunho
+          // velho seguiria no contador e voltaria por cima ao recarregar.
+          discardDrafts(changedPredictionIds(predictions, map))
           setPredictions(map)
           if (predsData.import_sources) setImportSources(predsData.import_sources)
         }
@@ -273,6 +278,13 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setImportSources,
   } = usePredictionsFetch(groupId, competitionId)
 
+  const draftState = usePredictionDrafts(
+    userId ? draftStorageKey(userId, groupId) : null,
+    matches,
+    predictions,
+  )
+  const { drafts, unsavedDrafts, handleDraftChange, handlePenaltyDraftChange } = draftState
+
   const {
     importExpanded,
     setImportExpanded,
@@ -294,6 +306,7 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setImportCompleted,
     importSources,
     setImportSources,
+    draftState.discardDrafts,
   )
 
   const {
@@ -318,8 +331,6 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
   )
 
   const {
-    drafts,
-    unsavedDrafts,
     savingAll,
     savedAll,
     hasSavedPredictions,
@@ -327,8 +338,6 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     pendingCount,
     handleSaveAll,
     handleSaved,
-    handleDraftChange,
-    handlePenaltyDraftChange,
   } = usePredictionsBulkSave(
     groupId,
     roundMatches,
@@ -336,7 +345,7 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setPredictions,
     selectedRound,
     matches,
-    userId ? draftStorageKey(userId, groupId) : null,
+    draftState,
   )
 
   return {
