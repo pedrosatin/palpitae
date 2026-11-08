@@ -175,24 +175,27 @@ describe('scoreWindowFromEspn', () => {
   })
 
   it('casa uma rodada inteira com os nomes populares do Brasileirão, sem confundir Atlético-MG e Athletico-PR', async () => {
-    // Nomes gravados pelo sync (clubNames.ts) × displayName da ESPN em bra.1, todos
-    // no mesmo horário: cada jogo precisa casar exatamente um evento.
+    // `sync` traz o nome que o sync grava (clubNames.ts). `espn` traz o displayName
+    // que a ESPN devolve em bra.1, conferido no endpoint /teams. Os jogos começam
+    // no mesmo horário, então cada um precisa casar exatamente um evento.
     const fixtures = [
-      ['Flamengo', 'Corinthians'],
-      ['Atlético-MG', 'Athletico-PR'],
-      ['Botafogo', 'Vitória'],
-      ['Palmeiras', 'São Paulo'],
-      ['Vasco da Gama', 'Fluminense'],
-      ['Grêmio', 'Internacional'],
-      ['Cruzeiro', 'Bahia'],
-      ['Red Bull Bragantino', 'Santos'],
-      ['Mirassol', 'Remo'],
-      ['Chapecoense', 'Coritiba'],
+      { sync: ['Flamengo', 'Corinthians'], espn: ['Flamengo', 'Corinthians'] },
+      { sync: ['Atlético-MG', 'Athletico-PR'], espn: ['Atlético-MG', 'Athletico-PR'] },
+      { sync: ['Botafogo', 'Vitória'], espn: ['Botafogo', 'Vitória'] },
+      { sync: ['Palmeiras', 'São Paulo'], espn: ['Palmeiras', 'São Paulo'] },
+      { sync: ['Vasco', 'Fluminense'], espn: ['Vasco da Gama', 'Fluminense'] },
+      { sync: ['Grêmio', 'Internacional'], espn: ['Grêmio', 'Internacional'] },
+      { sync: ['Cruzeiro', 'Bahia'], espn: ['Cruzeiro', 'Bahia'] },
+      { sync: ['Bragantino', 'Santos'], espn: ['Red Bull Bragantino', 'Santos'] },
+      { sync: ['Mirassol', 'Remo'], espn: ['Mirassol', 'Remo'] },
+      { sync: ['Chapecoense', 'Coritiba'], espn: ['Chapecoense', 'Coritiba'] },
     ] as const
     // A rodada cobre os 20 clubes do mapa.
-    expect(fixtures.flat().sort()).toEqual(Object.values(FOOTBALL_DATA_CLUB_NAMES).sort())
+    expect(fixtures.flatMap((f) => f.sync).sort()).toEqual(
+      Object.values(FOOTBALL_DATA_CLUB_NAMES).sort(),
+    )
     mockFetch({
-      '20261005': fixtures.map(([home, away], i) =>
+      '20261005': fixtures.map(({ espn: [home, away] }, i) =>
         espnEvent({ date: IN_WINDOW_START, home, away, homeScore: String(i), awayScore: '0' }),
       ),
     })
@@ -205,7 +208,7 @@ describe('scoreWindowFromEspn', () => {
         `INSERT INTO matches (id,external_id,provider,competition_id,home_team_id,away_team_id,start_time,status,round)
          VALUES (?,?,'football-data','c1',?,?,?,'scheduled','1')`,
       )
-      fixtures.forEach(([home, away], i) => {
+      fixtures.forEach(({ sync: [home, away] }, i) => {
         insertTeam.run(`h${i}`, home, `h${i}`)
         insertTeam.run(`a${i}`, away, `a${i}`)
         insertMatch.run(`m${i}`, `m${i}`, `h${i}`, `a${i}`, IN_WINDOW_START)

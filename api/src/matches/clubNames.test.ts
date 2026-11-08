@@ -70,7 +70,7 @@ describe('nomes populares dos clubes brasileiros (football-data)', () => {
       { external_id: '1768', provider: 'football-data', name: 'Athletico-PR', short_name: 'CAP', slug: 'ca-paranaense' },
       { external_id: '1779', provider: 'football-data', name: 'Corinthians', short_name: 'COR', slug: 'sc-corinthians-paulista' },
       { external_id: '1783', provider: 'football-data', name: 'Flamengo', short_name: 'FLA', slug: 'cr-flamengo' },
-      { external_id: '4286', provider: 'football-data', name: 'Red Bull Bragantino', short_name: 'RBB', slug: 'rb-bragantino' },
+      { external_id: '4286', provider: 'football-data', name: 'Bragantino', short_name: 'RBB', slug: 'rb-bragantino' },
       { external_id: '4287', provider: 'football-data', name: 'Remo', short_name: 'CRE', slug: 'clube-do-remo' },
     ])
   })

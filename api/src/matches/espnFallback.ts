@@ -110,9 +110,9 @@ function normalizeName(name: string): string {
 /**
  * Casamento por conter/contido nos DOIS sentidos: football-data usa nomes
  * completos ('Liverpool FC', 'SSC Napoli') e a ESPN os encurta ('Liverpool',
- * 'Napoli'). Os clubes brasileiros já são gravados com o nome popular
- * (clubNames.ts), igual ao da ESPN. Exige relação em ambos os lados do confronto
- * (mandante-com-mandante e visitante-com-visitante).
+ * 'Napoli'). O sync grava os clubes do Brasileirão com o nome popular
+ * (clubNames.ts), que casa com o nome da ESPN. Exige relação em ambos os lados
+ * do confronto (mandante-com-mandante e visitante-com-visitante).
  */
 function namesRelated(a: string, b: string): boolean {
   if (!a || !b) return false
