@@ -109,6 +109,13 @@ O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal d
 | `click_<contexto>_whatsapp` | ícone WhatsApp (abre wa.me com texto + link) | — |
 | `click_<contexto>_twitter` | ícone X/Twitter (abre intent/tweet com texto + link) | — |
 
+Convite na página do grupo (`GroupInviteSection`, só para o admin). No celular o convite começa
+recolhido numa linha "Convidar membros":
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_group_detail_abrir_convite` | toque na linha "Convidar membros" no celular, que abre ou recolhe o código e o link | `{ open }` (`true` ao abrir, `false` ao recolher) |
+
 Eventos de sucesso do funil de convite (`web/src/analytics/funnel.ts`). Os `click_*` acima
 medem a tentativa; estes medem a ação concluída. `login` e `join_group` são eventos
 recomendados do GA4.

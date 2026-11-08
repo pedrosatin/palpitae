@@ -40,7 +40,7 @@ describe('GroupInviteSection', () => {
   it('renders correctly with invite code and link', () => {
     render(<GroupInviteSection {...defaultProps} />)
 
-    expect(screen.getByText('Convidar membros')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /convidar membros/i })).toBeInTheDocument()
     expect(screen.getByText('TEST1234')).toBeInTheDocument()
 
     const expectedLink = `${window.location.origin}/convite/TEST1234`
@@ -109,6 +109,51 @@ describe('GroupInviteSection', () => {
     await waitFor(() => {
       const copyLinkButtons = screen.getAllByRole('button', { name: 'Copiar link' })
       expect(copyLinkButtons.length).toBeGreaterThan(0)
+    })
+  })
+
+  it('starts collapsed on mobile with a disclosure button wired to the content', () => {
+    const { container } = render(<GroupInviteSection {...defaultProps} onRotate={vi.fn()} />)
+
+    const toggle = screen.getByRole('button', { name: /convidar membros/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    // Padrão disclosure da APG. O botão fica dentro do título da seção.
+    expect(screen.getByRole('heading', { level: 2 })).toContainElement(toggle)
+
+    const bodyId = toggle.getAttribute('aria-controls')
+    expect(bodyId).toBeTruthy()
+    const body = container.querySelector(`[id="${bodyId}"]`)
+    expect(body).not.toBeNull()
+
+    // O CSS esconde o conteúdo no celular enquanto a seção não tem data-expanded.
+    const section = container.querySelector('section')!
+    expect(section).not.toHaveAttribute('data-expanded')
+
+    // Código, link, compartilhar e troca de código ficam dentro do conteúdo
+    // controlado pelo botão. No desktop ele fica sempre aberto.
+    expect(body).toHaveTextContent('TEST1234')
+    expect(body).toHaveTextContent(`${window.location.origin}/convite/TEST1234`)
+    expect(body).toContainElement(screen.getByTestId('share-buttons'))
+    expect(body).toContainElement(screen.getByRole('button', { name: 'Trocar código' }))
+  })
+
+  it('expands and collapses when the disclosure button is pressed', () => {
+    const { container } = render(<GroupInviteSection {...defaultProps} />)
+    const toggle = screen.getByRole('button', { name: /convidar membros/i })
+    const section = container.querySelector('section')!
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(section).toHaveAttribute('data-expanded')
+    expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_abrir_convite', {
+      open: true,
+    })
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(section).not.toHaveAttribute('data-expanded')
+    expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_abrir_convite', {
+      open: false,
     })
   })
 
