@@ -251,7 +251,10 @@ describe('usePredictionsTab', () => {
         }),
       }),
     )
-    expect(result.current.importFeedback?.ok).toBe(true)
+    // O aviso com o grupo de origem confirma o sucesso, sem uma segunda mensagem.
+    expect(result.current.importCompleted).toBe(true)
+    expect(result.current.importedFromName).toBe('Other Group')
+    expect(result.current.importFeedback).toBeNull()
     expect(mockInvalidate).toHaveBeenCalledWith('groups:')
   })
 
