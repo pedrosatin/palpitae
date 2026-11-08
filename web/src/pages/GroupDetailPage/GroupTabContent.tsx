@@ -38,6 +38,7 @@ export default function GroupTabContent({
         <PredictionsTab
           key={`${userId}:${groupId}`}
           groupId={groupId}
+          groupName={group.name}
           competitionId={group.competition_id}
           userId={userId}
           pointsExact={group.points_exact}
