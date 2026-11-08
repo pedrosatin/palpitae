@@ -18,6 +18,11 @@ export type EmailMessage = {
   text?: string
   /** Extra MIME headers (e.g. List-Unsubscribe). Forwarded to Resend as-is. */
   headers?: Record<string, string>
+  /**
+   * Chave de idempotência do Resend, válida por 24 h. Repetir a chave com o mesmo
+   * corpo não envia outro e-mail. Com corpo diferente o Resend responde 409.
+   */
+  idempotencyKey?: string
 }
 
 /**
@@ -29,11 +34,14 @@ export type EmailMessage = {
 export class EmailError extends Error {
   readonly status: number
   readonly retryAfterMs?: number
+  /** Cota diária ou mensal do Resend esgotada. Repetir não adianta até a cota renovar. */
+  readonly quotaExceeded: boolean
 
   constructor(status: number, body: string, retryAfter?: string | null) {
     super(`Resend respondeu ${status}: ${body}`)
     this.name = 'EmailError'
     this.status = status
+    this.quotaExceeded = status === 429 && /(daily|monthly)_quota_exceeded/.test(body)
     const secs = retryAfter ? Number(retryAfter) : Number.NaN
     this.retryAfterMs = Number.isFinite(secs) ? secs * 1000 : undefined
   }
@@ -49,6 +57,7 @@ export async function sendEmail(apiKey: string, msg: EmailMessage): Promise<void
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
+      ...(msg.idempotencyKey ? { 'Idempotency-Key': msg.idempotencyKey } : {}),
     },
     body: JSON.stringify({
       from: FROM,

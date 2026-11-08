@@ -173,3 +173,26 @@ O travamento continua o da ADR-004 (`lockedSql`): a regra só escolhe qual rodad
 - Risco aceito: uma fase longa numa rodada só (`GROUP_STAGE`, `TACA_GUANABARA`, `REGULAR_SEASON`) também fica para trás depois de algumas semanas. Enquanto ela for a única candidata, a ordem só por `MAX(start_time)` a mantém como padrão; se outra fase já tiver jogos cadastrados enquanto ela ainda corre, o default pula para a outra. Hoje o sync só grava jogo de mata-mata com os times definidos. Em competição com sorteio entre fases, a seguinte só aparece depois que a anterior acaba. Em chave fixa, um jogo pode aparecer antes.
 - Risco aceito: uma rodada dividida, como 7 jogos no sábado e 3 remarcados para 11 dias depois, perde o default 7 dias depois do sábado. Os remarcados vão para a dica mesmo sendo o próximo jogo do calendário.
 - Substitui a frase da ADR-013 (removida deste arquivo em #467; o texto está no histórico do Git) sobre a rodada remarcada voltar a ser default quando seus jogos forem o próximo compromisso.
+
+## ADR-020: Lembrete diário por jogo sem palpite
+
+**Status:** Accepted
+**Date:** 2026-11-08
+
+### Context
+
+O e-mail de lembrete saía às 07h do primeiro dia da rodada, só para quem não tinha nenhum palpite na rodada. Na rodada 35 do Brasileirão (1 jogo em 14/11, 9 em 18 e 19/11), quem palpitasse o primeiro jogo não recebia aviso dos outros 9. Um cron por dia e o filtro do primeiro dia da rodada eram a proteção contra repetição.
+
+### Decision
+
+O cron das 07h BRT agora envia, a cada usuário, um e-mail com os jogos de hoje ainda abertos e sem palpite, agrupados por grupo e rodada. Jogo adiado (`postponed = 1`) não entra, porque não tem data. Jogo remarcado (`postponed = 0` e horário novo) entra no dia novo, mesmo em rodada que ficou para trás (ADR-019), e o link usa a rodada dele. O link leva `?rodada=` e abre a aba Palpitar nessa rodada.
+
+O limite de um e-mail por usuário por dia fica no banco, na tabela `email_reminder_sends` (`PRIMARY KEY (user_id, reminder_date)`, migration 0036). O cron reserva todos os destinatários em uma gravação antes do primeiro envio e só envia para quem a reserva devolveu. Falha de envio devolve a reserva. Reenvio dentro de `sendWithRetry` e reexecução no mesmo dia usam o mesmo `Idempotency-Key` do Resend.
+
+A reserva é uma gravação só por execução porque cada consulta ao D1 conta no limite de subrequests do Worker junto com os envios ao Resend.
+
+### Consequences
+
+- Risco aceito: uma invocação interrompida entre a reserva e o envio deixa os restantes sem e-mail naquele dia. Perder um aviso é preferível a repetir o e-mail.
+- Quem não palpita nunca recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
+- `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia e o número de jogos listados.

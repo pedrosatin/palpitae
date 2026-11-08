@@ -1,564 +1,691 @@
-import type { D1Database } from '@cloudflare/workers-types'
+/// <reference types="node" />
+import type { DatabaseSync } from 'node:sqlite'
+import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatBRT, sendRoundReminders } from './roundReminder'
+import { createSqliteD1 } from '../testing/sqliteD1'
+import { formatTimeBRT, sendRoundReminders } from './roundReminder'
 
-type ReminderRow = {
-  competition_id?: string
-  competition_name: string
-  round: string
-  email: string
-  user_id?: string
-  group_id?: string
-  group_name?: string
-}
-type MatchRow = {
-  competition_id?: string
-  competition_name: string
-  round: string
-  home_team: string
-  away_team: string
-  home_logo?: string | null
-  away_logo?: string | null
-  start_time: string
-}
+// 07:00 em Brasília de sexta 13/11/2026 e de quarta 18/11/2026.
+const FRIDAY = Date.UTC(2026, 10, 13, 10)
+const WEDNESDAY = Date.UTC(2026, 10, 18, 10)
 
-/**
- * Fake D1 that routes each prepare() call by the SQL itself (match by substring),
- * not by call order — so reordering or adding queries can't silently feed the
- * wrong rows to a test. The match-detail query is the one selecting `home_team`;
- * everything else is the user/reminder query.
- */
-function buildFakeDb(userRows: ReminderRow[], matchRows: MatchRow[] = []) {
-  const captured: { sqls: string[] } = { sqls: [] }
-  const db = {
-    prepare(sql: string) {
-      captured.sqls.push(sql)
-      // Default user_id to the e-mail so the source always has a stable id to hash.
-      const normalizedUsers = userRows.map((r) => ({
-        ...r,
-        competition_id: r.competition_id ?? r.competition_name,
-        user_id: r.user_id ?? r.email,
-        group_id: r.group_id ?? 'default-group',
-        group_name: r.group_name ?? 'Grupo',
-      }))
-      const normalizedMatches = matchRows.map((r) => ({
-        ...r,
-        competition_id: r.competition_id ?? r.competition_name,
-      }))
-      const rows = sql.includes('home_team') ? normalizedMatches : normalizedUsers
-      const stmt = {
-        bind() {
-          return stmt
-        },
-        async all<T>(): Promise<{ results: T[] }> {
-          return { results: rows as unknown as T[] }
-        },
-      }
-      return stmt
-    },
-    _captured: captured,
-  }
-  return db
+const handles: DatabaseSync[] = []
+
+afterEach(() => {
+  for (const sqlite of handles.splice(0)) sqlite.close()
+  vi.unstubAllGlobals()
+})
+
+function createFixture() {
+  const { sqlite, db } = createSqliteD1()
+  handles.push(sqlite)
+  sqlite.exec(`
+    DELETE FROM competitions;
+
+    INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
+      ('ana', 'ana@example.com', 'google', 'g-ana', 'Ana'),
+      ('bia', 'bia@example.com', 'google', 'g-bia', 'Bia');
+
+    INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility) VALUES
+      ('bra', 'Brasileirão Série A', 'bra-2026', '2026', 'ongoing', 'league', '[]', 'public'),
+      ('cdb', 'Copa do Brasil', 'cdb-2026', '2026', 'ongoing', 'cup', '[]', 'public');
+
+    INSERT INTO teams (id, name, short_name, slug, logo_url) VALUES
+      ('fla', 'Flamengo', 'FLA', 'flamengo', 'https://crests.example/fla.png'),
+      ('pal', 'Palmeiras', 'PAL', 'palmeiras', NULL),
+      ('cor', 'Corinthians', 'COR', 'corinthians', NULL),
+      ('sao', 'São Paulo', 'SAO', 'sao-paulo', NULL);
+
+    INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code) VALUES
+      ('g1', 'Realidade do BR', 'bra', 'ana', 'AAAA-1111'),
+      ('g2', 'Firma', 'bra', 'ana', 'BBBB-2222'),
+      ('g3', 'Copa da Família', 'cdb', 'ana', 'CCCC-3333');
+
+    INSERT INTO group_members (id, group_id, user_id, role) VALUES
+      ('gm1', 'g1', 'ana', 'owner');
+  `)
+  return { sqlite, db: db as unknown as D1Database }
 }
 
-/** Returns the SQL of the user/reminder query (the one without home_team). */
-function userSql(db: ReturnType<typeof buildFakeDb>): string {
-  return db._captured.sqls.find((s) => !s.includes('home_team')) ?? ''
+type MatchOptions = {
+  id: string
+  start: string
+  competition?: string
+  round?: string
+  status?: string
+  postponed?: number
+  lockedAt?: string | null
+  home?: string
+  away?: string
 }
 
-/** Returns the SQL of the match-detail query. */
-function matchSql(db: ReturnType<typeof buildFakeDb>): string {
-  return db._captured.sqls.find((s) => s.includes('home_team')) ?? ''
+function addMatch(
+  sqlite: DatabaseSync,
+  {
+    id,
+    start,
+    competition = 'bra',
+    round = '35',
+    status = 'scheduled',
+    postponed = 0,
+    lockedAt = null,
+    home = 'fla',
+    away = 'pal',
+  }: MatchOptions,
+) {
+  sqlite
+    .prepare(
+      `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id,
+         start_time, status, round, postponed, locked_at)
+       VALUES (?, ?, ?, 'football-data', ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, competition, id, home, away, start, status, round, postponed, lockedAt)
+}
+
+function addMember(sqlite: DatabaseSync, group: string, user: string) {
+  sqlite
+    .prepare(`INSERT INTO group_members (id, group_id, user_id, role) VALUES (?, ?, ?, 'member')`)
+    .run(`gm-${group}-${user}`, group, user)
+}
+
+function addPrediction(sqlite: DatabaseSync, user: string, group: string, match: string) {
+  sqlite
+    .prepare(
+      `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score)
+       VALUES (?, ?, ?, ?, 1, 0)`,
+    )
+    .run(`p-${user}-${group}-${match}`, user, group, match)
+}
+
+function sentBodies() {
+  return vi.mocked(fetch).mock.calls.map(
+    (call) =>
+      JSON.parse(call[1]!.body as string) as {
+        to: string
+        subject: string
+        html: string
+        text: string
+        from: string
+        headers?: Record<string, string>
+      },
+  )
+}
+
+function fakeAe() {
+  const writeDataPoint = vi.fn()
+  return { ae: { writeDataPoint } as unknown as AnalyticsEngineDataset, writeDataPoint }
+}
+
+function eventsOf(writeDataPoint: ReturnType<typeof vi.fn>, type: string) {
+  return writeDataPoint.mock.calls
+    .map((call) => call[0] as { blobs: string[]; doubles: number[] })
+    .filter((point) => point.blobs[0] === type)
+}
+
+function run(db: D1Database, nowMs: number = WEDNESDAY) {
+  return sendRoundReminders(db, 'key', undefined, undefined, undefined, nowMs)
 }
 
 describe('sendRoundReminders', () => {
   beforeEach(() => {
+    // Nenhum teste fala com o Resend. Toda chamada de rede cai neste stub.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(null, { status: 200 })),
     )
   })
 
-  afterEach(() => {
-    vi.unstubAllGlobals()
+  describe('quem recebe e quais jogos entram', () => {
+    it('quem palpitou só o jogo de sexta recebe os 9 de quarta e nada na sexta', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'sexta', start: '2026-11-13T22:00:00Z', home: 'cor', away: 'sao' })
+      for (let i = 1; i <= 9; i++) {
+        addMatch(sqlite, { id: `quarta-${i}`, start: `2026-11-18T22:${String(i + 10)}:00Z` })
+      }
+      addPrediction(sqlite, 'ana', 'g1', 'sexta')
+
+      await run(db, FRIDAY)
+      expect(fetch).not.toHaveBeenCalled()
+
+      await run(db, WEDNESDAY)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      const [email] = sentBodies()
+      expect(email.to).toBe('ana@example.com')
+      expect(email.subject).toBe('9 jogos sem palpite hoje. O primeiro fecha às 19:11')
+      expect(email.html.match(/fecha \d\d:\d\d/g)).toHaveLength(9)
+      expect(email.html).not.toContain('Corinthians')
+    })
+
+    it('sem palpite nenhum, o aviso da sexta lista só o jogo da sexta', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'sexta', start: '2026-11-13T22:00:00Z', home: 'cor', away: 'sao' })
+      addMatch(sqlite, { id: 'quarta', start: '2026-11-18T22:00:00Z' })
+
+      await run(db, FRIDAY)
+
+      const [email] = sentBodies()
+      expect(email.subject).toBe('1 jogo sem palpite hoje. Fecha às 19:00')
+      expect(email.html).toContain('Corinthians')
+      expect(email.html).not.toContain('Flamengo')
+    })
+
+    it('quem palpitou todos os jogos do dia não recebe nada', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMatch(sqlite, { id: 'm2', start: '2026-11-18T23:30:00Z' })
+      addPrediction(sqlite, 'ana', 'g1', 'm1')
+      addPrediction(sqlite, 'ana', 'g1', 'm2')
+
+      await run(db)
+
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('descadastrado nunca recebe, mesmo com jogo sem palpite', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      sqlite.exec(`UPDATE users SET email_unsubscribed_at = datetime('now') WHERE id = 'ana'`)
+
+      await run(db)
+
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('palpite em outro grupo não conta e o jogo aparece só no grupo que falta', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g2', 'ana')
+      addPrediction(sqlite, 'ana', 'g1', 'm1')
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html).toContain('Firma')
+      expect(email.html).not.toContain('Realidade do BR')
+    })
+
+    it('grupo excluído não gera aviso', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      sqlite.exec(`UPDATE groups SET deleted_at = datetime('now') WHERE id = 'g1'`)
+
+      await run(db)
+
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['adiado no próprio dia', { postponed: 1 }],
+      ['adiado depois de começar', { postponed: 1, lockedAt: '2026-11-18T09:00:00Z' }],
+      ['já visto iniciado pelo sync', { lockedAt: '2026-11-18T09:00:00Z' }],
+      ['ao vivo', { status: 'live' }],
+      ['encerrado', { status: 'finished' }],
+    ])('jogo %s não entra na lista', async (_name, options) => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'fora', start: '2026-11-18T22:00:00Z', ...options })
+
+      await run(db)
+
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('jogo que começou antes do envio não entra na lista', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'madrugada', start: '2026-11-18T04:00:00Z' })
+
+      await run(db)
+
+      expect(fetch).not.toHaveBeenCalled()
+    })
+
+    it('o dia segue o horário de Brasília', async () => {
+      const { sqlite, db } = createFixture()
+      // 23:30 de quarta em Brasília, já quinta em UTC.
+      addMatch(sqlite, { id: 'noite', start: '2026-11-19T02:30:00Z' })
+      // 00:00 de quinta em Brasília fica para o aviso de quinta.
+      addMatch(sqlite, {
+        id: 'madrugada',
+        start: '2026-11-19T03:00:00Z',
+        home: 'cor',
+        away: 'sao',
+      })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.subject).toBe('1 jogo sem palpite hoje. Fecha às 23:30')
+      expect(email.html).not.toContain('Corinthians')
+    })
+
+    it('jogo remarcado de rodada antiga entra no dia novo com o link da rodada dele', async () => {
+      const { sqlite, db } = createFixture()
+      // Rodada 21 com a maioria encerrada há meses e um jogo remarcado (ADR-019).
+      for (let i = 1; i <= 3; i++) {
+        addMatch(sqlite, {
+          id: `r21-${i}`,
+          round: '21',
+          start: `2026-08-0${i}T22:00:00Z`,
+          status: 'finished',
+          lockedAt: `2026-08-0${i}T22:00:00Z`,
+        })
+      }
+      addMatch(sqlite, { id: 'r21-remarcado', round: '21', start: '2026-11-18T20:00:00Z' })
+      addMatch(sqlite, { id: 'r35-1', round: '35', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.subject).toBe('2 jogos sem palpite hoje. O primeiro fecha às 17:00')
+      expect(email.html).toContain('/grupos/g1?rodada=21')
+      expect(email.html).toContain('/grupos/g1?rodada=35')
+      expect(email.html).toContain('Rodada 21')
+      expect(email.html).toContain('Rodada 35')
+      expect(email.html.match(/<h3/g)).toHaveLength(1)
+    })
   })
 
-  it('does nothing when no round starts today', async () => {
-    const db = buildFakeDb([])
+  describe('um e-mail por usuário por dia', () => {
+    it('junta vários grupos e campeonatos no mesmo e-mail', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'bra-1', start: '2026-11-18T22:00:00Z' })
+      addMatch(sqlite, {
+        id: 'cdb-1',
+        competition: 'cdb',
+        round: 'SEMI_FINALS',
+        start: '2026-11-18T23:30:00Z',
+        home: 'cor',
+        away: 'sao',
+      })
+      addMember(sqlite, 'g2', 'ana')
+      addMember(sqlite, 'g3', 'ana')
 
-    await sendRoundReminders(db as unknown as D1Database, 'key')
+      await run(db)
 
-    expect(fetch).not.toHaveBeenCalled()
+      expect(fetch).toHaveBeenCalledTimes(1)
+      const [email] = sentBodies()
+      // Dois grupos do mesmo campeonato listam o mesmo jogo. O assunto conta jogos.
+      expect(email.subject).toBe('2 jogos sem palpite hoje. O primeiro fecha às 19:00')
+      for (const name of ['Realidade do BR', 'Firma', 'Copa da Família']) {
+        expect(email.html).toContain(name)
+        expect(email.text).toContain(name)
+      }
+      expect(email.html.match(/<h3/g)).toHaveLength(3)
+    })
+
+    it('cada usuário recebe o próprio e-mail, sem endereço compartilhado', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+
+      await run(db)
+
+      expect(sentBodies().map((email) => email.to).sort()).toEqual([
+        'ana@example.com',
+        'bia@example.com',
+      ])
+    })
+
+    it('nova execução no mesmo dia não envia de novo, nem com jogo novo', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+      addMatch(sqlite, { id: 'm2', start: '2026-11-18T23:00:00Z' })
+      await run(db, WEDNESDAY + 3_600_000)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('execuções simultâneas enviam um e-mail só', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await Promise.all([run(db), run(db)])
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('o dia seguinte tem aviso próprio', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMatch(sqlite, { id: 'm2', start: '2026-11-19T22:00:00Z' })
+
+      await run(db)
+      await run(db, WEDNESDAY + 86_400_000)
+
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('falha de envio libera o usuário para nova execução no mesmo dia', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch).mockResolvedValueOnce(new Response('boom', { status: 422 }))
+
+      await run(db)
+      expect(sqlite.prepare('SELECT user_id FROM email_reminder_sends').all()).toEqual([])
+
+      await run(db)
+
+      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(sqlite.prepare('SELECT user_id FROM email_reminder_sends').all()).toEqual([
+        { user_id: 'ana' },
+      ])
+    })
+
+    it('apaga os registros com mais de 7 dias e mantém os recentes', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      sqlite.exec(`
+        INSERT INTO email_reminder_sends (user_id, reminder_date) VALUES
+          ('bia', '2026-11-10'),
+          ('bia', '2026-11-11');
+      `)
+
+      await run(db)
+
+      const rows = sqlite
+        .prepare('SELECT user_id, reminder_date FROM email_reminder_sends ORDER BY reminder_date')
+        .all()
+      expect(rows).toEqual([
+        { user_id: 'bia', reminder_date: '2026-11-11' },
+        { user_id: 'ana', reminder_date: '2026-11-18' },
+      ])
+    })
+
+    it('manda a mesma chave de idempotência em todas as tentativas', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response('', { status: 500, headers: { 'Retry-After': '0' } }))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+      await run(db)
+
+      const keys = vi
+        .mocked(fetch)
+        .mock.calls.map((call) => (call[1]!.headers as Record<string, string>)['Idempotency-Key'])
+      expect(keys).toEqual(['lembrete-diario/ana/2026-11-18', 'lembrete-diario/ana/2026-11-18'])
+    })
   })
 
-  it("only selects the round's first match day in the user query", async () => {
-    const db = buildFakeDb([])
+  describe('limites do Resend', () => {
+    const rateLimited = () =>
+      new Response('{"name":"rate_limit_exceeded"}', {
+        status: 429,
+        headers: { 'Retry-After': '0' },
+      })
 
-    await sendRoundReminders(db as unknown as D1Database, 'key')
+    it('isola uma falha permanente e segue com os demais', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response('boom', { status: 422 }))
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
 
-    expect(userSql(db)).toContain("date(m.start_time, '-3 hours') = date('now', '-3 hours')")
-    expect(userSql(db)).toContain("MIN(date(m2.start_time, '-3 hours'))")
-    expect(userSql(db)).toContain("m.status = 'scheduled'")
+      await run(db)
+
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('repete em 429 respeitando o Retry-After', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(rateLimited())
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+      await run(db)
+
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('desiste depois de 3 tentativas sob limite por segundo', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch).mockImplementation(async () => rateLimited())
+
+      await run(db)
+
+      expect(fetch).toHaveBeenCalledTimes(3)
+    })
+
+    it('cota esgotada encerra a fila sem repetir e libera quem não recebeu', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      const { ae, writeDataPoint } = fakeAe()
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response('{"name":"daily_quota_exceeded"}', { status: 429 }),
+      )
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(sqlite.prepare('SELECT * FROM email_reminder_sends').all()).toEqual([])
+      const failures = eventsOf(writeDataPoint, 'email_reminder_failed')
+      expect(failures.map((event) => event.blobs[3])).toEqual(['quota_exceeded', 'quota_exceeded'])
+      expect(eventsOf(writeDataPoint, 'cron_round_reminder')[0].doubles).toEqual([1, 0, 2, 0])
+    })
+
+    it('sem chave do Resend não envia nem reserva', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await sendRoundReminders(db, '', undefined, undefined, undefined, WEDNESDAY)
+
+      expect(fetch).not.toHaveBeenCalled()
+      expect(sqlite.prepare('SELECT * FROM email_reminder_sends').all()).toEqual([])
+    })
   })
 
-  it('fetches match details for rounds starting today', async () => {
-    const db = buildFakeDb(
-      [{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }],
-      [],
-    )
+  describe('observabilidade', () => {
+    it('registra enviados, falhas e jogos listados por envio', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMatch(sqlite, { id: 'm2', start: '2026-11-18T23:00:00Z', home: 'cor', away: 'sao' })
+      addMember(sqlite, 'g2', 'ana')
+      addMember(sqlite, 'g1', 'bia')
+      addPrediction(sqlite, 'bia', 'g1', 'm1')
+      const { ae, writeDataPoint } = fakeAe()
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+        .mockResolvedValueOnce(new Response('boom', { status: 422 }))
 
-    await sendRoundReminders(db as unknown as D1Database, 'key')
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
 
-    expect(matchSql(db)).toContain('home_team')
-    expect(matchSql(db)).toContain('away_team')
-    expect(matchSql(db)).toContain('start_time')
-    expect(matchSql(db)).toContain('ORDER BY m.start_time ASC')
+      const [sent] = eventsOf(writeDataPoint, 'email_reminder_sent')
+      expect(sent.blobs[2]).toBe('2026-11-18')
+      expect(sent.doubles).toEqual([2, 2])
+      expect(sent.blobs.join()).not.toContain('@')
+
+      const [failed] = eventsOf(writeDataPoint, 'email_reminder_failed')
+      expect(failed.blobs.slice(2)).toEqual(['2026-11-18', 'http_422'])
+      expect(failed.doubles).toEqual([1])
+
+      expect(eventsOf(writeDataPoint, 'cron_round_reminder')[0].doubles).toEqual([1, 1, 1, 2])
+    })
+
+    it('sem jogo pendente registra a execução zerada', async () => {
+      const { db } = createFixture()
+      const { ae, writeDataPoint } = fakeAe()
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(eventsOf(writeDataPoint, 'cron_round_reminder')[0].doubles).toEqual([0, 0, 0, 0])
+      expect(fetch).not.toHaveBeenCalled()
+    })
   })
 
-  it('sends one e-mail per member of a round', async () => {
-    const db = buildFakeDb(
-      [
-        { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-        { competition_name: 'Copa do Mundo', round: '2', email: 'b@x.com' },
-      ],
-      [],
-    )
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(fetch).toHaveBeenCalledTimes(2)
-    const recipients = vi.mocked(fetch).mock.calls.map((c) => JSON.parse(c[1]!.body as string).to)
-    expect(recipients.sort()).toEqual(['a@x.com', 'b@x.com'])
-  })
-
-  it('sends one e-mail with per-group CTAs when a member is in multiple groups of the same round', async () => {
-    const db = buildFakeDb([
-      {
-        competition_name: 'Copa do Mundo',
-        round: '2',
-        email: 'a@x.com',
-        group_id: 'g1',
-        group_name: 'Grupo A',
-      },
-      {
-        competition_name: 'Copa do Mundo',
-        round: '2',
-        email: 'a@x.com',
-        group_id: 'g2',
-        group_name: 'Grupo B',
-      },
-    ])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    expect(html).toContain('/grupos/g1')
-    expect(html).toContain('/grupos/g2')
-    expect(html).toContain('Grupo A')
-    expect(html).toContain('Grupo B')
-  })
-
-  it('includes match details in the e-mail body', async () => {
-    const db = buildFakeDb(
-      [{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }],
-      [
-        {
-          competition_name: 'Copa do Mundo',
-          round: '2',
-          home_team: 'Brasil',
-          away_team: 'Argentina',
-          start_time: '2026-06-20T19:00:00Z',
-        },
-      ],
-    )
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.html).toContain('Brasil')
-    expect(body.html).toContain('Argentina')
-  })
-
-  it('still sends when a round has no match rows (graceful degradation)', async () => {
-    const db = buildFakeDb(
-      [{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }],
-      [],
-    )
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.html).toContain('Rodada 2')
-  })
-
-  it('translates a knockout stage to its display label in subject and body', async () => {
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: 'LAST_32', email: 'a@x.com' },
-    ])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.subject).toContain('Rodada de 32')
-    expect(body.subject).not.toContain('LAST_32')
-    expect(body.html).toContain('Rodada de 32')
-    expect(body.html).not.toContain('LAST_32')
-    expect(body.text).toContain('Rodada de 32')
-  })
-
-  it('authenticates and posts to the Resend API with the round in the subject', async () => {
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(db as unknown as D1Database, 'secret-key')
-
-    const [url, init] = vi.mocked(fetch).mock.calls[0]
-    expect(url).toBe('https://api.resend.com/emails')
-    expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer secret-key')
-    const body = JSON.parse(init!.body as string)
-    expect(body.subject).toContain('Rodada 2')
-    expect(body.from).toContain('palpitae.com.br')
-  })
-
-  it('isolates a single permanent send failure and still sends the rest', async () => {
-    // 422 is permanent (bad address etc.) — fail fast, no retry, isolate it.
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(new Response('boom', { status: 422 }))
-      .mockResolvedValueOnce(new Response(null, { status: 200 }))
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' },
-      { competition_name: 'Copa do Mundo', round: '2', email: 'b@x.com' },
-    ])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(fetch).toHaveBeenCalledTimes(2)
-  })
-
-  it('retries a 429 (honouring Retry-After) and eventually succeeds', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(new Response('rate', { status: 429, headers: { 'Retry-After': '0' } }))
-      .mockResolvedValueOnce(new Response(null, { status: 200 }))
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(fetch).toHaveBeenCalledTimes(2)
-  })
-
-  it('gives up after MAX_SEND_ATTEMPTS on persistent rate limiting', async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response('rate', { status: 429, headers: { 'Retry-After': '0' } }),
-    )
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(fetch).toHaveBeenCalledTimes(3)
-  })
-
-  it('does nothing and reports zero when the Resend key is missing', async () => {
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(db as unknown as D1Database, '')
-
-    expect(fetch).not.toHaveBeenCalled()
-  })
-
-  it('excludes users who already predicted (NOT EXISTS on predictions)', async () => {
-    const db = buildFakeDb([])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(userSql(db)).toContain('NOT EXISTS')
-    expect(userSql(db)).toContain('FROM predictions p')
-    expect(userSql(db)).toContain('p.user_id  = u.id')
-    expect(userSql(db)).toContain('pm.round = m.round')
-  })
-
-  it('sends independent e-mails for multiple competitions in the same run', async () => {
-    const db = buildFakeDb([
-      { competition_name: 'Copa do Brasil', round: '3', email: 'a@x.com' },
-      { competition_name: 'Libertadores', round: '5', email: 'a@x.com' },
-    ])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    // Same user, two distinct (competition, round) groups → two e-mails.
-    expect(fetch).toHaveBeenCalledTimes(2)
-    const subjects = vi
-      .mocked(fetch)
-      .mock.calls.map((c) => JSON.parse(c[1]!.body as string).subject)
-    expect(subjects.some((s: string) => s.includes('Rodada 3'))).toBe(true)
-    expect(subjects.some((s: string) => s.includes('Rodada 5'))).toBe(true)
-  })
-
-  it('escapes HTML-significant characters from the database', async () => {
-    const db = buildFakeDb(
-      [
-        {
-          competition_name: 'Copa & Cia',
-          round: 'Quartas "A"',
-          email: 'a@x.com',
-        },
-      ],
-      [
-        {
-          competition_name: 'Copa & Cia',
-          round: 'Quartas "A"',
-          home_team: 'Time <b>',
-          away_team: "O'Higgins",
-          start_time: '2026-06-20T19:00:00Z',
-        },
-      ],
-    )
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    expect(html).toContain('Copa &amp; Cia')
-    expect(html).toContain('Quartas &quot;A&quot;')
-    expect(html).toContain('Time &lt;b&gt;')
-    expect(html).toContain('O&#39;Higgins')
-    expect(html).not.toContain('Time <b>')
-  })
-
-  it('includes a plain-text fallback alongside the HTML', async () => {
-    const db = buildFakeDb(
-      [{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }],
-      [
-        {
-          competition_name: 'Copa do Mundo',
-          round: '2',
-          home_team: 'Brasil',
-          away_team: 'Argentina',
-          start_time: '2026-06-20T19:00:00Z',
-        },
-      ],
-    )
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.text).toContain('Brasil vs Argentina')
-    expect(body.text).toContain('Rodada 2')
-    expect(body.text).not.toContain('<')
-  })
-
-  it('produces a full HTML document (DOCTYPE/head/body)', async () => {
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    expect(html).toContain('<!DOCTYPE html>')
-    expect(html).toContain('<head>')
-    expect(html).toContain('<body')
-  })
-
-  it('renders team crests as <img> with the logo url and name as alt', async () => {
-    const db = buildFakeDb(
-      [{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }],
-      [
-        {
-          competition_name: 'Copa do Mundo',
-          round: '2',
-          home_team: 'Brasil',
-          away_team: 'Argentina',
-          home_logo: 'https://crests.example/br.png',
-          away_logo: 'https://crests.example/ar.svg',
-          start_time: '2026-06-20T19:00:00Z',
-        },
-      ],
-    )
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    expect(html).toContain('src="https://crests.example/br.png"')
-    expect(html).toContain('src="https://crests.example/ar.svg"')
-    expect(html).toContain('alt="Brasil"')
-  })
-
-  it('omits the crest <img> when a team has no logo', async () => {
-    const db = buildFakeDb(
-      [{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }],
-      [
-        {
-          competition_name: 'Copa do Mundo',
-          round: '2',
-          home_team: 'Brasil',
-          away_team: 'Argentina',
-          home_logo: null,
-          away_logo: null,
-          start_time: '2026-06-20T19:00:00Z',
-        },
-      ],
-    )
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const html = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string).html
-    // No <img> at all: header logo dropped for deliverability, and no crest <img>
-    // since both logo_url are null. Fewer images = less "Promotions" signal.
-    const imgTags = [...html.matchAll(/<img[^>]+>/g)].map((m: RegExpMatchArray) => m[0])
-    expect(imgTags.length).toBe(0)
-    expect(html).toContain('Brasil')
-  })
-
-  it('uses the provided appUrl in the CTA link and text body', async () => {
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key', undefined, 'http://localhost:5173')
-
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.html).toContain('http://localhost:5173/grupos/')
-    expect(body.text).toContain('http://localhost:5173/grupos/')
-  })
-
-  it('does not append UTM params to links (they flag the mail as Promotions)', async () => {
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(
-      db as unknown as D1Database,
-      'key',
-      undefined,
-      'https://palpitae.com.br',
-    )
-
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.html).not.toContain('utm_')
-    expect(body.text).not.toContain('utm_')
-  })
-
-  it('fires on the first match day of the round only (min-date guard)', async () => {
-    const db = buildFakeDb([])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    // The user query must only fire on the round's first match day (BRT-adjusted),
-    // preventing duplicate notifications mid-round.
-    expect(userSql(db)).toContain('MIN(date(m2.start_time')
-    expect(userSql(db)).toContain("date('now', '-3 hours')")
-  })
-
-  it('suppresses opted-out users via the email_unsubscribed_at gate', async () => {
-    const db = buildFakeDb([])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(userSql(db)).toContain('u.email_unsubscribed_at IS NULL')
-  })
-
-  it('adds a per-user unsubscribe link, headers and one-click POST when configured', async () => {
-    const db = buildFakeDb([
-      {
-        competition_name: 'Copa do Mundo',
-        round: '2',
-        email: 'a@x.com',
-        user_id: 'user-99',
-      },
-    ])
-
-    await sendRoundReminders(
-      db as unknown as D1Database,
-      'key',
-      undefined,
-      'https://palpitae.com.br',
-      {
-        secret: 'unsub-secret',
-        apiBaseUrl: 'https://api.palpitae.com.br/',
-      },
-    )
-
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    const unsubBase = 'https://api.palpitae.com.br/notifications/unsubscribe?token='
-    expect(body.html).toContain('Cancelar inscrição')
-    expect(body.html).toContain(unsubBase)
-    expect(body.text).toContain(unsubBase)
-    expect(body.headers['List-Unsubscribe']).toContain(`<${unsubBase}`)
-    expect(body.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click')
-  })
-
-  it('omits the unsubscribe link and headers when no unsub config is given', async () => {
-    const db = buildFakeDb([{ competition_name: 'Copa do Mundo', round: '2', email: 'a@x.com' }])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
-    expect(body.html).not.toContain('Cancelar inscrição')
-    expect(body.headers).toBeUndefined()
-  })
-
-  it('treats same-named competitions as separate when they have different IDs', async () => {
-    // Same competition name, different IDs — old string key would collapse them into
-    // one group, so the same user would only get one e-mail instead of two.
-    const db = buildFakeDb([
-      {
-        competition_id: 'comp-1',
-        competition_name: 'Liga',
-        round: '3',
-        email: 'a@x.com',
-      },
-      {
-        competition_id: 'comp-2',
-        competition_name: 'Liga',
-        round: '3',
-        email: 'a@x.com',
-      },
-    ])
-
-    await sendRoundReminders(db as unknown as D1Database, 'key')
-
-    expect(fetch).toHaveBeenCalledTimes(2)
+  describe('conteúdo do e-mail', () => {
+    it('autentica na API do Resend com o remetente do Palpitae', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await sendRoundReminders(db, 'secret-key', undefined, undefined, undefined, WEDNESDAY)
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0]
+      expect(url).toBe('https://api.resend.com/emails')
+      expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer secret-key')
+      expect(sentBodies()[0].from).toContain('palpitae.com.br')
+    })
+
+    it('mostra o horário de fechamento de cada jogo no HTML e no texto', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html).toContain('fecha 19:00')
+      expect(email.text).toContain('Flamengo vs Palmeiras, fecha 19:00')
+      expect(email.text).not.toContain('<')
+    })
+
+    it('o link abre o grupo na rodada, com a rodada escapada', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, {
+        id: 'm1',
+        competition: 'cdb',
+        round: 'SEMI FINALS',
+        start: '2026-11-18T22:00:00Z',
+      })
+      sqlite.exec(`UPDATE group_members SET group_id = 'g3' WHERE id = 'gm1'`)
+
+      await sendRoundReminders(db, 'key', undefined, 'http://localhost:5173', undefined, WEDNESDAY)
+
+      const [email] = sentBodies()
+      expect(email.html).toContain('http://localhost:5173/grupos/g3?rodada=SEMI%20FINALS')
+      expect(email.text).toContain('http://localhost:5173/grupos/g3?rodada=SEMI%20FINALS')
+    })
+
+    it('traduz a fase de mata-mata para o rótulo de exibição', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, {
+        id: 'm1',
+        competition: 'cdb',
+        round: 'LAST_32',
+        start: '2026-11-18T22:00:00Z',
+      })
+      sqlite.exec(`UPDATE group_members SET group_id = 'g3' WHERE id = 'gm1'`)
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html).toContain('Rodada de 32')
+      expect(email.text).toContain('Rodada de 32')
+      expect(email.html.replace(/rodada=LAST_32/g, '')).not.toContain('LAST_32')
+    })
+
+    it('escapa os caracteres de HTML que vêm do banco', async () => {
+      const { sqlite, db } = createFixture()
+      sqlite.exec(`
+        UPDATE groups SET name = 'Grupo <b>"A"' WHERE id = 'g1';
+        UPDATE competitions SET name = 'Copa & Cia' WHERE id = 'bra';
+        UPDATE teams SET name = 'O''Higgins' WHERE id = 'pal';
+      `)
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html).toContain('Grupo &lt;b&gt;&quot;A&quot;')
+      expect(email.html).toContain('Copa &amp; Cia')
+      expect(email.html).toContain('O&#39;Higgins')
+      expect(email.html).not.toContain('Grupo <b>')
+    })
+
+    it('gera um documento HTML completo', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html).toContain('<!DOCTYPE html>')
+      expect(email.html).toContain('<head>')
+      expect(email.html).toContain('<body')
+    })
+
+    it('mostra o escudo quando há logo e omite o <img> quando não há', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html.match(/<img[^>]+>/g)).toEqual([
+        expect.stringContaining('src="https://crests.example/fla.png"'),
+      ])
+      expect(email.html).toContain('alt="Flamengo"')
+    })
+
+    it('não usa UTM nos links', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html).not.toContain('utm_')
+      expect(email.text).not.toContain('utm_')
+    })
+
+    it('inclui link e cabeçalhos de descadastro por usuário', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await sendRoundReminders(
+        db,
+        'key',
+        undefined,
+        undefined,
+        { secret: 'unsub-secret', apiBaseUrl: 'https://api.palpitae.com.br/' },
+        WEDNESDAY,
+      )
+
+      const [email] = sentBodies()
+      const unsubBase = 'https://api.palpitae.com.br/notifications/unsubscribe?token='
+      expect(email.html).toContain('Cancelar inscrição')
+      expect(email.html).toContain(unsubBase)
+      expect(email.text).toContain(unsubBase)
+      expect(email.headers?.['List-Unsubscribe']).toContain(`<${unsubBase}`)
+      expect(email.headers?.['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click')
+    })
+
+    it('sem configuração de descadastro, sai sem link e sem cabeçalhos', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.html).not.toContain('Cancelar inscrição')
+      expect(email.headers).toBeUndefined()
+    })
   })
 })
 
-describe('formatBRT', () => {
+describe('formatTimeBRT', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
   })
 
-  it('renders a UTC instant in São Paulo time (UTC-3) regardless of local timezone (UTC)', () => {
-    vi.stubEnv('TZ', 'UTC')
-    const out = formatBRT('2026-06-20T22:00:00Z')
-    expect(out).toMatch(/sáb.*20\/06.*19:00/)
+  it.each(['UTC', 'America/New_York'])('usa Brasília com o processo em %s', (tz) => {
+    vi.stubEnv('TZ', tz)
+    expect(formatTimeBRT('2026-06-20T22:00:00Z')).toBe('19:00')
   })
 
-  it('renders a UTC instant in São Paulo time (UTC-3) regardless of local timezone (America/New_York)', () => {
-    vi.stubEnv('TZ', 'America/New_York')
-    const out = formatBRT('2026-06-20T22:00:00Z')
-    expect(out).toMatch(/sáb.*20\/06.*19:00/)
+  it('volta o dia quando a hora UTC já virou', () => {
+    expect(formatTimeBRT('2026-06-21T01:00:00Z')).toBe('22:00')
   })
 
-  it('renders a UTC instant in São Paulo time (UTC-3)', () => {
-    // 22:00Z → 19:00 BRT.
-    const out = formatBRT('2026-06-20T22:00:00Z')
-    // Node < 20 often uses '.' instead of ',' or omits the comma depending on ICU data.
-    // The main thing is verifying we got the correct components, like the time and date.
-    expect(out).toMatch(/sáb.*20\/06.*19:00/)
+  it('usa dois dígitos para hora e minuto', () => {
+    expect(formatTimeBRT('2026-01-05T06:05:00Z')).toBe('03:05')
   })
 
-  it('correctly shifts backwards across day boundaries', () => {
-    // 01:00Z on Jun 21st → 22:00 BRT on Jun 20th.
-    const out = formatBRT('2026-06-21T01:00:00Z')
-    expect(out).toMatch(/sáb.*20\/06.*22:00/)
-  })
-
-  it('uses two digits for days, months, hours, and minutes', () => {
-    // 06:05Z → 03:05 BRT.
-    const out = formatBRT('2026-01-05T06:05:00Z')
-    expect(out).toMatch(/seg.*05\/01.*03:05/)
-  })
-
-  it('handles leap years correctly', () => {
-    // 15:30Z → 12:30 BRT.
-    const out = formatBRT('2024-02-29T15:30:00Z')
-    expect(out).toMatch(/qui.*29\/02.*12:30/)
-  })
-
-  it('throws an error for an invalid date string', () => {
-    expect(() => formatBRT('not-a-date')).toThrow(RangeError)
+  it('lança erro para data inválida', () => {
+    expect(() => formatTimeBRT('nao-e-data')).toThrow(RangeError)
   })
 })

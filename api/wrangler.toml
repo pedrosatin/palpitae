@@ -26,8 +26,8 @@ dataset = "palpitae_events"
 #    Jogos sem resultado ou sem pontuação seguem na consulta por até 24 h (resgate).
 #  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
 #    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
-#  - "0 10 * * *"   → round reminder: e-mail de lembrete para rodadas que começam
-#    hoje. 1x/dia às 10h UTC (07h BRT). Idempotente por design (ver roundReminder.ts).
+#  - "0 10 * * *"   → lembrete: e-mail para quem tem jogo de hoje sem palpite.
+#    1x/dia às 10h UTC (07h BRT). Máximo de um e-mail por usuário por dia (ADR-020).
 #  - "0 6 * * *"    → fixture discovery: busca jogos novos (mata-mata, remarcações)
 #    das competições ativas. 1x/dia às 06h UTC (03h BRT), sem jogos. Ver fixtureDiscovery.ts.
 # O radar de competições (/admin/oportunidades) NÃO tem cron aqui: a

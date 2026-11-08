@@ -20,7 +20,7 @@ import type { AppContext, Env } from './types'
 
 // Cron do cold path diário (deve bater com wrangler.toml). Os demais ticks rodam o poller.
 const DAILY_EXPORT_CRON = '5 0 * * *'
-// Cron do lembrete de rodada (deve bater com wrangler.toml). 1x/dia.
+// Cron do lembrete de jogos sem palpite (deve bater com wrangler.toml). 1x/dia.
 const ROUND_REMINDER_CRON = '0 10 * * *'
 // Cron de descoberta de jogos (deve bater com wrangler.toml). 1x/dia de madrugada
 // (06:00 UTC = 03:00 BRT — sem jogos), busca novos confrontos das competições ativas.
@@ -96,7 +96,7 @@ export default {
     }
 
     if (controller.cron === ROUND_REMINDER_CRON) {
-      // Lembrete de rodadas que começam amanhã (1x/dia).
+      // E-mail do dia para quem tem jogo de hoje sem palpite (1x/dia).
       ctx.waitUntil(
         sendRoundReminders(
           env.DB,
