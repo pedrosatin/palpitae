@@ -130,6 +130,24 @@ describe('lookupInvite', () => {
     await expect(lookupInvite('ABCD-EF23')).resolves.toEqual({ status: 'unavailable' })
   })
 
+  it('passa um tempo limite de 5 s e cai em indisponível quando a API trava', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+          }),
+      )
+      const pending = lookupInvite('ABCD-EF23')
+      expect(fetchSpy.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal)
+      await vi.advanceTimersByTimeAsync(5000)
+      await expect(pending).resolves.toEqual({ status: 'unavailable' })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('trata falha de rede como indisponível', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'))
     await expect(lookupInvite('ABCD-EF23')).resolves.toEqual({ status: 'unavailable' })

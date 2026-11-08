@@ -13,7 +13,8 @@ const router = new Hono<AppContext>()
 const INVITE_CODE_RE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/
 
 // O preview tolera dados com até 5 min de atraso. A Function busca esta rota com
-// cacheTtl de 5 min no edge, então picos de crawler não chegam ao D1.
+// `cacheTtlByStatus` (200 por 5 min, 404 por 1 min), e aberturas repetidas do link
+// não chegam ao D1.
 const CACHE_OK = 'public, max-age=300'
 const CACHE_MISS = 'public, max-age=60'
 

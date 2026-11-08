@@ -205,6 +205,18 @@ describe('InvitePage com a API indisponível', () => {
     expect(within(main).getByRole('button', { name: CTA })).toBeInTheDocument()
   })
 
+  it('não grava a marca nem promete entrada automática sem ter visto o grupo', async () => {
+    mockApi(500)
+    const user = userEvent.setup()
+
+    renderPage()
+
+    const button = await screen.findByRole('button', { name: CTA })
+    expect(screen.queryByText('Depois do login, você já entra no grupo.')).not.toBeInTheDocument()
+    await user.click(button)
+    expect(sessionStorage.getItem('palpitae:convite-aceito')).toBeNull()
+  })
+
   it('mostra só o carregamento enquanto a API não responde', () => {
     vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise(() => {}))
 

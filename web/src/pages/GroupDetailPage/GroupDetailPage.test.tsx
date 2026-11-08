@@ -154,7 +154,7 @@ function renderPage(path = '/groups/abc', routePattern = '/groups/:groupId') {
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
-describe('GroupDetailPage – confirmação de entrada', () => {
+describe('GroupDetailPage, confirmação de entrada', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })

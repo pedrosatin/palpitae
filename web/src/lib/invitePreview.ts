@@ -55,6 +55,9 @@ export function readEmbeddedInvite(code: string): InvitePreview | null {
   }
 }
 
+/** Tempo máximo da consulta, para a tela não ficar em "Carregando" se a API travar. */
+const LOOKUP_TIMEOUT_MS = 5000
+
 /**
  * Busca o convite na API. Só 404 significa convite inválido. Limite de
  * requisições, erro do servidor e falha de rede viram `unavailable`, porque o
@@ -63,7 +66,9 @@ export function readEmbeddedInvite(code: string): InvitePreview | null {
 export async function lookupInvite(code: string): Promise<InviteLookup> {
   try {
     // Fetch direto, porque a rota é pública e não há sessão para o apiFetch monitorar.
-    const res = await fetch(buildApiUrl(`/public/invites/${encodeURIComponent(code)}`))
+    const res = await fetch(buildApiUrl(`/public/invites/${encodeURIComponent(code)}`), {
+      signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
+    })
     if (res.status === 404) return { status: 'invalid' }
     if (!res.ok) return { status: 'unavailable' }
     const preview = parseInvitePreview(await res.json())

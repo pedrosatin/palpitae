@@ -83,7 +83,7 @@ export const API_MISS_CACHE_TTL_S = 60
 
 // Crawlers que montam card de link. A lista nomeada cobre os que não trazem
 // "bot" no nome (facebookexternalhit, WhatsApp, Embedly...); o `bot` genérico
-// pega o resto. Errar para o lado do crawler só custa uma chamada cacheada.
+// pega o resto. Uma pessoa classificada como crawler fica sem `data-convite`, e a SPA busca o convite sozinha.
 const PREVIEW_CRAWLER_RE =
   /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|slack-imgproxy|discordbot|linkedinbot|googlebot|bingbot|applebot|pinterest|embedly|redditbot|skypeuripreview|vkshare|iframely|bot\b|crawler|spider/i
 
@@ -145,14 +145,15 @@ export async function fetchInvitePreview(
       signal: controller.signal,
       // Cache de verdade no edge. O Cache-Control da API sozinho não basta,
       // porque subrequests de um Worker só passam pelo cache com `cf`. Erro e
-      // 429 não entram, porque o 429 de um visitante apareceria para os outros.
+      // 429 não entram (-1 é "não guardar"; 0 expira na hora), porque o 429 de
+      // um visitante apareceria para os outros.
       cf: {
         cacheEverything: true,
         cacheTtlByStatus: {
           '200-299': API_CACHE_TTL_S,
           '404': API_MISS_CACHE_TTL_S,
-          '429': 0,
-          '500-599': 0,
+          '429': -1,
+          '500-599': -1,
         },
       },
     }
@@ -304,39 +305,65 @@ export function rewriteInviteHtml(
   return rewriter.transform(new Response(response.body, { status: 200, statusText: 'OK', headers }))
 }
 
-export async function onRequest(context: PagesContext): Promise<Response> {
-  const { request, env, params } = context
-  const url = new URL(request.url)
+/** IP e segredo para a API contar a quota de quem abriu o link. */
+export function forwardedClient(env: Env, request: Request): ForwardedClient | undefined {
+  const clientIp = request.headers.get('CF-Connecting-IP')
+  return env.PROXY_SHARED_SECRET && clientIp
+    ? { clientIp, secret: env.PROXY_SHARED_SECRET }
+    : undefined
+}
+
+/** Busca o convite com o tempo limite de quem abriu. Código inválido não chama a API. */
+export function loadInvitePreview(
+  code: string | null,
+  crawler: boolean,
+  env: Env,
+  request: Request,
+  fetchImpl: typeof fetch = fetch,
+): Promise<InvitePreview | null> {
+  if (!code) return Promise.resolve(null)
+  return fetchInvitePreview(
+    code,
+    env.API_URL || DEFAULT_API_URL,
+    fetchImpl,
+    crawler ? API_TIMEOUT_MS : VISITOR_API_TIMEOUT_MS,
+    forwardedClient(env, request),
+  )
+}
+
+export interface InviteRewrite {
+  meta: InviteMeta | null
+  pageUrl: string
+  embed: string | null
+}
+
+/** O que a reescrita aplica sobre o HTML, sem tocar no HTMLRewriter. */
+export function planInviteRewrite(
+  code: string | null,
+  preview: InvitePreview | null,
+  crawler: boolean,
+): InviteRewrite {
+  if (!code) return { meta: null, pageUrl: `${SITE_URL}/`, embed: null }
+  return {
+    meta: buildInviteMeta(preview),
+    pageUrl: `${SITE_URL}/convite/${code}`,
+    // Crawler não roda JS, então o nome do admin fica fora do HTML dele.
+    embed: preview && !crawler ? serializeInviteEmbed(code, preview) : null,
+  }
+}
+
+export async function onRequest({ request, env, params }: PagesContext): Promise<Response> {
   // URL pura, sem os headers do visitante: um If-None-Match repassado poderia
   // voltar 304 sem corpo, e o HTML reescrito sairia vazio.
-  const shell = await env.ASSETS.fetch(new URL('/', url).toString())
+  const shell = await env.ASSETS.fetch(new URL('/', request.url).toString())
   if (shell.status !== 200) return shell
 
   try {
     const code = normalizeInviteCode(params.code)
     const crawler = isPreviewCrawler(request.headers.get('User-Agent'))
-    const clientIp = request.headers.get('CF-Connecting-IP')
-    const forward =
-      env.PROXY_SHARED_SECRET && clientIp
-        ? { clientIp, secret: env.PROXY_SHARED_SECRET }
-        : undefined
-    const preview = code
-      ? await fetchInvitePreview(
-          code,
-          env.API_URL || DEFAULT_API_URL,
-          fetch,
-          crawler ? API_TIMEOUT_MS : VISITOR_API_TIMEOUT_MS,
-          forward,
-        )
-      : null
-    const pageUrl = code ? `${SITE_URL}/convite/${code}` : `${SITE_URL}/`
-    return rewriteInviteHtml(
-      shell,
-      code ? buildInviteMeta(preview) : null,
-      pageUrl,
-      // Crawler não roda JS, então o nome do admin fica fora do HTML dele.
-      code && preview && !crawler ? serializeInviteEmbed(code, preview) : null,
-    )
+    const preview = await loadInvitePreview(code, crawler, env, request)
+    const { meta, pageUrl, embed } = planInviteRewrite(code, preview, crawler)
+    return rewriteInviteHtml(shell, meta, pageUrl, embed)
   } catch {
     // Se a reescrita falhar, devolve o index.html original e a SPA busca o convite.
     return shell

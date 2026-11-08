@@ -140,8 +140,8 @@ describe('fetchInvitePreview', () => {
           cacheTtlByStatus: {
             '200-299': API_CACHE_TTL_S,
             '404': API_MISS_CACHE_TTL_S,
-            '429': 0,
-            '500-599': 0,
+            '429': -1,
+            '500-599': -1,
           },
         },
       }),

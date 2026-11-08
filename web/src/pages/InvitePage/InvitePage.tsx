@@ -55,9 +55,13 @@ function InviteContent({ code }: { code: string | null }) {
           <GoogleLoginButton
             label="Entrar com Google e participar"
             redirect={`?convite=${encodeURIComponent(code)}`}
-            onBeforeRedirect={() => markInviteAccepted(code)}
+            onBeforeRedirect={
+              state.status === 'ready' ? () => markInviteAccepted(code) : undefined
+            }
           />
-          <p className={styles.hint}>Depois do login, você já entra no grupo.</p>
+          {state.status === 'ready' && (
+            <p className={styles.hint}>Depois do login, você já entra no grupo.</p>
+          )}
         </>
       )}
 
