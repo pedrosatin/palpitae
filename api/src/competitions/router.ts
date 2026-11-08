@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess, isAdminUser } from '../auth/permissions'
+import { competitionStatusSql } from '../groups/competitionStatus'
 import { parsePenaltyPhases } from '../matches/penalties'
 import type { AppContext } from '../types'
 
@@ -19,23 +20,16 @@ router.get('/', requireAuth, async (c) => {
 
   try {
     // `competitions.status` nasce 'upcoming' e não é mantido pelo sync, então o
-    // `status` devolvido aqui é derivado dos jogos reais (mesma regra de
-    // groups/router.ts): acabou quando tem partidas e nenhuma pendente; está em
-    // andamento quando tem partidas encerradas e ainda há pendentes. Sem jogos,
-    // vale a coluna.
+    // `status` devolvido aqui é derivado dos jogos reais. O fim vem da regra
+    // compartilhada com os grupos (`competitionStatusSql`): copa só acaba com
+    // jogo de fase de título encerrado e nenhum pendente. Fora disso, com jogo
+    // encerrado a competição está em andamento. Sem jogos, vale a coluna.
     const result = await db
       .prepare(
         `SELECT
            c.id, c.name, c.slug, c.season, c.penalty_phases, c.visibility,
            CASE
-             WHEN c.status = 'finished' THEN 'finished'
-             WHEN NOT EXISTS (
-               SELECT 1 FROM matches m WHERE m.competition_id = c.id
-             ) THEN c.status
-             WHEN NOT EXISTS (
-               SELECT 1 FROM matches m
-               WHERE m.competition_id = c.id AND m.status != 'finished'
-             ) THEN 'finished'
+             WHEN ${competitionStatusSql('c', 'c', 'c.id')} = 'finished' THEN 'finished'
              WHEN EXISTS (
                SELECT 1 FROM matches m
                WHERE m.competition_id = c.id AND m.status = 'finished'
