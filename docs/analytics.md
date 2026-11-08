@@ -109,6 +109,13 @@ O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal d
 | `click_<contexto>_whatsapp` | ícone WhatsApp (abre wa.me com texto + link) | — |
 | `click_<contexto>_twitter` | ícone X/Twitter (abre intent/tweet com texto + link) | — |
 
+Quem já palpitou e lembrete na aba Grupo (`GroupPicksTab`):
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_group_picks_ver_quem_palpitou` | toque na contagem de um jogo aberto, que mostra ou esconde os nomes | `{ open }` |
+| `click_group_picks_lembrete_whatsapp` | botão "Lembrar no WhatsApp" (menu nativo no celular, wa.me no desktop). Fica fora de `share_invite`, porque a mensagem não é convite. | — |
+
 Convite na página do grupo (`GroupInviteSection`, só para o admin). No celular o convite começa
 recolhido numa linha "Convidar membros":
 

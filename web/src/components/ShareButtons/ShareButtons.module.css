@@ -35,6 +35,10 @@
   background-color: var(--color-primary-hover, var(--color-primary));
 }
 
+.tallBtn {
+  min-height: 44px;
+}
+
 .iconBtn {
   display: inline-flex;
   align-items: center;

@@ -6,6 +6,12 @@ export function isGroupStageRound(round: string): boolean {
   return /^\d+$/.test(round)
 }
 
+/** Caminho da aba Palpitar do grupo, aberta na rodada quando há uma. */
+export function predictionsPath(groupId: string, round: string | null): string {
+  const base = `/grupos/${groupId}`
+  return round ? `${base}?rodada=${encodeURIComponent(round)}` : base
+}
+
 // null = no future round; undefined = pre-deploy cache without the field.
 // Both cases fall back to the last round (preserves old behaviour).
 export function applyDefaultRound(

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { OPEN_PICKERS_SQL } from './openPickers'
 import { predictionsRouter } from './router'
 import type { AppContext } from '../types'
 
@@ -450,5 +451,19 @@ describe('predictions router – GET /group', () => {
     expect(predSql).not.toContain(
       'SELECT match_id FROM predictions WHERE group_id = ? AND user_id = ?',
     )
+  })
+
+  it('consulta quem já palpitou só no grupo oculto e sem colunas de placar', async () => {
+    const hiddenSql: string[] = []
+    await requestGroupPicks(createGroupPicksDbMock({ capturedSql: hiddenSql }), '?group_id=g1')
+    expect(hiddenSql).toContain(OPEN_PICKERS_SQL)
+    expect(OPEN_PICKERS_SQL).not.toMatch(/score|points|penalty|classified/i)
+
+    const publicSql: string[] = []
+    await requestGroupPicks(
+      createGroupPicksDbMock({ capturedSql: publicSql, visibility: 'public' }),
+      '?group_id=g1',
+    )
+    expect(publicSql).not.toContain(OPEN_PICKERS_SQL)
   })
 })

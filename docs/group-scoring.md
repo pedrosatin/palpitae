@@ -113,6 +113,11 @@ com zero quando não se aplicam.
   do bloqueio. O servidor aplica a regra em `GET /predictions/group`.
 - `public`: todos veem todos em tempo real, sem filtro (opt-in explícito do criador).
 
+`GET /predictions/group` também devolve `open_pickers`, com os ids dos membros que já
+palpitaram cada jogo aberto. O campo traz só presença, sem placar, e por isso existe nos dois
+modos. O grupo `hidden` recebe a lista antes do início e continua sem o placar dos outros em
+`predictions`.
+
 A visibilidade é sempre resolvida no servidor a partir do banco — o front nunca decide o que
 revelar. O `points_exact` enviado ao front é só para a UI; a pontuação real usa os valores do
 banco em `scoreMatch`.

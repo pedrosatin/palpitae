@@ -1,1 +1,1 @@
-export { default } from './ShareButtons'
+export { default, WhatsAppShareButton } from './ShareButtons'
