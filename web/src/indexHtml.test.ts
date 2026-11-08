@@ -4,8 +4,8 @@ import indexHtml from '../index.html?raw'
 /**
  * Executa no jsdom os scripts inline do `index.html`, os mesmos que o navegador
  * roda antes do bundle: o do `<head>` decide se a landing pré-renderizada fica
- * e reescreve `/convite/CODE` para `/?convite=CODE`; o do fim do `<body>`
- * esvazia o `#root` quando a landing não deve aparecer.
+ * e, com sessão conhecida, reescreve `/convite/CODE` para `/?convite=CODE`; o do
+ * fim do `<body>` esvazia o `#root` quando a landing não deve aparecer.
  */
 const inlineScripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1])
 const [headScript, bodyScript] = inlineScripts
@@ -34,6 +34,7 @@ function currentUrl() {
 describe('index.html inline scripts', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     document.documentElement.classList.remove('descartar-prerender')
   })
 
@@ -57,17 +58,34 @@ describe('index.html inline scripts', () => {
     expect(root.textContent).toBe('landing')
   })
 
-  it('rewrites /convite/CODE to /?convite=CODE and keeps the landing for hydration', () => {
+  it('mantém o visitante novo em /convite/CODE e descarta a landing', () => {
     visit('/convite/abcd-ef23')
     runHead()
 
-    expect(currentUrl()).toBe('/?convite=abcd-ef23')
+    expect(currentUrl()).toBe('/convite/abcd-ef23')
     const root = runBody()
-    expect(root.dataset.prerender).toBe('landing')
-    expect(root.textContent).toBe('landing')
+    expect(root.dataset.prerender).toBeUndefined()
+    expect(root.textContent).toBe('')
+  })
+
+  it('não pinta a landing na volta do Google com convite aceito', () => {
+    sessionStorage.setItem('palpitae:convite-aceito', 'ABCD-EF23')
+    visit('/?convite=ABCD-EF23')
+    runHead()
+
+    expect(runBody().textContent).toBe('')
+  })
+
+  it('ignora marca antiga de convite na home sem o parâmetro convite', () => {
+    sessionStorage.setItem('palpitae:convite-aceito', 'ABCD-EF23')
+    visit('/')
+    runHead()
+
+    expect(runBody().textContent).toBe('landing')
   })
 
   it('keeps other query params and the hash, and drops a stale convite param', () => {
+    localStorage.setItem(KNOWN_SESSION_KEY, '1')
     visit('/convite/ABCD-EF23/?utm_source=whatsapp&convite=OLD1-OLD2#topo')
     runHead()
 
@@ -88,6 +106,7 @@ describe('index.html inline scripts', () => {
   it.each(['/convite/', '/convite/abc%3Cx', '/convite/ABCD-EF23/extra'])(
     'leaves %s alone and discards the landing',
     (path) => {
+      localStorage.setItem(KNOWN_SESSION_KEY, '1')
       visit(path)
       const before = currentUrl()
       runHead()

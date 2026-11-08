@@ -127,10 +127,11 @@ recomendados do GA4.
 | `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ source, group_id }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado ou colado no modal) |
 
 O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
-`web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo) e a SPA
-redireciona para `/?convite=<CODE>`. Links antigos com `?convite=` continuam funcionando.
-Só crawlers de preview (pelo `User-Agent`) disparam a busca em `GET /public/invites/:code`,
-cacheada por 5 min no edge. Visitas de pessoas não chamam a API nem contam como evento.
+`web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo). Na SPA, o
+visitante vê a página de convite e quem tem sessão vai para `/?convite=<CODE>`. Links antigos com
+`?convite=` continuam funcionando. Crawlers de preview e pessoas disparam a busca em
+`GET /public/invites/:code`, cacheada no edge por 5 min no 200 e por 1 min no 404. A abertura do link
+não conta como evento; quem aceita o convite aparece em `click_login_google` e `join_group`.
 
 Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 

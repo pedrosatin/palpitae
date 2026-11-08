@@ -7,6 +7,7 @@ import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
 import ErrorState from '../../components/ErrorState'
 import { invalidateApiCache } from '../../lib/api-cache'
+import { consumeAcceptedInvite } from '../../lib/invite'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
 import { deadlineBanner, sortByUrgency } from '../../lib/dashboardStatus'
@@ -176,6 +177,12 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   const [createOpen, setCreateOpen] = useState(false)
 
+  // Só quem tocou em "Entrar com Google e participar" nesta aba entra sem
+  // confirmar. Um link `?convite=` aberto sozinho continua pedindo o toque.
+  const [autoJoin] = useState(
+    () => !!normalizedPendingInvite && consumeAcceptedInvite(normalizedPendingInvite),
+  )
+
   function handleGroupCreated() {
     fetchGroups(true)
     // Deixamos o modal aberto com a tela de sucesso ("Pronto"). O `CreateGroupModal`
@@ -184,15 +191,15 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   /** Abre o grupo. Com `?convite=` na URL, substitui essa entrada do histórico. */
   const openGroupFromInvite = useCallback(
-    (groupId: string) => {
-      navigate(`/grupos/${groupId}`, pendingInvite ? { replace: true } : undefined)
+    (groupId: string, state?: { joinedGroupName: string }) => {
+      navigate(`/grupos/${groupId}`, { replace: Boolean(pendingInvite), state })
     },
     [navigate, pendingInvite],
   )
 
   function handleGroupJoined(group: { id: string; name: string }) {
     invalidateApiCache('groups:')
-    openGroupFromInvite(group.id)
+    openGroupFromInvite(group.id, { joinedGroupName: group.name })
   }
 
   // Se o convite é de um grupo em que o usuário já está, navega para o grupo em
@@ -243,6 +250,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
         onClose={() => setJoinOpen(false)}
         onJoined={handleGroupJoined}
         initialCode={pendingInvite}
+        autoSubmit={autoJoin}
       />
     </>
   )

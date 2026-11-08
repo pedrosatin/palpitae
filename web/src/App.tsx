@@ -1,11 +1,20 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
+import {
+  matchPath,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 import { trackLoginIfPending } from './analytics/funnel'
 import { trackEvent } from './analytics/ga'
 import { captureGuideOrigin, clearGuideOrigin } from './analytics/guideOrigin'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
 import { invalidateApiCache } from './lib/api-cache'
+import { INVITE_PATH_PREFIX } from './lib/invite'
 import { clearStoredDrafts } from './lib/predictionDraftStorage'
 import LandingPage from './pages/LandingPage'
 
@@ -23,6 +32,7 @@ import LandingPage from './pages/LandingPage'
  * pages — for every anonymous landing visit.
  */
 const LoginPage = lazy(() => import('./pages/LoginPage'))
+const InvitePage = lazy(() => import('./pages/InvitePage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const GroupDetailPage = lazy(() => import('./pages/GroupDetailPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
@@ -35,14 +45,28 @@ const AdminRadarPage = lazy(() => import('./pages/AdminRadarPage'))
 
 /**
  * `/convite/:code` é o link compartilhado (a Pages Function de mesmo caminho
- * cuida do preview no WhatsApp). Na SPA ele vira `/?convite=CODE`, que já leva
- * ao fluxo de entrada: o Dashboard abre o modal com o código, e a landing
- * preserva a query no login com Google para o modal abrir na volta.
+ * cuida do preview no WhatsApp). Sem sessão, a rota mostra a InvitePage. Com
+ * sessão, vira `/?convite=CODE`, onde o Dashboard abre o fluxo de entrada.
  */
 function InviteRedirect() {
   const { code = '' } = useParams()
   const search = code ? `?${new URLSearchParams({ convite: code })}` : ''
   return <Navigate to={`/${search}`} replace />
+}
+
+/**
+ * Raiz para quem não tem sessão. Link antigo com `?convite=` e sessão que
+ * expirou num dispositivo conhecido caem aqui, e a pessoa vê o convite. O
+ * redirecionamento espera o auth resolver, para a hidratação da landing casar
+ * com o HTML pré-renderizado.
+ */
+function VisitorHome({ authResolved }: { authResolved: boolean }) {
+  const [searchParams] = useSearchParams()
+  const convite = searchParams.get('convite')
+  if (authResolved && convite) {
+    return <Navigate to={`${INVITE_PATH_PREFIX}${encodeURIComponent(convite)}`} replace />
+  }
+  return <LandingPage />
 }
 
 /**
@@ -192,16 +216,21 @@ export default function App({
   // demais rotas continuam esperando, porque dependem de saber quem é o usuário.
   const paintLandingEarly = status === 'loading' && landingPrerenderizada
 
-  // Sem a landing antecipada, seguimos com a tela escura pintada inline no
+  // O convite também não espera o auth, porque o visitante decide nessa tela se entra.
+  // Quem tem sessão conhecida já saiu de `/convite/` no script do index.html.
+  const paintInviteEarly =
+    status === 'loading' && matchPath('/convite/:code', location.pathname) !== null
+
+  // Sem pintura antecipada, seguimos com a tela escura pintada inline no
   // index.html até a rota aparecer — nada de flash branco.
-  if (status === 'loading' && !paintLandingEarly) return null
+  if (status === 'loading' && !paintLandingEarly && !paintInviteEarly) return null
 
   if (status !== 'authenticated')
     return (
       <Suspense fallback={null}>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/convite/:code" element={<InviteRedirect />} />
+          <Route path="/" element={<VisitorHome authResolved={status === 'unauthenticated'} />} />
+          <Route path="/convite/:code" element={<InvitePage />} />
           {/* Durante o loading não sabemos ainda se estas rotas são do
               visitante ou de um usuário logado, então elas não pintam nada. */}
           <Route path="/entrar" element={paintLandingEarly ? null : <LoginPage />} />

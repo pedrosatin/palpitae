@@ -43,6 +43,38 @@ describe('GoogleLoginButton', () => {
   })
 })
 
+describe('GoogleLoginButton com contexto de convite', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { href: '', pathname: '/convite/ABCD-EF23', search: '' },
+    })
+  })
+
+  it('usa o rótulo informado', () => {
+    render(<GoogleLoginButton label="Entrar com Google e participar" />)
+    expect(
+      screen.getByRole('button', { name: 'Entrar com Google e participar' }),
+    ).toBeInTheDocument()
+  })
+
+  it('envia o redirect informado', async () => {
+    render(<GoogleLoginButton redirect="?convite=ABCD-EF23" />)
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
+
+    expect(new URL(window.location.href).searchParams.get('redirect')).toBe('?convite=ABCD-EF23')
+  })
+
+  it('chama onBeforeRedirect antes de sair para o Google', async () => {
+    const onBeforeRedirect = vi.fn(() => expect(window.location.href).toBe(''))
+    render(<GoogleLoginButton onBeforeRedirect={onBeforeRedirect} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
+
+    expect(onBeforeRedirect).toHaveBeenCalledTimes(1)
+    expect(window.location.href).toContain('/auth/google')
+  })
+})
+
 describe('GoogleLoginButton – analytics', () => {
   beforeEach(() => {
     mockTrackEvent.mockClear()

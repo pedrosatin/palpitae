@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { buildInviteLink, buildInviteMessage, parseInviteCode } from './invite'
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  buildInviteLink,
+  buildInviteMessage,
+  consumeAcceptedInvite,
+  markInviteAccepted,
+  normalizeInviteCode,
+  parseInviteCode,
+} from './invite'
 
 describe('buildInviteLink', () => {
   it('uses the /convite/CODE path', () => {
@@ -51,5 +58,42 @@ describe('parseInviteCode', () => {
 
   it('keeps unknown text as typed, in upper case', () => {
     expect(parseInviteCode('codigo-errado')).toBe('CODIGO-ERRADO')
+  })
+})
+
+describe('normalizeInviteCode', () => {
+  it('aceita o formato em qualquer caixa', () => {
+    expect(normalizeInviteCode(' abcd-ef23 ')).toBe('ABCD-EF23')
+  })
+
+  it.each([undefined, null, '', 'ABC', 'ABCDEFGH', 'ABCD-EF01', 'IOAB-CD23', 'ABCD-EF2<'])(
+    'recusa %s',
+    (raw) => {
+      expect(normalizeInviteCode(raw)).toBeNull()
+    },
+  )
+})
+
+describe('marca de convite aceito', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+  })
+
+  it('confirma o mesmo código e apaga a marca', () => {
+    markInviteAccepted('ABCD-EF23')
+
+    expect(consumeAcceptedInvite('ABCD-EF23')).toBe(true)
+    expect(consumeAcceptedInvite('ABCD-EF23')).toBe(false)
+  })
+
+  it('não confirma outro código e apaga a marca', () => {
+    markInviteAccepted('ABCD-EF23')
+
+    expect(consumeAcceptedInvite('WXYZ-2345')).toBe(false)
+    expect(sessionStorage.getItem('palpitae:convite-aceito')).toBeNull()
+  })
+
+  it('sem marca não confirma nada', () => {
+    expect(consumeAcceptedInvite('ABCD-EF23')).toBe(false)
   })
 })

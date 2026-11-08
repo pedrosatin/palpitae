@@ -10,6 +10,18 @@ O dono pode trocar o código de convite em `POST /groups/:id/invite/rotate` (bot
 "Trocar código" na seção de convite do grupo). O código anterior deixa de funcionar
 na hora; quem já é membro continua no grupo. Use quando o código ou o link vazar.
 
+O edge guarda por até 5 minutos a resposta 200 do convite. Depois de "Trocar código" ou de
+excluir o grupo, o código antigo ainda pode mostrar o grupo nesse intervalo, mas a entrada falha
+com "Código de convite inválido".
+
+Quem tem o link vê os dados do convite sem sessão em `GET /public/invites/:code`: nome do
+grupo, campeonato, total de membros, regra de pontuação e primeiro nome do dono. A rota não
+devolve ids, e-mails, demais membros, palpites nem limite de vagas. Código com formato inválido,
+inexistente, de grupo excluído ou de campeonato em piloto responde o mesmo 404, e a rota usa a
+quota de leitura por IP descrita abaixo. A página do convite só coloca alguém no grupo depois do
+toque em "Entrar com Google e participar", registrado no `sessionStorage` da aba; abrir o link
+sozinho nunca faz a entrada.
+
 O limite de membros é verificado no próprio `INSERT` da entrada, então duas
 entradas simultâneas não passam do limite.
 

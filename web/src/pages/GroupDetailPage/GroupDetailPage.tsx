@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useNavigate, useParams, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
@@ -23,8 +23,12 @@ interface GroupDetailPageProps {
   onLogout: () => void
 }
 
+/** Tempo na tela da confirmação de entrada no grupo. */
+const JOINED_NOTICE_MS = 6000
+
 export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { groupId } = useParams<{ groupId: string }>()
 
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
@@ -56,6 +60,18 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const isFinished = group?.competition_status === 'finished'
 
   useDocumentTitle(group ? `${group.name} — ${TAB_LABELS[activeTab]}` : undefined)
+
+  const [joinedGroupName, setJoinedGroupName] = useState(
+    () => (location.state as { joinedGroupName?: string } | null)?.joinedGroupName ?? null,
+  )
+
+  // Tira a confirmação do histórico, para o recarregamento não repetir o aviso.
+  useEffect(() => {
+    if (!joinedGroupName) return
+    navigate({ pathname: location.pathname, search: location.search }, { replace: true })
+    const timer = setTimeout(() => setJoinedGroupName(null), JOINED_NOTICE_MS)
+    return () => clearTimeout(timer)
+  }, [joinedGroupName])
 
   if (!groupId) return <Navigate to="/" replace />
 
@@ -143,6 +159,12 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   } else {
     content = (
       <>
+        {joinedGroupName && (
+          <p className={styles.joinedNotice} role="status">
+            Você entrou em {joinedGroupName}
+          </p>
+        )}
+
         {/* Group header */}
         <GroupHeader
           group={group}

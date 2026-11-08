@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
@@ -153,6 +153,67 @@ function renderPage(path = '/groups/abc', routePattern = '/groups/:groupId') {
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
+
+describe('GroupDetailPage, confirmação de entrada', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function StateProbe() {
+    const location = useLocation()
+    return <span data-testid="state">{JSON.stringify(location.state)}</span>
+  }
+
+  function renderJoined(state: unknown) {
+    return render(
+      <MemoryRouter initialEntries={[{ pathname: '/groups/abc', state }]}>
+        <Routes>
+          <Route
+            path="/groups/:groupId"
+            element={<GroupDetailPage user={baseUser} onLogout={vi.fn()} />}
+          />
+        </Routes>
+        <StateProbe />
+      </MemoryRouter>,
+    )
+  }
+
+  it('confirma a entrada na aba Palpitar e limpa o histórico', async () => {
+    mockGroupFetch()
+
+    renderJoined({ joinedGroupName: 'Realidade do BR' })
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Você entrou em Realidade do BR')
+    expect(screen.getByTestId('predictions-tab')).toBeInTheDocument()
+    expect(screen.getByTestId('state')).toHaveTextContent('null')
+  })
+
+  it('tira a confirmação depois de alguns segundos', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      mockGroupFetch()
+      renderJoined({ joinedGroupName: 'Realidade do BR' })
+      await screen.findByRole('status')
+
+      act(() => {
+        vi.advanceTimersByTime(6000)
+      })
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('não mostra confirmação sem o estado de entrada', async () => {
+    mockGroupFetch()
+
+    renderJoined(null)
+
+    await screen.findByTestId('predictions-tab')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+})
 
 describe('GroupDetailPage – routing & fetch', () => {
   beforeEach(() => {

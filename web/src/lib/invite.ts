@@ -4,8 +4,9 @@
  * O formato atual é `/convite/<CODE>`: a Pages Function em
  * `functions/convite/[code].ts` responde essa rota com as meta tags Open Graph
  * do grupo (nome, campeonato, participantes), e é isso que o WhatsApp mostra no
- * preview. Dentro da SPA a rota só repassa o código para `/?convite=<CODE>`,
- * o fluxo de entrada que já existia. Links antigos com `?convite=` seguem valendo.
+ * preview. Na SPA, o visitante vê a página de convite nessa mesma URL e quem tem
+ * sessão vai para `/?convite=<CODE>`, o fluxo de entrada do Dashboard. Links
+ * antigos com `?convite=` seguem valendo.
  */
 
 /** Caminho da rota de convite, sem o código. */
@@ -50,4 +51,42 @@ export function parseInviteCode(raw: string): string {
   const found = value.match(INVITE_CODE_IN_TEXT_RE)
   if (found) return found[found.length - 1].toUpperCase()
   return value.toUpperCase()
+}
+
+// Mesmo formato validado pela API (api/src/public/router.ts).
+const INVITE_CODE_RE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/
+
+/** Código em maiúsculas, ou null quando o valor não tem o formato de um convite. */
+export function normalizeInviteCode(raw: string | null | undefined): string | null {
+  const value = raw?.trim().toUpperCase() ?? ''
+  return INVITE_CODE_RE.test(value) ? value : null
+}
+
+// Chave duplicada no script inline do index.html, que descarta a landing na
+// volta do Google. Se mudar aqui, mude lá também.
+const ACCEPTED_INVITE_KEY = 'palpitae:convite-aceito'
+
+/**
+ * Registra, nesta aba, que a pessoa tocou em "Entrar com Google e participar".
+ * A marca fica no sessionStorage porque um link de terceiros não consegue
+ * escrever nele, então abrir `/?convite=CODE` nunca coloca ninguém num grupo
+ * sem confirmação.
+ */
+export function markInviteAccepted(code: string): void {
+  try {
+    sessionStorage.setItem(ACCEPTED_INVITE_KEY, code)
+  } catch {
+    // Sem sessionStorage, a volta do login abre o modal de confirmação.
+  }
+}
+
+/** Lê e apaga a marca. True só quando ela é deste código. */
+export function consumeAcceptedInvite(code: string): boolean {
+  try {
+    const accepted = sessionStorage.getItem(ACCEPTED_INVITE_KEY)
+    sessionStorage.removeItem(ACCEPTED_INVITE_KEY)
+    return accepted === code
+  } catch {
+    return false
+  }
 }
