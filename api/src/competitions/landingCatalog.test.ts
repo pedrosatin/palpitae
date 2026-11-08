@@ -15,6 +15,10 @@ const CATALOG = new URL(
 // o tipo), então não há seed para conferir. Nasce com o default 'public'.
 const SEEDED_OUTSIDE_MIGRATIONS = new Set(['campeonato-brasileiro-serie-a-2026'])
 
+// A Copa do Brasil nasce em piloto na migration 0021 e virou pública pelo promote
+// administrativo, que não passa por migration.
+const PROMOTED_IN_PRODUCTION = new Set(['copa-do-brasil-2026'])
+
 describe('catálogo da landing', () => {
   const slugs = [...readFileSync(CATALOG, 'utf8').matchAll(/slug: '([^']+)'/g)].map((m) => m[1])
 
@@ -32,6 +36,7 @@ describe('catálogo da landing', () => {
         expect(SEEDED_OUTSIDE_MIGRATIONS.has(slug), `${slug} não existe nas migrations`).toBe(true)
         continue
       }
+      if (PROMOTED_IN_PRODUCTION.has(slug)) continue
       expect(row.visibility, `${slug} não é público`).toBe('public')
     }
   })

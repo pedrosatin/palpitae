@@ -21,6 +21,7 @@ export type CatalogCompetition = {
 
 export const COMPETITION_CATALOG: readonly CatalogCompetition[] = [
   { slug: 'campeonato-brasileiro-serie-a-2026', name: 'Brasileirão Série A', region: 'brasil' },
+  { slug: 'copa-do-brasil-2026', name: 'Copa do Brasil', region: 'brasil' },
   { slug: 'uefa-champions-league-2026', name: 'Liga dos Campeões', region: 'europa' },
   { slug: 'premier-league-2026', name: 'Premier League', region: 'europa' },
 ]
