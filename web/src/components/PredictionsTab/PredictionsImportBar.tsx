@@ -10,6 +10,7 @@ type ImportProps = Pick<
   | 'importPending'
   | 'importCompleted'
   | 'importFeedback'
+  | 'importedFromName'
   | 'importExpanded'
   | 'importSourceId'
   | 'setImportSourceId'
@@ -29,6 +30,7 @@ export default function PredictionsImportBar({
   importPending,
   importCompleted,
   importFeedback,
+  importedFromName,
   importExpanded,
   importSourceId,
   setImportSourceId,
@@ -43,7 +45,11 @@ export default function PredictionsImportBar({
   return (
     <>
       {(showSelector || showLinkOnly || importCompleted || importFeedback) && (
-        <div className={styles.importBar}>
+        <div
+          className={`${styles.importBar} ${
+            !showSelector && !showLinkOnly ? styles.importBarInfo : ''
+          }`}
+        >
           {showSelector ? (
             <>
               <span className={styles.importLabel}>
@@ -82,14 +88,18 @@ export default function PredictionsImportBar({
           ) : (
             importCompleted && (
               <>
-                <span className={styles.importSuccess}>Palpites importados.</span>
+                <span className={styles.importInfo}>
+                  {importedFromName
+                    ? `Palpites copiados de ${importedFromName}.`
+                    : 'Você já importou palpites de outro grupo.'}
+                </span>
                 {otherGroups.length > 0 && (
                   <button
                     type="button"
-                    className={styles.postponedHintLink}
+                    className={styles.importInfoLink}
                     onClick={() => setImportExpanded(true)}
                   >
-                    Importar novamente
+                    Importar de novo
                   </button>
                 )}
               </>

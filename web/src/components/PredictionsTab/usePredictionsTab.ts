@@ -128,6 +128,9 @@ function usePredictionsImport(
   const [otherGroups, setOtherGroups] = useState<{ id: string; name: string }[]>([])
   const [importSourceId, setImportSourceId] = useState<string>('')
   const [importing, setImporting] = useState(false)
+  // Grupo da última importação feita nesta visita. A API guarda só o marcador
+  // `import_completed`, então ao recarregar a origem não é mais conhecida.
+  const [importedFromName, setImportedFromName] = useState<string | null>(null)
   const [importFeedback, setImportFeedback] = useState<{
     ok: boolean
     message: string
@@ -141,6 +144,7 @@ function usePredictionsImport(
     setImporting(false)
     setImportFeedback(null)
     setImportExpanded(false)
+    setImportedFromName(null)
     apiFetch(`${config.apiUrl}/groups`, { cache: 'no-store' })
       .then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar grupos')
@@ -212,6 +216,7 @@ function usePredictionsImport(
           : `${imported} palpite(s) importado(s) com sucesso!`
       if (imported > 0) {
         setImportCompleted(true)
+        setImportedFromName(otherGroups.find((g) => g.id === sourceId)?.name ?? null)
         setImportExpanded(false)
         // Import altera pending_predictions do grupo alvo na home.
         invalidateApiCache('groups:')
@@ -255,6 +260,7 @@ function usePredictionsImport(
     setImportSourceId,
     importing,
     importFeedback,
+    importedFromName,
     handleImport,
   }
 }
@@ -289,6 +295,7 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setImportSourceId,
     importing,
     importFeedback,
+    importedFromName,
     handleImport,
   } = usePredictionsImport(
     groupId,
@@ -341,8 +348,13 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     unsavedDrafts,
   )
 
+  // Mesma regra de travamento do card: sem nenhum jogo aberto na rodada exibida,
+  // a barra "Salvar todos" não tem o que salvar e sai da tela.
+  const hasEditableMatch = roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id)))
+
   return {
     importCompleted,
+    hasEditableMatch,
     unsavedDrafts,
     unsavedRounds,
     matches,
@@ -374,6 +386,7 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setImportSourceId,
     importing,
     importFeedback,
+    importedFromName,
     handleImport,
     handleSaved,
     handleDraftChange,

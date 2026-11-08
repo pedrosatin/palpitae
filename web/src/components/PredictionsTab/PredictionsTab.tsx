@@ -96,6 +96,7 @@ export default function PredictionsTab({
     bulkError,
     pendingCount,
     handleSaveAll,
+    hasEditableMatch,
     importCompleted,
     importExpanded,
     setImportExpanded,
@@ -106,6 +107,7 @@ export default function PredictionsTab({
     setImportSourceId,
     importing,
     importFeedback,
+    importedFromName,
     handleImport,
     handleSaved,
     handleDraftChange,
@@ -155,7 +157,7 @@ export default function PredictionsTab({
   }
 
   return (
-    <div className={styles.root}>
+    <div className={`${styles.root} ${hasEditableMatch ? styles.rootWithSaveBar : ''}`}>
       <PredictionsImportBar
         {...{
           otherGroups,
@@ -163,6 +165,7 @@ export default function PredictionsTab({
           importPending,
           importCompleted,
           importFeedback,
+          importedFromName,
           importExpanded,
           importSourceId,
           setImportSourceId,
@@ -210,23 +213,25 @@ export default function PredictionsTab({
         </p>
       )}
 
-      <div className={styles.saveAllBar}>
-        {bulkError && <span className={styles.error}>{bulkError}</span>}
-        <Button
-          size="sm"
-          className={`${styles.saveAllBtn} ${savedAll ? styles.saveAllBtnSaved : ''}`}
-          onClick={handleSaveAll}
-          disabled={pendingCount === 0 || savingAll}
-        >
-          {savingAll
-            ? 'Salvando...'
-            : savedAll
-              ? 'Tudo salvo!'
-              : pendingCount > 0
-                ? `Salvar todos (${pendingCount})`
-                : 'Salvar todos'}
-        </Button>
-      </div>
+      {hasEditableMatch && (
+        <div className={styles.saveAllBar}>
+          {bulkError && <span className={styles.error}>{bulkError}</span>}
+          <Button
+            size="sm"
+            className={`${styles.saveAllBtn} ${savedAll ? styles.saveAllBtnSaved : ''}`}
+            onClick={handleSaveAll}
+            disabled={pendingCount === 0 || savingAll}
+          >
+            {savingAll
+              ? 'Salvando...'
+              : savedAll
+                ? 'Tudo salvo!'
+                : pendingCount > 0
+                  ? `Salvar todos (${pendingCount})`
+                  : 'Salvar todos'}
+          </Button>
+        </div>
+      )}
 
       {hasSavedPredictions && <PredictionsFeedback />}
 

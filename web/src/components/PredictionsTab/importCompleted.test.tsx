@@ -42,15 +42,19 @@ describe('Barra de importação', () => {
     const user = userEvent.setup()
     const view = render(<PredictionsTab groupId="target" competitionId="c" />)
     await user.click(await screen.findByRole('button', { name: 'Importar' }))
-    expect(await screen.findByRole('button', { name: 'Importar novamente' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Importar de novo' })).toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
-    expect(screen.getByText('Palpites importados.')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Importar novamente' }))
+    // Na mesma visita a origem é conhecida e aparece no aviso.
+    expect(screen.getByText('Palpites copiados de Origem.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Importar de novo' }))
     await user.click(screen.getByRole('button', { name: 'Importar' }))
     expect(state.posts()).toBe(2)
     view.unmount()
     const next = render(<PredictionsTab groupId="target" competitionId="c" />)
-    await screen.findByRole('button', { name: 'Importar novamente' })
+    await screen.findByRole('button', { name: 'Importar de novo' })
+    // Ao remontar a API só diz que houve importação, não de onde.
+    expect(screen.getByText('Você já importou palpites de outro grupo.')).toBeInTheDocument()
+    expect(screen.queryByText(/Palpites copiados de/)).not.toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
     next.rerender(<PredictionsTab groupId="other" competitionId="c" />)
     await screen.findByText('Importar palpites de:')
@@ -69,7 +73,7 @@ describe('Barra de importação', () => {
       await user.click(await screen.findByRole('button', { name: 'Importar' }))
       await waitFor(() => expect(screen.getByRole('button', { name: 'Importar' })).toBeEnabled())
       expect(screen.getByText('Importar palpites de:')).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Importar novamente' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Importar de novo' })).not.toBeInTheDocument()
     },
   )
 
@@ -160,7 +164,7 @@ describe('Barra de importação', () => {
     await act(async () => {
       pending[0](new Response(JSON.stringify({ predictions: [], import_completed: true })))
     })
-    expect(screen.queryByRole('button', { name: 'Importar novamente' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Importar de novo' })).not.toBeInTheDocument()
 
     let finish!: (response: Response) => void
     fetchMock.mockImplementation((url, init) =>
@@ -176,7 +180,7 @@ describe('Barra de importação', () => {
     await act(async () => {
       finish(new Response(JSON.stringify({ imported: 1 })))
     })
-    expect(screen.queryByRole('button', { name: 'Importar novamente' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Importar de novo' })).not.toBeInTheDocument()
     expect(screen.queryByText(/importado\(s\) com sucesso/)).not.toBeInTheDocument()
   })
 
@@ -259,7 +263,7 @@ describe('Barra de importação', () => {
       expect(await screen.findByText('Novos palpites para importar de:')).toBeInTheDocument()
       expect(screen.getByRole('option', { name: 'Origem (1 palpite novo)' })).toBeInTheDocument()
       expect(screen.queryByRole('option', { name: /Vazio/ })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Importar novamente' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Importar de novo' })).not.toBeInTheDocument()
       await userEvent.setup().click(screen.getByRole('button', { name: 'Importar' }))
       await waitFor(() =>
         expect(posts).toEqual([
@@ -268,15 +272,15 @@ describe('Barra de importação', () => {
       )
     })
 
-    it('mantém recolhido quando nada falta e sobrescreve no Importar novamente', async () => {
+    it('mantém recolhido quando nada falta e sobrescreve no Importar de novo', async () => {
       const posts = mockSources({
         import_completed: true,
         import_sources: { source: ['m'] },
         predictions: [{ match_id: 'm' }],
       })
       render(<PredictionsTab groupId="target" competitionId="c" />)
-      await screen.findByRole('button', { name: 'Importar novamente' })
-      await userEvent.setup().click(screen.getByRole('button', { name: 'Importar novamente' }))
+      await screen.findByRole('button', { name: 'Importar de novo' })
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Importar de novo' }))
       expect(screen.getByText('Importar palpites de:')).toBeInTheDocument()
       expect(screen.getByRole('option', { name: 'Vazio' })).toBeInTheDocument()
       await userEvent.setup().click(screen.getByRole('button', { name: 'Importar' }))
