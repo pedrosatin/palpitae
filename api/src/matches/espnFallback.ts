@@ -109,8 +109,9 @@ function normalizeName(name: string): string {
 
 /**
  * Casamento por conter/contido nos DOIS sentidos: football-data usa nomes
- * completos ('CR Flamengo', 'SC Corinthians Paulista') e a ESPN os encurta
- * ('Flamengo', 'Corinthians'). Exige relação em ambos os lados do confronto
+ * completos ('Liverpool FC', 'SSC Napoli') e a ESPN os encurta ('Liverpool',
+ * 'Napoli'). Os clubes brasileiros já são gravados com o nome popular
+ * (clubNames.ts), igual ao da ESPN. Exige relação em ambos os lados do confronto
  * (mandante-com-mandante e visitante-com-visitante).
  */
 function namesRelated(a: string, b: string): boolean {
