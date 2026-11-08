@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers } from '../../hooks/useGroupMembers'
+import { useRoundStandings, type RoundStanding } from '../../hooks/useRoundStandings'
 import Avatar from '../Avatar'
 import ErrorState from '../ErrorState'
 import PredictionsModal from './PredictionsModal'
@@ -15,6 +16,37 @@ interface LeaderboardTabProps {
   onOpenRules?: () => void
 }
 
+/** Pontos na rodada. Membro sem linha na resposta fica com o traço. */
+function RoundPoints({ standing }: { standing: RoundStanding | undefined }) {
+  if (!standing) {
+    return (
+      <>
+        <span aria-hidden="true">–</span>
+        <span className="sr-only">sem dados da rodada</span>
+      </>
+    )
+  }
+  return <>{standing.round_points > 0 ? `+${standing.round_points}` : standing.round_points}</>
+}
+
+/** Seta da variação de posição. 0 e `null` não mostram nada. */
+function PositionChange({ change }: { change: number | null | undefined }) {
+  if (!change) return null
+  const up = change > 0
+  const places = Math.abs(change)
+  return (
+    <span className={`${styles.positionChange} ${up ? styles.changeUp : styles.changeDown}`}>
+      <span aria-hidden="true">
+        {up ? '▲' : '▼'}
+        {places}
+      </span>
+      <span className="sr-only">
+        {` — ${up ? 'subiu' : 'caiu'} ${places} ${places === 1 ? 'posição' : 'posições'}`}
+      </span>
+    </span>
+  )
+}
+
 export default function LeaderboardTab({
   groupId,
   currentUserId,
@@ -22,7 +54,14 @@ export default function LeaderboardTab({
   onOpenRules,
 }: LeaderboardTabProps) {
   const { members, loading, error } = useGroupMembers(groupId)
+  const { round, standings, loading: roundLoading } = useRoundStandings(groupId)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+
+  const standingByUser = useMemo(
+    () => new Map(standings.map((standing) => [standing.user_id, standing])),
+    [standings],
+  )
+  const showArrowsNote = round !== null && standings.some((s) => Boolean(s.position_change))
 
   const openMemberModal = useCallback((member: Member) => {
     trackEvent('click_leaderboard_ver_palpites')
@@ -33,12 +72,13 @@ export default function LeaderboardTab({
     setSelectedMember(null)
   }, [])
 
-  if (loading) {
-    return <p className={styles.loading}>Carregando classificação...</p>
-  }
-
   if (error) {
     return <ErrorState message={error} />
+  }
+
+  // Espera as duas respostas para a tabela não ganhar uma coluna depois de aparecer.
+  if (loading || roundLoading) {
+    return <p className={styles.loading}>Carregando classificação...</p>
   }
 
   if (members.length === 0) {
@@ -57,6 +97,21 @@ export default function LeaderboardTab({
             <tr>
               <th className={styles.thPos}>#</th>
               <th className={styles.thName}>Jogador</th>
+              {round !== null && (
+                <th className={styles.thRound}>
+                  <span className={styles.labelLong} aria-hidden="true">
+                    {`Rodada ${round}`}
+                  </span>
+                  <abbr
+                    className={styles.labelShort}
+                    title={`Pontos na rodada ${round}`}
+                    aria-hidden="true"
+                  >
+                    {`R${round}`}
+                  </abbr>
+                  <span className="sr-only">{`Pontos na rodada ${round}`}</span>
+                </th>
+              )}
               <th className={styles.thPts}>
                 <span className={styles.labelLong} aria-hidden="true">
                   Pontos
@@ -86,7 +141,10 @@ export default function LeaderboardTab({
                 onClick={() => openMemberModal(member)}
                 title={`Ver palpites de ${member.display_name}`}
               >
-                <td className={styles.tdPos}>{index + 1}</td>
+                <td className={styles.tdPos}>
+                  {index + 1}
+                  <PositionChange change={standingByUser.get(member.user_id)?.position_change} />
+                </td>
                 <td className={styles.tdName}>
                   <div className={styles.nameCell}>
                     <Avatar
@@ -109,6 +167,11 @@ export default function LeaderboardTab({
                     </div>
                   </div>
                 </td>
+                {round !== null && (
+                  <td className={styles.tdRound}>
+                    <RoundPoints standing={standingByUser.get(member.user_id)} />
+                  </td>
+                )}
                 <td className={styles.tdPts}>{member.total_points}</td>
                 <td className={styles.tdExact}>{member.exact_hits}</td>
               </tr>
@@ -117,9 +180,12 @@ export default function LeaderboardTab({
         </table>
       </div>
 
-      {(tiebreakNote || onOpenRules) && (
+      {(tiebreakNote || onOpenRules || showArrowsNote) && (
         <p className={styles.rulesNote}>
           {tiebreakNote && <span>{tiebreakNote}</span>}
+          {showArrowsNote && (
+            <span>{`As setas comparam com a posição antes da rodada ${round}.`}</span>
+          )}
           {onOpenRules && (
             <button
               type="button"

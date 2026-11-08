@@ -30,7 +30,7 @@ export interface RoundScope {
  * A rodada tem resumo quando ao menos um jogo acabou e todos os outros estão
  * adiados. Jogo aberto, ao vivo ou remarcado para o futuro mantém a rodada em
  * andamento. Mata-mata fica de fora (ida e volta, pênaltis e fases sem número),
- * até a auditoria 10 decidir como somar pontos nele.
+ * por decisão registrada na ADR-021.
  */
 export function roundScope(roundMatches: Match[]): RoundScope | null {
   if (roundMatches.length === 0) return null

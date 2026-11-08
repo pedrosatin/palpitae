@@ -765,3 +765,40 @@ O plano da conta Cloudflare não está confirmado (`docs/architecture/capacidade
 - Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. O cron roda 1x por dia, então esse excedente só recebe se alguém disparar nova execução.
 - Risco aceito: a competição piloto (`PILOT_EMAILS`) não é filtrada. Quem sai da lista continua em `group_members` e recebe e-mail com link que dá 404.
 - `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia e o número de jogos listados.
+
+## ADR-021: Ranking com pontos e variação da última rodada encerrada
+
+**Status:** Accepted
+**Date:** 2026-11-08
+
+### Context
+
+A aba Ranking mostrava posição, jogador, pontos e exatos. O grupo não via quanto cada membro fez na última rodada nem quem subiu ou caiu. Guardar uma foto do ranking por rodada daria números errados, porque os pontos em `predictions` são regravados quando um bônus muda (`classifiedRuleChangeStatements`) ou quando a pontuação é refeita.
+
+### Decision
+
+`GET /groups/:id/round-standings` calcula o resultado na hora, sem tabela nova nem migration, em `api/src/groups/roundStandings.ts`. A autenticação e o gate são os de `GET /groups/:id/members`.
+
+A rodada de referência do grupo sai só dos `matches` da competição do grupo:
+
+1. Só rodada numerada, com `round` só de dígitos, o mesmo critério de `isGroupStageRound` em `web/src/lib/rounds.ts`.
+2. A rodada está encerrada quando tem ao menos 1 jogo `finished` com `scored_at` preenchido e nenhum jogo pendente. Pendente é `(status != 'finished' AND postponed = 0) OR (status = 'finished' AND scored_at IS NULL)`. Jogo encerrado ainda sem pontuação mantém a rodada aberta mesmo com `postponed = 1`, porque os palpites dele ainda não têm pontos e a football-data grava `SUSPENDED` com essa flag. Adiado sem data e não encerrado (`postponed = 1`) não impede. Jogo remarcado para o futuro (`postponed = 0`) mantém a rodada aberta. É a mesma ideia de `roundScope` em `web/src/lib/roundSummary.ts`.
+3. Entre as encerradas, vale a de maior número (`CAST(round AS INTEGER)`), nunca a de jogo mais recente. Um jogo remarcado da rodada 21 que acaba depois da rodada 34 não troca a referência.
+4. Se alguma fase eliminatória (`isKnockoutPhase` sobre a coluna `phase`) tem jogo pontuado com `start_time` posterior ao início da rodada de referência, o mata-mata começou e a resposta é `{ "round": null, "standings": [] }`. Só uma referência é calculada, sem tentar uma rodada menor. O início da rodada é o menor `start_time` dos jogos dela. Jogo eliminatório encerrado e ainda sem `scored_at` não bloqueia. Fase não eliminatória nunca bloqueia, seja qual for o `round`.
+
+O mata-mata fica fora desta coluna e de `roundScope`. Uma fase sem número não tem a rodada numerada que serve de referência.
+
+`round_points` usa a mesma soma do leaderboard (`points_awarded + penalty_points + classified_points`) e os exatos usam o mesmo `CASE`. Os dois fragmentos SQL saem de `api/src/matches/scoring.ts`, para as contas não divergirem. Membro sem palpite na rodada tem `round_points` 0. Só contam os membros atuais em `group_members`.
+
+A posição atual segue a ordem oficial, `total_points DESC, exact_hits DESC, joined_at ASC`, com `user_id ASC` como último desempate, também em `GET /groups/:id/members`, para a ordem ser determinística. A posição anterior aplica a mesma ordem a `total_points - since_points` e `exact_hits - since_exact`. `since_points` e `since_exact` somam a rodada de referência e as rodadas numeradas posteriores, porque o `leaderboard` já inclui os jogos pontuados da rodada em andamento e descontar só a referência compararia com um estado que nunca existiu. A posição atual continua sendo a do ranking oficial, com esses jogos. Jogo remarcado de rodada numerada anterior conta como ponto de antes. `position_change` é a posição anterior menos a atual, e positivo é subiu. Quando todos os totais anteriores são 0, `position_change` é `null` para todos, porque a variação não diria nada.
+
+Na web, `LeaderboardTab` carrega membros e `round-standings` em paralelo e só desenha a tabela quando as duas respostas terminam. Falha em `round-standings` não é erro de tela, e a tabela aparece como antes, sem a coluna e sem setas. Com `round` preenchido entram a coluna da rodada entre Jogador e Pontos, a variação sob o número da posição e, se alguma posição tiver mudado, um aviso do que as setas comparam.
+
+### Consequences
+
+- Champions e Copa do Mundo perdem a coluna quando o mata-mata começa. Copa do Brasil e Libertadores nunca têm a coluna, porque as fases delas vêm sem número. Competição com `round` por fase, como `REGULAR_SEASON`, também fica sem coluna.
+- Jogo adiado que recebe data nova reabre a rodada. Enquanto ele não acaba, a referência cai para a encerrada de maior número, e a coluna pode voltar a uma rodada anterior.
+- Cada abertura da aba recalcula a referência varrendo os jogos da competição e soma os palpites do grupo da rodada em diante. Não há cache, e o custo cresce com o número de jogos e de palpites do grupo.
+- A variação compara a ordem antes e depois da rodada de referência. Um jogo remarcado de rodada antiga que pontua depois entra no total e na posição anterior como se sempre estivesse lá, sem aparecer como movimento.
+- Caso aceito: uma fase preliminar eliminatória adiada que termine depois do início da rodada de referência tira a coluna até uma rodada posterior fechar.
+- Risco aceito: uma leitura entre a gravação dos pontos e a atualização do `leaderboard` pode mostrar variação errada por alguns segundos. A próxima abertura da aba corrige.
