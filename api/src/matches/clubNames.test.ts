@@ -3,11 +3,12 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { FOOTBALL_DATA_CLUB_NAMES } from './clubNames'
+import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { syncFixtures } from './sync'
 
 const MIGRATIONS = new URL('../../migrations/', import.meta.url)
 const MIGRATION = '0035_brazilian_club_names.sql'
+const ABBREVIATIONS_MIGRATION = '0038_brazilian_club_abbreviations.sql'
 
 const handles: DatabaseSync[] = []
 
@@ -54,7 +55,7 @@ function teamsByExternalId(sqlite: DatabaseSync) {
 }
 
 describe('nomes populares dos clubes brasileiros (football-data)', () => {
-  it('o sync do Brasileirão grava o nome popular e mantém sigla e slug da API', async () => {
+  it('o sync do Brasileirão grava o nome popular e a sigla do mapa e mantém o slug da API', async () => {
     const { sqlite, db } = createSqliteD1()
     handles.push(sqlite)
     stubFootballData({ id: 2013, name: 'Campeonato Brasileiro Série A', code: 'BSA' }, [
@@ -70,8 +71,8 @@ describe('nomes populares dos clubes brasileiros (football-data)', () => {
       { external_id: '1768', provider: 'football-data', name: 'Athletico-PR', short_name: 'CAP', slug: 'ca-paranaense' },
       { external_id: '1779', provider: 'football-data', name: 'Corinthians', short_name: 'COR', slug: 'sc-corinthians-paulista' },
       { external_id: '1783', provider: 'football-data', name: 'Flamengo', short_name: 'FLA', slug: 'cr-flamengo' },
-      { external_id: '4286', provider: 'football-data', name: 'Bragantino', short_name: 'RBB', slug: 'rb-bragantino' },
-      { external_id: '4287', provider: 'football-data', name: 'Remo', short_name: 'CRE', slug: 'clube-do-remo' },
+      { external_id: '4286', provider: 'football-data', name: 'Bragantino', short_name: 'BRA', slug: 'rb-bragantino' },
+      { external_id: '4287', provider: 'football-data', name: 'Remo', short_name: 'REMO', slug: 'clube-do-remo' },
     ])
   })
 
@@ -127,6 +128,93 @@ describe('nomes populares dos clubes brasileiros (football-data)', () => {
         ([, name, externalId]) => [externalId, name],
       ),
     )
-    expect(updates).toEqual(FOOTBALL_DATA_CLUB_NAMES)
+    expect(updates).toEqual(
+      Object.fromEntries(Object.entries(FOOTBALL_DATA_CLUBS).map(([id, club]) => [id, club.name])),
+    )
+  })
+
+  it('nenhuma sigla se repete entre os clubes do mapa', () => {
+    const siglas = Object.values(FOOTBALL_DATA_CLUBS).map((club) => club.shortName)
+    expect(siglas).toHaveLength(20)
+    expect(new Set(siglas).size).toBe(siglas.length)
+  })
+
+  it('o sync usa a sigla do mapa em vez da tla da API', async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    stubFootballData({ id: 2013, name: 'Campeonato Brasileiro Série A', code: 'BSA' }, [
+      apiMatch(1, team(4241, 'Coritiba FBC', 'COR'), team(1779, 'SC Corinthians Paulista', 'COR')),
+      apiMatch(2, team(1776, 'São Paulo FC', 'PAU'), team(1767, 'Grêmio FBPA', 'FBP')),
+      apiMatch(3, team(6684, 'SC Internacional', 'SCI'), team(4287, 'Clube do Remo', 'CRE')),
+    ])
+
+    await syncFixtures({ competitionCode: 'BSA', season: 2026, apiKey: 'k', db })
+
+    const siglas = Object.fromEntries(teamsByExternalId(sqlite).map((t) => [t.external_id, t.short_name]))
+    expect(siglas).toEqual({
+      '1767': 'GRE',
+      '1776': 'SAO',
+      '1779': 'COR',
+      '4241': 'CFC',
+      '4287': 'REMO',
+      '6684': 'INT',
+    })
+  })
+
+  it('clubes europeus seguem com a sigla da API', async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    stubFootballData({ id: 2021, name: 'Premier League', code: 'PL' }, [
+      apiMatch(10, team(57, 'Arsenal FC', 'ARS'), team(64, 'Liverpool FC', 'LIV')),
+    ])
+
+    await syncFixtures({ competitionCode: 'PL', season: 2026, apiKey: 'k', db })
+
+    expect(teamsByExternalId(sqlite).map((t) => t.short_name)).toEqual(['ARS', 'LIV'])
+  })
+
+  it('a migration de siglas altera só os times brasileiros da football-data e preserva o nome', () => {
+    const sqlite = new DatabaseSync(':memory:')
+    handles.push(sqlite)
+    const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort()
+    for (const file of files.filter((f) => f < ABBREVIATIONS_MIGRATION)) {
+      sqlite.exec(readFileSync(new URL(file, MIGRATIONS), 'utf8'))
+    }
+    sqlite.exec(`
+      INSERT INTO teams (id, name, short_name, slug, external_id, provider) VALUES
+        ('fd-cor', 'Coritiba', 'COR', 'coritiba-fbc', '4241', 'football-data'),
+        ('fd-cot', 'Corinthians', 'COR', 'sc-corinthians-paulista', '1779', 'football-data'),
+        ('fd-sao', 'São Paulo', 'PAU', 'sao-paulo-fc', '1776', 'football-data'),
+        ('fd-ars', 'Arsenal FC', 'ARS', 'arsenal-fc', '57', 'football-data'),
+        ('espn-4241', 'Time ESPN', 'TES', 'time-espn', '4241', 'espn');
+    `)
+
+    sqlite.exec(readFileSync(new URL(ABBREVIATIONS_MIGRATION, MIGRATIONS), 'utf8'))
+
+    const rows = sqlite
+      .prepare('SELECT id, name, short_name FROM teams ORDER BY id')
+      .all() as { id: string; name: string; short_name: string }[]
+    expect(rows).toEqual([
+      { id: 'espn-4241', name: 'Time ESPN', short_name: 'TES' },
+      { id: 'fd-ars', name: 'Arsenal FC', short_name: 'ARS' },
+      { id: 'fd-cor', name: 'Coritiba', short_name: 'CFC' },
+      { id: 'fd-cot', name: 'Corinthians', short_name: 'COR' },
+      { id: 'fd-sao', name: 'São Paulo', short_name: 'SAO' },
+    ])
+  })
+
+  it('a migration de siglas cobre exatamente o mapa do sync', () => {
+    const sql = readFileSync(new URL(ABBREVIATIONS_MIGRATION, MIGRATIONS), 'utf8')
+    const updates = Object.fromEntries(
+      Array.from(
+        sql.matchAll(
+          /UPDATE teams SET short_name = '([^']+)' WHERE provider = 'football-data' AND external_id = '(\d+)';/g,
+        ),
+        ([, shortName, externalId]) => [externalId, shortName],
+      ),
+    )
+    expect(updates).toEqual(
+      Object.fromEntries(Object.entries(FOOTBALL_DATA_CLUBS).map(([id, club]) => [id, club.shortName])),
+    )
   })
 })

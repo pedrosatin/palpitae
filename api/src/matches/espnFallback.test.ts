@@ -1,7 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { FOOTBALL_DATA_CLUB_NAMES } from './clubNames'
+import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { FOOTBALL_DATA_TO_ESPN, scoreWindowFromEspn } from './espnFallback'
 
 // ---------------------------------------------------------------------------
@@ -192,7 +192,7 @@ describe('scoreWindowFromEspn', () => {
     ] as const
     // A rodada cobre os 20 clubes do mapa.
     expect(fixtures.flatMap((f) => f.sync).sort()).toEqual(
-      Object.values(FOOTBALL_DATA_CLUB_NAMES).sort(),
+      Object.values(FOOTBALL_DATA_CLUBS).map((club) => club.name).sort(),
     )
     mockFetch({
       '20261005': fixtures.map(({ espn: [home, away] }, i) =>

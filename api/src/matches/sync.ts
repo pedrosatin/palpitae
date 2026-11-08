@@ -1,6 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
-import { FOOTBALL_DATA_CLUB_NAMES } from './clubNames'
+import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
 
@@ -380,8 +380,10 @@ async function upsertTeams(
   for (const team of teamMap.values()) {
     const translated = TEAM_TRANSLATIONS[team.name]
     // Clube brasileiro casa pelo id da football-data; seleção, pelo nome em inglês.
-    const finalName = FOOTBALL_DATA_CLUB_NAMES[String(team.id)] ?? translated?.name ?? team.name
+    const club = FOOTBALL_DATA_CLUBS[String(team.id)]
+    const finalName = club?.name ?? translated?.name ?? team.name
     const finalShortName =
+      club?.shortName ??
       translated?.short_name ??
       team.tla ??
       team.shortName ??
