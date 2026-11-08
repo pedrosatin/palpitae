@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers } from '../../hooks/useGroupMembers'
+import Avatar from '../Avatar'
 import ErrorState from '../ErrorState'
 import PredictionsModal from './PredictionsModal'
 import styles from './LeaderboardTab.module.css'
@@ -63,7 +64,8 @@ export default function LeaderboardTab({
                 <abbr className={styles.labelShort} title="Pontos" aria-hidden="true">
                   Pts
                 </abbr>
-                <span className={styles.srOnly}>Pontos</span>
+                {/* Nome completo para leitor de tela, já que a forma curta seria lida como "Pts". */}
+                <span className="sr-only">Pontos</span>
               </th>
               <th className={styles.thExact}>
                 <span className={styles.labelLong} aria-hidden="true">
@@ -72,7 +74,7 @@ export default function LeaderboardTab({
                 <abbr className={styles.labelShort} title="Placares exatos" aria-hidden="true">
                   Ex.
                 </abbr>
-                <span className={styles.srOnly}>Placares exatos</span>
+                <span className="sr-only">Placares exatos</span>
               </th>
             </tr>
           </thead>
@@ -87,13 +89,11 @@ export default function LeaderboardTab({
                 <td className={styles.tdPos}>{index + 1}</td>
                 <td className={styles.tdName}>
                   <div className={styles.nameCell}>
-                    {member.avatar_url ? (
-                      <img src={member.avatar_url} alt="" className={styles.avatar} />
-                    ) : (
-                      <span className={styles.avatarFallback}>
-                        {member.display_name.charAt(0).toUpperCase()}
-                      </span>
-                    )}
+                    <Avatar
+                      name={member.display_name}
+                      src={member.avatar_url}
+                      className={styles.avatar}
+                    />
                     <div className={styles.nameBody}>
                       <span className={styles.displayName}>{member.display_name}</span>
                       {(member.role === 'owner' || member.user_id === currentUserId) && (

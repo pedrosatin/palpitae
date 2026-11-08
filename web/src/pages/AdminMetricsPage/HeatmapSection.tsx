@@ -201,7 +201,7 @@ function Grid({
         <thead>
           <tr>
             <th scope="col">
-              <span className={styles.srOnly}>Dia da semana</span>
+              <span className="sr-only">Dia da semana</span>
             </th>
             {HOURS.map((h) => (
               <th key={h} scope="col" className={styles.heatmapHour}>

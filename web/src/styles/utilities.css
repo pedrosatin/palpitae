@@ -1,0 +1,31 @@
+/**
+ * Classes utilitárias globais. Use pelo nome direto, sem CSS Module.
+ */
+
+/* Texto só para leitor de tela. Mantém o conteúdo na árvore de acessibilidade. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Igual ao .sr-only, mas só até 600 px, o ponto de corte do celular. */
+@media (max-width: 600px) {
+  .sr-only-mobile {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}

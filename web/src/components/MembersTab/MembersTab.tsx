@@ -4,6 +4,7 @@ import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers, type GroupMember } from '../../hooks/useGroupMembers'
 import { apiFetch } from '../../lib/api'
 import { useConfirm } from '../ConfirmModal'
+import Avatar from '../Avatar'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
 import styles from './MembersTab.module.css'
@@ -60,13 +61,7 @@ function MemberItem({ member, currentUserId, removing, onRemove }: MemberItemPro
   return (
     <li className={styles.item}>
       <div className={styles.identity}>
-        {member.avatar_url ? (
-          <img src={member.avatar_url} alt="" className={styles.avatar} />
-        ) : (
-          <span className={styles.avatarFallback}>
-            {member.display_name.charAt(0).toUpperCase()}
-          </span>
-        )}
+        <Avatar name={member.display_name} src={member.avatar_url} />
         <div className={styles.info}>
           <span className={styles.name}>{member.display_name}</span>
           {member.role === 'owner' && <span className={styles.badge}>admin</span>}

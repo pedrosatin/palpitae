@@ -71,7 +71,7 @@ function Podium({ group }: { group: GroupWithStats }) {
           </span>
           <span className={styles.podiumName}>
             {entry.is_you ? 'Você' : entry.display}
-            {entry.position === 1 && <span className={styles.srOnly}> — campeão</span>}
+            {entry.position === 1 && <span className="sr-only"> — campeão</span>}
           </span>
           <span className={styles.podiumPoints}>{entry.points}</span>
         </li>
