@@ -119,6 +119,8 @@ interface MatchSeed {
   status?: 'scheduled' | 'live' | 'finished'
   postponed?: 0 | 1
   start?: string
+  /** Jogo encerrado que a pontuação ainda não processou. */
+  unscored?: boolean
 }
 
 async function createFixture() {
@@ -199,21 +201,23 @@ async function createFixture() {
   function addMatch(seed: MatchSeed, competition = 'comp-a'): string {
     nextMatch += 1
     const id = `m-${nextMatch}`
+    const status = seed.status ?? 'finished'
     sqlite
       .prepare(
         `INSERT INTO matches (
            id, competition_id, external_id, provider, home_team_id, away_team_id,
-           start_time, status, round, postponed
-         ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?)`,
+           start_time, status, round, postponed, scored_at
+         ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         competition,
         `ext-${nextMatch}`,
         seed.start ?? '2026-06-01T19:00:00Z',
-        seed.status ?? 'finished',
+        status,
         seed.round,
         seed.postponed ?? 0,
+        status === 'finished' && !seed.unscored ? '2026-06-02T00:00:00Z' : null,
       )
     return id
   }
@@ -261,6 +265,22 @@ describe('GET /groups/:id/round-standings', () => {
     expect((await get('/groups/group-a/round-standings', null)).status).toBe(401)
   })
 
+  it('devolve 404 para grupo apagado', async () => {
+    const { sqlite, get, addMatch } = await createFixture()
+    addMatch({ round: '1' })
+    sqlite.exec(`UPDATE groups SET deleted_at = datetime('now') WHERE id = 'group-a'`)
+
+    expect((await get('/groups/group-a/round-standings', 'alice')).status).toBe(404)
+  })
+
+  it('devolve 404 em competição pilot para usuário sem permissão', async () => {
+    const { sqlite, get, addMatch } = await createFixture()
+    addMatch({ round: '1' })
+    sqlite.exec(`UPDATE competitions SET visibility = 'pilot' WHERE id = 'comp-a'`)
+
+    expect((await get('/groups/group-a/round-standings', 'alice')).status).toBe(404)
+  })
+
   it('aceita a rodada com jogo adiado como encerrada', async () => {
     const { standings, addMatch } = await createFixture()
     addMatch({ round: '5' })
@@ -274,6 +294,23 @@ describe('GET /groups/:id/round-standings', () => {
     addMatch({ round: '5' })
     addMatch({ round: '6' })
     addMatch({ round: '6', status: 'scheduled', postponed: 0, start: '2026-12-01T19:00:00Z' })
+
+    expect((await standings()).round).toBe('5')
+  })
+
+  it('não conta a rodada com jogo encerrado ainda sem pontuação e vale a anterior', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: '5' })
+    addMatch({ round: '6' })
+    addMatch({ round: '6', unscored: true })
+
+    expect((await standings()).round).toBe('5')
+  })
+
+  it('exige jogo pontuado mesmo com o resto da rodada adiado', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: '5' })
+    addMatch({ round: '6', unscored: true, postponed: 1 })
 
     expect((await standings()).round).toBe('5')
   })
@@ -311,13 +348,30 @@ describe('GET /groups/:id/round-standings', () => {
     expect(await standings()).toEqual({ round: null, standings: [] })
   })
 
-  it('devolve null quando o mata-mata já começou', async () => {
+  it('devolve null quando o mata-mata encerrou depois da rodada', async () => {
     const { standings, addMatch } = await createFixture()
-    addMatch({ round: '8' })
-    addMatch({ round: 'LAST_16' })
-    addMatch({ round: 'LAST_16', status: 'scheduled' })
+    addMatch({ round: '8', start: '2026-05-01T19:00:00Z' })
+    addMatch({ round: 'LAST_16', start: '2026-06-01T19:00:00Z' })
+    addMatch({ round: 'LAST_16', status: 'scheduled', start: '2026-06-08T19:00:00Z' })
 
     expect(await standings()).toEqual({ round: null, standings: [] })
+  })
+
+  it('não bloqueia com fase preliminar sem número antes das rodadas', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: 'FIRST_STAGE', start: '2026-02-01T19:00:00Z' })
+    addMatch({ round: '1', start: '2026-04-01T19:00:00Z' })
+
+    expect((await standings()).round).toBe('1')
+  })
+
+  it('não bloqueia com jogo REGULAR_SEASON ou round NULL anterior à rodada', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: 'REGULAR_SEASON', start: '2026-03-01T19:00:00Z' })
+    addMatch({ round: null, start: '2026-03-02T19:00:00Z' })
+    addMatch({ round: '7', start: '2026-04-01T19:00:00Z' })
+
+    expect((await standings()).round).toBe('7')
   })
 
   it('mantém a referência enquanto o mata-mata só tem jogos futuros', async () => {
@@ -332,7 +386,7 @@ describe('GET /groups/:id/round-standings', () => {
     const { standings, addMatch } = await createFixture()
     addMatch({ round: '3' })
     addMatch({ round: '30' }, 'comp-b')
-    addMatch({ round: 'FINAL' }, 'comp-b')
+    addMatch({ round: 'FINAL', start: '2026-07-01T19:00:00Z' }, 'comp-b')
 
     expect((await standings()).round).toBe('3')
   })
@@ -413,6 +467,31 @@ describe('GET /groups/:id/round-standings', () => {
     const body = await standings()
 
     expect(body.standings.map((s) => s.position_change)).toEqual([0, 0, 0])
+  })
+})
+
+describe('GET /groups pódio', () => {
+  it('desempata por user_id quando pontos, exatos e entrada empatam', async () => {
+    const { sqlite, get, addMatch } = await createFixture()
+    addMatch({ round: '1' })
+    // `aaron` entra por último, para o desempate não coincidir com a ordem de inserção.
+    sqlite.exec(`
+      INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
+        ('aaron', 'aaron@example.com', 'google', 'g-aaron', 'Aaron');
+      INSERT INTO group_members (id, group_id, user_id, joined_at) VALUES
+        ('gm-aaron', 'group-a', 'aaron', '2026-01-01T00:00:00Z');
+      UPDATE group_members SET joined_at = '2026-01-01T00:00:00Z' WHERE group_id = 'group-a';
+      INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated) VALUES
+        ('group-a', 'carol', 5, 1, '2026-06-14T00:00:00Z'),
+        ('group-a', 'bob', 5, 1, '2026-06-14T00:00:00Z'),
+        ('group-a', 'alice', 5, 1, '2026-06-14T00:00:00Z'),
+        ('group-a', 'aaron', 5, 1, '2026-06-14T00:00:00Z');
+    `)
+
+    const res = await get('/groups', 'alice')
+    const body = (await res.json()) as { groups: { podium: { display: string }[] | null }[] }
+
+    expect(body.groups[0].podium?.map((entry) => entry.display)).toEqual(['Aaron', 'Alice', 'Bob'])
   })
 })
 

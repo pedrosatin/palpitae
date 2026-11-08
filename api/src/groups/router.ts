@@ -131,7 +131,7 @@ async function fetchGroupsPodiums(
             PARTITION BY l.group_id
             -- Mesmo desempate do endpoint de membros (pontos → acertos exatos →
             -- ordem de entrada), senão o #1 do card pode divergir do leaderboard.
-            ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC
+            ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC, gm.user_id ASC
           ) AS rank
         FROM leaderboard l
         JOIN users u ON u.id = l.user_id

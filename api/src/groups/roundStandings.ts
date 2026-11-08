@@ -66,8 +66,15 @@ export function computeRoundStandings(rows: RoundMemberRow[]): RoundStanding[] {
 }
 
 /**
- * Rodada de referência do grupo (ADR-021): a encerrada de maior número, ou
- * `null` quando o mata-mata já começou.
+ * Rodada de referência do grupo (ADR-021), a encerrada de maior número.
+ *
+ * A rodada só encerra depois de pontuada. Jogo `finished` sem `scored_at` ainda
+ * não deu pontos aos palpites e mantém a rodada pendente.
+ *
+ * Rodada numerada deixa de ser candidata quando uma rodada não numerada tem jogo
+ * encerrado depois do último jogo encerrado dela. É o que tira a coluna quando o
+ * mata-mata começa. Fase preliminar anterior às rodadas e jogo solto com `round`
+ * `REGULAR_SEASON` ou `NULL` anterior à rodada não bloqueiam.
  *
  * `numbered` usa `COALESCE` porque `matches.round` aceita `NULL`, e `GLOB` com
  * `NULL` deixaria a rodada fora das duas contagens.
@@ -79,18 +86,21 @@ async function findReferenceRound(db: D1Database, groupId: string): Promise<stri
          SELECT
            m.round,
            COALESCE(m.round, '') GLOB '[0-9]*' AND COALESCE(m.round, '') NOT GLOB '*[^0-9]*' AS numbered,
-           SUM(m.status = 'finished') AS finished,
-           SUM(m.status <> 'finished' AND m.postponed = 0) AS pending
+           SUM(m.status = 'finished' AND m.scored_at IS NOT NULL) AS finished,
+           SUM((m.status <> 'finished' OR m.scored_at IS NULL) AND m.postponed = 0) AS pending,
+           MAX(CASE WHEN m.status = 'finished' THEN m.start_time END) AS last_finished
          FROM groups g
          JOIN matches m ON m.competition_id = g.competition_id
          WHERE g.id = ?
          GROUP BY m.round
        )
-       SELECT round
-       FROM rounds
-       WHERE numbered = 1 AND finished > 0 AND pending = 0
-         AND NOT EXISTS (SELECT 1 FROM rounds WHERE numbered = 0 AND finished > 0)
-       ORDER BY CAST(round AS INTEGER) DESC
+       SELECT r.round
+       FROM rounds r
+       WHERE r.numbered = 1 AND r.finished > 0 AND r.pending = 0
+         AND NOT EXISTS (
+           SELECT 1 FROM rounds o WHERE o.numbered = 0 AND o.last_finished > r.last_finished
+         )
+       ORDER BY CAST(r.round AS INTEGER) DESC
        LIMIT 1`,
     )
     .bind(groupId)

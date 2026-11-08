@@ -141,7 +141,9 @@ describe('LeaderboardTab rodada', () => {
     render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
-    expect(within(rowOf('Ana')).getByText('–')).toBeInTheDocument()
+    const ana = within(rowOf('Ana'))
+    expect(ana.getByText('–')).toHaveAttribute('aria-hidden', 'true')
+    expect(ana.getByText('sem dados da rodada')).toHaveClass('sr-only')
   })
 
   it('mostra as setas com a variação em texto para leitor de tela', async () => {
@@ -151,10 +153,11 @@ describe('LeaderboardTab rodada', () => {
     await waitFor(() => screen.getByText('Ana'))
     const pedro = within(rowOf('Pedro'))
     expect(pedro.getByText('▲2')).toHaveAttribute('aria-hidden', 'true')
-    expect(pedro.getByText('subiu 2 posições')).toBeInTheDocument()
+    // O espaço e o travessão separam a variação do número da posição no leitor de tela.
+    expect(pedro.getByText('— subiu 2 posições').textContent).toBe(' — subiu 2 posições')
     const ana = within(rowOf('Ana'))
     expect(ana.getByText('▼1')).toHaveAttribute('aria-hidden', 'true')
-    expect(ana.getByText('caiu 1 posição')).toBeInTheDocument()
+    expect(ana.getByText('— caiu 1 posição').textContent).toBe(' — caiu 1 posição')
   })
 
   it('não mostra seta para variação 0 ou null', async () => {

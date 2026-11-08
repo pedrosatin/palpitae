@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { apiFetch } from '../lib/api'
 import { useRoundStandings } from './useRoundStandings'
@@ -54,17 +54,25 @@ describe('useRoundStandings', () => {
   it('descarta a resposta de um grupo anterior', async () => {
     let resolveOld: (r: Response) => void = () => {}
     mockApiFetch.mockReturnValueOnce(new Promise((resolve) => (resolveOld = resolve)))
-    mockApiFetch.mockResolvedValueOnce(mockResponse({ round: '2', standings: [] }))
+    mockApiFetch.mockReturnValueOnce(new Promise(() => {}))
 
     const { result, rerender } = renderHook(({ id }) => useRoundStandings(id), {
       initialProps: { id: 'antigo' },
     })
     rerender({ id: 'novo' })
-    await waitFor(() => expect(result.current.round).toBe('2'))
 
-    resolveOld(mockResponse({ round: '9', standings: [] }))
-    await Promise.resolve()
+    await act(async () => {
+      resolveOld(
+        mockResponse({
+          round: '9',
+          standings: [{ user_id: 'u1', round_points: 3, position_change: 1 }],
+        }),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
 
-    expect(result.current.round).toBe('2')
+    expect(result.current.loading).toBe(true)
+    expect(result.current.round).toBeNull()
+    expect(result.current.standings).toEqual([])
   })
 })

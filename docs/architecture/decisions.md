@@ -217,9 +217,9 @@ A aba Ranking mostrava posição, jogador, pontos e exatos. O grupo não via qua
 A rodada de referência do grupo sai só dos `matches` da competição do grupo:
 
 1. Só rodada numerada, com `round` só de dígitos, o mesmo critério de `isGroupStageRound` em `web/src/lib/rounds.ts`.
-2. A rodada está encerrada quando tem ao menos 1 jogo `finished` e nenhum jogo com `status != 'finished' AND postponed = 0`. Adiado sem data (`postponed = 1`) não impede. Jogo remarcado para o futuro (`postponed = 0`) mantém a rodada aberta. É a mesma ideia de `roundScope` em `web/src/lib/roundSummary.ts`.
+2. A rodada está encerrada quando tem ao menos 1 jogo `finished` com `scored_at` preenchido e nenhum jogo com `(status != 'finished' OR scored_at IS NULL) AND postponed = 0`. Jogo encerrado ainda sem pontuação mantém a rodada aberta, porque os palpites dele ainda não têm pontos. Adiado sem data (`postponed = 1`) não impede. Jogo remarcado para o futuro (`postponed = 0`) mantém a rodada aberta. É a mesma ideia de `roundScope` em `web/src/lib/roundSummary.ts`.
 3. Entre as encerradas, vale a de maior número (`CAST(round AS INTEGER)`), nunca a de jogo mais recente. Um jogo remarcado da rodada 21 que acaba depois da rodada 34 não troca a referência.
-4. Se a competição já tem jogo `finished` em rodada não numerada, o mata-mata começou e não há referência. A resposta é `{ "round": null, "standings": [] }`.
+4. Uma rodada numerada só é candidata se nenhuma rodada não numerada tiver jogo `finished` com `start_time` posterior ao último jogo `finished` dela. Mata-mata encerrado depois da rodada a bloqueia e, sem candidata, a resposta é `{ "round": null, "standings": [] }`. Fase preliminar anterior às rodadas numeradas e jogo solto com `round` `REGULAR_SEASON` ou `NULL` anterior à rodada não bloqueiam.
 
 O mata-mata fica fora desta coluna e de `roundScope`. Uma fase sem número não tem a rodada numerada que serve de referência.
 
@@ -235,3 +235,4 @@ Na web, `LeaderboardTab` carrega membros e `round-standings` em paralelo e só d
 - Jogo adiado que recebe data nova reabre a rodada. Enquanto ele não acaba, a referência cai para a encerrada de maior número, e a coluna pode voltar a uma rodada anterior.
 - Cada abertura da aba recalcula a referência varrendo os jogos da competição e soma os palpites do grupo na rodada. Não há cache, e o custo cresce com o número de jogos e de palpites do grupo.
 - A variação compara a ordem antes e depois da rodada de referência. Um jogo remarcado de rodada antiga que pontua depois entra no total e na posição anterior como se sempre estivesse lá, sem aparecer como movimento.
+- Risco aceito: uma leitura entre a gravação dos pontos e a atualização do `leaderboard` pode mostrar variação errada por alguns segundos. A próxima abertura da aba corrige.

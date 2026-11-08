@@ -17,9 +17,16 @@ interface LeaderboardTabProps {
 }
 
 /** Pontos na rodada. Membro sem linha na resposta fica com o traço. */
-function roundPointsText(standing: RoundStanding | undefined): string {
-  if (!standing) return '–'
-  return standing.round_points > 0 ? `+${standing.round_points}` : String(standing.round_points)
+function RoundPoints({ standing }: { standing: RoundStanding | undefined }) {
+  if (!standing) {
+    return (
+      <>
+        <span aria-hidden="true">–</span>
+        <span className="sr-only">sem dados da rodada</span>
+      </>
+    )
+  }
+  return <>{standing.round_points > 0 ? `+${standing.round_points}` : standing.round_points}</>
 }
 
 /** Seta da variação de posição. 0 e `null` não mostram nada. */
@@ -34,7 +41,7 @@ function PositionChange({ change }: { change: number | null | undefined }) {
         {places}
       </span>
       <span className="sr-only">
-        {`${up ? 'subiu' : 'caiu'} ${places} ${places === 1 ? 'posição' : 'posições'}`}
+        {` — ${up ? 'subiu' : 'caiu'} ${places} ${places === 1 ? 'posição' : 'posições'}`}
       </span>
     </span>
   )
@@ -162,7 +169,7 @@ export default function LeaderboardTab({
                 </td>
                 {round !== null && (
                   <td className={styles.tdRound}>
-                    {roundPointsText(standingByUser.get(member.user_id))}
+                    <RoundPoints standing={standingByUser.get(member.user_id)} />
                   </td>
                 )}
                 <td className={styles.tdPts}>{member.total_points}</td>
