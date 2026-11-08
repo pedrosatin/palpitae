@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { trackShareInvite } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import Button from '../../components/Button'
@@ -24,6 +24,9 @@ function GroupInviteSection({
   rotating,
 }: GroupInviteSectionProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
+  // Só tem efeito no celular: lá o convite começa recolhido (ver CSS).
+  const [expanded, setExpanded] = useState(false)
+  const bodyId = useId()
 
   function getShareLink() {
     return buildInviteLink(inviteCode)
@@ -45,45 +48,70 @@ function GroupInviteSection({
     setTimeout(() => setCopied(null), 2000)
   }
 
+  function toggleExpanded() {
+    trackEvent('click_group_detail_convite_toggle', { open: !expanded })
+    setExpanded((value) => !value)
+  }
+
+  // O botão e o título ficam sempre no DOM; o CSS decide qual aparece. No
+  // desktop (> 600 px) o título mostra e o conteúdo fica sempre aberto. No
+  // celular o botão aparece e o conteúdo só abre com `data-expanded`, para as
+  // abas e os jogos caberem na primeira tela. Só CSS, sem matchMedia: o
+  // primeiro render já sai certo e não pisca.
   return (
-    <div className={styles.inviteSection}>
+    <section className={styles.inviteSection} data-expanded={expanded || undefined}>
       <h2 className={styles.inviteTitle}>Convidar membros</h2>
-      <div className={styles.inviteRow}>
-        <div className={styles.codeBox}>
-          <span className={styles.codeLabel}>Código</span>
-          <div className={styles.codeValueRow}>
-            <span className={styles.code}>{inviteCode}</span>
-            <Button variant="outline" size="sm" onClick={copyCode}>
-              {copied === 'code' ? 'Copiado!' : 'Copiar'}
-            </Button>
+      <button
+        type="button"
+        className={styles.inviteToggle}
+        aria-expanded={expanded}
+        aria-controls={bodyId}
+        onClick={toggleExpanded}
+      >
+        <span>Convidar membros</span>
+        <span className={styles.inviteToggleHint}>código e link</span>
+        <span className={styles.inviteChevron} aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      <div id={bodyId} className={styles.inviteBody}>
+        <div className={styles.inviteRow}>
+          <div className={styles.codeBox}>
+            <span className={styles.codeLabel}>Código</span>
+            <div className={styles.codeValueRow}>
+              <span className={styles.code}>{inviteCode}</span>
+              <Button variant="outline" size="sm" onClick={copyCode}>
+                {copied === 'code' ? 'Copiado!' : 'Copiar'}
+              </Button>
+            </div>
+          </div>
+          <div className={styles.linkBox}>
+            <span className={styles.codeLabel}>Link direto</span>
+            <div className={styles.linkValueRow}>
+              <span className={shared.linkText}>{getShareLink()}</span>
+              <Button variant="outline" size="sm" onClick={copyLink}>
+                {copied === 'link' ? 'Copiado!' : 'Copiar link'}
+              </Button>
+            </div>
           </div>
         </div>
-        <div className={styles.linkBox}>
-          <span className={styles.codeLabel}>Link direto</span>
-          <div className={styles.linkValueRow}>
-            <span className={shared.linkText}>{getShareLink()}</span>
-            <Button variant="outline" size="sm" onClick={copyLink}>
-              {copied === 'link' ? 'Copiado!' : 'Copiar link'}
+        <ShareButtons
+          shareLink={getShareLink()}
+          eventContext="group_detail"
+          message={buildInviteMessage(groupName)}
+        />
+        {onRotate && (
+          <div className={styles.inviteRotateRow}>
+            <span className={styles.inviteRotateHint}>
+              Se o código vazou, gere outro. O atual deixa de funcionar.
+            </span>
+            <Button variant="ghost" size="sm" onClick={onRotate} disabled={rotating}>
+              {rotating ? 'Trocando...' : 'Trocar código'}
             </Button>
           </div>
-        </div>
+        )}
       </div>
-      <ShareButtons
-        shareLink={getShareLink()}
-        eventContext="group_detail"
-        message={buildInviteMessage(groupName)}
-      />
-      {onRotate && (
-        <div className={styles.inviteRotateRow}>
-          <span className={styles.inviteRotateHint}>
-            Se o código vazou, gere outro. O atual deixa de funcionar.
-          </span>
-          <Button variant="ghost" size="sm" onClick={onRotate} disabled={rotating}>
-            {rotating ? 'Trocando...' : 'Trocar código'}
-          </Button>
-        </div>
-      )}
-    </div>
+    </section>
   )
 }
 

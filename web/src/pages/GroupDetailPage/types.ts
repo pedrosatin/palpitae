@@ -18,6 +18,8 @@ export interface GroupDetail {
   competition_type: CompetitionType | null
   /** Código canônico (`competitions.external_id`), ex. bra.camp.gaucho. */
   competition_code: string | null
+  /** Derivado no servidor: 'finished' quando a competição não tem jogo pendente. */
+  competition_status?: 'upcoming' | 'ongoing' | 'finished' | null
   is_admin: boolean
   invite_code: string | null
   created_at: string

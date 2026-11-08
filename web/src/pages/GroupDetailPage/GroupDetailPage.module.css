@@ -16,6 +16,21 @@
   font-size: var(--font-size-md);
 }
 
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: var(--space-4);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+}
+
+.backLink:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ─── Group Header ───────────────────────────────────────────────────── */
 
 .groupHeader {
@@ -224,6 +239,71 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
   margin: 0 0 var(--space-4) 0;
+}
+
+/* Linha compacta do celular. No desktop o convite fica sempre aberto e o
+   botão some; o media query de baixo inverte. */
+.inviteToggle {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .inviteSection {
+    padding: 0;
+    margin-bottom: var(--space-5);
+  }
+
+  .inviteTitle {
+    display: none;
+  }
+
+  .inviteToggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: 48px;
+    padding: var(--space-3) var(--space-4);
+    background: none;
+    border: none;
+    border-radius: var(--radius-lg);
+    color: var(--color-text-primary);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+    text-align: left;
+  }
+
+  .inviteToggle:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .inviteToggleHint {
+    flex: 1;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-regular);
+    color: var(--color-text-muted);
+  }
+
+  .inviteChevron {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    transition: transform 0.15s ease;
+    transform: rotate(-90deg);
+  }
+
+  .inviteSection[data-expanded] .inviteChevron {
+    transform: rotate(0deg);
+  }
+
+  .inviteBody {
+    padding: 0 var(--space-4) var(--space-4);
+  }
+
+  .inviteSection:not([data-expanded]) .inviteBody {
+    display: none;
+  }
 }
 
 .inviteRow {

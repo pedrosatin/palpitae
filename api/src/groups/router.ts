@@ -7,6 +7,7 @@ import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
 import { pendingPredictionsBinds, pendingPredictionsSql } from './pendingPredictions'
+import { competitionStatusSql } from './competitionStatus'
 
 const router = new Hono<AppContext>()
 
@@ -203,22 +204,7 @@ router.get('/', requireAuth, async (c) => {
           c.name AS competition_name,
           c.type AS competition_type,
           c.external_id AS competition_code,
-          -- competitions.status hoje nasce 'upcoming' e nunca é atualizado, então
-          -- derivamos o fim a partir dos jogos reais: acabou quando a competição
-          -- tem partidas e nenhuma está pendente. Ainda respeitamos a coluna caso
-          -- ela venha a ser mantida no futuro.
-          CASE
-            WHEN c.status = 'finished' THEN 'finished'
-            WHEN EXISTS (
-              SELECT 1 FROM matches m WHERE m.competition_id = g.competition_id
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM matches m
-              WHERE m.competition_id = g.competition_id AND m.status != 'finished'
-            )
-            THEN 'finished'
-            ELSE c.status
-          END AS competition_status,
+          ${competitionStatusSql('g', 'c')} AS competition_status,
           g.owner_user_id AS admin_id,
           g.invite_code,
           g.created_at,
@@ -537,7 +523,7 @@ router.post('/join', requireAuth, async (c) => {
  * The invite_code is included — visible only to the owner in the UI.
  *
  * Response:
- * { group: { id, name, competition_id, competition_name, is_admin, invite_code, created_at, member_count, user_position, user_points } }
+ * { group: { id, name, competition_id, competition_name, competition_status, is_admin, invite_code, created_at, member_count, user_position, user_points } }
  */
 router.get('/:id', requireAuth, async (c) => {
   const gate = await requireGroupMembership(c)
@@ -553,6 +539,7 @@ router.get('/:id', requireAuth, async (c) => {
          c.name AS competition_name,
          c.type AS competition_type,
          c.external_id AS competition_code,
+         ${competitionStatusSql('g', 'c')} AS competition_status,
          g.owner_user_id AS admin_id,
          g.invite_code,
          g.created_at,
@@ -610,6 +597,7 @@ router.get('/:id', requireAuth, async (c) => {
       competition_name: group.competition_name,
       competition_type: group.competition_type ?? null,
       competition_code: group.competition_code ?? null,
+      competition_status: group.competition_status ?? null,
       is_admin: group.admin_id === userId,
       invite_code: group.admin_id === userId ? group.invite_code : null,
       created_at: group.created_at,
