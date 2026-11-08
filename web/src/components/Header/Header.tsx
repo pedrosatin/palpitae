@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import Avatar from '../Avatar'
 import Button from '../Button'
 import { trackEvent } from '../../analytics/ga'
 import styles from './Header.module.css'
@@ -25,9 +26,6 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const displayName = user.nickname?.trim() || user.email
-  // Guarda a URL que falhou para voltar à inicial sem esconder uma foto nova.
-  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
-  const showAvatar = Boolean(user.avatar_url) && user.avatar_url !== failedAvatarUrl
 
   useEffect(() => {
     if (!menuOpen) return
@@ -63,7 +61,7 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
             }}
           >
             <LogInIcon className={styles.actionIcon} />
-            <span className={styles.actionLabel}>Entrar em grupo</span>
+            <span className="sr-only-mobile">Entrar em grupo</span>
           </Button>
           {canCreateGroup && (
             <Button
@@ -75,7 +73,7 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
               }}
             >
               <PlusIcon className={styles.actionIcon} />
-              <span className={styles.actionLabel}>Criar grupo</span>
+              <span className="sr-only-mobile">Criar grupo</span>
             </Button>
           )}
 
@@ -90,19 +88,13 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
               aria-haspopup="true"
               aria-label={`Menu de ${displayName}`}
             >
-              {showAvatar ? (
-                <img
-                  src={user.avatar_url}
-                  alt=""
-                  className={styles.avatar}
-                  onError={() => setFailedAvatarUrl(user.avatar_url ?? null)}
-                />
-              ) : (
-                // Só aparece no celular, onde o nome some e sobra o avatar.
-                <span className={styles.avatarFallback} aria-hidden="true">
-                  {Array.from(displayName)[0]?.toUpperCase()}
-                </span>
-              )}
+              {/* A inicial só aparece no celular, onde o nome some e sobra o avatar. */}
+              <Avatar
+                name={displayName}
+                src={user.avatar_url}
+                className={styles.avatar}
+                fallbackClassName={styles.avatarFallback}
+              />
               <span className={styles.nickname}>{displayName}</span>
               <span className={styles.chevron} aria-hidden="true">
                 ▾

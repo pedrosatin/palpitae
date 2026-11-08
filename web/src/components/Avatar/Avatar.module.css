@@ -1,0 +1,30 @@
+/*
+ * Tamanho e cor mudam por variáveis na classe de quem usa o avatar, sem
+ * disputa de especificidade com este arquivo.
+ */
+
+.photo,
+.fallback {
+  width: var(--avatar-size, 2rem);
+  height: var(--avatar-size, 2rem);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.photo {
+  object-fit: cover;
+}
+
+.fallback {
+  background-color: var(--color-surface-elevated);
+  color: var(--avatar-color, var(--color-text-muted));
+  font-size: var(--avatar-font-size, var(--font-size-sm));
+  font-weight: var(--font-weight-bold);
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sem especificidade, para quem usa poder esconder a inicial em telas largas. */
+:where(.fallback) {
+  display: flex;
+}

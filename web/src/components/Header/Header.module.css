@@ -111,10 +111,8 @@
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-full);
-  object-fit: cover;
+  --avatar-size: 32px;
+  --avatar-color: var(--color-text-secondary);
 }
 
 .nickname {
@@ -130,19 +128,6 @@
 .actionIcon,
 .avatarFallback {
   display: none;
-}
-
-.avatarFallback {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-full);
-  background-color: var(--color-surface-elevated);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-bold);
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
 }
 
 /* ─── Mobile ─────────────────────────────────────────────────────────────── */
@@ -175,18 +160,6 @@
     display: block;
     width: 20px;
     height: 20px;
-  }
-
-  .actionLabel {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 
   .userMenu {
