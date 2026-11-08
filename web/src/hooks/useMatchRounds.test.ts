@@ -67,6 +67,21 @@ describe('useMatchRounds', () => {
     expect(result.current.postponedByRound.has('3')).toBe(false)
   })
 
+  it('counts rescheduled open matches only in rounds left behind', () => {
+    const days = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString()
+    const { result } = renderHook(() =>
+      useHarness([
+        makeMatch({ id: 'a1', round: '21', status: 'finished', start_time: days(-100) }),
+        makeMatch({ id: 'a2', round: '21', status: 'finished', start_time: days(-90) }),
+        makeMatch({ id: 'a3', round: '21', status: 'scheduled', start_time: days(7) }),
+        makeMatch({ id: 'b1', round: '35', status: 'finished', start_time: days(-1) }),
+        makeMatch({ id: 'b2', round: '35', status: 'scheduled', start_time: days(1) }),
+      ]),
+    )
+    expect(result.current.rescheduledByRound.get('21')).toBe(1)
+    expect(result.current.rescheduledByRound.has('35')).toBe(false)
+  })
+
   it('navigates with the configured analytics events', () => {
     const matches = [makeMatch({ id: 'm1', round: '1' }), makeMatch({ id: 'm2', round: '2' })]
 

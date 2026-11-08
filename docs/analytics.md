@@ -157,8 +157,8 @@ Compartilhar resultado de campeonato encerrado (GroupCard + ShareGroupModal):
 | `click_share_baixar` | clique em "Baixar imagem" no modal | — |
 | `click_share_copiar_link` | clique em "Copiar link" no modal | — |
 
-Rodada com jogo adiado (PredictionsTab — ver ADR-013):
+Rodada com jogo adiado ou remarcado (PredictionsTab — ver ADR-013 e ADR-019):
 
 | Evento | Disparo | Params |
 |---|---|---|
-| `click_predictions_rodada_adiada` | clique em "Ver rodada" no aviso de rodada com jogo adiado (pula para a rodada onde o palpite segue aberto) | `{ round }` |
+| `click_predictions_rodada_adiada` | clique em "Ver rodada" no aviso de rodada com jogo adiado ou remarcado (pula para a rodada onde o palpite segue aberto) | `{ round }` |

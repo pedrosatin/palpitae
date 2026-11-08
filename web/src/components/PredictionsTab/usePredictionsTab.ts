@@ -297,6 +297,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     roundMatches,
     labelFor,
     postponedByRound,
+    rescheduledByRound,
     prev,
     next,
   } = useMatchRounds(matches, roundIndex, setRoundIndex, {
@@ -337,6 +338,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     roundMatches,
     labelFor,
     postponedByRound,
+    rescheduledByRound,
     prev,
     next,
     setRoundIndex,

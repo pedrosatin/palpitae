@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { trackEvent } from '../analytics/ga'
 import type { Match } from '../components/MatchCard'
+import { rescheduledOpenByRound } from '../lib/rounds'
 
 export interface MatchRoundEvents {
   prev: string
@@ -11,11 +12,12 @@ export interface MatchRoundEvents {
  * Groups matches by round and exposes navigation helpers shared by
  * PredictionsTab and GroupPicksTab.
  *
- * Rodadas com jogo adiado ficam fora do default_round (a API escolhe a
- * primeira rodada com jogo futuro, e um adiado guarda o horário original,
- * que já passou). Sem o marcador postponedByRound, o palpite reaberto
- * ficaria invisível: o usuário abre na rodada seguinte e não sabe que
- * ainda dá para editar aqueles jogos. Ver ADR-013.
+ * Rodadas com jogo adiado ficam fora do default_round (um adiado guarda o
+ * horário original, que já passou). Rodadas que ficaram para trás com um jogo
+ * remarcado para o futuro também ficam (ver api/src/matches/defaultRound.ts).
+ * Sem os marcadores postponedByRound e rescheduledByRound, o palpite aberto
+ * ficaria invisível: o usuário abre na rodada seguinte e não sabe que ainda dá
+ * para palpitar naqueles jogos. Ver ADR-013 e ADR-019.
  */
 export function useMatchRounds(
   matches: Match[],
@@ -40,6 +42,8 @@ export function useMatchRounds(
     const count = roundList.filter((m) => Boolean(m.postponed) && !m.locked_at).length
     if (count > 0) postponedByRound.set(round, count)
   }
+
+  const rescheduledByRound = rescheduledOpenByRound(rounds, Date.now())
 
   const safeIndex = Math.min(roundIndex, roundKeys.length - 1)
   const selectedRound = roundKeys[safeIndex]
@@ -66,6 +70,7 @@ export function useMatchRounds(
     roundMatches,
     labelFor,
     postponedByRound,
+    rescheduledByRound,
     prev,
     next,
   }

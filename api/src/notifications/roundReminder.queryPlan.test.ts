@@ -18,12 +18,17 @@ function plan(sql: string, binds = 0): string[] {
 }
 
 const BY_COMPETITION_AND_ROUND = /idx_matches_comp_round_start \(competition_id=\? AND round=\?\)/
+const BY_COMPETITION_AND_ROUND_PREFIX = /idx_matches_comp_round_start \(competition_id=\? AND round=\?/
 
 describe('planos de consulta das subqueries por rodada', () => {
   it('pendências do GET /groups buscam os jogos da rodada pelo índice', () => {
-    const steps = plan(`SELECT g.id, ${pendingPredictionsSql('g')} FROM groups g`, 3)
-    expect(steps.some((s) => s.startsWith('SEARCH m ') && BY_COMPETITION_AND_ROUND.test(s))).toBe(true)
+    const steps = plan(`SELECT g.id, ${pendingPredictionsSql('g')} FROM groups g`, 9)
+    // Duas buscas de m por rodada: a rodada padrão e os remarcados das rodadas
+    // que ficaram para trás. Nenhuma varre a competição jogo a jogo.
+    expect(steps.filter((s) => s.startsWith('SEARCH m ') && BY_COMPETITION_AND_ROUND_PREFIX.test(s))).toHaveLength(2)
     expect(steps.some((s) => s.startsWith('SEARCH mdr USING COVERING INDEX idx_matches_comp_round_start'))).toBe(true)
+    expect(steps.some((s) => s.startsWith('SEARCH mlo USING COVERING INDEX idx_matches_comp_round_start'))).toBe(true)
+    expect(steps.filter((s) => /^SCAN (m|mdr|mlo)\b/.test(s))).toEqual([])
   })
 
   it('lembrete: início da rodada vem do índice, não de varredura da competição', () => {
