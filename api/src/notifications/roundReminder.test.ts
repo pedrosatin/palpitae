@@ -539,6 +539,8 @@ describe('sendRoundReminders', () => {
 
       const [email] = sentBodies()
       expect(email.html).toContain('fecha 19:00')
+      expect(email.html).toContain('table-layout: fixed')
+      expect(email.html).not.toMatch(/<td[^>]*>[^<]*vs[^<]*<\/td>/)
       expect(email.text).toContain('Flamengo vs Palmeiras, fecha 19:00')
       expect(email.text).not.toContain('<')
     })

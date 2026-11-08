@@ -460,13 +460,16 @@ export async function sendRoundReminders(
   )
 }
 
+// Um formatter por módulo. O cron formata por jogo e por destinatário.
+const TIME_BRT_FORMAT = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
 /** Horário do jogo em Brasília, "19:30". O palpite fecha nesse horário (ADR-004). */
 export function formatTimeBRT(isoUtc: string): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(isoUtc))
+  return TIME_BRT_FORMAT.format(new Date(isoUtc))
 }
 
 function reminderSubject(matchCount: number, firstStart: string): string {
@@ -516,13 +519,21 @@ interface EmailTemplateOptions {
   unsubUrl?: string
 }
 
+/**
+ * Cada jogo ocupa duas linhas. A primeira tem "escudo mandante x visitante escudo" em
+ * colunas de largura fixa. A segunda tem o horário, centralizado igual em todos os blocos.
+ * O escudo e o nome ficam num `span` sem quebra, então nunca se separam.
+ */
 function matchRowHtml(match: DigestMatch): string {
+  const nowrap = 'white-space: nowrap;'
   return `
       <tr>
-        <td style="padding: 8px 4px; text-align: right; font-weight: bold;">${escapeHtml(match.home)}&nbsp;${crestImg(match.homeLogo, match.home)}</td>
-        <td style="padding: 8px 8px; text-align: center; color: #6b7280;">vs</td>
-        <td style="padding: 8px 4px; text-align: left; font-weight: bold;">${crestImg(match.awayLogo, match.away)}&nbsp;${escapeHtml(match.away)}</td>
-        <td style="padding: 8px 4px 8px 16px; text-align: left; color: #6b7280; white-space: nowrap;">fecha ${escapeHtml(formatTimeBRT(match.startTime))}</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="${nowrap}">${escapeHtml(match.home)}&nbsp;${crestImg(match.homeLogo, match.home)}</span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="${nowrap}">${crestImg(match.awayLogo, match.away)}&nbsp;${escapeHtml(match.away)}</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha ${escapeHtml(formatTimeBRT(match.startTime))}</td>
       </tr>`
 }
 
@@ -534,7 +545,7 @@ function groupBlockHtml(group: DigestGroup, appUrl: string): string {
       const url = predictionsUrl(appUrl, group.groupId, round.round)
       return `
     <p style="margin: 8px 0 0; color: #6b7280;">${escapeHtml(roundLabel(round.round ?? ''))}</p>
-    <table style="width: 100%; border-collapse: collapse; margin: 8px 0;">${round.matches.map(matchRowHtml).join('')}</table>
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin: 8px 0;">${round.matches.map(matchRowHtml).join('')}</table>
     <p style="margin: 4px 0 0;"><a href="${escapeHtml(url)}" style="color: #16a34a; font-weight: bold;">Fazer meus palpites &rarr;</a></p>`
     })
     .join('')

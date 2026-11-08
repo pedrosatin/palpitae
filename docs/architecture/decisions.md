@@ -181,7 +181,7 @@ O travamento continua o da ADR-004 (`lockedSql`): a regra só escolhe qual rodad
 
 ### Context
 
-O e-mail de lembrete saía às 07h do primeiro dia da rodada, só para quem não tinha nenhum palpite na rodada. Na rodada 35 do Brasileirão (1 jogo em 14/11, 9 em 18 e 19/11), quem palpitasse o primeiro jogo não recebia aviso dos outros 9. Um cron por dia e o filtro do primeiro dia da rodada eram a proteção contra repetição.
+O e-mail de lembrete saía às 07h do primeiro dia da rodada, só para quem não tinha nenhum palpite na rodada. A rodada 35 do Brasileirão tem 1 jogo em 14/11 e 9 em 18 e 19/11. Quem palpitasse o primeiro não recebia aviso dos outros 9. Um cron por dia e o filtro do primeiro dia da rodada eram a proteção contra repetição.
 
 ### Decision
 
@@ -194,5 +194,5 @@ A reserva é uma gravação só por execução porque cada consulta ao D1 conta 
 ### Consequences
 
 - Risco aceito: uma invocação interrompida entre a reserva e o envio deixa os restantes sem e-mail naquele dia. Perder um aviso é preferível a repetir o e-mail.
-- Quem não palpita nunca recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
+- Quem nunca palpita recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
 - `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia e o número de jogos listados.
