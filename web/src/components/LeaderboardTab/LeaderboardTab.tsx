@@ -16,6 +16,47 @@ interface LeaderboardTabProps {
   onOpenRules?: () => void
 }
 
+/** Rodadas seguidas a partir das quais o selo de sequência aparece. */
+const STREAK_BADGE_MIN = 3
+
+/** Reis da rodada, os membros com a maior pontuação. Sem pontos, ninguém. Empate coroa todos. */
+function roundKings(standings: RoundStanding[]): Set<string> {
+  const top = Math.max(0, ...standings.map((standing) => standing.round_points))
+  if (top === 0) return new Set()
+  return new Set(
+    standings.filter((standing) => standing.round_points === top).map((s) => s.user_id),
+  )
+}
+
+function MemberBadges({
+  isOwner,
+  isSelf,
+  isKing,
+  streak,
+}: {
+  isOwner: boolean
+  isSelf: boolean
+  isKing: boolean
+  streak: number
+}) {
+  const showStreak = streak >= STREAK_BADGE_MIN
+  if (!isOwner && !isSelf && !isKing && !showStreak) return null
+  const streakLabel = `${streak} rodadas seguidas com todos os jogos palpitados`
+  return (
+    <span className={styles.badges}>
+      {isOwner && <span className={styles.ownerBadge}>admin</span>}
+      {isSelf && <span className={styles.youBadge}>você</span>}
+      {isKing && <span className={styles.kingBadge}>rei da rodada</span>}
+      {showStreak && (
+        <span className={styles.streakBadge} title={streakLabel}>
+          <span aria-hidden="true">{`${streak} seguidas`}</span>
+          <span className="sr-only">{streakLabel}</span>
+        </span>
+      )}
+    </span>
+  )
+}
+
 /** Pontos na rodada. Membro sem linha na resposta fica com o traço. */
 function RoundPoints({ standing }: { standing: RoundStanding | undefined }) {
   if (!standing) {
@@ -61,6 +102,7 @@ export default function LeaderboardTab({
     () => new Map(standings.map((standing) => [standing.user_id, standing])),
     [standings],
   )
+  const kings = useMemo(() => roundKings(standings), [standings])
   const showArrowsNote = round !== null && standings.some((s) => Boolean(s.position_change))
 
   const openMemberModal = useCallback((member: Member) => {
@@ -154,16 +196,12 @@ export default function LeaderboardTab({
                     />
                     <div className={styles.nameBody}>
                       <span className={styles.displayName}>{member.display_name}</span>
-                      {(member.role === 'owner' || member.user_id === currentUserId) && (
-                        <span className={styles.badges}>
-                          {member.role === 'owner' && (
-                            <span className={styles.ownerBadge}>admin</span>
-                          )}
-                          {member.user_id === currentUserId && (
-                            <span className={styles.youBadge}>você</span>
-                          )}
-                        </span>
-                      )}
+                      <MemberBadges
+                        isOwner={member.role === 'owner'}
+                        isSelf={member.user_id === currentUserId}
+                        isKing={kings.has(member.user_id)}
+                        streak={standingByUser.get(member.user_id)?.streak ?? 0}
+                      />
                     </div>
                   </div>
                 </td>

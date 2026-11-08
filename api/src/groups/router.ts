@@ -884,11 +884,12 @@ router.get('/:id/members', requireAuth, async (c) => {
 /**
  * GET /groups/:id/round-standings
  *
- * Pontos de cada membro na última rodada encerrada e a variação de posição (ADR-021).
+ * Pontos de cada membro na última rodada encerrada, a variação de posição e a sequência
+ * de rodadas com todos os jogos palpitados (ADR-021).
  * Mesmo acesso de GET /groups/:id/members.
  *
  * Response:
- * { round: "34", standings: [{ user_id, round_points, position_change }] }
+ * { round: "34", standings: [{ user_id, round_points, position_change, streak }] }
  * Sem rodada de referência: { round: null, standings: [] }
  */
 router.get('/:id/round-standings', requireAuth, async (c) => {

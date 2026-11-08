@@ -794,6 +794,8 @@ A posição atual segue a ordem oficial, `total_points DESC, exact_hits DESC, jo
 
 Na web, `LeaderboardTab` carrega membros e `round-standings` em paralelo e só desenha a tabela quando as duas respostas terminam. Falha em `round-standings` não é erro de tela, e a tabela aparece como antes, sem a coluna e sem setas. Com `round` preenchido entram a coluna da rodada entre Jogador e Pontos, a variação sob o número da posição e, se alguma posição tiver mudado, um aviso do que as setas comparam.
 
+A API devolve `streak` em cada linha, com as rodadas encerradas seguidas em que o membro palpitou todos os jogos pontuados, contadas da referência para trás. Só contam as rodadas encerradas pelo critério acima. Rodada numerada aberta é pulada sem quebrar a sequência, e jogo adiado sem data não é exigido. A web calcula o rei da rodada. São os membros com o maior `round_points`, se for maior que 0, e empate coroa todos. Os dois saem dos palpites e dos jogos a cada leitura, sem tabela nem backfill, e por isso valem para rodadas passadas e acompanham a pontuação refeita. Nenhum deles dá ponto no ranking.
+
 ### Consequences
 
 - Champions e Copa do Mundo perdem a coluna quando o mata-mata começa. Copa do Brasil e Libertadores nunca têm a coluna, porque as fases delas vêm sem número. Competição com `round` por fase, como `REGULAR_SEASON`, também fica sem coluna.
