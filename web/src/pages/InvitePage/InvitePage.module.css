@@ -1,0 +1,130 @@
+/**
+ * Página de convite do visitante. Mesmo layout centralizado do LoginPage, com
+ * os dados do grupo acima do botão e tudo dentro da primeira tela do celular.
+ */
+
+.root {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+}
+
+.card {
+  align-items: center;
+  border-radius: var(--radius-xl);
+  gap: var(--space-5);
+  max-width: 420px;
+  padding: var(--space-8) var(--space-6);
+  width: 100%;
+}
+
+.logo {
+  height: 32px;
+  width: auto;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  text-align: center;
+  width: 100%;
+}
+
+.eyebrow {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.title {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+  overflow-wrap: anywhere;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.detailRow {
+  align-items: baseline;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+}
+
+.detailLabel {
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+}
+
+.detailValue {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.free {
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.hint,
+.notice {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.landingLink {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.landingLink:hover {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.landingButton {
+  align-items: center;
+  background-color: var(--color-primary);
+  border-radius: var(--radius-md);
+  color: var(--color-on-primary);
+  display: flex;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  justify-content: center;
+  min-height: 44px;
+  padding: var(--space-3) var(--space-5);
+  width: 100%;
+}
+
+.landingButton:hover {
+  background-color: var(--color-primary-hover);
+  text-decoration: none;
+}
+
+@media (max-width: 600px) {
+  .root {
+    padding: var(--space-4);
+  }
+
+  .card {
+    gap: var(--space-4);
+    padding: var(--space-6) var(--space-5);
+  }
+}

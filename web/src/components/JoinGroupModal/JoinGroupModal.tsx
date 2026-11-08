@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { config } from '../../config'
 import { trackJoinGroup } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
@@ -20,6 +20,8 @@ interface JoinGroupModalProps {
   onJoined: (group: JoinedGroup) => void
   /** Pre-fill the invite code (e.g. from a share link) */
   initialCode?: string
+  /** Envia `initialCode` assim que o modal abre, uma única vez. */
+  autoSubmit?: boolean
 }
 
 export default function JoinGroupModal({
@@ -27,11 +29,13 @@ export default function JoinGroupModal({
   onClose,
   onJoined,
   initialCode = '',
+  autoSubmit = false,
 }: JoinGroupModalProps) {
   const [code, setCode] = useState(initialCode)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [joined, setJoined] = useState<JoinedGroup | null>(null)
+  const autoSubmitted = useRef(false)
 
   function reset() {
     setCode(initialCode)
@@ -45,12 +49,11 @@ export default function JoinGroupModal({
     onClose()
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function submitCode(rawCode: string) {
     setError(null)
     setSubmitting(true)
 
-    const invite_code = parseInviteCode(code)
+    const invite_code = parseInviteCode(rawCode)
 
     try {
       const res = await apiFetch(`${config.apiUrl}/groups/join`, {
@@ -79,6 +82,17 @@ export default function JoinGroupModal({
       setSubmitting(false)
     }
   }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void submitCode(code)
+  }
+
+  useEffect(() => {
+    if (!isOpen || !autoSubmit || autoSubmitted.current) return
+    autoSubmitted.current = true
+    void submitCode(initialCode)
+  }, [isOpen, autoSubmit])
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Entrar em grupo">

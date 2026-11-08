@@ -4,6 +4,8 @@ import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import { config } from '../../config'
+import { invalidateApiCache } from '../../lib/api-cache'
+import { markInviteAccepted } from '../../lib/invite'
 import DashboardPage from './DashboardPage'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -161,6 +163,102 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('DashboardPage na volta do login com convite', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    sessionStorage.clear()
+    invalidateApiCache()
+    Object.assign(config as { apiUrl: string; authUrl: string }, {
+      apiUrl: 'http://localhost:8787',
+      authUrl: 'http://localhost:8787',
+    })
+  })
+
+  function GroupRoute() {
+    const location = useLocation()
+    const navigationType = useNavigationType()
+    const state = location.state as { joinedGroupName?: string } | null
+    return <p>{`grupo ${location.pathname} ${navigationType} ${state?.joinedGroupName}`}</p>
+  }
+
+  function renderDashboard(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/" element={<DashboardPage user={user} onLogout={vi.fn()} />} />
+          <Route path="/grupos/:id" element={<GroupRoute />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  function joinCalls(fetchSpy: { mock: { calls: unknown[][] } }) {
+    return fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/groups/join'))
+  }
+
+  it('entra no grupo sem toque e abre a aba padrão com a confirmação', async () => {
+    markInviteAccepted('ABCD-EF23')
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockGroupsResponse([]))
+      .mockResolvedValueOnce(mockResponse({ group: { id: 'g9', name: 'Realidade do BR' } }))
+
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByText('grupo /grupos/g9 REPLACE Realidade do BR')).toBeInTheDocument()
+    const calls = joinCalls(fetchSpy)
+    expect(calls).toHaveLength(1)
+    expect(JSON.parse(String((calls[0][1] as RequestInit).body))).toEqual({
+      invite_code: 'ABCD-EF23',
+    })
+    expect(sessionStorage.getItem('palpitae:convite-aceito')).toBeNull()
+  })
+
+  it('pede confirmação quando o link chega sem a marca da aba', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockGroupsResponse([]))
+
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveValue('ABCD-EF23')
+    expect(joinCalls(fetchSpy)).toHaveLength(0)
+  })
+
+  it('pede confirmação quando a marca é de outro convite', async () => {
+    markInviteAccepted('WXYZ-2345')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(mockGroupsResponse([]))
+
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(joinCalls(fetchSpy)).toHaveLength(0)
+  })
+
+  it('mantém o modal com o erro quando a entrada automática falha', async () => {
+    markInviteAccepted('ABCD-EF23')
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockGroupsResponse([]))
+      .mockResolvedValueOnce(mockResponse({ error: 'Código de convite inválido' }, false))
+
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByText('Código de convite inválido')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('abre o grupo sem nova entrada quando a pessoa já é membro', async () => {
+    markInviteAccepted('ABCD-EF23')
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockGroupsResponse([], 'g1'))
+
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByText('grupo /grupos/g1 REPLACE undefined')).toBeInTheDocument()
+    expect(joinCalls(fetchSpy)).toHaveLength(0)
   })
 })
 

@@ -27,6 +27,9 @@ vi.mock('./pages/LandingPage', () => ({
 vi.mock('./pages/LoginPage', () => ({
   default: () => <div data-testid="login-page">LoginPage</div>,
 }))
+vi.mock('./pages/InvitePage', () => ({
+  default: () => <div data-testid="invite-page">InvitePage</div>,
+}))
 vi.mock('./pages/DashboardPage', () => ({
   default: ({ onLogout }: { onLogout: () => void }) => (
     <div data-testid="dashboard-page">
@@ -120,7 +123,7 @@ describe('App', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('entrar_origem', { origem: 'guias_header' })
   })
 
-  it('sends a visitor on /convite/:code to the landing with ?convite=CODE', async () => {
+  it('mostra a página de convite ao visitante em /convite/:code', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: () => Promise.resolve({ authenticated: false }),
@@ -133,10 +136,53 @@ describe('App', () => {
       </MemoryRouter>,
     )
 
-    await waitFor(() => {
-      expect(screen.getByTestId('landing-page')).toBeInTheDocument()
+    await screen.findByTestId('invite-page')
+    expect(screen.getByTestId('location')).toHaveTextContent('/convite/ABCD-EF23')
+    expect(screen.queryByTestId('landing-page')).not.toBeInTheDocument()
+  })
+
+  it('pinta a página de convite antes de o /auth/me responder', async () => {
+    fetchMock.mockReturnValueOnce(new Promise(() => {}))
+
+    render(
+      <MemoryRouter initialEntries={['/convite/ABCD-EF23']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await screen.findByTestId('invite-page')
+  })
+
+  it('leva o visitante de /?convite=CODE para a página de convite', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ authenticated: false }),
     })
-    expect(screen.getByTestId('location')).toHaveTextContent('/?convite=ABCD-EF23')
+
+    render(
+      <MemoryRouter initialEntries={['/?convite=ABCD-EF23']}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    await screen.findByTestId('invite-page')
+    expect(screen.getByTestId('location')).toHaveTextContent('/convite/ABCD-EF23')
+  })
+
+  it('mantém a landing para o visitante em / sem convite', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ authenticated: false }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await screen.findByTestId('landing-page')
   })
 
   it('sends a logged-in user on /convite/:code to the dashboard with ?convite=CODE', async () => {

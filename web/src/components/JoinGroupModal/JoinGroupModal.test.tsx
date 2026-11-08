@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import JoinGroupModal from './JoinGroupModal'
@@ -179,5 +180,64 @@ describe('JoinGroupModal', () => {
 
     await screen.findByText('Código de convite inválido')
     expect(mockTrackEvent).not.toHaveBeenCalledWith('join_group', expect.anything())
+  })
+
+  describe('autoSubmit', () => {
+    function mockJoin(body: unknown, ok = true) {
+      return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok,
+        json: async () => body,
+      } as Response)
+    }
+
+    it('envia o código uma vez ao abrir, mesmo em StrictMode', async () => {
+      const group = { id: 'g1', name: 'Realidade do BR' }
+      const fetchSpy = mockJoin({ group })
+
+      render(
+        <StrictMode>
+          <JoinGroupModal {...defaultProps} initialCode="abcd-ef23" autoSubmit />
+        </StrictMode>,
+      )
+
+      await waitFor(() => expect(defaultProps.onJoined).toHaveBeenCalledWith(group))
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
+        invite_code: 'ABCD-EF23',
+      })
+      expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
+        source: 'convite_link',
+        group_id: 'g1',
+      })
+    })
+
+    it('espera o modal abrir', async () => {
+      const fetchSpy = mockJoin({ group: { id: 'g1', name: 'G' } })
+      const props = { ...defaultProps, initialCode: 'ABCD-EF23', autoSubmit: true }
+
+      const { rerender } = render(<JoinGroupModal {...props} isOpen={false} />)
+      expect(fetchSpy).not.toHaveBeenCalled()
+
+      rerender(<JoinGroupModal {...props} isOpen />)
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    })
+
+    it('mostra o erro da API e não reenvia sozinho', async () => {
+      const fetchSpy = mockJoin({ error: 'Este grupo atingiu o limite de membros' }, false)
+
+      render(<JoinGroupModal {...defaultProps} initialCode="ABCD-EF23" autoSubmit />)
+
+      await screen.findByText('Este grupo atingiu o limite de membros')
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      expect(defaultProps.onJoined).not.toHaveBeenCalled()
+    })
+
+    it('sem autoSubmit espera o toque', () => {
+      const fetchSpy = mockJoin({ group: { id: 'g1', name: 'G' } })
+
+      render(<JoinGroupModal {...defaultProps} initialCode="ABCD-EF23" />)
+
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
   })
 })

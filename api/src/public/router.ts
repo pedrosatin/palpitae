@@ -13,7 +13,8 @@ const router = new Hono<AppContext>()
 const INVITE_CODE_RE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/
 
 // O preview tolera dados com até 5 min de atraso. A Function busca esta rota com
-// cacheTtl de 5 min no edge, então picos de crawler não chegam ao D1.
+// `cacheTtlByStatus` (200 por 5 min, 404 por 1 min), e aberturas repetidas do link
+// não chegam ao D1.
 const CACHE_OK = 'public, max-age=300'
 const CACHE_MISS = 'public, max-age=60'
 
@@ -21,19 +22,35 @@ type InvitePreviewRow = {
   group_name: string
   competition_name: string | null
   member_count: number
+  admin_name: string | null
+  points_exact: number | null
+  points_winner: number | null
+}
+
+/**
+ * Primeiro nome do dono do grupo. O visitante só precisa reconhecer quem o
+ * convidou, então o nome completo fica para quem já entrou no grupo. Texto com
+ * `@` nunca sai daqui, porque pode ser um e-mail usado como nome.
+ */
+export function publicAdminName(raw: string | null | undefined): string | null {
+  const first = raw?.trim().split(/\s+/)[0] ?? ''
+  if (!first || first.includes('@')) return null
+  return first
 }
 
 /**
  * GET /public/invites/:code
  *
- * Dados do preview do link de convite (usado pela Pages Function de
- * `/convite/:code` para montar as meta tags Open Graph).
+ * Dados do convite para quem ainda não entrou: a Pages Function de
+ * `/convite/:code` monta as meta tags com eles e a página de convite da SPA
+ * mostra o grupo ao visitante.
  *
- * Quem tem o código já pode entrar no grupo, então nome do grupo, campeonato e
- * total de membros não revelam nada além do que o convite já dá. Ficam de fora
- * ids, dono, membros, limite de vagas e configuração de pontuação.
+ * Quem tem o código já pode entrar no grupo, então nome do grupo, campeonato,
+ * total de membros, regra de pontuação e primeiro nome do dono não revelam nada
+ * além do que o convite já dá. Ficam de fora ids, e-mails, demais membros,
+ * palpites e limite de vagas.
  *
- * Response 200: { invite: { group_name, competition_name, member_count } }
+ * Response 200: { invite: { group_name, competition_name, member_count, admin_name, points_exact, points_winner } }
  * Response 404: código com formato inválido, inexistente ou de grupo excluído.
  */
 router.get('/invites/:code', async (c) => {
@@ -50,9 +67,14 @@ router.get('/invites/:code', async (c) => {
       `SELECT
          g.name AS group_name,
          c.name AS competition_name,
-         (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id) AS member_count
+         (SELECT COUNT(*) FROM group_members gm WHERE gm.group_id = g.id) AS member_count,
+         COALESCE(NULLIF(TRIM(p.nickname), ''), NULLIF(TRIM(u.user_name), '')) AS admin_name,
+         g.points_exact AS points_exact,
+         g.points_winner AS points_winner
        FROM groups g
        LEFT JOIN competitions c ON g.competition_id = c.id
+       LEFT JOIN users u ON u.id = g.owner_user_id
+       LEFT JOIN profiles p ON p.user_id = g.owner_user_id
        WHERE g.invite_code = ? AND g.deleted_at IS NULL AND (c.visibility IS NULL OR c.visibility != 'pilot')`,
     )
       .bind(code)
@@ -74,6 +96,9 @@ router.get('/invites/:code', async (c) => {
       group_name: row.group_name,
       competition_name: row.competition_name ?? null,
       member_count: Number(row.member_count) || 0,
+      admin_name: publicAdminName(row.admin_name),
+      points_exact: row.points_exact ?? null,
+      points_winner: row.points_winner ?? null,
     },
   })
 })
