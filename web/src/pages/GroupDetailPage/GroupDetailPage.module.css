@@ -219,7 +219,6 @@
 }
 
 .renameInput:focus {
-  outline: none;
   border-color: var(--color-primary);
 }
 
@@ -394,7 +393,23 @@
   top: var(--tabs-offset, 0px);
   /* Keep tabs under the primary header (z-index: 10) and above page content. */
   z-index: 9;
-  background-color: var(--color-bg);
+  background: var(--color-bg);
+  /* O fade só aparece do lado em que há aba escondida. GroupTabs define
+     --fade-start e --fade-end. */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fade-start, 0px),
+    #000 calc(100% - var(--fade-end, 0px)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--fade-start, 0px),
+    #000 calc(100% - var(--fade-end, 0px)),
+    transparent 100%
+  );
   border-bottom: 1px solid var(--color-border);
   margin-bottom: var(--space-6);
   gap: var(--space-1);

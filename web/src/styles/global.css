@@ -66,6 +66,13 @@ button {
   font-family: inherit;
 }
 
+/* Foco visível por padrão em todo controle (WCAG 2.4.7 e 1.4.11). O verde da
+   marca tem mais de 10:1 contra os fundos. Componentes só ajustam o recuo. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 img,
 svg {
   display: block;
