@@ -210,10 +210,17 @@ function usePredictionsImport(
       if (!current.active) return
       const imported = data.imported ?? 0
       const skipped = data.locked_skipped ?? 0
-      const msg =
-        skipped > 0
-          ? `${imported} palpite(s) importado(s). ${skipped} já bloqueado(s) foram ignorados.`
-          : `${imported} palpite(s) importado(s) com sucesso!`
+      const skippedMsg =
+        skipped === 0
+          ? ''
+          : skipped === 1
+            ? '1 palpite já bloqueado foi ignorado.'
+            : `${skipped} palpites já bloqueados foram ignorados.`
+      // Com palpite importado, o aviso "Palpites importados de <grupo>." já confirma
+      // o sucesso. Aqui fica só o que ele não diz.
+      const msg = [imported > 0 ? '' : 'Nenhum palpite importado.', skippedMsg]
+        .filter(Boolean)
+        .join(' ')
       if (imported > 0) {
         setImportCompleted(true)
         setImportedFromName(otherGroups.find((g) => g.id === sourceId)?.name ?? null)
@@ -221,7 +228,7 @@ function usePredictionsImport(
         // Import altera pending_predictions do grupo alvo na home.
         invalidateApiCache('groups:')
       }
-      setImportFeedback({ ok: true, message: msg })
+      if (msg) setImportFeedback({ ok: true, message: msg })
       try {
         const predsRes = await apiFetch(
           `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
@@ -240,7 +247,9 @@ function usePredictionsImport(
         if (current.active)
           setImportFeedback({
             ok: false,
-            message: `${msg} Não foi possível atualizar os palpites na tela. Recarregue a página.`,
+            message: [msg, 'Não foi possível atualizar os palpites na tela. Recarregue a página.']
+              .filter(Boolean)
+              .join(' '),
           })
       }
     } catch (e) {
@@ -348,13 +357,17 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     unsavedDrafts,
   )
 
-  // Mesma regra de travamento do card: sem nenhum jogo aberto na rodada exibida,
-  // a barra "Salvar todos" não tem o que salvar e sai da tela.
-  const hasEditableMatch = roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id)))
+  // Usa `isMatchLocked`, a regra de `collectRoundDrafts`. Sem jogo aberto na rodada
+  // exibida, a barra "Salvar todos" sai da tela. Ela continua enquanto um envio está
+  // em andamento ou mostra o erro dele, mesmo que o último jogo aberto comece no meio.
+  const showSaveBar =
+    roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id))) ||
+    savingAll ||
+    bulkError !== null
 
   return {
     importCompleted,
-    hasEditableMatch,
+    showSaveBar,
     unsavedDrafts,
     unsavedRounds,
     matches,

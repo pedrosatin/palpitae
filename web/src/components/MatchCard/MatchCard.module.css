@@ -465,8 +465,8 @@
 }
 
 /* ── Touch targets ──────────────────────── */
-/* Em tela de toque, −/+ e pênaltis ganham a área mínima de 44×44 px. No
-   desktop (ponteiro fino) o stepper mantém os 28px de largura. */
+/* Em tela de toque, os −/+ e os botões de pênalti ganham a área mínima de
+   44×44 px. Com mouse, o stepper mantém 28 px de largura. */
 @media (pointer: coarse) {
   .stepBtn {
     width: 44px;
@@ -480,12 +480,12 @@
 
 /* ── Mobile adjustments ─────────────────── */
 /*
- * Em 390px o card tem ~316px úteis: os dois steppers de 44+36+44 px e o "×"
- * somam ~280px e cabem na linha, mas não sobra lugar para Salvar/Atualizar.
- * Os steppers ficam centrados e o botão (e a escolha de pênaltis) desce para
- * uma linha própria, de largura cheia e também com 44px de altura.
+ * No celular, os dois steppers ficam centrados na primeira linha. Salvar ou
+ * Atualizar desce para uma linha própria, de largura cheia e 44 px de altura, e
+ * a escolha de pênaltis também. Vale até 420 px e, em tela de toque, até 600 px.
+ * Num iPhone de 430 px os −/+ de 44 px ocupam a linha e o botão não cabe ao lado.
  */
-@media (max-width: 420px) {
+@media (max-width: 420px), (pointer: coarse) and (max-width: 600px) {
   .inputRow {
     justify-content: center;
   }
@@ -515,5 +515,24 @@
     flex-basis: 100%;
     margin-left: 0;
     min-height: 44px;
+  }
+}
+
+/*
+ * Em 320 px o card tem 246 px úteis e os dois steppers pedem 271 px. Abaixo de
+ * 360 px o card perde padding lateral, o campo do placar encolhe e os controles
+ * ficam mais juntos. Os −/+ seguem com 44 px e os steppers cabem numa linha só.
+ */
+@media (max-width: 359px) {
+  .card {
+    padding-inline: var(--space-3);
+  }
+
+  .inputRow {
+    column-gap: var(--space-1);
+  }
+
+  .scoreInput {
+    width: 32px;
   }
 }

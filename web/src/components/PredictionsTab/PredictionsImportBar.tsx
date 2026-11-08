@@ -90,7 +90,7 @@ export default function PredictionsImportBar({
               <>
                 <span className={styles.importInfo}>
                   {importedFromName
-                    ? `Palpites copiados de ${importedFromName}.`
+                    ? `Palpites importados de ${importedFromName}.`
                     : 'Você já importou palpites de outro grupo.'}
                 </span>
                 {otherGroups.length > 0 && (

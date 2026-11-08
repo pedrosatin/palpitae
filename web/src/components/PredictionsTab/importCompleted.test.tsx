@@ -10,7 +10,7 @@ import { usePredictionsTab } from './usePredictionsTab'
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
 
-function setup({ imported = 1, failed = false, refetchFailed = false } = {}) {
+function setup({ imported = 1, skipped = 0, failed = false, refetchFailed = false } = {}) {
   const completed = new Set<string>()
   let posts = 0
   const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
@@ -24,7 +24,7 @@ function setup({ imported = 1, failed = false, refetchFailed = false } = {}) {
       posts++
       if (failed) return json({ error: 'Falha ao importar' }, 500)
       if (imported > 0) completed.add(JSON.parse(String(init?.body)).target_group_id)
-      return json({ imported })
+      return json({ imported, locked_skipped: skipped })
     }
     if (path.includes('/predictions?')) {
       if (refetchFailed && posts) return json({ error: 'Indisponível' }, 503)
@@ -44,17 +44,18 @@ describe('Barra de importação', () => {
     await user.click(await screen.findByRole('button', { name: 'Importar' }))
     expect(await screen.findByRole('button', { name: 'Importar de novo' })).toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
-    // Na mesma visita a origem é conhecida e aparece no aviso.
-    expect(screen.getByText('Palpites copiados de Origem.')).toBeInTheDocument()
+    // Na mesma visita a origem é conhecida e aparece numa mensagem só.
+    expect(screen.getByText('Palpites importados de Origem.')).toBeInTheDocument()
+    expect(screen.queryByText(/importado\(s\)/)).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Importar de novo' }))
     await user.click(screen.getByRole('button', { name: 'Importar' }))
     expect(state.posts()).toBe(2)
     view.unmount()
     const next = render(<PredictionsTab groupId="target" competitionId="c" />)
     await screen.findByRole('button', { name: 'Importar de novo' })
-    // Ao remontar a API só diz que houve importação, não de onde.
+    // Depois de remontar, a API informa só que houve importação, sem o grupo de origem.
     expect(screen.getByText('Você já importou palpites de outro grupo.')).toBeInTheDocument()
-    expect(screen.queryByText(/Palpites copiados de/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Palpites importados de/)).not.toBeInTheDocument()
     expect(screen.queryByText('Importar palpites de:')).not.toBeInTheDocument()
     next.rerender(<PredictionsTab groupId="other" competitionId="c" />)
     await screen.findByText('Importar palpites de:')
@@ -64,18 +65,33 @@ describe('Barra de importação', () => {
     await screen.findByText('Importar palpites de:')
   })
 
-  it.each([{ imported: 0 }, { failed: true }])(
-    'mantém seletor com resultado $imported / falha $failed',
-    async (options) => {
-      setup(options)
-      const user = userEvent.setup()
-      render(<PredictionsTab groupId="target" competitionId="c" />)
-      await user.click(await screen.findByRole('button', { name: 'Importar' }))
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Importar' })).toBeEnabled())
-      expect(screen.getByText('Importar palpites de:')).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Importar de novo' })).not.toBeInTheDocument()
+  it('avisa dos palpites bloqueados que ficaram de fora junto com a origem', async () => {
+    setup({ imported: 2, skipped: 1 })
+    const user = userEvent.setup()
+    render(<PredictionsTab groupId="target" competitionId="c" />)
+    await user.click(await screen.findByRole('button', { name: 'Importar' }))
+    expect(await screen.findByText('Palpites importados de Origem.')).toBeInTheDocument()
+    expect(screen.getByText('1 palpite já bloqueado foi ignorado.')).toBeInTheDocument()
+    expect(screen.queryByText(/com sucesso/)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { options: { imported: 0 }, message: 'Nenhum palpite importado.' },
+    {
+      options: { imported: 0, skipped: 2 },
+      message: 'Nenhum palpite importado. 2 palpites já bloqueados foram ignorados.',
     },
-  )
+    { options: { failed: true }, message: 'Falha ao importar' },
+  ])('mantém seletor e mostra $message', async ({ options, message }) => {
+    setup(options)
+    const user = userEvent.setup()
+    render(<PredictionsTab groupId="target" competitionId="c" />)
+    await user.click(await screen.findByRole('button', { name: 'Importar' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Importar' })).toBeEnabled())
+    expect(screen.getByText('Importar palpites de:')).toBeInTheDocument()
+    expect(screen.getByText(message)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Importar de novo' })).not.toBeInTheDocument()
+  })
 
   it('informa sucesso gravado e falha no refetch, preservando palpites e drafts locais', async () => {
     setup({ refetchFailed: true })
@@ -112,7 +128,7 @@ describe('Barra de importação', () => {
     })
     view.rerender({ group: 'other' })
     await act(async () => {
-      finish(new Response(JSON.stringify({ imported: 1 })))
+      finish(new Response(JSON.stringify({ imported: 1, locked_skipped: 1 })))
       await pending
     })
     expect(view.result.current.importCompleted).toBe(false)
@@ -178,10 +194,11 @@ describe('Barra de importação', () => {
     view.rerender(content('c'))
     await screen.findByRole('button', { name: 'Importar' })
     await act(async () => {
-      finish(new Response(JSON.stringify({ imported: 1 })))
+      finish(new Response(JSON.stringify({ imported: 1, locked_skipped: 1 })))
     })
     expect(screen.queryByRole('button', { name: 'Importar de novo' })).not.toBeInTheDocument()
-    expect(screen.queryByText(/importado\(s\) com sucesso/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Palpites importados de/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/bloqueado/)).not.toBeInTheDocument()
   })
 
   it('descarta atualização de palpites da importação após trocar de grupo', async () => {

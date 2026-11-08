@@ -4,9 +4,8 @@
   gap: var(--space-6);
 }
 
-/* Reserva o espaço da barra fixa "Salvar todos" (≈62px: botão de ~37px mais
-   2×--space-3 e a borda) só quando ela está na tela, para o último card não
-   ficar escondido atrás dela. */
+/* Reserva a altura da barra fixa "Salvar todos", cerca de 62 px, só quando ela
+   aparece. Sem isso, o último card fica atrás dela. */
 .rootWithSaveBar {
   padding-bottom: calc(3.5rem + var(--space-3));
 }
@@ -110,8 +109,8 @@
   font-weight: var(--font-weight-semibold);
 }
 
-/* Aviso de importação já feita: informativo, sem moldura, abaixo do peso visual
-   do seletor e do aviso de rodada adiada. */
+/* Aviso de importação já feita, sem moldura e com texto menor que o do seletor
+   e o do aviso de rodada adiada. */
 .importBarInfo {
   padding: 0;
   background: none;
@@ -123,7 +122,9 @@
   color: var(--color-text-secondary);
 }
 
+/* Com 24 px de altura, o link atinge a área de toque mínima da WCAG 2.5.8. */
 .importInfoLink {
+  min-height: 24px;
   padding: 0;
   border: 0;
   background: none;

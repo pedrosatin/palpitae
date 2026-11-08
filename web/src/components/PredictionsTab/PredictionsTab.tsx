@@ -96,7 +96,7 @@ export default function PredictionsTab({
     bulkError,
     pendingCount,
     handleSaveAll,
-    hasEditableMatch,
+    showSaveBar,
     importCompleted,
     importExpanded,
     setImportExpanded,
@@ -157,7 +157,7 @@ export default function PredictionsTab({
   }
 
   return (
-    <div className={`${styles.root} ${hasEditableMatch ? styles.rootWithSaveBar : ''}`}>
+    <div className={`${styles.root} ${showSaveBar ? styles.rootWithSaveBar : ''}`}>
       <PredictionsImportBar
         {...{
           otherGroups,
@@ -213,7 +213,7 @@ export default function PredictionsTab({
         </p>
       )}
 
-      {hasEditableMatch && (
+      {showSaveBar && (
         <div className={styles.saveAllBar}>
           {bulkError && <span className={styles.error}>{bulkError}</span>}
           <Button
