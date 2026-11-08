@@ -2,6 +2,11 @@ import { useState } from 'react'
 import Card from '../Card'
 import ShareGroupModal from '../ShareGroupModal'
 import { trackEvent } from '../../analytics/ga'
+import {
+  groupRoundStatus,
+  groupRoundStatusText,
+  type DeadlineMatch,
+} from '../../lib/dashboardStatus'
 import styles from './GroupCard.module.css'
 
 export interface PodiumEntry {
@@ -24,6 +29,15 @@ export interface GroupWithStats {
   user_position: number
   user_points: number
   pending_predictions: number
+  /** Jogo sem palpite que fecha primeiro. */
+  next_deadline?: DeadlineMatch | null
+  /** Próximo jogo aberto, com ou sem palpite. */
+  next_match_at?: string | null
+  /** Rótulo da rodada padrão, como "Rodada 35". */
+  current_round_label?: string | null
+  /** Último jogo aberto da rodada padrão. */
+  round_ends_at?: string | null
+  live_matches?: number
   podium?: PodiumEntry[] | null
 }
 
@@ -84,12 +98,11 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
   const isOwner = group.is_admin
   const isFinished = group.competition_status === 'finished'
   const [shareOpen, setShareOpen] = useState(false)
-  // Só exibe com count > 0: evita "em dia" falso quando ainda não há jogos.
-  const pendingCount = isFinished ? 0 : group.pending_predictions
-  const hasPending = pendingCount > 0
-  const pendingLabel = hasPending ? pendingPredictionsLabel(pendingCount) : null
-  const openLabel = hasPending
-    ? `Abrir grupo ${group.name}, ${pendingLabel}`
+  // Grupo encerrado mostra o pódio e não tem linha de status.
+  const status = isFinished ? null : groupRoundStatus(group)
+  const statusText = status ? groupRoundStatusText(status, Date.now()) : null
+  const openLabel = statusText
+    ? `Abrir grupo ${group.name}, ${statusText}`
     : `Abrir grupo ${group.name}`
 
   return (
@@ -127,8 +140,10 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
           </div>
         )}
 
-        {hasPending && pendingLabel && (
-          <p className={styles.pendingHint}>{pendingLabel} · ir a Palpitar</p>
+        {status && statusText && (
+          <p className={styles.status} data-kind={status.kind}>
+            {statusText}
+          </p>
         )}
       </a>
 

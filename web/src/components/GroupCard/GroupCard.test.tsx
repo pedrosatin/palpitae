@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import GroupCard, { pendingPredictionsLabel } from './GroupCard'
 
 const mockTrackEvent = vi.fn()
@@ -95,40 +95,88 @@ describe('GroupCard', () => {
     expect(onClick).not.toHaveBeenCalled()
   })
 
-  it('does not show pending hint when pending_predictions is 0', () => {
-    render(<GroupCard group={baseGroup} onClick={onClick} />)
-    expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
+  describe('linha de status da rodada', () => {
+    // Quinta, 12/11/2026, 12:00 em Brasília.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    const ongoing = {
+      ...baseGroup,
+      competition_status: 'ongoing' as const,
+      next_deadline: null,
+      next_match_at: null,
+      current_round_label: null,
+      round_ends_at: null,
+      live_matches: 0,
+    }
+    const deadline = {
+      match_id: 'm1',
+      start_time: '2026-11-14T21:30:00Z',
+      round: '35',
+      round_label: 'Rodada 35',
+      home_team: 'Mirassol',
+      away_team: 'Atlético-MG',
+    }
+
+    it.each([
+      [
+        'jogos sem palpite',
+        { pending_predictions: 10, next_deadline: deadline, next_match_at: deadline.start_time },
+        '10 sem palpite · fecha sáb 18:30',
+      ],
+      [
+        'rodada completa',
+        { current_round_label: 'Rodada 35', next_match_at: deadline.start_time },
+        'Rodada 35 completa ✓ · próximo jogo sáb 18:30',
+      ],
+      ['jogo ao vivo', { live_matches: 2, next_match_at: deadline.start_time }, '2 jogos ao vivo'],
+      ['sem jogos', {}, 'Sem jogos marcados'],
+    ])('mostra uma linha só para %s e repete no rótulo do link', (_kind, fields, text) => {
+      const { container } = render(
+        <GroupCard group={{ ...ongoing, ...fields }} onClick={onClick} />,
+      )
+      const lines = container.querySelectorAll('[data-kind]')
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toHaveTextContent(text)
+      expect(
+        screen.getByRole('link', { name: `Abrir grupo Meu Grupo, ${text}` }),
+      ).toBeInTheDocument()
+    })
+
+    it('marca a pendência para o estilo de destaque', () => {
+      const { container } = render(
+        <GroupCard group={{ ...ongoing, pending_predictions: 1 }} onClick={onClick} />,
+      )
+      expect(container.querySelector('[data-kind="pending"]')).toHaveTextContent('1 sem palpite')
+    })
+  })
+
+  it('does not show a status line for the old API response without next_match_at', () => {
+    const { container } = render(<GroupCard group={baseGroup} onClick={onClick} />)
+    expect(container.querySelector('[data-kind]')).toBeNull()
     expect(screen.getByRole('link', { name: 'Abrir grupo Meu Grupo' })).toBeInTheDocument()
   })
 
-  it('shows singular pending hint and enriches the open label when count is 1', () => {
-    render(<GroupCard group={{ ...baseGroup, pending_predictions: 1 }} onClick={onClick} />)
-    expect(screen.getByText('1 palpite pendente · ir a Palpitar')).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', {
-        name: 'Abrir grupo Meu Grupo, 1 palpite pendente',
-      }),
-    ).toBeInTheDocument()
-  })
-
-  it('shows plural pending hint when count is greater than 1', () => {
-    render(<GroupCard group={{ ...baseGroup, pending_predictions: 3 }} onClick={onClick} />)
-    expect(screen.getByText('3 palpites pendentes · ir a Palpitar')).toBeInTheDocument()
-  })
-
-  it('hides pending hint on finished groups even when the API still sends a count', () => {
-    render(
+  it('hides the status line on finished groups even when the API still sends a count', () => {
+    const { container } = render(
       <GroupCard
         group={{
           ...baseGroup,
           competition_status: 'finished',
           pending_predictions: 4,
+          live_matches: 1,
           podium: [{ position: 1, display: 'Ana', points: 10, is_you: true }],
         }}
         onClick={onClick}
       />,
     )
-    expect(screen.queryByText(/pendente/i)).not.toBeInTheDocument()
+    expect(container.querySelector('[data-kind]')).toBeNull()
+    expect(screen.queryByText(/sem palpite/i)).not.toBeInTheDocument()
   })
 
   it('formats pendingPredictionsLabel in PT-BR singular and plural', () => {

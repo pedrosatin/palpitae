@@ -21,6 +21,8 @@ interface PredictionsTabProps {
   userId?: string
   /** Group's points for an exact score. When 0, matches use the 1X2 button UI. */
   pointsExact?: number
+  /** Rodada em que a aba abre no lugar da padrão, vinda do `?rodada=` do link. */
+  initialRound?: string | null
 }
 
 function leg1Context(
@@ -77,6 +79,7 @@ export default function PredictionsTab({
   competitionId,
   userId,
   pointsExact = 3,
+  initialRound,
 }: PredictionsTabProps) {
   const {
     unsavedDrafts,
@@ -117,7 +120,7 @@ export default function PredictionsTab({
     handleSaved,
     handleDraftChange,
     handlePenaltyDraftChange,
-  } = usePredictionsTab(groupId, competitionId, userId)
+  } = usePredictionsTab(groupId, competitionId, userId, initialRound)
   // Um relógio só para o cabeçalho e os cards. Quando um jogo começa com a aba
   // aberta, o cabeçalho tira o jogo e o card trava no mesmo tique.
   const now = useNow(TICK_MS)

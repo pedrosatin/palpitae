@@ -97,6 +97,36 @@ describe('PredictionsTab – defaultRoundIndex', () => {
     })
   })
 
+  it('abre na rodada do link do painel em vez da rodada padrão', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '21', status: 'scheduled' }),
+      makeMatch({ id: 'm2', round: '35', status: 'scheduled' }),
+    ]
+    mockFetch(matches, '35')
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" initialRound="21" />)
+
+    await waitFor(() => {
+      const select = screen.getByRole('combobox') as HTMLSelectElement
+      expect(select.value).toBe('21')
+    })
+  })
+
+  it('cai na rodada padrão quando a rodada do link não existe', async () => {
+    const matches = [
+      makeMatch({ id: 'm1', round: '34', status: 'finished' }),
+      makeMatch({ id: 'm2', round: '35', status: 'scheduled' }),
+    ]
+    mockFetch(matches, '35')
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" initialRound="99" />)
+
+    await waitFor(() => {
+      const select = screen.getByRole('combobox') as HTMLSelectElement
+      expect(select.value).toBe('35')
+    })
+  })
+
   it('falls back to the last round when all matches are finished', async () => {
     const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished' }),

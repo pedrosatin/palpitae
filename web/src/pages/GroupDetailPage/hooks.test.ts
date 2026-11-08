@@ -352,6 +352,16 @@ describe('useGroupTabs', () => {
     expect(result.current.activeTab).toBe('leaderboard')
   })
 
+  it('lê a rodada pedida pelo link do painel e abre a aba Palpitar', () => {
+    const { result } = renderHook(() => useGroupTabs(mockGroup), {
+      wrapper: ({ children }) =>
+        React.createElement(MemoryRouter, { initialEntries: ['/grupos/g1?rodada=21'] }, children),
+    })
+
+    expect(result.current.activeTab).toBe('predictions')
+    expect(result.current.requestedRound).toBe('21')
+  })
+
   it('falls back to default if standings tab is requested but cup is not standings-eligible', () => {
     const nonLeagueGroup: GroupDetail = {
       ...mockGroup,

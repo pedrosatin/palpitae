@@ -20,7 +20,11 @@ type PredictionsResponse = {
   import_sources?: Record<string, string[]>
 }
 
-function usePredictionsFetch(groupId: string, competitionId: string) {
+function usePredictionsFetch(
+  groupId: string,
+  competitionId: string,
+  requestedRound: string | null | undefined,
+) {
   const [matches, setMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
   const [importCompleted, setImportCompleted] = useState(false)
@@ -54,7 +58,12 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
         setPredictions(map)
 
-        applyDefaultRoundFromMatches(matchesData.matches, matchesData.default_round, setRoundIndex)
+        applyDefaultRoundFromMatches(
+          matchesData.matches,
+          matchesData.default_round,
+          setRoundIndex,
+          requestedRound,
+        )
       })
       .catch((e: Error) => {
         if (active) setError(e.message)
@@ -65,7 +74,7 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
     return () => {
       active = false
     }
-  }, [groupId, competitionId])
+  }, [groupId, competitionId, requestedRound])
 
   return {
     matches,
@@ -274,8 +283,16 @@ function usePredictionsImport(
   }
 }
 
-/** `userId` liga a guarda dos rascunhos no navegador; sem ele, ficam só na memória. */
-export function usePredictionsTab(groupId: string, competitionId: string, userId?: string) {
+/**
+ * `userId` liga a guarda dos rascunhos no navegador; sem ele, ficam só na memória.
+ * `requestedRound` vem do `?rodada=` do painel e abre a aba nessa rodada em vez da padrão.
+ */
+export function usePredictionsTab(
+  groupId: string,
+  competitionId: string,
+  userId?: string,
+  requestedRound?: string | null,
+) {
   const {
     matches,
     predictions,
@@ -289,7 +306,7 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setImportCompleted,
     importSources,
     setImportSources,
-  } = usePredictionsFetch(groupId, competitionId)
+  } = usePredictionsFetch(groupId, competitionId, requestedRound)
 
   const { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange } =
     usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions)

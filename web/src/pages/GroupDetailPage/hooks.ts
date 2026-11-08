@@ -34,6 +34,8 @@ export function useGroupTabs(group: GroupDetail | null) {
   const [searchParams, setSearchParams] = useSearchParams()
   const { pathname } = useLocation()
   const rawTab = parseTab(searchParams.get('tab'))
+  // Rodada pedida pela faixa "Próximo prazo" do painel.
+  const requestedRound = searchParams.get('rodada')
   const showStandings = isStandingsTabEligible(group?.competition_type, group?.competition_code)
   const activeTab =
     rawTab === 'standings' && group !== null && !showStandings ? DEFAULT_TAB : rawTab
@@ -73,7 +75,7 @@ export function useGroupTabs(group: GroupDetail | null) {
     }
   }
 
-  return { activeTab, showStandings, tabHref, handleTabClick }
+  return { activeTab, showStandings, tabHref, handleTabClick, requestedRound }
 }
 
 export function useTabsOffset() {

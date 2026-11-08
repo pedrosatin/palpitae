@@ -6,7 +6,10 @@ import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
-import { pendingPredictionsBinds, pendingPredictionsSql } from './pendingPredictions'
+import { roundLabel } from '../matches/rounds'
+import { parsePendingSummary, type PendingSummary } from './pendingPredictions'
+import { fetchDeadlineMatches, groupsListBinds, groupsListSql, type DeadlineMatch } from './groupsList'
+import { fetchLiveMatchesByCompetition } from './liveMatches'
 import { competitionStatusSql } from './competitionStatus'
 
 const router = new Hono<AppContext>()
@@ -180,6 +183,41 @@ async function isPilotGroupBlocked(
   return groupComp?.visibility === 'pilot'
 }
 
+/**
+ * Campos do status da rodada no card do painel. Grupo encerrado sai sem
+ * pendência, sem prazo e sem jogo ao vivo.
+ */
+function roundStatusFields(
+  competitionStatus: GroupRow['competition_status'],
+  summary: PendingSummary,
+  deadlineMatches: Map<string, Omit<DeadlineMatch, 'start_time'>>,
+  liveMatches: number,
+) {
+  if (competitionStatus === 'finished') {
+    return {
+      pending_predictions: 0,
+      next_deadline: null,
+      next_match_at: null,
+      current_round_label: null,
+      round_ends_at: null,
+      live_matches: 0,
+    }
+  }
+  const deadlineMatch = summary.deadline ? deadlineMatches.get(summary.deadline.match_id) : undefined
+  const nextDeadline: DeadlineMatch | null =
+    summary.deadline && deadlineMatch
+      ? { ...deadlineMatch, start_time: summary.deadline.start_time }
+      : null
+  return {
+    pending_predictions: summary.pending,
+    next_deadline: nextDeadline,
+    next_match_at: summary.next_match_at,
+    current_round_label: summary.round ? roundLabel(summary.round) : null,
+    round_ends_at: summary.round_ends_at,
+    live_matches: liveMatches,
+  }
+}
+
 router.get('/', requireAuth, async (c) => {
   const userId = c.get('userId')
   const startedAt = Date.now()
@@ -191,51 +229,22 @@ router.get('/', requireAuth, async (c) => {
     c.header('Cache-Control', 'private, no-store')
 
     const canSeePilot = hasPilotAccess(c.get('userEmail'), c.env)
-    const pilotFilter = canSeePilot ? '' : "AND (c.visibility IS NULL OR c.visibility != 'pilot')"
 
     const dbStartedAt = Date.now()
-    const groups = await db
-      .prepare(
-        `
-        SELECT
-          g.id,
-          g.name,
-          g.competition_id,
-          c.name AS competition_name,
-          c.type AS competition_type,
-          c.external_id AS competition_code,
-          ${competitionStatusSql('g', 'c')} AS competition_status,
-          g.owner_user_id AS admin_id,
-          g.invite_code,
-          g.created_at,
-          (
-            SELECT COUNT(*)
-            FROM group_members gm2
-            WHERE gm2.group_id = g.id
-          ) AS member_count,
-          COALESCE(l.total_points, 0) AS user_points,
-          COALESCE(
-            (
-              SELECT COUNT(*) + 1
-              FROM leaderboard l2
-              WHERE l2.group_id = g.id
-                AND l2.total_points > COALESCE(l.total_points, 0)
-            ),
-            1
-          ) AS user_position,
-          ${pendingPredictionsSql('g')} AS pending_predictions
-        FROM groups g
-        INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
-        LEFT JOIN competitions c ON g.competition_id = c.id
-        LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
-        WHERE g.deleted_at IS NULL
-          ${pilotFilter}
-        GROUP BY g.id
-        ORDER BY g.created_at DESC
-        `,
-      )
-      .bind(...pendingPredictionsBinds(new Date().toISOString(), userId), userId, userId)
-      .all<GroupRow & { user_position: number; user_points: number; pending_predictions: number }>()
+    const nowIso = new Date().toISOString()
+    const [groups, liveByCompetition] = await Promise.all([
+      db
+        .prepare(groupsListSql(canSeePilot))
+        .bind(...groupsListBinds(nowIso, userId))
+        .all<
+          GroupRow & {
+            user_position: number
+            user_points: number
+            pending_summary: string | null
+          }
+        >(),
+      fetchLiveMatchesByCompetition(db, nowIso),
+    ])
 
     const matchedInviteGroup = inviteCode
       ? (groups.results.find((group) => group.invite_code === inviteCode) ?? null)
@@ -248,7 +257,19 @@ router.get('/', requireAuth, async (c) => {
       .filter((group) => group.competition_status === 'finished')
       .map((group) => group.id)
 
-    const podiumByGroup = await fetchGroupsPodiums(db, finishedGroupIds, userId)
+    // Rodada e times do jogo de prazo de cada grupo em andamento, para a faixa
+    // "Próximo prazo" do painel. Roda junto com o pódio.
+    const summaries = new Map(
+      groups.results.map((group) => [group.id, parsePendingSummary(group.pending_summary)]),
+    )
+    const deadlineMatchIds = groups.results
+      .filter((group) => group.competition_status !== 'finished')
+      .flatMap((group) => summaries.get(group.id)?.deadline?.match_id ?? [])
+
+    const [podiumByGroup, deadlineMatches] = await Promise.all([
+      fetchGroupsPodiums(db, finishedGroupIds, userId),
+      fetchDeadlineMatches(db, deadlineMatchIds),
+    ])
 
     const dbMs = Date.now() - dbStartedAt
     const payload = {
@@ -265,7 +286,12 @@ router.get('/', requireAuth, async (c) => {
         member_count: group.member_count,
         user_position: group.user_position,
         user_points: group.user_points,
-        pending_predictions: group.pending_predictions,
+        ...roundStatusFields(
+          group.competition_status,
+          summaries.get(group.id)!,
+          deadlineMatches,
+          liveByCompetition.get(group.competition_id) ?? 0,
+        ),
         podium: podiumByGroup.get(group.id) ?? null,
       })),
       matched_invite_group_id: matchedInviteGroup?.id ?? null,

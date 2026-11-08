@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import { config } from '../../config'
@@ -300,5 +300,160 @@ describe('DashboardPage – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_grupo', {
       group_id: 'g1',
     })
+  })
+})
+
+describe('DashboardPage, próximo prazo e ordem por urgência', () => {
+  const deadline = {
+    match_id: 'm-r21',
+    start_time: '2026-11-14T21:30:00Z',
+    round: '21',
+    round_label: 'Rodada 21',
+    home_team: 'Chapecoense',
+    away_team: 'Vasco',
+  }
+
+  function ongoingGroup(id: string, name: string, fields: Record<string, unknown> = {}) {
+    return {
+      id,
+      name,
+      competition_id: 'bsa',
+      competition_name: 'Brasileirão Série A',
+      competition_status: 'ongoing',
+      is_admin: false,
+      created_at: '2026-01-01T00:00:00Z',
+      member_count: 6,
+      user_position: 1,
+      user_points: 99,
+      pending_predictions: 0,
+      next_deadline: null,
+      next_match_at: null,
+      current_round_label: null,
+      round_ends_at: null,
+      live_matches: 0,
+      ...fields,
+    }
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    mockTrackEvent.mockClear()
+    // Quinta, 12/11/2026, 12:00 em Brasília.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
+    Object.assign(config as { apiUrl: string; authUrl: string }, {
+      apiUrl: 'http://localhost:8787',
+      authUrl: 'http://localhost:8787',
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('abre com o grupo mais urgente no topo e a faixa levando à rodada do jogo', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockGroupsResponse([
+        ongoingGroup('champions', 'Champions', {
+          current_round_label: 'Fase de pontos',
+          next_match_at: '2026-11-12T20:00:00Z',
+          round_ends_at: '2026-11-26T20:00:00Z',
+        }),
+        ongoingGroup('borracharia', 'Borracharia', {
+          pending_predictions: 2,
+          next_deadline: { ...deadline, match_id: 'm-r35', start_time: '2026-11-18T22:00:00Z', round: '35', round_label: 'Rodada 35' },
+          next_match_at: '2026-11-14T21:30:00Z',
+        }),
+        ongoingGroup('copa', 'Copa BR', { live_matches: 1, next_match_at: '2026-11-19T22:00:00Z' }),
+        ongoingGroup('realidade', 'Realidade do BR', {
+          pending_predictions: 10,
+          next_deadline: deadline,
+          next_match_at: deadline.start_time,
+        }),
+        {
+          ...ongoingGroup('satin', 'Grupo do Satin'),
+          competition_status: 'finished',
+          podium: [{ position: 1, display: 'Ana', points: 92, is_you: false }],
+        },
+      ]),
+    )
+
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    const banner = await screen.findByRole('region', { name: 'Próximo prazo' })
+    // O status de todos os grupos vem no mesmo GET /groups.
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(within(banner).getByText('Chapecoense × Vasco fecha sáb, 14/11 às 18:30')).toBeInTheDocument()
+    expect(within(banner).getByText('Rodada 21 · 12 palpites pendentes em 2 grupos')).toBeInTheDocument()
+    const action = within(banner).getByRole('link', { name: 'Palpitar em Realidade do BR' })
+    expect(action).toHaveAttribute('href', '/grupos/realidade?rodada=21')
+
+    const ongoingSection = screen.getByRole('heading', { name: 'Em andamento' }).closest('section')!
+    expect(
+      within(ongoingSection)
+        .getAllByRole('heading', { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(['Realidade do BR', 'Borracharia', 'Copa BR', 'Champions'])
+    expect(within(ongoingSection).getByText('10 sem palpite · fecha sáb 18:30')).toBeInTheDocument()
+    expect(within(ongoingSection).getByText('1 jogo ao vivo')).toBeInTheDocument()
+    expect(
+      within(ongoingSection).getByText('Fase de pontos completa ✓ · próximo jogo hoje 17:00'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Grupo do Satin')).toBeInTheDocument()
+
+    await userEvent.click(action)
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_proximo_prazo', {
+      group_id: 'realidade',
+    })
+  })
+
+  it('diz até quando está tudo palpitado quando não há pendência', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockGroupsResponse([
+        ongoingGroup('a', 'Bolão A', {
+          current_round_label: 'Rodada 35',
+          next_match_at: '2026-11-14T21:30:00Z',
+          round_ends_at: '2026-11-20T00:30:00Z',
+        }),
+        ongoingGroup('b', 'Bolão B'),
+      ]),
+    )
+
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    const banner = await screen.findByRole('region', { name: 'Próximo prazo' })
+    expect(banner).toHaveTextContent('Tudo palpitado até qui, 19/11')
+    expect(within(banner).queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.getByText('Rodada 35 completa ✓ · próximo jogo sáb 18:30')).toBeInTheDocument()
+    expect(screen.getByText('Sem jogos marcados')).toBeInTheDocument()
+  })
+
+  it('não mostra a faixa sem grupo em andamento', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockGroupsResponse([
+        {
+          ...ongoingGroup('satin', 'Grupo do Satin'),
+          competition_status: 'finished',
+          podium: [{ position: 1, display: 'Ana', points: 92, is_you: false }],
+        },
+      ]),
+    )
+
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Grupo do Satin')
+    expect(screen.queryByRole('region', { name: 'Próximo prazo' })).not.toBeInTheDocument()
   })
 })
