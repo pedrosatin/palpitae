@@ -137,3 +137,31 @@ describe('RoundHeader – rodada com jogo adiado', () => {
     expect(screen.queryByText(/adiado/i)).not.toBeInTheDocument()
   })
 })
+
+describe('RoundHeader – rodada com rascunho não salvo', () => {
+  const baseProps = {
+    roundKeys: ['21', '35', '36'],
+    safeIndex: 1,
+    selectedRound: '35',
+    labelFor: (r: string) => `Rodada ${r}`,
+    onPrev: vi.fn(),
+    onNext: vi.fn(),
+    onSelect: vi.fn(),
+  }
+
+  it('marca a rodada com rascunho e junta o marcador ao de remarcado', () => {
+    render(
+      <RoundHeader
+        {...baseProps}
+        rescheduledByRound={new Map([['21', 1]])}
+        unsavedRounds={new Set(['21', '36'])}
+      />,
+    )
+
+    expect(
+      screen.getByRole('option', { name: 'Rodada 21 · 1 remarcado, não salvo' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Rodada 35' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Rodada 36 · não salvo' })).toBeInTheDocument()
+  })
+})

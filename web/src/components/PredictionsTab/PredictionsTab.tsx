@@ -12,7 +12,7 @@ import styles from './PredictionsTab.module.css'
 interface PredictionsTabProps {
   groupId: string
   competitionId: string
-  /** Liga a guarda dos rascunhos não salvos no navegador (chave por usuário e grupo). */
+  /** Liga a guarda dos rascunhos não salvos no navegador, numa chave por usuário e grupo. */
   userId?: string
   /** Group's points for an exact score. When 0, matches use the 1X2 button UI. */
   pointsExact?: number
@@ -74,8 +74,8 @@ export default function PredictionsTab({
   pointsExact = 3,
 }: PredictionsTabProps) {
   const {
-    drafts,
     unsavedDrafts,
+    unsavedRounds,
     matches,
     predictions,
     loading,
@@ -181,6 +181,7 @@ export default function PredictionsTab({
         onNext={next}
         postponedByRound={postponedByRound}
         rescheduledByRound={rescheduledByRound}
+        unsavedRounds={unsavedRounds}
         onSelect={(round) => {
           trackEvent('change_predictions_rodada', { round })
           setRoundIndex(roundKeys.indexOf(round))
@@ -240,8 +241,12 @@ export default function PredictionsTab({
                 prediction={predictions.get(match.id)}
                 draft={unsavedDrafts.drafts.get(match.id)}
                 penaltyDraft={unsavedDrafts.penaltyDrafts.get(match.id)}
-                leg1Prediction={leg1Context(match, predictions, roundMatches, drafts).prediction}
-                leg1Pending={leg1Context(match, predictions, roundMatches, drafts).pending}
+                leg1Prediction={
+                  leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts).prediction
+                }
+                leg1Pending={
+                  leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts).pending
+                }
                 groupId={groupId}
                 outcomeOnly={pointsExact === 0}
                 onSaved={handleSaved}

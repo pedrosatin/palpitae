@@ -4,12 +4,10 @@ import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { predictedClassified } from '../../lib/predictedTie'
-import { collectRoundDrafts } from '../../lib/predictionDrafts'
+import { collectRoundDrafts, type UnsavedDrafts } from '../../lib/predictionDrafts'
 import type { Match, Prediction } from '../MatchCard'
-import type { usePredictionDrafts } from './usePredictionDrafts'
 
 type PredictionMap = Map<string, Prediction>
-type PredictionDraftState = ReturnType<typeof usePredictionDrafts>
 
 function applyPredictionUpdate(
   prev: PredictionMap,
@@ -112,7 +110,7 @@ export function usePredictionsBulkSave(
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
   selectedRound: string | undefined,
   allMatches: Match[],
-  { drafts, penaltyDrafts }: Pick<PredictionDraftState, 'drafts' | 'penaltyDrafts'>,
+  { drafts, penaltyDrafts }: UnsavedDrafts,
 ) {
   const {
     savingAll,

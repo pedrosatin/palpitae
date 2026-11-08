@@ -73,8 +73,8 @@ function useMatchDraft(
   const persistedHome = prediction?.predicted_home_score
   const persistedAway = prediction?.predicted_away_score
   const persistedPenalty = prediction?.predicted_penalty_winner ?? null
-  // Só reage a mudança do palpite salvo: na montagem, o valor inicial (talvez
-  // um rascunho restaurado) já está certo e não pode ser sobrescrito.
+  // Só reage quando o palpite salvo muda. Na montagem, o valor inicial pode ser
+  // um rascunho restaurado, e o efeito não deve sobrescrevê-lo.
   const persistedKey = `${persistedHome}:${persistedAway}:${persistedPenalty}`
   const lastPersistedKey = useRef(persistedKey)
   useEffect(() => {
@@ -192,7 +192,10 @@ function matchControls({
       ? Number(home) !== prediction.predicted_home_score ||
         Number(away) !== prediction.predicted_away_score
       : true
-  const penaltyChanged = (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
+  // Sem a escolha na tela, o salvamento manda pênalti nulo. Um vencedor escolhido
+  // antes de o empate se desfazer não conta como mudança.
+  const penaltyChanged =
+    showPenaltyPicker && (penaltyWinner ?? null) !== (prediction?.predicted_penalty_winner ?? null)
   const hasChanged = scoreChanged || penaltyChanged
   const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
   const canSave =

@@ -5,7 +5,7 @@ import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
-import { changedPredictionIds, isMatchLocked } from '../../lib/predictionDrafts'
+import { isMatchLocked } from '../../lib/predictionDrafts'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionDrafts } from './usePredictionDrafts'
@@ -122,7 +122,6 @@ function usePredictionsImport(
   setImportCompleted: Dispatch<SetStateAction<boolean>>,
   importSources: ImportSources,
   setImportSources: Dispatch<SetStateAction<ImportSources>>,
-  discardDrafts: (matchIds: string[]) => void,
 ) {
   const scope = useRef({ active: true })
   const [importExpanded, setImportExpanded] = useState(false)
@@ -227,9 +226,8 @@ function usePredictionsImport(
         const map = new Map<string, Prediction>()
         for (const p of predsData.predictions) map.set(p.match_id, p)
         if (current.active) {
-          // O importado substitui o rascunho desses jogos: sem isso, o rascunho
-          // velho seguiria no contador e voltaria por cima ao recarregar.
-          discardDrafts(changedPredictionIds(predictions, map))
+          // O importado muda o palpite salvo, e `usePredictionDrafts` descarta o
+          // rascunho digitado sobre o valor anterior.
           setPredictions(map)
           if (predsData.import_sources) setImportSources(predsData.import_sources)
         }
@@ -278,12 +276,8 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setImportSources,
   } = usePredictionsFetch(groupId, competitionId)
 
-  const draftState = usePredictionDrafts(
-    userId ? draftStorageKey(userId, groupId) : null,
-    matches,
-    predictions,
-  )
-  const { drafts, unsavedDrafts, handleDraftChange, handlePenaltyDraftChange } = draftState
+  const { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange } =
+    usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions)
 
   const {
     importExpanded,
@@ -306,7 +300,6 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setImportCompleted,
     importSources,
     setImportSources,
-    draftState.discardDrafts,
   )
 
   const {
@@ -345,13 +338,13 @@ export function usePredictionsTab(groupId: string, competitionId: string, userId
     setPredictions,
     selectedRound,
     matches,
-    draftState,
+    unsavedDrafts,
   )
 
   return {
     importCompleted,
-    drafts,
     unsavedDrafts,
+    unsavedRounds,
     matches,
     predictions,
     loading,

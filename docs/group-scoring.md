@@ -128,6 +128,15 @@ banco em `scoreMatch`.
 - As abas Palpitar e Grupo mostram o classificado previsto e somam os três tipos de
   ponto. O detalhe de palpites aberto pelo ranking também inclui os bônus no total.
 
+Os rascunhos de placar e de pênalti ainda não salvos ficam no `localStorage`, na chave
+`palpitae:rascunho-palpite:<userId>:<groupId>`, e voltam ao reabrir a aba Palpitar. Cada
+entrada guarda o palpite salvo no momento da digitação e a hora da edição. A entrada some
+depois de 7 dias, quando o jogo trava ou quando o palpite salvo muda, seja pelo card, pelo
+"Salvar todos", por importação ou em outro aparelho. O logout explícito e o "Sair de todos
+os dispositivos" apagam todas as chaves desse prefixo, e a sessão expirada as mantém. Com
+rascunho pendente, o seletor marca a rodada com "· não salvo", e fechar ou recarregar a
+página pede confirmação do navegador.
+
 ## Bônus de classificado (`points_classified`)
 
 O classificado é derivado dos placares previstos, sem palpite adicional. Na volta,

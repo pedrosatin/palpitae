@@ -81,7 +81,7 @@ describe('Barra de importação', () => {
     await act(() => result.current.handleImport())
     expect(result.current.importCompleted).toBe(true)
     expect(result.current.predictions.size).toBe(0)
-    expect(result.current.drafts.get('m')).toEqual({ home: '4', away: '2' })
+    expect(result.current.unsavedDrafts.drafts.get('m')).toEqual({ home: '4', away: '2' })
     expect(result.current.importFeedback?.message).toContain(
       'Não foi possível atualizar os palpites na tela',
     )
