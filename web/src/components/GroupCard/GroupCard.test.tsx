@@ -241,9 +241,7 @@ describe('GroupCard', () => {
 
       await userEvent.click(shareBtn)
 
-      expect(mockTrackEvent).toHaveBeenCalledWith('click_groupcard_compartilhar', {
-        group_id: 'group-1',
-      })
+      expect(mockTrackEvent).toHaveBeenCalledWith('click_groupcard_compartilhar')
       // Modal opened.
       expect(screen.getByText('Compartilhar resultado', { selector: 'h2' })).toBeInTheDocument()
       // Opening the card must not fire when clicking share.

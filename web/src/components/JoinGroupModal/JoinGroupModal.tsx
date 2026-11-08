@@ -73,7 +73,7 @@ export default function JoinGroupModal({
       // Veio pelo link quando o código enviado é o mesmo que chegou na URL;
       // se o usuário apagou e digitou outro, conta como código.
       const fromLink = initialCode !== '' && parseInviteCode(initialCode) === invite_code
-      trackJoinGroup(fromLink ? 'convite_link' : 'codigo', data.group!.id)
+      trackJoinGroup(fromLink ? 'convite_link' : 'codigo')
       setJoined(data.group!)
       onJoined(data.group!)
     } catch {
