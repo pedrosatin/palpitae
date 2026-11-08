@@ -49,10 +49,29 @@ interface PickRow {
 }
 
 /**
- * Linhas do card. Com o jogo travado (ou num grupo "Sempre visível") o card lista
- * o elenco inteiro, e quem não palpitou entra como "sem palpite". Num grupo com
- * palpites ocultos antes do início, só os palpites que a API devolveu (o do próprio
- * usuário): listar os ausentes ali contaria quem já palpitou antes da hora.
+ * Diz se a resposta da API é de depois do travamento do jogo. A API calcula `locked`
+ * com o relógio do servidor, e todos os palpites de um jogo vêm com o mesmo valor.
+ * Um palpite com `locked` igual a 0 mostra que a resposta é de antes do travamento,
+ * mesmo que o relógio local já tenha passado do horário de início. Sem palpite na
+ * resposta, valem o status e o `locked_at` do jogo.
+ */
+function serverConfirmsLock(match: Match, memberPicks: MemberPrediction[]): boolean {
+  if (memberPicks.some((p) => p.locked !== 1)) return false
+  return (
+    memberPicks.length > 0 ||
+    match.status === 'live' ||
+    match.status === 'finished' ||
+    Boolean(match.locked_at)
+  )
+}
+
+/**
+ * Linhas do card. Com o jogo travado, ou num grupo "Sempre visível", o card lista
+ * todos os membros, e quem não palpitou entra como "sem palpite". Num grupo com
+ * palpites ocultos, enquanto o servidor não confirma o travamento, o card mostra só
+ * o que a API devolveu, que é o palpite do próprio usuário. A API esconde os outros
+ * palpites até lá, e listar todos os membros marcaria como "sem palpite" quem já
+ * palpitou.
  */
 function buildPickRows(
   memberPicks: MemberPrediction[],
@@ -67,7 +86,9 @@ function buildPickRows(
     const pick = byUser.get(m.user_id) ?? null
     return { user_id: m.user_id, user_display: pick?.user_display ?? m.display, pick }
   })
-  // Palpite de quem não está mais no elenco devolvido (corrida com saída do grupo).
+  // A API lê os membros antes dos palpites e só devolve palpite de quem ainda é
+  // membro na segunda leitura. Um palpite de fora da lista só chega se a pessoa
+  // voltou ao grupo entre as duas leituras, porque o palpite de quem sai fica no banco.
   const rostered = new Set(members.map((m) => m.user_id))
   for (const p of memberPicks) {
     if (!rostered.has(p.user_id)) {
@@ -91,10 +112,11 @@ function MatchPicksCard({
   hidden: boolean
 }) {
   const isFinished = match.status === 'finished'
-  // `locked` vem da API (relógio do servidor): um palpite alheio travado já
-  // prova que o jogo começou, mesmo com o relógio local atrasado.
-  const isLocked = isMatchLocked(match, undefined) || memberPicks.some((p) => p.locked === 1)
-  const rows = buildPickRows(memberPicks, members, isLocked || !hidden)
+  const serverLocked = serverConfirmsLock(match, memberPicks)
+  const rows = buildPickRows(memberPicks, members, serverLocked || !hidden)
+  // O aviso usa o relógio local e some no horário de início, mesmo que a resposta
+  // da API ainda seja de antes do travamento. A lista de membros não usa esse relógio.
+  const showHiddenNotice = hidden && !serverLocked && !isMatchLocked(match, undefined)
 
   return (
     <div className={styles.matchCard}>
@@ -134,10 +156,7 @@ function MatchPicksCard({
               ? p.points_awarded + (p.penalty_points ?? 0) + (p.classified_points ?? 0)
               : 0
             return (
-              <li
-                key={user_id}
-                className={`${styles.pickRow} ${isSelf ? styles.pickRowSelf : ''}`}
-              >
+              <li key={user_id} className={`${styles.pickRow} ${isSelf ? styles.pickRowSelf : ''}`}>
                 <span className={styles.pickName}>
                   {user_display}
                   {isSelf && <span className={styles.youTag}> (você)</span>}
@@ -160,12 +179,10 @@ function MatchPicksCard({
         </ul>
       ) : (
         <p className={styles.hidden}>
-          {isLocked || !hidden
-            ? '📭 Nenhum palpite foi feito para este jogo.'
-            : '🔒 Os palpites dos outros membros aparecem quando o jogo começar.'}
+          🔒 Os palpites dos outros membros aparecem quando o jogo começar.
         </p>
       )}
-      {rows.length > 0 && hidden && !isLocked && (
+      {rows.length > 0 && showHiddenNotice && (
         <p className={styles.hidden}>
           Os palpites dos outros membros aparecem quando o jogo começar.
         </p>
@@ -179,9 +196,7 @@ function PickScore({ match, pick: p }: { match: Match; pick: MemberPrediction })
   // penalty winner is what tells two equal scores apart.
   const showPenaltyPick = Boolean(match.decides_on_penalties) && p.predicted_penalty_winner != null
   const penaltyTeam =
-    p.predicted_penalty_winner === 'home'
-      ? match.home_team_short_name
-      : match.away_team_short_name
+    p.predicted_penalty_winner === 'home' ? match.home_team_short_name : match.away_team_short_name
   return (
     <span className={styles.pickScore}>
       {p.predicted_home_score} × {p.predicted_away_score}

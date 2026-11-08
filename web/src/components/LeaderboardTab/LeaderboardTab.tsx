@@ -48,21 +48,23 @@ export default function LeaderboardTab({ groupId, currentUserId }: LeaderboardTa
             <tr>
               <th className={styles.thPos}>#</th>
               <th className={styles.thName}>Jogador</th>
-              <th className={styles.thPts} aria-label="Pontos">
+              <th className={styles.thPts}>
                 <span className={styles.labelLong} aria-hidden="true">
                   Pontos
                 </span>
                 <abbr className={styles.labelShort} title="Pontos" aria-hidden="true">
                   Pts
                 </abbr>
+                <span className={styles.srOnly}>Pontos</span>
               </th>
-              <th className={styles.thExact} aria-label="Placares exatos">
+              <th className={styles.thExact}>
                 <span className={styles.labelLong} aria-hidden="true">
                   Exatos
                 </span>
                 <abbr className={styles.labelShort} title="Placares exatos" aria-hidden="true">
                   Ex.
                 </abbr>
+                <span className={styles.srOnly}>Placares exatos</span>
               </th>
             </tr>
           </thead>

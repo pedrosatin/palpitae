@@ -4,8 +4,9 @@
 
 .table {
   width: 100%;
-  /* Larguras vêm do cabeçalho: as colunas numéricas não crescem e o nome
-     absorve o resto, com reticências, em vez de empurrar a tabela para fora. */
+  /* Com table-layout fixed, o cabeçalho define as larguras. As colunas numéricas
+     não crescem, e a do nome fica com o espaço restante e corta o nome com
+     reticências em vez de alargar a tabela. */
   table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
@@ -39,6 +40,20 @@
 .labelShort {
   display: none;
   text-decoration: none;
+}
+
+/* Nome completo da coluna para leitor de tela. Os rótulos visíveis ficam com
+   aria-hidden porque a forma curta sozinha seria lida como "Pts" ou "Ex.". */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .row,
@@ -152,8 +167,8 @@
   color: var(--color-text-secondary);
 }
 
-/* Mobile (360–390 px): rótulos curtos, colunas numéricas estreitas e badges
-   menores abaixo do nome, para a tabela caber sem rolagem nem coluna cortada. */
+/* Até 480 px, a tabela usa rótulos curtos, colunas numéricas estreitas e badges
+   menores abaixo do nome, para caber sem rolagem horizontal. */
 @media (max-width: 480px) {
   .table th,
   .table td {

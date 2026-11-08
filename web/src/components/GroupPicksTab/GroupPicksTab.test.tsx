@@ -265,7 +265,7 @@ describe('GroupPicksTab', () => {
   })
 })
 
-describe('GroupPicksTab – membros sem palpite', () => {
+describe('GroupPicksTab member list', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
@@ -290,7 +290,7 @@ describe('GroupPicksTab – membros sem palpite', () => {
     }
   }
 
-  it('lists every member in a finished match, with 0 pt for who did not predict', async () => {
+  it('lists every member in a finished match, with 0 pt for members who did not predict', async () => {
     const matches = [
       makeMatch({ id: 'm1', round: '1', status: 'finished', home_score: 1, away_score: 0 }),
     ]
@@ -337,7 +337,7 @@ describe('GroupPicksTab – membros sem palpite', () => {
     expect(screen.queryByText(/\d+ pt/)).not.toBeInTheDocument()
   })
 
-  it('keeps hidden picks hidden before kickoff: no roster, only the own pick', async () => {
+  it("shows only the user's own pick before kickoff in a hidden group", async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches, {
       self_user_id: 'user-1',
@@ -358,7 +358,47 @@ describe('GroupPicksTab – membros sem palpite', () => {
     ).toBeInTheDocument()
   })
 
-  it('lists the whole roster before kickoff in an always-visible group', async () => {
+  it("shows only the user's own pick when the local clock is past kickoff but the API answered before the lock", async () => {
+    const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString()
+    const matches = [
+      makeMatch({ id: 'm1', round: '1', status: 'scheduled', start_time: oneMinuteAgo }),
+    ]
+    mockFetch(matches, {
+      self_user_id: 'user-1',
+      members: roster,
+      predictions: [pick('user-1', 'Pedro', { locked: 0 })],
+    })
+
+    render(<GroupPicksTab groupId="g1" competitionId="c1" predictionsVisibility="hidden" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Pedro')).toBeInTheDocument()
+    })
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.queryByText('Isabelly')).not.toBeInTheDocument()
+    expect(screen.queryByText('sem palpite')).not.toBeInTheDocument()
+    expect(screen.queryByText(/aparecem quando o jogo começar/i)).not.toBeInTheDocument()
+  })
+
+  it('lists every member when the API already locked the picks but the local clock is behind', async () => {
+    const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
+    mockFetch(matches, {
+      self_user_id: 'user-1',
+      members: roster,
+      predictions: [pick('user-2', 'Isabelly', { locked: 1 })],
+    })
+
+    render(<GroupPicksTab groupId="g1" competitionId="c1" predictionsVisibility="hidden" />)
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('listitem')).toHaveLength(4)
+    })
+    expect(screen.getByText('Isabelly').closest('li')).toHaveTextContent('1 × 0')
+    expect(screen.getAllByText('sem palpite')).toHaveLength(3)
+    expect(screen.queryByText(/aparecem quando o jogo começar/i)).not.toBeInTheDocument()
+  })
+
+  it('lists every member before kickoff in an always-visible group', async () => {
     const matches = [makeMatch({ id: 'm1', round: '1', status: 'scheduled' })]
     mockFetch(matches, {
       self_user_id: 'user-1',

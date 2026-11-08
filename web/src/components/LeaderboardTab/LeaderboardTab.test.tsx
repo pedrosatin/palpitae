@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
@@ -47,21 +47,23 @@ function mockFetch() {
   })
 }
 
-describe('LeaderboardTab – cabeçalho e badges', () => {
+describe('LeaderboardTab header and badges', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('names the numeric columns accessibly, with short labels for mobile', async () => {
+  it('names the numeric columns in full for screen readers, with short visible labels', async () => {
     mockFetch()
     render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     const exact = screen.getByRole('columnheader', { name: 'Placares exatos' })
-    expect(exact).toHaveTextContent('Ex.')
-    expect(exact.querySelector('abbr')).toHaveAttribute('title', 'Placares exatos')
+    expect(exact).not.toHaveAttribute('aria-label')
+    expect(within(exact).getByText('Ex.')).toHaveAttribute('aria-hidden', 'true')
+    expect(within(exact).getByText('Placares exatos')).not.toHaveAttribute('aria-hidden')
     const points = screen.getByRole('columnheader', { name: 'Pontos' })
-    expect(points.querySelector('abbr')).toHaveTextContent('Pts')
+    expect(points).not.toHaveAttribute('aria-label')
+    expect(within(points).getByText('Pts')).toHaveAttribute('aria-hidden', 'true')
   })
 
   it('groups the admin and você badges under the member name', async () => {
