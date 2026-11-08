@@ -27,6 +27,12 @@ function serveSave({ saved = ['m1'], failed = false } = {}) {
   })
 }
 
+/** Escolhe 1×0 no único jogo. O card começa vazio e só salva com os dois placares. */
+async function pickScore() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Aumentar placar Brasil' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Diminuir placar Argentina' }))
+}
+
 describe('feedback after confirmed prediction persistence', () => {
   beforeEach(() => {
     Object.assign(config, { tbbcSiteKey: 'k_test' })
@@ -39,7 +45,8 @@ describe('feedback after confirmed prediction persistence', () => {
   it('offers feedback after saving an individual prediction, without contacting TBBC yet', async () => {
     const fetch = serveSave()
     render(<PredictionsTab groupId="private-group" competitionId="c1" />)
-    const save = await screen.findByRole('button', { name: /^Salvar$/i })
+    await pickScore()
+    const save = screen.getByRole('button', { name: /^Salvar$/i })
     expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
     await userEvent.click(save)
     expect(await screen.findByText('Foi fácil salvar seus palpites?')).toBeVisible()
@@ -51,7 +58,8 @@ describe('feedback after confirmed prediction persistence', () => {
   it('does not offer feedback when saving an individual prediction fails', async () => {
     serveSave({ failed: true })
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
-    await userEvent.click(await screen.findByRole('button', { name: /^Salvar$/i }))
+    await pickScore()
+    await userEvent.click(screen.getByRole('button', { name: /^Salvar$/i }))
     await screen.findByText('Save failed')
     expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
   })
@@ -63,7 +71,7 @@ describe('feedback after confirmed prediction persistence', () => {
   ])('uses actual saved IDs for bulk %s', async (_name, saved, show) => {
     serveSave({ saved })
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
-    await userEvent.click(await screen.findByRole('button', { name: 'Aumentar placar Brasil' }))
+    await pickScore()
     const saveAll = await screen.findByRole('button', { name: /Salvar todos \(1\)/i })
     await userEvent.click(saveAll)
     await screen.findByRole('button', { name: 'Tudo salvo!' })
@@ -74,7 +82,7 @@ describe('feedback after confirmed prediction persistence', () => {
   it('does not offer feedback when a bulk save fails', async () => {
     serveSave({ failed: true })
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
-    await userEvent.click(await screen.findByRole('button', { name: 'Aumentar placar Brasil' }))
+    await pickScore()
     await userEvent.click(await screen.findByRole('button', { name: /Salvar todos \(1\)/i }))
     await screen.findByText('Save failed')
     expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
@@ -84,7 +92,8 @@ describe('feedback after confirmed prediction persistence', () => {
     Object.assign(config, { tbbcSiteKey: '' })
     serveSave()
     render(<PredictionsTab groupId="g1" competitionId="c1" />)
-    await userEvent.click(await screen.findByRole('button', { name: /^Salvar$/i }))
+    await pickScore()
+    await userEvent.click(screen.getByRole('button', { name: /^Salvar$/i }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Salvo/i })).toBeVisible())
     expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
   })

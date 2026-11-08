@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import MatchCard, { type Match, type Prediction, OUTCOMES } from './MatchCard'
@@ -55,8 +56,8 @@ function renderCard(match: Match, prediction: Prediction | undefined, onSaved = 
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
-describe('MatchCard – hasChanged / canSave', () => {
-  it('enables save immediately at 0x0 initial state when no prediction exists', () => {
+describe('MatchCard – estado do palpite', () => {
+  it('jogo sem palpite começa com os campos vazios, o rótulo "sem palpite" e o salvar desabilitado', () => {
     renderCard(makeMatch(), undefined)
 
     const homeInput = screen.getByRole('spinbutton', {
@@ -65,36 +66,176 @@ describe('MatchCard – hasChanged / canSave', () => {
     const awayInput = screen.getByRole('spinbutton', {
       name: /Placar Argentina/i,
     }) as HTMLInputElement
-    const saveBtn = screen.getByRole('button', { name: /Salvar/i })
 
-    expect(homeInput.value).toBe('0')
-    expect(awayInput.value).toBe('0')
-    expect(saveBtn).toBeEnabled()
+    expect(homeInput.value).toBe('')
+    expect(awayInput.value).toBe('')
+    expect(homeInput).toHaveAttribute('placeholder', '–')
+    expect(screen.getByText('sem palpite')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled()
   })
 
-  it('keeps save enabled after the user changes values when no prediction exists', async () => {
+  it('o leitor de tela ouve o jogo e o estado juntos', () => {
+    renderCard(makeMatch(), undefined)
+
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, sem palpite' }),
+    ).toBeInTheDocument()
+  })
+
+  it('jogo sem palpite libera o salvar só com os dois placares escolhidos', async () => {
     renderCard(makeMatch(), undefined)
 
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeDisabled()
 
-    expect(screen.getByRole('button', { name: /Salvar/i })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
+    expect(screen.getByRole('button', { name: 'Salvar' })).toBeEnabled()
   })
 
-  it('disables save when prediction matches the current input (hasChanged = false)', () => {
-    // prediction is 1×2; initial inputs will be '1' and '2' → hasChanged = false
+  it('palpite salvo mostra "Salvo" com a marca, sem `disabled` e sem o botão "Atualizar"', () => {
+    // Palpite 1×2 e campos 1×2: nada mudou.
     renderCard(makeMatch(), makePrediction())
 
-    // button shows "Atualizar" and is disabled because values haven't changed
-    expect(screen.getByRole('button', { name: /Atualizar/i })).toBeDisabled()
+    const done = screen.getByRole('button', { name: 'Salvo' })
+    expect(done).not.toBeDisabled()
+    expect(done).toHaveAttribute('aria-disabled', 'true')
+    expect(done.querySelector('svg')).not.toBeNull()
+    expect(screen.getByText('palpite salvo')).toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, palpite salvo' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Atualizar' })).not.toBeInTheDocument()
   })
 
-  it('enables save when the user changes at least one field (hasChanged = true)', async () => {
+  it('clicar em "Salvo" não envia nada', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
     renderCard(makeMatch(), makePrediction())
 
-    // Increase home score from 1 to 2 — now differs from prediction (1×2)
+    await userEvent.click(screen.getByRole('button', { name: 'Salvo' }))
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  it('o botão não recebe `disabled` do clique ao "Salvo" e segue com o foco', async () => {
+    let respond: (res: Response) => void = () => {}
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          respond = resolve
+        }),
+    )
+    const match = makeMatch()
+    // O pai troca o palpite ao salvar, como a aba Palpitar.
+    function Parent() {
+      const [prediction, setPrediction] = useState<Prediction | undefined>(undefined)
+      return (
+        <MatchCard
+          match={match}
+          prediction={prediction}
+          groupId="group-1"
+          onSaved={(_id, home, away) =>
+            setPrediction(
+              makePrediction({ predicted_home_score: home, predicted_away_score: away }),
+            )
+          }
+        />
+      )
+    }
+    const user = userEvent.setup()
+    render(<Parent />)
+    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await user.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
+
+    const button = screen.getByRole('button', { name: 'Salvar' })
+    const changes: MutationRecord[] = []
+    const observer = new MutationObserver((records) => changes.push(...records))
+    observer.observe(button, { attributes: true, attributeFilter: ['disabled'] })
+
+    await user.click(button)
+    expect(button).toHaveTextContent('...')
+    expect(button).not.toBeDisabled()
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    // Outro clique durante o envio não reenvia.
+    await user.click(button)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    expect(await screen.findByRole('button', { name: 'Salvo' })).toBe(button)
+    changes.push(...observer.takeRecords())
+    observer.disconnect()
+
+    expect(changes).toHaveLength(0)
+    expect(button).not.toBeDisabled()
+    expect(document.activeElement).toBe(button)
+    fetchMock.mockRestore()
+  })
+
+  it('alterar o placar salvo muda o rótulo para "alterado, não salvo" e o botão para "Atualizar"', async () => {
+    renderCard(makeMatch(), makePrediction())
+
+    // Palpite 1×2. O + leva o mandante a 2.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
-    expect(screen.getByRole('button', { name: /Atualizar/i })).toBeEnabled()
+    expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
+    expect(screen.queryByText('palpite salvo')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Atualizar' })).toBeEnabled()
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, alterado, não salvo' }),
+    ).toBeInTheDocument()
+  })
+
+  it('voltar ao placar salvo mostra "Salvo" de novo', async () => {
+    renderCard(makeMatch(), makePrediction())
+
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
+
+    expect(screen.getByText('palpite salvo')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salvo' })).toBeInTheDocument()
+  })
+
+  it('apagar um campo do palpite salvo conta como alteração e trava o salvar', async () => {
+    renderCard(makeMatch(), makePrediction())
+
+    await userEvent.clear(screen.getByRole('spinbutton', { name: 'Placar Brasil' }))
+
+    expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Atualizar' })).toBeDisabled()
+  })
+
+  it('jogo bloqueado não mostra o estado de jogo aberto', () => {
+    renderCard(makeMatch(), makePrediction({ locked: 1 }))
+
+    expect(screen.queryByText('palpite salvo')).not.toBeInTheDocument()
+    expect(screen.queryByText('sem palpite')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, bloqueado' }),
+    ).toBeInTheDocument()
+  })
+
+  it('modo só vencedor também mostra o estado', () => {
+    render(
+      <MatchCard
+        match={makeMatch()}
+        prediction={undefined}
+        groupId="group-1"
+        outcomeOnly
+        onSaved={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('sem palpite')).toBeInTheDocument()
+  })
+})
+
+describe('MatchCard – data do jogo', () => {
+  it('mostra o dia da semana abreviado, a data e a hora de Brasília', () => {
+    // 14/11/2026 21:30 UTC é sábado, 18:30 em Brasília.
+    renderCard(makeMatch({ start_time: '2026-11-14T21:30:00Z' }), undefined)
+
+    expect(screen.getByText('sáb, 14/11 · 18:30')).toBeInTheDocument()
   })
 })
 
@@ -122,18 +263,20 @@ describe('MatchCard – Stepper "+"', () => {
     expect(input.value).toBe('99')
   })
 
-  it('treats an empty field as 0 when "+" is clicked', async () => {
-    // No prediction → fields start at 0
+  it('leva um campo vazio a 1 quando "+" é clicado', async () => {
+    // Sem palpite, os campos começam vazios.
     renderCard(makeMatch(), undefined)
 
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
     }) as HTMLInputElement
-    expect(input.value).toBe('0')
+    expect(input.value).toBe('')
 
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
     expect(input.value).toBe('1')
+    // O outro campo continua vazio.
+    expect(screen.getByRole('spinbutton', { name: /Placar Argentina/i })).toHaveValue(null)
   })
 })
 
@@ -160,13 +303,13 @@ describe('MatchCard – Stepper "−"', () => {
     expect(input.value).toBe('0')
   })
 
-  it('treats an empty field as 0 when "−" is clicked', async () => {
+  it('leva um campo vazio a 0 quando "−" é clicado', async () => {
     renderCard(makeMatch(), undefined)
 
     const input = screen.getByRole('spinbutton', {
       name: /Placar Brasil/i,
     }) as HTMLInputElement
-    expect(input.value).toBe('0')
+    expect(input.value).toBe('')
 
     await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
 
@@ -190,6 +333,7 @@ describe('MatchCard – analytics', () => {
     renderCard(match, undefined)
 
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
     expect(mockTrackEvent).toHaveBeenCalledWith('click_matchcard_salvar', {
@@ -337,16 +481,20 @@ describe('MatchCard – penalty shootout pick', () => {
     // The picker is collapsed (not rendered) unless the current score is a draw,
     // so a decisive prediction keeps the card the same height as a locked card.
     const label = 'Quem vence nos pênaltis?'
-    // Default 0-0 is a draw → shown.
-    expect(screen.getByRole('radiogroup', { name: label })).toBeInTheDocument()
+    // Campos vazios não são empate.
+    expect(screen.queryByRole('radiogroup', { name: label })).not.toBeInTheDocument()
 
-    // 0-0 → 1-0 decisive → collapsed.
+    // 1 e campo vazio, placar ainda incompleto.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     expect(screen.queryByRole('radiogroup', { name: label })).not.toBeInTheDocument()
 
-    // 1-0 → 1-1 draw again → shown.
+    // 1-1 draw → shown.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
     expect(screen.getByRole('radiogroup', { name: label })).toBeInTheDocument()
+
+    // 1-1 → 2-1 decisive → collapsed.
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    expect(screen.queryByRole('radiogroup', { name: label })).not.toBeInTheDocument()
   })
 
   it('blocks save on a draw until a penalty winner is chosen', async () => {
@@ -497,6 +645,7 @@ describe('MatchCard – Error state', () => {
     renderCard(makeMatch(), undefined)
 
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
     expect(await screen.findByText('Database timeout')).toBeInTheDocument()
@@ -511,6 +660,7 @@ describe('MatchCard – Error state', () => {
     renderCard(makeMatch(), undefined)
 
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
     await userEvent.click(screen.getByRole('button', { name: /Salvar/i }))
 
     expect(await screen.findByText('Erro ao salvar palpite')).toBeInTheDocument()
@@ -605,7 +755,14 @@ describe('MatchCard agregado de ida e volta', () => {
       />,
     )
     expect(screen.getByRole('radiogroup', { name: 'Quem vence nos pênaltis?' })).toBeInTheDocument()
+    // Falta o vencedor nos pênaltis, então o botão segue como ação desabilitada.
     expect(screen.getByRole('button', { name: 'Atualizar' })).toBeDisabled()
+    // O palpite salvo ficou incompleto. O selo e o anúncio dizem o que falta.
+    expect(screen.getByText('falta pênalti')).toBeInTheDocument()
+    expect(screen.queryByText('palpite salvo')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: 'Brasil contra Argentina, falta pênalti' }),
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('radio', { name: 'BRA' }))
     await user.click(screen.getByRole('button', { name: 'Atualizar' }))
     expect(onSaved).toHaveBeenCalledWith('match-1', 2, 0, 'home')
@@ -614,7 +771,7 @@ describe('MatchCard agregado de ida e volta', () => {
     })
     fetchMock.mockRestore()
   })
-  it('não oferece pênaltis para 0x0 na volta quando a ida foi 2x0', () => {
+  it('não oferece pênaltis para 0x0 na volta quando a ida foi 2x0', async () => {
     render(
       <MatchCard
         match={makeMatch({ tie_role: 'leg2', decides_on_penalties: true })}
@@ -624,6 +781,8 @@ describe('MatchCard agregado de ida e volta', () => {
         onSaved={vi.fn()}
       />,
     )
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
     expect(
       screen.queryByRole('radiogroup', { name: 'Quem vence nos pênaltis?' }),
     ).not.toBeInTheDocument()

@@ -217,7 +217,9 @@ describe('PredictionsTab – rascunho guardado no navegador', () => {
     expect(await screen.findByRole('option', { name: 'Rodada 2 · não salvo' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Rodada 1' })).toBeInTheDocument()
 
+    // Jogo sem palpite começa vazio. O rascunho conta com os dois placares escolhidos.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
     expect(screen.getByRole('option', { name: 'Rodada 1 · não salvo' })).toBeInTheDocument()
   })
 
@@ -246,6 +248,7 @@ describe('PredictionsTab – rascunho guardado no navegador', () => {
     renderTab()
     await screen.findByRole('button', { name: /^Salvar todos$/i })
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
     expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
     expect(fireBeforeUnload()).toBe(true)
   })
@@ -296,9 +299,11 @@ describe('PredictionsTab – rascunho de pênalti na volta', () => {
     await waitFor(() => expect(storedIds()).toEqual({ scores: ['ida'], penalties: [] }))
     expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
 
-    await user.click(screen.getAllByRole('button', { name: 'Atualizar' })[0])
+    // Só a ida mudou. A volta segue salva, sem a escolha dos pênaltis na tela.
+    expect(screen.getAllByRole('button', { name: 'Atualizar' })).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: 'Atualizar' }))
     await waitFor(() => expect(localStorage.getItem(KEY)).toBeNull())
-    expect(screen.getAllByRole('button', { name: 'Atualizar' }).at(-1)).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: 'Salvo' })).toHaveLength(2)
     expect(screen.getByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
     expect(fireBeforeUnload()).toBe(false)
   })
@@ -332,6 +337,7 @@ describe('PredictionsTab – rascunho e importação', () => {
 
     const first = renderTab()
     await user.click(await screen.findByRole('button', { name: /Aumentar placar Argentina/i }))
+    await user.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
     expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
     await waitFor(() => expect(localStorage.getItem(KEY)).not.toBeNull())
 
