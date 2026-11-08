@@ -134,7 +134,7 @@
 
 /*
  * Uma linha só: logo, dois botões-ícone (alvo de 44 px) e o avatar.
- * O .actionLabel tira o texto dos botões da tela e o mantém na árvore de
+ * A classe global .sr-only-mobile tira o texto dos botões da tela e o mantém na árvore de
  * acessibilidade, então o nome acessível é o mesmo do desktop.
  * Altura: 8 + 44 + 8 + 1 (borda) = 61 px.
  */
