@@ -18,12 +18,15 @@ export interface MatchRoundEvents {
  * Sem os marcadores postponedByRound e rescheduledByRound, o palpite aberto
  * ficaria invisível: o usuário abre na rodada seguinte e não sabe que ainda dá
  * para palpitar naqueles jogos. Ver ADR-013 e ADR-019.
+ *
+ * `defaultRound` é o `default_round` da API e fica fora de rescheduledByRound.
  */
 export function useMatchRounds(
   matches: Match[],
   roundIndex: number,
   setRoundIndex: Dispatch<SetStateAction<number>>,
   events: MatchRoundEvents,
+  defaultRound?: string | null,
 ) {
   const rounds = new Map<string, Match[]>()
   for (const m of matches) {
@@ -43,7 +46,7 @@ export function useMatchRounds(
     if (count > 0) postponedByRound.set(round, count)
   }
 
-  const rescheduledByRound = rescheduledOpenByRound(rounds, Date.now())
+  const rescheduledByRound = rescheduledOpenByRound(rounds, Date.now(), defaultRound)
 
   const safeIndex = Math.min(roundIndex, roundKeys.length - 1)
   const selectedRound = roundKeys[safeIndex]

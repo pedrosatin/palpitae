@@ -26,6 +26,7 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
+  const [defaultRound, setDefaultRound] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -46,6 +47,7 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
         setImportCompleted(predictionsData.import_completed === true)
         setImportSources(predictionsData.import_sources ?? null)
         setMatches(matchesData.matches)
+        setDefaultRound(matchesData.default_round ?? null)
         const map = new Map<string, Prediction>()
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
         setPredictions(map)
@@ -71,6 +73,7 @@ function usePredictionsFetch(groupId: string, competitionId: string) {
     error,
     roundIndex,
     setRoundIndex,
+    defaultRound,
     importCompleted,
     setImportCompleted,
     importSources,
@@ -261,6 +264,7 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     error,
     roundIndex,
     setRoundIndex,
+    defaultRound,
     importCompleted,
     setImportCompleted,
     importSources,
@@ -300,10 +304,16 @@ export function usePredictionsTab(groupId: string, competitionId: string) {
     rescheduledByRound,
     prev,
     next,
-  } = useMatchRounds(matches, roundIndex, setRoundIndex, {
-    prev: 'click_predictions_rodada_anterior',
-    next: 'click_predictions_proxima_rodada',
-  })
+  } = useMatchRounds(
+    matches,
+    roundIndex,
+    setRoundIndex,
+    {
+      prev: 'click_predictions_rodada_anterior',
+      next: 'click_predictions_proxima_rodada',
+    },
+    defaultRound,
+  )
 
   const {
     drafts,

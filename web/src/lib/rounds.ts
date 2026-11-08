@@ -49,28 +49,20 @@ export function isLeftoverRound(matches: RoundMatch[], nowMs: number): boolean {
  * futuro, não adiado e não travado. Adiado sem data nova conta como adiado
  * (ADR-013), não como remarcado.
  *
- * Espelha `leftoverRoundsSql` da API: a rodada padrão fica de fora mesmo quando
- * também ficou para trás (fim de temporada, ou uma fase única como a
- * `REGULAR_SEASON` da Série B), porque aí ela é a rodada aberta e não uma
- * rodada esquecida.
+ * A rodada padrão é o `default_round` da API e fica de fora mesmo quando também
+ * ficou para trás, como no fim de temporada ou numa fase única como a
+ * `REGULAR_SEASON` da Série B. Nesses casos ela é a rodada aberta, não uma rodada
+ * esquecida. O front não recalcula a padrão. Num empate a ordem da API decide, e
+ * a dica tem de apontar a outra rodada.
  */
 export function rescheduledOpenByRound(
   rounds: Map<string, RoundMatch[]>,
   nowMs: number,
+  defaultRound: string | null | undefined,
 ): Map<string, number> {
-  const candidates = [...rounds.entries()]
-    .map(([round, list]) => ({
-      round,
-      list,
-      leftover: isLeftoverRound(list, nowMs),
-      lastStart: Math.max(...list.map((m) => Date.parse(m.start_time))),
-    }))
-    .filter((c) => c.lastStart > nowMs)
-    .sort((a, b) => Number(a.leftover) - Number(b.leftover) || a.lastStart - b.lastStart)
-
   const result = new Map<string, number>()
-  for (const { round, list, leftover } of candidates.slice(1)) {
-    if (!leftover) continue
+  for (const [round, list] of rounds) {
+    if (round === defaultRound || !isLeftoverRound(list, nowMs)) continue
     const count = list.filter(
       (m) =>
         !m.postponed &&

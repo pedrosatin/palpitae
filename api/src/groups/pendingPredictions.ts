@@ -1,20 +1,21 @@
-import { defaultRoundSql, leftoverRoundsSql, roundRuleBinds } from '../matches/defaultRound'
+import { openRoundsSql, roundRuleBinds } from '../matches/defaultRound'
 import { lockedSql } from '../matches/locking'
 
 /**
  * Contagem de palpites pendentes do usuário autenticado no grupo. Soma:
  *
  * 1. os jogos abertos da rodada que `GET /matches` escolhe como `default_round`
- *    (`defaultRoundSql`, a mesma definição dos dois endpoints);
- * 2. os jogos remarcados para o futuro nas outras rodadas que ficaram para trás
- *    (`leftoverRoundsSql`). Têm prazo como os da rodada padrão, e a home é o
- *    único lugar que avisa deles antes de o usuário abrir o grupo. Adiado sem
- *    data nova guarda o horário passado (ADR-013) e fica fora desta parcela.
+ *    (`position = 1` em `openRoundsSql`, a mesma ordem de `defaultRoundSql`);
+ * 2. os jogos remarcados para o futuro nas outras rodadas que ficaram para trás.
+ *    Têm prazo como os da rodada padrão, e a home é o único lugar que avisa
+ *    deles antes de o usuário abrir o grupo. Adiado sem data nova guarda o
+ *    horário passado (ADR-013) e fica fora desta parcela.
  *
- * As duas parcelas não se sobrepõem: a segunda exclui a rodada padrão. Cada uma
- * busca os jogos por `idx_matches_comp_round_start` com a rodada já resolvida.
- * Um `OR` numa contagem só faria o SQLite varrer a competição e reavaliar a
- * subconsulta da rodada a cada jogo.
+ * As duas parcelas saem de uma varredura só do índice coberto da competição,
+ * que numera as candidatas e já traz a rodada padrão e as que ficaram para trás.
+ * Os jogos de cada rodada vêm de `idx_matches_comp_round_start` com a rodada já
+ * resolvida. O `CROSS JOIN` fixa essa ordem. Com `JOIN` o SQLite pode começar
+ * pelos jogos e varrer a competição.
  *
  * Sem rodada aberta a contagem fica 0 (não há pendência acionável na home).
  *
@@ -29,40 +30,24 @@ import { lockedSql } from '../matches/locking'
  */
 export function pendingPredictionsSql(groupAlias = 'g'): string {
   const competition = `${groupAlias}.competition_id`
-  const openAndMissing = `AND NOT ${lockedSql('m')}
+  return `(
+            SELECT COUNT(*)
+            FROM (${openRoundsSql(competition, 'mr')}) r
+            CROSS JOIN matches m
+              ON m.competition_id = ${competition}
+             AND m.round = r.round
+            WHERE (r.position = 1 OR m.start_time > ?)
+              AND NOT ${lockedSql('m')}
               AND NOT EXISTS (
                 SELECT 1 FROM predictions p
                 WHERE p.match_id = m.id
                   AND p.group_id = ${groupAlias}.id
                   AND p.user_id = ?
-              )`
-  return `(
-            (
-              SELECT COUNT(*)
-              FROM matches m
-              WHERE m.competition_id = ${competition}
-                AND m.round = (${defaultRoundSql(competition, 'mdr')})
-                ${openAndMissing}
-            ) + (
-              SELECT COUNT(*)
-              FROM matches m
-              WHERE m.competition_id = ${competition}
-                AND m.round IN (${leftoverRoundsSql(competition, 'mlo')})
-                AND m.start_time > ?
-                ${openAndMissing}
-            )
+              )
           )`
 }
 
 /** Binds na ordem exigida por `pendingPredictionsSql`. */
 export function pendingPredictionsBinds(nowIso: string, userId: string): string[] {
-  return [
-    ...roundRuleBinds(nowIso),
-    nowIso,
-    userId,
-    ...roundRuleBinds(nowIso),
-    nowIso,
-    nowIso,
-    userId,
-  ]
+  return [...roundRuleBinds(nowIso), nowIso, nowIso, userId]
 }

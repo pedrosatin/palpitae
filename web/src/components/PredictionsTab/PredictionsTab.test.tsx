@@ -9,12 +9,19 @@ import { isLeftoverRound } from '../../lib/rounds'
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-function mockFetch(matches: ReturnType<typeof makeMatch>[]) {
+function mockFetch(matches: ReturnType<typeof makeMatch>[], apiDefaultRound?: string) {
   vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
     const u = url.toString()
+    if (u.includes('/matches') && apiDefaultRound !== undefined) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ matches, default_round: apiDefaultRound }),
+      } as Response)
+    }
     if (u.includes('/matches')) {
-      // Espelha api/src/matches/defaultRound.ts: rodada com jogo futuro, com as que
-      // ficaram para trás no fim da fila e desempate pelo último jogo.
+      // Sem `apiDefaultRound`, imita a ordem de api/src/matches/defaultRound.ts:
+      // rodada com jogo futuro, com as que ficaram para trás no fim da fila e
+      // desempate pelo último jogo. Empate exato pede `apiDefaultRound`.
       const nowIso = new Date().toISOString()
       const byRound = new Map<string, ReturnType<typeof makeMatch>[]>()
       for (const m of matches) byRound.set(m.round, [...(byRound.get(m.round) ?? []), m])
@@ -569,7 +576,9 @@ describe('PredictionsTab – rodada com jogo adiado', () => {
     await waitFor(() => {
       expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('22')
     })
-    expect(screen.getByText(/2 jogos adiados/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 jogos adiados/i)).toHaveTextContent(
+      'Rodada 21 tem 2 jogos adiados. O palpite segue aberto. Ver rodada',
+    )
     expect(screen.getByRole('button', { name: /ver rodada/i })).toBeInTheDocument()
   })
 
@@ -733,13 +742,53 @@ describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
     await waitFor(() => {
       expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('35')
     })
-    expect(screen.getByText(/1 jogo remarcado/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 jogo remarcado/i)).toHaveTextContent(
+      'Rodada 21 tem 1 jogo remarcado. O palpite segue aberto. Ver rodada',
+    )
     expect(screen.getByRole('option', { name: 'Rodada 21 · 1 remarcado' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /ver rodada/i }))
     expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
     expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_adiada', { round: '21' })
     expect(screen.queryByRole('button', { name: /ver rodada/i })).not.toBeInTheDocument()
+  })
+
+  it('no empate de fim de temporada a dica aponta a rodada que a API não escolheu', async () => {
+    // Rodadas 9 e 21 com um remarcado no mesmo horário e a 38 encerrada. A API
+    // devolve a 21 (ADR-019). A 9 fica com a dica e o remarcado continua visível.
+    const user = userEvent.setup({ delay: null })
+    const rescheduledAt = days(7)
+    const leftover = (round: string, from: number) => [
+      ...Array.from({ length: 9 }, (_, i) =>
+        makeMatch({ id: `m${round}-${i}`, round, status: 'finished', start_time: days(from + i) }),
+      ),
+      makeMatch({ id: `m${round}-remarcado`, round, status: 'scheduled', start_time: rescheduledAt }),
+    ]
+    mockFetch(
+      [
+        ...leftover('9', -170),
+        ...leftover('21', -110),
+        ...Array.from({ length: 10 }, (_, i) =>
+          makeMatch({ id: `m38-${i}`, round: '38', status: 'finished', start_time: days(-6) }),
+        ),
+      ],
+      '21',
+    )
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    await waitFor(() => {
+      expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    })
+    expect(screen.getByText(/1 jogo remarcado/i)).toHaveTextContent(
+      'Rodada 9 tem 1 jogo remarcado. O palpite segue aberto. Ver rodada',
+    )
+    expect(screen.getByRole('option', { name: 'Rodada 9 · 1 remarcado' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Rodada 21' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /ver rodada/i }))
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('9')
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_predictions_rodada_adiada', { round: '9' })
   })
 
   it('rodada em andamento não vira aviso de remarcado', async () => {

@@ -16,9 +16,13 @@ const EVENTS = {
   next: 'click_test_proxima_rodada',
 }
 
-function useHarness(matches: ReturnType<typeof makeMatch>[], initialIndex = 0) {
+function useHarness(
+  matches: ReturnType<typeof makeMatch>[],
+  initialIndex = 0,
+  defaultRound?: string | null,
+) {
   const [roundIndex, setRoundIndex] = useState(initialIndex)
-  return useMatchRounds(matches, roundIndex, setRoundIndex, EVENTS)
+  return useMatchRounds(matches, roundIndex, setRoundIndex, EVENTS, defaultRound)
 }
 
 describe('useMatchRounds', () => {
@@ -80,6 +84,17 @@ describe('useMatchRounds', () => {
     )
     expect(result.current.rescheduledByRound.get('21')).toBe(1)
     expect(result.current.rescheduledByRound.has('35')).toBe(false)
+  })
+
+  it('leaves the API default round out of rescheduledByRound', () => {
+    const days = (d: number) => new Date(Date.now() + d * 86_400_000).toISOString()
+    const leftover = (round: string) => [
+      makeMatch({ id: `${round}-1`, round, status: 'finished', start_time: days(-100) }),
+      makeMatch({ id: `${round}-2`, round, status: 'finished', start_time: days(-90) }),
+      makeMatch({ id: `${round}-3`, round, status: 'scheduled', start_time: days(7) }),
+    ]
+    const { result } = renderHook(() => useHarness([...leftover('9'), ...leftover('21')], 1, '21'))
+    expect([...result.current.rescheduledByRound]).toEqual([['9', 1]])
   })
 
   it('navigates with the configured analytics events', () => {

@@ -92,7 +92,7 @@ describe('rounds', () => {
     it('maioria dos jogos com mais de 7 dias marca a rodada e conta o remarcado', () => {
       expect(isLeftoverRound(round21, NOW)).toBe(true)
       expect(isLeftoverRound(round35, NOW)).toBe(false)
-      expect(rescheduledOpenByRound(byRound({ '21': round21, '35': round35 }), NOW)).toEqual(
+      expect(rescheduledOpenByRound(byRound({ '21': round21, '35': round35 }), NOW, '35')).toEqual(
         new Map([['21', 1]]),
       )
     })
@@ -100,7 +100,9 @@ describe('rounds', () => {
     it('metade não é maioria: ida e volta com uma semana de intervalo segue ativa', () => {
       const tie = [at('2026-10-30T22:00:00Z'), at('2026-10-30T22:00:00Z'), at('2026-11-08T22:00:00Z'), at('2026-11-08T22:00:00Z')]
       expect(isLeftoverRound(tie, NOW)).toBe(false)
-      expect(rescheduledOpenByRound(byRound({ QUARTER_FINALS: tie, '35': round35 }), NOW).size).toBe(0)
+      expect(
+        rescheduledOpenByRound(byRound({ QUARTER_FINALS: tie, '35': round35 }), NOW, 'QUARTER_FINALS').size,
+      ).toBe(0)
     })
 
     it('a rodada padrão nunca vira remarcado, mesmo quando também ficou para trás', () => {
@@ -108,11 +110,21 @@ describe('rounds', () => {
         ...Array.from({ length: 30 }, () => at('2026-08-01T22:00:00Z')),
         ...Array.from({ length: 10 }, () => at('2026-11-20T22:00:00Z')),
       ]
-      expect(rescheduledOpenByRound(byRound({ REGULAR_SEASON: season }), NOW).size).toBe(0)
+      expect(rescheduledOpenByRound(byRound({ REGULAR_SEASON: season }), NOW, 'REGULAR_SEASON').size).toBe(0)
       const round30 = [...round21.slice(0, 9), at('2026-11-21T23:30:00Z')]
-      expect(rescheduledOpenByRound(byRound({ '21': round21, '30': round30 }), NOW)).toEqual(
+      expect(rescheduledOpenByRound(byRound({ '21': round21, '30': round30 }), NOW, '21')).toEqual(
         new Map([['30', 1]]),
       )
+    })
+
+    it('exclui a rodada padrão da API em vez de recalcular, mesmo no empate', () => {
+      // Fim de temporada: 9 e 21 com um remarcado no mesmo horário e a 38 encerrada.
+      // As duas empatam na regra. A dica tem de apontar a que a API não escolheu.
+      const round9 = [...Array.from({ length: 9 }, () => at('2026-05-24T22:00:00Z')), at('2026-11-14T23:30:00Z')]
+      const round38 = Array.from({ length: 10 }, () => at('2026-11-01T22:00:00Z'))
+      const season = byRound({ '9': round9, '21': round21, '38': round38 })
+      expect(rescheduledOpenByRound(season, NOW, '21')).toEqual(new Map([['9', 1]]))
+      expect(rescheduledOpenByRound(season, NOW, '9')).toEqual(new Map([['21', 1]]))
     })
 
     it('não conta adiado, travado nem ao vivo como remarcado', () => {
@@ -123,7 +135,7 @@ describe('rounds', () => {
         at('2026-11-14T23:30:00Z', { status: 'live' }),
         at('2026-11-15T23:30:00Z'),
       ]
-      expect(rescheduledOpenByRound(byRound({ '21': round, '35': round35 }), NOW).get('21')).toBe(1)
+      expect(rescheduledOpenByRound(byRound({ '21': round, '35': round35 }), NOW, '35').get('21')).toBe(1)
     })
 
     it('monta o texto da dica e o marcador do seletor', () => {

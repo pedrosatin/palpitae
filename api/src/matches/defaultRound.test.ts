@@ -172,6 +172,17 @@ describe('defaultRoundSql', () => {
     expect(await defaultRound(db)).toBe('21')
   })
 
+  it('no empate do último jogo vence a rodada que começou depois', async () => {
+    const { db } = seed([
+      ...round('21', Array(9).fill('2026-07-26T22:00:00Z')),
+      { round: '21', start: '2026-11-14T23:30:00Z' },
+      ...round('30', Array(9).fill('2026-09-20T22:00:00Z')),
+      { round: '30', start: '2026-11-14T23:30:00Z' },
+      ...round('38', Array(10).fill('2026-11-01T22:00:00Z')),
+    ])
+    expect(await defaultRound(db)).toBe('30')
+  })
+
   it('adiado sem data nova guarda o horário passado e não reabre a rodada (ADR-013)', async () => {
     const { db } = seed([
       ...round('21', Array(9).fill('2026-07-26T22:00:00Z')),
@@ -261,6 +272,38 @@ describe('rodada padrão nos endpoints (SQLite D1)', () => {
       groups: Array<{ id: string; pending_predictions: number }>
     }
     // Padrão = 21 (todas as candidatas ficaram para trás): 1 da 21 + 1 remarcado da 30.
+    expect(body.groups.find((g) => g.id === 'grupo')?.pending_predictions).toBe(2)
+  })
+
+  it('pendentes da home somam o remarcado e deixam de fora o adiado sem data nova da rodada antiga', async () => {
+    const { db } = seed([
+      ...brasileiraoNovembro(),
+      { round: '21', start: '2026-08-20T23:30:00Z', status: 'scheduled', postponed: 1, lockedAt: null },
+    ])
+    const body = (await get(db, '/groups')) as {
+      groups: Array<{ id: string; pending_predictions: number }>
+    }
+    // 10 da rodada 35 + o remarcado da 21. O adiado da 21 não tem prazo.
+    expect(body.groups.find((g) => g.id === 'grupo')?.pending_predictions).toBe(11)
+  })
+
+  it('fim de temporada com dois remarcados no mesmo horário: a padrão é uma e o outro conta na home', async () => {
+    const { db } = seed([
+      ...round('9', Array(9).fill('2026-05-24T22:00:00Z')),
+      { round: '9', start: '2026-11-14T23:30:00Z' },
+      ...round('21', Array(9).fill('2026-07-26T22:00:00Z')),
+      { round: '21', start: '2026-11-14T23:30:00Z' },
+      ...round('38', Array(10).fill('2026-11-01T22:00:00Z')),
+    ])
+    const matches = (await get(db, '/matches?competition_id=bra')) as { default_round: string }
+    expect(matches.default_round).toBe('21')
+    const predictions = (await get(db, '/predictions/user?group_id=grupo&user_id=alice')) as {
+      default_round: string
+    }
+    expect(predictions.default_round).toBe('21')
+    const body = (await get(db, '/groups')) as {
+      groups: Array<{ id: string; pending_predictions: number }>
+    }
     expect(body.groups.find((g) => g.id === 'grupo')?.pending_predictions).toBe(2)
   })
 

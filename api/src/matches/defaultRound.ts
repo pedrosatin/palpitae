@@ -9,22 +9,23 @@
  * candidatas ficaram para trás (fim de temporada com um jogo remarcado), a
  * ordem volta a ser só o `MAX(start_time)`.
  *
- * Por que: um jogo remarcado para semanas depois mantém a rodada antiga aberta.
+ * Um jogo remarcado para semanas depois mantém a rodada antiga aberta.
  * No Brasileirão 2026 a rodada 21 tinha 9 jogos encerrados entre julho e outubro
  * e Chapecoense × Vasco remarcado para 14/11, antes do último jogo da rodada 35.
  * Pela regra antiga o grupo abria na 21. O jogo remarcado continua visível pela
  * dica da aba Palpitar e entra na contagem de pendentes.
  *
  * Rodada em andamento tem jogos recentes ou futuros, então não fica para trás.
- * Mata-mata de ida e volta numa mesma rodada tem metade dos jogos na ida, e
- * metade não é maioria: a rodada segue padrão até a volta.
+ * Mata-mata de ida e volta numa mesma rodada tem metade dos jogos na ida.
+ * Metade não é maioria, então a rodada segue padrão até a volta.
  *
  * O "começou" é só pelo horário (`start_time <= now - 7 dias`), sem olhar
  * `status` nem `postponed`. Adiado guarda o horário original (ADR-013), e esse
  * horário passado conta como jogo antigo da rodada.
  *
- * O front repete a regra em `web/src/lib/rounds.ts` (`rescheduledOpenByRound`) para a
- * dica de jogo remarcado.
+ * O front repete só o "ficou para trás" em `web/src/lib/rounds.ts`
+ * (`rescheduledOpenByRound`) para a dica de jogo remarcado. A rodada padrão
+ * chega pronta no `default_round`.
  */
 export const LEFTOVER_ROUND_AGE_DAYS = 7
 
@@ -35,11 +36,18 @@ export function leftoverCutoff(nowIso: string): string {
   return new Date(Date.parse(nowIso) - LEFTOVER_ROUND_AGE_DAYS * DAY_MS).toISOString()
 }
 
-/** Ordem das candidatas. A primeira é a rodada padrão. */
-const ROUND_ORDER = 'leftover ASC, last_start ASC'
+/**
+ * Ordem das candidatas. A primeira é a rodada padrão.
+ *
+ * Empate no último jogo aparece no fim de temporada, quando duas rodadas antigas
+ * têm um remarcado no mesmo horário. Vence a que começou depois. A dica da aba
+ * Palpitar procura rodadas antes da aberta, então aponta a outra. `round` fecha o
+ * desempate, porque é a chave do `GROUP BY`.
+ */
+const ROUND_ORDER = 'leftover ASC, last_start ASC, first_start DESC, round ASC'
 
 /**
- * Rodadas candidatas, com `round`, `leftover` (0/1) e `last_start`.
+ * Rodadas candidatas, com `round`, `leftover` (0/1), `first_start` e `last_start`.
  *
  * `competitionSql` é a expressão da competição: `?` (bind do chamador), uma
  * subconsulta ou uma coluna correlacionada. Os binds da regra vêm antes, na
@@ -51,6 +59,7 @@ function candidateRoundsSql(competitionSql: string, alias: string): string {
   const from = alias ? `matches ${alias}` : 'matches'
   return `SELECT ${c}round AS round,
                  (2 * SUM(${c}start_time <= rule.cutoff) > COUNT(*)) AS leftover,
+                 MIN(${c}start_time) AS first_start,
                  MAX(${c}start_time) AS last_start
           FROM (SELECT ? AS cutoff, ? AS now) rule
           JOIN ${from} ON ${c}competition_id = ${competitionSql}
@@ -74,13 +83,15 @@ export function defaultRoundSql(competitionSql: string, alias = ''): string {
 }
 
 /**
- * Rodadas que ficaram para trás com jogo futuro, menos a rodada padrão (que só
- * fica para trás quando todas as candidatas ficaram). Lista de `round`.
+ * Rodada padrão e rodadas que ficaram para trás com jogo futuro, numa varredura
+ * só do índice da competição. Devolve `round` e `position`. A padrão tem
+ * `position = 1`. As demais são as que ficaram para trás, menos a rodada padrão.
+ * A padrão só fica para trás quando todas as candidatas ficaram.
  */
-export function leftoverRoundsSql(competitionSql: string, alias = ''): string {
-  return `SELECT round FROM (
+export function openRoundsSql(competitionSql: string, alias = ''): string {
+  return `SELECT round, position FROM (
             SELECT round, leftover, ROW_NUMBER() OVER (ORDER BY ${ROUND_ORDER}) AS position
             FROM (${candidateRoundsSql(competitionSql, alias)})
           )
-          WHERE leftover = 1 AND position > 1`
+          WHERE position = 1 OR leftover = 1`
 }

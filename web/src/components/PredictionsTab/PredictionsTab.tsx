@@ -188,7 +188,7 @@ export default function PredictionsTab({
           que visitá-la. */}
       {leftoverElsewhere && (
         <p className={styles.postponedHint}>
-          <strong>{labelFor(leftoverElsewhere.round)}</strong> tem {leftoverElsewhere.text} — o
+          <strong>{labelFor(leftoverElsewhere.round)}</strong> tem {leftoverElsewhere.text}. O
           palpite segue aberto.{' '}
           <button
             type="button"
