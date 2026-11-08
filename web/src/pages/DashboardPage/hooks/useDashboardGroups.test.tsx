@@ -150,6 +150,20 @@ describe('useDashboardGroups', () => {
     })
 
     expect(result.current.joinOpen).toBe(false)
+    expect(result.current.matchedInviteGroupId).toBe('g1')
+  })
+
+  it('ignores matched_invite_group_id when there is no pending invite', async () => {
+    mockApiFetch.mockResolvedValueOnce(
+      mockResponse({ groups: mockGroups, matched_invite_group_id: 'g1' }),
+    )
+
+    const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
+      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.matchedInviteGroupId).toBeNull()
   })
 
   it('forces refresh when location.state.refreshGroups is true', async () => {
