@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { buildApiUrl } from '../../../config'
 import type { GroupWithStats } from '../../../components/GroupCard'
-import { apiFetch } from '../../../lib/api'
-import { fetchCachedJson, invalidateApiCache } from '../../../lib/api-cache'
+import { invalidateApiCache } from '../../../lib/api-cache'
+import { fetchGroupsList } from '../../../lib/groupsList'
 
 interface UseDashboardGroupsParams {
   userId: string
@@ -26,27 +25,7 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
         invalidateApiCache('groups:')
       }
 
-      fetchCachedJson(
-        `groups:list:${userId}:${normalizedPendingInvite ?? 'default'}`,
-        () => {
-          const searchParams = new URLSearchParams()
-
-          if (normalizedPendingInvite) {
-            searchParams.set('invite_code', normalizedPendingInvite)
-          }
-
-          return apiFetch(buildApiUrl('/groups', searchParams), { cache: 'no-store' }).then(
-            (res) => {
-              if (!res.ok) throw new Error('Falha ao carregar grupos')
-              return res.json() as Promise<{
-                groups: GroupWithStats[]
-                matched_invite_group_id: string | null
-              }>
-            },
-          )
-        },
-        30_000,
-      )
+      fetchGroupsList(userId, normalizedPendingInvite)
         .then((data) => {
           setGroups(data.groups)
           if (normalizedPendingInvite) {

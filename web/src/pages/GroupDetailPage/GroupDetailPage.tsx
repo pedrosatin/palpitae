@@ -28,8 +28,14 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   const { groupId } = useParams<{ groupId: string }>()
 
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
-  const { activeTab, showStandings, tabHref, handleTabClick, requestedRound } =
-    useGroupTabs(group)
+  const {
+    activeTab,
+    showStandings,
+    tabHref,
+    handleTabClick,
+    requestedRound,
+    clearRequestedRound,
+  } = useGroupTabs(group)
   const tabsOffset = useTabsOffset()
   const {
     leaveGroup,
@@ -177,6 +183,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           isAdmin={isAdmin}
           userId={user.id}
           requestedRound={requestedRound}
+          onRequestedRoundApplied={clearRequestedRound}
         />
       </>
     )

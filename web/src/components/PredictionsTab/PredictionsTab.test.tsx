@@ -103,13 +103,36 @@ describe('PredictionsTab – defaultRoundIndex', () => {
       makeMatch({ id: 'm2', round: '35', status: 'scheduled' }),
     ]
     mockFetch(matches, '35')
+    const onApplied = vi.fn()
 
-    render(<PredictionsTab groupId="g1" competitionId="c1" initialRound="21" />)
+    const view = render(
+      <PredictionsTab
+        groupId="g1"
+        competitionId="c1"
+        initialRound="21"
+        onInitialRoundApplied={onApplied}
+      />,
+    )
 
     await waitFor(() => {
       const select = screen.getByRole('combobox') as HTMLSelectElement
       expect(select.value).toBe('21')
     })
+    expect(onApplied).toHaveBeenCalledOnce()
+
+    // A página tira o `?rodada=` da URL. A aba fica na rodada e não busca de novo.
+    const fetches = vi.mocked(globalThis.fetch).mock.calls.length
+    view.rerender(
+      <PredictionsTab
+        groupId="g1"
+        competitionId="c1"
+        initialRound={null}
+        onInitialRoundApplied={onApplied}
+      />,
+    )
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('21')
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(fetches)
+    expect(onApplied).toHaveBeenCalledOnce()
   })
 
   it('cai na rodada padrão quando a rodada do link não existe', async () => {

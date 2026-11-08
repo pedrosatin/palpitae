@@ -218,6 +218,17 @@ function roundStatusFields(
   }
 }
 
+/**
+ * Jogos ao vivo e jogo de prazo só completam o card. Se a consulta falhar, a
+ * lista sai sem eles, com `live_matches` 0 e `next_deadline` nulo.
+ */
+function emptyOnError<T>(query: Promise<Map<string, T>>, what: string): Promise<Map<string, T>> {
+  return query.catch((error: unknown) => {
+    console.error('[groups] Error fetching %s:', what, error)
+    return new Map<string, T>()
+  })
+}
+
 router.get('/', requireAuth, async (c) => {
   const userId = c.get('userId')
   const startedAt = Date.now()
@@ -243,7 +254,7 @@ router.get('/', requireAuth, async (c) => {
             pending_summary: string | null
           }
         >(),
-      fetchLiveMatchesByCompetition(db, nowIso),
+      emptyOnError(fetchLiveMatchesByCompetition(db, nowIso), 'live matches'),
     ])
 
     const matchedInviteGroup = inviteCode
@@ -268,7 +279,7 @@ router.get('/', requireAuth, async (c) => {
 
     const [podiumByGroup, deadlineMatches] = await Promise.all([
       fetchGroupsPodiums(db, finishedGroupIds, userId),
-      fetchDeadlineMatches(db, deadlineMatchIds),
+      emptyOnError(fetchDeadlineMatches(db, deadlineMatchIds), 'deadline matches'),
     ])
 
     const dbMs = Date.now() - dbStartedAt

@@ -3,12 +3,14 @@ import { ACTIVE_RESULT_WINDOW_MS } from '../matches/matchPollingWindow'
 /**
  * Jogos em andamento por competição, para o status dos cards do painel.
  *
- * O sync não grava `status = 'live'`. Os providers só dizem agendado ou
- * encerrado. Em andamento é o jogo que já começou pelo horário, não está
- * adiado e ainda não tem resultado, dentro de `ACTIVE_RESULT_WINDOW_MS`, a
- * janela em que o poller ainda busca o resultado. Fora dela, um jogo sem
- * resultado deixa de aparecer como ao vivo. O poller roda a cada 30 minutos,
- * então um jogo pode seguir ao vivo por até meia hora depois do apito.
+ * O sync grava só `scheduled` ou `finished`, pelo `mapStatus` de `sync.ts`, e
+ * o início do jogo vira `locked_at`. Em andamento é o jogo que já começou pelo
+ * horário, não está adiado e ainda não tem resultado, dentro de
+ * `ACTIVE_RESULT_WINDOW_MS`, a janela em que o poller ainda busca o resultado.
+ * Fora dela, um jogo sem resultado deixa de aparecer como ao vivo. O poller
+ * roda a cada 30 minutos e só pede o resultado depois de 115 minutos do
+ * início. Um jogo encerrado segue ao vivo até essa busca e, com o provider
+ * atrasado, até o fim da janela.
  *
  * A consulta não depende dos grupos do usuário e roda junto com a lista. Busca
  * só os jogos da janela pelo `idx_matches_start_time`, de todas as competições.

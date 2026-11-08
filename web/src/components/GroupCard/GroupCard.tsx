@@ -4,6 +4,7 @@ import ShareGroupModal from '../ShareGroupModal'
 import { trackEvent } from '../../analytics/ga'
 import {
   groupRoundStatus,
+  groupRoundStatusLabel,
   groupRoundStatusText,
   type DeadlineMatch,
 } from '../../lib/dashboardStatus'
@@ -89,20 +90,16 @@ function Podium({ group }: { group: GroupWithStats }) {
   )
 }
 
-/** Copy PT-BR da pendência na home. Só chamar com count > 0. */
-export function pendingPredictionsLabel(count: number): string {
-  return count === 1 ? '1 palpite pendente' : `${count} palpites pendentes`
-}
-
 export default function GroupCard({ group, onClick }: GroupCardProps) {
   const isOwner = group.is_admin
   const isFinished = group.competition_status === 'finished'
   const [shareOpen, setShareOpen] = useState(false)
   // Grupo encerrado mostra o pódio e não tem linha de status.
   const status = isFinished ? null : groupRoundStatus(group)
-  const statusText = status ? groupRoundStatusText(status, Date.now()) : null
-  const openLabel = statusText
-    ? `Abrir grupo ${group.name}, ${statusText}`
+  const nowMs = Date.now()
+  const statusText = status ? groupRoundStatusText(status, nowMs) : null
+  const openLabel = status
+    ? `Abrir grupo ${group.name}, ${groupRoundStatusLabel(status, nowMs)}`
     : `Abrir grupo ${group.name}`
 
   return (

@@ -34,7 +34,9 @@ export function useGroupTabs(group: GroupDetail | null) {
   const [searchParams, setSearchParams] = useSearchParams()
   const { pathname } = useLocation()
   const rawTab = parseTab(searchParams.get('tab'))
-  // Rodada pedida pela faixa "Próximo prazo" do painel.
+  // Rodada pedida pela faixa "Próximo prazo" do painel. Ela vale uma vez. A aba
+  // Palpitar chama `clearRequestedRound` depois de abrir nela, e a troca de aba
+  // também tira o parâmetro. Recarregar ou voltar à aba abre a rodada padrão.
   const requestedRound = searchParams.get('rodada')
   const showStandings = isStandingsTabEligible(group?.competition_type, group?.competition_code)
   const activeTab =
@@ -45,6 +47,7 @@ export function useGroupTabs(group: GroupDetail | null) {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev)
+        next.delete('rodada')
         if (tab === DEFAULT_TAB) {
           next.delete('tab')
         } else {
@@ -56,8 +59,20 @@ export function useGroupTabs(group: GroupDetail | null) {
     )
   }
 
+  function clearRequestedRound() {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('rodada')
+        return next
+      },
+      { replace: true },
+    )
+  }
+
   function tabHref(tab: Tab): string {
     const params = new URLSearchParams(searchParams)
+    params.delete('rodada')
     if (tab === DEFAULT_TAB) {
       params.delete('tab')
     } else {
@@ -75,7 +90,14 @@ export function useGroupTabs(group: GroupDetail | null) {
     }
   }
 
-  return { activeTab, showStandings, tabHref, handleTabClick, requestedRound }
+  return {
+    activeTab,
+    showStandings,
+    tabHref,
+    handleTabClick,
+    requestedRound,
+    clearRequestedRound,
+  }
 }
 
 export function useTabsOffset() {

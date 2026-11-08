@@ -16,8 +16,8 @@ export interface DeadlineMatch {
 }
 
 /**
- * Campos do `GET /groups` usados aqui. Opcionais porque uma resposta anterior
- * ao campo pode ficar no cache por alguns segundos depois do deploy.
+ * Campos do `GET /groups` usados aqui. Opcionais porque o web pode entrar no ar
+ * antes da API, que tem deploy próprio, ou a API pode voltar por rollback.
  */
 export interface RoundStatusFields {
   id: string
@@ -64,24 +64,84 @@ export function groupRoundStatus(group: RoundStatusFields): GroupRoundStatus | n
   return { kind: 'empty' }
 }
 
-/** Texto da linha de status do card. */
-export function groupRoundStatusText(status: GroupRoundStatus, nowMs: number): string {
+/** Jogos sem palpite, com os grupos quando são mais de um, como "30 sem palpite em 3 grupos". */
+export function pendingCountText(count: number, groups = 1): string {
+  return groups > 1 ? `${count} sem palpite em ${groups} grupos` : `${count} sem palpite`
+}
+
+/**
+ * Partes da linha de status. A primeira leva o "✓" no texto visível quando a
+ * rodada está toda palpitada.
+ */
+function statusParts(
+  status: GroupRoundStatus,
+  nowMs: number,
+): { parts: string[]; complete: boolean } {
   switch (status.kind) {
-    case 'pending':
-      return status.deadline
-        ? `${status.count} sem palpite · fecha ${formatShortWhen(status.deadline, nowMs)}`
-        : `${status.count} sem palpite`
+    case 'pending': {
+      const count = pendingCountText(status.count)
+      return {
+        parts: status.deadline
+          ? [count, `fecha ${formatShortWhen(status.deadline, nowMs)}`]
+          : [count],
+        complete: false,
+      }
+    }
     case 'live':
-      return status.count === 1 ? '1 jogo ao vivo' : `${status.count} jogos ao vivo`
+      return {
+        parts: [status.count === 1 ? '1 jogo ao vivo' : `${status.count} jogos ao vivo`],
+        complete: false,
+      }
     case 'complete': {
       const done = status.roundLabel
         ? `${status.roundLabel} ${completeWord(status.roundLabel)}`
         : 'Tudo palpitado'
-      return `${done} ✓ · próximo jogo ${formatShortWhen(status.nextMatchAt, nowMs)}`
+      return {
+        parts: [done, `próximo jogo ${formatShortWhen(status.nextMatchAt, nowMs)}`],
+        complete: true,
+      }
     }
     case 'empty':
-      return 'Sem jogos marcados'
+      return { parts: ['Sem jogos marcados'], complete: false }
   }
+}
+
+/** Texto visível da linha de status, como "Rodada 35 completa ✓ · próximo jogo sáb 18:30". */
+export function groupRoundStatusText(status: GroupRoundStatus, nowMs: number): string {
+  const { parts, complete } = statusParts(status, nowMs)
+  return (complete ? [`${parts[0]} ✓`, ...parts.slice(1)] : parts).join(' · ')
+}
+
+/**
+ * A linha de status para leitor de tela, sem "✓" e "·", que ele lê como
+ * símbolos. Exemplo: "Rodada 35 completa, próximo jogo sáb 18:30".
+ */
+export function groupRoundStatusLabel(status: GroupRoundStatus, nowMs: number): string {
+  return statusParts(status, nowMs).parts.join(', ')
+}
+
+type Agreement = 'fs' | 'fp' | 'ms' | 'mp'
+
+/** Gênero e número do `roundLabel` da API, para concordar o adjetivo. */
+function roundAgreement(roundLabel: string): Agreement {
+  if (/^(Oitavas|Quartas|Semifinais)\b/.test(roundLabel)) return 'fp'
+  if (/^Playoffs\b/.test(roundLabel)) return 'mp'
+  if (/^(Rebaixamento|Terceiro lugar)\b/.test(roundLabel)) return 'ms'
+  return 'fs'
+}
+
+const COMPLETE: Record<Agreement, string> = {
+  fs: 'completa',
+  fp: 'completas',
+  ms: 'completo',
+  mp: 'completos',
+}
+
+const ALL_PREDICTED: Record<Agreement, string> = {
+  fs: 'toda palpitada',
+  fp: 'todas palpitadas',
+  ms: 'todo palpitado',
+  mp: 'todos palpitados',
 }
 
 /**
@@ -89,10 +149,15 @@ export function groupRoundStatusText(status: GroupRoundStatus, nowMs: number): s
  * "Rodada 35 completa", "Semifinais completas", "Playoffs completos".
  */
 export function completeWord(roundLabel: string): string {
-  if (/^(Oitavas|Quartas|Semifinais)\b/.test(roundLabel)) return 'completas'
-  if (/^Playoffs\b/.test(roundLabel)) return 'completos'
-  if (/^(Rebaixamento|Terceiro lugar)\b/.test(roundLabel)) return 'completo'
-  return 'completa'
+  return COMPLETE[roundAgreement(roundLabel)]
+}
+
+/**
+ * Concordância de "toda palpitada" com o `roundLabel` da API. Exemplos:
+ * "Rodada 35 toda palpitada", "Semifinais todas palpitadas".
+ */
+export function allPredictedWord(roundLabel: string): string {
+  return ALL_PREDICTED[roundAgreement(roundLabel)]
 }
 
 function urgencyTier(group: RoundStatusFields): [number, number] {
@@ -106,9 +171,9 @@ function urgencyTier(group: RoundStatusFields): [number, number] {
 }
 
 /**
- * Ordem do painel: grupos com jogo sem palpite primeiro, pelo fechamento mais
- * próximo; depois os com jogo ao vivo; depois os demais pela data do próximo
- * jogo; por último os sem jogo marcado. Empate mantém a ordem da API.
+ * Ordem do painel. Os grupos com jogo sem palpite vêm primeiro, pelo fechamento
+ * mais próximo. Depois vêm os com jogo ao vivo, os demais pela data do próximo
+ * jogo e, por último, os sem jogo marcado. Empate mantém a ordem da API.
  */
 export function sortByUrgency<T extends RoundStatusFields>(groups: T[]): T[] {
   return groups
@@ -127,7 +192,7 @@ export type DeadlineBanner =
       totalPending: number
       groupsWithPending: number
     }
-  | { kind: 'clear'; until: string }
+  | { kind: 'clear'; roundLabel: string }
 
 /**
  * Faixa do topo do painel, a partir dos grupos em andamento.
@@ -136,9 +201,11 @@ export type DeadlineBanner =
  * soma os palpites que faltam em cada grupo, então o mesmo jogo em dois grupos
  * conta duas vezes.
  *
- * Sem pendência, diz até quando está tudo palpitado. A data é o fim da rodada
- * padrão que termina primeiro. Depois dele a rodada seguinte abre e traz
- * pendências novas. Sem rodada aberta em nenhum grupo, não há faixa.
+ * Sem pendência, diz que a rodada padrão que termina primeiro está toda
+ * palpitada. Quando ela termina, a rodada seguinte vira padrão e traz pendências
+ * novas. A faixa não diz até quando, porque um jogo da rodada seguinte pode
+ * começar antes do fim da rodada padrão. Sem rodada aberta em nenhum grupo, não
+ * há faixa.
  */
 export function deadlineBanner(groups: RoundStatusFields[]): DeadlineBanner | null {
   const pending = groups.filter((group) => group.pending_predictions > 0)
@@ -154,11 +221,14 @@ export function deadlineBanner(groups: RoundStatusFields[]): DeadlineBanner | nu
     }
   }
 
-  const ends = groups
-    .map((group) => group.round_ends_at)
-    .filter((value): value is string => Boolean(value))
-    .sort((a, b) => Date.parse(a) - Date.parse(b))
-  return ends.length > 0 ? { kind: 'clear', until: ends[0] } : null
+  const rounds = groups
+    .flatMap((group) =>
+      group.round_ends_at && group.current_round_label
+        ? [{ endsAt: Date.parse(group.round_ends_at), label: group.current_round_label }]
+        : [],
+    )
+    .sort((a, b) => a.endsAt - b.endsAt)
+  return rounds.length > 0 ? { kind: 'clear', roundLabel: rounds[0].label } : null
 }
 
 // ─── Datas no fuso de Brasília ──────────────────────────────────────────────
@@ -201,17 +271,11 @@ export function formatShortWhen(iso: string, nowMs: number): string {
   return `${when.date} ${when.time}`
 }
 
-/** Horário com data para a faixa: "hoje às 18:30", "amanhã às 18:30", "sex, 14/11 às 18:30". */
+/** Horário com data para a faixa: "hoje às 18:30", "amanhã às 18:30", "sáb, 14/11 às 18:30". */
 export function formatLongWhen(iso: string, nowMs: number): string {
   const when = localParts(Date.parse(iso))
   const days = when.dayNumber - localParts(nowMs).dayNumber
   if (days === 0) return `hoje às ${when.time}`
   if (days === 1) return `amanhã às ${when.time}`
   return `${when.weekday}, ${when.date} às ${when.time}`
-}
-
-/** Dia com semana: "sex, 14/11". */
-export function formatDay(iso: string): string {
-  const when = localParts(Date.parse(iso))
-  return `${when.weekday}, ${when.date}`
 }

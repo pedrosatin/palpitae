@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
-import GroupCard, { pendingPredictionsLabel } from './GroupCard'
+import GroupCard from './GroupCard'
 
 const mockTrackEvent = vi.fn()
 vi.mock('../../analytics/ga', () => ({
@@ -128,25 +128,35 @@ describe('GroupCard', () => {
         'jogos sem palpite',
         { pending_predictions: 10, next_deadline: deadline, next_match_at: deadline.start_time },
         '10 sem palpite · fecha sáb 18:30',
+        '10 sem palpite, fecha sáb 18:30',
       ],
       [
         'rodada completa',
         { current_round_label: 'Rodada 35', next_match_at: deadline.start_time },
         'Rodada 35 completa ✓ · próximo jogo sáb 18:30',
+        'Rodada 35 completa, próximo jogo sáb 18:30',
       ],
-      ['jogo ao vivo', { live_matches: 2, next_match_at: deadline.start_time }, '2 jogos ao vivo'],
-      ['sem jogos', {}, 'Sem jogos marcados'],
-    ])('mostra uma linha só para %s e repete no rótulo do link', (_kind, fields, text) => {
-      const { container } = render(
-        <GroupCard group={{ ...ongoing, ...fields }} onClick={onClick} />,
-      )
-      const lines = container.querySelectorAll('[data-kind]')
-      expect(lines).toHaveLength(1)
-      expect(lines[0]).toHaveTextContent(text)
-      expect(
-        screen.getByRole('link', { name: `Abrir grupo Meu Grupo, ${text}` }),
-      ).toBeInTheDocument()
-    })
+      [
+        'jogo ao vivo',
+        { live_matches: 2, next_match_at: deadline.start_time },
+        '2 jogos ao vivo',
+        '2 jogos ao vivo',
+      ],
+      ['sem jogos', {}, 'Sem jogos marcados', 'Sem jogos marcados'],
+    ])(
+      'mostra uma linha só para %s e repete no rótulo do link sem símbolos',
+      (_kind, fields, text, label) => {
+        const { container } = render(
+          <GroupCard group={{ ...ongoing, ...fields }} onClick={onClick} />,
+        )
+        const lines = container.querySelectorAll('[data-kind]')
+        expect(lines).toHaveLength(1)
+        expect(lines[0]).toHaveTextContent(text)
+        expect(
+          screen.getByRole('link', { name: `Abrir grupo Meu Grupo, ${label}` }),
+        ).toBeInTheDocument()
+      },
+    )
 
     it('marca a pendência para o estilo de destaque', () => {
       const { container } = render(
@@ -156,13 +166,13 @@ describe('GroupCard', () => {
     })
   })
 
-  it('does not show a status line for the old API response without next_match_at', () => {
+  it('não mostra linha de status com a resposta antiga da API, sem next_match_at', () => {
     const { container } = render(<GroupCard group={baseGroup} onClick={onClick} />)
     expect(container.querySelector('[data-kind]')).toBeNull()
     expect(screen.getByRole('link', { name: 'Abrir grupo Meu Grupo' })).toBeInTheDocument()
   })
 
-  it('hides the status line on finished groups even when the API still sends a count', () => {
+  it('esconde a linha de status do grupo encerrado mesmo com contagem vinda da API', () => {
     const { container } = render(
       <GroupCard
         group={{
@@ -177,11 +187,6 @@ describe('GroupCard', () => {
     )
     expect(container.querySelector('[data-kind]')).toBeNull()
     expect(screen.queryByText(/sem palpite/i)).not.toBeInTheDocument()
-  })
-
-  it('formats pendingPredictionsLabel in PT-BR singular and plural', () => {
-    expect(pendingPredictionsLabel(1)).toBe('1 palpite pendente')
-    expect(pendingPredictionsLabel(2)).toBe('2 palpites pendentes')
   })
 
   describe('finished (encerrado) variant', () => {

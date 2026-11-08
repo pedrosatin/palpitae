@@ -388,7 +388,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     // O status de todos os grupos vem no mesmo GET /groups.
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(within(banner).getByText('Chapecoense × Vasco fecha sáb, 14/11 às 18:30')).toBeInTheDocument()
-    expect(within(banner).getByText('Rodada 21 · 12 palpites pendentes em 2 grupos')).toBeInTheDocument()
+    expect(within(banner).getByText('Rodada 21 · 12 sem palpite em 2 grupos')).toBeInTheDocument()
     const action = within(banner).getByRole('link', { name: 'Palpitar em Realidade do BR' })
     expect(action).toHaveAttribute('href', '/grupos/realidade?rodada=21')
 
@@ -411,7 +411,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     })
   })
 
-  it('diz até quando está tudo palpitado quando não há pendência', async () => {
+  it('diz que a rodada está toda palpitada quando não há pendência', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockGroupsResponse([
         ongoingGroup('a', 'Bolão A', {
@@ -430,7 +430,8 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     )
 
     const banner = await screen.findByRole('region', { name: 'Próximo prazo' })
-    expect(banner).toHaveTextContent('Tudo palpitado até qui, 19/11')
+    expect(banner).toHaveTextContent('Rodada 35 toda palpitada')
+    expect(banner).not.toHaveTextContent(/até/)
     expect(within(banner).queryByRole('link')).not.toBeInTheDocument()
     expect(screen.getByText('Rodada 35 completa ✓ · próximo jogo sáb 18:30')).toBeInTheDocument()
     expect(screen.getByText('Sem jogos marcados')).toBeInTheDocument()

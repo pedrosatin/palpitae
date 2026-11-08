@@ -15,6 +15,8 @@ interface GroupTabContentProps {
   userId: string
   /** Rodada do `?rodada=` da URL, em que a aba Palpitar abre. */
   requestedRound?: string | null
+  /** Chamado quando a aba Palpitar abre na rodada pedida, para tirá-la da URL. */
+  onRequestedRoundApplied?: () => void
 }
 
 export default function GroupTabContent({
@@ -25,6 +27,7 @@ export default function GroupTabContent({
   isAdmin,
   userId,
   requestedRound,
+  onRequestedRoundApplied,
 }: GroupTabContentProps) {
   return (
     <div className={styles.tabContent}>
@@ -36,6 +39,7 @@ export default function GroupTabContent({
           userId={userId}
           pointsExact={group.points_exact}
           initialRound={requestedRound}
+          onInitialRoundApplied={onRequestedRoundApplied}
         />
       )}
       {activeTab === 'standings' && showStandings && (

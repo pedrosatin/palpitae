@@ -10,16 +10,19 @@ import { lockedSql } from '../matches/locking'
  *    (`position = 1` em `openRoundsSql`, a mesma ordem de `defaultRoundSql`);
  * 2. os jogos remarcados para o futuro nas outras rodadas que ficaram para trás.
  *    Têm prazo como os da rodada padrão, e a home é o único lugar que avisa
- *    deles antes de o usuário abrir o grupo. Adiado sem data nova guarda o
- *    horário passado (ADR-013) e fica fora desta parcela.
+ *    deles antes de o usuário abrir o grupo. Adiado guarda o horário original
+ *    (ADR-013). Com esse horário já passado, ele fica fora desta parcela.
  *
  * Campos do JSON, lidos por `parsePendingSummary`:
  *
  * - `pending`: jogos sem palpite do usuário no grupo.
- * - `deadline`: `start_time|id` do jogo sem palpite que começa primeiro. Só conta
- *   jogo com horário futuro. O adiado sem data nova entra em `pending` e fica
- *   sem prazo.
- * - `next_match_at`: horário do próximo jogo, com ou sem palpite.
+ * - `deadline`: `start_time|fora|id` do jogo sem palpite que começa primeiro,
+ *   com `fora` = 1 para jogo de fora da rodada padrão. No empate de horário
+ *   vence o jogo da rodada padrão e depois o menor `id`. Só conta jogo com
+ *   horário futuro e sem adiamento. O adiado entra em `pending` e fica sem
+ *   prazo. O horário dele pode ser o original, ainda futuro, e o jogo não
+ *   acontece nesse horário.
+ * - `next_match_at`: horário do próximo jogo não adiado, com ou sem palpite.
  * - `round`: a rodada padrão.
  * - `round_ends_at`: horário do último jogo aberto da rodada padrão. Quando ele
  *   começa, a rodada seguinte vira padrão e traz pendências novas.
@@ -48,8 +51,11 @@ export function pendingSummarySql(groupAlias = 'g'): string {
   return `(
             SELECT json_object(
               'pending', COUNT(*) - COUNT(p.match_id),
-              'deadline', MIN(CASE WHEN p.match_id IS NULL AND m.start_time > ? THEN m.start_time || '|' || m.id END),
-              'next_match_at', MIN(CASE WHEN m.start_time > ? THEN m.start_time END),
+              'deadline', MIN(
+                CASE WHEN p.match_id IS NULL AND m.postponed = 0 AND m.start_time > ?
+                THEN m.start_time || '|' || (r.position <> 1) || '|' || m.id END
+              ),
+              'next_match_at', MIN(CASE WHEN m.postponed = 0 AND m.start_time > ? THEN m.start_time END),
               'round', MIN(CASE WHEN r.position = 1 THEN r.round END),
               'round_ends_at', MAX(CASE WHEN r.position = 1 THEN m.start_time END)
             )
@@ -88,6 +94,15 @@ const EMPTY_SUMMARY: PendingSummary = {
   round_ends_at: null,
 }
 
+/** Separa `start_time|fora|id` em horário e jogo. Chave fora do formato vira null. */
+function parseDeadlineKey(key: string | null): PendingSummary['deadline'] {
+  if (!key) return null
+  const first = key.indexOf('|')
+  const second = key.indexOf('|', first + 1)
+  if (first <= 0 || second < 0 || second === key.length - 1) return null
+  return { start_time: key.slice(0, first), match_id: key.slice(second + 1) }
+}
+
 /** Lê o JSON de `pendingSummarySql`. Valor ausente ou inválido vira resumo vazio. */
 export function parsePendingSummary(raw: string | null | undefined): PendingSummary {
   if (!raw) return EMPTY_SUMMARY
@@ -98,17 +113,9 @@ export function parsePendingSummary(raw: string | null | undefined): PendingSumm
     return EMPTY_SUMMARY
   }
   const text = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null)
-  const deadlineKey = text(value.deadline)
-  const separator = deadlineKey?.indexOf('|') ?? -1
   return {
     pending: typeof value.pending === 'number' ? value.pending : 0,
-    deadline:
-      deadlineKey && separator > 0
-        ? {
-            start_time: deadlineKey.slice(0, separator),
-            match_id: deadlineKey.slice(separator + 1),
-          }
-        : null,
+    deadline: parseDeadlineKey(text(value.deadline)),
     next_match_at: text(value.next_match_at),
     round: text(value.round),
     round_ends_at: text(value.round_ends_at),

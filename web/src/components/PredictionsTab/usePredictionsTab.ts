@@ -5,6 +5,7 @@ import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
+import { fetchGroupsList } from '../../lib/groupsList'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import type { Match, Prediction } from '../MatchCard'
@@ -24,6 +25,7 @@ function usePredictionsFetch(
   groupId: string,
   competitionId: string,
   requestedRound: string | null | undefined,
+  onRequestedRoundApplied: (() => void) | undefined,
 ) {
   const [matches, setMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
@@ -33,6 +35,12 @@ function usePredictionsFetch(
   const [error, setError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
   const [defaultRound, setDefaultRound] = useState<string | null>(null)
+  // A rodada do link fica fora das dependências da busca. Quando o `?rodada=` sai
+  // da URL, a aba não busca de novo nem volta para a rodada padrão.
+  const requested = useRef({ round: requestedRound, onApplied: onRequestedRoundApplied })
+  useEffect(() => {
+    requested.current = { round: requestedRound, onApplied: onRequestedRoundApplied }
+  })
 
   useEffect(() => {
     let active = true
@@ -58,12 +66,14 @@ function usePredictionsFetch(
         for (const p of predictionsData.predictions) map.set(p.match_id, p)
         setPredictions(map)
 
+        const { round, onApplied } = requested.current
         applyDefaultRoundFromMatches(
           matchesData.matches,
           matchesData.default_round,
           setRoundIndex,
-          requestedRound,
+          round,
         )
+        if (round) onApplied?.()
       })
       .catch((e: Error) => {
         if (active) setError(e.message)
@@ -74,7 +84,7 @@ function usePredictionsFetch(
     return () => {
       active = false
     }
-  }, [groupId, competitionId, requestedRound])
+  }, [groupId, competitionId])
 
   return {
     matches,
@@ -124,6 +134,7 @@ function deriveImportOptions(
 function usePredictionsImport(
   groupId: string,
   competitionId: string,
+  userId: string | undefined,
   matches: Match[],
   predictions: PredictionMap,
   setPredictions: Dispatch<SetStateAction<PredictionMap>>,
@@ -154,13 +165,8 @@ function usePredictionsImport(
     setImportFeedback(null)
     setImportExpanded(false)
     setImportedFromName(null)
-    apiFetch(`${config.apiUrl}/groups`, { cache: 'no-store' })
-      .then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar grupos')
-        return r.json() as Promise<{
-          groups: Array<{ id: string; name: string; competition_id: string }>
-        }>
-      })
+    // Vindo do painel, a lista já está no cache em memória e não há nova busca.
+    fetchGroupsList(userId)
       .then((data) => {
         if (!current.active) return
         const siblings = data.groups.filter(
@@ -174,7 +180,7 @@ function usePredictionsImport(
     return () => {
       current.active = false
     }
-  }, [groupId, competitionId])
+  }, [groupId, competitionId, userId])
 
   const { importPending, importOptions } = deriveImportOptions(
     otherGroups,
@@ -285,13 +291,15 @@ function usePredictionsImport(
 
 /**
  * `userId` liga a guarda dos rascunhos no navegador; sem ele, ficam só na memória.
- * `requestedRound` vem do `?rodada=` do painel e abre a aba nessa rodada em vez da padrão.
+ * `requestedRound` vem do `?rodada=` do painel e abre a aba nessa rodada em vez da
+ * padrão. `onRequestedRoundApplied` avisa quando ela foi aplicada.
  */
 export function usePredictionsTab(
   groupId: string,
   competitionId: string,
   userId?: string,
   requestedRound?: string | null,
+  onRequestedRoundApplied?: () => void,
 ) {
   const {
     matches,
@@ -306,7 +314,7 @@ export function usePredictionsTab(
     setImportCompleted,
     importSources,
     setImportSources,
-  } = usePredictionsFetch(groupId, competitionId, requestedRound)
+  } = usePredictionsFetch(groupId, competitionId, requestedRound, onRequestedRoundApplied)
 
   const { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange } =
     usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions)
@@ -326,6 +334,7 @@ export function usePredictionsTab(
   } = usePredictionsImport(
     groupId,
     competitionId,
+    userId,
     matches,
     predictions,
     setPredictions,

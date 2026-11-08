@@ -1,10 +1,10 @@
 import { useId } from 'react'
 import { Link } from 'react-router-dom'
 import { trackEvent } from '../../analytics/ga'
-import { pendingPredictionsLabel } from '../../components/GroupCard'
 import {
-  formatDay,
+  allPredictedWord,
   formatLongWhen,
+  pendingCountText,
   type DeadlineBanner,
 } from '../../lib/dashboardStatus'
 import styles from './NextDeadlineBanner.module.css'
@@ -17,7 +17,7 @@ function predictionsHref(groupId: string, round: string | null): string {
 
 /**
  * Faixa do topo do painel. Com jogo sem palpite, mostra o que fecha primeiro e
- * leva ao grupo mais urgente. Sem pendência, diz até quando está tudo palpitado.
+ * leva ao grupo mais urgente. Sem pendência, diz que a rodada está toda palpitada.
  */
 export default function NextDeadlineBanner({
   banner,
@@ -35,17 +35,14 @@ export default function NextDeadlineBanner({
           <span className={styles.check} aria-hidden="true">
             ✓
           </span>
-          Tudo palpitado até {formatDay(banner.until)}
+          {banner.roundLabel} {allPredictedWord(banner.roundLabel)}
         </p>
       </section>
     )
   }
 
   const { match } = banner
-  const pendingText =
-    banner.groupsWithPending > 1
-      ? `${pendingPredictionsLabel(banner.totalPending)} em ${banner.groupsWithPending} grupos`
-      : pendingPredictionsLabel(banner.totalPending)
+  const pendingText = pendingCountText(banner.totalPending, banner.groupsWithPending)
 
   return (
     <section className={styles.banner} data-kind="pending" aria-labelledby={labelId}>

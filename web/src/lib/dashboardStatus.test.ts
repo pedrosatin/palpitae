@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  allPredictedWord,
   completeWord,
   deadlineBanner,
-  formatDay,
   formatLongWhen,
   formatShortWhen,
   groupRoundStatus,
+  groupRoundStatusLabel,
   groupRoundStatusText,
+  pendingCountText,
   sortByUrgency,
   type DeadlineMatch,
   type RoundStatusFields,
@@ -92,6 +94,25 @@ describe('groupRoundStatus e texto do card', () => {
     })
   })
 
+  it('monta o rótulo do leitor de tela sem "✓" e "·"', () => {
+    const label = (fields: Partial<RoundStatusFields>) =>
+      groupRoundStatusLabel(groupRoundStatus(group('g', fields))!, NOW)
+
+    expect(
+      label({ current_round_label: 'Rodada 35', next_match_at: '2026-11-14T21:30:00Z' }),
+    ).toBe('Rodada 35 completa, próximo jogo sáb 18:30')
+    expect(
+      label({ pending_predictions: 10, next_deadline: deadline('2026-11-14T21:30:00Z') }),
+    ).toBe('10 sem palpite, fecha sáb 18:30')
+    expect(label({ live_matches: 2 })).toBe('2 jogos ao vivo')
+  })
+
+  it('conta os jogos sem palpite e os grupos quando são mais de um', () => {
+    expect(pendingCountText(10)).toBe('10 sem palpite')
+    expect(pendingCountText(10, 1)).toBe('10 sem palpite')
+    expect(pendingCountText(30, 3)).toBe('30 sem palpite em 3 grupos')
+  })
+
   it('concorda "completa" com o rótulo da rodada', () => {
     expect(completeWord('Rodada 35')).toBe('completa')
     expect(completeWord('Final')).toBe('completa')
@@ -100,6 +121,13 @@ describe('groupRoundStatus e texto do card', () => {
     expect(completeWord('Quartas da Taça Guanabara')).toBe('completas')
     expect(completeWord('Playoffs')).toBe('completos')
     expect(completeWord('Terceiro lugar')).toBe('completo')
+  })
+
+  it('concorda "toda palpitada" com o rótulo da rodada', () => {
+    expect(allPredictedWord('Rodada 35')).toBe('toda palpitada')
+    expect(allPredictedWord('Semifinais')).toBe('todas palpitadas')
+    expect(allPredictedWord('Playoffs')).toBe('todos palpitados')
+    expect(allPredictedWord('Terceiro lugar')).toBe('todo palpitado')
   })
 })
 
@@ -169,14 +197,22 @@ describe('deadlineBanner', () => {
     })
   })
 
-  it('diz até quando está tudo palpitado pelo fim de rodada mais próximo', () => {
+  it('sem pendência, nomeia a rodada que termina primeiro, sem data', () => {
     expect(
       deadlineBanner([
-        group('a', { next_match_at: '2026-11-14T21:30:00Z', round_ends_at: '2026-11-20T00:30:00Z' }),
-        group('b', { next_match_at: '2026-11-13T22:00:00Z', round_ends_at: '2026-11-19T22:00:00Z' }),
+        group('a', {
+          current_round_label: 'Rodada 35',
+          next_match_at: '2026-11-14T21:30:00Z',
+          round_ends_at: '2026-11-20T00:30:00Z',
+        }),
+        group('b', {
+          current_round_label: 'Semifinais',
+          next_match_at: '2026-11-13T22:00:00Z',
+          round_ends_at: '2026-11-19T22:00:00Z',
+        }),
         group('c'),
       ]),
-    ).toEqual({ kind: 'clear', until: '2026-11-19T22:00:00Z' })
+    ).toEqual({ kind: 'clear', roundLabel: 'Semifinais' })
   })
 
   it('não mostra faixa sem pendência e sem rodada aberta', () => {
@@ -200,9 +236,5 @@ describe('datas no fuso de Brasília', () => {
     expect(formatLongWhen('2026-11-12T22:00:00Z', NOW)).toBe('hoje às 19:00')
     expect(formatLongWhen('2026-11-13T22:00:00Z', NOW)).toBe('amanhã às 19:00')
     expect(formatLongWhen('2026-11-14T21:30:00Z', NOW)).toBe('sáb, 14/11 às 18:30')
-  })
-
-  it('formata o dia do fim da rodada no fuso de Brasília', () => {
-    expect(formatDay('2026-11-20T00:30:00Z')).toBe('qui, 19/11')
   })
 })

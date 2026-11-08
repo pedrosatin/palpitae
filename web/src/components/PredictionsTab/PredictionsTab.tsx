@@ -23,6 +23,8 @@ interface PredictionsTabProps {
   pointsExact?: number
   /** Rodada em que a aba abre no lugar da padrão, vinda do `?rodada=` do link. */
   initialRound?: string | null
+  /** Chamado depois que a aba aplica `initialRound` na carga dos jogos. */
+  onInitialRoundApplied?: () => void
 }
 
 function leg1Context(
@@ -80,6 +82,7 @@ export default function PredictionsTab({
   userId,
   pointsExact = 3,
   initialRound,
+  onInitialRoundApplied,
 }: PredictionsTabProps) {
   const {
     unsavedDrafts,
@@ -120,7 +123,7 @@ export default function PredictionsTab({
     handleSaved,
     handleDraftChange,
     handlePenaltyDraftChange,
-  } = usePredictionsTab(groupId, competitionId, userId, initialRound)
+  } = usePredictionsTab(groupId, competitionId, userId, initialRound, onInitialRoundApplied)
   // Um relógio só para o cabeçalho e os cards. Quando um jogo começa com a aba
   // aberta, o cabeçalho tira o jogo e o card trava no mesmo tique.
   const now = useNow(TICK_MS)

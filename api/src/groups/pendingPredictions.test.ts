@@ -264,13 +264,13 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
 
 describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
   async function groupsFor(
-    setup: (sqlite: DatabaseSync) => void = () => {},
+    setup: (sqlite: DatabaseSync, env: Env) => void = () => {},
   ): Promise<GroupsBody['groups']> {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-06-15T12:00:00Z'))
     try {
-      const { sqlite, request } = await createFixture()
-      setup(sqlite)
+      const { sqlite, request, env } = await createFixture()
+      setup(sqlite, env)
       const res = await request('alice')
       expect(res.status).toBe(200)
       return ((await res.json()) as GroupsBody).groups
@@ -360,6 +360,72 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
     expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
   })
 
+  it('deixa o adiado de horário futuro fora do prazo e do próximo jogo', async () => {
+    // Adiado antes do apito: o sync guarda o horário original, 18/06, ainda futuro.
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(`
+        UPDATE matches SET start_time = '2026-06-18T19:00:00Z' WHERE id = 'm-r2-postponed';
+      `),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(4)
+    expect(groupA?.next_deadline?.match_id).toBe('m-r2-open-1')
+    expect(groupA?.next_deadline?.start_time).toBe('2026-06-20T19:00:00Z')
+    expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
+  })
+
+  it('no empate de horário prefere o jogo da rodada padrão ao remarcado', async () => {
+    // O remarcado da rodada 1 tem o id menor e o mesmo horário do primeiro jogo da 2.
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(`
+        INSERT INTO matches (
+          id, competition_id, external_id, provider,
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+        ) VALUES
+          ('m-r1-2', 'comp-a', 'fd-r1-2', 'football-data', 'cor', 'sao', '2026-06-02T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-02T19:00:00Z'),
+          ('m-r1-remarcado', 'comp-a', 'fd-r1-3', 'football-data', 'sao', 'pal', '2026-06-20T19:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+      `),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(5)
+    expect(groupA?.next_deadline).toMatchObject({ match_id: 'm-r2-open-1', round: '2' })
+  })
+
+  it.each([
+    [
+      'dos jogos ao vivo',
+      'AS live_matches',
+      { live_matches: 0, next_deadline: { match_id: 'm-r2-open-1' } },
+    ],
+    ['do jogo de prazo', 'AS home_team', { live_matches: 1, next_deadline: null }],
+  ])('lista os grupos quando a consulta %s falha', async (_query, marker, expected) => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const groups = await groupsFor((sqlite, env) => {
+        sqlite.exec(`
+          INSERT INTO matches (
+            id, competition_id, external_id, provider,
+            home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+          ) VALUES
+            ('m-live', 'comp-a', 'fd-l1', 'football-data', 'pal', 'fla', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+        `)
+        const prepare = env.DB.prepare.bind(env.DB)
+        vi.spyOn(env.DB, 'prepare').mockImplementation((sql: string) => {
+          if (sql.includes(marker)) throw new Error('D1 indisponível')
+          return prepare(sql)
+        })
+      })
+      const groupA = groups.find((g) => g.id === 'group-a')
+
+      expect(groupA).toMatchObject({ pending_predictions: 4, ...expected })
+      expect(error).toHaveBeenCalledOnce()
+    } finally {
+      error.mockRestore()
+    }
+  })
+
   it('rodada toda palpitada fica sem prazo e mantém o próximo jogo', async () => {
     const groups = await groupsFor((sqlite) =>
       predict(sqlite, 'm-r2-open-1', 'm-r2-open-2', 'm-r2-open-3', 'm-r2-postponed'),
@@ -434,7 +500,7 @@ describe('parsePendingSummary', () => {
   it('separa o horário e o id do jogo de prazo', () => {
     expect(
       parsePendingSummary(
-        '{"pending":2,"deadline":"2026-11-14T21:30:00Z|abc-123","next_match_at":"2026-11-14T21:30:00Z","round":"35","round_ends_at":"2026-11-20T00:30:00Z"}',
+        '{"pending":2,"deadline":"2026-11-14T21:30:00Z|0|abc-123","next_match_at":"2026-11-14T21:30:00Z","round":"35","round_ends_at":"2026-11-20T00:30:00Z"}',
       ),
     ).toEqual({
       pending: 2,
@@ -456,6 +522,7 @@ describe('parsePendingSummary', () => {
     expect(parsePendingSummary(null)).toEqual(empty)
     expect(parsePendingSummary('{')).toEqual(empty)
     expect(parsePendingSummary('{"pending":0,"deadline":null}')).toEqual(empty)
+    expect(parsePendingSummary('{"pending":0,"deadline":"2026-11-14T21:30:00Z|abc"}')).toEqual(empty)
   })
 })
 
