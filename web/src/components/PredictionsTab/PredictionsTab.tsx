@@ -11,6 +11,7 @@ import RoundProgress from './RoundProgress'
 import RoundSummary from './RoundSummary'
 import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
 import { usePredictionsTab } from './usePredictionsTab'
+import { findLeg2 } from '../../lib/tieSummary'
 import styles from './PredictionsTab.module.css'
 
 /** Intervalo do relógio da aba. O "fecha em ..." mostra minutos. */
@@ -332,6 +333,7 @@ export default function PredictionsTab({
                     ? matches.find((m) => m.id === match.leg1_match_id)
                     : undefined
                 }
+                leg2Match={findLeg2(match, matches)}
                 groupId={groupId}
                 outcomeOnly={pointsExact === 0}
                 onSaved={handleSaved}
