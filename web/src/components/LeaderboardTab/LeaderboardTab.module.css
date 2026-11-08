@@ -4,6 +4,9 @@
 
 .table {
   width: 100%;
+  /* Larguras vêm do cabeçalho: as colunas numéricas não crescem e o nome
+     absorve o resto, com reticências, em vez de empurrar a tabela para fora. */
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
 }
@@ -31,6 +34,11 @@
 .thExact {
   width: 5rem;
   text-align: center;
+}
+
+.labelShort {
+  display: none;
+  text-decoration: none;
 }
 
 .row,
@@ -64,10 +72,24 @@
   width: 2.5rem;
 }
 
-.tdName {
+.nameCell {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.nameBody {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.badges {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-1);
 }
 
 .avatar {
@@ -93,6 +115,10 @@
 }
 
 .displayName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text-primary);
   font-weight: var(--font-weight-medium);
 }
@@ -124,6 +150,52 @@
 
 .tdExact {
   color: var(--color-text-secondary);
+}
+
+/* Mobile (360–390 px): rótulos curtos, colunas numéricas estreitas e badges
+   menores abaixo do nome, para a tabela caber sem rolagem nem coluna cortada. */
+@media (max-width: 480px) {
+  .table th,
+  .table td {
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .thPos,
+  .tdPos {
+    width: 2rem;
+  }
+
+  .thPts,
+  .thExact {
+    width: 3rem;
+    letter-spacing: 0;
+  }
+
+  .labelLong {
+    display: none;
+  }
+
+  .labelShort {
+    display: inline;
+  }
+
+  .nameBody {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .displayName {
+    max-width: 100%;
+  }
+
+  .ownerBadge,
+  .youBadge {
+    font-size: 0.625rem;
+    line-height: 1.4;
+    padding: 0 var(--space-1);
+  }
 }
 
 .loading {

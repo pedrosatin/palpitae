@@ -47,6 +47,34 @@ function mockFetch() {
   })
 }
 
+describe('LeaderboardTab – cabeçalho e badges', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('names the numeric columns accessibly, with short labels for mobile', async () => {
+    mockFetch()
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Ana'))
+    const exact = screen.getByRole('columnheader', { name: 'Placares exatos' })
+    expect(exact).toHaveTextContent('Ex.')
+    expect(exact.querySelector('abbr')).toHaveAttribute('title', 'Placares exatos')
+    const points = screen.getByRole('columnheader', { name: 'Pontos' })
+    expect(points.querySelector('abbr')).toHaveTextContent('Pts')
+  })
+
+  it('groups the admin and você badges under the member name', async () => {
+    mockFetch()
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+
+    await waitFor(() => screen.getByText('Pedro'))
+    const badges = screen.getByText('admin').parentElement as HTMLElement
+    expect(badges).toContainElement(screen.getByText('você'))
+    expect(badges.parentElement).toContainElement(screen.getByText('Pedro'))
+  })
+})
+
 describe('LeaderboardTab – analytics', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
