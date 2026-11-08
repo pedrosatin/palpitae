@@ -1,6 +1,9 @@
+import { formatMatchDate } from '../../lib/matchTime'
+import CheckIcon from '../CheckIcon'
 import InfoHint from '../InfoHint/InfoHint'
 import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
 import styles from './MatchCard.module.css'
+import { PREDICTION_STATUS_LABEL, type PredictionStatus } from './predictionStatus'
 import { useMatchCard } from './useMatchCard'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
@@ -36,14 +39,10 @@ interface MatchCardProps {
   penaltyDraft?: 'home' | 'away' | null
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'America/Sao_Paulo',
-  })
+const STATUS_CLASS: Record<PredictionStatus, string> = {
+  empty: styles.statusEmpty,
+  saved: styles.statusSaved,
+  dirty: styles.statusDirty,
 }
 
 export default function MatchCard(props: MatchCardProps) {
@@ -58,6 +57,8 @@ export default function MatchCard(props: MatchCardProps) {
     saved,
     error,
     canSave,
+    status,
+    saveDone,
     home,
     away,
     penaltyWinner,
@@ -120,17 +121,36 @@ export default function MatchCard(props: MatchCardProps) {
     </div>
   )
 
+  // O leitor de tela ouve o jogo e o estado juntos ao entrar no card. "contra" no
+  // lugar de "×", que seria lido como "vezes".
+  const stateLabel = !locked
+    ? PREDICTION_STATUS_LABEL[status]
+    : isFinished
+      ? 'encerrado'
+      : 'bloqueado'
+  const groupLabel = `${match.home_team_name} contra ${match.away_team_name}, ${stateLabel}`
+
   return (
-    <div className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}>
+    <div
+      role="group"
+      aria-label={groupLabel}
+      className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}
+    >
       {/* Status badge */}
       <div className={styles.meta}>
         <span className={styles.date}>
-          {isPostponed ? 'data a definir' : formatDate(match.start_time)}
+          {isPostponed ? 'data a definir' : formatMatchDate(match.start_time)}
         </span>
         {isFinished && <span className={styles.badgeFinished}>encerrado</span>}
         {isPostponed && <span className={styles.badgePostponed}>adiado</span>}
         {locked && !isFinished && !isPostponed && (
           <span className={styles.badgeLocked}>bloqueado</span>
+        )}
+        {!locked && (
+          <span className={`${styles.status} ${STATUS_CLASS[status]}`}>
+            {status === 'saved' && <CheckIcon />}
+            {PREDICTION_STATUS_LABEL[status]}
+          </span>
         )}
       </div>
 
@@ -169,8 +189,8 @@ export default function MatchCard(props: MatchCardProps) {
             match={match}
             locked={locked}
             saving={saving}
-            saved={saved}
             canSave={canSave}
+            saveDone={saveDone}
             hasPrediction={hasPrediction}
             penaltyInline={penaltyInline}
             updateHome={updateHome}
@@ -364,8 +384,8 @@ function ScoreInputView({
   match,
   locked,
   saving,
-  saved,
   canSave,
+  saveDone,
   hasPrediction,
   penaltyInline,
   updateHome,
@@ -378,8 +398,8 @@ function ScoreInputView({
   match: Match
   locked: boolean
   saving: boolean
-  saved: boolean
   canSave: boolean
+  saveDone: boolean
   hasPrediction: boolean
   penaltyInline: React.ReactNode
   updateHome: (v: string) => void
@@ -407,7 +427,7 @@ function ScoreInputView({
           name={`home-score-${match.id}`}
           min={0}
           max={99}
-          placeholder="0"
+          placeholder="–"
           value={home}
           onChange={(e) => handleScoreInput(e.target.value, updateHome)}
           aria-label={`Placar ${match.home_team_name}`}
@@ -442,7 +462,7 @@ function ScoreInputView({
           name={`away-score-${match.id}`}
           min={0}
           max={99}
-          placeholder="0"
+          placeholder="–"
           value={away}
           onChange={(e) => handleScoreInput(e.target.value, updateAway)}
           aria-label={`Placar ${match.away_team_name}`}
@@ -459,12 +479,28 @@ function ScoreInputView({
         </button>
       </div>
       {penaltyInline}
+      {/* Palpite salvo e sem mudança mostra "Salvo", sem opacidade reduzida. O botão
+          continua o mesmo elemento, e o foco fica nele depois de salvar. Por isso
+          `aria-disabled` no lugar de `disabled`, que tiraria o foco. */}
       <button
-        className={`${styles.saveBtn} ${saved ? styles.saveBtnSaved : ''}`}
+        type="button"
+        className={`${styles.saveBtn} ${saveDone ? styles.saveBtnDone : ''}`}
         onClick={handleSave}
-        disabled={!canSave}
+        disabled={!saveDone && !canSave}
+        aria-disabled={saveDone || undefined}
       >
-        {saving ? '...' : saved ? 'Salvo!' : hasPrediction ? 'Atualizar' : 'Salvar'}
+        {saving ? (
+          '...'
+        ) : saveDone ? (
+          <>
+            <CheckIcon />
+            Salvo
+          </>
+        ) : hasPrediction ? (
+          'Atualizar'
+        ) : (
+          'Salvar'
+        )}
       </button>
     </div>
   )

@@ -59,7 +59,7 @@ describe('useMatchCard', () => {
     } as Response)
   })
 
-  it('initializes with default values when there is no prediction', () => {
+  it('começa com os dois campos vazios quando não há palpite', () => {
     const { result } = renderHook(() =>
       useMatchCard({
         match: makeMatch(),
@@ -69,9 +69,54 @@ describe('useMatchCard', () => {
       }),
     )
 
-    expect(result.current.home).toBe('0')
-    expect(result.current.away).toBe('0')
+    expect(result.current.home).toBe('')
+    expect(result.current.away).toBe('')
     expect(result.current.penaltyWinner).toBeNull()
+    expect(result.current.status).toBe('empty')
+    expect(result.current.canSave).toBe(false)
+  })
+
+  it('só libera o salvar de jogo sem palpite com os dois campos preenchidos', () => {
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        onSaved: vi.fn(),
+      }),
+    )
+
+    act(() => {
+      result.current.updateHome('1')
+    })
+    expect(result.current.status).toBe('dirty')
+    expect(result.current.canSave).toBe(false)
+
+    act(() => {
+      result.current.updateAway('0')
+    })
+    expect(result.current.canSave).toBe(true)
+  })
+
+  it('marca o palpite salvo como concluído até o placar mudar', () => {
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: makePrediction(),
+        groupId: 'group-1',
+        onSaved: vi.fn(),
+      }),
+    )
+
+    expect(result.current.status).toBe('saved')
+    expect(result.current.saveDone).toBe(true)
+    expect(result.current.canSave).toBe(false)
+
+    act(() => {
+      result.current.updateHome('4')
+    })
+    expect(result.current.status).toBe('dirty')
+    expect(result.current.saveDone).toBe(false)
     expect(result.current.canSave).toBe(true)
   })
 
@@ -188,6 +233,9 @@ describe('useMatchCard', () => {
     act(() => {
       result.current.updateHome('1')
     })
+    act(() => {
+      result.current.updateAway('0')
+    })
 
     expect(result.current.canSave).toBe(true)
 
@@ -267,6 +315,9 @@ describe('useMatchCard', () => {
     )
 
     await act(async () => {
+      await result.current.selectOutcome('draw')
+    })
+    await act(async () => {
       await result.current.selectPenaltyWinner('away')
     })
 
@@ -287,6 +338,24 @@ describe('useMatchCard', () => {
       }),
     )
     expect(onSaved).toHaveBeenCalledWith('match-1', 0, 0, 'away')
+  })
+
+  it('não grava 0×0 quando o pênalti chega com os campos vazios no modo só vencedor', async () => {
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch({ decides_on_penalties: true }),
+        prediction: undefined,
+        groupId: 'group-1',
+        outcomeOnly: true,
+        onSaved: vi.fn(),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.selectPenaltyWinner('away')
+    })
+
+    expect(mockFetch).not.toHaveBeenCalled()
   })
 
   it('selectOutcome draw for match with penalties does not save immediately', async () => {
@@ -332,6 +401,9 @@ describe('useMatchCard', () => {
     act(() => {
       result.current.updateHome('1')
     })
+    act(() => {
+      result.current.updateAway('0')
+    })
 
     await act(async () => {
       await result.current.handleSave()
@@ -357,6 +429,9 @@ describe('useMatchCard', () => {
 
     act(() => {
       result.current.updateHome('1')
+    })
+    act(() => {
+      result.current.updateAway('0')
     })
 
     await act(async () => {

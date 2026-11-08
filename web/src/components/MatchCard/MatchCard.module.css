@@ -16,13 +16,16 @@
 /* ── Meta row ───────────────────────────── */
 .meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
 }
 
+/* "sáb, 14/11 · 18:30" cabe numa linha em 390 px e não deve quebrar. */
 .date {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 .badgeFinished,
@@ -51,6 +54,41 @@
   background-color: var(--color-warning-bg, #f59e0b1a);
   color: var(--color-warning, #f59e0b);
   border: 1px solid var(--color-warning-border, #f59e0b40);
+}
+
+/*
+ * Estado do palpite num jogo aberto, à direita da data. O texto diz o estado, e a
+ * cor reforça. Sem palpite fica em contorno amarelo. Alterado e não salvo fica em
+ * amarelo cheio, porque a edição se perde se o usuário sair. Salvo fica em verde
+ * com a marca de confirmação. Todos passam de 4,5:1 sobre a superfície do card.
+ */
+.status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.statusEmpty {
+  color: var(--color-warning);
+  border-color: rgb(255 212 59 / 0.45);
+}
+
+.statusDirty {
+  background-color: var(--color-warning);
+  color: var(--color-on-primary);
+}
+
+.statusSaved {
+  color: var(--color-primary);
+  border-color: rgb(73 242 27 / 0.3);
+  background-color: rgb(73 242 27 / 0.08);
 }
 
 /* ── Teams row ──────────────────────────── */
@@ -257,6 +295,13 @@
   -moz-appearance: textfield;
 }
 
+/* Campo vazio de jogo sem palpite. O traço some quando o usuário escolhe um número. */
+.scoreInput::placeholder {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-regular);
+  opacity: 1;
+}
+
 /* Inside a stepper, remove side border-radius and collapse borders */
 .stepper .scoreInput {
   border-radius: 0;
@@ -279,6 +324,10 @@
 
 .saveBtn {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
   background-color: var(--color-primary);
   color: var(--color-on-primary);
   border: none;
@@ -301,9 +350,14 @@
   cursor: not-allowed;
 }
 
-.saveBtnSaved {
-  background-color: #1e7a0e;
-  color: #ffffff;
+/* Palpite salvo e sem mudança. É estado, então não tem fundo de ação nem opacidade
+   reduzida. O contorno vem por sombra interna para não mudar a altura do botão. */
+.saveBtn.saveBtnDone,
+.saveBtn.saveBtnDone:hover {
+  background-color: transparent;
+  color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px rgb(73 242 27 / 0.4);
+  cursor: default;
 }
 
 .errorMsg {

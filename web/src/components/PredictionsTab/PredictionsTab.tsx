@@ -5,6 +5,7 @@ import ErrorState from '../ErrorState'
 import MatchCard, { type Match } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import PredictionsImportBar from './PredictionsImportBar'
+import RoundProgress from './RoundProgress'
 import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
 import { usePredictionsTab } from './usePredictionsTab'
 import styles from './PredictionsTab.module.css'
@@ -174,22 +175,25 @@ export default function PredictionsTab({
           setImportExpanded,
         }}
       />
-      <RoundHeader
-        id="predictions-round-select"
-        roundKeys={roundKeys}
-        safeIndex={safeIndex}
-        selectedRound={selectedRound}
-        labelFor={labelFor}
-        onPrev={prev}
-        onNext={next}
-        postponedByRound={postponedByRound}
-        rescheduledByRound={rescheduledByRound}
-        unsavedRounds={unsavedRounds}
-        onSelect={(round) => {
-          trackEvent('change_predictions_rodada', { round })
-          setRoundIndex(roundKeys.indexOf(round))
-        }}
-      />
+      <div className={styles.roundHeading}>
+        <RoundHeader
+          id="predictions-round-select"
+          roundKeys={roundKeys}
+          safeIndex={safeIndex}
+          selectedRound={selectedRound}
+          labelFor={labelFor}
+          onPrev={prev}
+          onNext={next}
+          postponedByRound={postponedByRound}
+          rescheduledByRound={rescheduledByRound}
+          unsavedRounds={unsavedRounds}
+          onSelect={(round) => {
+            trackEvent('change_predictions_rodada', { round })
+            setRoundIndex(roundKeys.indexOf(round))
+          }}
+        />
+        <RoundProgress roundMatches={roundMatches} predictions={predictions} />
+      </div>
 
       {/* Atalho para a rodada com jogo adiado ou remarcado. Sem isso o palpite
           aberto fica invisível: a rodada não é o default e o usuário não tem por
