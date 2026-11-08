@@ -24,6 +24,32 @@ describe('gaPageLocation', () => {
     )
   })
 
+  it.each([`/GRUPOS/${uuid}`, `/Grupos/${uuid}/`, `/%67rupos/${uuid}`])(
+    'follows the router matching for %s',
+    (pathname) => {
+      expect(gaPageLocation({ origin, pathname, search: '' })).toBe(`${origin}/grupos/:id`)
+      expect(gaPageTitle(pathname)).toBe('Grupo | Palpitae')
+    },
+  )
+
+  it('normalizes an invite path in other casing', () => {
+    expect(gaPageLocation({ origin, pathname: '/CONVITE/ABC123', search: '' })).toBe(
+      `${origin}/convite/:code`,
+    )
+  })
+
+  it('drops anything after the private segment', () => {
+    expect(gaPageLocation({ origin, pathname: `/grupos/${uuid}/${uuid}`, search: '' })).toBe(
+      `${origin}/grupos/:id`,
+    )
+  })
+
+  it('keeps a malformed path instead of throwing', () => {
+    expect(gaPageLocation({ origin, pathname: '/%E0%A4%A', search: '' })).toBe(
+      `${origin}/%E0%A4%A`,
+    )
+  })
+
   it('keeps every campaign param GA4 recognizes', () => {
     const search = '?utm_id=c1&utm_source_platform=crm&utm_creative_format=video'
     expect(gaPageLocation({ origin, pathname: '/', search })).toBe(`${origin}/${search}`)
@@ -55,6 +81,10 @@ describe('internalReferrer', () => {
     expect(internalReferrer(`${origin}/grupos/${uuid}?convite=X`, origin)).toBe(
       `${origin}/grupos/:id`,
     )
+  })
+
+  it('normalizes a same-site referrer in other casing', () => {
+    expect(internalReferrer(`${origin}/GRUPOS/${uuid}`, origin)).toBe(`${origin}/grupos/:id`)
   })
 
   it('ignores external referrers so the login return stays excluded', () => {
