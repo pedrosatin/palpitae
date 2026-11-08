@@ -25,6 +25,8 @@ export interface GroupWithStats {
   competition_name: string | null
   competition_type?: 'league' | 'cup' | null
   competition_status?: 'upcoming' | 'ongoing' | 'finished' | null
+  /** Pontos do placar exato. Zero é grupo "só vencedor". */
+  points_exact?: number
   created_at: string
   member_count: number
   user_position: number

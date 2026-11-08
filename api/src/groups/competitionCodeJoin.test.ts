@@ -168,6 +168,7 @@ type GroupPayload = {
   competition_id: string
   competition_name: string | null
   competition_code: string | null
+  points_exact?: number
 }
 
 describe('groups competition_code JOIN (HTTP + SQLite)', () => {
@@ -183,6 +184,7 @@ describe('groups competition_code JOIN (HTTP + SQLite)', () => {
     expect(byId['g-gaucho']?.competition_code).not.toBe(GAUCHO_ID)
     expect(byId['g-gaucho']?.competition_code).not.toBe('Campeonato Gaúcho')
     expect(byId['g-gaucho']?.competition_id).toBe(GAUCHO_ID)
+    expect(typeof byId['g-gaucho']?.points_exact).toBe('number')
 
     expect(byId['g-bsa']?.competition_code).toBe('BSA')
     expect(byId['g-bsa']?.competition_code).not.toBe(BSA_ID)
