@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import { hasFeatureAccess, hasPilotAccess } from '../auth/permissions'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
+import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
@@ -471,14 +472,15 @@ router.post('/', requireAuth, async (c) => {
  *
  * Joins an existing group via invite code.
  *
- * Body: { invite_code: string }
+ * Body: { invite_code: string, entry_method?: 'convite_link' | 'codigo' }
+ * `entry_method` só alimenta o funil do Analytics Engine. Não muda a entrada.
  *
  * Response 200:
  * { group: { id, name } }
  */
 router.post('/join', requireAuth, async (c) => {
   const userId = c.get('userId')
-  const body = await c.req.json<{ invite_code?: string }>()
+  const body = await c.req.json<{ invite_code?: string; entry_method?: unknown }>()
 
   const invite_code = body.invite_code?.trim().toUpperCase()
 
@@ -550,7 +552,12 @@ router.post('/join', requireAuth, async (c) => {
   }
 
   logEvent(c.env.AE, 'group_joined', {
-    blobs: [group.id, await hashUserId(userId)],
+    blobs: [
+      group.id,
+      await hashUserId(userId),
+      parseEntryMethod(body.entry_method),
+      await readRecentSignupFlag(db, memberId),
+    ],
   })
 
   return c.json({ group: { id: group.id, name: group.name } })

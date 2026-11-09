@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { config } from '../../config'
-import { trackJoinGroup } from '../../analytics/funnel'
+import { type JoinGroupEntryMethod, trackJoinGroup } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { parseInviteCode } from '../../lib/invite'
@@ -54,12 +54,16 @@ export default function JoinGroupModal({
     setSubmitting(true)
 
     const invite_code = parseInviteCode(rawCode)
+    // Veio pelo link quando o código enviado é o mesmo que chegou na URL;
+    // se o usuário apagou e digitou outro, conta como código.
+    const fromLink = initialCode !== '' && parseInviteCode(initialCode) === invite_code
+    const entry_method: JoinGroupEntryMethod = fromLink ? 'convite_link' : 'codigo'
 
     try {
       const res = await apiFetch(`${config.apiUrl}/groups/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invite_code }),
+        body: JSON.stringify({ invite_code, entry_method }),
       })
 
       const data = (await res.json()) as { group?: JoinedGroup; error?: string }
@@ -70,10 +74,7 @@ export default function JoinGroupModal({
       }
 
       trackEvent('submit_entrar_grupo')
-      // Veio pelo link quando o código enviado é o mesmo que chegou na URL;
-      // se o usuário apagou e digitou outro, conta como código.
-      const fromLink = initialCode !== '' && parseInviteCode(initialCode) === invite_code
-      trackJoinGroup(fromLink ? 'convite_link' : 'codigo')
+      trackJoinGroup(entry_method)
       setJoined(data.group!)
       onJoined(data.group!)
     } catch {

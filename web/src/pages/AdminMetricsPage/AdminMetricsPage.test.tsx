@@ -96,8 +96,15 @@ function mockFetch(
   opsBody: unknown = null,
   activityBody: unknown = null,
   heatmapBody: unknown = null,
+  funnelBody: unknown = null,
 ) {
   return vi.fn(async (url: string) => {
+    // API sem /metrics/invite-funnel (deploy da web antes da API): 404.
+    if (url.includes('/metrics/invite-funnel')) {
+      return funnelBody === null
+        ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
+        : { ok: true, status: 200, json: async () => funnelBody }
+    }
     // API sem /metrics/heatmap (deploy da web antes da API): 404.
     if (url.includes('/metrics/heatmap')) {
       return heatmapBody === null
@@ -132,6 +139,44 @@ function mockFetch(
     return { ok: true, status: 200, json: async () => archive }
   })
 }
+
+describe('AdminMetricsPage: funil de convite', () => {
+  const funnel = {
+    days: 30,
+    opens: 40,
+    joins: 8,
+    joinsByMethod: { convite_link: 6, codigo: 2, unknown: 0 },
+    newMembers: 3,
+    existingMembers: 5,
+    unclassifiedJoins: 0,
+    d1: { joins: 8, newMembers: 3, existingMembers: 5 },
+    opensSince: '2026-08-01 10:00:00',
+    joinDimensionSince: '2026-08-01 10:00:00',
+    avgSampleInterval: 1,
+  }
+
+  it('mostra aberturas, entradas, convidados novos e existentes', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, business, null, null, null, funnel))
+    render(<AdminMetricsPage />)
+
+    const table = await screen.findByRole('table', { name: 'Funil de convite' })
+    expect(within(table).getByText('aberturas do convite')).toBeInTheDocument()
+    expect(within(table).getByText('40')).toBeInTheDocument()
+    expect(within(table).getByText('entradas em grupo')).toBeInTheDocument()
+    expect(within(table).getByText('convidados novos')).toBeInTheDocument()
+    expect(within(table).getByText('convidados que já tinham conta')).toBeInTheDocument()
+  })
+
+  it('não derruba a página numa API sem a rota do funil', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText('Indisponível: a API ainda não envia o funil de convite.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('usuários palpitando')).toBeInTheDocument()
+  })
+})
 
 describe('AdminMetricsPage', () => {
   it('renderiza KPIs, totais, poller, falhas, erros, whales e arquivo R2', async () => {

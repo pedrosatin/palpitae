@@ -213,6 +213,7 @@ describe('DashboardPage na volta do login com convite', () => {
     expect(calls).toHaveLength(1)
     expect(JSON.parse(String((calls[0][1] as RequestInit).body))).toEqual({
       invite_code: 'ABCD-EF23',
+      entry_method: 'convite_link',
     })
     expect(sessionStorage.getItem('palpitae:convite-aceito')).toBeNull()
   })
