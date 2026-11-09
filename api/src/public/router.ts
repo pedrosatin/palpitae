@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { logEvent } from '../observability'
-import { PROXY_SECRET_HEADER, sameSecret } from '../security/limits'
+import { INVITE_OPEN_HEADER, PROXY_SECRET_HEADER, sameSecret } from '../security/limits'
 import type { AppContext } from '../types'
 
 /**
@@ -109,19 +109,21 @@ router.get('/invites/:code', async (c) => {
  * POST /public/invite-opens
  *
  * Conta uma abertura de `/convite/:code`. Quem chama é a Pages Function, que já
- * filtrou crawlers e pré-busca, e o segredo do proxy impede que outra origem
- * infle o funil. Sem o segredo configurado, a rota fica fechada.
+ * filtrou crawlers e pré-busca. O segredo barra a chamada direta à API, e a marca
+ * `X-Palpitae-Invite-Open`, que o proxy público remove, barra quem passa por
+ * `/api/*`. Sem o segredo configurado, a rota fica fechada.
  *
  * O pedido não carrega código nem dado de quem abriu, e o evento grava só o tipo.
  * A contagem não mora em `GET /public/invites/:code` porque essa rota passa pelo
  * cache do edge, serve crawlers e a SPA também pode chamá-la.
  *
- * Response 204: abertura registrada. Response 403: segredo ausente ou errado.
+ * Response 204: abertura registrada. Response 403: marca ausente, ou segredo ausente ou errado.
  */
 router.post('/invite-opens', async (c) => {
   const expected = c.env.PROXY_SHARED_SECRET
   const provided = c.req.header(PROXY_SECRET_HEADER)
-  if (!expected || !provided || !(await sameSecret(provided, expected))) {
+  const fromInviteFunction = c.req.header(INVITE_OPEN_HEADER) === '1'
+  if (!fromInviteFunction || !expected || !provided || !(await sameSecret(provided, expected))) {
     return c.json({ error: 'Forbidden' }, 403)
   }
 

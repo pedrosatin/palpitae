@@ -144,7 +144,7 @@ recomendados do GA4.
 |---|---|---|
 | `login` | Volta do OAuth com sessão válida. O clique em "Entrar com Google" grava uma marca no `sessionStorage`, e o `/auth/me` a consome. | `{ method }` (`google`) |
 | `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
-| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ entry_method }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado ou colado no modal) |
+| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ entry_method }` (`convite_link` quando o código enviado veio de `/convite/<código>`, `convite_antigo` quando veio de um link antigo com `?convite=`, `codigo` quando foi digitado ou colado no modal) |
 
 O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
 `web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo). Na SPA, o

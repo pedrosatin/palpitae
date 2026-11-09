@@ -30,7 +30,7 @@
  * A imagem é compartilhada entre os convites; o nome do grupo aparece no título.
  */
 
-import { CLIENT_IP_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
+import { CLIENT_IP_HEADER, INVITE_OPEN_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
 
 // Tipos mínimos do runtime de Pages/Workers. A pasta functions/ não entra no
 // tsconfig do app (que usa os tipos do DOM), então declaramos só o que é usado.
@@ -347,7 +347,11 @@ export async function postInviteOpen(
   try {
     await fetchImpl(`${apiUrl.replace(/\/+$/, '')}/public/invite-opens`, {
       method: 'POST',
-      headers: { [CLIENT_IP_HEADER]: forward.clientIp, [PROXY_SECRET_HEADER]: forward.secret },
+      headers: {
+        [CLIENT_IP_HEADER]: forward.clientIp,
+        [PROXY_SECRET_HEADER]: forward.secret,
+        [INVITE_OPEN_HEADER]: '1',
+      },
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
     })
   } catch {

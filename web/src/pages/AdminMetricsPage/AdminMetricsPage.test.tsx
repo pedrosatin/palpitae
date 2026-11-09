@@ -145,7 +145,7 @@ describe('AdminMetricsPage: funil de convite', () => {
     days: 30,
     opens: 40,
     joins: 8,
-    joinsByMethod: { convite_link: 6, codigo: 2, unknown: 0 },
+    joinsByMethod: { convite_link: 6, convite_antigo: 0, codigo: 2, unknown: 0 },
     newMembers: 3,
     existingMembers: 5,
     unclassifiedJoins: 0,

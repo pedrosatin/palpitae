@@ -231,9 +231,9 @@ Free não foi confirmada. Confira no painel antes de contar com ela.
 ## Segredo do proxy
 
 `PROXY_SHARED_SECRET` precisa ter o mesmo valor no Worker da API e no projeto do
-Pages. O proxy remove `X-Palpitae-Client-IP` e `X-Palpitae-Proxy-Secret` vindos do
-visitante e, com o segredo configurado, envia os dois com o `CF-Connecting-IP` que
-recebeu. A API compara o segredo em tempo constante e ignora o IP repassado quando
+Pages. O proxy remove `X-Palpitae-Client-IP`, `X-Palpitae-Proxy-Secret` e
+`X-Palpitae-Invite-Open` vindos do visitante e, com o segredo configurado, envia os
+dois primeiros com o `CF-Connecting-IP` que recebeu. A API compara o segredo em tempo constante e ignora o IP repassado quando
 ele não confere.
 
 Para configurar, gere um valor aleatório (por exemplo `openssl rand -hex 32`) e:
@@ -253,8 +253,10 @@ compartilhado fica só para Workers sem o segredo.
 
 A Function de convite também usa o segredo para `POST /public/invite-opens`, que conta
 as aberturas do funil. A rota responde 403 sem o segredo correto, inclusive quando o
-Worker não tem o segredo configurado, para que ninguém de fora infle a contagem. Sem o
-segredo nos dois lados as aberturas não são registradas. A entrada no grupo segue igual.
+Worker não tem o segredo configurado. Como o proxy injeta o segredo em todo `/api/*`,
+a rota também exige `X-Palpitae-Invite-Open`, que só a Function envia e o proxy remove
+de qualquer pedido. Assim ninguém de fora infla a contagem. Sem o segredo nos dois lados
+as aberturas não são registradas. A entrada no grupo segue igual.
 
 O Pages só passa a enviar o segredo após um novo deploy. Sem o segredo, ou com
 valores diferentes, usuários logados continuam com o limite por usuário e o

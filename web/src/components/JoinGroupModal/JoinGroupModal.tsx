@@ -3,7 +3,7 @@ import { config } from '../../config'
 import { type JoinGroupEntryMethod, trackJoinGroup } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
-import { parseInviteCode } from '../../lib/invite'
+import { parseInviteCode, wasInviteDocumentOpened } from '../../lib/invite'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './JoinGroupModal.module.css'
@@ -22,6 +22,12 @@ interface JoinGroupModalProps {
   initialCode?: string
   /** Envia `initialCode` assim que o modal abre, uma única vez. */
   autoSubmit?: boolean
+}
+
+/** Só quem abriu `/convite/<código>` passou pela página que conta aberturas. */
+function joinEntryMethod(fromLink: boolean, inviteCode: string): JoinGroupEntryMethod {
+  if (!fromLink) return 'codigo'
+  return wasInviteDocumentOpened(inviteCode) ? 'convite_link' : 'convite_antigo'
 }
 
 export default function JoinGroupModal({
@@ -57,7 +63,7 @@ export default function JoinGroupModal({
     // Veio pelo link quando o código enviado é o mesmo que chegou na URL;
     // se o usuário apagou e digitou outro, conta como código.
     const fromLink = initialCode !== '' && parseInviteCode(initialCode) === invite_code
-    const entry_method: JoinGroupEntryMethod = fromLink ? 'convite_link' : 'codigo'
+    const entry_method = joinEntryMethod(fromLink, invite_code)
 
     try {
       const res = await apiFetch(`${config.apiUrl}/groups/join`, {

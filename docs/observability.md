@@ -119,7 +119,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
-| `group_joined` | `group_id` | `user_hash` | `method` (`convite_link`/`codigo`; vazio se o cliente não informou) | `recent_signup` em blob5 (`1` = conta criada há menos de 1 h, `0` = mais antiga, vazio se não foi possível ler); os dois campos estão ausentes em eventos anteriores ao deploy da medição |
+| `group_joined` | `group_id` | `user_hash` | `method` (`convite_link`/`convite_antigo`/`codigo`; vazio se o cliente não informou) | `recent_signup` em blob5 (`1` = conta criada há menos de 1 h, `0` = mais antiga, vazio se não foi possível ler); os dois campos estão ausentes em eventos anteriores ao deploy da medição |
 | `invite_opened` | — | — | — | — (só o tipo; ver "Funil de convite") |
 | `group_renamed` | `group_id` | `user_hash` | — | — |
 | `group_invite_rotated` | `group_id` | `user_hash` | — | — |
@@ -258,12 +258,13 @@ inexistente conta, porque a Function não espera a resposta da API para decidir.
 `?convite=` não passam pela Function e não geram abertura. Uma pessoa cujo navegador se identifique
 como crawler também fica de fora.
 
-`POST /public/invite-opens` exige o `PROXY_SHARED_SECRET` (ver `docs/security.md`), para que outra
-origem não infle o funil. Sem o segredo nos dois lados a abertura não é registrada e o painel mostra
+`POST /public/invite-opens` exige o `PROXY_SHARED_SECRET` e o header `X-Palpitae-Invite-Open`, que o
+proxy público remove (ver `docs/security.md`), para que outra origem não infle o funil. Sem o segredo nos dois lados a abertura não é registrada e o painel mostra
 "nenhum registro ainda".
 
-**Entrada.** O front envia `entry_method` em `POST /groups/join`, e a API aceita só `convite_link`
-ou `codigo`. Valor ausente ou fora da lista grava o método vazio e não recusa a entrada. A flag de
+**Entrada.** O front envia `entry_method` em `POST /groups/join`, e a API aceita só `convite_link`,
+`convite_antigo` ou `codigo`. `convite_link` exige que o documento tenha vindo de `/convite/<código>`,
+a rota que conta aberturas. Quem chegou por link antigo com `?convite=` grava `convite_antigo`. Valor ausente ou fora da lista grava o método vazio e não recusa a entrada. A flag de
 cadastro recente é calculada no D1, em SQL, comparando `group_members.joined_at` com
 `users.created_at`, depois de a linha do membro existir. A flag e a contagem do painel usam a mesma
 expressão (`RECENT_SIGNUP_SQL`).
@@ -271,8 +272,8 @@ expressão (`RECENT_SIGNUP_SQL`).
 **Painel.** `GET /metrics/invite-funnel?days=` alimenta a seção **Funil de convite**, separada do
 `/overview` para que uma falha nela não derrube a página. Aberturas e entradas vêm do Analytics
 Engine com `SUM(_sample_interval)`. O campo `d1` conta as mesmas entradas no D1, na mesma janela,
-para conferência. A taxa mostrada é entradas por link dividido por aberturas, porque quem digita o
-código não passa pela página de convite.
+para conferência. A taxa mostrada é `convite_link` dividido por aberturas, porque quem digita o
+código ou usa link antigo não passa pela página de convite.
 
 Por que evento e D1 podem divergir:
 

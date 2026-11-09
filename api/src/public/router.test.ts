@@ -253,12 +253,16 @@ describe('GET /public/invites/:code com SQL real', () => {
 describe('POST /public/invite-opens', () => {
   const SECRET = 'segredo-do-proxy'
 
-  function post(env: Partial<AppContext['Bindings']>, headers: Record<string, string> = {}) {
+  function post(
+    env: Partial<AppContext['Bindings']>,
+    headers: Record<string, string> = {},
+    marker: Record<string, string> = { 'X-Palpitae-Invite-Open': '1' },
+  ) {
     const app = new Hono<AppContext>()
     app.route('/public', publicRouter)
     return app.request(
       '/public/invite-opens',
-      { method: 'POST', headers },
+      { method: 'POST', headers: { ...marker, ...headers } },
       env as AppContext['Bindings'],
     )
   }
@@ -296,6 +300,19 @@ describe('POST /public/invite-opens', () => {
     const { ae, writeDataPoint } = aeMock()
 
     const res = await post({ PROXY_SHARED_SECRET: SECRET, AE: ae }, headers)
+
+    expect(res.status).toBe(403)
+    expect(writeDataPoint).not.toHaveBeenCalled()
+  })
+
+  it('recusa o segredo sem a marca da Function, que é como chega quem passa pelo proxy', async () => {
+    const { ae, writeDataPoint } = aeMock()
+
+    const res = await post(
+      { PROXY_SHARED_SECRET: SECRET, AE: ae },
+      { 'X-Palpitae-Proxy-Secret': SECRET },
+      {},
+    )
 
     expect(res.status).toBe(403)
     expect(writeDataPoint).not.toHaveBeenCalled()

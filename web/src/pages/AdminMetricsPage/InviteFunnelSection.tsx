@@ -14,7 +14,7 @@ export interface InviteFunnelResponse {
   days: number
   opens: number
   joins: number
-  joinsByMethod: { convite_link: number; codigo: number; unknown: number }
+  joinsByMethod: { convite_link: number; convite_antigo: number; codigo: number; unknown: number }
   newMembers: number
   existingMembers: number
   unclassifiedJoins: number
@@ -30,7 +30,7 @@ function formatCount(n: number): string {
   return Math.round(n).toLocaleString('pt-BR')
 }
 
-/** Só as entradas por link passam pela página de convite: entram na taxa. */
+/** Só `convite_link` passou pela página que conta aberturas: link antigo fica fora da taxa. */
 function linkConversion(data: InviteFunnelResponse): string {
   if (data.opens <= 0) return '—'
   return `${Math.round((data.joinsByMethod.convite_link / data.opens) * 100)}%`
@@ -84,7 +84,7 @@ export default function InviteFunnelSection({ data }: { data: InviteFunnelRespon
 
   const estimated = data.avgSampleInterval > 1.01
   const events = (n: number) => `${estimated ? '≈ ' : ''}${formatCount(n)}`
-  const { convite_link: byLink, codigo: byCode, unknown } = data.joinsByMethod
+  const { convite_link: byLink, convite_antigo: byOldLink, codigo: byCode, unknown } = data.joinsByMethod
 
   return (
     <section className={styles.section}>
@@ -143,6 +143,7 @@ export default function InviteFunnelSection({ data }: { data: InviteFunnelRespon
       <p className={styles.hint}>
         Taxa aberturas → entradas por link: <strong>{linkConversion(data)}</strong> · por link:{' '}
         {events(byLink)} · por código: {events(byCode)}
+        {byOldLink > 0 && ` · por link antigo: ${events(byOldLink)}`}
         {unknown > 0 && ` · sem método: ${events(unknown)}`}
       </p>
       <p className={styles.hint}>

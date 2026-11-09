@@ -9,7 +9,7 @@ function funnel(overrides: Partial<InviteFunnelResponse> = {}): InviteFunnelResp
     days: 30,
     opens: 20,
     joins: 8,
-    joinsByMethod: { convite_link: 5, codigo: 3, unknown: 0 },
+    joinsByMethod: { convite_link: 5, convite_antigo: 0, codigo: 3, unknown: 0 },
     newMembers: 2,
     existingMembers: 6,
     unclassifiedJoins: 0,
@@ -26,6 +26,20 @@ function row(label: string): HTMLElement[] {
 }
 
 describe('InviteFunnelSection', () => {
+  it('deixa o link antigo fora da taxa, porque ele não gera abertura', () => {
+    render(
+      <InviteFunnelSection
+        data={funnel({
+          opens: 1,
+          joinsByMethod: { convite_link: 1, convite_antigo: 1, codigo: 0, unknown: 0 },
+        })}
+      />,
+    )
+
+    expect(screen.getByText('100%')).toBeInTheDocument()
+    expect(screen.getByText(/por link antigo: 1/)).toBeInTheDocument()
+  })
+
   it('mostra as quatro etapas com o evento e o D1 lado a lado', () => {
     render(<InviteFunnelSection data={funnel()} />)
 
@@ -76,7 +90,7 @@ describe('InviteFunnelSection', () => {
       <InviteFunnelSection
         data={funnel({
           unclassifiedJoins: 4,
-          joinsByMethod: { convite_link: 5, codigo: 3, unknown: 4 },
+          joinsByMethod: { convite_link: 5, convite_antigo: 0, codigo: 3, unknown: 4 },
         })}
       />,
     )

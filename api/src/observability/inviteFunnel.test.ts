@@ -40,6 +40,7 @@ function database() {
 describe('parseEntryMethod', () => {
   it('aceita só os valores da lista', () => {
     expect(parseEntryMethod('convite_link')).toBe('convite_link')
+    expect(parseEntryMethod('convite_antigo')).toBe('convite_antigo')
     expect(parseEntryMethod('codigo')).toBe('codigo')
     expect(parseEntryMethod('CODIGO')).toBe('')
     expect(parseEntryMethod(undefined)).toBe('')
@@ -117,7 +118,7 @@ describe('summarizeInviteEvents', () => {
     expect(totals).toEqual({
       opens: 9,
       joins: 14,
-      joinsByMethod: { convite_link: 5, codigo: 4, unknown: 5 },
+      joinsByMethod: { convite_link: 5, convite_antigo: 0, codigo: 4, unknown: 5 },
       newMembers: 3,
       existingMembers: 6,
       unclassifiedJoins: 5,
@@ -131,7 +132,7 @@ describe('summarizeInviteEvents', () => {
       { event_type: 'outro', events: 7 },
     ])
 
-    expect(totals.joinsByMethod).toEqual({ convite_link: 0, codigo: 0, unknown: 2 })
+    expect(totals.joinsByMethod).toEqual({ convite_link: 0, convite_antigo: 0, codigo: 0, unknown: 2 })
     expect(totals.opens).toBe(0)
     expect(totals.joins).toBe(2)
   })
