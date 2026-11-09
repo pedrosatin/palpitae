@@ -20,6 +20,7 @@ describe('GroupInviteSection', () => {
   const defaultProps = {
     inviteCode: 'TEST1234',
     groupName: 'Os Craques',
+    memberCount: 3,
   }
 
   beforeEach(() => {
@@ -155,6 +156,41 @@ describe('GroupInviteSection', () => {
     expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_abrir_convite', {
       open: false,
     })
+  })
+
+  it('starts open with a note when the owner is the only member', () => {
+    const { container } = render(<GroupInviteSection {...defaultProps} memberCount={1} />)
+
+    const toggle = screen.getByRole('button', { name: /convidar membros/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelector('section')).toHaveAttribute('data-expanded')
+
+    const bodyId = toggle.getAttribute('aria-controls')
+    expect(container.querySelector(`[id="${bodyId}"]`)).toHaveTextContent(
+      'Seu bolão ainda só tem você',
+    )
+  })
+
+  it('lets the only member collapse the invite and tracks it', () => {
+    const { container } = render(<GroupInviteSection {...defaultProps} memberCount={1} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /convidar membros/i }))
+
+    expect(container.querySelector('section')).not.toHaveAttribute('data-expanded')
+    expect(ga.trackEvent).toHaveBeenCalledWith('click_group_detail_abrir_convite', {
+      open: false,
+    })
+  })
+
+  it.each([2, 5])('starts collapsed without the note with %i members', (memberCount) => {
+    const { container } = render(<GroupInviteSection {...defaultProps} memberCount={memberCount} />)
+
+    expect(screen.getByRole('button', { name: /convidar membros/i })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+    expect(container.querySelector('section')).not.toHaveAttribute('data-expanded')
+    expect(screen.queryByText(/ainda só tem você/)).not.toBeInTheDocument()
   })
 
   it('hides the rotate button without a handler', () => {
