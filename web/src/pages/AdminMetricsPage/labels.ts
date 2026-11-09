@@ -14,6 +14,7 @@ const EVENT_LABELS: Record<string, string> = {
   member_removed: 'Membro removido',
   login_success: 'Login',
   login_failure: 'Falha de login',
+  account_created: 'Conta criada',
   oauth_error: 'Erro de OAuth',
   matches_cache: 'Cache de jogos',
   // Saúde do cron / API Football

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { StrictMode } from 'react'
 import { captureGuideOrigin, getGuideOrigin } from './analytics/guideOrigin'
+import { getSignupOrigin } from './analytics/signupOrigin'
 import * as ga from './analytics/ga'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
@@ -121,6 +122,30 @@ describe('App', () => {
     )
     await screen.findByTestId('login-page')
     expect(mockTrackEvent).toHaveBeenCalledWith('entrar_origem', { origem: 'guias_header' })
+  })
+
+  it('guarda a chegada da aba uma vez, sem depender da sessão', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ authenticated: false }) })
+    render(
+      <StrictMode>
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>
+      </StrictMode>,
+    )
+    await screen.findByTestId('landing-page')
+    expect(getSignupOrigin()).toBe('direto')
+  })
+
+  it('marca a aba como convite ao abrir /convite/:code', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ authenticated: false }) })
+    render(
+      <MemoryRouter initialEntries={['/convite/ABCD-EF23']}>
+        <App />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('invite-page')
+    expect(getSignupOrigin()).toBe('convite')
   })
 
   it('mostra a página de convite ao visitante em /convite/:code', async () => {
@@ -561,5 +586,6 @@ describe('App', () => {
     })
     expect(screen.queryByTestId('dashboard-page')).not.toBeInTheDocument()
     expect(getGuideOrigin()).toBeUndefined()
+    expect(getSignupOrigin()).toBeUndefined()
   })
 })

@@ -1,6 +1,7 @@
 import { config } from '../../config'
 import { markLoginStarted } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
+import { getSignupOrigin } from '../../analytics/signupOrigin'
 import styles from './GoogleLoginButton.module.css'
 
 interface GoogleLoginButtonProps {
@@ -36,6 +37,8 @@ export default function GoogleLoginButton({
     const target = redirect ?? (pathname.startsWith('/grupos/') ? `${pathname}${search}` : search)
     const url = new URL(`${config.authUrl}/auth/google`)
     if (target) url.searchParams.set('redirect', target)
+    const origem = getSignupOrigin()
+    if (origem) url.searchParams.set('origem', origem)
     window.location.href = url.toString()
   }
 
