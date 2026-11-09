@@ -129,7 +129,7 @@ export function bucketKey(secret: string, identity: string): Promise<string> {
 }
 
 // Compara os HMACs dos dois valores, byte a byte, sem sair no primeiro byte diferente.
-async function sameSecret(provided: string, expected: string): Promise<boolean> {
+export async function sameSecret(provided: string, expected: string): Promise<boolean> {
   const [a, b] = await Promise.all([hmacHex(expected, provided), hmacHex(expected, expected)])
   let diff = 0
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)

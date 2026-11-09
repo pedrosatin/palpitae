@@ -35,6 +35,8 @@ export type EventType =
   | 'prediction_saved'
   | 'group_created'
   | 'group_joined'
+  // Abertura de /convite/:code por uma pessoa, sem nenhum dado do convite ou de quem abriu
+  | 'invite_opened'
   | 'member_removed'
   | 'group_renamed'
   | 'group_invite_rotated'

@@ -150,8 +150,10 @@ O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
 `web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo). Na SPA, o
 visitante vê a página de convite e quem tem sessão vai para `/?convite=<CODE>`. Links antigos com
 `?convite=` continuam funcionando. Crawlers de preview e pessoas disparam a busca em
-`GET /public/invites/:code`, cacheada no edge por 5 min no 200 e por 1 min no 404. A abertura do link
-não conta como evento; quem aceita o convite aparece em `click_login_google` e `join_group`.
+`GET /public/invites/:code`, cacheada no edge por 5 min no 200 e por 1 min no 404. No GA4 a abertura
+do link continua sem evento, e quem aceita o convite aparece em `click_login_google` e `join_group`.
+A abertura é medida no servidor, com o evento `invite_opened`, uma por navegação e sem crawlers de
+preview (ver "Funil de convite" em [`observability.md`](observability.md)).
 
 Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 

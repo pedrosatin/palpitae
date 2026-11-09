@@ -249,3 +249,78 @@ describe('GET /public/invites/:code com SQL real', () => {
     }
   })
 })
+
+describe('POST /public/invite-opens', () => {
+  const SECRET = 'segredo-do-proxy'
+
+  function post(env: Partial<AppContext['Bindings']>, headers: Record<string, string> = {}) {
+    const app = new Hono<AppContext>()
+    app.route('/public', publicRouter)
+    return app.request(
+      '/public/invite-opens',
+      { method: 'POST', headers },
+      env as AppContext['Bindings'],
+    )
+  }
+
+  function aeMock() {
+    const writeDataPoint = vi.fn()
+    return { writeDataPoint, ae: { writeDataPoint } as unknown as AnalyticsEngineDataset }
+  }
+
+  it('grava só o tipo do evento: sem código, grupo, e-mail, IP ou user-agent', async () => {
+    const { ae, writeDataPoint } = aeMock()
+
+    const res = await post(
+      { PROXY_SHARED_SECRET: SECRET, AE: ae },
+      {
+        'X-Palpitae-Proxy-Secret': SECRET,
+        'X-Palpitae-Client-IP': '203.0.113.9',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)',
+      },
+    )
+
+    expect(res.status).toBe(204)
+    expect(writeDataPoint).toHaveBeenCalledTimes(1)
+    expect(writeDataPoint).toHaveBeenCalledWith({
+      indexes: ['invite_opened'],
+      blobs: ['invite_opened'],
+      doubles: [],
+    })
+  })
+
+  it.each([
+    ['sem o header', {}],
+    ['com o segredo errado', { 'X-Palpitae-Proxy-Secret': 'outro' }],
+  ])('recusa %s e não conta a abertura', async (_label, headers) => {
+    const { ae, writeDataPoint } = aeMock()
+
+    const res = await post({ PROXY_SHARED_SECRET: SECRET, AE: ae }, headers)
+
+    expect(res.status).toBe(403)
+    expect(writeDataPoint).not.toHaveBeenCalled()
+  })
+
+  it('fica fechada quando o Worker não tem o segredo', async () => {
+    const { ae, writeDataPoint } = aeMock()
+
+    const res = await post({ AE: ae }, { 'X-Palpitae-Proxy-Secret': SECRET })
+
+    expect(res.status).toBe(403)
+    expect(writeDataPoint).not.toHaveBeenCalled()
+  })
+
+  it('a leitura do convite não conta abertura', async () => {
+    const { ae, writeDataPoint } = aeMock()
+    const { db } = createDbMock(VALID)
+    const app = new Hono<AppContext>()
+    app.route('/public', publicRouter)
+
+    await app.request('/public/invites/ABCD-EF23', {}, {
+      DB: db,
+      AE: ae,
+    } as AppContext['Bindings'])
+
+    expect(writeDataPoint).not.toHaveBeenCalled()
+  })
+})

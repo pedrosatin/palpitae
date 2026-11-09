@@ -251,6 +251,11 @@ compartilhado: cada visitante conta no próprio IP. Configurar o
 `PROXY_SHARED_SECRET` encerra o compartilhamento do balde pelo front; o balde
 compartilhado fica só para Workers sem o segredo.
 
+A Function de convite também usa o segredo para `POST /public/invite-opens`, que conta
+as aberturas do funil. A rota responde 403 sem o segredo correto, inclusive quando o
+Worker não tem o segredo configurado, para que ninguém de fora infle a contagem. Sem o
+segredo nos dois lados as aberturas não são registradas. A entrada no grupo segue igual.
+
 O Pages só passa a enviar o segredo após um novo deploy. Sem o segredo, ou com
 valores diferentes, usuários logados continuam com o limite por usuário e o
 tráfego anônimo que passa pelo proxy divide o balde compartilhado. Para trocar o
