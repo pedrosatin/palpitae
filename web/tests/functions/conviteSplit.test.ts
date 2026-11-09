@@ -239,6 +239,7 @@ describe('postInviteOpen', () => {
     expect(init.headers).toEqual({
       'X-Palpitae-Client-IP': '203.0.113.9',
       'X-Palpitae-Proxy-Secret': 's3',
+      'X-Palpitae-Invite-Open': '1',
     })
   })
 

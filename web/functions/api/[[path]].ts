@@ -14,6 +14,12 @@ const API_BASE = 'https://api.palpitae.com.br'
 
 export const CLIENT_IP_HEADER = 'X-Palpitae-Client-IP'
 export const PROXY_SECRET_HEADER = 'X-Palpitae-Proxy-Secret'
+/**
+ * Marca o aviso de abertura enviado pela Function de convite. O proxy nunca a
+ * repassa: ele injeta o segredo em todo `/api/*`, então o segredo sozinho não
+ * prova que o pedido veio da Function.
+ */
+export const INVITE_OPEN_HEADER = 'X-Palpitae-Invite-Open'
 
 export interface Env {
   /** Mesmo valor configurado no Worker da API. Sem ele, o IP não é repassado. */
@@ -32,6 +38,7 @@ export async function onRequest(context: { request: Request; env?: Env }): Promi
   headers.set('host', 'api.palpitae.com.br')
   headers.delete(CLIENT_IP_HEADER)
   headers.delete(PROXY_SECRET_HEADER)
+  headers.delete(INVITE_OPEN_HEADER)
   const secret = context.env?.PROXY_SHARED_SECRET
   const clientIp = context.request.headers.get('CF-Connecting-IP')
   if (secret && clientIp) {

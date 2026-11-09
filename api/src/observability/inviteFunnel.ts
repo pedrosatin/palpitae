@@ -3,7 +3,7 @@
  * de métricas. Ver "Funil de convite" em docs/observability.md.
  */
 
-export const ENTRY_METHODS = ['convite_link', 'codigo'] as const
+export const ENTRY_METHODS = ['convite_link', 'convite_antigo', 'codigo'] as const
 export type EntryMethod = (typeof ENTRY_METHODS)[number]
 
 /** Método de entrada aceito, ou '' quando o cliente não informou um valor conhecido. */
@@ -75,7 +75,7 @@ export function summarizeInviteEvents(rows: AeRow[]): InviteEventTotals {
   const totals: InviteEventTotals = {
     opens: 0,
     joins: 0,
-    joinsByMethod: { convite_link: 0, codigo: 0, unknown: 0 },
+    joinsByMethod: { convite_link: 0, convite_antigo: 0, codigo: 0, unknown: 0 },
     newMembers: 0,
     existingMembers: 0,
     unclassifiedJoins: 0,

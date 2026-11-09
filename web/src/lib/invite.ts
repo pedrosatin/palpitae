@@ -90,3 +90,30 @@ export function consumeAcceptedInvite(code: string): boolean {
     return false
   }
 }
+
+const INVITE_DOCUMENT_KEY = 'palpitae:convite-aberto'
+
+/**
+ * Anota o convite quando este documento foi servido por `/convite/<código>`, a rota
+ * que conta aberturas no servidor. Link antigo com `?convite=` e navegação dentro do
+ * app não passam por ela. Chamar uma vez, ao carregar a página.
+ */
+export function rememberInviteDocument(pathname: string): void {
+  if (!pathname.startsWith(INVITE_PATH_PREFIX)) return
+  const code = normalizeInviteCode(pathname.slice(INVITE_PATH_PREFIX.length).replace(/\/$/, ''))
+  if (!code) return
+  try {
+    sessionStorage.setItem(INVITE_DOCUMENT_KEY, code)
+  } catch {
+    // Sem sessionStorage, a entrada conta como link antigo e fica fora da taxa.
+  }
+}
+
+/** True quando este código chegou por um documento de `/convite/<código>` nesta aba. */
+export function wasInviteDocumentOpened(code: string): boolean {
+  try {
+    return sessionStorage.getItem(INVITE_DOCUMENT_KEY) === code
+  } catch {
+    return false
+  }
+}

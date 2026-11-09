@@ -1682,7 +1682,7 @@ describe('GET /metrics/invite-funnel', () => {
       days: 30,
       opens: 12,
       joins: 5,
-      joinsByMethod: { convite_link: 1, codigo: 1, unknown: 3 },
+      joinsByMethod: { convite_link: 1, convite_antigo: 0, codigo: 1, unknown: 3 },
       newMembers: 1,
       existingMembers: 1,
       unclassifiedJoins: 3,

@@ -25,6 +25,8 @@ export const SHARED_PROXY_LIMITS: Record<Category, number> = {
 // Headers que o proxy do Pages (web/functions/api/[[path]].ts) envia.
 export const CLIENT_IP_HEADER = 'X-Palpitae-Client-IP'
 export const PROXY_SECRET_HEADER = 'X-Palpitae-Proxy-Secret'
+/** Só a Function de convite envia; o proxy público remove (web/functions/api/[[path]].ts). */
+export const INVITE_OPEN_HEADER = 'X-Palpitae-Invite-Open'
 
 // Em subrequests de Worker entre zonas diferentes, a Cloudflare troca o
 // CF-Connecting-IP por este endereço fixo e adiciona o header CF-Worker.
