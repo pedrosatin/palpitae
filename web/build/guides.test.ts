@@ -360,6 +360,18 @@ describe('guide analytics (Consent Mode v2)', () => {
     expect(localStorage.getItem(CONSENT_KEY)).toMatch(/^denied:\d+$/)
   })
 
+  it('publishes the space the banner takes and releases it once dismissed', () => {
+    const rect = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ height: 120 } as DOMRect)
+    loadPage(renderGuide(guides[0], GA_ID))
+    const root = document.documentElement.style
+    expect(root.getPropertyValue('--consent-banner-height')).toBe('120px')
+    ;(document.querySelector('#cookie-consent .reject') as HTMLButtonElement).click()
+    expect(root.getPropertyValue('--consent-banner-height')).toBe('')
+    rect.mockRestore()
+  })
+
   it('restores a stored grant right after the default and keeps the banner hidden', () => {
     localStorage.setItem(CONSENT_KEY, 'granted')
     loadPage(renderGuide(guides[0], GA_ID))

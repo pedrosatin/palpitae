@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// O aviso de cookies só existe com um id do GA, e ele não pode cobrir os demais testes.
+const consentUrl = 'http://localhost:5174'
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -14,12 +17,25 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /cookie-consent-layout/,
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'chromium-consent',
+      testMatch: /cookie-consent-layout/,
+      use: { ...devices['Desktop Chrome'], baseURL: consentUrl },
+    },
   ],
-  webServer: {
-    command: 'VITE_API_URL=http://localhost:5173/api npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command: 'VITE_API_URL=http://localhost:5173/api npm run dev',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: `VITE_GA_MEASUREMENT_ID=G-TEST123 VITE_API_URL=${consentUrl}/api VITE_AUTH_URL=${consentUrl} npm run dev -- --port 5174 --strictPort`,
+      url: consentUrl,
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 })
