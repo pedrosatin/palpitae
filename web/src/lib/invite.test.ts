@@ -1,12 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildInviteLink,
   buildInviteMessage,
   consumeAcceptedInvite,
   markInviteAccepted,
   normalizeInviteCode,
-  parseInviteCode,
-} from './invite'
+  parseInviteCode, documentEntryPathname, forgetInviteDocument, rememberInviteDocument, wasInviteDocumentOpened } from './invite'
 
 describe('buildInviteLink', () => {
   it('uses the /convite/CODE path', () => {
@@ -95,5 +94,50 @@ describe('marca de convite aceito', () => {
 
   it('sem marca não confirma nada', () => {
     expect(consumeAcceptedInvite('ABCD-EF23')).toBe(false)
+  })
+})
+
+describe('rememberInviteDocument', () => {
+  it('anota o convite de um documento servido por /convite/<código>', () => {
+    sessionStorage.clear()
+    rememberInviteDocument('/convite/abcd-ef23')
+    expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(true)
+  })
+
+  it('não anota link antigo, outra rota nem código inválido', () => {
+    sessionStorage.clear()
+    rememberInviteDocument('/')
+    rememberInviteDocument('/entrar')
+    rememberInviteDocument('/convite/nao-e-codigo')
+    expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(false)
+  })
+
+  it('não confunde com outro convite', () => {
+    sessionStorage.clear()
+    rememberInviteDocument('/convite/ABCD-EF23')
+    expect(wasInviteDocumentOpened('WXYZ-2345')).toBe(false)
+  })
+})
+
+describe('documentEntryPathname', () => {
+  it('devolve o caminho original, mesmo depois de o script inline trocar a URL', () => {
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValueOnce([
+      { name: 'https://palpitae.com.br/convite/ABCD-EF23' } as PerformanceEntry,
+    ])
+    expect(documentEntryPathname()).toBe('/convite/ABCD-EF23')
+  })
+
+  it('usa o caminho atual quando não há entrada de navegação', () => {
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValueOnce([])
+    expect(documentEntryPathname()).toBe(window.location.pathname)
+  })
+})
+
+describe('forgetInviteDocument', () => {
+  it('consome a marca do convite', () => {
+    sessionStorage.clear()
+    rememberInviteDocument('/convite/ABCD-EF23')
+    forgetInviteDocument()
+    expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(false)
   })
 })

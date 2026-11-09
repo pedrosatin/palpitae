@@ -8,6 +8,7 @@ const EVENT_LABELS: Record<string, string> = {
   prediction_saved: 'Palpite salvo',
   group_created: 'Grupo criado',
   group_joined: 'Entrada em grupo',
+  invite_opened: 'Abertura de convite',
   group_renamed: 'Grupo renomeado',
   group_deleted: 'Grupo excluído',
   member_removed: 'Membro removido',

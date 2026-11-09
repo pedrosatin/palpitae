@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'rea
 import * as ga from '../../analytics/ga'
 import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
-import { markInviteAccepted } from '../../lib/invite'
+import { markInviteAccepted, rememberInviteDocument } from '../../lib/invite'
 import DashboardPage from './DashboardPage'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -201,6 +201,7 @@ describe('DashboardPage na volta do login com convite', () => {
 
   it('entra no grupo sem toque e abre a aba padrão com a confirmação', async () => {
     markInviteAccepted('ABCD-EF23')
+    rememberInviteDocument('/convite/ABCD-EF23')
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(mockGroupsResponse([]))
@@ -213,6 +214,7 @@ describe('DashboardPage na volta do login com convite', () => {
     expect(calls).toHaveLength(1)
     expect(JSON.parse(String((calls[0][1] as RequestInit).body))).toEqual({
       invite_code: 'ABCD-EF23',
+      entry_method: 'convite_link',
     })
     expect(sessionStorage.getItem('palpitae:convite-aceito')).toBeNull()
   })

@@ -98,7 +98,7 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
   `logEvent` vira no-op e o registro fica no log do workflow.
 - Negócio: `prediction_saved` (single/bulk/import/replicate), `group_created`, `group_joined`,
-  `group_renamed`, `group_invite_rotated`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
+  `invite_opened`, `group_renamed`, `group_invite_rotated`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
   `logout_all`, `oauth_error`, `matches_cache` (hit/miss).
 
 ### Esquema posicional por evento
@@ -119,7 +119,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
-| `group_joined` | `group_id` | `user_hash` | — | — |
+| `group_joined` | `group_id` | `user_hash` | `method` (`convite_link`/`convite_antigo`/`codigo`; vazio se o cliente não informou) | `recent_signup` em blob5 (`1` = conta criada há menos de 1 h, `0` = mais antiga, vazio se não foi possível ler); os dois campos estão ausentes em eventos anteriores ao deploy da medição |
+| `invite_opened` | — | — | — | — (só o tipo; ver "Funil de convite") |
 | `group_renamed` | `group_id` | `user_hash` | — | — |
 | `group_invite_rotated` | `group_id` | `user_hash` | — | — |
 | `group_deleted` | `group_id` | `user_hash` | `competition_id` (UUID; ausente em eventos anteriores ao deploy do enriquecimento) | — |
@@ -232,6 +233,62 @@ válidos.
 - **Privacidade:** só o UUID da competição, que já era dimensão de `group_created`. Nada de nome de
   campeonato, grupo ou usuário.
 
+### Funil de convite (`invite_opened` e `group_joined`)
+
+Responde quem abriu um convite e quem entrou por ele, sem depender de cookies. O GA4 só vê quem
+aceitou cookies e não enxerga a abertura.
+
+**Abertura.** A Pages Function de `/convite/:code` decide se a requisição é uma abertura e, em
+segundo plano (`waitUntil`), chama `POST /public/invite-opens`, que grava `invite_opened`. O
+caminho passa pela API porque o binding do Analytics Engine existe só no Worker. A contagem não
+fica em `GET /public/invites/:code`: essa rota tem cache no edge, atende crawlers e a SPA pode
+chamá-la de novo, então não dá uma abertura por navegação.
+
+Conta como abertura o `GET` de documento de uma pessoa, com código de formato válido. Ficam de
+fora:
+
+- crawlers de preview, pelo mesmo `isPreviewCrawler` que decide o `data-convite`;
+- cliente que não se apresenta como navegador (User-Agent sem `Mozilla/` ou vazio);
+- `HEAD`, subrecurso (`Sec-Fetch-Mode` diferente de `navigate`) e pré-busca do navegador
+  (`Sec-Purpose`, `Purpose`, `X-Purpose`, `X-Moz`);
+- código com formato inválido.
+
+Recarregar a página é uma nova navegação e conta de novo. Código bem formado de grupo excluído ou
+inexistente conta, porque a Function não espera a resposta da API para decidir. Links antigos com
+`?convite=` não passam pela Function e não geram abertura. Uma pessoa cujo navegador se identifique
+como crawler também fica de fora.
+
+`POST /public/invite-opens` exige o `PROXY_SHARED_SECRET` e o header `X-Palpitae-Invite-Open`, que o
+proxy público remove (ver `docs/security.md`), para que outra origem não infle o funil. Sem o segredo nos dois lados a abertura não é registrada e o painel mostra
+"nenhum registro ainda".
+
+**Entrada.** O front envia `entry_method` em `POST /groups/join`, e a API aceita só `convite_link`,
+`convite_antigo` ou `codigo`. `convite_link` exige que o documento tenha vindo de `/convite/<código>`,
+a rota que conta aberturas, e consome a marca dessa abertura. O caminho vem da entrada de navegação do
+navegador, porque o `index.html` reescreve a URL antes do bundle para quem tem sessão conhecida. Quem
+chegou por link antigo com `?convite=` grava `convite_antigo`. Valor ausente ou fora da lista grava o método vazio e não recusa a entrada. A flag de
+cadastro recente é calculada no D1, em SQL, comparando `group_members.joined_at` com
+`users.created_at`, depois de a linha do membro existir. A flag e a contagem do painel usam a mesma
+expressão (`RECENT_SIGNUP_SQL`).
+
+**Painel.** `GET /metrics/invite-funnel?days=` alimenta a seção **Funil de convite**, separada do
+`/overview` para que uma falha nela não derrube a página. Aberturas e entradas vêm do Analytics
+Engine com `SUM(_sample_interval)`. O campo `d1` conta as mesmas entradas no D1, na mesma janela,
+para conferência. A taxa mostrada é `convite_link` dividido por aberturas, porque quem digita o
+código ou usa link antigo não passa pela página de convite.
+
+Por que evento e D1 podem divergir:
+
+- o evento conta cada entrada, e o D1 só tem quem continua no grupo (quem saiu ou foi removido some);
+- evento anterior ao deploy entra em "entradas" mas não em novos e existentes, e aparece em
+  "entradas sem classificação". `joinDimensionSince` e `opensSince` dizem desde quando há coleta, e
+  a página avisa enquanto ela for mais nova que o período;
+- sob sampling do Analytics Engine as contagens de evento são estimativas.
+
+**Privacidade.** `invite_opened` grava só o tipo do evento: nenhum código, nome de grupo, id, e-mail,
+IP ou User-Agent. O pedido da Function não leva o código. O IP do visitante viaja em
+`X-Palpitae-Client-IP` só para a quota por IP, como em toda chamada do proxy, e não entra no evento.
+
 ### Regra de instrumentação (obrigatória)
 
 **Ao criar ou modificar um endpoint que executa uma mutação de negócio** (cria/edita/remove
@@ -252,7 +309,8 @@ logEvent(c.env.AE, '<event_type>', {
 
 - ✅ Rastrear: palpite salvo, grupo criado/entrou/renomeado, membro removido, login, falha de
   OAuth, saúde do cron/API externa.
-- ❌ Ignorar: leituras (`GET`) — ler não é fato de negócio.
+- ❌ Ignorar: leituras (`GET`) — ler não é fato de negócio. A exceção é a abertura de convite
+  (`invite_opened`), porque sem ela o funil de convite não tem denominador.
 - ❌ Ignorar: navegação/cliques — isso é o GA no cliente (`trackEvent`); não duplicar.
 - ❌ Ignorar: ações mecânicas de alto volume sem valor analítico.
 
@@ -437,6 +495,9 @@ Sob sampling do Analytics Engine as contagens são estimativas, inclusive as da 
 série não leva nome de grupo, código de convite nem user_hash: só dia, UUID de campeonato validado e
 contagem. Web nova com API anterior à série mostra a tabela e "série diária indisponível".
 
+Do Analytics Engine e do D1, `GET /metrics/invite-funnel?days=` alimenta a seção **Funil de
+convite**; o desenho está em "Funil de convite", acima.
+
 Do Analytics Engine, `GET /metrics/heatmap?days=` alimenta a seção **Mapa de calor · palpites e
 logins**, também separada do `/overview`. Agrega `prediction_saved` e `login_success` por hora UTC
 (`toStartOfInterval(timestamp, INTERVAL '1' HOUR)`) no período (7/30/90 dias). Cada linha de `hourly`
@@ -499,6 +560,8 @@ reversível por dicionário.
 - `api/src/observability/export.ts` — `exportEventsToR2` / `dayBounds` (cold path).
 - `api/src/observability/metricsRouter.ts` — endpoints `/metrics/*` do dashboard admin.
 - `api/src/observability/providerHttp.ts` — observer das tentativas HTTP (amostra, peso, contexto).
+- `api/src/observability/inviteFunnel.ts` — regras do funil de convite (método, cadastro recente, totais).
+- `web/functions/convite/[code].ts` — decide o que é abertura de convite (`isInviteOpen`).
 - `web/src/pages/AdminMetricsPage/` — página `/admin/metricas` (sem link de navegação).
 - `api/src/observability/index.ts` — barrel (re-exporta `events` + `logRequestPerf`).
 - `api/wrangler.toml` — `[observability]`, binding `AE` (dataset `palpitae_events`), binding
