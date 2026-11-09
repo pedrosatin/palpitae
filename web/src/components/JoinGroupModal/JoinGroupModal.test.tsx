@@ -211,6 +211,19 @@ describe('JoinGroupModal', () => {
       await waitFor(() => expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(false))
     })
 
+    it('preserva a abertura de outro convite ao entrar por código digitado', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} />)
+      await userEvent.type(screen.getByRole('textbox'), 'WXYZ-2345')
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(defaultProps.onJoined).toHaveBeenCalled())
+      expect(sentMethod(fetchSpy)).toBe('codigo')
+      expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(true)
+    })
+
     it('mantém a abertura quando a entrada falha', async () => {
       rememberInviteDocument('/convite/ABCD-EF23')
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
