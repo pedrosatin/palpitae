@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { hashUserId, logError, logEvent } from './events'
+import { hashUserId, logError, logEvent, tryLogEvent } from './events'
 
 type Point = {
   indexes?: string[]
@@ -14,6 +14,32 @@ function fakeAe() {
   } as unknown as AnalyticsEngineDataset
   return { ae, calls }
 }
+
+describe('tryLogEvent', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('escreve o mesmo contrato do logEvent', () => {
+    const { ae, calls } = fakeAe()
+    tryLogEvent(ae, 'account_created', { blobs: ['busca', ''] })
+    expect(calls).toEqual([
+      { indexes: ['account_created'], blobs: ['account_created', 'busca', ''], doubles: [] },
+    ])
+  })
+
+  it('registra no console e não lança quando a escrita falha', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ae = {
+      writeDataPoint: () => {
+        throw new Error('AE fora do ar')
+      },
+    } as unknown as AnalyticsEngineDataset
+
+    expect(() => tryLogEvent(ae, 'account_created')).not.toThrow()
+    expect(consoleError).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe('logEvent', () => {
   it('writes the positional contract: index + blob1 = event_type', () => {

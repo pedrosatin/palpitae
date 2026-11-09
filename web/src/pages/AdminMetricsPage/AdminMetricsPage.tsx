@@ -16,6 +16,7 @@ import CompetitionActivitySection, {
 } from './CompetitionActivitySection'
 import HeatmapSection, { type HeatmapResponse } from './HeatmapSection'
 import InviteFunnelSection, { type InviteFunnelResponse } from './InviteFunnelSection'
+import SignupOriginsSection, { type SignupOriginsResponse } from './SignupOriginsSection'
 import ProviderOpsSection, {
   totalHttpFailures,
   type CompetitionNames,
@@ -1296,6 +1297,7 @@ export default function AdminMetricsPage() {
   const [activity, setActivity] = useState<CompetitionActivityResponse | null>(null)
   const [heatmap, setHeatmap] = useState<HeatmapResponse | null>(null)
   const [inviteFunnel, setInviteFunnel] = useState<InviteFunnelResponse | null>(null)
+  const [signupOrigins, setSignupOrigins] = useState<SignupOriginsResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1320,8 +1322,11 @@ export default function AdminMetricsPage() {
       apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
       apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
       apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
+      apiFetch(buildApiUrl('/metrics/signup-origins', params)).catch(() => null),
     ])
-      .then(async ([ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes]) => {
+      .then(async (responses) => {
+        const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes] =
+          responses
         if (cancelled) return
         if (ovRes.status === 403) {
           setError('forbidden')
@@ -1336,6 +1341,7 @@ export default function AdminMetricsPage() {
         setActivity(await optionalJson<CompetitionActivityResponse>(activityRes))
         setHeatmap(await optionalJson<HeatmapResponse>(heatmapRes))
         setInviteFunnel(await optionalJson<InviteFunnelResponse>(funnelRes))
+        setSignupOrigins(await optionalJson<SignupOriginsResponse>(originsRes))
       })
       .catch(() => {
         if (!cancelled) setError('failed')
@@ -1419,6 +1425,8 @@ export default function AdminMetricsPage() {
             {business && <BusinessSection business={business} />}
 
             <InviteFunnelSection data={inviteFunnel} />
+
+            <SignupOriginsSection data={signupOrigins} />
 
             <CompetitionActivitySection data={activity} />
 

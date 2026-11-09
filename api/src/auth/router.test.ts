@@ -223,7 +223,11 @@ describe('auth router', () => {
       name: 'User',
       picture: 'pic.jpg',
     })
-    vi.mocked(googleAuth.upsertUser).mockResolvedValue({ id: 'user-1', email: 'user@example.com' })
+    vi.mocked(googleAuth.upsertUser).mockResolvedValue({
+      id: 'user-1',
+      email: 'user@example.com',
+      isNew: false,
+    })
 
     const headers = new Headers({
       Cookie:
@@ -307,7 +311,11 @@ describe('auth router', () => {
       name: 'User',
       picture: 'pic.jpg',
     })
-    vi.mocked(googleAuth.upsertUser).mockResolvedValue({ id: 'user-1', email: 'user@example.com' })
+    vi.mocked(googleAuth.upsertUser).mockResolvedValue({
+      id: 'user-1',
+      email: 'user@example.com',
+      isNew: false,
+    })
 
     const headers = new Headers({
       Cookie: 'oauth_state=abc; oauth_nonce=nonce; oauth_verifier=verifier',
@@ -333,7 +341,11 @@ describe('auth router', () => {
       name: 'User',
       picture: 'pic.jpg',
     })
-    vi.mocked(googleAuth.upsertUser).mockResolvedValue({ id: 'user-1', email: 'user@example.com' })
+    vi.mocked(googleAuth.upsertUser).mockResolvedValue({
+      id: 'user-1',
+      email: 'user@example.com',
+      isNew: false,
+    })
 
     const headers = new Headers({
       Cookie: 'oauth_state=abc; oauth_nonce=nonce; oauth_verifier=verifier; oauth_redirect=invalid',
