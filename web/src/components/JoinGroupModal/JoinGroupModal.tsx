@@ -81,7 +81,7 @@ export default function JoinGroupModal({
 
       trackEvent('submit_entrar_grupo')
       trackJoinGroup(entry_method)
-      forgetInviteDocument()
+      if (entry_method === 'convite_link') forgetInviteDocument()
       setJoined(data.group!)
       onJoined(data.group!)
     } catch {
