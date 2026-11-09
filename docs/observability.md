@@ -264,7 +264,9 @@ proxy público remove (ver `docs/security.md`), para que outra origem não infle
 
 **Entrada.** O front envia `entry_method` em `POST /groups/join`, e a API aceita só `convite_link`,
 `convite_antigo` ou `codigo`. `convite_link` exige que o documento tenha vindo de `/convite/<código>`,
-a rota que conta aberturas. Quem chegou por link antigo com `?convite=` grava `convite_antigo`. Valor ausente ou fora da lista grava o método vazio e não recusa a entrada. A flag de
+a rota que conta aberturas, e consome a marca dessa abertura. O caminho vem da entrada de navegação do
+navegador, porque o `index.html` reescreve a URL antes do bundle para quem tem sessão conhecida. Quem
+chegou por link antigo com `?convite=` grava `convite_antigo`. Valor ausente ou fora da lista grava o método vazio e não recusa a entrada. A flag de
 cadastro recente é calculada no D1, em SQL, comparando `group_members.joined_at` com
 `users.created_at`, depois de a linha do membro existir. A flag e a contagem do painel usam a mesma
 expressão (`RECENT_SIGNUP_SQL`).

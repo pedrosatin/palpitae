@@ -3,7 +3,7 @@ import { config } from '../../config'
 import { type JoinGroupEntryMethod, trackJoinGroup } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
-import { parseInviteCode, wasInviteDocumentOpened } from '../../lib/invite'
+import { parseInviteCode, forgetInviteDocument, wasInviteDocumentOpened } from '../../lib/invite'
 import Button from '../Button'
 import Modal from '../Modal'
 import styles from './JoinGroupModal.module.css'
@@ -81,6 +81,7 @@ export default function JoinGroupModal({
 
       trackEvent('submit_entrar_grupo')
       trackJoinGroup(entry_method)
+      forgetInviteDocument()
       setJoined(data.group!)
       onJoined(data.group!)
     } catch {

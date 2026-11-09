@@ -94,9 +94,25 @@ export function consumeAcceptedInvite(code: string): boolean {
 const INVITE_DOCUMENT_KEY = 'palpitae:convite-aberto'
 
 /**
+ * Caminho com que o documento foi carregado. Com sessão conhecida, o script inline do
+ * `index.html` troca `/convite/CODE` por `/?convite=CODE` antes do bundle, e a entrada
+ * de navegação guarda o endereço original.
+ */
+export function documentEntryPathname(): string {
+  try {
+    const [entry] = performance.getEntriesByType('navigation')
+    if (entry) return new URL(entry.name).pathname
+  } catch {
+    // API indisponível ou endereço inválido: fica o caminho atual.
+  }
+  return window.location.pathname
+}
+
+/**
  * Anota o convite quando este documento foi servido por `/convite/<código>`, a rota
  * que conta aberturas no servidor. Link antigo com `?convite=` e navegação dentro do
- * app não passam por ela. Chamar uma vez, ao carregar a página.
+ * app não passam por ela. Chamar uma vez, ao carregar a página, com
+ * `documentEntryPathname()`.
  */
 export function rememberInviteDocument(pathname: string): void {
   if (!pathname.startsWith(INVITE_PATH_PREFIX)) return
@@ -115,5 +131,14 @@ export function wasInviteDocumentOpened(code: string): boolean {
     return sessionStorage.getItem(INVITE_DOCUMENT_KEY) === code
   } catch {
     return false
+  }
+}
+
+/** Consome a marca depois da entrada: cada abertura justifica uma entrada por link. */
+export function forgetInviteDocument(): void {
+  try {
+    sessionStorage.removeItem(INVITE_DOCUMENT_KEY)
+  } catch {
+    // Sem sessionStorage não há marca para apagar.
   }
 }
