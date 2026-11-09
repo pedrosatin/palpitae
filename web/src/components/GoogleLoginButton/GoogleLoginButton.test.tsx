@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
+import { captureEntryOrigin, captureInviteEntry } from '../../analytics/signupOrigin'
 import GoogleLoginButton from './GoogleLoginButton'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -40,6 +41,36 @@ describe('GoogleLoginButton', () => {
     render(<GoogleLoginButton />)
     await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
     expect(new URL(window.location.href).searchParams.get('redirect')).toBe('?convite=ABC')
+  })
+})
+
+describe('GoogleLoginButton: origem do cadastro', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    Object.defineProperty(window, 'location', {
+      writable: true,
+      value: { href: '', pathname: '/', search: '' },
+    })
+  })
+
+  async function clickAndReadOrigin() {
+    render(<GoogleLoginButton />)
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com Google' }))
+    return new URL(window.location.href).searchParams.get('origem')
+  }
+
+  it('envia a chegada da aba guardada', async () => {
+    captureEntryOrigin('https://www.google.com/', 'https://palpitae.com.br')
+    expect(await clickAndReadOrigin()).toBe('busca')
+  })
+
+  it('envia convite quando a aba abriu um convite', async () => {
+    captureInviteEntry('/convite/ABCD-EF23', '')
+    expect(await clickAndReadOrigin()).toBe('convite')
+  })
+
+  it('não envia o parâmetro sem origem conhecida', async () => {
+    expect(await clickAndReadOrigin()).toBeNull()
   })
 })
 

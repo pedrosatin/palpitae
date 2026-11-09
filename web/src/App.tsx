@@ -10,7 +10,12 @@ import {
 } from 'react-router-dom'
 import { trackLoginIfPending } from './analytics/funnel'
 import { trackEvent } from './analytics/ga'
-import { captureGuideOrigin, clearGuideOrigin } from './analytics/guideOrigin'
+import { captureGuideOrigin } from './analytics/guideOrigin'
+import {
+  captureEntryOrigin,
+  captureInviteEntry,
+  clearSignupAttribution,
+} from './analytics/signupOrigin'
 import { useGaPageView } from './analytics/useGaPageView'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
@@ -140,7 +145,11 @@ export default function App({
     capturedLocation.current = location.key
     const origem = captureGuideOrigin(location.search)
     if (location.pathname === '/entrar' && origem) trackEvent('entrar_origem', { origem })
+    captureInviteEntry(location.pathname, location.search)
   }, [location.key, location.pathname, location.search])
+
+  // Uma vez por carga de página: o referrer não muda nas navegações internas.
+  useEffect(() => captureEntryOrigin(), [])
 
   useEffect(() => {
     invalidateApiCache()
@@ -188,7 +197,7 @@ export default function App({
   // Logout explícito apaga os rascunhos de palpite deste navegador. A sessão
   // expirada mantém, porque a pessoa volta a entrar e recupera o que digitou.
   function handleLogout() {
-    clearGuideOrigin()
+    clearSignupAttribution()
     // Raw fetch on purpose: the user is leaving deliberately — a 401 from an
     // already-dead session must not trigger the "sessão expirou" notice.
     fetch(`${config.apiUrl}/auth/logout`, {
@@ -205,7 +214,7 @@ export default function App({
 
   // "Sair de todos os dispositivos" já apagou o cookie e as sessões no servidor.
   function handleLoggedOutEverywhere() {
-    clearGuideOrigin()
+    clearSignupAttribution()
     clearStoredDrafts()
     invalidateApiCache()
     setUser(null)

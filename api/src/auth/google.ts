@@ -209,6 +209,12 @@ export async function verifyGoogleIdToken(
 // User upsert
 // ---------------------------------------------------------------------------
 
+/**
+ * Cria ou atualiza o usuário do login. `isNew` é verdadeiro só para quem de fato
+ * inseriu a linha. Dois callbacks simultâneos da mesma conta passam juntos pelo
+ * SELECT, mas o UNIQUE de `users` deixa um único INSERT vencer: o outro cai no
+ * catch, encontra a linha do vencedor e entra como conta existente.
+ */
 export async function upsertUser(
   db: D1Database,
   data: {
@@ -218,34 +224,42 @@ export async function upsertUser(
     name?: string
     avatarUrl?: string
   },
-): Promise<{ id: string; email: string }> {
+): Promise<{ id: string; email: string; isNew: boolean }> {
   const now = new Date().toISOString()
+  const findExisting = () =>
+    db
+      .prepare('SELECT id, email FROM users WHERE provider = ? AND provider_id = ?')
+      .bind(data.provider, data.providerId)
+      .first<{ id: string; email: string }>()
 
-  const existing = await db
-    .prepare('SELECT id, email FROM users WHERE provider = ? AND provider_id = ?')
-    .bind(data.provider, data.providerId)
-    .first<{ id: string; email: string }>()
+  const existing = await findExisting()
 
   if (existing) {
     await db
       .prepare('UPDATE users SET last_login = ?, user_name = COALESCE(user_name, ?) WHERE id = ?')
       .bind(now, data.name ?? null, existing.id)
       .run()
-    return existing
+    return { ...existing, isNew: false }
   }
 
   const id = crypto.randomUUID()
 
-  await db.batch([
-    db
-      .prepare(
-        'INSERT INTO users (id, email, provider, provider_id, created_at, user_name, last_login) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .bind(id, data.email, data.provider, data.providerId, now, data.name ?? null, now),
-    db
-      .prepare('INSERT INTO profiles (user_id, nickname, avatar_url) VALUES (?, ?, ?)')
-      .bind(id, data.name ?? null, data.avatarUrl ?? null),
-  ])
+  try {
+    await db.batch([
+      db
+        .prepare(
+          'INSERT INTO users (id, email, provider, provider_id, created_at, user_name, last_login) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        )
+        .bind(id, data.email, data.provider, data.providerId, now, data.name ?? null, now),
+      db
+        .prepare('INSERT INTO profiles (user_id, nickname, avatar_url) VALUES (?, ?, ?)')
+        .bind(id, data.name ?? null, data.avatarUrl ?? null),
+    ])
+  } catch (error) {
+    const winner = await findExisting()
+    if (!winner) throw error
+    return { ...winner, isNew: false }
+  }
 
-  return { id, email: data.email }
+  return { id, email: data.email, isNew: true }
 }

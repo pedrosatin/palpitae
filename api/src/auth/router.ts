@@ -13,7 +13,8 @@ import { getFeatureFlags } from './permissions'
 import { signJwt } from './jwt'
 import { requireAuth, resolveSession } from './middleware'
 import { revokeAllSessions, revokeSession, SessionStorageError } from './session'
-import { hashUserId, logError, logEvent } from '../observability'
+import { hashUserId, logError, logEvent, tryLogEvent } from '../observability'
+import { parseSignupOrigin } from '../observability/signupOrigin'
 import type { AppContext } from '../types'
 
 const SESSION_COOKIE = 'session'
@@ -21,6 +22,7 @@ const STATE_COOKIE = 'oauth_state'
 const NONCE_COOKIE = 'oauth_nonce'
 const VERIFIER_COOKIE = 'oauth_verifier'
 const REDIRECT_COOKIE = 'oauth_redirect'
+const ORIGIN_COOKIE = 'oauth_origin'
 const SESSION_TTL = 30 * 24 * 60 * 60 // 30 days (1 month)
 
 // Conjunto conhecido de códigos de erro do Google OAuth. Limita a cardinalidade
@@ -77,6 +79,12 @@ authRouter.get('/google', async (c) => {
   setCookie(c, NONCE_COOKIE, nonce, tempOpts)
   setCookie(c, VERIFIER_COOKIE, verifier, tempOpts)
 
+  // Sempre grava, mesmo vazio: sem isso, a origem de uma tentativa anterior valeria
+  // nesta. Só token reconhecido entra no cookie; o callback valida de novo.
+  const origin = c.req.query('origem') ?? ''
+  const originIsKnown = parseSignupOrigin(origin).category !== 'desconhecida'
+  setCookie(c, ORIGIN_COOKIE, originIsKnown ? origin : '', tempOpts)
+
   // Store the post-login redirect securely
   const postRedirect = c.req.query('redirect') ?? ''
   if (postRedirect) {
@@ -117,6 +125,10 @@ authRouter.get('/callback', async (c) => {
   const storedRedirect = getCookie(c, REDIRECT_COOKIE) ?? ''
   deleteCookie(c, REDIRECT_COOKIE, clearOpts)
 
+  // O cookie vem do navegador: ausente ou fora da lista vira "desconhecida".
+  const signupOrigin = parseSignupOrigin(getCookie(c, ORIGIN_COOKIE))
+  deleteCookie(c, ORIGIN_COOKIE, clearOpts)
+
   if (!storedState || !storedNonce || !codeVerifier) {
     logEvent(c.env.AE, 'login_failure', { blobs: ['session_expired'] })
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=session_expired`)
@@ -150,6 +162,13 @@ authRouter.get('/callback', async (c) => {
       avatarUrl: googleUser.picture,
     })
 
+    // Junto da escrita no D1, para a soma das origens bater com os cadastros.
+    if (user.isNew) {
+      tryLogEvent(c.env.AE, 'account_created', {
+        blobs: [signupOrigin.category, signupOrigin.guideSlug],
+      })
+    }
+
     const sessionToken = await signJwt(
       { sub: user.id, email: user.email, jti: crypto.randomUUID() },
       c.env.JWT_SECRET,
@@ -158,7 +177,7 @@ authRouter.get('/callback', async (c) => {
 
     setCookie(c, SESSION_COOKIE, sessionToken, cookieOptions(c.env.BASE_URL, SESSION_TTL))
 
-    logEvent(c.env.AE, 'login_success', { blobs: [await hashUserId(user.id)] })
+    tryLogEvent(c.env.AE, 'login_success', { blobs: [await hashUserId(user.id)] })
 
     let destination = c.env.FRONTEND_URL
     if (storedRedirect) {

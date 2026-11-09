@@ -99,7 +99,8 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   `logEvent` vira no-op e o registro fica no log do workflow.
 - Negócio: `prediction_saved` (single/bulk/import/replicate), `group_created`, `group_joined`,
   `invite_opened`, `group_renamed`, `group_invite_rotated`, `group_deleted`, `member_removed`, `login_success`, `login_failure`,
-  `logout_all`, `oauth_error`, `matches_cache` (hit/miss).
+  `logout_all`, `oauth_error`, `matches_cache` (hit/miss), `account_created` (conta nova, com a
+  origem do cadastro).
 
 ### Esquema posicional por evento
 
@@ -126,6 +127,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `group_deleted` | `group_id` | `user_hash` | `competition_id` (UUID; ausente em eventos anteriores ao deploy do enriquecimento) | — |
 | `member_removed` | `group_id` | `user_hash` (do removido) | `reason` (`self`=saiu sozinho / `admin`=removido pelo dono) | — |
 | `login_success` | `user_hash` | — | — | — |
+| `account_created` | `origin` (`convite`/`guia`/`busca`/`direto`/`desconhecida`) | `guide_slug` (só em `guia`, slug de guia publicado; vazio no índice dos guias e nas outras origens) | — | — (sem `user_hash`; ver "Origem do cadastro") |
 | `logout_all` | `user_hash` | — | — | — |
 | `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`) | — | — | — |
 | `oauth_error` | `error_code` | — | — | — |
@@ -288,6 +290,55 @@ Por que evento e D1 podem divergir:
 **Privacidade.** `invite_opened` grava só o tipo do evento: nenhum código, nome de grupo, id, e-mail,
 IP ou User-Agent. O pedido da Function não leva o código. O IP do visitante viaja em
 `X-Palpitae-Client-IP` só para a quota por IP, como em toda chamada do proxy, e não entra no evento.
+
+### Origem do cadastro (`account_created`)
+
+Responde de onde veio cada conta nova, sem depender de cookies de consentimento. O D1 só tem a
+data do cadastro, e `login_success` não separa conta nova de login. O evento fica no Analytics
+Engine, como o funil de convite, e não em coluna de `users`, porque medição não é estado do
+domínio ("D1 como store de logs" está em "Decisões descartadas").
+
+**Categorias.** Lista fechada: `convite`, `guia`, `busca`, `direto` e `desconhecida`. O valor vem
+do navegador, então é entrada não confiável: `parseSignupOrigin` aceita só `convite`, `busca`,
+`direto` e os tokens de guia com slug que existe na lista `GUIDE_SLUGS`. Qualquer outro valor,
+inclusive slug inexistente, ausência do valor e texto livre, vira `desconhecida`. Um teste de
+contrato confere `GUIDE_SLUGS` contra os guias de `web/build/guides.ts`.
+
+**Caminho do valor.** O botão "Entrar com Google" envia `origem` em `GET /auth/google` (regra do
+navegador em [`analytics.md`](analytics.md)). A API grava o token, se reconhecido, no cookie
+temporário `oauth_origin` (5 minutos, como os demais do OAuth) e o valida de novo no callback, porque
+cookie também vem do cliente. O cookie é gravado mesmo vazio, para a tentativa atual não herdar a
+origem de uma tentativa anterior.
+
+**Exatamente um evento por conta.** `upsertUser` devolve `isNew`, verdadeiro só para quem inseriu a
+linha. O evento sai logo depois da escrita no D1:
+
+- login de conta existente não gera evento, qualquer que seja a origem enviada;
+- callback repetido encontra a conta já criada, ou falha antes disso porque os cookies temporários
+  foram apagados e o `code` do Google só vale uma vez;
+- callbacks simultâneos da mesma conta nova disputam o `UNIQUE` de `users`: um `INSERT` vence e gera
+  o evento, o outro entra como conta existente, e os dois logins terminam com sessão.
+
+**Medição não bloqueia login.** `account_created` e `login_success` saem por `tryLogEvent`, que
+registra a falha no console e deixa o fluxo seguir.
+
+**Painel.** `GET /metrics/signup-origins?days=` alimenta a seção **Cadastros por origem**, separada
+do `/overview` para que uma falha nela não derrube a página. Os eventos vêm com
+`SUM(_sample_interval)`. O campo `d1.signups` conta as contas criadas no D1 na mesma janela, com
+`datetime(created_at)` para normalizar o ISO gravado pelo login. A seção mostra a soma das origens e
+o total do D1 lado a lado e, quando diferem, uma linha com a diferença. Ela não é encaixada em
+nenhuma categoria, porque é o que mostra se a medição fecha.
+
+Por que a soma pode ficar abaixo do D1:
+
+- conta criada antes do deploy não tem evento. `originsSince` diz desde quando há coleta, e a página
+  avisa enquanto ela for mais nova que o período;
+- evento perdido numa falha do Analytics Engine, que só aparece no console;
+- sob sampling do Analytics Engine as contagens de evento são estimativas.
+
+**Privacidade.** O evento grava só a categoria e o slug validado. Não leva URL, referrer, nome,
+e-mail, IP, User-Agent, `user_id` nem `user_hash`, então não há como ligar a origem a uma pessoa ou
+acompanhar alguém entre sessões. O painel só devolve categorias e slugs da lista.
 
 ### Regra de instrumentação (obrigatória)
 
@@ -498,6 +549,9 @@ contagem. Web nova com API anterior à série mostra a tabela e "série diária 
 Do Analytics Engine e do D1, `GET /metrics/invite-funnel?days=` alimenta a seção **Funil de
 convite**; o desenho está em "Funil de convite", acima.
 
+Do Analytics Engine e do D1, `GET /metrics/signup-origins?days=` alimenta a seção **Cadastros por
+origem**; o desenho está em "Origem do cadastro", acima.
+
 Do Analytics Engine, `GET /metrics/heatmap?days=` alimenta a seção **Mapa de calor · palpites e
 logins**, também separada do `/overview`. Agrega `prediction_saved` e `login_success` por hora UTC
 (`toStartOfInterval(timestamp, INTERVAL '1' HOUR)`) no período (7/30/90 dias). Cada linha de `hourly`
@@ -561,6 +615,8 @@ reversível por dicionário.
 - `api/src/observability/metricsRouter.ts` — endpoints `/metrics/*` do dashboard admin.
 - `api/src/observability/providerHttp.ts` — observer das tentativas HTTP (amostra, peso, contexto).
 - `api/src/observability/inviteFunnel.ts` — regras do funil de convite (método, cadastro recente, totais).
+- `api/src/observability/signupOrigin.ts` — origem do cadastro (categorias, guias aceitos, totais, contagem do D1).
+- `web/src/analytics/signupOrigin.ts` — chegada da aba e valor enviado ao iniciar o OAuth.
 - `web/functions/convite/[code].ts` — decide o que é abertura de convite (`isInviteOpen`).
 - `web/src/pages/AdminMetricsPage/` — página `/admin/metricas` (sem link de navegação).
 - `api/src/observability/index.ts` — barrel (re-exporta `events` + `logRequestPerf`).

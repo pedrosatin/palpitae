@@ -1772,3 +1772,128 @@ describe('GET /metrics/invite-funnel', () => {
     expect(res.status).toBe(502)
   })
 })
+
+describe('GET /metrics/signup-origins', () => {
+  function signupsD1() {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    sqlite.exec(`
+      INSERT INTO users (id,email,provider,provider_id,created_at) VALUES
+        ('a','a@example.com','google','1',datetime('now','-3 days')),
+        ('b','b@example.com','google','2',strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 days')),
+        ('c','c@example.com','google','3',datetime('now','-90 days'));
+    `)
+    return db
+  }
+
+  /** SQL API falsa, que escolhe a resposta pela forma da consulta. */
+  function stubAe(rows: Partial<Record<'origins' | 'firstEvent' | 'sampling', unknown[]>>) {
+    const queries: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: { body: string }) => {
+        const sql = init.body
+        queries.push(sql)
+        let data: unknown[]
+        if (sql.includes('GROUP BY origin')) data = rows.origins ?? []
+        else if (sql.includes('MIN(timestamp)')) data = rows.firstEvent ?? []
+        else data = rows.sampling ?? []
+        return { ok: true, json: async () => ({ data }) }
+      }),
+    )
+    return queries
+  }
+
+  async function get(env: Partial<Env>, query = '') {
+    return makeApp().request(
+      `/metrics/signup-origins${query}`,
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(env),
+    )
+  }
+
+  it('devolve os cadastros por origem com a conferência do D1', async () => {
+    const queries = stubAe({
+      origins: [
+        { origin: 'convite', guide_slug: '', signups: '1' },
+        { origin: 'guia', guide_slug: 'planilha-de-bolao', signups: 1 },
+      ],
+      firstEvent: [{ event_type: 'account_created', first_at: '2026-11-10 12:00:00' }],
+      sampling: [{ avg_sample_interval: '1' }],
+    })
+
+    const res = await get({ DB: signupsD1() })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      days: 30,
+      origins: { convite: 1, guia: 1, busca: 0, direto: 0, desconhecida: 0 },
+      guides: [{ slug: 'planilha-de-bolao', signups: 1 }],
+      totalEvents: 2,
+      d1: { signups: 2 },
+      originsSince: '2026-11-10 12:00:00',
+      avgSampleInterval: 1,
+    })
+    expect(queries[0]).toContain('SUM(_sample_interval) AS signups')
+    expect(queries[0]).toContain(`blob1 = 'account_created'`)
+  })
+
+  it('aplica o período pedido no Analytics Engine e no D1', async () => {
+    const queries = stubAe({})
+
+    const res = await get({ DB: signupsD1() }, '?days=2')
+
+    expect(((await res.json()) as { d1: { signups: number } }).d1.signups).toBe(1)
+    expect(queries[0]).toContain(`INTERVAL '2' DAY`)
+  })
+
+  it('sem eventos devolve zeros e coleta ainda não iniciada', async () => {
+    stubAe({})
+
+    const res = await get({ DB: signupsD1() })
+
+    expect(await res.json()).toMatchObject({
+      origins: { convite: 0, guia: 0, busca: 0, direto: 0, desconhecida: 0 },
+      guides: [],
+      totalEvents: 0,
+      originsSince: null,
+      avgSampleInterval: 1,
+    })
+  })
+
+  it('não devolve texto livre de blob', async () => {
+    stubAe({ origins: [{ origin: 'joao@example.com', guide_slug: 'joao@example.com', signups: 1 }] })
+
+    const res = await get({ DB: signupsD1() })
+
+    expect(await res.text()).not.toContain('joao')
+  })
+
+  it('503 sem a configuração da SQL API', async () => {
+    const res = await get({ CF_ACCOUNT_ID: undefined })
+
+    expect(res.status).toBe(503)
+  })
+
+  it('403 para quem não é o admin', async () => {
+    const res = await makeApp().request(
+      '/metrics/signup-origins',
+      { headers: await authHeaders('outra@pessoa.com') },
+      makeEnv(),
+    )
+
+    expect(res.status).toBe(403)
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+
+    const res = await get({ DB: signupsD1() })
+
+    expect(res.status).toBe(502)
+  })
+})

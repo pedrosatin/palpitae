@@ -4,6 +4,7 @@ import { radarRouter } from '../radar/router'
 import type { AppContext } from '../types'
 import { runAeSql } from './aeSql'
 import { countInviteJoinsInD1, summarizeInviteEvents } from './inviteFunnel'
+import { countSignupsInD1, summarizeSignupOrigins } from './signupOrigin'
 
 /**
  * Métricas para o dashboard admin — proxy autenticado da SQL API do Analytics
@@ -736,6 +737,60 @@ metricsRouter.get('/invite-funnel', async (c) => {
   } catch (err) {
     console.error('[metrics] falha ao montar o funil de convite:', err)
     return c.json({ error: 'Falha ao consultar o funil de convite' }, 502)
+  }
+})
+
+/**
+ * Cadastros por origem no período, de `account_created`. Endpoint próprio (como
+ * `/invite-funnel`): falha aqui não derruba a página.
+ *
+ * Contagens com SUM(_sample_interval). Posições: account_created → blob2 origem,
+ * blob3 slug do guia. `d1.signups` conta as contas criadas no D1 na mesma janela,
+ * e o painel mostra a diferença em vez de encaixá-la numa categoria.
+ * `originsSince` (sem filtro de janela) é o primeiro evento, para separar "zero"
+ * de "ainda não coletado". O payload só leva categorias e slugs de guia validados.
+ */
+metricsRouter.get('/signup-origins', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  const days = parseDays(c.req.query('days'))
+  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+
+  try {
+    const [originRows, firstEventRows, samplingRows, d1Signups] = await Promise.all([
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS origin, blob3 AS guide_slug, SUM(_sample_interval) AS signups ` +
+          `FROM ${DATASET} WHERE blob1 = 'account_created' AND ${since} ` +
+          `GROUP BY origin, guide_slug LIMIT 200`,
+      ),
+      // Agrupa por tipo para voltar vazio, e não um MIN nulo, quando não há eventos.
+      runAeSql(
+        c.env,
+        `SELECT blob1 AS event_type, MIN(timestamp) AS first_at ` +
+          `FROM ${DATASET} WHERE blob1 = 'account_created' GROUP BY event_type`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT AVG(_sample_interval) AS avg_sample_interval ` +
+          `FROM ${DATASET} WHERE blob1 = 'account_created' AND ${since}`,
+      ),
+      countSignupsInD1(c.env.DB, days),
+    ])
+
+    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
+    return c.json({
+      days,
+      ...summarizeSignupOrigins(originRows),
+      d1: { signups: d1Signups },
+      originsSince: (firstEventRows[0]?.first_at as string | null | undefined) ?? null,
+      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+    })
+  } catch (err) {
+    console.error('[metrics] falha ao montar a origem dos cadastros:', err)
+    return c.json({ error: 'Falha ao consultar a origem dos cadastros' }, 502)
   }
 })
 

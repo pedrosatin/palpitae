@@ -26,7 +26,7 @@ export interface InviteFunnelResponse {
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-function formatCount(n: number): string {
+export function formatCount(n: number): string {
   return Math.round(n).toLocaleString('pt-BR')
 }
 
@@ -41,7 +41,7 @@ function isNewerThanPeriod(ts: string, days: number): boolean {
   return Number.isFinite(first) && first > Date.now() - days * DAY_MS
 }
 
-function CollectionNotice({
+export function CollectionNotice({
   subject,
   since,
   days,

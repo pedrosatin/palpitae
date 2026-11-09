@@ -97,8 +97,15 @@ function mockFetch(
   activityBody: unknown = null,
   heatmapBody: unknown = null,
   funnelBody: unknown = null,
+  signupOriginsBody: unknown = null,
 ) {
   return vi.fn(async (url: string) => {
+    // API sem /metrics/signup-origins (deploy da web antes da API): 404.
+    if (url.includes('/metrics/signup-origins')) {
+      return signupOriginsBody === null
+        ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
+        : { ok: true, status: 200, json: async () => signupOriginsBody }
+    }
     // API sem /metrics/invite-funnel (deploy da web antes da API): 404.
     if (url.includes('/metrics/invite-funnel')) {
       return funnelBody === null
@@ -139,6 +146,41 @@ function mockFetch(
     return { ok: true, status: 200, json: async () => archive }
   })
 }
+
+describe('AdminMetricsPage: cadastros por origem', () => {
+  const signupOrigins = {
+    days: 30,
+    origins: { convite: 4, guia: 3, busca: 2, direto: 1, desconhecida: 0 },
+    guides: [],
+    totalEvents: 10,
+    d1: { signups: 10 },
+    originsSince: '2026-08-01 10:00:00',
+    avgSampleInterval: 1,
+  }
+
+  it('mostra as origens e a soma ao lado do D1', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(200, overview, business, null, null, null, null, signupOrigins),
+    )
+    render(<AdminMetricsPage />)
+
+    const table = await screen.findByRole('table', { name: 'Cadastros por origem' })
+    expect(within(table).getByText('convite')).toBeInTheDocument()
+    expect(within(table).getByText('soma das origens')).toBeInTheDocument()
+    expect(within(table).getByText('contas criadas no D1')).toBeInTheDocument()
+  })
+
+  it('não derruba a página numa API sem a rota', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText('Indisponível: a API ainda não envia a origem dos cadastros.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('usuários palpitando')).toBeInTheDocument()
+  })
+})
 
 describe('AdminMetricsPage: funil de convite', () => {
   const funnel = {
