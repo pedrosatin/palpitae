@@ -152,7 +152,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
             type="button"
             className={styles.shareBtn}
             onClick={() => {
-              trackEvent('click_groupcard_compartilhar', { group_id: group.id })
+              trackEvent('click_groupcard_compartilhar')
               setShareOpen(true)
             }}
           >

@@ -67,6 +67,12 @@ foram preservados. Para segmentar relatórios por `origem`, confira a dimensão
 personalizada correspondente na propriedade GA4. A implementação local não
 comprova sua configuração ou o recebimento dos eventos em produção.
 
+## Dados privados e `page_view`
+
+`web/src/analytics/pageContext.ts` define a URL e o título enviados ao GA. Grupo vira `/grupos/:id` com título `Grupo | Palpitae`, convite vira `/convite/:code`, e a query string mantém só a lista permitida (`utm_*`, `gclid`, `from`, `tab`). O título da aba continua com o nome do grupo.
+
+O primeiro carregamento sai pelo `config`. A navegação interna sai pelo `page_view` manual de `useGaPageView`, porque o `page_view` automático de mudança de histórico ignora `page_location`. Por isso a opção **Page changes based on browser history events** da medição aprimorada fica desligada no fluxo Palpitae. **Form interactions** também fica desligada: o `form_start` automático envia a URL real em `form_destination`, e formulário se mede com os eventos `submit_*`. **Site search** também fica desligada: o `view_search_results` automático lê parâmetros como `q` direto da URL, antes da normalização, e o app não tem busca.
+
 ## Convenções de nome
 
 - snake_case; prefixo `click_` para cliques, `submit_` para envios de formulário bem-sucedidos
@@ -74,7 +80,7 @@ comprova sua configuração ou o recebimento dos eventos em produção.
 - o token de **contexto** (página/componente) é em **inglês** (nome do componente:
   `group_detail`, `create_group`, `predictions`); a **ação** é em **português**
   (`copiar_codigo`, `ver_palpites`)
-- inclua params quando útil para segmentação: `{ tab }`, `{ group_id }`, `{ round }`, `{ count }`
+- inclua params quando útil para segmentação: `{ tab }`, `{ round }`, `{ count }`. Nunca envie nome, id de grupo ou código de convite
 
 ## O que rastrear vs. ignorar
 
@@ -131,7 +137,7 @@ recomendados do GA4.
 |---|---|---|
 | `login` | Volta do OAuth com sessão válida. O clique em "Entrar com Google" grava uma marca no `sessionStorage`, e o `/auth/me` a consome. | `{ method }` (`google`) |
 | `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
-| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ source, group_id }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado ou colado no modal) |
+| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ entry_method }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado ou colado no modal) |
 
 O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
 `web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo). Na SPA, o
@@ -167,7 +173,7 @@ Compartilhar resultado de campeonato encerrado (GroupCard + ShareGroupModal):
 
 | Evento | Disparo | Params |
 |---|---|---|
-| `click_groupcard_compartilhar` | clique em "Compartilhar resultado" no card encerrado (abre o modal) | `{ group_id }` |
+| `click_groupcard_compartilhar` | clique em "Compartilhar resultado" no card encerrado (abre o modal) | — |
 | `click_share_compartilhar` | clique em "Compartilhar" no modal (só aparece onde há Web Share de arquivos — mobile) | — |
 | `click_share_baixar` | clique em "Baixar imagem" no modal | — |
 | `click_share_copiar_link` | clique em "Copiar link" no modal | — |

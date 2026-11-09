@@ -134,7 +134,7 @@ describe('JoinGroupModal', () => {
     })
   })
 
-  it('tracks join_group with source convite_link when the code came from the link', async () => {
+  it('tracks join_group with entry_method convite_link when the code came from the link', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({ group: { id: 'g1', name: 'Group 1' } }),
@@ -145,13 +145,12 @@ describe('JoinGroupModal', () => {
 
     await waitFor(() => {
       expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
-        source: 'convite_link',
-        group_id: 'g1',
+        entry_method: 'convite_link',
       })
     })
   })
 
-  it('tracks join_group with source codigo when the code was typed', async () => {
+  it('tracks join_group with entry_method codigo when the code was typed', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({ group: { id: 'g2', name: 'Group 2' } }),
@@ -163,8 +162,7 @@ describe('JoinGroupModal', () => {
 
     await waitFor(() => {
       expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
-        source: 'codigo',
-        group_id: 'g2',
+        entry_method: 'codigo',
       })
     })
   })
@@ -206,8 +204,7 @@ describe('JoinGroupModal', () => {
         invite_code: 'ABCD-EF23',
       })
       expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
-        source: 'convite_link',
-        group_id: 'g1',
+        entry_method: 'convite_link',
       })
     })
 

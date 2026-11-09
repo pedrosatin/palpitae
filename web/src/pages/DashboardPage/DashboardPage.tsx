@@ -83,7 +83,7 @@ function GroupsGrid({ groups }: { groups: GroupWithStats[] }) {
           key={group.id}
           group={group}
           onClick={() => {
-            trackEvent('click_dashboard_grupo', { group_id: group.id })
+            trackEvent('click_dashboard_grupo')
             navigate(`/grupos/${group.id}`)
           }}
         />
