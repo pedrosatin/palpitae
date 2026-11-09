@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CLIENT_IP_HEADER, onRequest, PROXY_SECRET_HEADER } from '../../functions/api/[[path]]'
+import {
+  CLIENT_IP_HEADER,
+  INVITE_OPEN_HEADER,
+  onRequest,
+  PROXY_SECRET_HEADER,
+} from '../../functions/api/[[path]]'
 
 function forwardedHeaders(fetchMock: ReturnType<typeof vi.fn>): Headers {
   const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -24,6 +29,14 @@ describe('API proxy', () => {
     const headers = forwardedHeaders(fetchMock)
     expect(headers.get(CLIENT_IP_HEADER)).toBe('198.51.100.7')
     expect(headers.get(PROXY_SECRET_HEADER)).toBe('s3cret')
+  })
+
+  it('never forwards the invite-open marker sent by the visitor', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok'))
+    vi.stubGlobal('fetch', fetchMock)
+    const request = visitorRequest({ [INVITE_OPEN_HEADER]: '1' })
+    await onRequest({ request, env: { PROXY_SHARED_SECRET: 's3cret' } })
+    expect(forwardedHeaders(fetchMock).get(INVITE_OPEN_HEADER)).toBeNull()
   })
 
   it('overwrites proxy headers sent by the visitor', async () => {

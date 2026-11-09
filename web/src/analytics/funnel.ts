@@ -19,7 +19,7 @@ export function trackShareInvite(method: ShareInviteMethod, context: string): vo
   trackEvent('share_invite', { method, context })
 }
 
-export type JoinGroupEntryMethod = 'convite_link' | 'codigo'
+export type JoinGroupEntryMethod = 'convite_link' | 'convite_antigo' | 'codigo'
 
 /** Entrada no grupo confirmada pela API. */
 export function trackJoinGroup(entryMethod: JoinGroupEntryMethod): void {

@@ -23,10 +23,14 @@
  * segredo, como o proxy de `/api/*`. Assim a API conta a quota pelo IP de quem pediu
  * o convite, e não pelo balde anônimo compartilhado dos Workers.
  *
+ * Cada navegação de uma pessoa também vira uma abertura no funil de convite (ver
+ * `isInviteOpen`), registrada pela API em segundo plano. Esse aviso não leva o
+ * código nem dado de quem abriu, e sem o segredo do proxy a abertura não é contada.
+ *
  * A imagem é compartilhada entre os convites; o nome do grupo aparece no título.
  */
 
-import { CLIENT_IP_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
+import { CLIENT_IP_HEADER, INVITE_OPEN_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
 
 // Tipos mínimos do runtime de Pages/Workers. A pasta functions/ não entra no
 // tsconfig do app (que usa os tipos do DOM), então declaramos só o que é usado.
@@ -52,6 +56,7 @@ interface PagesContext {
   request: Request
   env: Env
   params: Record<string, string | string[] | undefined>
+  waitUntil(promise: Promise<unknown>): void
 }
 
 interface RewriterElement {
@@ -86,6 +91,13 @@ export const API_MISS_CACHE_TTL_S = 60
 // pega o resto. Uma pessoa classificada como crawler fica sem `data-convite`, e a SPA busca o convite sozinha.
 const PREVIEW_CRAWLER_RE =
   /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|slack-imgproxy|discordbot|linkedinbot|googlebot|bingbot|applebot|pinterest|embedly|redditbot|skypeuripreview|vkshare|iframely|bot\b|crawler|spider/i
+
+// Headers de pré-busca do navegador. Quem pré-busca ainda não abriu o link, e a
+// presença de qualquer um deles basta.
+const PREFETCH_HEADERS = ['Sec-Purpose', 'Purpose', 'X-Purpose', 'X-Moz']
+
+// Todo navegador se apresenta assim. Biblioteca HTTP e User-Agent vazio não.
+const BROWSER_UA_RE = /^Mozilla\//
 
 /** Fetch options do runtime da Cloudflare (sem @cloudflare/workers-types aqui). */
 interface CfRequestInit extends RequestInit {
@@ -313,6 +325,54 @@ export function forwardedClient(env: Env, request: Request): ForwardedClient | u
     : undefined
 }
 
+/**
+ * True para a navegação de uma pessoa até um convite com código válido: GET de
+ * documento, nem crawler, nem pré-busca. `Sec-Fetch-Mode` só vale quando vem,
+ * porque Safari antigo não envia.
+ */
+export function isInviteOpen(request: Request, code: string | null, crawler: boolean): boolean {
+  if (!code || crawler || request.method !== 'GET') return false
+  if (PREFETCH_HEADERS.some((name) => request.headers.has(name))) return false
+  const fetchMode = request.headers.get('Sec-Fetch-Mode')
+  if (fetchMode && fetchMode !== 'navigate') return false
+  return BROWSER_UA_RE.test(request.headers.get('User-Agent') ?? '')
+}
+
+/** Avisa a API da abertura, sem corpo e sem o código. A falha nunca chega à página. */
+export async function postInviteOpen(
+  apiUrl: string,
+  forward: ForwardedClient,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  try {
+    await fetchImpl(`${apiUrl.replace(/\/+$/, '')}/public/invite-opens`, {
+      method: 'POST',
+      headers: {
+        [CLIENT_IP_HEADER]: forward.clientIp,
+        [PROXY_SECRET_HEADER]: forward.secret,
+        [INVITE_OPEN_HEADER]: '1',
+      },
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    })
+  } catch {
+    // Uma abertura perdida não justifica atrasar nem derrubar o convite.
+  }
+}
+
+/** Registra a abertura em segundo plano, sem segurar a resposta do HTML. */
+export function reportInviteOpen(
+  context: PagesContext,
+  code: string | null,
+  crawler: boolean,
+  fetchImpl: typeof fetch = fetch,
+): void {
+  const forward = forwardedClient(context.env, context.request)
+  if (!forward || !isInviteOpen(context.request, code, crawler)) return
+  context.waitUntil(
+    postInviteOpen(context.env.API_URL || DEFAULT_API_URL, forward, fetchImpl),
+  )
+}
+
 /** Busca o convite com o tempo limite de quem abriu. Código inválido não chama a API. */
 export function loadInvitePreview(
   code: string | null,
@@ -352,7 +412,8 @@ export function planInviteRewrite(
   }
 }
 
-export async function onRequest({ request, env, params }: PagesContext): Promise<Response> {
+export async function onRequest(context: PagesContext): Promise<Response> {
+  const { request, env, params } = context
   // URL pura, sem os headers do visitante: um If-None-Match repassado poderia
   // voltar 304 sem corpo, e o HTML reescrito sairia vazio.
   const shell = await env.ASSETS.fetch(new URL('/', request.url).toString())
@@ -361,6 +422,7 @@ export async function onRequest({ request, env, params }: PagesContext): Promise
   try {
     const code = normalizeInviteCode(params.code)
     const crawler = isPreviewCrawler(request.headers.get('User-Agent'))
+    reportInviteOpen(context, code, crawler)
     const preview = await loadInvitePreview(code, crawler, env, request)
     const { meta, pageUrl, embed } = planInviteRewrite(code, preview, crawler)
     return rewriteInviteHtml(shell, meta, pageUrl, embed)

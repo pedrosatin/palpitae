@@ -3,6 +3,7 @@ import { requireAuth } from '../auth/middleware'
 import { radarRouter } from '../radar/router'
 import type { AppContext } from '../types'
 import { runAeSql } from './aeSql'
+import { countInviteJoinsInD1, summarizeInviteEvents } from './inviteFunnel'
 
 /**
  * Métricas para o dashboard admin — proxy autenticado da SQL API do Analytics
@@ -670,6 +671,71 @@ metricsRouter.get('/heatmap', async (c) => {
   } catch (err) {
     console.error('[metrics] falha ao montar o mapa de calor:', err)
     return c.json({ error: 'Falha ao consultar o mapa de calor' }, 502)
+  }
+})
+
+/** Eventos do funil de convite (`invite_opened` e `group_joined`). */
+const INVITE_FUNNEL_EVENTS = `('invite_opened', 'group_joined')`
+
+/**
+ * Funil de convite no período: aberturas, entradas por método e convidados novos
+ * ou com conta. Endpoint próprio (como `/ops`): falha aqui não derruba a página.
+ *
+ * Contagens com SUM(_sample_interval) sobre o Analytics Engine. Posições:
+ * group_joined → blob4 método, blob5 cadastro recente (`1`/`0`).
+ * `opensSince` e `joinDimensionSince` (sem filtro de janela) são o primeiro
+ * evento de cada coleta, para o painel separar "zero" de "ainda não coletado".
+ * Agrupam por tipo para que, sem eventos, a consulta volte vazia em vez de um
+ * MIN sobre conjunto vazio.
+ *
+ * `d1` conta as mesmas entradas no D1, na mesma janela, e serve de conferência.
+ * O payload não leva código, nome de grupo, user_hash nem texto livre de blob.
+ */
+metricsRouter.get('/invite-funnel', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  const days = parseDays(c.req.query('days'))
+  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const firstEvent = (where: string) =>
+    runAeSql(
+      c.env,
+      `SELECT blob1 AS event_type, MIN(timestamp) AS first_at ` +
+        `FROM ${DATASET} WHERE ${where} GROUP BY event_type`,
+    ).then((rows) => (rows[0]?.first_at as string | null | undefined) ?? null)
+
+  try {
+    const [eventRows, opensSince, joinDimensionSince, samplingRows, d1] = await Promise.all([
+      runAeSql(
+        c.env,
+        `SELECT blob1 AS event_type, blob4 AS method, blob5 AS recent_signup, ` +
+          `SUM(_sample_interval) AS events ` +
+          `FROM ${DATASET} WHERE blob1 IN ${INVITE_FUNNEL_EVENTS} AND ${since} ` +
+          `GROUP BY event_type, method, recent_signup LIMIT 100`,
+      ),
+      firstEvent(`blob1 = 'invite_opened'`),
+      firstEvent(`blob1 = 'group_joined' AND blob5 != ''`),
+      runAeSql(
+        c.env,
+        `SELECT AVG(_sample_interval) AS avg_sample_interval ` +
+          `FROM ${DATASET} WHERE blob1 IN ${INVITE_FUNNEL_EVENTS} AND ${since}`,
+      ),
+      countInviteJoinsInD1(c.env.DB, days),
+    ])
+
+    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
+    return c.json({
+      days,
+      ...summarizeInviteEvents(eventRows),
+      d1,
+      opensSince,
+      joinDimensionSince,
+      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+    })
+  } catch (err) {
+    console.error('[metrics] falha ao montar o funil de convite:', err)
+    return c.json({ error: 'Falha ao consultar o funil de convite' }, 502)
   }
 })
 

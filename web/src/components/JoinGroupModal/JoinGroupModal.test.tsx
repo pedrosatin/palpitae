@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
+import { rememberInviteDocument, wasInviteDocumentOpened } from '../../lib/invite'
 import JoinGroupModal from './JoinGroupModal'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -16,6 +17,7 @@ const defaultProps = {
 
 describe('JoinGroupModal', () => {
   beforeEach(() => {
+    sessionStorage.clear()
     vi.restoreAllMocks()
     mockTrackEvent.mockClear()
     defaultProps.onClose.mockClear()
@@ -135,6 +137,7 @@ describe('JoinGroupModal', () => {
   })
 
   it('tracks join_group with entry_method convite_link when the code came from the link', async () => {
+    rememberInviteDocument('/convite/ABCD-EF23')
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({ group: { id: 'g1', name: 'Group 1' } }),
@@ -167,6 +170,96 @@ describe('JoinGroupModal', () => {
     })
   })
 
+  describe('entry_method enviado à API', () => {
+    function mockJoin() {
+      return vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ group: { id: 'g1', name: 'Group 1' } }),
+      } as Response)
+    }
+
+    const sentMethod = (spy: ReturnType<typeof mockJoin>) =>
+      JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string).entry_method
+
+    it('convite_link quando o código é o que veio no link', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} initialCode="abcd-ef23" />)
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(sentMethod(fetchSpy)).toBe('convite_link'))
+    })
+
+    it('convite_antigo quando o link não passou pela página de convite', async () => {
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} initialCode="abcd-ef23" />)
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(sentMethod(fetchSpy)).toBe('convite_antigo'))
+    })
+
+    it('consome a abertura ao entrar: a mesma aba não reaproveita em outra entrada', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} initialCode="abcd-ef23" />)
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(sentMethod(fetchSpy)).toBe('convite_link'))
+      await waitFor(() => expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(false))
+    })
+
+    it('preserva a abertura de outro convite ao entrar por código digitado', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} />)
+      await userEvent.type(screen.getByRole('textbox'), 'WXYZ-2345')
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(defaultProps.onJoined).toHaveBeenCalled())
+      expect(sentMethod(fetchSpy)).toBe('codigo')
+      expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(true)
+    })
+
+    it('mantém a abertura quando a entrada falha', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Falhou' }),
+      } as Response)
+
+      render(<JoinGroupModal {...defaultProps} initialCode="abcd-ef23" />)
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      expect(await screen.findByText('Falhou')).toBeInTheDocument()
+      expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(true)
+    })
+
+    it('codigo quando foi digitado', async () => {
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} />)
+      await userEvent.type(screen.getByRole('textbox'), 'ABCD-EF23')
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(sentMethod(fetchSpy)).toBe('codigo'))
+    })
+
+    it('codigo quando a pessoa troca o código que veio no link', async () => {
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} initialCode="ABCD-EF23" />)
+      await userEvent.clear(screen.getByRole('textbox'))
+      await userEvent.type(screen.getByRole('textbox'), 'WXYZ-2345')
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(sentMethod(fetchSpy)).toBe('codigo'))
+    })
+  })
+
   it('does not track join_group when the API refuses the code', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: false,
@@ -189,6 +282,7 @@ describe('JoinGroupModal', () => {
     }
 
     it('envia o código uma vez ao abrir, mesmo em StrictMode', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
       const group = { id: 'g1', name: 'Realidade do BR' }
       const fetchSpy = mockJoin({ group })
 
@@ -202,6 +296,7 @@ describe('JoinGroupModal', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1)
       expect(JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body))).toEqual({
         invite_code: 'ABCD-EF23',
+        entry_method: 'convite_link',
       })
       expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
         entry_method: 'convite_link',

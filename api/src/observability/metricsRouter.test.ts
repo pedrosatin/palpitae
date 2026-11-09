@@ -1611,3 +1611,164 @@ describe('GET /metrics/heatmap', () => {
     ])
   })
 })
+
+describe('GET /metrics/invite-funnel', () => {
+  function funnelD1() {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    sqlite.exec(`
+      INSERT INTO users (id,email,provider,provider_id,created_at) VALUES
+        ('owner','o@example.com','google','1',datetime('now','-90 days')),
+        ('new','n@example.com','google','2',datetime('now','-3 days')),
+        ('old','e@example.com','google','3',datetime('now','-90 days'));
+      INSERT INTO competitions (id,name,slug,status,penalty_phases)
+        VALUES ('c','League','league','ongoing','[]');
+      INSERT INTO groups (id,name,competition_id,owner_user_id,invite_code)
+        VALUES ('g','Grupo','c','owner','ABCD-EFGH');
+      INSERT INTO group_members (id,group_id,user_id,role,joined_at) VALUES
+        ('m1','g','owner','owner',datetime('now','-2 days')),
+        ('m2','g','new','member',datetime('now','-3 days','+20 minutes')),
+        ('m3','g','old','member',datetime('now','-3 days'));
+    `)
+    return db
+  }
+
+  /** SQL API falsa, que escolhe a resposta pela forma da consulta. */
+  function stubAe(
+    rows: Partial<Record<'events' | 'opensSince' | 'dimensionSince' | 'sampling', unknown[]>>,
+  ) {
+    const queries: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: { body: string }) => {
+        const sql = init.body
+        queries.push(sql)
+        let data: unknown[]
+        if (sql.includes('GROUP BY event_type, method')) data = rows.events ?? []
+        else if (sql.includes(`blob5 != ''`)) data = rows.dimensionSince ?? []
+        else if (sql.includes('MIN(timestamp)')) data = rows.opensSince ?? []
+        else data = rows.sampling ?? []
+        return { ok: true, json: async () => ({ data }) }
+      }),
+    )
+    return queries
+  }
+
+  async function get(env: Partial<Env>, query = '') {
+    return makeApp().request(
+      `/metrics/invite-funnel${query}`,
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(env),
+    )
+  }
+
+  it('devolve o funil do Analytics Engine com a conferência do D1', async () => {
+    const queries = stubAe({
+      events: [
+        { event_type: 'invite_opened', method: '', recent_signup: '', events: '12' },
+        { event_type: 'group_joined', method: 'convite_link', recent_signup: '1', events: 1 },
+        { event_type: 'group_joined', method: 'codigo', recent_signup: '0', events: 1 },
+        { event_type: 'group_joined', method: '', recent_signup: '', events: 3 },
+      ],
+      opensSince: [{ event_type: 'invite_opened', first_at: '2026-11-10 12:00:00' }],
+      dimensionSince: [{ event_type: 'group_joined', first_at: '2026-11-10 13:00:00' }],
+      sampling: [{ avg_sample_interval: '1' }],
+    })
+
+    const res = await get({ DB: funnelD1() })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      days: 30,
+      opens: 12,
+      joins: 5,
+      joinsByMethod: { convite_link: 1, convite_antigo: 0, codigo: 1, unknown: 3 },
+      newMembers: 1,
+      existingMembers: 1,
+      unclassifiedJoins: 3,
+      d1: { joins: 2, newMembers: 1, existingMembers: 1 },
+      opensSince: '2026-11-10 12:00:00',
+      joinDimensionSince: '2026-11-10 13:00:00',
+      avgSampleInterval: 1,
+    })
+    // Sob sampling, cada linha vale _sample_interval eventos.
+    expect(queries[0]).toContain('SUM(_sample_interval) AS events')
+    expect(queries[0]).toContain(`blob1 IN ('invite_opened', 'group_joined')`)
+  })
+
+  it('aplica o período pedido no Analytics Engine e no D1', async () => {
+    const queries = stubAe({})
+
+    const res = await get({ DB: funnelD1() }, '?days=1')
+    const body = (await res.json()) as { days: number; d1: { joins: number } }
+
+    expect(body.days).toBe(1)
+    expect(body.d1.joins).toBe(0)
+    expect(queries[0]).toContain(`INTERVAL '1' DAY`)
+  })
+
+  it('sem eventos, devolve zero e coleta não iniciada', async () => {
+    stubAe({})
+
+    const res = await get({ DB: funnelD1() })
+    const body = (await res.json()) as Record<string, unknown>
+
+    expect(body.opens).toBe(0)
+    expect(body.opensSince).toBeNull()
+    expect(body.joinDimensionSince).toBeNull()
+    expect(body.avgSampleInterval).toBe(1)
+  })
+
+  it('pondera as linhas amostradas e informa a média do sampling', async () => {
+    stubAe({
+      events: [{ event_type: 'invite_opened', method: '', recent_signup: '', events: '40' }],
+      sampling: [{ avg_sample_interval: '4' }],
+    })
+
+    const body = (await (await get({ DB: funnelD1() })).json()) as Record<string, unknown>
+
+    expect(body.opens).toBe(40)
+    expect(body.avgSampleInterval).toBe(4)
+  })
+
+  it('não vaza texto de blob nem identificador no payload', async () => {
+    stubAe({
+      events: [
+        { event_type: 'group_joined', method: 'ABCD-EFGH', recent_signup: 'user@x.com', events: 1 },
+      ],
+    })
+
+    const text = await (await get({ DB: funnelD1() })).text()
+
+    expect(text).not.toContain('ABCD-EFGH')
+    expect(text).not.toContain('user@x.com')
+    expect(text).not.toContain('user_hash')
+    expect(text).not.toContain('Grupo')
+  })
+
+  it('503 sem a SQL API configurada', async () => {
+    const res = await get({ CF_ACCOUNT_ID: undefined })
+    expect(res.status).toBe(503)
+  })
+
+  it('403 para quem não é o admin', async () => {
+    const res = await makeApp().request(
+      '/metrics/invite-funnel',
+      { headers: await authHeaders('outra@pessoa.com') },
+      makeEnv(),
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+
+    const res = await get({ DB: funnelD1() })
+
+    expect(res.status).toBe(502)
+  })
+})

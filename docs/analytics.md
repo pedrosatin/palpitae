@@ -144,14 +144,16 @@ recomendados do GA4.
 |---|---|---|
 | `login` | Volta do OAuth com sessão válida. O clique em "Entrar com Google" grava uma marca no `sessionStorage`, e o `/auth/me` a consome. | `{ method }` (`google`) |
 | `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
-| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ entry_method }` (`convite_link` quando o código enviado é o que veio no link, `codigo` quando foi digitado ou colado no modal) |
+| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ entry_method }` (`convite_link` quando o código enviado veio de `/convite/<código>`, `convite_antigo` quando veio de um link antigo com `?convite=`, `codigo` quando foi digitado ou colado no modal) |
 
 O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
 `web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo). Na SPA, o
 visitante vê a página de convite e quem tem sessão vai para `/?convite=<CODE>`. Links antigos com
 `?convite=` continuam funcionando. Crawlers de preview e pessoas disparam a busca em
-`GET /public/invites/:code`, cacheada no edge por 5 min no 200 e por 1 min no 404. A abertura do link
-não conta como evento; quem aceita o convite aparece em `click_login_google` e `join_group`.
+`GET /public/invites/:code`, cacheada no edge por 5 min no 200 e por 1 min no 404. No GA4 a abertura
+do link continua sem evento, e quem aceita o convite aparece em `click_login_google` e `join_group`.
+A abertura é medida no servidor, com o evento `invite_opened`, uma por navegação e sem crawlers de
+preview (ver "Funil de convite" em [`observability.md`](observability.md)).
 
 Dashboard admin de métricas (`/admin/metricas`, AdminMetricsPage):
 

@@ -15,6 +15,7 @@ import CompetitionActivitySection, {
   type CompetitionActivityResponse,
 } from './CompetitionActivitySection'
 import HeatmapSection, { type HeatmapResponse } from './HeatmapSection'
+import InviteFunnelSection, { type InviteFunnelResponse } from './InviteFunnelSection'
 import ProviderOpsSection, {
   totalHttpFailures,
   type CompetitionNames,
@@ -1280,6 +1281,11 @@ function ArchiveQuerySection({
   )
 }
 
+/** Corpo de uma seção opcional: rede, status de erro ou JSON inválido viram null. */
+async function optionalJson<T>(res: Response | null): Promise<T | null> {
+  return res?.ok ? ((await res.json().catch(() => null)) as T | null) : null
+}
+
 export default function AdminMetricsPage() {
   useDocumentTitle('Métricas')
 
@@ -1289,6 +1295,7 @@ export default function AdminMetricsPage() {
   const [ops, setOps] = useState<OpsResponse | null>(null)
   const [activity, setActivity] = useState<CompetitionActivityResponse | null>(null)
   const [heatmap, setHeatmap] = useState<HeatmapResponse | null>(null)
+  const [inviteFunnel, setInviteFunnel] = useState<InviteFunnelResponse | null>(null)
   const [archive, setArchive] = useState<ArchiveResponse | null>(null)
   const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1312,8 +1319,9 @@ export default function AdminMetricsPage() {
       apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
       apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
       apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
+      apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
     ])
-      .then(async ([ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes]) => {
+      .then(async ([ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes]) => {
         if (cancelled) return
         if (ovRes.status === 403) {
           setError('forbidden')
@@ -1324,17 +1332,10 @@ export default function AdminMetricsPage() {
         // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
         if (bizRes.ok) setBusiness((await bizRes.json()) as BusinessResponse)
         if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
-        setOps(opsRes?.ok ? ((await opsRes.json().catch(() => null)) as OpsResponse | null) : null)
-        setActivity(
-          activityRes?.ok
-            ? ((await activityRes.json().catch(() => null)) as CompetitionActivityResponse | null)
-            : null,
-        )
-        setHeatmap(
-          heatmapRes?.ok
-            ? ((await heatmapRes.json().catch(() => null)) as HeatmapResponse | null)
-            : null,
-        )
+        setOps(await optionalJson<OpsResponse>(opsRes))
+        setActivity(await optionalJson<CompetitionActivityResponse>(activityRes))
+        setHeatmap(await optionalJson<HeatmapResponse>(heatmapRes))
+        setInviteFunnel(await optionalJson<InviteFunnelResponse>(funnelRes))
       })
       .catch(() => {
         if (!cancelled) setError('failed')
@@ -1416,6 +1417,8 @@ export default function AdminMetricsPage() {
             )}
 
             {business && <BusinessSection business={business} />}
+
+            <InviteFunnelSection data={inviteFunnel} />
 
             <CompetitionActivitySection data={activity} />
 
