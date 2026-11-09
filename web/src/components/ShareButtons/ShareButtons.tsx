@@ -15,6 +15,8 @@ interface ShareButtonsProps {
   eventContext: string
   /** Frase que acompanha o link no WhatsApp / X (ver buildInviteMessage). */
   message?: string
+  /** Fica abaixo de uma ação principal de WhatsApp: sem repetir o ícone e sem preenchimento. */
+  secondary?: boolean
 }
 
 const DEFAULT_MESSAGE = buildInviteMessage()
@@ -35,47 +37,66 @@ function hasPhoneShareSheet(): boolean {
   )
 }
 
+/** Menu nativo no celular, link do WhatsApp no resto. `null` quando a pessoa desistiu. */
+async function shareOnWhatsApp(
+  message: string,
+  shareLink: string,
+): Promise<'native' | 'whatsapp' | null> {
+  if (hasPhoneShareSheet()) {
+    try {
+      await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
+      return 'native'
+    } catch (err) {
+      // Cancelar o menu, ou tocar de novo com ele aberto (InvalidStateError), não abre
+      // nada. Outra falha cai no link do WhatsApp.
+      if (
+        err instanceof DOMException &&
+        (err.name === 'AbortError' || err.name === 'InvalidStateError')
+      ) {
+        return null
+      }
+    }
+  }
+  window.open(whatsappUrlFor(message, shareLink), '_blank', 'noopener,noreferrer')
+  return 'whatsapp'
+}
+
 interface WhatsAppShareButtonProps {
   label: string
   message: string
   shareLink: string
   /** Prefixo do evento de clique. Vira `click_<eventContext>_whatsapp`. */
   eventContext: string
+  /** Ação principal da tela: ocupa a largura toda e fica mais alto. */
+  prominent?: boolean
+  /** Chamado quando o menu nativo conclui ou o link do WhatsApp abre. */
+  onShared?: (method: 'native' | 'whatsapp') => void
 }
 
 /**
  * Botão único que leva um texto pronto ao WhatsApp. No celular abre o menu nativo, e
- * no desktop abre o link do WhatsApp. Serve a mensagens que não são convite, por isso
- * fica fora do evento `share_invite`.
+ * no desktop abre o link do WhatsApp. Por padrão fica fora do evento `share_invite`,
+ * porque serve a mensagens que não são convite. Quem manda convite registra o evento
+ * em `onShared`.
  */
 export function WhatsAppShareButton({
   label,
   message,
   shareLink,
   eventContext,
+  prominent,
+  onShared,
 }: WhatsAppShareButtonProps) {
   async function handleClick() {
     trackEvent(`click_${eventContext}_whatsapp`)
-    if (hasPhoneShareSheet()) {
-      try {
-        await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
-        return
-      } catch (err) {
-        // Cancelar o menu, ou tocar de novo com ele aberto (InvalidStateError), não abre
-        // nada. Outra falha cai no link do WhatsApp.
-        if (
-          err instanceof DOMException &&
-          (err.name === 'AbortError' || err.name === 'InvalidStateError')
-        ) {
-          return
-        }
-      }
-    }
-    window.open(whatsappUrlFor(message, shareLink), '_blank', 'noopener,noreferrer')
+    const method = await shareOnWhatsApp(message, shareLink)
+    if (method) onShared?.(method)
   }
 
+  const sizeClass = prominent ? styles.primaryCta : styles.tallBtn
+
   return (
-    <button type="button" className={`${styles.shareBtn} ${styles.tallBtn}`} onClick={handleClick}>
+    <button type="button" className={`${styles.shareBtn} ${sizeClass}`} onClick={handleClick}>
       <WhatsAppIcon className={styles.icon} />
       <span>{label}</span>
     </button>
@@ -97,6 +118,7 @@ export default function ShareButtons({
   shareLink,
   eventContext,
   message = DEFAULT_MESSAGE,
+  secondary,
 }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false)
 
@@ -145,20 +167,26 @@ export default function ShareButtons({
 
   return (
     <div className={styles.shareRow}>
-      <button type="button" className={styles.shareBtn} onClick={handleShare}>
+      <button
+        type="button"
+        className={`${styles.shareBtn} ${secondary ? styles.quietBtn : ''}`}
+        onClick={handleShare}
+      >
         <ShareIcon className={styles.icon} />
         <span>{copied ? 'Link copiado!' : 'Compartilhar'}</span>
       </button>
 
-      <button
-        type="button"
-        className={styles.iconBtn}
-        onClick={() => openExternal(whatsappUrl, 'whatsapp')}
-        aria-label="Compartilhar no WhatsApp"
-        title="WhatsApp"
-      >
-        <WhatsAppIcon className={styles.icon} />
-      </button>
+      {!secondary && (
+        <button
+          type="button"
+          className={styles.iconBtn}
+          onClick={() => openExternal(whatsappUrl, 'whatsapp')}
+          aria-label="Compartilhar no WhatsApp"
+          title="WhatsApp"
+        >
+          <WhatsAppIcon className={styles.icon} />
+        </button>
+      )}
 
       <button
         type="button"

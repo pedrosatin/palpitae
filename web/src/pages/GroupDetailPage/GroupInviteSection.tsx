@@ -11,6 +11,8 @@ interface GroupInviteSectionProps {
   inviteCode: string
   /** Nome do grupo, usado na mensagem que acompanha o link. */
   groupName?: string
+  /** Total de membros. Com só o dono, o convite já começa aberto no celular. */
+  memberCount: number
   /** Troca o código de convite. Sem ele, o botão não aparece. */
   onRotate?: () => void
   /** Troca em andamento. */
@@ -20,12 +22,14 @@ interface GroupInviteSectionProps {
 function GroupInviteSection({
   inviteCode,
   groupName,
+  memberCount,
   onRotate,
   rotating,
 }: GroupInviteSectionProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null)
-  // Só vale no celular, onde o CSS começa com o convite recolhido.
-  const [expanded, setExpanded] = useState(false)
+  const ownerIsAlone = memberCount === 1
+  // Só vale no celular, onde o CSS recolhe o convite sem `data-expanded`.
+  const [expanded, setExpanded] = useState(ownerIsAlone)
   const bodyId = useId()
 
   function getShareLink() {
@@ -77,6 +81,9 @@ function GroupInviteSection({
         </button>
       </h2>
       <div id={bodyId} className={styles.inviteBody}>
+        {ownerIsAlone && (
+          <p className={styles.inviteAloneNote}>Seu bolão ainda só tem você. Chama a galera!</p>
+        )}
         <div className={styles.inviteRow}>
           <div className={styles.codeBox}>
             <span className={styles.codeLabel}>Código</span>

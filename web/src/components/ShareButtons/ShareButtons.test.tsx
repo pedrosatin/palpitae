@@ -135,6 +135,19 @@ describe('ShareButtons', () => {
   })
 })
 
+describe('ShareButtons secondary', () => {
+  it('hides the WhatsApp icon and keeps Compartilhar and X', () => {
+    disableWebShare()
+    render(<ShareButtons shareLink={LINK} eventContext="create_group" secondary />)
+
+    expect(
+      screen.queryByRole('button', { name: 'Compartilhar no WhatsApp' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Compartilhar no X' })).toBeInTheDocument()
+  })
+})
+
 describe('WhatsAppShareButton', () => {
   const MESSAGE = 'Rodada 35 do bolão Realidade do BR. Ana ainda não palpitou.'
 
@@ -218,6 +231,50 @@ describe('WhatsAppShareButton', () => {
     await userEvent.click(renderButton())
 
     expect(open).toHaveBeenCalledOnce()
+  })
+
+  function renderWithOnShared(onShared: (method: 'native' | 'whatsapp') => void) {
+    render(
+      <WhatsAppShareButton
+        label="Chamar no WhatsApp"
+        message={MESSAGE}
+        shareLink={LINK}
+        eventContext="create_group"
+        prominent
+        onShared={onShared}
+      />,
+    )
+    return screen.getByRole('button', { name: 'Chamar no WhatsApp' })
+  }
+
+  it('avisa quando o menu nativo conclui', async () => {
+    stubPointer(true)
+    enableWebShare(() => Promise.resolve())
+    const onShared = vi.fn()
+
+    await userEvent.click(renderWithOnShared(onShared))
+
+    expect(onShared).toHaveBeenCalledExactlyOnceWith('native')
+  })
+
+  it('avisa quando o link do WhatsApp abre', async () => {
+    stubPointer(false)
+    vi.spyOn(window, 'open').mockReturnValue(null)
+    const onShared = vi.fn()
+
+    await userEvent.click(renderWithOnShared(onShared))
+
+    expect(onShared).toHaveBeenCalledExactlyOnceWith('whatsapp')
+  })
+
+  it('não avisa quando o menu nativo é cancelado', async () => {
+    stubPointer(true)
+    enableWebShare(() => Promise.reject(new DOMException('cancelled', 'AbortError')))
+    const onShared = vi.fn()
+
+    await userEvent.click(renderWithOnShared(onShared))
+
+    expect(onShared).not.toHaveBeenCalled()
   })
 
   it('fica fora do evento de convite compartilhado', async () => {
