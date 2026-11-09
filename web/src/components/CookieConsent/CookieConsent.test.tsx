@@ -45,4 +45,17 @@ describe('CookieConsent', () => {
     expect(mockSetConsent).toHaveBeenCalledWith('denied')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  it('publishes the space it takes while open and releases it once dismissed', async () => {
+    const rect = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockReturnValue({ height: 120 } as DOMRect)
+    mockGetStoredConsent.mockReturnValue(null)
+    render(<CookieConsent />)
+    const root = document.documentElement.style
+    expect(root.getPropertyValue('--consent-banner-height')).toBe('120px')
+    await userEvent.click(screen.getByRole('button', { name: 'Recusar' }))
+    expect(root.getPropertyValue('--consent-banner-height')).toBe('')
+    rect.mockRestore()
+  })
 })
