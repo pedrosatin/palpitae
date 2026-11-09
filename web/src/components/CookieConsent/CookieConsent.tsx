@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { gaEnabled, getStoredConsent, setConsent } from '../../analytics/ga'
 import styles from './CookieConsent.module.css'
 
@@ -18,19 +18,46 @@ import styles from './CookieConsent.module.css'
  * navegador, que é a receita clássica de erro de hidratação.
  */
 export default function CookieConsent() {
+  const bannerRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     if (gaEnabled && getStoredConsent() === null) setVisible(true)
   }, [])
 
+  useEffect(() => {
+    const banner = bannerRef.current
+    if (!visible || !banner) return
+    const updateHeight = () => {
+      const bottom = parseFloat(getComputedStyle(banner).bottom) || 0
+      document.documentElement.style.setProperty(
+        '--consent-banner-height',
+        `${Math.ceil(banner.getBoundingClientRect().height + bottom)}px`,
+      )
+    }
+    updateHeight()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateHeight)
+    observer?.observe(banner)
+    window.addEventListener('resize', updateHeight)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', updateHeight)
+      document.documentElement.style.removeProperty('--consent-banner-height')
+    }
+  }, [visible])
+
   if (!visible) return null
 
   return (
-    <div className={styles.banner} role="dialog" aria-label="Aviso de cookies" aria-live="polite">
+    <div
+      ref={bannerRef}
+      className={styles.banner}
+      role="dialog"
+      aria-label="Aviso de cookies"
+      aria-live="polite"
+    >
       <p className={styles.text}>
-        Usamos cookies do Google Analytics para entender como o site é usado e melhorar o Palpitae.
-        Você decide.
+        Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.
       </p>
       <div className={styles.actions}>
         <button

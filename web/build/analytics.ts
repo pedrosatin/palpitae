@@ -49,16 +49,18 @@ function validId(gaId: string): boolean {
 
 /** Banner styles, mirroring components/CookieConsent with the app's tokens. */
 export const CONSENT_CSS = `
-.consent{position:fixed;left:16px;right:16px;bottom:16px;z-index:1000;display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:720px;margin:0 auto;padding:16px 20px;background:#252525;border:1px solid #2a2a2a;border-radius:12px;box-shadow:0 8px 24px rgb(0 0 0 / .5)}
+html{scroll-padding-bottom:var(--consent-banner-height,0px)}
+body{padding-bottom:var(--consent-banner-height,0px)}
+.consent{position:fixed;left:16px;right:16px;bottom:calc(8px + env(safe-area-inset-bottom, 0px));z-index:1000;display:flex;align-items:center;justify-content:space-between;gap:8px;max-width:720px;margin:0 auto;padding:12px;background:#252525;border:1px solid #2a2a2a;border-radius:12px;box-shadow:0 8px 24px rgb(0 0 0 / .5)}
 .consent[hidden]{display:none}
 .consent p{margin:0;color:#a3a3a3;font-size:.875rem;line-height:1.5}
 .consent .actions{display:flex;flex-shrink:0;gap:8px}
-.consent button{padding:8px 16px;border-radius:9999px;font:inherit;font-size:.875rem;font-weight:600;cursor:pointer}
+.consent button{min-height:44px;padding:8px 16px;border-radius:9999px;font:inherit;font-size:.875rem;font-weight:600;cursor:pointer}
 .consent .reject{background:transparent;border:1px solid #2a2a2a;color:#a3a3a3}
 .consent .reject:hover{background:#1a1a1a;color:#fff}
 .consent .accept{background:#49f21b;border:1px solid #49f21b;color:#000}
 .consent .accept:hover{background:#3dd617;border-color:#3dd617}
-@media (max-width:560px){.consent{flex-direction:column;align-items:stretch;gap:12px}.consent .actions{justify-content:flex-end}}
+@media (max-width:560px){.consent{flex-direction:column;align-items:stretch;gap:8px}.consent .actions{justify-content:flex-end}}
 `.trim()
 
 /**
@@ -83,8 +85,11 @@ function idle(){if(typeof window.requestIdleCallback==='function')window.request
 if(document.readyState==='complete')idle();else window.addEventListener('load',idle,{once:true});
 function save(c){try{localStorage.setItem(KEY,c==='denied'?'denied:'+Date.now():c)}catch(e){}gtag('consent','update',{analytics_storage:c})}
 function banner(){var b=document.getElementById('cookie-consent');if(!b||choice!==null)return;b.hidden=false;
-b.querySelector('.accept').addEventListener('click',function(){save('granted');b.hidden=true});
-b.querySelector('.reject').addEventListener('click',function(){save('denied');b.hidden=true})}
+function height(){document.documentElement.style.setProperty('--consent-banner-height',Math.ceil(b.getBoundingClientRect().height+(parseFloat(getComputedStyle(b).bottom)||0))+'px')}
+height();var observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(height);if(observer)observer.observe(b);window.addEventListener('resize',height);
+function dismiss(){b.hidden=true;if(observer)observer.disconnect();window.removeEventListener('resize',height);document.documentElement.style.removeProperty('--consent-banner-height')}
+b.querySelector('.accept').addEventListener('click',function(){save('granted');dismiss()});
+b.querySelector('.reject').addEventListener('click',function(){save('denied');dismiss()})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',banner);else banner();
 })();`
   return `<script>${script}</script>`
@@ -93,5 +98,5 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 /** Banner markup, hidden until the head script finds no stored choice. */
 export function consentBanner(gaId: string): string {
   if (!validId(gaId)) return ''
-  return `<div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Usamos cookies do Google Analytics para entender como o site é usado e melhorar o Palpitae. Você decide.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
+  return `<div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
 }
