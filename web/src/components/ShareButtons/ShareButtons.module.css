@@ -39,6 +39,27 @@
   min-height: 44px;
 }
 
+/* Ação principal da tela. Quebra linha para o rótulo caber em telas estreitas. */
+.primaryCta {
+  width: 100%;
+  min-height: 56px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  white-space: normal;
+}
+
+.quietBtn {
+  background-color: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.quietBtn:hover {
+  background-color: transparent;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
 .iconBtn {
   display: inline-flex;
   align-items: center;

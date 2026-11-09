@@ -446,6 +446,16 @@ describe('GroupDetailPage – invite section', () => {
     expect(toggle.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('opens the invite when the admin is the only member', async () => {
+    mockGroupFetch({ ...baseGroup, is_admin: true, member_count: 1 })
+
+    renderPage()
+
+    const toggle = await screen.findByRole('button', { name: /convidar membros/i })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(/ainda só tem você/)).toBeInTheDocument()
+  })
+
   it('hides the invite from non-admin members', async () => {
     mockGroupFetch({ ...baseGroup, is_admin: false })
 
