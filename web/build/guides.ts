@@ -43,6 +43,19 @@ interface GuideFaq {
   answer: string
 }
 
+interface GuideCta {
+  heading: string
+  text: string
+  /** Button label. Must not name a competition the sign-up flow can't select. */
+  label: string
+}
+
+const DEFAULT_CTA: GuideCta = {
+  heading: 'Pronto para começar?',
+  text: 'Crie um bolão grátis e convide seus amigos em segundos.',
+  label: 'Criar meu bolão grátis',
+}
+
 interface Guide {
   /** URL slug; page is served at /guias/<slug>/. */
   slug: string
@@ -60,6 +73,11 @@ interface Guide {
    * JSON-LD so search engines and answer engines can quote it.
    */
   faq?: GuideFaq[]
+  /**
+   * Replaces the default CTA copy and repeats the CTA right after the intro, for
+   * guides whose reader arrives wanting to create a pool.
+   */
+  cta?: GuideCta
   /**
    * ISO date (YYYY-MM-DD) the guide first went live: Article `datePublished`.
    * Fixed forever. Taken from the commit on main that introduced the slug
@@ -212,44 +230,66 @@ export const guides: Guide[] = [
   },
   {
     slug: 'bolao-do-brasileirao',
-    title: 'Como fazer um bolão do Brasileirão Série A',
+    title: 'Como criar um bolão do Brasileirão 2027',
     teaser:
-      'Clique aqui e veja como montar um bolão do Brasileirão com os amigos: 38 rodadas de palpites, pontuação automática e classificação atualizada o ano inteiro.',
+      'Clique aqui e veja como criar um bolão do Brasileirão 2027: início em 27 de janeiro, o que é preciso para começar, pontuação recomendada e regras para 38 rodadas.',
     description:
-      'Monte um bolão do Brasileirão Série A com os amigos: regras de pontuação para 38 rodadas, trava dos palpites e como manter o grupo engajado na temporada.',
+      'Como criar um bolão do Brasileirão 2027 com os amigos, o que é preciso para começar e a pontuação recomendada. A Série A começa em 27 de janeiro, segundo a CBF.',
     intro:
-      'O Brasileirão é o campeonato perfeito para bolão: são 38 rodadas ao longo do ano, jogo importante quase toda semana e reviravolta até a última rodada. Veja como montar o seu, que regras usar e como manter a disputa viva a temporada inteira.',
+      'A Série A de 2027 começa em 27 de janeiro, segundo o calendário divulgado pela CBF. Para criar o bolão, você precisa de uma conta Google e dos amigos que vão entrar no grupo por link ou código.',
+    cta: {
+      heading: 'Entre e crie o grupo do bolão',
+      text: 'Depois de entrar com a conta Google, toque em Criar grupo e escolha a competição. A Série A 2027 entra nessa lista depois da publicação da tabela.',
+      label: 'Criar bolão no Palpitae',
+    },
     sections: [
       {
-        heading: 'Por que o Brasileirão dá um ótimo bolão',
+        heading: 'Quando o Brasileirão 2027 entra no Palpitae',
         body: [
-          'Diferente de uma Copa do Mundo, que dura um mês, o Brasileirão é um campeonato de pontos corridos com 20 times e 380 jogos. Isso significa palpites toda semana durante mais de seis meses — a disputa do bolão acompanha a temporada inteira, e quem começa mal tem tempo de sobra para se recuperar.',
-          'Pontos corridos também premiam consistência: acertar palpites de jogos "fáceis" toda rodada vale tanto quanto cravar um placar improvável de vez em quando. É um teste real de quem acompanha o campeonato de verdade.',
+          'O calendário divulgado pela CBF marca o início da Série A em 27 de janeiro de 2027. A tabela com os confrontos e os horários de cada rodada ainda não tinha sido publicada na última atualização deste guia, em novembro de 2026.',
+          'O Palpitae carrega os jogos de uma temporada depois da publicação da tabela. Enquanto a Série A 2027 não aparecer na lista de competições do formulário de criação, não dá para criar o grupo dessa temporada. A lista mostra as competições com jogos em andamento ou por começar, e cada grupo acompanha uma competição.',
         ],
       },
       {
-        heading: 'Regras que funcionam bem em pontos corridos',
+        heading: 'Pontuação recomendada para 38 rodadas',
         body: [
-          'O sistema clássico funciona muito bem no Brasileirão: 3 pontos para quem crava o placar exato e 1 ponto para quem acerta só o resultado (vitória, empate ou derrota). Em 38 rodadas, essa diferença entre cravar e só acertar o vencedor separa bem os primeiros colocados.',
-          'Uma decisão importante é a trava dos palpites: o mais justo é travar cada palpite no horário de início daquele jogo, e não a rodada inteira de uma vez — no Brasileirão os jogos de uma mesma rodada se espalham entre sexta e segunda, e ninguém deveria ser impedido de palpitar no jogo de segunda por causa do jogo de sexta.',
+          'Recomendamos a opção Clássico, que já vem marcada no formulário de criação do Palpitae. Ela dá 3 pontos para quem crava o placar exato e 1 ponto para quem acerta só o resultado. Em 38 rodadas, essa diferença separa os primeiros colocados.',
+          'Combine também quando o palpite trava. O mais justo é travar cada palpite no horário de início do próprio jogo, porque os jogos de uma mesma rodada se espalham entre sexta e segunda. Se a rodada inteira travasse de uma vez, ninguém conseguiria palpitar no jogo de segunda depois do início do jogo de sexta.',
+        ],
+      },
+      {
+        heading: 'Por que o Brasileirão dá um ótimo bolão',
+        body: [
+          'Uma Copa do Mundo dura um mês. O Brasileirão é um campeonato de pontos corridos com 20 times e 380 jogos, e o bolão acompanha a temporada inteira. Quem começa mal tem tempo de sobra para se recuperar.',
+          'Pontos corridos também premiam consistência. Acertar o resultado de jogos "fáceis" toda rodada soma tanto quanto cravar um placar improvável de vez em quando, e quem acompanha o campeonato de verdade leva vantagem.',
         ],
       },
       {
         heading: 'Como manter o grupo engajado por 38 rodadas',
         body: [
-          'A temporada é longa, e o segredo é reduzir o atrito: se registrar palpite der trabalho, o grupo esvazia em um mês. Palpites pelo celular, lembrete antes da rodada e classificação atualizada automaticamente fazem mais diferença do que qualquer prêmio.',
-          'Também ajuda ter marcos no caminho: quem lidera no primeiro turno, quem foi o melhor do returno, quem acertou mais placares exatos. São títulos paralelos que renovam o interesse de quem já não briga pelo topo.',
+          'A temporada é longa, e o grupo esvazia se registrar o palpite der trabalho. Palpite pelo celular, lembrete antes da rodada e classificação atualizada automaticamente fazem mais diferença do que qualquer prêmio.',
+          'Marcos no caminho também ajudam, como quem lidera no primeiro turno, quem foi o melhor do returno e quem acertou mais placares exatos. Esses títulos paralelos renovam o interesse de quem já não briga pelo topo.',
         ],
       },
       {
-        heading: 'Monte seu bolão do Brasileirão no Palpitae',
+        heading: 'Como o bolão do Brasileirão funciona no Palpitae',
         body: [
-          'No Palpitae o Brasileirão Série A 2026 já está disponível: você cria um grupo privado gratuito, convida os amigos por link e cada um dá seus palpites rodada a rodada. Os resultados sincronizam sozinhos, a pontuação é automática e cada palpite trava no início do próprio jogo.',
-          'A classificação do grupo e a tabela real do campeonato ficam lado a lado no app — dá para ver quem manja de futebol e quem só tem sorte, a temporada inteira.',
+          'No Palpitae você cria um grupo privado gratuito, convida os amigos por link ou código e cada um dá seus palpites rodada a rodada. Os resultados sincronizam sozinhos, a pontuação é automática e cada palpite trava no início do próprio jogo.',
+          'A página do grupo traz a classificação do bolão e a tabela real do campeonato, e dá para ver quem manja de futebol e quem só tem sorte a temporada inteira.',
         ],
       },
     ],
     faq: [
+      {
+        question: 'Quando começa o Brasileirão 2027?',
+        answer:
+          'A Série A começa em 27 de janeiro de 2027, segundo o calendário divulgado pela CBF. A data de cada rodada depende da tabela.',
+      },
+      {
+        question: 'Já dá para criar o bolão do Brasileirão 2027?',
+        answer:
+          'Só quando a Série A 2027 aparecer na lista de competições do formulário de criação. O Palpitae carrega os jogos depois da publicação da tabela. Enquanto isso, a lista mostra as competições com jogos em andamento ou por começar.',
+      },
       {
         question: 'Quantos jogos tem o Brasileirão Série A?',
         answer:
@@ -267,7 +307,7 @@ export const guides: Guide[] = [
       },
     ],
     published: '2026-07-12',
-    updated: '2026-10-04',
+    updated: '2026-11-09',
   },
   {
     slug: 'bolao-copa-do-mundo',
@@ -781,6 +821,12 @@ export function renderGuide(g: Guide, gaId = ''): string {
         .map((o) => `<li><a href="${guidePath(o.slug)}">${escapeHtml(o.title)}</a></li>`)
         .join('')}</ul></nav>`
     : ''
+  const cta = g.cta ?? DEFAULT_CTA
+  const ctaHtml = `<div class="cta">
+        <strong>${escapeHtml(cta.heading)}</strong>
+        <p>${escapeHtml(cta.text)}</p>
+        <a class="btn" href="${loginHref(`guia_${g.slug}`)}">${escapeHtml(cta.label)}</a>
+      </div>`
   return `<!doctype html>
 <html lang="pt-BR">
   <head>
@@ -792,15 +838,11 @@ ${head(path, g.title, g.description, jsonLd, gaId, 'article', `${SITE_URL}/og/gu
       <nav class="crumbs"><a href="/">Início</a> › <a href="/guias/">Guias</a> › ${escapeHtml(g.title)}</nav>
       <article>
         <h1>${escapeHtml(g.title)}</h1>
-        <p class="intro">${escapeHtml(g.intro)}</p>
+        <p class="intro">${escapeHtml(g.intro)}</p>${g.cta ? `\n        ${ctaHtml}` : ''}
         ${sections}
         ${faqHtml}
       </article>
-      <div class="cta">
-        <strong>Pronto para começar?</strong>
-        <p>Crie um bolão grátis e convide seus amigos em segundos.</p>
-        <a class="btn" href="${loginHref(`guia_${g.slug}`)}">Criar meu bolão grátis</a>
-      </div>
+      ${ctaHtml}
       ${relatedHtml}
       ${SITE_FOOTER}
     </div>
