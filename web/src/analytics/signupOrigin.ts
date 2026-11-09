@@ -4,10 +4,13 @@
  * cadastro"). Só a categoria sai do navegador: o referrer nunca é enviado.
  */
 import { INVITE_PATH_PREFIX, normalizeInviteCode } from '../lib/invite'
-import { clearGuideOrigin, getGuideOrigin } from './guideOrigin'
+import { clearGuideOrigin, getGuideOrigin, ORIGIN_TTL_MS } from './guideOrigin'
 
-/** Como esta aba chegou ao site: `convite`, `busca`, `direto` ou um token de guia. */
+/** Como esta aba chegou ao site: `convite`, `busca` ou `direto`. */
 const ENTRY_KEY = 'palpitae:origem-entrada'
+
+/** Guia de onde a aba saiu, visto pelo referrer. Vale o mesmo prazo do token `from`. */
+const REFERRER_GUIDE_KEY = 'palpitae:origem-guia-referrer'
 
 // `accounts.google.com` fica de fora de propósito: é a volta do OAuth, não uma busca.
 const SEARCH_HOST_RE =
@@ -31,6 +34,32 @@ function writeEntry(entry: string): void {
   }
 }
 
+function writeReferrerGuide(token: string): void {
+  try {
+    sessionStorage.setItem(REFERRER_GUIDE_KEY, JSON.stringify({ token, capturedAt: Date.now() }))
+  } catch {
+    /* Sem storage, a origem chega à API como desconhecida. */
+  }
+}
+
+function readReferrerGuide(): string | undefined {
+  try {
+    const stored = sessionStorage.getItem(REFERRER_GUIDE_KEY)
+    if (!stored) return undefined
+    const { token, capturedAt } = JSON.parse(stored) as { token?: unknown; capturedAt?: unknown }
+    const age = typeof capturedAt === 'number' ? Date.now() - capturedAt : Number.NaN
+    if (typeof token === 'string' && age >= 0 && age < ORIGIN_TTL_MS) return token
+    sessionStorage.removeItem(REFERRER_GUIDE_KEY)
+  } catch {
+    /* Valor corrompido ou storage bloqueado: fica sem guia. */
+  }
+  return undefined
+}
+
+function isGuideToken(token: string): boolean {
+  return token === 'guias_header' || token.startsWith('guia_')
+}
+
 /** Os guias são HTML estático, sem o app: quem sai de um deles é atribuído pelo caminho. */
 function guideTokenFromPath(pathname: string): string | undefined {
   if (pathname === '/guias' || pathname === '/guias/') return 'guias_header'
@@ -52,17 +81,19 @@ function classifyReferrer(referrer: string, ownOrigin: string): string | undefin
 }
 
 /**
- * Classifica a chegada da aba pelo referrer. Roda uma vez por carga de página e não
- * sobrescreve o que já foi guardado, senão a volta do OAuth apagaria a origem real.
+ * Classifica a chegada da aba pelo referrer. Roda uma vez por carga de página. A chegada
+ * registrada não é sobrescrita, senão a volta do OAuth apagaria a origem real. O guia fica
+ * à parte, com prazo, e vale mais que a chegada.
  * Outro site na lista fechada não tem categoria: a API registra `desconhecida`.
  */
 export function captureEntryOrigin(
   referrer: string = document.referrer,
   ownOrigin: string = window.location.origin,
 ): void {
-  if (readEntry() !== undefined) return
   const entry = classifyReferrer(referrer, ownOrigin)
-  if (entry) writeEntry(entry)
+  if (!entry) return
+  if (isGuideToken(entry)) writeReferrerGuide(entry)
+  else if (readEntry() === undefined) writeEntry(entry)
 }
 
 /** Abrir um convite vale mais que a chegada da aba, mesmo depois de outra origem. */
@@ -77,7 +108,7 @@ export function captureInviteEntry(pathname: string, search: string): void {
 export function getSignupOrigin(): string | undefined {
   const entry = readEntry()
   if (entry === 'convite') return entry
-  return getGuideOrigin() ?? entry
+  return getGuideOrigin() ?? readReferrerGuide() ?? entry
 }
 
 /** Logout apaga a atribuição da aba, junto com a origem do guia. */
@@ -85,6 +116,7 @@ export function clearSignupAttribution(): void {
   clearGuideOrigin()
   try {
     sessionStorage.removeItem(ENTRY_KEY)
+    sessionStorage.removeItem(REFERRER_GUIDE_KEY)
   } catch {
     /* Storage é opcional. */
   }
