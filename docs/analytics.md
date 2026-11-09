@@ -77,7 +77,8 @@ aba.
 - **Convite:** abrir `/convite/<código>` ou `?convite=<código>` com formato válido marca a aba, por
   cima de uma chegada anterior.
 - **Guia:** o token da seção anterior, enquanto valer a uma hora. Quem chega ao app a partir de uma
-  página de guia sem token (o logo ou o link "Início") é atribuído pelo caminho do referrer.
+  página de guia sem token (o logo ou o link "Início") é atribuído pelo caminho do referrer, com a
+  mesma validade de uma hora e por cima de uma chegada já registrada.
 - **Chegada da aba:** na primeira página da aba, o `document.referrer` vira `busca` (lista de
   buscadores), `direto` (sem referrer) ou nada (outro site). Fica no `sessionStorage` sem prazo, e a
   volta do OAuth não sobrescreve. `accounts.google.com` não é busca.

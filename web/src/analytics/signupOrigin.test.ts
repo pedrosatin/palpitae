@@ -114,6 +114,42 @@ describe('getSignupOrigin', () => {
     expect(getSignupOrigin()).toBe('busca')
   })
 
+  it('prefere o guia visitado depois a uma chegada já registrada', () => {
+    captureEntryOrigin('', OWN)
+    captureEntryOrigin(`${OWN}/guias/planilha-de-bolao/`, OWN)
+    expect(getSignupOrigin()).toBe('guia_planilha-de-bolao')
+  })
+
+  it('a volta do OAuth não apaga o guia visto pelo referrer', () => {
+    captureEntryOrigin(`${OWN}/guias/planilha-de-bolao/`, OWN)
+    captureEntryOrigin('https://accounts.google.com/', OWN)
+    captureEntryOrigin('', OWN)
+    expect(getSignupOrigin()).toBe('guia_planilha-de-bolao')
+  })
+
+  it('prefere o convite ao guia visto pelo referrer', () => {
+    captureEntryOrigin(`${OWN}/guias/planilha-de-bolao/`, OWN)
+    captureInviteEntry('/convite/ABCD-EF23', '')
+    expect(getSignupOrigin()).toBe('convite')
+  })
+
+  it('expira o guia visto pelo referrer em uma hora, como o do token', () => {
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    captureEntryOrigin('https://www.google.com/', OWN)
+    captureEntryOrigin(`${OWN}/guias/planilha-de-bolao/`, OWN)
+    vi.mocked(Date.now).mockReturnValue(now + 60 * 60 * 1000 - 1)
+    expect(getSignupOrigin()).toBe('guia_planilha-de-bolao')
+    vi.mocked(Date.now).mockReturnValue(now + 60 * 60 * 1000)
+    expect(getSignupOrigin()).toBe('busca')
+  })
+
+  it('ignora valor corrompido do guia visto pelo referrer', () => {
+    captureEntryOrigin('https://www.google.com/', OWN)
+    sessionStorage.setItem('palpitae:origem-guia-referrer', 'não é json')
+    expect(getSignupOrigin()).toBe('busca')
+  })
+
   it('não tem valor sem nenhuma chegada registrada', () => {
     expect(getSignupOrigin()).toBeUndefined()
   })
@@ -123,6 +159,7 @@ describe('clearSignupAttribution', () => {
   it('apaga a chegada da aba e a origem do guia', () => {
     captureEntryOrigin('https://www.google.com/', OWN)
     captureGuideOrigin('?from=guia_planilha-de-bolao')
+    captureEntryOrigin(`${OWN}/guias/dicas-para-acertar-palpites/`, OWN)
     clearSignupAttribution()
     expect(getSignupOrigin()).toBeUndefined()
     expect(getGuideOrigin()).toBeUndefined()
