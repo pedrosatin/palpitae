@@ -112,8 +112,14 @@ O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal d
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_<contexto>_compartilhar` | botão "Compartilhar" (Web Share nativo; sem suporte, copia o link) | — |
-| `click_<contexto>_whatsapp` | ícone WhatsApp (abre wa.me com texto + link) | — |
+| `click_<contexto>_whatsapp` | ícone WhatsApp (abre wa.me com texto + link). Em `create_group`, é o botão principal "Chamar a galera no WhatsApp" (menu nativo no celular, wa.me no desktop). | — |
 | `click_<contexto>_twitter` | ícone X/Twitter (abre intent/tweet com texto + link) | — |
+
+Fechamento do modal de sucesso da criação do grupo (`CreateGroupSuccessView`):
+
+| Evento | Disparo | Params |
+|---|---|---|
+| `click_create_group_pronto` | botão "Pronto", última ação do modal | — |
 
 Quem já palpitou e lembrete na aba Grupo (`GroupPicksTab`):
 
@@ -123,7 +129,8 @@ Quem já palpitou e lembrete na aba Grupo (`GroupPicksTab`):
 | `click_group_picks_lembrete_whatsapp` | botão "Lembrar no WhatsApp" (menu nativo no celular, wa.me no desktop). Fica fora de `share_invite`, porque a mensagem não é convite. | — |
 
 Convite na página do grupo (`GroupInviteSection`, só para o admin). No celular o convite começa
-recolhido numa linha "Convidar membros":
+recolhido numa linha "Convidar membros", exceto quando o dono é o único membro. Nesse caso ele já
+vem aberto, e recolher também gera o evento abaixo:
 
 | Evento | Disparo | Params |
 |---|---|---|

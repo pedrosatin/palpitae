@@ -193,6 +193,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           <GroupInviteSection
             inviteCode={group.invite_code}
             groupName={group.name}
+            memberCount={group.member_count}
             rotating={rotatingInvite}
             onRotate={handleRotateInvite}
           />

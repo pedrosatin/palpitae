@@ -3,7 +3,7 @@ import { trackShareInvite } from '../../../analytics/funnel'
 import { trackEvent } from '../../../analytics/ga'
 import { buildInviteLink, buildInviteMessage } from '../../../lib/invite'
 import Button from '../../Button'
-import ShareButtons from '../../ShareButtons'
+import ShareButtons, { WhatsAppShareButton } from '../../ShareButtons'
 import styles from '../CreateGroupModal.module.css'
 import shared from '../../modal-shared.module.css'
 
@@ -37,12 +37,27 @@ export default function CreateGroupSuccessView({ created, onClose }: CreateGroup
     setTimeout(() => setCopied(false), 2000)
   }
 
+  function handleDone() {
+    trackEvent('click_create_group_pronto')
+    onClose()
+  }
+
   return (
     <div className={shared.success}>
       <div className={shared.successIcon}>🎉</div>
       <h3 className={shared.successTitle}>Grupo criado!</h3>
       <p className={shared.successName}>{created.name}</p>
-      <p className={styles.inviteLabel}>Compartilhe o código com seus amigos:</p>
+
+      <WhatsAppShareButton
+        label="Chamar a galera no WhatsApp"
+        eventContext="create_group"
+        shareLink={buildInviteLink(created.invite_code)}
+        message={buildInviteMessage(created.name)}
+        prominent
+        onShared={(method) => trackShareInvite(method, 'create_group')}
+      />
+
+      <p className={styles.inviteLabel}>Ou compartilhe o código com seus amigos:</p>
 
       <div className={styles.codeBox}>
         <span className={styles.code}>{created.invite_code}</span>
@@ -62,9 +77,10 @@ export default function CreateGroupSuccessView({ created, onClose }: CreateGroup
         shareLink={buildInviteLink(created.invite_code)}
         eventContext="create_group"
         message={buildInviteMessage(created.name)}
+        secondary
       />
 
-      <Button variant="primary" className={styles.doneBtn} onClick={onClose}>
+      <Button variant="secondary" className={styles.doneBtn} onClick={handleDone}>
         Pronto
       </Button>
     </div>
