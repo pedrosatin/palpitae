@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { captureGuideOrigin } from '../src/analytics/guideOrigin'
 import { LANDING_GUIDE_LINKS } from '../src/pages/LandingPage/guideLinks'
 import { normalizeGaId } from './analytics'
 import { guides, renderGuide, renderIndex, renderLlmsTxt } from './guides'
@@ -93,6 +94,71 @@ describe('guide catalog', () => {
       expect(image.readUInt32BE(16)).toBe(1200)
       expect(image.readUInt32BE(20)).toBe(630)
     }
+  })
+})
+
+describe('guia do Brasileirão 2027', () => {
+  const guide = guides.find((g) => g.slug === 'bolao-do-brasileirao')!
+  const doc = new DOMParser().parseFromString(renderGuide(guide), 'text/html')
+  const pageText = doc.body.textContent ?? ''
+
+  it('fala em criar bolão do Brasileirão 2027 no título, no H1 e na descrição', () => {
+    const term = /criar um bolão do Brasileirão 2027/
+    expect(doc.title).toMatch(term)
+    expect(doc.querySelector('h1')!.textContent).toMatch(term)
+    expect(doc.querySelector('meta[name="description"]')!.getAttribute('content')).toMatch(term)
+  })
+
+  it('mantém URL e canonical', () => {
+    expect(doc.querySelector('link[rel="canonical"]')!.getAttribute('href')).toBe(
+      'https://palpitae.com.br/guias/bolao-do-brasileirao/',
+    )
+  })
+
+  it('cita só a data de início do calendário da CBF, sem data de rodada', () => {
+    expect(pageText).toContain('27 de janeiro de 2027')
+    expect(pageText).toContain('CBF')
+    const months =
+      'janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro'
+    const dates = [...pageText.matchAll(new RegExp(`\\d{1,2} de (?:${months})`, 'g'))].map(
+      (m) => m[0],
+    )
+    expect(new Set(dates)).toEqual(new Set(['27 de janeiro']))
+  })
+
+  it('leva os dois botões ao login com a origem do guia e sem parâmetro que o app não lê', () => {
+    const hrefs = [...doc.querySelectorAll('a.btn')].map((a) => a.getAttribute('href'))
+    expect(hrefs).toEqual([
+      '/entrar?from=guia_bolao-do-brasileirao',
+      '/entrar?from=guia_bolao-do-brasileirao',
+    ])
+    expect(captureGuideOrigin(hrefs[0]!.split('?')[1])).toBe('guia_bolao-do-brasileirao')
+  })
+
+  it('condiciona a temporada 2027 à publicação da tabela', () => {
+    expect(pageText).toContain('A Série A 2027 entra nessa lista depois da publicação da tabela.')
+    expect(pageText).not.toMatch(/2027[^.]*(já está|disponível)/)
+  })
+
+  it('preserva o conteúdo útil do guia anterior', () => {
+    for (const excerpt of [
+      '20 times e 380 jogos',
+      'premiam consistência',
+      'entre sexta e segunda',
+      'lembrete antes da rodada',
+      'melhor do returno',
+      'Quantos jogos tem o Brasileirão Série A?',
+      'O que acontece com jogo adiado no bolão?',
+    ]) {
+      expect(pageText).toContain(excerpt)
+    }
+  })
+
+  it('não altera o botão dos guias sem texto próprio', () => {
+    const other = new DOMParser().parseFromString(renderGuide(guides[0]), 'text/html')
+    const buttons = [...other.querySelectorAll('a.btn')]
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0].textContent).toBe('Criar meu bolão grátis')
   })
 })
 
