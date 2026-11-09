@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
-import { rememberInviteDocument } from '../../lib/invite'
+import { rememberInviteDocument, wasInviteDocumentOpened } from '../../lib/invite'
 import JoinGroupModal from './JoinGroupModal'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -198,6 +198,31 @@ describe('JoinGroupModal', () => {
       await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
 
       await waitFor(() => expect(sentMethod(fetchSpy)).toBe('convite_antigo'))
+    })
+
+    it('consome a abertura ao entrar: a mesma aba não reaproveita em outra entrada', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
+      const fetchSpy = mockJoin()
+
+      render(<JoinGroupModal {...defaultProps} initialCode="abcd-ef23" />)
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      await waitFor(() => expect(sentMethod(fetchSpy)).toBe('convite_link'))
+      await waitFor(() => expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(false))
+    })
+
+    it('mantém a abertura quando a entrada falha', async () => {
+      rememberInviteDocument('/convite/ABCD-EF23')
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: 'Falhou' }),
+      } as Response)
+
+      render(<JoinGroupModal {...defaultProps} initialCode="abcd-ef23" />)
+      await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+      expect(await screen.findByText('Falhou')).toBeInTheDocument()
+      expect(wasInviteDocumentOpened('ABCD-EF23')).toBe(true)
     })
 
     it('codigo quando foi digitado', async () => {
