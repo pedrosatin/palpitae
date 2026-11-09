@@ -43,6 +43,8 @@ export type EventType =
   | 'group_deleted'
   | 'login_success'
   | 'login_failure'
+  // Conta nova: origem em categoria fechada, sem identificar a pessoa
+  | 'account_created'
   | 'logout_all'
   | 'oauth_error'
   | 'matches_cache'
@@ -96,6 +98,22 @@ export function logEvent(
     blobs: [type, ...(dims.blobs ?? [])].map((b) => (b ?? '').slice(0, 256)),
     doubles: dims.doubles ?? [],
   })
+}
+
+/**
+ * `logEvent` para fluxos que a medição não pode derrubar: uma falha ao gravar o
+ * evento fica no log e o fluxo segue.
+ */
+export function tryLogEvent(
+  ae: AnalyticsEngineDataset | undefined,
+  type: EventType,
+  dims: EventDims = {},
+): void {
+  try {
+    logEvent(ae, type, dims)
+  } catch (error) {
+    console.error(`[observability] Falha ao registrar ${type}:`, error)
+  }
 }
 
 /**

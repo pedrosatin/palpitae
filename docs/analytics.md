@@ -67,6 +67,26 @@ foram preservados. Para segmentar relatórios por `origem`, confira a dimensão
 personalizada correspondente na propriedade GA4. A implementação local não
 comprova sua configuração ou o recebimento dos eventos em produção.
 
+### Origem do cadastro
+
+Além do GA4, o clique em "Entrar com Google" leva uma categoria à API no parâmetro `origem`, usada
+só se a conta for nova (ver "Origem do cadastro" em [`observability.md`](observability.md)). A regra
+do navegador fica em `web/src/analytics/signupOrigin.ts`, e a prioridade é convite, guia, chegada da
+aba.
+
+- **Convite:** abrir `/convite/<código>` ou `?convite=<código>` com formato válido marca a aba, por
+  cima de uma chegada anterior.
+- **Guia:** o token da seção anterior, enquanto valer a uma hora. Quem chega ao app a partir de uma
+  página de guia sem token (o logo ou o link "Início") é atribuído pelo caminho do referrer, com a
+  mesma validade de uma hora e por cima de uma chegada já registrada.
+- **Chegada da aba:** na primeira página da aba, o `document.referrer` vira `busca` (lista de
+  buscadores), `direto` (sem referrer) ou nada (outro site). Fica no `sessionStorage` sem prazo, e a
+  volta do OAuth não sobrescreve. `accounts.google.com` não é busca.
+
+O referrer em si nunca sai do navegador, e sem categoria a API registra `desconhecida`. Logout e
+logout de todos os dispositivos apagam a atribuição. O valor não passa pelo Consent Mode, porque não
+identifica a pessoa e não vai ao GA4.
+
 ## Dados privados e `page_view`
 
 `web/src/analytics/pageContext.ts` define a URL e o título enviados ao GA. Grupo vira `/grupos/:id` com título `Grupo | Palpitae`, convite vira `/convite/:code`, e a query string mantém só a lista permitida (`utm_*`, `gclid`, `from`, `tab`). O título da aba continua com o nome do grupo.
