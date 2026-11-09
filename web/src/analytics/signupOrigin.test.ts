@@ -144,6 +144,15 @@ describe('getSignupOrigin', () => {
     expect(getSignupOrigin()).toBe('busca')
   })
 
+  it('ignora token que não é de guia na chave do referrer', () => {
+    captureEntryOrigin('https://www.google.com/', OWN)
+    sessionStorage.setItem(
+      'palpitae:origem-guia-referrer',
+      JSON.stringify({ token: 'convite', capturedAt: Date.now() }),
+    )
+    expect(getSignupOrigin()).toBe('busca')
+  })
+
   it('ignora valor corrompido do guia visto pelo referrer', () => {
     captureEntryOrigin('https://www.google.com/', OWN)
     sessionStorage.setItem('palpitae:origem-guia-referrer', 'não é json')

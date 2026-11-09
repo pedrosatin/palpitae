@@ -48,7 +48,9 @@ function readReferrerGuide(): string | undefined {
     if (!stored) return undefined
     const { token, capturedAt } = JSON.parse(stored) as { token?: unknown; capturedAt?: unknown }
     const age = typeof capturedAt === 'number' ? Date.now() - capturedAt : Number.NaN
-    if (typeof token === 'string' && age >= 0 && age < ORIGIN_TTL_MS) return token
+    if (typeof token === 'string' && isGuideToken(token) && age >= 0 && age < ORIGIN_TTL_MS) {
+      return token
+    }
     sessionStorage.removeItem(REFERRER_GUIDE_KEY)
   } catch {
     /* Valor corrompido ou storage bloqueado: fica sem guia. */
