@@ -14,6 +14,7 @@
  * localStorage e restaurada nas visitas seguintes.
  */
 import { config } from '../config'
+import { gaPageLocation, gaPageTitle, internalReferrer, type GaPage } from './pageContext'
 
 const CONSENT_KEY = 'palpitae:analytics-consent'
 
@@ -100,6 +101,9 @@ export function initGa(): void {
   }
 
   window.gtag('js', new Date())
+  // Só `set`: o que vai no `config` tem precedência sobre `set` e prenderia os
+  // eventos seguintes na página do primeiro carregamento.
+  window.gtag('set', firstLoadPage())
   window.gtag('config', config.gaMeasurementId)
 
   // Carrega o gtag.js fora do caminho crítico de renderização: o stub acima já
@@ -107,6 +111,16 @@ export function initGa(): void {
   // load/idle sem perder nenhum evento — apenas adia ~165 KiB que não são
   // necessários para pintar a página (reduz o "JS não utilizado" do PageSpeed).
   loadGtagScript()
+}
+
+function firstLoadPage(): GaPage & { page_referrer?: string } {
+  const { origin, pathname, search } = window.location
+  const referrer = internalReferrer(document.referrer, origin)
+  return {
+    page_location: gaPageLocation({ origin, pathname, search }),
+    page_title: gaPageTitle(pathname),
+    ...(referrer ? { page_referrer: referrer } : {}),
+  }
 }
 
 function loadGtagScript(): void {
@@ -128,6 +142,13 @@ function loadGtagScript(): void {
   }
 
   window.addEventListener('load', scheduleIdle, { once: true })
+}
+
+/** Registra uma navegação interna. Os eventos seguintes herdam a mesma página. */
+export function trackPageView(page: GaPage, referrer: string): void {
+  const params = { ...page, page_referrer: referrer }
+  window.gtag?.('set', params)
+  window.gtag?.('event', 'page_view', params)
 }
 
 /** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */

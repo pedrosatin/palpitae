@@ -11,7 +11,7 @@ import { SESSION_EXPIRED_EVENT } from './lib/api'
 import { fetchCachedJson, invalidateApiCache } from './lib/api-cache'
 import { draftStorageKey } from './lib/predictionDraftStorage'
 
-vi.mock('./analytics/ga', () => ({ trackEvent: vi.fn() }))
+vi.mock('./analytics/ga', () => ({ trackEvent: vi.fn(), trackPageView: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 /** Mostra a URL atual, para conferir redirecionamentos client-side. */

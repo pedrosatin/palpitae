@@ -371,7 +371,7 @@ describe('DashboardPage – analytics', () => {
     })
   })
 
-  it('fires click_dashboard_grupo with group_id when a group card is clicked', async () => {
+  it('fires click_dashboard_grupo without the group id when a group card is clicked', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockGroupsResponse([
         {
@@ -395,9 +395,7 @@ describe('DashboardPage – analytics', () => {
     )
     await waitFor(() => screen.getByText('Os Craques'))
     await userEvent.click(screen.getByText('Os Craques'))
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_grupo', {
-      group_id: 'g1',
-    })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_grupo')
   })
 })
 
@@ -504,9 +502,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     expect(screen.getByText('Grupo do Satin')).toBeInTheDocument()
 
     await userEvent.click(action)
-    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_proximo_prazo', {
-      group_id: 'realidade',
-    })
+    expect(mockTrackEvent).toHaveBeenCalledWith('click_dashboard_proximo_prazo')
   })
 
   it('diz que a rodada está toda palpitada quando não há pendência', async () => {

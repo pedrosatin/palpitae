@@ -167,7 +167,7 @@ describe('ga', () => {
 
       expect((window as any).dataLayer).toBeDefined()
       expect((window as any).gtag).toBeDefined()
-      expect((window as any).dataLayer.length).toBe(3) // js, config, and 1 for default consent
+      expect((window as any).dataLayer.length).toBe(4) // js, set, config, and 1 for default consent
 
       // O script real é adiado (load/idle) para não competir com o carregamento
       // inicial da página — aguarda o macrotask que injeta a tag no <head>.
@@ -190,7 +190,7 @@ describe('ga', () => {
 
       expect((window as any).dataLayer).toBeDefined()
       expect((window as any).gtag).toBeDefined()
-      expect((window as any).dataLayer.length).toBe(4) // js, config, 1 for default consent, 1 for update consent
+      expect((window as any).dataLayer.length).toBe(5) // js, set, config, 1 for default consent, 1 for update consent
     })
 
     it('pushes arguments to dataLayer when gtag is called', async () => {
@@ -247,6 +247,68 @@ describe('ga', () => {
       delete window.gtag
 
       expect(() => trackEvent('test_event_no_gtag')).not.toThrow()
+    })
+  })
+
+  describe('dados privados', () => {
+    const groupId = '11111111-2222-4333-8444-555555555555'
+    const calls = () => (window.dataLayer as IArguments[]).map((entry) => Array.from(entry))
+
+    beforeEach(() => {
+      vi.resetModules()
+      vi.doMock('../config', () => ({ config: { gaMeasurementId: 'G-123' } }))
+      window.dataLayer = []
+      window.history.pushState({}, '', `/grupos/${groupId}?tab=ranking&convite=ABC`)
+    })
+
+    afterEach(() => {
+      window.history.pushState({}, '', '/')
+      vi.doUnmock('../config')
+    })
+
+    it('initGa sends the first page without group id or invite code', async () => {
+      const { initGa } = await import('./ga')
+      initGa()
+      expect(calls().find(([command]) => command === 'set')).toEqual([
+        'set',
+        {
+          page_location: `${window.location.origin}/grupos/:id?tab=ranking`,
+          page_title: 'Grupo | Palpitae',
+        },
+      ])
+      expect(JSON.stringify(calls())).not.toContain(groupId)
+    })
+
+    it('initGa keeps page fields out of config, where they would override later updates', async () => {
+      const { initGa } = await import('./ga')
+      initGa()
+      expect(calls().find(([command]) => command === 'config')).toEqual(['config', 'G-123'])
+    })
+
+    it('initGa ignores a document title rewritten with the group name', async () => {
+      const previousTitle = document.title
+      document.title = 'Entra no bolão "NOME PRIVADO" no Palpitae'
+      window.history.pushState({}, '', '/?convite=ABC')
+      const { initGa } = await import('./ga')
+      initGa()
+      expect(calls().find(([command]) => command === 'set')?.[1]).toEqual({
+        page_location: `${window.location.origin}/`,
+        page_title: 'Início | Palpitae',
+      })
+      expect(JSON.stringify(calls())).not.toContain('NOME PRIVADO')
+      document.title = previousTitle
+    })
+
+    it('trackPageView updates the page for later events and sends a page_view', async () => {
+      const { initGa, trackPageView } = await import('./ga')
+      initGa()
+      window.dataLayer = []
+      const page = { page_location: 'https://x.test/entrar', page_title: 'Entrar | Palpitae' }
+      trackPageView(page, 'https://x.test/')
+      expect(calls()).toEqual([
+        ['set', { ...page, page_referrer: 'https://x.test/' }],
+        ['event', 'page_view', { ...page, page_referrer: 'https://x.test/' }],
+      ])
     })
   })
 })
