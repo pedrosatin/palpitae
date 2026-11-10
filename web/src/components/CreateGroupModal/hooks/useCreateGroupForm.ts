@@ -12,9 +12,19 @@ interface UseCreateGroupFormProps {
   isOpen: boolean
   onClose: () => void
   onCreated: (group: CreatedGroup) => void
+  /**
+   * Slug da competição que vem escolhida, pedido pelo link de um guia. Vale
+   * enquanto o pai passar o valor; o painel o descarta ao fechar o modal.
+   */
+  preferredCompetitionSlug?: string
 }
 
-export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGroupFormProps) {
+export function useCreateGroupForm({
+  isOpen,
+  onClose,
+  onCreated,
+  preferredCompetitionSlug,
+}: UseCreateGroupFormProps) {
   const [competitions, setCompetitions] = useState<Competition[]>([])
   const [competitionGroups, setCompetitionGroups] = useState<CompetitionSelectGroups>({
     ongoing: [],
@@ -23,7 +33,8 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
   const [loadingCompetitions, setLoadingCompetitions] = useState(false)
 
   const [name, setName] = useState('')
-  const [competitionId, setCompetitionId] = useState('')
+  // Só a escolha feita no select. Vazio, vale a competição padrão abaixo.
+  const [chosenCompetitionId, setCompetitionId] = useState('')
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>('classic')
   const [pointsExact, setPointsExact] = useState(3)
   const [pointsWinner, setPointsWinner] = useState(1)
@@ -34,6 +45,17 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
   const [error, setError] = useState<string | null>(null)
 
   const [created, setCreated] = useState<CreatedGroup | null>(null)
+
+  // O padrão é a competição pedida pelo link, se ela estiver na lista
+  // selecionável, ou a primeira da lista. Quando ela fica fora da lista, por
+  // falta de cadastro ou porque a competição está encerrada, o modal mostra um
+  // aviso junto do select.
+  const preferredCompetition = preferredCompetitionSlug
+    ? competitions.find((c) => c.slug === preferredCompetitionSlug)
+    : undefined
+  const competitionId = chosenCompetitionId || (preferredCompetition ?? competitions[0])?.id || ''
+  const preferredCompetitionUnavailable =
+    Boolean(preferredCompetitionSlug) && competitions.length > 0 && !preferredCompetition
 
   // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
   // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
@@ -54,9 +76,6 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
         const { list, groups } = selectableCompetitions(data.competitions)
         setCompetitions(list)
         setCompetitionGroups(groups)
-        if (list.length > 0) {
-          setCompetitionId(list[0].id)
-        }
       })
       .catch(() => setError('Não foi possível carregar as competições'))
       .finally(() => setLoadingCompetitions(false))
@@ -64,7 +83,7 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
 
   function reset() {
     setName('')
-    setCompetitionId(competitions[0]?.id ?? '')
+    setCompetitionId('')
     setScoringPreset('classic')
     setPointsExact(3)
     setPointsWinner(1)
@@ -142,6 +161,7 @@ export function useCreateGroupForm({ isOpen, onClose, onCreated }: UseCreateGrou
     setName,
     competitionId,
     setCompetitionId,
+    preferredCompetitionUnavailable,
     scoringPreset,
     setScoringPreset,
     pointsExact,

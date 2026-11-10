@@ -126,13 +126,39 @@ describe('guia do Brasileirão 2027', () => {
     expect(new Set(dates)).toEqual(new Set(['27 de janeiro']))
   })
 
-  it('leva os dois botões ao login com a origem do guia e sem parâmetro que o app não lê', () => {
+  it('leva os dois botões e o link do topo ao login com a origem do guia e a Série A 2027', () => {
+    const competicao = 'competicao=campeonato-brasileiro-serie-a-2027'
     const hrefs = [...doc.querySelectorAll('a.btn')].map((a) => a.getAttribute('href'))
     expect(hrefs).toEqual([
-      '/entrar?from=guia_bolao-do-brasileirao',
-      '/entrar?from=guia_bolao-do-brasileirao',
+      `/entrar?from=guia_bolao-do-brasileirao&${competicao}`,
+      `/entrar?from=guia_bolao-do-brasileirao&${competicao}`,
     ])
+    expect(doc.querySelector('a.navcta')!.getAttribute('href')).toBe(
+      `/entrar?from=guia_bolao-do-brasileirao_header&${competicao}`,
+    )
     expect(captureGuideOrigin(hrefs[0]!.split('?')[1])).toBe('guia_bolao-do-brasileirao')
+
+    // No HTML, o `&` sai escapado nos três links.
+    const html = renderGuide(guide)
+    expect(html.match(/href="\/entrar\?[^"]*"/g)).toEqual([
+      `href="/entrar?from=guia_bolao-do-brasileirao_header&amp;${competicao}"`,
+      `href="/entrar?from=guia_bolao-do-brasileirao&amp;${competicao}"`,
+      `href="/entrar?from=guia_bolao-do-brasileirao&amp;${competicao}"`,
+    ])
+  })
+
+  it('não pede competição nos outros guias nem no índice', () => {
+    const other = guides.find((g) => g.slug === 'o-que-e-bolao-de-futebol')!
+    const html = renderGuide(other)
+    expect(html).not.toContain('competicao')
+    expect(html.match(/href="\/entrar\?[^"]*"/g)).toEqual([
+      'href="/entrar?from=guia_o-que-e-bolao-de-futebol_header"',
+      'href="/entrar?from=guia_o-que-e-bolao-de-futebol"',
+    ])
+    expect(renderIndex()).not.toContain('competicao')
+    for (const g of guides.filter((g) => g.slug !== guide.slug)) {
+      expect(renderGuide(g), g.slug).not.toContain('competicao')
+    }
   })
 
   it('condiciona a temporada 2027 à publicação da tabela', () => {
