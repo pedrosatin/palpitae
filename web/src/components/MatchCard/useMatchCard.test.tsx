@@ -448,6 +448,63 @@ describe('useMatchCard', () => {
     vi.useRealTimers()
   })
 
+  it('o timer do envio anterior não apaga o "salvo" de um envio novo', async () => {
+    vi.useFakeTimers()
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        outcomeOnly: true,
+        onSaved: vi.fn(),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.selectOutcome('home')
+    })
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    await act(async () => {
+      await result.current.selectOutcome('away')
+    })
+
+    // O timer do primeiro envio venceria aqui.
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(result.current.saved).toBe(true)
+
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(result.current.saved).toBe(false)
+    vi.useRealTimers()
+  })
+
+  it('sair da tela cancela o timer do "salvo"', async () => {
+    vi.useFakeTimers()
+    const { result, unmount } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        outcomeOnly: true,
+        onSaved: vi.fn(),
+      }),
+    )
+
+    await act(async () => {
+      await result.current.selectOutcome('home')
+    })
+    expect(vi.getTimerCount()).toBe(1)
+
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
+
   it('updateAway correctly updates state and clears penalty winner if leaving draw', () => {
     const match = makeMatch({ decides_on_penalties: true })
     const prediction = makePrediction({

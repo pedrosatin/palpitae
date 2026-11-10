@@ -119,25 +119,37 @@ function useMatchPersistence(
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  // O "salvo" de um envio anterior não apaga o de um envio novo nem dispara
+  // depois que o card sai da tela.
+  const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(savedTimer.current), [])
 
   async function persist(homeScore: number, awayScore: number, penWinner: 'home' | 'away' | null) {
+    clearTimeout(savedTimer.current)
     setSaving(true)
     setError(null)
     setSaved(false)
 
-    const res = await apiFetch(`${config.apiUrl}/predictions`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        group_id: groupId,
-        match_id: matchId,
-        predicted_home_score: homeScore,
-        predicted_away_score: awayScore,
-        predicted_penalty_winner: penWinner,
-      }),
-    })
-
-    setSaving(false)
+    let res: Response
+    try {
+      res = await apiFetch(`${config.apiUrl}/predictions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group_id: groupId,
+          match_id: matchId,
+          predicted_home_score: homeScore,
+          predicted_away_score: awayScore,
+          predicted_penalty_winner: penWinner,
+        }),
+      })
+    } catch {
+      // Sem resposta, o placar fica na tela e o botão volta para outra tentativa.
+      setError('Erro de conexão. Tente novamente.')
+      return
+    } finally {
+      setSaving(false)
+    }
 
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string }
@@ -150,7 +162,7 @@ function useMatchPersistence(
     invalidateApiCache('groups:')
     setSaved(true)
     onSaved(matchId, homeScore, awayScore, penWinner)
-    setTimeout(() => setSaved(false), 2500)
+    savedTimer.current = setTimeout(() => setSaved(false), 2500)
   }
 
   return { saving, error, saved, persist }
@@ -261,7 +273,8 @@ export function useMatchCard({
 
   async function selectOutcome(outcome: Outcome) {
     if (locked || saving) return
-    if (outcome === selectedOutcome) return
+    // A opção já salva não reenvia. Depois de uma falha, tocar nela de novo é a nova tentativa.
+    if (outcome === selectedOutcome && status === 'saved') return
     trackEvent('click_matchcard_resultado', { match_id: match.id, outcome })
     const { home: h, away: a } = OUTCOMES[outcome]
     setHome(String(h))

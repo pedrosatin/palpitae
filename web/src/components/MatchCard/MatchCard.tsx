@@ -425,13 +425,15 @@ function ScoreInputView({
   handleScoreInput: (value: string, update: (v: string) => void) => void
   handleSave: () => void
 }) {
+  // Durante o envio, campos e +/− ficam travados, como os botões de resultado e de
+  // pênalti. Uma mudança no meio do envio seria trocada pelo placar da resposta.
   return (
     <div className={styles.inputRow}>
       <div className={styles.stepper}>
         <button
           className={`${styles.stepBtn} ${styles.stepBtnDec}`}
           onClick={() => updateHome(String(Math.max(0, (home === '' ? 0 : Number(home)) - 1)))}
-          disabled={locked}
+          disabled={locked || saving}
           type="button"
           tabIndex={-1}
           aria-label={`Diminuir placar ${match.home_team_name}`}
@@ -447,13 +449,14 @@ function ScoreInputView({
           max={99}
           placeholder="–"
           value={home}
+          readOnly={saving}
           onChange={(e) => handleScoreInput(e.target.value, updateHome)}
           aria-label={`Placar ${match.home_team_name}`}
         />
         <button
           className={`${styles.stepBtn} ${styles.stepBtnInc}`}
           onClick={() => updateHome(String(Math.min(99, (home === '' ? 0 : Number(home)) + 1)))}
-          disabled={locked}
+          disabled={locked || saving}
           type="button"
           tabIndex={-1}
           aria-label={`Aumentar placar ${match.home_team_name}`}
@@ -466,7 +469,7 @@ function ScoreInputView({
         <button
           className={`${styles.stepBtn} ${styles.stepBtnDec}`}
           onClick={() => updateAway(String(Math.max(0, (away === '' ? 0 : Number(away)) - 1)))}
-          disabled={locked}
+          disabled={locked || saving}
           type="button"
           tabIndex={-1}
           aria-label={`Diminuir placar ${match.away_team_name}`}
@@ -482,13 +485,14 @@ function ScoreInputView({
           max={99}
           placeholder="–"
           value={away}
+          readOnly={saving}
           onChange={(e) => handleScoreInput(e.target.value, updateAway)}
           aria-label={`Placar ${match.away_team_name}`}
         />
         <button
           className={`${styles.stepBtn} ${styles.stepBtnInc}`}
           onClick={() => updateAway(String(Math.min(99, (away === '' ? 0 : Number(away)) + 1)))}
-          disabled={locked}
+          disabled={locked || saving}
           type="button"
           tabIndex={-1}
           aria-label={`Aumentar placar ${match.away_team_name}`}
