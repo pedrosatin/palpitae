@@ -95,6 +95,70 @@ describe('App', () => {
     fetchMock.mockReset()
   })
 
+  it('leva quem já tem sessão de /entrar ao painel com a mesma query', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+    const query = '?from=guia_bolao-do-brasileirao&competicao=campeonato-brasileiro-serie-a-2027'
+    render(
+      <MemoryRouter initialEntries={[`/entrar${query}`]}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('dashboard-page')
+    expect(screen.getByTestId('location')).toHaveTextContent(`/${query}`)
+    expect(getGuideOrigin()).toBe('guia_bolao-do-brasileirao')
+  })
+
+  it.each([
+    ['back_forward', '/?from=guia_bolao-do-brasileirao'],
+    ['navigate', '/?from=guia_bolao-do-brasileirao&competicao=campeonato-brasileiro-serie-a-2027'],
+  ])('com sessão, a carga %s de /entrar leva ao painel em %s', async (type, expected) => {
+    // jsdom não expõe a Navigation Timing API; a propriedade própria some no fim.
+    Object.defineProperty(performance, 'getEntriesByType', {
+      configurable: true,
+      writable: true,
+      value: (kind: string) => (kind === 'navigation' ? [{ type }] : []),
+    })
+    try {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+      })
+      render(
+        <MemoryRouter
+          initialEntries={[
+            '/entrar?from=guia_bolao-do-brasileirao&competicao=campeonato-brasileiro-serie-a-2027',
+          ]}
+        >
+          <App />
+          <LocationProbe />
+        </MemoryRouter>,
+      )
+      await screen.findByTestId('dashboard-page')
+      expect(screen.getByTestId('location').textContent).toBe(expected)
+    } finally {
+      delete (performance as { getEntriesByType?: unknown }).getEntriesByType
+    }
+  })
+
+  it('leva quem já tem sessão de outra rota desconhecida ao painel sem a query', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+    render(
+      <MemoryRouter initialEntries={['/qualquer?competicao=campeonato-brasileiro-serie-a-2027']}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('dashboard-page')
+    expect(screen.getByTestId('location').textContent).toBe('/')
+  })
+
   it('attributes OAuth completion without recording another arrival', async () => {
     captureGuideOrigin('?from=guia_planilha-de-bolao')
     sessionStorage.setItem('palpitae:login-pendente', 'google')

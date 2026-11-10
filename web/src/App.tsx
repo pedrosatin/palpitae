@@ -21,6 +21,7 @@ import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
 import { invalidateApiCache } from './lib/api-cache'
 import { INVITE_PATH_PREFIX } from './lib/invite'
+import { loggedInLoginTarget, pageLoadedFromHistory } from './lib/loginRedirect'
 import { clearStoredDrafts } from './lib/predictionDraftStorage'
 import LandingPage from './pages/LandingPage'
 
@@ -271,6 +272,23 @@ export default function App({
         />
         <Route path="/admin/metricas" element={<AdminMetricsPage />} />
         <Route path="/admin/oportunidades" element={<AdminRadarPage />} />
+        {/* Quem já tem sessão e toca no CTA de um guia vai ao painel com a mesma
+            query. O `from` mantém a atribuição e o `competicao` abre a criação.
+            Na volta pelo histórico até `/entrar`, o `competicao` fica de fora. A
+            primeira rota do documento tem a chave `default` e é a única que
+            corresponde ao tipo de carga do navegador. */}
+        <Route
+          path="/entrar"
+          element={
+            <Navigate
+              to={loggedInLoginTarget(
+                location.search,
+                location.key === 'default' && pageLoadedFromHistory(),
+              )}
+              replace
+            />
+          }
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

@@ -13,9 +13,18 @@ interface CreateGroupModalProps {
   isOpen: boolean
   onClose: () => void
   onCreated: (group: CreatedGroup) => void
+  /** Slug da competição que vem escolhida no select, pedido pelo link de um guia. */
+  preferredCompetitionSlug?: string
 }
 
-export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateGroupModalProps) {
+const UNAVAILABLE_HINT_ID = 'group-competition-unavailable'
+
+export default function CreateGroupModal({
+  isOpen,
+  onClose,
+  onCreated,
+  preferredCompetitionSlug,
+}: CreateGroupModalProps) {
   const {
     competitions,
     competitionGroups,
@@ -24,6 +33,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
     setName,
     competitionId,
     setCompetitionId,
+    preferredCompetitionUnavailable,
     scoringPreset,
     setScoringPreset,
     pointsExact,
@@ -42,7 +52,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
     showPenaltyField,
     handleClose,
     handleSubmit,
-  } = useCreateGroupForm({ isOpen, onClose, onCreated })
+  } = useCreateGroupForm({ isOpen, onClose, onCreated, preferredCompetitionSlug })
 
   // Grupos já calculados no hook no carregamento (fonte única de verdade);
   // sem um dos grupos não há <optgroup> — um título sozinho só adicionaria ruído.
@@ -98,6 +108,7 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
                 id="group-competition"
                 value={competitionId}
                 onChange={(e) => setCompetitionId(e.target.value)}
+                aria-describedby={preferredCompetitionUnavailable ? UNAVAILABLE_HINT_ID : undefined}
                 required
               >
                 {hasBothGroups ? (
@@ -109,6 +120,11 @@ export default function CreateGroupModal({ isOpen, onClose, onCreated }: CreateG
                   renderOptions(competitions)
                 )}
               </Select>
+            )}
+            {preferredCompetitionUnavailable && (
+              <p id={UNAVAILABLE_HINT_ID} role="status" className={styles.statusHint}>
+                A competição do link ainda não está disponível. Escolha outra na lista.
+              </p>
             )}
             {selectedOngoing && (
               <p role="status" className={styles.statusHint}>

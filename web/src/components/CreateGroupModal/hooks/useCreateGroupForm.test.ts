@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import { useCreateGroupForm } from './useCreateGroupForm'
 import { apiFetch } from '../../../lib/api'
 import { trackEvent } from '../../../analytics/ga'
@@ -114,6 +114,155 @@ describe('useCreateGroupForm', () => {
     })
 
     expect(result.current.competitionId).toBe('c1')
+  })
+
+  describe('competição pedida pelo link', () => {
+    const serieA2026 = {
+      id: 'bsa-2026',
+      name: 'Campeonato Brasileiro Série A',
+      slug: 'campeonato-brasileiro-serie-a-2026',
+      season: '2026',
+      status: 'ongoing',
+    }
+    const serieA2027 = {
+      id: 'bsa-2027',
+      name: 'Campeonato Brasileiro Série A',
+      slug: 'campeonato-brasileiro-serie-a-2027',
+      season: '2027',
+      status: 'upcoming',
+    }
+    const slug2027 = serieA2027.slug
+
+    // As chamadas de apiFetch se acumulam entre os testes; o POST daqui não pode
+    // aparecer no teste de validação mais abaixo.
+    afterEach(() => mockApiFetch.mockClear())
+
+    function mockCompetitions(competitions: unknown[]) {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify({ competitions })),
+      )
+    }
+
+    it('escolhe a competição do slug mesmo quando ela não é a primeira', async () => {
+      mockCompetitions([serieA2027, serieA2026])
+
+      const { result } = renderHook(() =>
+        useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
+      )
+
+      await waitFor(() => expect(result.current.competitions).toHaveLength(2))
+      expect(result.current.competitions[0].id).toBe('bsa-2026')
+      expect(result.current.competitionId).toBe('bsa-2027')
+      expect(result.current.preferredCompetitionUnavailable).toBe(false)
+    })
+
+    it('fica na primeira e sinaliza o aviso quando o slug não está na lista', async () => {
+      mockCompetitions([serieA2026, { ...serieA2027, status: 'finished' }])
+
+      const { result } = renderHook(() =>
+        useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
+      )
+
+      await waitFor(() => expect(result.current.loadingCompetitions).toBe(false))
+      expect(result.current.competitionId).toBe('bsa-2026')
+      expect(result.current.preferredCompetitionUnavailable).toBe(true)
+    })
+
+    it('não sinaliza aviso sem slug', async () => {
+      mockCompetitions([serieA2026])
+
+      const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+
+      await waitFor(() => expect(result.current.loadingCompetitions).toBe(false))
+      expect(result.current.competitionId).toBe('bsa-2026')
+      expect(result.current.preferredCompetitionUnavailable).toBe(false)
+    })
+
+    it('não sinaliza aviso antes de a lista chegar', () => {
+      vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(new Promise(() => {}))
+
+      const { result } = renderHook(() =>
+        useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
+      )
+
+      expect(result.current.loadingCompetitions).toBe(true)
+      expect(result.current.preferredCompetitionUnavailable).toBe(false)
+    })
+
+    it('deixa a pessoa trocar a competição escolhida pelo link', async () => {
+      mockCompetitions([serieA2026, serieA2027])
+
+      const { result } = renderHook(() =>
+        useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
+      )
+
+      await waitFor(() => expect(result.current.competitionId).toBe('bsa-2027'))
+      act(() => result.current.setCompetitionId('bsa-2026'))
+      expect(result.current.competitionId).toBe('bsa-2026')
+    })
+
+    it('volta ao padrão depois de fechar, sem pré-seleção nem aviso', async () => {
+      mockCompetitions([serieA2026, serieA2027])
+      let props = { ...defaultProps, preferredCompetitionSlug: slug2027 as string | undefined }
+
+      const { result, rerender } = renderHook(() => useCreateGroupForm(props))
+
+      await waitFor(() => expect(result.current.competitionId).toBe('bsa-2027'))
+      act(() => result.current.handleClose())
+      // O painel fecha o modal e descarta a competição do link.
+      props = { ...props, isOpen: false, preferredCompetitionSlug: undefined }
+      rerender()
+      props = { ...props, isOpen: true }
+      rerender()
+
+      expect(result.current.competitionId).toBe('bsa-2026')
+      expect(result.current.preferredCompetitionUnavailable).toBe(false)
+    })
+
+    it('limpa o aviso depois de fechar e reabrir sem slug', async () => {
+      mockCompetitions([serieA2026])
+      let props = { ...defaultProps, preferredCompetitionSlug: slug2027 as string | undefined }
+
+      const { result, rerender } = renderHook(() => useCreateGroupForm(props))
+
+      await waitFor(() => expect(result.current.preferredCompetitionUnavailable).toBe(true))
+      act(() => result.current.handleClose())
+      props = { ...props, isOpen: false, preferredCompetitionSlug: undefined }
+      rerender()
+      props = { ...props, isOpen: true }
+      rerender()
+
+      expect(result.current.competitionId).toBe('bsa-2026')
+      expect(result.current.preferredCompetitionUnavailable).toBe(false)
+    })
+
+    it('envia a competição do link no POST /groups', async () => {
+      captureGuideOrigin('?from=guia_bolao-do-brasileirao')
+      vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ competitions: [serieA2026, serieA2027] })),
+        )
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ group: { id: 'g1', name: 'Bolão 2027', invite_code: 'INV' } }),
+        } as Response)
+
+      const { result } = renderHook(() =>
+        useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
+      )
+
+      await waitFor(() => expect(result.current.competitionId).toBe('bsa-2027'))
+      act(() => result.current.setName('Bolão 2027'))
+      await act(async () => {
+        await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent)
+      })
+
+      const post = mockApiFetch.mock.calls.find((call) => String(call[0]).endsWith('/groups'))
+      expect(JSON.parse(String(post![1]!.body)).competition_id).toBe('bsa-2027')
+      expect(mockTrackEvent).toHaveBeenCalledWith('submit_criar_grupo', {
+        origem: 'guia_bolao-do-brasileirao',
+      })
+    })
   })
 
   it('sets showPenaltyField correctly', async () => {

@@ -26,9 +26,15 @@ const LOGIN_PATH = '/entrar'
  * the CTA click itself can't be tracked — instead the SPA reads `?from=` when the
  * login page mounts and fires a GA event (see pages/LoginPage). This is how we
  * attribute "which guide drove someone to sign in".
+ *
+ * `competicao` leva o slug da competição que vem escolhida no formulário de
+ * criação. O campo no guia é `competitionSlug`. A URL sai crua, e quem a põe
+ * num atributo HTML escapa o `&`.
  */
-function loginHref(from: string): string {
-  return `${LOGIN_PATH}?from=${from}`
+function loginHref(from: string, competitionSlug?: string): string {
+  const params = new URLSearchParams({ from })
+  if (competitionSlug) params.set('competicao', competitionSlug)
+  return `${LOGIN_PATH}?${params}`
 }
 
 interface GuideSection {
@@ -78,6 +84,13 @@ interface Guide {
    * guides whose reader arrives wanting to create a pool.
    */
   cta?: GuideCta
+  /**
+   * Slug em `competitions.slug`, no formato `<nome>-<temporada>`. O CTA
+   * principal e o "Criar bolão" do topo pedem esse slug para vir escolhido no
+   * formulário de criação. Sem essa competição na lista, o formulário fica na
+   * primeira e mostra um aviso.
+   */
+  competitionSlug?: string
   /**
    * ISO date (YYYY-MM-DD) the guide first went live: Article `datePublished`.
    * Fixed forever. Taken from the commit on main that introduced the slug
@@ -239,9 +252,10 @@ export const guides: Guide[] = [
       'A Série A de 2027 começa em 27 de janeiro, segundo o calendário divulgado pela CBF. Para criar o bolão, você precisa de uma conta Google e dos amigos que vão entrar no grupo por link ou código.',
     cta: {
       heading: 'Entre e crie o grupo do bolão',
-      text: 'Depois de entrar com a conta Google, toque em Criar grupo e escolha a competição. A Série A 2027 entra nessa lista depois da publicação da tabela.',
+      text: 'Depois de entrar com a conta Google, o formulário de criação abre com a Série A 2027 já escolhida, se ela estiver na lista. A Série A 2027 entra nessa lista depois da publicação da tabela.',
       label: 'Criar bolão no Palpitae',
     },
+    competitionSlug: 'campeonato-brasileiro-serie-a-2027',
     sections: [
       {
         heading: 'Quando o Brasileirão 2027 entra no Palpitae',
@@ -744,8 +758,8 @@ function head(
 }
 
 /** Shared top bar; `from` flows into the "Criar bolão" CTA for attribution. */
-function siteHeader(from: string): string {
-  return `<header class="site"><a class="brand" href="/" aria-label="Ir para a página inicial"><img src="/logo-text.svg" alt="Palpitae" width="94" height="24" /></a><a class="navcta" href="${loginHref(from)}">Criar bolão</a></header>`
+function siteHeader(from: string, competitionSlug?: string): string {
+  return `<header class="site"><a class="brand" href="/" aria-label="Ir para a página inicial"><img src="/logo-text.svg" alt="Palpitae" width="94" height="24" /></a><a class="navcta" href="${escapeHtml(loginHref(from, competitionSlug))}">Criar bolão</a></header>`
 }
 const SITE_FOOTER = `<footer class="site">Palpitae — bolões de futebol online e gratuitos. <a href="/">Voltar ao início</a></footer>`
 
@@ -825,7 +839,7 @@ export function renderGuide(g: Guide, gaId = ''): string {
   const ctaHtml = `<div class="cta">
         <strong>${escapeHtml(cta.heading)}</strong>
         <p>${escapeHtml(cta.text)}</p>
-        <a class="btn" href="${loginHref(`guia_${g.slug}`)}">${escapeHtml(cta.label)}</a>
+        <a class="btn" href="${escapeHtml(loginHref(`guia_${g.slug}`, g.competitionSlug))}">${escapeHtml(cta.label)}</a>
       </div>`
   return `<!doctype html>
 <html lang="pt-BR">
@@ -834,7 +848,7 @@ ${head(path, g.title, g.description, jsonLd, gaId, 'article', `${SITE_URL}/og/gu
   </head>
   <body>
     <div class="wrap">
-      ${siteHeader(`guia_${g.slug}_header`)}
+      ${siteHeader(`guia_${g.slug}_header`, g.competitionSlug)}
       <nav class="crumbs"><a href="/">Início</a> › <a href="/guias/">Guias</a> › ${escapeHtml(g.title)}</nav>
       <article>
         <h1>${escapeHtml(g.title)}</h1>
