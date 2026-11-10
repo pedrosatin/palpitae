@@ -203,7 +203,8 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     setCreateCompetitionSlug(undefined)
   }
 
-  // Tira só o `competicao` da URL, para recarregar ou voltar não reabrir o modal.
+  // Tira só o `competicao` da entrada atual do histórico, para recarregar não
+  // reabrir o modal. A volta até `/entrar` fica a cargo do redirect do App.
   useEffect(() => {
     if (!competitionFromLink || !searchParams.has('competicao')) return
     setSearchParams(

@@ -28,8 +28,8 @@ const LOGIN_PATH = '/entrar'
  * attribute "which guide drove someone to sign in".
  *
  * `competicao` leva o slug da competição que vem escolhida no formulário de
- * criação (ver `competitionSlug` no guia). A URL sai crua; quem a põe num
- * atributo HTML escapa o `&`.
+ * criação. O campo no guia é `competitionSlug`. A URL sai crua, e quem a põe
+ * num atributo HTML escapa o `&`.
  */
 function loginHref(from: string, competitionSlug?: string): string {
   const params = new URLSearchParams({ from })
@@ -85,8 +85,8 @@ interface Guide {
    */
   cta?: GuideCta
   /**
-   * Slug da competição (`competitions.slug`, no formato `<nome>-<temporada>`)
-   * que o CTA principal e o "Criar bolão" do topo pedem para vir escolhida no
+   * Slug em `competitions.slug`, no formato `<nome>-<temporada>`. O CTA
+   * principal e o "Criar bolão" do topo pedem esse slug para vir escolhido no
    * formulário de criação. Sem essa competição na lista, o formulário fica na
    * primeira e mostra um aviso.
    */

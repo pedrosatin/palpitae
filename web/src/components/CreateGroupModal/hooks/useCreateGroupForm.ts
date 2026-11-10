@@ -46,9 +46,10 @@ export function useCreateGroupForm({
 
   const [created, setCreated] = useState<CreatedGroup | null>(null)
 
-  // Padrão: a competição pedida pelo link, se ela estiver na lista selecionável,
-  // ou a primeira da lista. Fora da lista (não cadastrada ou encerrada), o modal
-  // mostra um aviso junto do select.
+  // O padrão é a competição pedida pelo link, se ela estiver na lista
+  // selecionável, ou a primeira da lista. Quando ela fica fora da lista, por
+  // falta de cadastro ou porque a competição está encerrada, o modal mostra um
+  // aviso junto do select.
   const preferredCompetition = preferredCompetitionSlug
     ? competitions.find((c) => c.slug === preferredCompetitionSlug)
     : undefined

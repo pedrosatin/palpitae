@@ -49,17 +49,20 @@ para quem já está logado e será redirecionado para o dashboard. A chegada a
 preserva a atribuição e não gera outra chegada.
 
 O guia do Brasileirão também envia `competicao=campeonato-brasileiro-serie-a-2027`
-no CTA principal e no "Criar bolão" do topo (campo `competitionSlug` do guia em
-`web/build/guides.ts`). Quem já tem sessão vai de `/entrar` para `/` com a mesma
+no CTA principal e no "Criar bolão" do topo. O campo é `competitionSlug` em
+`web/build/guides.ts`. Quem já tem sessão vai de `/entrar` para `/` com a mesma
 query, e quem entra pelo Google volta com ela pelo `redirect`. Na montagem, o
 painel abre o formulário de criação com essa competição escolhida e tira só o
-`competicao` da URL, com `replace`. Sem a competição na lista selecionável (não
-cadastrada ou encerrada), o formulário fica na primeira e mostra um aviso junto
-do select. Fechar o modal descarta o pedido. Valor fora do formato de slug
-(minúsculas, números e hífens), acima de 100 caracteres ou repetido é ignorado,
-assim como o parâmetro junto de `convite` ou para quem não pode criar grupo. O
-`competicao` não vai ao GA4: `web/src/analytics/pageContext.ts` só deixa passar
-`utm_*`, `gclid`, `from` e `tab` na query.
+`competicao` da URL, com `replace`. Se a competição não está na lista
+selecionável, por falta de cadastro ou por estar encerrada, o formulário fica na
+primeira e mostra um aviso junto do select. Fechar o modal descarta o pedido.
+Voltar no histórico até `/entrar` não reabre o formulário, porque o redirect de
+quem tem sessão tira o `competicao` quando a carga da página vem do histórico. O
+painel ignora valor fora do formato de slug, feito de minúsculas, números e
+hífens, acima de 100 caracteres ou repetido. Também ignora o parâmetro junto de
+`convite` e para quem não pode criar grupo. O `competicao` não vai ao GA4, porque
+`web/src/analytics/pageContext.ts` só deixa passar `utm_*`, `gclid`, `from` e
+`tab` na query.
 
 `web/src/analytics/guideOrigin.ts` aceita apenas esses formatos, com slug em
 minúsculas, letras ASCII, números e hífens, até 12 partes e 100 caracteres no
