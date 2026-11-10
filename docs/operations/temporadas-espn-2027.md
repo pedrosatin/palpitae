@@ -35,6 +35,8 @@ O admin registra as evidências por competição: publicação da fonte, carga �
 
 Ligas football-data (lotes 2 e 3) seguem o [roteiro de promoção](promocao-lote2.md).
 
+A Série A 2027 (football-data, `BSA`) precisa ser cadastrada com o slug `campeonato-brasileiro-serie-a-2027`, o mesmo que o sync gera a partir do nome da API. O CTA do guia `bolao-do-brasileirao` pede esse slug em `competicao`; com outro slug, o formulário de criação mostra o aviso de competição indisponível.
+
 ## Conferência da fonte (estado observado)
 
 Uma temporada 2027 só nasce quando o sync encontra ao menos um evento válido com `event.season.year = 2027`. Retorno vazio, evento sem ano ou de outra edição não cadastra temporada, time ou jogo. `ok: true` com contadores zerados significa que nada foi importado. O parâmetro `dates=` da URL não substitui o ano explícito do evento.

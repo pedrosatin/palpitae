@@ -30,6 +30,20 @@ interface DashboardPageProps {
   onLogout: () => void
 }
 
+const COMPETITION_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * Slug pedido em `?competicao=` pelo CTA de um guia. Vale só um parâmetro, com
+ * até 100 caracteres, em minúsculas, números e hífens. Fora disso, o pedido é
+ * ignorado.
+ */
+function competitionSlugFromLink(searchParams: URLSearchParams): string | undefined {
+  const values = searchParams.getAll('competicao')
+  if (values.length !== 1) return undefined
+  const [slug] = values
+  return slug.length <= 100 && COMPETITION_SLUG.test(slug) ? slug : undefined
+}
+
 function EmptyState({
   canCreateGroup,
   onCreateGroup,
@@ -164,7 +178,7 @@ function GroupsList({ groups }: { groups: GroupWithStats[] }) {
 export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   useDocumentTitle('Meus grupos')
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const pendingInvite = searchParams.get('convite') ?? undefined
   const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
   const canCreateGroup = user.feature_flags?.create_group ?? false
@@ -175,7 +189,32 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
       normalizedPendingInvite,
     })
 
-  const [createOpen, setCreateOpen] = useState(false)
+  // O CTA do guia pede uma competição em `?competicao=`. Na montagem, o painel
+  // abre a criação com ela escolhida. Convite na URL tem prioridade.
+  const [competitionFromLink] = useState(() =>
+    canCreateGroup && !pendingInvite ? competitionSlugFromLink(searchParams) : undefined,
+  )
+  const [createOpen, setCreateOpen] = useState(competitionFromLink !== undefined)
+  // A preferência vale só para essa abertura. Fechar o modal a descarta.
+  const [createCompetitionSlug, setCreateCompetitionSlug] = useState(competitionFromLink)
+
+  function closeCreateGroup() {
+    setCreateOpen(false)
+    setCreateCompetitionSlug(undefined)
+  }
+
+  // Tira só o `competicao` da URL, para recarregar ou voltar não reabrir o modal.
+  useEffect(() => {
+    if (!competitionFromLink || !searchParams.has('competicao')) return
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('competicao')
+        return next
+      },
+      { replace: true },
+    )
+  }, [competitionFromLink, searchParams, setSearchParams])
 
   // Só quem tocou em "Entrar com Google e participar" nesta aba entra sem
   // confirmar. Um link `?convite=` aberto sozinho continua pedindo o toque.
@@ -241,8 +280,9 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
       <CreateGroupModal
         isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
+        onClose={closeCreateGroup}
         onCreated={handleGroupCreated}
+        preferredCompetitionSlug={createCompetitionSlug}
       />
 
       <JoinGroupModal

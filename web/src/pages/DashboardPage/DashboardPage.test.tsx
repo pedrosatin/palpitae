@@ -554,3 +554,139 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     expect(screen.queryByRole('region', { name: 'Próximo prazo' })).not.toBeInTheDocument()
   })
 })
+
+describe('DashboardPage com a competição pedida pelo guia', () => {
+  const serieA2026 = {
+    id: 'bsa-2026',
+    name: 'Campeonato Brasileiro Série A',
+    slug: 'campeonato-brasileiro-serie-a-2026',
+    season: '2026',
+    status: 'ongoing',
+  }
+  const serieA2027 = {
+    id: 'bsa-2027',
+    name: 'Campeonato Brasileiro Série A',
+    slug: 'campeonato-brasileiro-serie-a-2027',
+    season: '2027',
+    status: 'upcoming',
+  }
+  const slug2027 = serieA2027.slug
+  const warning = 'A competição do link ainda não está disponível. Escolha outra na lista.'
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    sessionStorage.clear()
+    invalidateApiCache()
+    Object.assign(config as { apiUrl: string; authUrl: string }, {
+      apiUrl: 'http://localhost:8787',
+      authUrl: 'http://localhost:8787',
+    })
+  })
+
+  function mockApi(competitions: unknown[] = [serieA2026, serieA2027]) {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/competitions')) return mockCompetitionsResponse(competitions)
+      if (url.includes('/groups')) return mockGroupsResponse([])
+      throw new Error(`fetch inesperado: ${url}`)
+    })
+  }
+
+  function competitionCalls(fetchSpy: { mock: { calls: unknown[][] } }) {
+    return fetchSpy.mock.calls.filter(([url]) => String(url).includes('/competitions'))
+  }
+
+  function LocationProbe() {
+    const location = useLocation()
+    const navigationType = useNavigationType()
+    return (
+      <p data-testid="location">{`${location.pathname}${location.search} ${navigationType}`}</p>
+    )
+  }
+
+  function renderDashboard(path: string, dashboardUser = user) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <DashboardPage user={dashboardUser} onLogout={vi.fn()} />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+  }
+
+  function createDialog() {
+    return screen.queryByRole('heading', { name: 'Criar grupo', level: 2 })
+  }
+
+  it('abre a criação com a competição escolhida e tira só `competicao` da URL', async () => {
+    mockApi()
+    renderDashboard(`/?from=guia_bolao-do-brasileirao&competicao=${slug2027}&utm_source=x`)
+
+    expect(await screen.findByLabelText('Competição')).toHaveValue('bsa-2027')
+    expect(createDialog()).toBeInTheDocument()
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/?from=guia_bolao-do-brasileirao&utm_source=x REPLACE',
+      )
+    })
+  })
+
+  it('fechar descarta a competição: reabrir pela tela vazia volta ao padrão sem aviso', async () => {
+    mockApi([serieA2026])
+    renderDashboard(`/?competicao=${slug2027}`)
+
+    expect(await screen.findByLabelText('Competição')).toHaveValue('bsa-2026')
+    expect(screen.getByText(warning)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(createDialog()).not.toBeInTheDocument()
+    await userEvent.click(
+      within(await screen.findByRole('main')).getByRole('button', { name: 'Criar grupo' }),
+    )
+
+    expect(await screen.findByLabelText('Competição')).toHaveValue('bsa-2026')
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/ REPLACE$/)
+  })
+
+  it.each([
+    ['com maiúscula', '?competicao=Campeonato-Brasileiro-Serie-A-2027'],
+    ['com espaço', '?competicao=serie%20a-2027'],
+    ['repetido', `?competicao=${slug2027}&competicao=${slug2027}`],
+    ['com mais de 100 caracteres', `?competicao=${'a'.repeat(101)}`],
+    ['vazio', '?competicao='],
+  ])('ignora o parâmetro %s', async (_caso, search) => {
+    const fetchSpy = mockApi()
+    renderDashboard(`/${search}`)
+
+    expect(await screen.findByText('Nenhum grupo ainda')).toBeInTheDocument()
+    expect(createDialog()).not.toBeInTheDocument()
+    expect(competitionCalls(fetchSpy)).toHaveLength(0)
+  })
+
+  it('aceita o slug com exatamente 100 caracteres', async () => {
+    mockApi()
+    renderDashboard(`/?competicao=${'a'.repeat(100)}`)
+
+    expect(await screen.findByLabelText('Competição')).toHaveValue('bsa-2026')
+    expect(screen.getByText(warning)).toBeInTheDocument()
+  })
+
+  it('não abre a criação com convite na URL', async () => {
+    const fetchSpy = mockApi()
+    renderDashboard(`/?convite=ABCD-EF23&competicao=${slug2027}`)
+
+    expect(await screen.findByRole('heading', { name: 'Entrar em grupo' })).toBeInTheDocument()
+    expect(createDialog()).not.toBeInTheDocument()
+    expect(competitionCalls(fetchSpy)).toHaveLength(0)
+  })
+
+  it('não abre a criação para quem não pode criar grupo', async () => {
+    const fetchSpy = mockApi()
+    renderDashboard(`/?competicao=${slug2027}`, { ...user, feature_flags: { create_group: false } })
+
+    expect(await screen.findByText('Nenhum grupo ainda')).toBeInTheDocument()
+    expect(createDialog()).not.toBeInTheDocument()
+    expect(competitionCalls(fetchSpy)).toHaveLength(0)
+  })
+})

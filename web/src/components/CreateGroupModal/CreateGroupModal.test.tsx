@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import CreateGroupModal from './CreateGroupModal'
@@ -198,6 +199,114 @@ describe('CreateGroupModal', () => {
       expect(screen.getByText('Erro de conexão. Tente novamente.')).toBeInTheDocument()
     })
   })
+})
+
+describe('CreateGroupModal – competição pedida pelo link', () => {
+  const serieA2026 = {
+    id: 'bsa-2026',
+    name: 'Campeonato Brasileiro Série A',
+    slug: 'campeonato-brasileiro-serie-a-2026',
+    season: '2026',
+    status: 'ongoing',
+  }
+  const serieA2027 = {
+    id: 'bsa-2027',
+    name: 'Campeonato Brasileiro Série A',
+    slug: 'campeonato-brasileiro-serie-a-2027',
+    season: '2027',
+    status: 'upcoming',
+  }
+  const slug2027 = serieA2027.slug
+  const warning = 'A competição do link ainda não está disponível. Escolha outra na lista.'
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    defaultProps.onClose.mockClear()
+  })
+
+  function mockList(list: unknown[]) {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ competitions: list }),
+    } as Response)
+  }
+
+  /** Imita o painel: a competição do link vale até o modal fechar. */
+  function Host({ initialSlug }: { initialSlug?: string }) {
+    const [open, setOpen] = useState(true)
+    const [slug, setSlug] = useState(initialSlug)
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Abrir de novo
+        </button>
+        <CreateGroupModal
+          isOpen={open}
+          onClose={() => {
+            setOpen(false)
+            setSlug(undefined)
+          }}
+          onCreated={vi.fn()}
+          preferredCompetitionSlug={slug}
+        />
+      </>
+    )
+  }
+
+  it('abre com a competição do link escolhida, mesmo fora da primeira posição', async () => {
+    mockList([serieA2026, serieA2027])
+    render(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
+
+    const select = await screen.findByLabelText('Competição')
+    expect(select).toHaveValue('bsa-2027')
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+    expect(select).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('fica na primeira e mostra o aviso junto do select quando a competição não está na lista', async () => {
+    mockList([serieA2026])
+    render(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
+
+    const select = await screen.findByLabelText('Competição')
+    expect(select).toHaveValue('bsa-2026')
+    expect(screen.getByText(warning)).toBeInTheDocument()
+    expect(select).toHaveAccessibleDescription(warning)
+  })
+
+  it('não mostra aviso sem competição pedida', async () => {
+    mockList([serieA2026])
+    render(<CreateGroupModal {...defaultProps} />)
+
+    expect(await screen.findByLabelText('Competição')).toHaveValue('bsa-2026')
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+  })
+
+  it('não mostra aviso quando nenhuma competição está disponível', async () => {
+    mockList([])
+    render(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
+
+    expect(await screen.findByText('Nenhuma competição disponível no momento.')).toBeInTheDocument()
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['presente', [serieA2026, serieA2027]],
+    ['ausente', [serieA2026]],
+  ])(
+    'com a competição %s na lista, fechar e reabrir volta ao padrão sem aviso',
+    async (_caso, list) => {
+      mockList(list)
+      render(<Host initialSlug={slug2027} />)
+      await screen.findByLabelText('Competição')
+
+      await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'Abrir de novo' }))
+
+      expect(await screen.findByLabelText('Competição')).toHaveValue('bsa-2026')
+      expect(screen.queryByText(warning)).not.toBeInTheDocument()
+    },
+  )
 })
 
 describe('CreateGroupModal – analytics', () => {

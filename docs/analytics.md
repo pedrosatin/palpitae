@@ -48,6 +48,19 @@ para quem já está logado e será redirecionado para o dashboard. A chegada a
 `/entrar` gera `entrar_origem` uma vez por navegação. O retorno do OAuth em `/`
 preserva a atribuição e não gera outra chegada.
 
+O guia do Brasileirão também envia `competicao=campeonato-brasileiro-serie-a-2027`
+no CTA principal e no "Criar bolão" do topo (campo `competitionSlug` do guia em
+`web/build/guides.ts`). Quem já tem sessão vai de `/entrar` para `/` com a mesma
+query, e quem entra pelo Google volta com ela pelo `redirect`. Na montagem, o
+painel abre o formulário de criação com essa competição escolhida e tira só o
+`competicao` da URL, com `replace`. Sem a competição na lista selecionável (não
+cadastrada ou encerrada), o formulário fica na primeira e mostra um aviso junto
+do select. Fechar o modal descarta o pedido. Valor fora do formato de slug
+(minúsculas, números e hífens), acima de 100 caracteres ou repetido é ignorado,
+assim como o parâmetro junto de `convite` ou para quem não pode criar grupo. O
+`competicao` não vai ao GA4: `web/src/analytics/pageContext.ts` só deixa passar
+`utm_*`, `gclid`, `from` e `tab` na query.
+
 `web/src/analytics/guideOrigin.ts` aceita apenas esses formatos, com slug em
 minúsculas, letras ASCII, números e hífens, até 12 partes e 100 caracteres no
 token completo. Essa validação limita valores vindos da URL sem importar o código

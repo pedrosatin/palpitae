@@ -271,6 +271,9 @@ export default function App({
         />
         <Route path="/admin/metricas" element={<AdminMetricsPage />} />
         <Route path="/admin/oportunidades" element={<AdminRadarPage />} />
+        {/* Quem já tem sessão e toca no CTA de um guia vai ao painel com a mesma
+            query: `from` mantém a atribuição e `competicao` abre a criação. */}
+        <Route path="/entrar" element={<Navigate to={`/${location.search}`} replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
