@@ -36,6 +36,7 @@ function event(id: string, date: string, finished = false): EspnScoreboardEvent 
     type: {
       state: finished ? 'post' : 'pre',
       name: finished ? 'STATUS_FINAL' : 'STATUS_SCHEDULED',
+      completed: finished,
     },
   }
   for (const c of ev.competitions![0].competitors!) c.score = finished ? '1' : undefined
