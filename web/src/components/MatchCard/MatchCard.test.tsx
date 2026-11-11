@@ -602,7 +602,9 @@ describe('MatchCard – Finished state', () => {
       home_score: 2,
       away_score: 1,
     })
-    renderCard(match, makePrediction())
+    // Jogo encerrado trava o card, que mostra o palpite como texto. Um 0×0 não se
+    // confunde com o placar final.
+    renderCard(match, makePrediction({ predicted_home_score: 0, predicted_away_score: 0 }))
 
     expect(screen.getByText('encerrado')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
@@ -725,6 +727,57 @@ describe('MatchCard – jogo adiado (postponed)', () => {
 
     expect(screen.getByText(/encerrado/i)).toBeInTheDocument()
     expect(screen.queryByText(/adiado/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('MatchCard – travamento igual ao da API', () => {
+  const past = new Date(Date.now() - 86_400_000).toISOString()
+  const future = new Date(Date.now() + 86_400_000).toISOString()
+  const seenStarted = new Date(Date.now() - 3_600_000).toISOString()
+
+  // `editable` é o contrário de `isMatchLocked` em api/src/matches/locking.ts para o
+  // mesmo jogo. O card só oferece edição quando a API aceita o envio.
+  it.each<[string, Partial<Match>, Partial<Prediction> | undefined, boolean]>([
+    ['agendado com horário futuro', { start_time: future }, undefined, true],
+    ['agendado com horário vencido', { start_time: past }, undefined, false],
+    ['adiado com o horário original vencido', { start_time: past, postponed: 1 }, undefined, true],
+    [
+      'adiado depois de o sync ver o início',
+      { start_time: past, postponed: 1, locked_at: seenStarted },
+      undefined,
+      false,
+    ],
+    [
+      'encerrado e marcado como adiado, sem locked_at',
+      { start_time: past, postponed: 1, status: 'finished', home_score: 0, away_score: 0 },
+      undefined,
+      false,
+    ],
+    [
+      'ao vivo com o relógio do aparelho antes do horário',
+      { start_time: future, status: 'live' },
+      undefined,
+      false,
+    ],
+    [
+      'remarcado para o futuro depois de o sync ver o início',
+      { start_time: future, locked_at: seenStarted },
+      undefined,
+      false,
+    ],
+    [
+      'adiado com o palpite travado pela API',
+      { start_time: past, postponed: 1 },
+      { locked: 1 },
+      false,
+    ],
+  ])('%s', (_, matchOverrides, predictionOverrides, editable) => {
+    renderCard(
+      makeMatch(matchOverrides),
+      predictionOverrides && makePrediction(predictionOverrides),
+    )
+
+    expect(screen.queryAllByRole('spinbutton')).toHaveLength(editable ? 2 : 0)
   })
 })
 
