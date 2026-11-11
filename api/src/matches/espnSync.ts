@@ -16,6 +16,7 @@ import {
   type MatchUpsertRow,
   slugify,
   type SyncResult,
+  writeMatchUpserts,
 } from './sync'
 
 const PROVIDER = 'espn'
@@ -177,6 +178,7 @@ export type EspnSyncOptions = {
   db: D1Database
   now?: string
   onHttpAttempt?: ProviderHttpObserver
+  ae?: AnalyticsEngineDataset
 }
 
 type ValidEspnTeam = {
@@ -515,14 +517,17 @@ async function upsertEspnMatches(
   events: ValidEspnEvent[],
   teamIds: Map<string, string>,
   now: string,
+  ae: AnalyticsEngineDataset | undefined,
 ): Promise<number> {
   const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
+  const rows: MatchUpsertRow[] = []
   const statements = []
 
   for (const ev of events) {
     const row = mapEspnEventToRow(ev, teamIds, now)
     if (!row) continue
 
+    rows.push(row)
     statements.push(
       matchInsertStmt.bind(
         crypto.randomUUID(),
@@ -550,9 +555,7 @@ async function upsertEspnMatches(
     )
   }
 
-  if (statements.length > 0) {
-    await batchStatements(db, statements)
-  }
+  await writeMatchUpserts(db, statements, rows, { ae, provider: PROVIDER, competitionId })
 
   return statements.length
 }
@@ -580,7 +583,14 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
   const competition = await upsertEspnCompetition(opts.db, opts.competitionCode, meta, opts.season)
   const { teamCount, teamIds } = await upsertEspnTeams(opts.db, validEvents)
   const now = opts.now ?? isoSeconds(new Date())
-  const matchCount = await upsertEspnMatches(opts.db, competition.id, validEvents, teamIds, now)
+  const matchCount = await upsertEspnMatches(
+    opts.db,
+    competition.id,
+    validEvents,
+    teamIds,
+    now,
+    opts.ae,
+  )
 
   return {
     competition: meta.name,

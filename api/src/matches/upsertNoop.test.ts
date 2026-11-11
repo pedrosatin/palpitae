@@ -9,6 +9,10 @@ import { MATCH_UPSERT_SQL } from './sync'
 const NOW = '2026-11-02T20:00:00Z'
 
 type Row = {
+  homeTeamId: string
+  awayTeamId: string
+  phase: string
+  round: string
   startTime: string
   status: 'scheduled' | 'live' | 'finished'
   homeScore: number | null
@@ -24,6 +28,10 @@ type Row = {
 }
 
 const base: Row = {
+  homeTeamId: 'team-h',
+  awayTeamId: 'team-a',
+  phase: 'REGULAR_SEASON',
+  round: '1',
   startTime: '2026-11-10T19:00:00Z',
   status: 'scheduled',
   homeScore: null,
@@ -46,14 +54,14 @@ function upsert(row: Row): number {
     'comp-1',
     'ext-1',
     'football-data',
-    'team-h',
-    'team-a',
+    row.homeTeamId,
+    row.awayTeamId,
     row.startTime,
     row.status,
     row.homeScore,
     row.awayScore,
-    'REGULAR_SEASON',
-    '1',
+    row.phase,
+    row.round,
     row.groupName,
     row.duration,
     row.penaltyWinner,
@@ -70,7 +78,8 @@ function upsert(row: Row): number {
 function stored() {
   return sqlite
     .prepare(
-      `SELECT start_time, status, home_score, away_score, postponed, locked_at, scored_at
+      `SELECT home_team_id, away_team_id, start_time, status, home_score, away_score,
+              postponed, locked_at, scored_at
        FROM matches WHERE external_id = 'ext-1'`,
     )
     .get() as Record<string, unknown>
@@ -82,7 +91,8 @@ beforeEach(() => {
     INSERT INTO competitions (id, name, slug, status) VALUES ('comp-1', 'Liga', 'liga', 'ongoing');
     INSERT INTO teams (id, name, short_name, slug, external_id, provider)
       VALUES ('team-h', 'Casa', 'CAS', 'casa', 'h', 'football-data'),
-             ('team-a', 'Fora', 'FOR', 'fora', 'a', 'football-data');
+             ('team-a', 'Fora', 'FOR', 'fora', 'a', 'football-data'),
+             ('team-c', 'Outro', 'OUT', 'outro', 'c', 'football-data');
   `)
 })
 
@@ -109,6 +119,10 @@ describe('MATCH_UPSERT_SQL sem mudança não grava', () => {
 
 describe('MATCH_UPSERT_SQL com mudança grava', () => {
   const changes: Array<[string, Partial<Row>]> = [
+    ['mando invertido', { homeTeamId: 'team-a', awayTeamId: 'team-h' }],
+    ['time substituído', { awayTeamId: 'team-c' }],
+    ['phase', { phase: 'PLAYOFFS' }],
+    ['round', { round: '2' }],
     ['start_time', { startTime: '2026-11-11T19:00:00Z' }],
     ['status', { status: 'live', lockedAt: NOW }],
     ['postponed', { postponed: 1 }],
@@ -146,6 +160,29 @@ describe('MATCH_UPSERT_SQL com mudança grava', () => {
     sqlite.exec(`UPDATE matches SET scored_at = '${NOW}'`)
     expect(upsert({ ...finished, homeScore: 4 })).toBe(1)
     expect(stored()).toMatchObject({ home_score: 4, scored_at: null })
+  })
+
+  it.each<[string, Partial<Row>]>([
+    ['mando invertido', { homeTeamId: 'team-a', awayTeamId: 'team-h' }],
+    ['time substituído', { awayTeamId: 'team-c' }],
+    ['fase', { phase: 'PLAYOFFS' }],
+  ])('%s depois de pontuado limpa scored_at, e reenviar não grava de novo', (_, change) => {
+    const finished = { ...base, status: 'finished' as const, homeScore: 2, awayScore: 1, lockedAt: NOW }
+    upsert(finished)
+    sqlite.exec(`UPDATE matches SET scored_at = '${NOW}'`)
+    expect(upsert({ ...finished, ...change })).toBe(1)
+    expect(stored().scored_at).toBeNull()
+    sqlite.exec(`UPDATE matches SET scored_at = '${NOW}'`)
+    expect(upsert({ ...finished, ...change })).toBe(0)
+    expect(stored().scored_at).toBe(NOW)
+  })
+
+  it('mudança só de rodada não refaz a pontuação', () => {
+    const finished = { ...base, status: 'finished' as const, homeScore: 2, awayScore: 1, lockedAt: NOW }
+    upsert(finished)
+    sqlite.exec(`UPDATE matches SET scored_at = '${NOW}'`)
+    expect(upsert({ ...finished, round: '2' })).toBe(1)
+    expect(stored().scored_at).toBe(NOW)
   })
 
   it('resposta atrasada não desfaz resultado final', () => {
