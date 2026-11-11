@@ -18,6 +18,20 @@ describe('CookieConsent', () => {
     vi.clearAllMocks()
   })
 
+  it('reabre a escolha salva e permite revogar pelo teclado', async () => {
+    mockGetStoredConsent.mockReturnValue('granted')
+    render(<CookieConsent />)
+    const preferences = screen.getByRole('button', { name: 'Preferências de cookies' })
+    preferences.focus()
+    await userEvent.keyboard('{Enter}')
+    const reject = screen.getByRole('button', { name: 'Recusar' })
+    expect(reject).toHaveFocus()
+    await userEvent.keyboard('{Enter}')
+    expect(mockSetConsent).toHaveBeenCalledWith('denied')
+    expect(preferences).toHaveFocus()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('shows the banner when no choice has been made yet', () => {
     mockGetStoredConsent.mockReturnValue(null)
     render(<CookieConsent />)

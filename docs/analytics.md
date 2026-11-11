@@ -26,7 +26,37 @@ import { trackEvent } from '../../analytics/ga'
 O GA4 opera através do Consent Mode v2 para respeitar a privacidade dos usuários.
 O status da permissão é salvo no `localStorage`:
 - **Aceitar:** Modo passa para `granted`, tags são disparadas e o consentimento é armazenado indefinidamente.
-- **Recusar:** Modo fica como `denied` e as tags respeitam a falta de cookies. A recusa é salva com um *timestamp* e **expira após 30 dias**. Quando expira, o banner reaparece na próxima visita. Isso garante que não pratiquemos *Consent Fatigue* (re-pedir insistentemente em poucos dias), respeitando a LGPD, mas permitindo re-converter usuários antigos.
+- **Recusar:** Modo passa para `denied` e o cliente interrompe o envio de dados. A recusa é salva com um timestamp e expira após 30 dias. Quando expira, o banner reaparece na próxima visita.
+
+### Alterar ou revogar a escolha
+
+O rodapé do app, dos guias e do índice de guias tem o botão "Preferências de
+cookies". Ele reabre o aviso existente. "Recusar" salva `denied:<timestamp>`,
+manda `consent update` com `analytics_storage: denied` e ativa
+`window['ga-disable-<measurement id>']` para interromper o envio pelo cliente já
+carregado. Os helpers de eventos e navegação também param de enfileirar hits.
+"Aceitar" libera o cliente de novo. A escolha vale ao recarregar e entre app e
+guias no mesmo domínio. Com storage bloqueado, a escolha vale na página atual;
+a persistência entre cargas fica indisponível. A recusa mantém o prazo de 30 dias.
+Os controles de consentimento não enviam eventos de clique.
+
+Para conferir em ambiente local com um id de teste:
+
+1. Recuse no aviso, abra as preferências, aceite e revogue novamente.
+2. Intercepte o `dataLayer` e confira o update `denied`, a flag `ga-disable` e a
+   ausência de novos eventos opcionais após a revogação.
+3. Recarregue e confira a recusa salva, com o aviso fechado. Repita na SPA e
+   em `/guias/bolao-do-brasileirao/`, em celular e desktop.
+
+Na manutenção da propriedade GA4, confira em Fluxos de dados > Web > Medição
+aprimorada > Visualizações de página > Configurações avançadas que a opção de
+mudanças de página por eventos do histórico do navegador continua desligada.
+O app envia navegação com URLs filtradas. A medição automática por histórico
+pode enviar a URL original, com parâmetros privados, e não deve ser habilitada.
+A validação local não comprova essa configuração do painel.
+
+A página `/privacidade` continua pendente no ticket `seo-analytics-2026-11/11`.
+Ela poderá apontar para esse mesmo controle de preferências.
 
 ### Páginas estáticas (`/guias/`)
 
