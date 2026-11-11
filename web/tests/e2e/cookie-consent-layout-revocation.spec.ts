@@ -2,26 +2,19 @@ import { test, expect } from '@playwright/test'
 
 for (const width of [390, 1440]) {
   for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
-    test(`revogação em ${path} ${width}`, async ({ page }, testInfo) => {
-      const capture = (name: string) => process.env.CONSENT_CAPTURE_DIR
-        ? `${process.env.CONSENT_CAPTURE_DIR}/${name}.png`
-        : testInfo.outputPath(`${name}.png`)
+    test(`recusa, aceita e revoga em ${path} com ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 844 })
       await page.route('https://www.googletagmanager.com/**', (r) => r.fulfill({ body: '' }))
       await page.route('**/api/**', (r) => r.fulfill({ json: {} }))
       await page.goto(path)
+      await expect(page.getByRole('contentinfo')).toHaveCount(1)
       const banner = page.getByRole('dialog', { name: 'Aviso de cookies' })
       await expect(banner).toBeVisible()
       await banner.getByRole('button', { name: 'Recusar' }).click()
-      const label = `${path === '/' ? 'spa' : 'guia'}-${width}`
-      await page.screenshot({
-        path: capture(`${process.env.CAPTURE_BASE ? 'antes' : 'depois'}-${label}`),
-        fullPage: true,
-      })
       const preferences = page.getByRole('button', {
         name: 'Preferências de cookies',
       })
-      await preferences.click({ timeout: 3000 })
+      await preferences.click()
       await banner.getByRole('button', { name: 'Aceitar' }).click()
       await expect
         .poll(() => page.evaluate(() => localStorage.getItem('palpitae:analytics-consent')))
@@ -41,7 +34,6 @@ for (const width of [390, 1440]) {
           () => (window as unknown as Record<string, unknown>)['ga-disable-G-TEST123'],
         ),
       ).toBe(true)
-      const count = (await calls()).length
       if (path === '/') {
         await page.evaluate(async () => {
           const modulePath = '/src/analytics/ga.ts'
@@ -56,19 +48,15 @@ for (const width of [390, 1440]) {
           )
         })
       }
-      expect((await calls()).length).toBe(count)
+      expect((await calls()).filter((c) => c[0] === 'event')).toHaveLength(0)
       await page.reload()
       await expect(banner).toBeHidden()
       expect(await page.evaluate(() => localStorage.getItem('palpitae:analytics-consent'))).toMatch(
         /^denied:\d+$/,
       )
-      expect((await calls()).filter((c) => c[0] === 'consent' && c[1] === 'update')).toEqual([])
+      expect((await calls()).filter((c) => c[0] === 'consent' && c[1] === 'update' && (c[2] as { analytics_storage: string }).analytics_storage === 'granted')).toEqual([])
       await preferences.click()
       await expect(banner).toBeVisible()
-      await page.screenshot({
-        path: capture(`preferencias-${label}`),
-        fullPage: true,
-      })
     })
   }
 }

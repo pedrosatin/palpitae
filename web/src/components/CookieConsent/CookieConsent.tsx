@@ -3,7 +3,8 @@ import { gaEnabled, getStoredConsent, setConsent } from '../../analytics/ga'
 import styles from './CookieConsent.module.css'
 
 /**
- * Reabre a escolha pelo rodapé e reserva o espaço ocupado pelo aviso.
+ * Aviso de cookies do GA e botão de preferências no rodapé. O aviso abre sozinho
+ * sem escolha salva e reabre pelo botão.
  * A leitura do storage fica no efeito para preservar a hidratação da landing:
  * tanto o HTML pré-renderizado quanto o primeiro render começam sem o aviso.
  */
@@ -48,7 +49,7 @@ export default function CookieConsent() {
 
   return (
     <>
-      <footer className={styles.preferences}>
+      <div className={styles.preferences}>
         <button
           ref={preferencesRef}
           type="button"
@@ -59,7 +60,7 @@ export default function CookieConsent() {
         >
           Preferências de cookies
         </button>
-      </footer>
+      </div>
       {visible && (
         <div
           ref={bannerRef}
@@ -67,6 +68,12 @@ export default function CookieConsent() {
           role="dialog"
           aria-label="Aviso de cookies"
           aria-live="polite"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              dismiss()
+            }
+          }}
         >
           <p className={styles.text}>
             Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.

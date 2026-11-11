@@ -89,3 +89,7 @@
   min-height: 44px;
   cursor: pointer;
 }
+
+:global(body:has([data-save-all-bar])) .preferences {
+  padding-bottom: calc(8rem + var(--space-4));
+}

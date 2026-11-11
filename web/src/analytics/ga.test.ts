@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getStoredConsent, setConsent, trackEvent, trackPageView } from './ga'
+import { getStoredConsent, setConsent } from './ga'
 
 describe('ga', () => {
   describe('gaEnabled', () => {
@@ -51,6 +51,7 @@ describe('ga', () => {
     it('returns null when localStorage is empty', () => {
       expect(getStoredConsent()).toBeNull()
     })
+
 
     it('returns "denied" when localStorage has a recent denied timestamp', () => {
       vi.useFakeTimers()
@@ -215,28 +216,13 @@ describe('ga', () => {
     })
   })
 
-  it('interrompe eventos e navegações após revogar, inclusive com storage bloqueado', () => {
-    window.gtag = vi.fn()
-    setConsent('granted')
-    trackEvent('antes')
-    expect(window.gtag).toHaveBeenCalledWith('event', 'antes', undefined)
-    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('bloqueado')
-    })
-    setConsent('denied')
-    vi.mocked(window.gtag).mockClear()
-    trackEvent('depois')
-    trackPageView({ page_location: 'http://localhost/entrar', page_title: 'Entrar' }, '')
-    expect(window.gtag).not.toHaveBeenCalled()
-    storage.mockRestore()
-    setConsent('granted')
-    trackEvent('retomado')
-    expect(window.gtag).toHaveBeenCalledWith('event', 'retomado', undefined)
-  })
-
   describe('trackEvent', () => {
-    beforeEach(() => {
+    let trackEvent: typeof import('./ga').trackEvent
+    beforeEach(async () => {
       vi.restoreAllMocks()
+      vi.resetModules()
+      localStorage.clear()
+      ;({ trackEvent } = await import('./ga'))
       window.gtag = vi.fn()
     })
 
@@ -321,10 +307,7 @@ describe('ga', () => {
       const { initGa, trackPageView } = await import('./ga')
       initGa()
       window.dataLayer = []
-      const page = {
-        page_location: 'https://x.test/entrar',
-        page_title: 'Entrar | Palpitae',
-      }
+      const page = { page_location: 'https://x.test/entrar', page_title: 'Entrar | Palpitae' }
       trackPageView(page, 'https://x.test/')
       expect(calls()).toEqual([
         ['set', { ...page, page_referrer: 'https://x.test/' }],

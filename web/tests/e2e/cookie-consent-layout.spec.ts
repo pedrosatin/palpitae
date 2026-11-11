@@ -116,3 +116,28 @@ for (const [width, height] of [
     )
   })
 }
+
+for (const [width, height] of [
+  [390, 844],
+  [1440, 900],
+]) {
+  test(`preferências acessíveis com Salvar todos em ${width}x${height}`, async ({ page }) => {
+    await page.setViewportSize({ width, height })
+    await mock(page)
+    await page.goto('/grupos/group-demo')
+    await expect(page.getByRole('button', { name: /Salvar todos/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Recusar', exact: true }).click()
+    const preferences = page.getByRole('button', { name: 'Preferências de cookies' })
+    await preferences.scrollIntoViewIfNeeded()
+    expect(
+      await preferences.evaluate((el) => {
+        const box = el.getBoundingClientRect()
+        return el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+      }),
+    ).toBe(true)
+    await preferences.click()
+    await page.keyboard.press('Escape')
+    await expect(preferences).toBeFocused()
+    await expect(page.getByRole('dialog', { name: 'Aviso de cookies' })).toBeHidden()
+  })
+}

@@ -34,11 +34,15 @@ O rodapé do app, dos guias e do índice de guias tem o botão "Preferências de
 cookies". Ele reabre o aviso existente. "Recusar" salva `denied:<timestamp>`,
 manda `consent update` com `analytics_storage: denied` e ativa
 `window['ga-disable-<measurement id>']` para interromper o envio pelo cliente já
-carregado. Os helpers de eventos e navegação também param de enfileirar hits.
-"Aceitar" libera o cliente de novo. A escolha vale ao recarregar e entre app e
-guias no mesmo domínio. Com storage bloqueado, a escolha vale na página atual;
-a persistência entre cargas fica indisponível. A recusa mantém o prazo de 30 dias.
-Os controles de consentimento não enviam eventos de clique.
+carregado. A recusa também expira `_ga` e o cookie `_ga_<id sem G->` no host
+e nos domínios pais. Os helpers de eventos e navegação param de enfileirar hits;
+o contexto da página continua atualizado com `set`.
+"Aceitar" libera o cliente de novo. Se o gtag.js já carregou, revogar recarrega a
+página para encerrar o cliente antigo. A nova página registra o consentimento
+negado e a flag `ga-disable` antes de qualquer chamada do gtag. A escolha
+vale entre app e guias no mesmo domínio. Com storage bloqueado, a escolha não
+persiste entre carregamentos.
+Exceção à regra acima: os botões do aviso e de preferências não chamam `trackEvent`.
 
 Para conferir em ambiente local com um id de teste:
 
@@ -49,14 +53,13 @@ Para conferir em ambiente local com um id de teste:
    em `/guias/bolao-do-brasileirao/`, em celular e desktop.
 
 Na manutenção da propriedade GA4, confira em Fluxos de dados > Web > Medição
-aprimorada > Visualizações de página > Configurações avançadas que a opção de
+otimizada > Visualizações de página > Configurações avançadas que a opção de
 mudanças de página por eventos do histórico do navegador continua desligada.
 O app envia navegação com URLs filtradas. A medição automática por histórico
 pode enviar a URL original, com parâmetros privados, e não deve ser habilitada.
 A validação local não comprova essa configuração do painel.
 
-A página `/privacidade` continua pendente no ticket `seo-analytics-2026-11/11`.
-Ela poderá apontar para esse mesmo controle de preferências.
+A página `/privacidade` ainda não existe. Quando existir, deve apontar para este botão.
 
 ### Páginas estáticas (`/guias/`)
 
@@ -64,7 +67,7 @@ Os guias são HTML gerado no build (`web/build/guides.ts`), sem o bundle React, 
 chamam `initGa()` nem montam o `CookieConsent`. O `web/build/analytics.ts` injeta um script
 inline equivalente no `<head>` de cada guia e do índice: registra o `consent default`
 (tudo `denied`) antes de `js`/`config`, restaura o `granted` salvo, carrega o gtag.js no
-idle depois do `load` e mostra o mesmo banner quando não há escolha salva. Chave e formato
+idle depois do `load` e mostra o mesmo banner quando não há escolha salva ou pelo botão de preferências. Chave e formato
 do `localStorage` são os mesmos do app, então a escolha feita num guia vale na landing e
 vice-versa. Sem `VITE_GA_MEASUREMENT_ID`, nada é emitido. Qualquer mudança em `ga.ts` ou no
 `CookieConsent` precisa ser replicada em `build/analytics.ts`. Os testes de

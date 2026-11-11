@@ -9,8 +9,9 @@
  * sem a env `VITE_GA_MEASUREMENT_ID`, nada é carregado (sem script, sem banner).
  *
  * O consentimento começa como `denied`: o gtag.js carrega de forma assíncrona e
- * coleta apenas pings sem cookie (modelagem do Consent Mode) até o usuário
- * aceitar no banner (ver `components/CookieConsent`). A escolha é persistida em
+ * coleta apenas pings sem cookie até a primeira escolha. Depois de recusar,
+ * nada é enviado. Se o cliente já carregou, a recusa recarrega a página.
+ * A escolha é persistida em
  * localStorage e restaurada nas visitas seguintes.
  */
 import { config } from '../config'
@@ -27,6 +28,7 @@ export const gaEnabled = config.gaMeasurementId.length > 0
 
 declare global {
   interface Window {
+    google_tag_manager?: Record<string, unknown>
     dataLayer: unknown[]
     gtag: (...args: unknown[]) => void
     [key: `ga-disable-${string}`]: boolean
@@ -73,7 +75,26 @@ export function setConsent(consent: Consent): void {
   } catch {
     // localStorage indisponível (modo privado etc.) — segue sem persistir
   }
+  if (consent === 'denied') {
+    clearGaCookies()
+    if (window.google_tag_manager) {
+      // A recarga encerra os eventos automáticos do cliente já carregado. A nova
+      // página restaura denied e ga-disable antes de qualquer chamada do gtag.
+      window.location.reload()
+      return
+    }
+  }
   window.gtag?.('consent', 'update', { analytics_storage: consent })
+}
+
+function clearGaCookies(): void {
+  const labels = window.location.hostname.split('.')
+  const domains = ['', ...labels.map((_, i) => labels.slice(i).join('.'))]
+  for (const name of ['_ga', `_ga_${config.gaMeasurementId.slice(2)}`]) {
+    for (const domain of domains) {
+      document.cookie = `${name}=; Max-Age=0; path=/${domain ? `; domain=${domain}` : ''}`
+    }
+  }
 }
 
 /**
@@ -103,8 +124,10 @@ export function initGa(): void {
   })
 
   // Restaura o consentimento concedido numa visita anterior
-  if (getStoredConsent() === 'granted') {
+  if (currentConsent === 'granted') {
     window.gtag('consent', 'update', { analytics_storage: 'granted' })
+  } else if (currentConsent === 'denied') {
+    window.gtag('consent', 'update', { analytics_storage: 'denied' })
   }
 
   window.gtag('js', new Date())
@@ -153,13 +176,13 @@ function loadGtagScript(): void {
 
 /** Registra uma navegação interna. Os eventos seguintes herdam a mesma página. */
 export function trackPageView(page: GaPage, referrer: string): void {
-  if ((currentConsent ?? getStoredConsent()) === 'denied') return
   const params = { ...page, page_referrer: referrer }
   window.gtag?.('set', params)
+  if ((currentConsent ?? getStoredConsent()) === 'denied') return
   window.gtag?.('event', 'page_view', params)
 }
 
-/** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */
+/** Dispara um evento customizado para o GA4. No-op sem GA ou com consentimento negado. */
 export function trackEvent(name: string, params?: Record<string, string | number | boolean>): void {
   if ((currentConsent ?? getStoredConsent()) === 'denied') return
   window.gtag?.('event', name, params)

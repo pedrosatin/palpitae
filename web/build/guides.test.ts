@@ -326,6 +326,29 @@ describe('guide analytics (Consent Mode v2)', () => {
   })
   afterEach(() => localStorage.clear())
 
+  it('reabre pelo botão e fecha com Esc sem alterar o consentimento', () => {
+    localStorage.setItem(CONSENT_KEY, 'granted')
+    loadPage(renderGuide(guides[0], GA_ID))
+    const button = document.getElementById('cookie-preferences') as HTMLButtonElement
+    button.click()
+    expect(button.getAttribute('aria-expanded')).toBe('true')
+    document.querySelector('#cookie-consent .reject')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(document.getElementById('cookie-consent')!.hidden).toBe(true)
+    expect(button.getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(button)
+    expect(localStorage.getItem(CONSENT_KEY)).toBe('granted')
+  })
+
+  it('remove os cookies do GA quando a pessoa revoga no guia', () => {
+    document.cookie = '_ga=GA1.1.123.456; path=/'
+    document.cookie = '_ga_TEST123=GS2.1.123; path=/'
+    localStorage.setItem(CONSENT_KEY, 'granted')
+    loadPage(renderGuide(guides[0], GA_ID))
+    ;(document.getElementById('cookie-preferences') as HTMLButtonElement).click()
+    ;(document.querySelector('#cookie-consent .reject') as HTMLButtonElement).click()
+    expect(document.cookie).not.toMatch(/(?:^|; )_ga(?:_TEST123)?=/)
+  })
+
   it('emits no GA script and no banner without a measurement id', () => {
     const html = renderGuide(guides[0])
     expect(html).not.toContain('googletagmanager')

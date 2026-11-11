@@ -77,22 +77,24 @@ var ID='${gaId}',KEY='${CONSENT_KEY}';
 function stored(){try{var v=localStorage.getItem(KEY);if(v==='granted')return'granted';if(v&&v.indexOf('denied')===0){var p=v.split(':');if(p.length===2){if(Date.now()-parseInt(p[1],10)<${DENIED_EXPIRY_MS})return'denied';localStorage.removeItem(KEY);return null}return'denied'}return null}catch(e){return null}}
 window.dataLayer=window.dataLayer||[];
 window.gtag=function(){window.dataLayer.push(arguments)};
-gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied'});
 var choice=stored();
 window['ga-disable-'+ID]=choice==='denied';
-if(choice==='granted')gtag('consent','update',{analytics_storage:'granted'});
-gtag('js',new Date());
-gtag('config',ID);
+gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied'});
+if(choice)gtag('consent','update',{analytics_storage:choice});
 function inject(){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+ID;document.head.appendChild(s)}
 function idle(){if(typeof window.requestIdleCallback==='function')window.requestIdleCallback(inject);else setTimeout(inject,0)}
+gtag('js',new Date());
+gtag('config',ID);
 if(document.readyState==='complete')idle();else window.addEventListener('load',idle,{once:true});
-function save(c){choice=c;window['ga-disable-'+ID]=c==='denied';try{localStorage.setItem(KEY,c==='denied'?'denied:'+Date.now():c)}catch(e){}gtag('consent','update',{analytics_storage:c})}
+function clearCookies(){var labels=location.hostname.split('.'),domains=[''];for(var i=0;i<labels.length;i++)domains.push(labels.slice(i).join('.'));['_ga','_ga_'+ID.slice(2)].forEach(function(name){domains.forEach(function(domain){document.cookie=name+'=; Max-Age=0; path=/'+(domain?'; domain='+domain:'')})})}
+function save(c){choice=c;window['ga-disable-'+ID]=c==='denied';try{localStorage.setItem(KEY,c==='denied'?'denied:'+Date.now():c)}catch(e){}if(c==='denied'){clearCookies();if(window.google_tag_manager){location.reload();return}}gtag('consent','update',{analytics_storage:c})}
 function banner(){var b=document.getElementById('cookie-consent'),preferences=document.getElementById('cookie-preferences');if(!b||!preferences)return;
 function height(){document.documentElement.style.setProperty('--consent-banner-height',Math.ceil(b.getBoundingClientRect().height+(parseFloat(getComputedStyle(b).bottom)||0))+'px')}
-var observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(height);function show(){b.hidden=false;height();if(observer)observer.observe(b);window.addEventListener('resize',height)}
+var observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(height);function show(){b.hidden=false;preferences.setAttribute('aria-expanded','true');height();if(observer)observer.observe(b);window.addEventListener('resize',height)}
 preferences.addEventListener('click',function(){show();b.querySelector('.reject').focus()});
 if(choice===null)show();
-function dismiss(){b.hidden=true;preferences.focus({preventScroll:true});if(observer)observer.disconnect();window.removeEventListener('resize',height);document.documentElement.style.removeProperty('--consent-banner-height')}
+function dismiss(){b.hidden=true;preferences.setAttribute('aria-expanded','false');preferences.focus({preventScroll:true});if(observer)observer.disconnect();window.removeEventListener('resize',height);document.documentElement.style.removeProperty('--consent-banner-height')}
+b.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();dismiss()}});
 b.querySelector('.accept').addEventListener('click',function(){save('granted');dismiss()});
 b.querySelector('.reject').addEventListener('click',function(){save('denied');dismiss()})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',banner);else banner();
@@ -100,8 +102,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   return `<script>${script}</script>`
 }
 
-/** Banner markup, hidden until the head script finds no stored choice. */
+/** Preferences button and banner markup; the banner opens with no stored choice or on the button click. */
 export function consentBanner(gaId: string): string {
   if (!validId(gaId)) return ''
-  return `<footer class="cookie-preferences"><button id="cookie-preferences" type="button">Preferências de cookies</button></footer><div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
+  return `<div class="cookie-preferences"><button id="cookie-preferences" type="button" aria-expanded="false">Preferências de cookies</button></div><div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
 }

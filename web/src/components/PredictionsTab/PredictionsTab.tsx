@@ -269,7 +269,7 @@ export default function PredictionsTab({
       />
 
       {showSaveBar && (
-        <div className={styles.saveAllBar}>
+        <div className={styles.saveAllBar} data-save-all-bar>
           <div className={styles.saveAllStatus} aria-live="polite">
             {replicating && (
               <span className={styles.replicateInfo}>Aplicando nos outros grupos...</span>

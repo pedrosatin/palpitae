@@ -32,6 +32,19 @@ describe('CookieConsent', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('fecha as preferências com Esc sem mudar a escolha e devolve o foco', async () => {
+    mockGetStoredConsent.mockReturnValue('granted')
+    render(<CookieConsent />)
+    const preferences = screen.getByRole('button', { name: 'Preferências de cookies' })
+    await userEvent.click(preferences)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(preferences).toHaveFocus()
+    expect(mockSetConsent).not.toHaveBeenCalled()
+    expect(preferences).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+  })
+
   it('shows the banner when no choice has been made yet', () => {
     mockGetStoredConsent.mockReturnValue(null)
     render(<CookieConsent />)
