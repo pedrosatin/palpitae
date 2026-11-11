@@ -408,6 +408,7 @@ async function fetchImportSources(
  * already started (locked). These picks are always public once a match is locked,
  * so any group member can view them. This is used by the leaderboard modal so a
  * viewer can see exactly which scores a user predicted to arrive at their ranking.
+ * The target must still be a member: someone who left or was banned answers 404.
  *
  * Response:
  * {
@@ -446,6 +447,13 @@ router.get('/user', requireAuth, async (c) => {
 
   if (!membership) {
     return c.json({ error: 'Acesso negado' }, 403)
+  }
+
+  // Quem saiu ou foi removido do grupo deixa de ter palpites consultáveis, como no feed.
+  const target = await getGroupMembershipTimed(db, groupId, targetUserId)
+
+  if (!target.membership) {
+    return c.json({ error: 'Membro não encontrado no grupo' }, 404)
   }
 
   const now = new Date().toISOString()
@@ -535,7 +543,7 @@ router.get('/user', requireAuth, async (c) => {
   logRequestPerf(c.env.AE, 'GET /predictions/user', {
     status: 200,
     totalMs: Date.now() - startedAt,
-    dbMs: membershipMs + queryMs,
+    dbMs: membershipMs + target.membershipMs + queryMs,
     rows: predictions.length,
     extra: { group_id: groupId, target_user_id: targetUserId },
   })

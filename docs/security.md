@@ -36,7 +36,9 @@ Os palpites dos outros membros aparecem após o bloqueio da partida por horário
 status `live`/`finished`. Registrar o próprio palpite não antecipa essa revelação.
 Grupos `public` continuam mostrando os palpites a todos os membros em tempo real.
 Nos dois modos, o feed do grupo mostra só palpites de quem ainda é membro; os de quem
-saiu ou foi removido ficam no banco, mas saem do feed.
+saiu ou foi removido ficam no banco, mas saem do feed. `GET /predictions/user`, que o
+ranking usa para abrir os palpites de um membro, responde 404 quando esse membro saiu
+ou foi removido.
 
 O palpite trava no horário do jogo. A coluna `matches.locked_at` (migração
 `0016_match_locked_at.sql`) guarda o instante em que o sync viu o jogo iniciado pela
