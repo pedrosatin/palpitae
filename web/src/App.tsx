@@ -101,15 +101,17 @@ type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'unavailable
  *
  * O cookie de sessão é HttpOnly (invisível ao JS), então essa é a única pista
  * que temos, antes de o `GET /auth/me` responder, sobre quem está chegando.
- * Ela existe só para o LCP: um visitante anônimo em "/" recebe a landing já
+ * A marca controla a pintura antecipada da landing e o aviso de indisponibilidade
+ * nas rotas públicas. Para o LCP: um visitante anônimo em "/" recebe a landing já
  * pré-renderizada no HTML; quem já logou aqui alguma vez continua vendo a tela
  * escura até o auth resolver, para não piscar a página de marketing antes do
  * dashboard.
  *
  * Quem LÊ a flag é o script inline no fim do `index.html`, antes de o React
  * existir — é ele que decide manter ou descartar a landing pré-renderizada.
- * Aqui só escrevemos. Perder a flag (storage limpo, aba anônima) faz a landing
- * ser pintada por um instante antes do dashboard; nunca quebra a navegação.
+ * O App também consulta a marca quando `/auth/me` responde 5xx. Perder a flag
+ * (storage limpo, aba anônima) faz a landing ser pintada por um instante antes do
+ * dashboard; nunca quebra a navegação.
  * A chave é duplicada no `index.html`: se mudar aqui, mude lá também.
  */
 const KNOWN_SESSION_KEY = 'palpitae:sessao-conhecida'

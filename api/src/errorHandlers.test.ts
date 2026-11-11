@@ -38,4 +38,17 @@ describe('jsonError', () => {
     expect(log).toHaveBeenCalled()
     log.mockRestore()
   })
+
+  it('HTTPException 5xx mantém o status sem expor a mensagem interna', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const cause = new Error('D1_ERROR: no such table: private_table')
+    const error = new HTTPException(503, { cause, message: cause.message })
+
+    const res = await appThrowing(error).request('/')
+
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'Erro interno. Tente novamente.' })
+    expect(log).toHaveBeenCalled()
+    log.mockRestore()
+  })
 })
