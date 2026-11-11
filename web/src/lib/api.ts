@@ -46,6 +46,25 @@ export function consumeSessionExpired(): boolean {
   }
 }
 
+/** Aviso para falha de rede ou resposta que não veio da API (HTML de um 502 do proxy). */
+export const CONNECTION_ERROR = 'Erro de conexão. Tente novamente.'
+
+/**
+ * Mensagem de erro de uma resposta da API que falhou. Único caminho de leitura:
+ * devolve o `error` do corpo JSON; `fallback` quando o JSON não traz mensagem; e
+ * `CONNECTION_ERROR` quando o corpo não é JSON. Nunca lança.
+ */
+export async function readApiError(res: Response, fallback: string): Promise<string> {
+  let body: unknown
+  try {
+    body = await res.json()
+  } catch {
+    return CONNECTION_ERROR
+  }
+  const error = (body as { error?: unknown } | null)?.error
+  return typeof error === 'string' && error !== '' ? error : fallback
+}
+
 /**
  * `fetch` for API calls: always sends credentials and traps 401 centrally.
  * Drop-in for existing `fetch(...)` call sites — same arguments, same Response.

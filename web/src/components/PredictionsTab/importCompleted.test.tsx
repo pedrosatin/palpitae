@@ -11,7 +11,13 @@ import { usePredictionsTab } from './usePredictionsTab'
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
 
-function setup({ imported = 1, skipped = 0, failed = false, refetchFailed = false } = {}) {
+function setup({
+  imported = 1,
+  skipped = 0,
+  failed = false,
+  badGateway = false,
+  refetchFailed = false,
+} = {}) {
   const completed = new Set<string>()
   let posts = 0
   const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
@@ -24,6 +30,7 @@ function setup({ imported = 1, skipped = 0, failed = false, refetchFailed = fals
     if (path.includes('/predictions/import')) {
       posts++
       if (failed) return json({ error: 'Falha ao importar' }, 500)
+      if (badGateway) return new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 })
       if (imported > 0) completed.add(JSON.parse(String(init?.body)).target_group_id)
       return json({ imported, locked_skipped: skipped })
     }
@@ -97,6 +104,7 @@ describe('Barra de importação', () => {
       message: 'Nenhum palpite importado. 2 palpites já bloqueados foram ignorados.',
     },
     { options: { failed: true }, message: 'Falha ao importar' },
+    { options: { badGateway: true }, message: 'Erro de conexão. Tente novamente.' },
   ])('mantém seletor e mostra $message', async ({ options, message }) => {
     setup(options)
     const user = userEvent.setup()

@@ -3,7 +3,7 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, readApiError } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import { fetchGroupsList } from '../../lib/groupsList'
@@ -66,13 +66,8 @@ async function postPredictionsImport(
       ...(onlyMissing ? { only_missing: true } : {}),
     }),
   })
-  const data = (await res.json()) as {
-    ok?: boolean
-    error?: string
-    imported?: number
-    locked_skipped?: number
-  }
-  if (!res.ok) throw new Error(data.error ?? 'Erro ao importar palpites')
+  if (!res.ok) throw new Error(await readApiError(res, 'Erro ao importar palpites'))
+  const data = (await res.json()) as { imported?: number; locked_skipped?: number }
   return { imported: data.imported ?? 0, skipped: data.locked_skipped ?? 0 }
 }
 

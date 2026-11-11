@@ -464,6 +464,43 @@ describe('App', () => {
     expect(fetchMock).toHaveBeenCalledWith(`${config.apiUrl}/auth/me`, { credentials: 'include' })
   })
 
+  it('mantém a rota e oferece nova tentativa quando /auth/me responde 503', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 }).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/grupos/g1']}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/indisponível no momento/)).toBeInTheDocument()
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/grupos/g1')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }))
+
+    expect(await screen.findByTestId('group-detail-page')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/grupos/g1')
+  })
+
+  it('leva ao login quando /auth/me responde 401', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401 })
+
+    render(
+      <MemoryRouter initialEntries={['/grupos/g1']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByTestId('login-page')).toBeInTheDocument()
+    expect(screen.queryByText(/indisponível no momento/)).not.toBeInTheDocument()
+  })
+
   it('falls back to unauthenticated route when /auth/me rejects with a network error', async () => {
     fetchMock.mockRejectedValueOnce(new Error('Network request failed'))
 

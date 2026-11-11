@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import Modal from '../../components/Modal'
 import Button from '../../components/Button'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, readApiError } from '../../lib/api'
 import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { trackEvent } from '../../analytics/ga'
@@ -68,10 +68,7 @@ export function RenameGroupModal({
         }),
       })
 
-      if (!res.ok) {
-        const body = (await res.json()) as { error?: string }
-        throw new Error(body.error ?? 'Erro ao renomear grupo')
-      }
+      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao renomear grupo'))
 
       trackEvent('submit_renomear_grupo')
       invalidateApiCache('groups:')

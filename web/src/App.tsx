@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import {
   matchPath,
   Navigate,
@@ -49,6 +49,8 @@ const AdminMetricsPage = lazy(() => import('./pages/AdminMetricsPage'))
 // Radar de competições (admin) — inteligência de produto: o que está rolando no
 // futebol e quanto o público brasileiro se interessa. Mesmo gate na API.
 const AdminRadarPage = lazy(() => import('./pages/AdminRadarPage'))
+// Fora do bundle crítico: só carrega quando o `/auth/me` responde 5xx.
+const AuthUnavailable = lazy(() => import('./components/AuthUnavailable'))
 
 /**
  * `/convite/:code` é o link compartilhado (a Pages Function de mesmo caminho
@@ -90,7 +92,8 @@ interface User {
   }
 }
 
-type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
+// `unavailable`: o `/auth/me` respondeu 5xx. Não sabemos se há sessão, então ninguém é deslogado.
+type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'unavailable'
 
 /**
  * Marca, em localStorage, que este dispositivo já teve uma sessão autenticada.
@@ -152,7 +155,8 @@ export default function App({
   // Uma vez por carga de página: o referrer não muda nas navegações internas.
   useEffect(() => captureEntryOrigin(), [])
 
-  useEffect(() => {
+  const checkSession = useCallback(() => {
+    setStatus('loading')
     invalidateApiCache()
     // Raw fetch on purpose: an anonymous visit is the normal logged-out state,
     // not an expired session — apiFetch would flag "sessão expirou" for every
@@ -161,11 +165,14 @@ export default function App({
     // console error in devtools/Lighthouse.
     fetch(`${config.apiUrl}/auth/me`, { credentials: 'include' })
       .then((res) => {
+        if (res.status >= 500) return null
         if (!res.ok) throw new Error('unauthenticated')
         return res.json() as Promise<{ user: User } | { authenticated: false }>
       })
       .then((data) => {
-        if ('user' in data) {
+        if (data === null) {
+          setStatus('unavailable')
+        } else if ('user' in data) {
           setUser(data.user)
           setStatus('authenticated')
           setKnownSession(true)
@@ -181,6 +188,8 @@ export default function App({
         trackLoginIfPending(false)
       })
   }, [])
+
+  useEffect(checkSession, [checkSession])
 
   // Any apiFetch call that hits a 401 broadcasts this event. Drop auth state so the
   // router swaps to the login screen instead of leaving tabs stuck on their own
@@ -236,6 +245,14 @@ export default function App({
   // Sem pintura antecipada, seguimos com a tela escura pintada inline no
   // index.html até a rota aparecer — nada de flash branco.
   if (status === 'loading' && !paintLandingEarly && !paintInviteEarly) return null
+
+  // A URL fica como está: com a API de volta, "Tentar novamente" abre a mesma rota.
+  if (status === 'unavailable')
+    return (
+      <Suspense fallback={null}>
+        <AuthUnavailable onRetry={checkSession} />
+      </Suspense>
+    )
 
   if (status !== 'authenticated')
     return (
