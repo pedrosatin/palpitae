@@ -129,6 +129,29 @@ export type EspnCompetitionStatusType = {
   completed?: boolean
 }
 
+/**
+ * Status que não contam como resultado final: adiado, cancelado, suspenso e
+ * abandonado. Em 08/11/2026 a ESPN mandou Estoril × Marítimo, adiado, como
+ * STATUS_POSTPONED com state 'post', completed false e placar 0-0. Só state
+ * 'post' não indica fim de jogo.
+ */
+export const ESPN_POSTPONED_STATUSES = new Set([
+  'STATUS_POSTPONED',
+  'STATUS_CANCELED',
+  'STATUS_CANCELLED',
+  'STATUS_SUSPENDED',
+  'STATUS_ABANDONED',
+])
+
+/** Fim de jogo: state 'post', completed true e status fora de ESPN_POSTPONED_STATUSES. */
+export function isEspnFinal(type: EspnCompetitionStatusType | undefined): boolean {
+  return (
+    type?.state === 'post' &&
+    type.completed === true &&
+    !ESPN_POSTPONED_STATUSES.has(type.name ?? '')
+  )
+}
+
 export type EspnEventCompetition = {
   id?: string
   date?: string

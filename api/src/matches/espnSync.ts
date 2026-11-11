@@ -4,7 +4,9 @@ import {
   type EspnCompetitorTeam,
   type EspnEventCompetition,
   type EspnScoreboardEvent,
+  ESPN_POSTPONED_STATUSES,
   fetchEspnScoreboard,
+  isEspnFinal,
 } from '../providers/espn'
 import type { ProviderHttpObserver } from '../observability/providerHttp'
 import {
@@ -158,12 +160,14 @@ function resolveEspnRound(ev: EspnScoreboardEvent, stage: string): string {
   return LEAGUE_PHASE
 }
 
-const ESPN_POSTPONED_STATUSES = new Set([
+/**
+ * Adiado ou cancelado em state 'post' não começou, e o palpite segue aberto
+ * (ADR-013). Em state 'in', o adiamento veio depois do início e o jogo trava.
+ */
+const ESPN_NOT_STARTED_STATUSES = new Set([
   'STATUS_POSTPONED',
   'STATUS_CANCELED',
   'STATUS_CANCELLED',
-  'STATUS_SUSPENDED',
-  'STATUS_ABANDONED',
 ])
 
 export type EspnSyncOptions = {
@@ -199,6 +203,7 @@ type ValidEspnEvent = {
   groupName: string | null
   state: string | undefined
   statusName: string
+  final: boolean
   home: ValidEspnCompetitor
   away: ValidEspnCompetitor
 }
@@ -281,6 +286,7 @@ function extractValidEvent(
     groupName: parseGroupName(comp.group?.name),
     state: statusType?.state,
     statusName: statusType?.name ?? '',
+    final: isEspnFinal(statusType),
     home,
     away,
   }
@@ -456,6 +462,7 @@ function resolveFinishedOutcome(
 }
 
 function resolveEspnLockedAt(ev: ValidEspnEvent, now: string): string | null {
+  if (ev.state === 'post' && ESPN_NOT_STARTED_STATUSES.has(ev.statusName)) return null
   if (ev.state === 'in' || ev.state === 'post' || ev.statusName === 'STATUS_SUSPENDED') {
     return now
   }
@@ -473,7 +480,7 @@ function mapEspnEventToRow(
 
   const homeParsed = parseNonNegativeInt(ev.home.score)
   const awayParsed = parseNonNegativeInt(ev.away.score)
-  const isFinished = ev.state === 'post' && homeParsed !== null && awayParsed !== null
+  const isFinished = ev.final && homeParsed !== null && awayParsed !== null
 
   const outcome = isFinished
     ? resolveFinishedOutcome(ev)
