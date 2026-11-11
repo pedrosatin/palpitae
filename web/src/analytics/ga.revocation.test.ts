@@ -10,7 +10,7 @@ afterEach(() => {
 })
 
 describe('revogação do GA', () => {
-  it('mantém a página atual sem enviar eventos após revogar, inclusive com storage bloqueado', async () => {
+  it('sem gtag.js carregado, bloqueia evento e page_view após revogar e atualiza a página com set, mesmo com storage bloqueado', async () => {
     const { setConsent, trackEvent, trackPageView } = await import('./ga')
     window.gtag = vi.fn()
     setConsent('granted')

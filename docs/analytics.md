@@ -32,23 +32,23 @@ O status da permissão é salvo no `localStorage`:
 
 O rodapé do app, dos guias e do índice de guias tem o botão "Preferências de
 cookies". Ele reabre o aviso existente. "Recusar" salva `denied:<timestamp>`,
-manda `consent update` com `analytics_storage: denied` e ativa
-`window['ga-disable-<measurement id>']` para interromper o envio pelo cliente já
-carregado. A recusa também expira `_ga` e o cookie `_ga_<id sem G->` no host
-e nos domínios pais. Os helpers de eventos e navegação param de enfileirar hits;
-o contexto da página continua atualizado com `set`.
-"Aceitar" libera o cliente de novo. Se o gtag.js já carregou, revogar recarrega a
-página para encerrar o cliente antigo. A nova página registra o consentimento
-negado e a flag `ga-disable` antes de qualquer chamada do gtag. A escolha
-vale entre app e guias no mesmo domínio. Com storage bloqueado, a escolha não
-persiste entre carregamentos.
+ativa `window['ga-disable-<measurement id>']` e manda `consent update` com
+`analytics_storage: denied`. Se o cliente desta página rodou com `granted`,
+recarrega a página, porque a flag em tempo de execução não para os eventos
+automáticos do cliente. A recarga só ocorre se a gravação da recusa deu certo.
+A recusa também expira `_ga` e o cookie `_ga_<id sem G->` no host e nos domínios
+pais. Os helpers de eventos e navegação param de enfileirar hits; o contexto da
+página continua atualizado com `set`. "Aceitar" libera o cliente de novo.
+Com storage bloqueado, a página não recarrega e os helpers seguem a recusa em
+memória até a pessoa sair da página. A escolha não persiste entre carregamentos.
 Exceção à regra acima: os botões do aviso e de preferências não chamam `trackEvent`.
 
 Para conferir em ambiente local com um id de teste:
 
 1. Recuse no aviso, abra as preferências, aceite e revogue novamente.
-2. Intercepte o `dataLayer` e confira o update `denied`, a flag `ga-disable` e a
-   ausência de novos eventos opcionais após a revogação.
+2. Na aba Rede, filtre por `collect`. Depois da revogação e da recarga, role a
+   página e navegue: nenhuma requisição `g/collect` deve aparecer. Em Aplicativo >
+   Cookies, confira que `_ga` e `_ga_<id>` sumiram.
 3. Recarregue e confira a recusa salva, com o aviso fechado. Repita na SPA e
    em `/guias/bolao-do-brasileirao/`, em celular e desktop.
 
@@ -66,8 +66,10 @@ A página `/privacidade` ainda não existe. Quando existir, deve apontar para es
 Os guias são HTML gerado no build (`web/build/guides.ts`), sem o bundle React, então não
 chamam `initGa()` nem montam o `CookieConsent`. O `web/build/analytics.ts` injeta um script
 inline equivalente no `<head>` de cada guia e do índice: registra o `consent default`
-(tudo `denied`) antes de `js`/`config`, restaura o `granted` salvo, carrega o gtag.js no
-idle depois do `load` e mostra o mesmo banner quando não há escolha salva ou pelo botão de preferências. Chave e formato
+(tudo `denied`) antes de `js`/`config`, restaura a escolha salva,
+com `ga-disable` quando ela é `denied`, carrega o gtag.js no idle depois do `load`
+e mostra o mesmo aviso quando não há escolha salva ou quando a pessoa clica em
+"Preferências de cookies". Chave e formato
 do `localStorage` são os mesmos do app, então a escolha feita num guia vale na landing e
 vice-versa. Sem `VITE_GA_MEASUREMENT_ID`, nada é emitido. Qualquer mudança em `ga.ts` ou no
 `CookieConsent` precisa ser replicada em `build/analytics.ts`. Os testes de

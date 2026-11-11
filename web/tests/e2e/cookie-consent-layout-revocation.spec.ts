@@ -54,7 +54,14 @@ for (const width of [390, 1440]) {
       expect(await page.evaluate(() => localStorage.getItem('palpitae:analytics-consent'))).toMatch(
         /^denied:\d+$/,
       )
-      expect((await calls()).filter((c) => c[0] === 'consent' && c[1] === 'update' && (c[2] as { analytics_storage: string }).analytics_storage === 'granted')).toEqual([])
+      expect(
+        (await calls()).filter(
+          (c) =>
+            c[0] === 'consent' &&
+            c[1] === 'update' &&
+            (c[2] as { analytics_storage: string }).analytics_storage === 'granted',
+        ),
+      ).toEqual([])
       await preferences.click()
       await expect(banner).toBeVisible()
     })

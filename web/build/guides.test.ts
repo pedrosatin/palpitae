@@ -332,7 +332,9 @@ describe('guide analytics (Consent Mode v2)', () => {
     const button = document.getElementById('cookie-preferences') as HTMLButtonElement
     button.click()
     expect(button.getAttribute('aria-expanded')).toBe('true')
-    document.querySelector('#cookie-consent .reject')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    document
+      .querySelector('#cookie-consent .reject')!
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     expect(document.getElementById('cookie-consent')!.hidden).toBe(true)
     expect(button.getAttribute('aria-expanded')).toBe('false')
     expect(document.activeElement).toBe(button)

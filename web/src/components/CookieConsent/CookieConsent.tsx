@@ -9,6 +9,7 @@ import styles from './CookieConsent.module.css'
  * tanto o HTML pré-renderizado quanto o primeiro render começam sem o aviso.
  */
 export default function CookieConsent() {
+  const openedFromPreferences = useRef(false)
   const preferencesRef = useRef<HTMLButtonElement>(null)
   const rejectRef = useRef<HTMLButtonElement>(null)
   const bannerRef = useRef<HTMLDivElement>(null)
@@ -19,7 +20,7 @@ export default function CookieConsent() {
   }, [])
 
   useEffect(() => {
-    if (visible && document.activeElement === preferencesRef.current) rejectRef.current?.focus()
+    if (visible && openedFromPreferences.current) rejectRef.current?.focus()
     const banner = bannerRef.current
     if (!visible || !banner) return
     const updateHeight = () => {
@@ -42,7 +43,8 @@ export default function CookieConsent() {
 
   function dismiss() {
     setVisible(false)
-    preferencesRef.current?.focus({ preventScroll: true })
+    if (openedFromPreferences.current) preferencesRef.current?.focus({ preventScroll: true })
+    openedFromPreferences.current = false
   }
 
   if (!gaEnabled) return null
@@ -55,7 +57,9 @@ export default function CookieConsent() {
           type="button"
           aria-expanded={visible}
           onClick={() => {
+            openedFromPreferences.current = true
             setVisible(true)
+            rejectRef.current?.focus()
           }}
         >
           Preferências de cookies

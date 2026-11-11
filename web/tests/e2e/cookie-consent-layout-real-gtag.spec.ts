@@ -7,8 +7,10 @@ for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
   test(`gtag real interrompe a coleta em ${path}`, async ({ page, context }) => {
     test.setTimeout(60000)
     let revoked = false
-    const requests: { revoked: boolean; events: string }[] = []
-    await page.exposeFunction('markConsentRevoked', () => { revoked = true })
+    const requests: boolean[] = []
+    await page.exposeFunction('markConsentRevoked', () => {
+      revoked = true
+    })
     await page.addInitScript(() => {
       document.addEventListener(
         'click',
@@ -31,11 +33,7 @@ for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
     )
     // A rota de coleta precisa ter precedência sobre o bloqueio geral.
     await page.route('**/g/collect*', async (route) => {
-      requests.push({
-        revoked,
-        events:
-          new URL(route.request().url()).searchParams.get('en') || route.request().postData() || '',
-      })
+      requests.push(revoked)
       await route.abort()
     })
     await page.route('http://app.palpitae.test/**', async (route) => {
@@ -77,7 +75,18 @@ for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
     )
     await page.getByRole('button', { name: 'Preferências de cookies' }).click()
     await banner.getByRole('button', { name: 'Recusar' }).click()
-    await expect.poll(() => page.evaluate(() => (window.dataLayer || []).map((entry) => Array.from(entry as ArrayLike<unknown>)).filter((c) => c[0] === 'consent' && c[1] === 'update').at(-1)).catch(() => null)).toEqual(['consent', 'update', { analytics_storage: 'denied' }])
+    await expect
+      .poll(() =>
+        page
+          .evaluate(() =>
+            (window.dataLayer || [])
+              .map((entry) => Array.from(entry as ArrayLike<unknown>))
+              .filter((c) => c[0] === 'consent' && c[1] === 'update')
+              .at(-1),
+          )
+          .catch(() => null),
+      )
+      .toEqual(['consent', 'update', { analytics_storage: 'denied' }])
     await page.mouse.wheel(0, -10000)
     if (path === '/') {
       await page.getByRole('link', { name: /Ver como funciona/ }).click()
@@ -91,19 +100,12 @@ for (const path of ['/', '/guias/bolao-do-brasileirao/']) {
     await page.mouse.wheel(0, 10000)
     await page.waitForTimeout(6000)
     expect(revoked).toBe(true)
-    const before = requests.filter((request) => !request.revoked).length
-    const after = requests.filter((request) => request.revoked).length
-    console.log(
-      JSON.stringify({
-        path,
-        collectBefore: before,
-        collectAfter: after,
-        afterEvents: requests
-          .filter((request) => request.revoked)
-          .map((request) => request.events),
-        cookiesBefore: cookiesBefore.map((cookie) => cookie.name),
-      }),
-    )
+    const before = requests.filter((request) => !request).length
+    test.info().annotations.push({
+      type: 'collect',
+      description: `${path}: ${before} antes, ${requests.filter((request) => request).length} depois`,
+    })
+    const after = requests.filter((request) => request).length
     expect(after).toBe(0)
     expect((await context.cookies()).filter((cookie) => cookie.name.startsWith('_ga'))).toEqual([])
     await page.getByRole('button', { name: 'Preferências de cookies' }).click()

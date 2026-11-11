@@ -10,9 +10,8 @@
  *
  * O consentimento começa como `denied`: o gtag.js carrega de forma assíncrona e
  * coleta apenas pings sem cookie até a primeira escolha. Depois de recusar,
- * nada é enviado. Se o cliente já carregou, a recusa recarrega a página.
- * A escolha é persistida em
- * localStorage e restaurada nas visitas seguintes.
+ * nada é enviado. Revogar um aceite com o cliente carregado recarrega a página.
+ * A escolha fica no localStorage e volta nas visitas seguintes.
  */
 import { config } from '../config'
 import { gaPageLocation, gaPageTitle, internalReferrer, type GaPage } from './pageContext'
@@ -66,6 +65,7 @@ export function getStoredConsent(): Consent | null {
 
 /** Registra a escolha do usuário, persiste e atualiza o Consent Mode do gtag. */
 export function setConsent(consent: Consent): void {
+  const previousConsent = currentConsent ?? getStoredConsent()
   currentConsent = consent
   window[`ga-disable-${config.gaMeasurementId}`] = consent === 'denied'
   try {
@@ -75,16 +75,16 @@ export function setConsent(consent: Consent): void {
   } catch {
     // localStorage indisponível (modo privado etc.) — segue sem persistir
   }
+  window.gtag?.('consent', 'update', { analytics_storage: consent })
   if (consent === 'denied') {
     clearGaCookies()
-    if (window.google_tag_manager) {
+    if (previousConsent === 'granted' && window.google_tag_manager && getStoredConsent() === 'denied') {
       // A recarga encerra os eventos automáticos do cliente já carregado. A nova
       // página restaura denied e ga-disable antes de qualquer chamada do gtag.
       window.location.reload()
       return
     }
   }
-  window.gtag?.('consent', 'update', { analytics_storage: consent })
 }
 
 function clearGaCookies(): void {
