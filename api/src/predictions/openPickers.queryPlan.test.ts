@@ -19,6 +19,8 @@ describe('plano da consulta de quem já palpitou', () => {
     expect(plan(OPEN_PICKERS_SQL)).toEqual([
       'SEARCH m USING INDEX idx_matches_comp_round_start (competition_id=?)',
       'SEARCH gm USING COVERING INDEX sqlite_autoindex_group_members_2 (group_id=?)',
+      'CORRELATED SCALAR SUBQUERY 1',
+      'SEARCH b USING COVERING INDEX sqlite_autoindex_group_bans_1 (group_id=? AND user_id=?)',
       'SEARCH pr USING COVERING INDEX sqlite_autoindex_predictions_2 (user_id=? AND group_id=? AND match_id=?)',
     ])
   })
