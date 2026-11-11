@@ -26,7 +26,8 @@ export const OPEN_PICKERS_SQL = `SELECT pr.match_id, pr.user_id
   CROSS JOIN group_members gm ON gm.group_id = ?
   CROSS JOIN predictions pr
     ON pr.user_id = gm.user_id AND pr.group_id = gm.group_id AND pr.match_id = m.id
-  WHERE m.competition_id = ? AND NOT ${lockedSql()}`
+  WHERE m.competition_id = ? AND NOT ${lockedSql()}
+    AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = gm.group_id AND b.user_id = gm.user_id)`
 
 /** Agrupa as linhas por jogo, no formato do campo `open_pickers` da resposta. */
 export function indexOpenPickers(rows: PickerRow[]): OpenPickers {

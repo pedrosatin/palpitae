@@ -531,18 +531,41 @@ router.post('/join', requireAuth, async (c) => {
   // Limite de membros checado no próprio INSERT: um SELECT COUNT separado deixaria
   // duas entradas simultâneas passarem do limite. O D1 serializa as escritas, então
   // a contagem dentro do INSERT já vê a linha da outra requisição.
+  // Banimento, convite e exclusão também precisam valer no instante da escrita.
   const memberId = crypto.randomUUID()
   const inserted = await db
     .prepare(
       `INSERT INTO group_members (id, group_id, user_id, role)
        SELECT ?, ?, ?, 'member'
         WHERE (SELECT COUNT(*) FROM group_members WHERE group_id = ?) < ?
+          AND NOT EXISTS (SELECT 1 FROM group_bans WHERE group_id = ? AND user_id = ?)
+          AND EXISTS (SELECT 1 FROM groups WHERE id = ? AND invite_code = ? AND deleted_at IS NULL)
        ON CONFLICT DO NOTHING`,
     )
-    .bind(memberId, group.id, userId, group.id, group.max_members)
+    .bind(
+      memberId,
+      group.id,
+      userId,
+      group.id,
+      group.max_members,
+      group.id,
+      userId,
+      group.id,
+      invite_code,
+    )
     .run()
 
   if (!inserted.meta.changes) {
+    const currentGroup = await db
+      .prepare('SELECT id FROM groups WHERE id = ? AND invite_code = ? AND deleted_at IS NULL')
+      .bind(group.id, invite_code)
+      .first()
+    if (!currentGroup) return c.json({ error: 'Código de convite inválido' }, 404)
+    const currentBan = await db
+      .prepare('SELECT user_id FROM group_bans WHERE group_id = ? AND user_id = ?')
+      .bind(group.id, userId)
+      .first()
+    if (currentBan) return c.json({ error: 'Acesso revogado pelo administrador' }, 403)
     const again = await db
       .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
       .bind(group.id, userId)
