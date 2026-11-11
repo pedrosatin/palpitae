@@ -292,6 +292,7 @@ function usePredictionsImport(
     setImportedFromName(null)
     return () => {
       current.active = false
+      savedDuringRefresh.current = null
     }
   }, [groupId, competitionId, userId])
 
