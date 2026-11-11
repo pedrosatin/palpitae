@@ -161,7 +161,7 @@ export const EXACT_HIT_SQL =
  * ganha linha: os palpites de quem saiu ou foi banido ficam no banco e não
  * recriam a linha dele.
  */
-export function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
+function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
   return db
     .prepare(`INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
     SELECT p.group_id, p.user_id, SUM(${PREDICTION_POINTS_SQL}),

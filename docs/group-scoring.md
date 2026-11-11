@@ -73,24 +73,29 @@ O ranking do grupo tem uma ordem só, definida em `api/src/groups/ranking.ts`:
 5. `user_id`, só para a ordem ser determinística quando duas entradas têm o mesmo horário.
 
 No empate total, dois participantes com os mesmos pontos e os mesmos exatos não
-dividem posição: fica à frente quem entrou antes no grupo. Não existe posição
-compartilhada nem título dividido.
+dividem posição: fica à frente quem entrou antes no grupo. As posições do ranking
+geral não são compartilhadas.
 
 A lista de `GET /groups/:id/members`, o `user_position` de `GET /groups` e de
-`GET /groups/:id`, o pódio do card do grupo encerrado e a variação de posição de
-`GET /groups/:id/round-standings` usam essa ordem. O cartão de compartilhamento monta a
-imagem com o `user_position` e o pódio, então segue a mesma ordem.
+`GET /groups/:id` e o pódio do card do grupo encerrado usam essa ordem em SQL. A
+variação de posição de `GET /groups/:id/round-standings` reproduz os critérios no
+comparador TypeScript de `api/src/groups/roundStandings.ts`. Na posição anterior, o
+critério 3 vale para quem tinha palpite em jogo apurado antes da rodada de
+referência. O cartão de compartilhamento monta a imagem com o `user_position` e o
+pódio, então segue a mesma ordem.
 
-A linha do `leaderboard` nasce na primeira apuração do grupo depois que
-o participante palpitou. Antes disso ele aparece no fim da lista de membros com 0
-ponto, `user_position` vem `null` e ele não entra no pódio. A web mostra "—" no lugar
+A linha do `leaderboard` é criada na primeira apuração do grupo depois do palpite.
+Quem sai perde a linha e a recupera na próxima apuração depois de voltar. Sem linha,
+o participante aparece no fim da lista de membros com 0 ponto, `user_position` vem
+`null` e ele não entra no pódio. A web mostra "—" no lugar
 da posição e não o trata como campeão.
 
 Participante elegível é quem tem linha em `group_members` e não está em
 `group_bans`, e só ele conta. A saída e a remoção apagam a linha do `leaderboard` na mesma transação.
 Os palpites ficam no banco, e o recálculo não recria a linha de quem saiu ou foi
-banido. Quem saiu por conta própria e volta recupera a linha na entrada, a partir
-dos palpites, com a data de entrada nova.
+banido. A entrada no grupo não recalcula o ranking: quem saiu por conta própria e
+volta fica sem linha até a próxima apuração do grupo, que soma os palpites dele
+com a data de entrada nova.
 
 ## Bônus de pênalti (`points_penalty`)
 

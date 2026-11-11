@@ -6,7 +6,7 @@ import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
-import { classifiedRuleChangeStatements, leaderboardRefreshStatement } from '../matches/scoring'
+import { classifiedRuleChangeStatements } from '../matches/scoring'
 import { roundLabel } from '../matches/rounds'
 import { parsePendingSummary, type PendingSummary } from './pendingPredictions'
 import { fetchDeadlineMatches, groupsListBinds, groupsListSql, type DeadlineMatch } from './groupsList'
@@ -574,12 +574,6 @@ router.post('/join', requireAuth, async (c) => {
     return c.json({ error: 'Este grupo atingiu o limite de membros' }, 409)
   }
 
-  // Quem volta ao grupo recupera a linha do ranking a partir dos palpites que
-  // ficaram. Se falhar, a entrada vale e a linha volta na próxima apuração.
-  await leaderboardRefreshStatement(db, [group.id])
-    .run()
-    .catch((error: unknown) => console.error('[groups] Error refreshing leaderboard:', error))
-
   logEvent(c.env.AE, 'group_joined', {
     blobs: [
       group.id,
@@ -963,7 +957,7 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
   }
 
   // A linha do ranking sai junto com a participação. Os palpites ficam, e é
-  // deles que a linha volta se a pessoa entrar de novo.
+  // deles que a linha volta na apuração seguinte se a pessoa entrar de novo.
   const removal = [
     db
       .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')

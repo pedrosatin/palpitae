@@ -11,6 +11,8 @@ export interface RoundMemberRow {
   exact_hits: number
   /** 1 para quem não tem linha no `leaderboard`, que fica atrás no empate. */
   unscored: number
+  /** 1 para quem não tinha palpite em jogo apurado antes da rodada de referência. */
+  unscored_before: number
   /** Pontos só na rodada de referência, o que a coluna mostra. */
   round_points: number
   /** Pontos da rodada de referência e das rodadas numeradas posteriores. */
@@ -42,12 +44,17 @@ function compareBinary(a: string, b: string): number {
 }
 
 /** Ordem oficial do ranking, a mesma de `rankingOrderSql`. */
-function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMemberRow[] {
+function ranked(
+  rows: RoundMemberRow[],
+  points: Score,
+  exact: Score,
+  unscored: Score,
+): RoundMemberRow[] {
   return [...rows].sort(
     (a, b) =>
       points(b) - points(a) ||
       exact(b) - exact(a) ||
-      a.unscored - b.unscored ||
+      unscored(a) - unscored(b) ||
       compareBinary(a.joined_at, b.joined_at) ||
       compareBinary(a.user_id, b.user_id),
   )
@@ -60,7 +67,9 @@ function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMembe
  * A posição anterior aplica a mesma ordem aos totais sem a rodada de referência
  * e sem as rodadas numeradas posteriores. Descontar só a referência compararia
  * com um estado que nunca existiu. Jogo remarcado de rodada anterior conta como
- * ponto de antes. Membro fora de `streaks` tem sequência 0.
+ * ponto de antes. Quem não tinha palpite em jogo apurado antes da referência
+ * entra na posição anterior como sem linha no `leaderboard`, mesmo que tenha
+ * linha hoje. Membro fora de `streaks` tem sequência 0.
  */
 export function computeRoundStandings(
   rows: RoundMemberRow[],
@@ -69,7 +78,10 @@ export function computeRoundStandings(
   const pointsBefore: Score = (row) => row.total_points - row.since_points
   const exactBefore: Score = (row) => row.exact_hits - row.since_exact
   const positionBefore = new Map(
-    ranked(rows, pointsBefore, exactBefore).map((row, index) => [row.user_id, index + 1]),
+    ranked(rows, pointsBefore, exactBefore, (row) => row.unscored_before).map((row, index) => [
+      row.user_id,
+      index + 1,
+    ]),
   )
   const hadPoints = rows.some((row) => pointsBefore(row) > 0)
 
@@ -77,6 +89,7 @@ export function computeRoundStandings(
     rows,
     (row) => row.total_points,
     (row) => row.exact_hits,
+    (row) => row.unscored,
   ).map((row, index) => ({
     user_id: row.user_id,
     round_points: row.round_points,
@@ -222,6 +235,14 @@ async function fetchRoundMembers(
          COALESCE(l.total_points, 0) AS total_points,
          COALESCE(l.exact_hits, 0) AS exact_hits,
          l.user_id IS NULL AS unscored,
+         (l.user_id IS NULL OR NOT EXISTS (
+           SELECT 1 FROM predictions bp
+           JOIN matches bm ON bm.id = bp.match_id
+           WHERE bp.group_id = gm.group_id AND bp.user_id = gm.user_id
+             AND bm.scored_at IS NOT NULL
+             AND NOT (COALESCE(bm.round, '') GLOB '[0-9]*' AND bm.round NOT GLOB '*[^0-9]*'
+               AND CAST(bm.round AS INTEGER) >= CAST(? AS INTEGER))
+         )) AS unscored_before,
          COALESCE(r.round_points, 0) AS round_points,
          COALESCE(r.since_points, 0) AS since_points,
          COALESCE(r.since_exact, 0) AS since_exact
@@ -244,7 +265,7 @@ async function fetchRoundMembers(
        ) r ON gm.user_id = r.user_id
        WHERE gm.group_id = ? AND ${notBannedSql('gm')}`,
     )
-    .bind(round, groupId, round, groupId)
+    .bind(round, round, groupId, round, groupId)
     .all<RoundMemberRow>()
   return results
 }
