@@ -24,7 +24,7 @@ import { predictionsRouter } from './predictions/router'
 import { publicRouter } from './public/router'
 import type { AppContext, Env } from './types'
 
-// Configuração que o Worker aceita sem, mas que desliga alguma função em silêncio.
+// Configurações opcionais cuja ausência desativa funções sem aviso.
 const OPTIONAL_CONFIG = [
   'AE',
   'EVENTS',

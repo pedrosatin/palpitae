@@ -156,9 +156,10 @@ O log `[perf]` desses crons também registra `espn_max_concurrent` e
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
-isolates distintos mantêm filas próprias e podem sobrepor requests. Os crons `0 6 * * *` (fixture discovery) e
-`0,30 * * * *` (poller) coincidem às 06:00 UTC; o pilot remoto deve medir
-sobreposição, 403, `total_ms` e `api_requests_planned` antes do gate 2027.
+isolates distintos mantêm filas próprias e podem sobrepor requests. A descoberta (`15 6 * * *`) roda às 06:15 UTC,
+fora dos minutos 0 e 30 do poller (`0,30 * * * *`). As medições de sobreposição
+feitas quando a descoberta rodava às 06:00 UTC ficam como registro histórico; o
+pilot remoto deve medir 403, `total_ms` e `api_requests_planned` antes do gate 2027.
 Retries dos provedores e chamadas do fallback ficam fora desse contador, que
 continua contando o plano quando uma request falha. Ele não mede HTTP efetivamente
 concluído. Os logs `[perf]` expõem `sync_tasks` e `api_requests_planned` para comparar
