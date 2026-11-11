@@ -18,6 +18,8 @@ type PickerRow = { match_id: string; user_id: string }
  * índice por competição, e cada par de jogo aberto e membro vem do índice único de
  * `predictions`, sem ler a linha. O custo acompanha jogos abertos vezes membros e não
  * cresce com os palpites antigos do grupo. O `group_members` deixa de fora quem saiu.
+ * O `NOT EXISTS` em `group_bans` exclui o banido com linha residual, ao custo de
+ * uma busca a mais no índice por par jogo × membro.
  *
  * Binds: group_id, competition_id, now.
  */

@@ -531,7 +531,7 @@ router.post('/join', requireAuth, async (c) => {
   // Limite de membros checado no próprio INSERT: um SELECT COUNT separado deixaria
   // duas entradas simultâneas passarem do limite. O D1 serializa as escritas, então
   // a contagem dentro do INSERT já vê a linha da outra requisição.
-  // Banimento, convite e exclusão também precisam valer no instante da escrita.
+  // Pelo mesmo motivo, o INSERT reconfere banimento, convite atual e grupo não excluído.
   const memberId = crypto.randomUUID()
   const inserted = await db
     .prepare(

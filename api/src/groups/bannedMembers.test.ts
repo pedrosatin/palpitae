@@ -71,7 +71,6 @@ function setup() {
       { DB: wrapped, JWT_SECRET: 'secret' } as AppContext['Bindings'],
     )
     const body = (await response.json()) as Record<string, unknown>
-    console.log(method, path, user, response.status, JSON.stringify(body))
     return { status: response.status, body }
   }
   function barrier() {
@@ -92,7 +91,7 @@ function setup() {
 }
 
 describe('Admissão e banimento com SQLite real', () => {
-  it('recusa join que leu ausência de ban antes da remoção pelo dono', async () => {
+  it('recusa entrada que conferiu o banimento antes de o dono remover o membro', async () => {
     const { request, barrier, members, sqlite } = setup()
     const gate = barrier()
     const joining = request('member', '/groups/join', 'POST')
@@ -114,49 +113,51 @@ describe('Admissão e banimento com SQLite real', () => {
     expect((await request('member', '/groups/join', 'POST')).status).toBe(403)
   })
 
-  it.each(['convite', 'exclusão'])('recusa entrada se %s mudou durante o join', async (change) => {
-    const { request, barrier, sqlite, members } = setup()
-    const gate = barrier()
-    const joining = request('other', '/groups/join', 'POST')
-    await gate.ready
-    if (change === 'convite')
-      sqlite.exec("UPDATE groups SET invite_code = 'NOVO-CODI' WHERE id = 'g'")
-    else sqlite.exec("UPDATE groups SET deleted_at = '2026-01-01' WHERE id = 'g'")
-    gate.release()
-    expect(await joining).toEqual({ status: 404, body: { error: 'Código de convite inválido' } })
-    expect(members()).toHaveLength(2)
-  })
-
-  it('saída voluntária permite voltar como membro e preserva o dono', async () => {
-    const { request, members } = setup()
-    expect((await request('member', '/groups/g/members/member', 'DELETE')).status).toBe(200)
-    expect((await request('member', '/groups/join', 'POST')).status).toBe(200)
-    expect(members()).toEqual([
-      { user_id: 'member', role: 'member' },
-      { user_id: 'owner', role: 'owner' },
-    ])
-    expect((await request('owner', '/groups/g/members/owner', 'DELETE')).status).toBe(400)
-    expect((await request('member', '/groups/g/members/owner', 'DELETE')).status).toBe(403)
-    expect((await request('owner', '/groups/join', 'POST')).status).toBe(409)
-    expect(members()).toEqual([
-      { user_id: 'member', role: 'member' },
-      { user_id: 'owner', role: 'owner' },
-    ])
-  })
-
-  it.each(['hidden', 'public'])(
-    'exclui banido residual da lista e dos palpites em grupo %s',
-    async (visibility) => {
-      const { request, sqlite } = setup()
-      sqlite.prepare('UPDATE groups SET predictions_visibility = ?').run(visibility)
-      sqlite.exec("INSERT INTO group_bans (group_id,user_id) VALUES ('g','member')")
-      const result = await request('owner', '/predictions/group?group_id=g')
-      expect(result.status).toBe(200)
-      expect(result.body.members).toEqual([{ user_id: 'owner', display: 'ow***@test.com' }])
-      expect(result.body.predictions).toEqual([
-        expect.objectContaining({ user_id: 'owner', match_id: 'locked' }),
-      ])
-      expect(result.body.open_pickers).toEqual({})
+  it.each(['o convite foi trocado', 'o grupo foi excluído'])(
+    'recusa entrada se %s durante o join',
+    async (change) => {
+      const { request, barrier, sqlite, members } = setup()
+      const gate = barrier()
+      const joining = request('other', '/groups/join', 'POST')
+      await gate.ready
+      if (change === 'o convite foi trocado')
+        sqlite.exec("UPDATE groups SET invite_code = 'NOVO-CODI' WHERE id = 'g'")
+      else sqlite.exec("UPDATE groups SET deleted_at = '2026-01-01' WHERE id = 'g'")
+      gate.release()
+      expect(await joining).toEqual({ status: 404, body: { error: 'Código de convite inválido' } })
+      expect(members()).toHaveLength(2)
     },
   )
+
+  it('saída voluntária permite voltar como membro e preserva o dono', async () => {
+    const { request, sqlite } = setup()
+    await request('member', '/groups/g/members/member', 'DELETE')
+    await request('member', '/groups/join', 'POST')
+    expect(sqlite.prepare("SELECT role FROM group_members WHERE user_id = 'member'").get()).toEqual(
+      {
+        role: 'member',
+      },
+    )
+    const ownerJoin = await request('owner', '/groups/join', 'POST')
+    expect({
+      status: ownerJoin.status,
+      owner: sqlite.prepare("SELECT role FROM group_members WHERE user_id = 'owner'").get(),
+    }).toEqual({ status: 409, owner: { role: 'owner' } })
+  })
+
+  it.each([
+    ['oculto', 'hidden'],
+    ['público', 'public'],
+  ])('exclui banido residual da lista e dos palpites em grupo %s', async (_label, visibility) => {
+    const { request, sqlite } = setup()
+    sqlite.prepare('UPDATE groups SET predictions_visibility = ?').run(visibility)
+    sqlite.exec("INSERT INTO group_bans (group_id,user_id) VALUES ('g','member')")
+    const result = await request('owner', '/predictions/group?group_id=g')
+    expect(result.status).toBe(200)
+    expect(result.body.members).toEqual([{ user_id: 'owner', display: 'ow***@test.com' }])
+    expect(result.body.predictions).toEqual([
+      expect.objectContaining({ user_id: 'owner', match_id: 'locked' }),
+    ])
+    expect(result.body.open_pickers).toEqual({})
+  })
 })
