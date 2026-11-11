@@ -171,7 +171,7 @@ Evidência esperada:
 
 O radar marca competição cadastrada como suportada mesmo com zero grupos; esse indicador não comprova temporada 2027 disponível nem liberação pública.
 
-O cron diário das 06h UTC inclui temporadas `upcoming` e `ongoing` de provider ESPN; temporadas `finished` ficam fora da descoberta. O poller de 30 minutos acompanha jogos na janela ativa e no resgate. Nenhum desses processos muda a visibilidade.
+O cron diário das 06:15 UTC inclui temporadas `upcoming` e `ongoing` de provider ESPN; temporadas `finished` ficam fora da descoberta. O poller de 30 minutos acompanha jogos na janela ativa e no resgate. Nenhum desses processos muda a visibilidade.
 
 ### Portão 5. Promoção (decisão do admin)
 
