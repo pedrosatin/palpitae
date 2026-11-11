@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { tryLogEvent } from '../observability/events'
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
@@ -131,6 +132,8 @@ export type SyncOptions = {
   now?: string
   /** Telemetria por tentativa HTTP ao provedor (contexto e competição já embutidos). */
   onHttpAttempt?: ProviderHttpObserver
+  /** Recebe `match_teams_changed` quando o provedor troca os times de um jogo gravado. */
+  ae?: AnalyticsEngineDataset
 }
 
 export type SyncResult = {
@@ -481,9 +484,15 @@ const KNOCKOUT_STAGES = new Set([
   'FINAL',
 ])
 
+/** Fases de pontos: o `matchday` é a rodada numérica. */
+const LEAGUE_STAGES = new Set(['REGULAR_SEASON', 'GROUP_STAGE', 'LEAGUE_STAGE'])
+
 function mapRound(matchday: number | null, stage: string): string {
-  if (KNOCKOUT_STAGES.has(stage)) return stage
-  return matchday !== null ? String(matchday) : stage
+  if (KNOCKOUT_STAGES.has(stage) || matchday === null) return stage
+  if (!stage || LEAGUE_STAGES.has(stage)) return String(matchday)
+  // Em outra fase o matchday recomeça em 1. Sem o prefixo, o jogo entraria na
+  // Rodada 1 da fase de pontos.
+  return `${stage}_${matchday}`
 }
 
 /**
@@ -568,6 +577,13 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        -- Brasileirão (21h BRT), então detectar pelo horário daria falso positivo.
        start_time         = CASE WHEN excluded.postponed = 1
                                  THEN matches.start_time ELSE excluded.start_time END,
+       -- O provedor também corrige times, fase e rodada de um jogo já gravado. Com
+       -- o mando invertido, o gatilho matches_swap_predictions (migration 0039)
+       -- inverte os palpites do jogo na mesma instrução.
+       home_team_id       = excluded.home_team_id,
+       away_team_id       = excluded.away_team_id,
+       phase              = excluded.phase,
+       round              = excluded.round,
        group_name         = excluded.group_name,
        leg                = excluded.leg,
        duration           = excluded.duration,
@@ -583,10 +599,15 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        -- o vencedor dos pênaltis sem mexer no placar canônico.
        -- Quando o jogo corrigido é a ida de um confronto já encerrado, scoring.ts
        -- repontua a volta junto, porque o classificado depende do agregado.
+       -- Times e fase também mudam os pontos: o palpite é lido pela posição dos
+       -- times, e a fase decide classificado e pênaltis.
        scored_at  = CASE
          WHEN matches.home_score IS NOT excluded.home_score
            OR matches.away_score IS NOT excluded.away_score
            OR matches.penalty_winner IS NOT excluded.penalty_winner
+           OR matches.home_team_id IS NOT excluded.home_team_id
+           OR matches.away_team_id IS NOT excluded.away_team_id
+           OR matches.phase IS NOT excluded.phase
          THEN NULL ELSE matches.scored_at END
      -- Uma resposta atrasada do provedor não pode desfazer um resultado final
      -- (inclusive obtido pelo fallback). Correções finais continuam aceitas.
@@ -594,11 +615,15 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        -- Só grava quando algum campo do SET muda. O sync reenvia a rodada inteira
        -- a cada tick e quase sempre nada mudou; sem este filtro cada jogo custava
        -- uma gravação da linha e dos índices (~75% das gravações do D1). Cada
-       -- linha espelha um campo do SET acima (scored_at só muda junto com placar
-       -- ou penalty_winner): ao acrescentar um campo no SET, acrescente aqui.
+       -- linha espelha um campo do SET acima (scored_at só muda junto com placar,
+       -- penalty_winner, times ou fase): ao acrescentar um campo no SET, acrescente aqui.
        AND (
          (matches.locked_at IS NULL
            AND (matches.status IN ('live', 'finished') OR excluded.locked_at IS NOT NULL))
+         OR matches.home_team_id       IS NOT excluded.home_team_id
+         OR matches.away_team_id       IS NOT excluded.away_team_id
+         OR matches.phase              IS NOT excluded.phase
+         OR matches.round              IS NOT excluded.round
          OR matches.status             IS NOT excluded.status
          OR matches.postponed          IS NOT excluded.postponed
          OR matches.home_score         IS NOT excluded.home_score
@@ -612,12 +637,63 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
          OR matches.away_penalty_goals IS NOT excluded.away_penalty_goals
        )`
 
+type TeamChange = { externalId: string; kind: 'swap' | 'replace' }
+
+/**
+ * Jogos já gravados que o provedor traz com outros times: `swap` quando só o
+ * mando inverteu, `replace` quando um time mudou. Precisa ser lido antes do
+ * upsert, que grava os times novos.
+ */
+async function findTeamChanges(
+  db: D1Database,
+  provider: string,
+  rows: MatchUpsertRow[],
+): Promise<TeamChange[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT external_id, home_team_id, away_team_id FROM matches
+       WHERE provider = ? AND external_id IN (SELECT value FROM json_each(?))`,
+    )
+    .bind(provider, JSON.stringify(rows.map((row) => row.externalId)))
+    .all<{ external_id: string; home_team_id: string; away_team_id: string }>()
+  const stored = new Map(results.map((match) => [match.external_id, match]))
+  return rows.flatMap((row) => {
+    const old = stored.get(row.externalId)
+    if (!old || (old.home_team_id === row.homeTeamId && old.away_team_id === row.awayTeamId)) {
+      return []
+    }
+    const swap = old.home_team_id === row.awayTeamId && old.away_team_id === row.homeTeamId
+    return [{ externalId: row.externalId, kind: swap ? 'swap' : 'replace' }]
+  })
+}
+
+/**
+ * Grava as linhas com MATCH_UPSERT_SQL e registra `match_teams_changed` para cada
+ * jogo que o provedor trouxe com outros times.
+ */
+export async function writeMatchUpserts(
+  db: D1Database,
+  statements: D1PreparedStatement[],
+  rows: MatchUpsertRow[],
+  scope: { ae?: AnalyticsEngineDataset; provider: string; competitionId: string },
+): Promise<void> {
+  if (statements.length === 0) return
+  const changes = await findTeamChanges(db, scope.provider, rows)
+  await batchStatements(db, statements)
+  for (const change of changes) {
+    tryLogEvent(scope.ae, 'match_teams_changed', {
+      blobs: [scope.provider, scope.competitionId, change.externalId, change.kind],
+    })
+  }
+}
+
 async function upsertMatches(
   db: D1Database,
   competitionId: string,
   matches: ApiMatch[],
   teamIds: Map<number, string>,
   now: string,
+  ae: AnalyticsEngineDataset | undefined,
 ): Promise<MatchUpsertRow[]> {
   const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
   const rows: MatchUpsertRow[] = []
@@ -655,9 +731,7 @@ async function upsertMatches(
     )
   }
 
-  if (matchStatements.length > 0) {
-    await batchStatements(db, matchStatements)
-  }
+  await writeMatchUpserts(db, matchStatements, rows, { ae, provider: PROVIDER, competitionId })
 
   return rows
 }
@@ -712,6 +786,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
       db: opts.db,
       now: opts.now,
       onHttpAttempt: opts.onHttpAttempt,
+      ae: opts.ae,
     })
   }
 
@@ -743,7 +818,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   const competition = await upsertCompetition(db, apiComp, competitionName, season)
   const { teamMap, teamIds } = await upsertTeams(db, matches)
   const now = opts.now ?? isoSeconds(new Date())
-  const rows = await upsertMatches(db, competition.id, matches, teamIds, now)
+  const rows = await upsertMatches(db, competition.id, matches, teamIds, now, opts.ae)
   await reopenLeg1ScoredAsSingle(db, competition.id, rows)
 
   return {

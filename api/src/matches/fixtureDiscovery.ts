@@ -81,6 +81,7 @@ export async function discoverFixtures(
           context: 'discovery',
           competitionId: comp.id,
         }),
+        ae,
       })
       fixturesUpdated += result?.matches ?? 0
       // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após

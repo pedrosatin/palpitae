@@ -24,6 +24,8 @@ export type EventType =
   | 'match_results_fallback'
   // Tentativa HTTP a um provedor de partidas (ESPN, football-data): toda falha + amostra de sucessos
   | 'provider_http_attempt'
+  // Provedor trocou os times de um jogo já gravado (mando invertido ou time substituído)
+  | 'match_teams_changed'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'
