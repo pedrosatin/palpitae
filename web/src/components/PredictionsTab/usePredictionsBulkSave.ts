@@ -173,6 +173,17 @@ export function usePredictionsBulkSave(
     roundViewRef,
   } = useBulkSaveStatus(selectedRound)
 
+  function applySaved(
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) {
+    setPredictions((prev) =>
+      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
+    )
+  }
+
   function handleSaved(
     matchId: string,
     home: number,
@@ -180,9 +191,7 @@ export function usePredictionsBulkSave(
     penaltyWinner: 'home' | 'away' | null,
   ) {
     setHasSavedPredictions(true)
-    setPredictions((prev) =>
-      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
-    )
+    applySaved(matchId, home, away, penaltyWinner)
   }
 
   function pendingDrafts() {
@@ -217,15 +226,14 @@ export function usePredictionsBulkSave(
 
       const data = (await res.json()) as BulkSaveResponse
       const savedSet = new Set(data.saved)
-      for (const p of toSave) {
-        if (savedSet.has(p.match_id)) {
-          handleSaved(
-            p.match_id,
-            p.predicted_home_score,
-            p.predicted_away_score,
-            p.predicted_penalty_winner ?? null,
-          )
-        }
+      const accepted = toSave.filter((p) => savedSet.has(p.match_id))
+      for (const p of accepted) {
+        applySaved(
+          p.match_id,
+          p.predicted_home_score,
+          p.predicted_away_score,
+          p.predicted_penalty_winner ?? null,
+        )
       }
 
       // Home cards leem pending_predictions via fetchCachedJson (TTL 30s).
@@ -233,7 +241,10 @@ export function usePredictionsBulkSave(
       invalidateApiCache('groups:')
       if (data.saved.length > 0) onBulkSaved?.(data.saved)
 
+      // O aceito fica gravado em qualquer rodada. O convite de avaliação, como o
+      // aviso, abre só na rodada em que o envio começou.
       if (roundViewRef.current !== roundView) return
+      if (accepted.length > 0) setHasSavedPredictions(true)
       const rejected = bulkRejectionMessage(toSave.map((p) => p.match_id), data)
       if (rejected) setBulkError(rejected)
       else startSavedAllTimer()

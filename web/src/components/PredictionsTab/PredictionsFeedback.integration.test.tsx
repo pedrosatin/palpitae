@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { config } from '../../config'
@@ -83,6 +83,33 @@ describe('feedback after confirmed prediction persistence', () => {
       expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
       expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
     }
+  })
+
+  it('does not offer feedback in the next round when the bulk save answers after the change', async () => {
+    let finish!: () => void
+    const matches = [makeMatch({ id: 'm1', round: '1' }), makeMatch({ id: 'm2', round: '2' })]
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      const path = String(url)
+      if (init?.method === 'PUT') {
+        return new Promise<Response>((resolve) => {
+          finish = () => resolve(new Response(JSON.stringify({ saved: ['m1'] })))
+        })
+      }
+      if (path.includes('/matches')) {
+        return new Response(JSON.stringify({ matches, default_round: '1' }))
+      }
+      if (path.includes('/predictions')) return new Response(JSON.stringify({ predictions: [] }))
+      if (path.includes('/groups')) return new Response(JSON.stringify({ groups: [] }))
+      throw new Error(`Unexpected fetch ${path}`)
+    })
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+    await pickScore()
+    await userEvent.click(screen.getByRole('button', { name: /Salvar todos \(1\)/i }))
+    await userEvent.click(screen.getByRole('button', { name: /próxima rodada/i }))
+
+    await act(async () => finish())
+    expect(await screen.findByRole('button', { name: 'Salvar todos' })).toBeInTheDocument()
+    expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
   })
 
   it('does not offer feedback when a bulk save fails', async () => {
