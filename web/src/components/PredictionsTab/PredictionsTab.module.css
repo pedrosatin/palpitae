@@ -10,7 +10,8 @@
   padding-bottom: calc(3.5rem + var(--space-3));
 }
 
-/* A confirmação de "Aplicar também em" pode ocupar até três linhas na barra fixa. */
+/* A confirmação de "Aplicar também em" e o aviso de palpite recusado no "Salvar todos"
+   podem ocupar até três linhas na barra fixa. */
 .rootWithSaveBarTall {
   padding-bottom: calc(8rem + var(--space-3));
 }

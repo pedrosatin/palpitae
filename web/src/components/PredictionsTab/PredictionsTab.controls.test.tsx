@@ -147,6 +147,120 @@ describe('PredictionsTab – barra Salvar todos', () => {
   })
 })
 
+describe('PredictionsTab – resultado do "Salvar todos"', () => {
+  const json = (body: unknown, status = 200) =>
+    Promise.resolve(new Response(JSON.stringify(body), { status }))
+  const round1 = [
+    makeMatch({ id: 'm1', home_team_name: 'Flamengo', away_team_name: 'Palmeiras' }),
+    makeMatch({ id: 'm2', home_team_name: 'Corinthians', away_team_name: 'Bahia' }),
+    makeMatch({ id: 'm3', home_team_name: 'Grêmio', away_team_name: 'Cruzeiro' }),
+  ]
+  const round2 = makeMatch({ id: 'm4', round: '2' })
+
+  async function editRound1(teams = ['Palmeiras', 'Bahia', 'Cruzeiro']) {
+    await screen.findByText('Flamengo')
+    for (const team of teams) {
+      await userEvent.click(screen.getByRole('button', { name: `Aumentar placar ${team}` }))
+    }
+  }
+
+  it('com jogo aceito, travado e não encontrado, explica a recusa e não diz "Tudo salvo!"', async () => {
+    mockApi([...round1, round2], [savedPick('m1'), savedPick('m2'), savedPick('m3')], '1', () =>
+      json({ ok: true, saved: ['m1'], locked: ['m2'], not_found: ['m3'] }),
+    )
+    const { container } = renderTab()
+    await editRound1()
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar todos (3)' }))
+
+    expect(
+      await screen.findByText(
+        '1 palpite salvo. 1 jogo já bloqueado ficou de fora. 1 jogo não foi encontrado neste ' +
+          'campeonato. Recarregue a página para atualizar os jogos.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
+    // O aceito sai do rascunho. Os recusados continuam no card e no contador.
+    expect(screen.getByRole('button', { name: 'Salvar todos (2)' })).toBeEnabled()
+    expect(screen.getAllByText('alterado, não salvo')).toHaveLength(2)
+    // O aviso ocupa até três linhas na barra fixa, e o último card não fica atrás dela.
+    expect(container.firstElementChild).toHaveClass('rootWithSaveBarTall')
+
+    await userEvent.click(screen.getByRole('button', { name: /próxima rodada/i }))
+    expect(screen.queryByText(/ficou de fora/)).not.toBeInTheDocument()
+  })
+
+  it('sem motivo na resposta, pede para tentar de novo', async () => {
+    mockApi([...round1], [savedPick('m1'), savedPick('m2')], '1', () => json({ saved: ['m1'] }))
+    renderTab()
+    await editRound1(['Palmeiras', 'Bahia'])
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar todos (2)' }))
+
+    expect(
+      await screen.findByText('1 palpite salvo. 1 palpite não foi salvo. Tente novamente.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Salvar todos (1)' })).toBeEnabled()
+  })
+
+  it('o erro do envio não aparece na rodada seguinte', async () => {
+    mockApi([...round1, round2], [savedPick('m1')], '1', () =>
+      json({ error: 'Erro ao salvar palpites' }, 500),
+    )
+    renderTab()
+    await editRound1(['Palmeiras'])
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar todos (1)' }))
+    expect(await screen.findByText('Erro ao salvar palpites')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /próxima rodada/i }))
+    expect(screen.queryByText('Erro ao salvar palpites')).not.toBeInTheDocument()
+  })
+
+  /** Envio que só responde quando o teste chama `finish`. */
+  function deferredBulk(respond: () => Promise<Response>) {
+    const control = { finish: () => {} }
+    mockApi(
+      [...round1, round2],
+      [savedPick('m1')],
+      '1',
+      () =>
+        new Promise<Response>((resolve) => {
+          control.finish = () => void respond().then(resolve)
+        }),
+    )
+    return control
+  }
+
+  async function saveAndLeaveRound1() {
+    renderTab()
+    await editRound1(['Palmeiras'])
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar todos (1)' }))
+    await userEvent.click(screen.getByRole('button', { name: /próxima rodada/i }))
+    expect(screen.getByRole('combobox')).toHaveValue('2')
+  }
+
+  it('o sucesso de um envio que volta depois da troca de rodada fica na rodada dele', async () => {
+    const bulk = deferredBulk(() => json({ ok: true, saved: ['m1'], locked: [], not_found: [] }))
+    await saveAndLeaveRound1()
+
+    await act(async () => bulk.finish())
+    expect(await screen.findByRole('button', { name: 'Salvar todos' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
+
+    // O palpite aceito continua gravado: na rodada 1 não há mais o que salvar.
+    await userEvent.click(screen.getByRole('button', { name: /rodada anterior/i }))
+    expect(screen.getByRole('button', { name: 'Salvar todos' })).toBeDisabled()
+    expect(screen.getByLabelText('Placar Palmeiras')).toHaveValue(1)
+  })
+
+  it('o erro de um envio que volta depois da troca de rodada não aparece na rodada nova', async () => {
+    const bulk = deferredBulk(() => json({ error: 'Erro ao salvar palpites' }, 500))
+    await saveAndLeaveRound1()
+
+    await act(async () => bulk.finish())
+    expect(await screen.findByRole('button', { name: 'Salvar todos' })).toBeInTheDocument()
+    expect(screen.queryByText('Erro ao salvar palpites')).not.toBeInTheDocument()
+  })
+})
+
 // O jsdom não aplica as media queries, e o Vitest carrega só os nomes de classe,
 // sem o CSS. O teste confere que os −/+ usam a classe que essas regras miram.
 describe('MatchCard – área de toque do stepper', () => {
