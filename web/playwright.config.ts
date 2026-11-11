@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
 // O aviso de cookies só existe com um id do GA, e ele não pode cobrir os demais testes.
-const consentUrl = 'http://localhost:5174'
+const consentPort = process.env.CONSENT_TEST_PORT || '5174'
+const consentUrl = `http://localhost:${consentPort}`
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -33,7 +34,7 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: `VITE_GA_MEASUREMENT_ID=G-TEST123 VITE_API_URL=${consentUrl}/api VITE_AUTH_URL=${consentUrl} npm run dev -- --port 5174 --strictPort`,
+      command: `VITE_GA_MEASUREMENT_ID=${process.env.REAL_GTAG_ID || 'G-TEST123'} VITE_API_URL=${consentUrl}/api VITE_AUTH_URL=${consentUrl} npm run dev -- --port ${consentPort} --strictPort`,
       url: consentUrl,
       reuseExistingServer: !process.env.CI,
     },

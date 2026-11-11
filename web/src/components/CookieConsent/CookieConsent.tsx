@@ -3,21 +3,15 @@ import { gaEnabled, getStoredConsent, setConsent } from '../../analytics/ga'
 import styles from './CookieConsent.module.css'
 
 /**
- * Banner de consentimento de cookies (LGPD) para o Google Analytics.
- *
- * Só aparece quando o GA está configurado (`gaEnabled`) e ainda não houve uma
- * escolha salva. "Aceitar" faz upgrade do Consent Mode para `granted`;
- * "Recusar" mantém o GA em modo sem cookie. A decisão persiste em localStorage,
- * então o banner não reaparece nas próximas visitas.
- *
- * A decisão de mostrar depende de `localStorage`, que não existe no build que
- * pré-renderiza a landing (ver `src/entry-server.tsx`). Por isso ela sai de um
- * efeito, e não do estado inicial: no primeiro render — o único que a hidratação
- * compara com o HTML gerado no build — o banner é sempre ausente nos dois lados.
- * Ler o storage durante o render devolveria valores diferentes no servidor e no
- * navegador, que é a receita clássica de erro de hidratação.
+ * Aviso de cookies do GA e botão de preferências no rodapé. O aviso abre sozinho
+ * sem escolha salva e reabre pelo botão.
+ * A leitura do storage fica no efeito para preservar a hidratação da landing:
+ * tanto o HTML pré-renderizado quanto o primeiro render começam sem o aviso.
  */
 export default function CookieConsent() {
+  const openedFromPreferences = useRef(false)
+  const preferencesRef = useRef<HTMLButtonElement>(null)
+  const rejectRef = useRef<HTMLButtonElement>(null)
   const bannerRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
 
@@ -26,6 +20,7 @@ export default function CookieConsent() {
   }, [])
 
   useEffect(() => {
+    if (visible && openedFromPreferences.current) rejectRef.current?.focus()
     const banner = bannerRef.current
     if (!visible || !banner) return
     const updateHeight = () => {
@@ -46,41 +41,72 @@ export default function CookieConsent() {
     }
   }, [visible])
 
-  if (!visible) return null
+  function dismiss() {
+    setVisible(false)
+    if (openedFromPreferences.current) preferencesRef.current?.focus({ preventScroll: true })
+    openedFromPreferences.current = false
+  }
+
+  if (!gaEnabled) return null
 
   return (
-    <div
-      ref={bannerRef}
-      className={styles.banner}
-      role="dialog"
-      aria-label="Aviso de cookies"
-      aria-live="polite"
-    >
-      <p className={styles.text}>
-        Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.
-      </p>
-      <div className={styles.actions}>
+    <>
+      <div className={styles.preferences}>
         <button
+          ref={preferencesRef}
           type="button"
-          className={styles.reject}
+          aria-expanded={visible}
           onClick={() => {
-            setConsent('denied')
-            setVisible(false)
+            openedFromPreferences.current = true
+            setVisible(true)
+            rejectRef.current?.focus()
           }}
         >
-          Recusar
-        </button>
-        <button
-          type="button"
-          className={styles.accept}
-          onClick={() => {
-            setConsent('granted')
-            setVisible(false)
-          }}
-        >
-          Aceitar
+          Preferências de cookies
         </button>
       </div>
-    </div>
+      {visible && (
+        <div
+          ref={bannerRef}
+          className={styles.banner}
+          role="dialog"
+          aria-label="Aviso de cookies"
+          aria-live="polite"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.stopPropagation()
+              dismiss()
+            }
+          }}
+        >
+          <p className={styles.text}>
+            Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.
+          </p>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              ref={rejectRef}
+              className={styles.reject}
+              onClick={() => {
+                setConsent('denied')
+                dismiss()
+              }}
+            >
+              Recusar
+            </button>
+            <button
+              type="button"
+              className={styles.accept}
+              onClick={() => {
+                setConsent('granted')
+                dismiss()
+              }}
+            >
+              Aceitar
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
