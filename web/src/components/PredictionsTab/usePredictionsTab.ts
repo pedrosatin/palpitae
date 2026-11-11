@@ -39,9 +39,7 @@ async function fetchGroupPredictions(groupId: string): Promise<{
   importCompleted: boolean
   importSources: ImportSources
 }> {
-  const res = await apiFetch(
-    `${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`,
-  )
+  const res = await apiFetch(`${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`)
   if (!res.ok) throw new Error('Erro ao carregar palpites')
   const data = (await res.json()) as PredictionsResponse
   const predictions: PredictionMap = new Map()
@@ -174,6 +172,24 @@ function usePredictionsFetch(
 }
 
 /**
+ * Junta a listagem `fetched` ao que está na tela. Os jogos de `savedSince` foram
+ * salvos depois que a listagem foi pedida: o palpite da tela é mais novo que o
+ * dela e fica. Nos outros jogos vale a listagem.
+ */
+function mergeFetchedPredictions(
+  fetched: PredictionMap,
+  current: PredictionMap,
+  savedSince: Set<string>,
+): PredictionMap {
+  const merged = new Map(fetched)
+  for (const matchId of savedSince) {
+    const saved = current.get(matchId)
+    if (saved) merged.set(matchId, saved)
+  }
+  return merged
+}
+
+/**
  * Palpites que cada grupo irmão ainda pode trazer: jogos abertos sem palpite aqui.
  * Recalcula a cada palpite salvo, sem nova ida à API, e descarta jogos que
  * travaram com a página aberta.
@@ -243,9 +259,18 @@ function usePredictionsImport(
   setImportCompleted: Dispatch<SetStateAction<boolean>>,
   importSources: ImportSources,
   setImportSources: Dispatch<SetStateAction<ImportSources>>,
+  pointsExact: number,
 ) {
   const scope = useRef({ active: true })
-  const otherGroups = useSiblingGroups(groupId, competitionId, userId)
+  const siblings = useSiblingGroups(groupId, competitionId, userId)
+  // Grupo "só vencedor" não é origem para grupo de placar exato: a API recusa, porque
+  // o 1x0 do botão não é um placar palpitado.
+  const otherGroups = siblings.filter((g) => !(pointsExact > 0 && g.points_exact === 0))
+  // Jogos salvos enquanto a listagem pedida depois da importação não chega.
+  const savedDuringRefresh = useRef<Set<string> | null>(null)
+  function noteSaved(matchIds: string[]) {
+    for (const id of matchIds) savedDuringRefresh.current?.add(id)
+  }
   const [importExpanded, setImportExpanded] = useState(false)
   const [importSourceId, setImportSourceId] = useState<string>('')
   const [importing, setImporting] = useState(false)
@@ -267,6 +292,7 @@ function usePredictionsImport(
     setImportedFromName(null)
     return () => {
       current.active = false
+      savedDuringRefresh.current = null
     }
   }, [groupId, competitionId, userId])
 
@@ -302,12 +328,15 @@ function usePredictionsImport(
         invalidateApiCache('groups:')
       }
       if (msg) setImportFeedback({ ok: true, message: msg })
+      const savedSince = new Set<string>()
+      savedDuringRefresh.current = savedSince
       try {
         const refreshed = await fetchGroupPredictions(groupId)
         if (current.active) {
           // O importado muda o palpite salvo, e `usePredictionDrafts` descarta o
-          // rascunho digitado sobre o valor anterior.
-          setPredictions(refreshed.predictions)
+          // rascunho digitado sobre o valor anterior. O palpite salvo enquanto a
+          // listagem chegava fica.
+          setPredictions((prev) => mergeFetchedPredictions(refreshed.predictions, prev, savedSince))
           if (refreshed.importSources) setImportSources(refreshed.importSources)
         }
       } catch {
@@ -318,6 +347,8 @@ function usePredictionsImport(
               .filter(Boolean)
               .join(' '),
           })
+      } finally {
+        if (savedDuringRefresh.current === savedSince) savedDuringRefresh.current = null
       }
     } catch (e) {
       if (current.active) setImportFeedback({ ok: false, message: (e as Error).message })
@@ -329,6 +360,7 @@ function usePredictionsImport(
   return {
     importExpanded,
     setImportExpanded,
+    siblings,
     otherGroups,
     importOptions,
     importPending,
@@ -338,6 +370,7 @@ function usePredictionsImport(
     importFeedback,
     importedFromName,
     handleImport,
+    noteSaved,
   }
 }
 
@@ -382,6 +415,7 @@ export function usePredictionsTab(
   const {
     importExpanded,
     setImportExpanded,
+    siblings,
     otherGroups,
     importOptions,
     importPending,
@@ -391,6 +425,7 @@ export function usePredictionsTab(
     importFeedback,
     importedFromName,
     handleImport,
+    noteSaved,
   } = usePredictionsImport(
     groupId,
     competitionId,
@@ -402,6 +437,7 @@ export function usePredictionsTab(
     setImportCompleted,
     importSources,
     setImportSources,
+    pointsExact,
   )
 
   const {
@@ -437,7 +473,7 @@ export function usePredictionsTab(
     retryReplicate,
   } = usePredictionsReplicate(
     { groupId, competitionId, userId, round: selectedRound, pointsExact },
-    otherGroups,
+    siblings,
   )
 
   const {
@@ -456,7 +492,10 @@ export function usePredictionsTab(
     selectedRound,
     matches,
     unsavedDrafts,
-    replicate,
+    (matchIds) => {
+      noteSaved(matchIds)
+      void replicate(matchIds)
+    },
   )
 
   // Com a opção marcada, o palpite salvo no card vai também para os outros grupos.
@@ -466,6 +505,7 @@ export function usePredictionsTab(
     away: number,
     penaltyWinner: 'home' | 'away' | null,
   ) {
+    noteSaved([matchId])
     handleSaved(matchId, home, away, penaltyWinner)
     void replicate([matchId])
   }

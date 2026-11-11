@@ -3,7 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess } from '../auth/permissions'
 import { defaultRoundSql, roundRuleBinds } from '../matches/defaultRound'
-import { isMatchLocked, lockedSql } from '../matches/locking'
+import { isMatchLocked, lockedSql, SQL_NOW } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { isKnockoutPhase, orderByRound, roundLabel } from '../matches/rounds'
 import { resolveSingleMatchClassified, resolveTwoLegClassified } from '../matches/scoring'
@@ -19,7 +19,7 @@ import type { AppContext } from '../types'
 import { getGroupMembership, getGroupMembershipTimed } from '../groups/membership'
 import { fetchOpenPickers, indexOpenPickers } from './openPickers'
 import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
-import { handleReplicatePost } from './replicate'
+import { acceptsFrom, type CopyGroup, handleReplicatePost, planCopy } from './replicate'
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -1277,31 +1277,38 @@ router.put('/bulk', requireAuth, handleBulkPut)
 /**
  * POST /predictions/import
  *
- * Copies the authenticated user's predictions from one group to another group
- * of the same competition. Useful when a user belongs to multiple groups and
- * wants to reuse the same predictions.
- *
- * Only unlocked predictions (jogo ainda não começou, ou adiado) are copied. Already-locked
- * matches are silently skipped and reported in `locked_skipped`. Existing
- * predictions in the target group are overwritten, unless `only_missing` is true:
- * then only matches without a prediction in the target are filled.
+ * Copia os palpites do usuário de um grupo para outro do mesmo campeonato, com
+ * as regras de `POST /predictions/replicate` (`planCopy`):
+ *   - origem "só vencedor" não grava em destino que pontua placar exato (422);
+ *   - destino "só vencedor" recebe o resultado do placar (1x0, 0x0 ou 0x1);
+ *   - jogo travado não é copiado e entra em `locked_skipped`. A escrita confere o
+ *     travamento de novo, com o relógio do banco;
+ *   - `imported` conta o que ficou no destino: o palpite gravado e o que já era igual.
+ *     O jogo que a escrita recusou sai da conta, e a importação só fica marcada como
+ *     concluída se `imported` for maior que zero;
+ *   - o vencedor dos pênaltis da volta sai do agregado que o destino vai ter;
+ *   - o palpite do destino que já é igual não é regravado.
+ * O palpite que o destino já tinha é substituído, salvo com `only_missing`, que
+ * só preenche os jogos sem palpite no destino.
  *
  * Body: { source_group_id, target_group_id, only_missing? }
  *
  * Response: { ok: true, imported: number, locked_skipped: number }
  *
  * Errors:
- *   400 — missing/invalid fields
- *   403 — user not in one of the groups
- *   404 — group not found
- *   422 — groups belong to different competitions
+ *   400 — campos ausentes ou inválidos
+ *   403 — usuário fora de um dos grupos
+ *   404 — grupo não encontrado
+ *   422 — grupos de campeonatos diferentes, ou origem "só vencedor" com destino de placar exato
  */
 async function verifyGroupsForImport(
   db: D1Database,
   userId: string,
   sourceGroupId: string,
   targetGroupId: string,
-): Promise<{ error: string; status: ContentfulStatusCode } | { competitionId: string }> {
+): Promise<
+  { error: string; status: ContentfulStatusCode } | { source: CopyGroup; target: CopyGroup }
+> {
   // Verify user is an active member of both groups (same rule as every group route)
   const [sourceMembership, targetMembership] = await Promise.all([
     getGroupMembership(db, sourceGroupId, userId),
@@ -1317,71 +1324,29 @@ async function verifyGroupsForImport(
   }
 
   // Verify both groups belong to the same competition
-  const [sourceGroup, targetGroup] = await Promise.all([
-    db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
-      .bind(sourceGroupId)
-      .first<{ competition_id: string }>(),
-    db
-      .prepare(`SELECT competition_id FROM groups WHERE id = ? AND deleted_at IS NULL`)
-      .bind(targetGroupId)
-      .first<{ competition_id: string }>(),
+  const groupSql = `SELECT id, competition_id, points_exact FROM groups WHERE id = ? AND deleted_at IS NULL`
+  const [source, target] = await Promise.all([
+    db.prepare(groupSql).bind(sourceGroupId).first<CopyGroup>(),
+    db.prepare(groupSql).bind(targetGroupId).first<CopyGroup>(),
   ])
 
-  if (!sourceGroup || !targetGroup) {
+  if (!source || !target) {
     return { error: 'Grupo não encontrado', status: 404 }
   }
 
-  if (sourceGroup.competition_id !== targetGroup.competition_id) {
+  if (source.competition_id !== target.competition_id) {
     return { error: 'Os grupos pertencem a campeonatos diferentes', status: 422 }
   }
 
-  return { competitionId: targetGroup.competition_id }
-}
+  if (!acceptsFrom(source, target)) {
+    return {
+      error:
+        'O grupo de origem palpita só o vencedor, e este grupo pontua o placar exato. Importe de um grupo com placar.',
+      status: 422,
+    }
+  }
 
-async function fetchPredictionsToImport(
-  db: D1Database,
-  userId: string,
-  sourceGroupId: string,
-  targetGroupId: string,
-  onlyMissing: boolean,
-  now: string,
-) {
-  // Fetch user's predictions from source group for unlocked matches only
-  const missingFilter = onlyMissing
-    ? ` AND NOT EXISTS (SELECT 1 FROM predictions t
-         WHERE t.user_id = p.user_id AND t.group_id = ? AND t.match_id = p.match_id)`
-    : ''
-  const sourcePredictions = await db
-    .prepare(
-      `SELECT p.match_id, p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner
-       FROM predictions p
-       JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND NOT ${lockedSql()}${missingFilter}`,
-    )
-    .bind(userId, sourceGroupId, now, ...(onlyMissing ? [targetGroupId] : []))
-    .all<{
-      match_id: string
-      predicted_home_score: number
-      predicted_away_score: number
-      predicted_penalty_winner: 'home' | 'away' | null
-    }>()
-
-  const toImport = sourcePredictions.results
-
-  // Count locked source predictions to report how many were skipped
-  const lockedCount = await db
-    .prepare(
-      `SELECT COUNT(*) AS total FROM predictions p
-       JOIN matches m ON m.id = p.match_id
-       WHERE p.user_id = ? AND p.group_id = ? AND ${lockedSql()}`,
-    )
-    .bind(userId, sourceGroupId, now)
-    .first<{ total: number }>()
-
-  const lockedSkipped = lockedCount?.total ?? 0
-
-  return { toImport, lockedSkipped }
+  return { source, target }
 }
 
 async function handleImportPost(c: Context<AppContext>) {
@@ -1418,64 +1383,66 @@ async function handleImportPost(c: Context<AppContext>) {
   }
 
   const now = new Date().toISOString()
-  const { toImport, lockedSkipped } = await fetchPredictionsToImport(
-    db,
+  const plan = await planCopy(db, {
     userId,
-    source_group_id,
-    target_group_id,
+    source: verified.source,
+    targets: [verified.target],
+    matchIds: null,
     onlyMissing,
     now,
-  )
+  })
+  const planned = plan.results[0].saved
+  let lockedSkipped = plan.lockedMatches.length
 
-  if (toImport.length === 0) {
+  if (planned === 0) {
     return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })
   }
 
-  // Upsert all importable predictions in a single batch
-  const importStmt = db.prepare(
-    `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (user_id, group_id, match_id) DO ${
-       onlyMissing
-         ? 'NOTHING'
-         : `UPDATE SET
-       predicted_home_score     = excluded.predicted_home_score,
-       predicted_away_score     = excluded.predicted_away_score,
-       predicted_penalty_winner = excluded.predicted_penalty_winner,
-       updated_at               = excluded.updated_at`
-     }`,
-  )
-
-  const importStatements = toImport.map((p) =>
-    importStmt.bind(
-      crypto.randomUUID(),
-      userId,
-      target_group_id,
-      p.match_id,
-      p.predicted_home_score,
-      p.predicted_away_score,
-      p.predicted_penalty_winner,
-      now,
-      now,
-    ),
-  )
-
-  importStatements.push(
+  // Palpites e marcador no mesmo lote: se um falha, nada fica gravado. O marcador
+  // entra se algum palpite já era igual ou se o lote gravou algum, o que deixa
+  // no destino uma linha com o `updated_at` deste lote.
+  const alreadyEqual = planned - plan.statements.length
+  const written = await db.batch([
+    ...plan.statements,
     db
       .prepare(`UPDATE group_members SET predictions_import_completed = 1
-      WHERE group_id = ? AND user_id = ?`)
-      .bind(target_group_id, userId),
-  )
-  await db.batch(importStatements)
+      WHERE group_id = ? AND user_id = ?
+        AND (? > 0 OR EXISTS (
+          SELECT 1 FROM predictions p
+          WHERE p.user_id = ? AND p.group_id = ? AND p.updated_at = ?))`)
+      .bind(target_group_id, userId, alreadyEqual, userId, target_group_id, now),
+  ])
+  // A escrita recusa o jogo que travou depois do plano e, com `only_missing`, o
+  // que o destino palpitou nesse intervalo. Nenhum dos dois foi importado.
+  const refused = plan.statementMatches.filter((_, i) => written[i].meta.changes === 0)
+  const imported = planned - refused.length
+  if (refused.length > 0) {
+    const locked = await db
+      .prepare(
+        `SELECT COUNT(*) AS total FROM matches m
+         WHERE m.id IN (SELECT value FROM json_each(?)) AND ${lockedSql('m', SQL_NOW)}`,
+      )
+      .bind(JSON.stringify(refused))
+      .first<{ total: number }>()
+    lockedSkipped += locked?.total ?? 0
+  }
 
-  logEvent(c.env.AE, 'prediction_saved', {
-    blobs: [target_group_id, '', await hashUserId(userId), 'import', verified.competitionId],
-    doubles: [toImport.length],
-  })
+  if (imported > 0) {
+    logEvent(c.env.AE, 'prediction_saved', {
+      blobs: [
+        target_group_id,
+        '',
+        await hashUserId(userId),
+        'import',
+        verified.target.competition_id,
+      ],
+      doubles: [imported],
+    })
+  }
 
   return c.json({
     ok: true,
-    imported: toImport.length,
+    imported,
     locked_skipped: lockedSkipped,
   })
 }

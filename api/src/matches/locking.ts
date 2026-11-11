@@ -21,9 +21,19 @@
  * semanas depois com todo mundo preso ao palpite antigo.
  */
 
-/** Fragmento SQL. Consome UM parâmetro posicional: o `now` em ISO 8601. */
-export function lockedSql(alias = 'm'): string {
-  return `(${alias}.locked_at IS NOT NULL OR ${alias}.status IN ('live', 'finished') OR (${alias}.start_time <= ? AND ${alias}.postponed = 0))`
+/**
+ * Relógio do banco no formato de `Date.prototype.toISOString()`, o mesmo do `now`
+ * que as rotas passam. Para o comando de escrita que confere o travamento no
+ * instante em que grava, e não no instante em que a requisição começou.
+ */
+export const SQL_NOW = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+
+/**
+ * Fragmento SQL. Consome UM parâmetro posicional: o `now` em ISO 8601. Com
+ * `nowSql` (por exemplo `SQL_NOW`), usa essa expressão e não consome parâmetro.
+ */
+export function lockedSql(alias = 'm', nowSql = '?'): string {
+  return `(${alias}.locked_at IS NOT NULL OR ${alias}.status IN ('live', 'finished') OR (${alias}.start_time <= ${nowSql} AND ${alias}.postponed = 0))`
 }
 
 /**

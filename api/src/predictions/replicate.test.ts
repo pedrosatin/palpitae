@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { AppContext } from '../types'
@@ -8,6 +8,7 @@ import { predictionsRouter } from './router'
 
 const handles: ReturnType<typeof createSqliteD1>['sqlite'][] = []
 afterEach(() => {
+  vi.useRealTimers()
   for (const sqlite of handles.splice(0)) sqlite.close()
 })
 
@@ -364,6 +365,20 @@ describe('POST /predictions/replicate', () => {
       target_group_ids: ['g2'],
       match_ids: ['m1', 'm2'],
     })
+    expect(stored('g2', 'm1')).toMatchObject({ h: 0, a: 0 })
+    expect(stored('g2', 'm2')).toMatchObject({ h: 1, a: 1 })
+  })
+
+  it('não grava o jogo cujo início passou entre o planejamento e a escrita', async () => {
+    const { replicate, stored, sqlite } = setup()
+    // O relógio do handler fica 10 s atrás do relógio do banco. `status` e `locked_at` não mudam.
+    const real = Date.now()
+    sqlite
+      .prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`)
+      .run(new Date(real - 5_000).toISOString())
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(real - 10_000)
+    await replicate({ source_group_id: 'src', target_group_ids: ['g2'], match_ids: ['m1', 'm2'] })
     expect(stored('g2', 'm1')).toMatchObject({ h: 0, a: 0 })
     expect(stored('g2', 'm2')).toMatchObject({ h: 1, a: 1 })
   })
