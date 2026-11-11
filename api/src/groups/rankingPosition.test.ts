@@ -151,8 +151,8 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
     expect(rows()).toContainEqual({ user_id: 'dudu', total_points: 99 })
   })
 
-  it('recálculo da pontuação não grava linha de quem saiu', async () => {
-    const { sqlite, db, request, rows } = setup()
+  it('recálculo durante a ausência atualiza quem saiu sem pô-lo no ranking', async () => {
+    const { sqlite, db, request, ranking, detailPosition } = setup()
     sqlite.exec(`
       INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
         VALUES ('m2','c','m2','test','h','v','2026-02-08T00:00:00Z','finished','2',2,0);
@@ -168,7 +168,15 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
     sqlite.exec("UPDATE matches SET scored_at = NULL WHERE id = 'm2'")
     await scoreUnprocessedMatches('c', db)
 
-    expect(rows().map((r) => (r as { user_id: string }).user_id)).toEqual(['bia'])
+    expect(await ranking('ana')).toEqual(['bia', 'ana'])
+    expect(await detailPosition('bia')).toBe(1)
+
+    // dudu volta depois do encerramento e encontra os pontos apurados na ausência.
+    expect((await request('dudu', '/groups/join', 'POST')).status).toBe(200)
+    expect(await ranking('ana')).toEqual(['bia', 'dudu', 'ana'])
+    expect(await detailPosition('dudu')).toBe(2)
+    const dudu = (await request('dudu', '/groups/g')).body.group as { user_points: number }
+    expect(dudu.user_points).toBeGreaterThan(0)
   })
 
   it('sair e voltar em competição encerrada recupera pontos e posição', async () => {
@@ -276,7 +284,7 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
   })
 
   it('banido com linha residual não aparece no ranking, no pódio nem na contagem', async () => {
-    const { sqlite, db, leaderboard, request, detailPosition, listed, ranking, rows } = setup()
+    const { sqlite, db, leaderboard, request, detailPosition, listed, ranking } = setup()
     leaderboard("('g','dudu',99,9), ('g','bia',10,1)")
     sqlite.exec(`
       INSERT INTO group_bans (group_id,user_id) VALUES ('g','dudu');
@@ -298,9 +306,10 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
     // O banido não vê mais o grupo na própria lista.
     expect((await request('dudu', '/groups')).body.groups).toEqual([])
 
-    sqlite.exec("UPDATE leaderboard SET total_points = 0 WHERE user_id = 'dudu'")
+    // O recálculo atualiza a linha do banido, mas ela continua fora das leituras.
     sqlite.exec("UPDATE matches SET scored_at = NULL WHERE id = 'm1'")
     await scoreUnprocessedMatches('c', db)
-    expect(rows()).toContainEqual({ user_id: 'dudu', total_points: 0 })
+    expect(await ranking('bia')).toEqual(['bia', 'ana', 'caio'])
+    expect(await detailPosition('bia')).toBe(1)
   })
 })

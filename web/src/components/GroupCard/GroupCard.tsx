@@ -30,7 +30,7 @@ export interface GroupWithStats {
   points_exact?: number
   created_at: string
   member_count: number
-  /** Posição no ranking. `null` enquanto o usuário não tem palpite apurado no grupo. */
+  /** Posição no ranking. `null` quando o usuário não tem linha no `leaderboard` do grupo. */
   user_position: number | null
   user_points: number
   pending_predictions: number

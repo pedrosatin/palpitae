@@ -92,9 +92,10 @@ pontuou, o pódio começa no 2º e o grupo fica sem campeão.
 Participante elegível é quem tem linha em `group_members` e não está em
 `group_bans`. Todas as leituras acima partem de `group_members`, então quem saiu ou
 foi banido não aparece nem conta na posição dos outros. A saída não apaga a linha do
-`leaderboard`: ela fica parada, o recálculo só grava linha de participante elegível,
-e quem saiu por conta própria e volta recupera os pontos que tinha, inclusive em
-competição encerrada, com a data de entrada nova. A entrada no grupo não recalcula o
+`leaderboard`, e o recálculo continua atualizando a linha de todos que têm palpite no
+grupo, inclusive de quem saiu. Quem volta encontra os pontos atualizados, inclusive os
+de jogos apurados durante a ausência e em competição encerrada, com a data de entrada
+nova. A entrada no grupo não recalcula o
 ranking.
 
 ## Bônus de pênalti (`points_penalty`)

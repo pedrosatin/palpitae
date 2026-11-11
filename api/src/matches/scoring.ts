@@ -2,7 +2,6 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
 import { isKnockoutPhase } from './rounds'
 import { fetchTieMatches, indexTies, type TieInfo, type TieMatch } from './ties'
-import { notBannedSql } from '../groups/ranking'
 
 export function calculatePoints({
   actualHome,
@@ -156,19 +155,13 @@ export const PREDICTION_POINTS_SQL = 'p.points_awarded + p.penalty_points + p.cl
 export const EXACT_HIT_SQL =
   'CASE WHEN g.points_exact > g.points_winner AND p.points_awarded = g.points_exact THEN 1 ELSE 0 END'
 
-/**
- * Recalcula o ranking dos grupos a partir dos palpites. Só a linha de participante
- * elegível é gravada: a de quem saiu ou foi banido fica como estava na saída.
- */
 function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
   return db
     .prepare(`INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
     SELECT p.group_id, p.user_id, SUM(${PREDICTION_POINTS_SQL}),
       SUM(${EXACT_HIT_SQL}), ?
     FROM predictions p JOIN groups g ON g.id = p.group_id
-    JOIN group_members gm ON gm.group_id = p.group_id AND gm.user_id = p.user_id
-    WHERE p.group_id IN (SELECT value FROM json_each(?)) AND ${notBannedSql('gm')}
-    GROUP BY p.group_id, p.user_id
+    WHERE p.group_id IN (SELECT value FROM json_each(?)) GROUP BY p.group_id, p.user_id
     ON CONFLICT (group_id, user_id) DO UPDATE SET total_points = excluded.total_points,
       exact_hits = excluded.exact_hits, last_updated = excluded.last_updated`)
     .bind(new Date().toISOString(), JSON.stringify(groupIds))
