@@ -74,9 +74,15 @@ describe('feedback after confirmed prediction persistence', () => {
     await pickScore()
     const saveAll = await screen.findByRole('button', { name: /Salvar todos \(1\)/i })
     await userEvent.click(saveAll)
-    await screen.findByRole('button', { name: 'Tudo salvo!' })
-    if (show) expect(await screen.findByText('Foi fácil salvar seus palpites?')).toBeVisible()
-    else expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
+    if (show) {
+      await screen.findByRole('button', { name: 'Tudo salvo!' })
+      expect(await screen.findByText('Foi fácil salvar seus palpites?')).toBeVisible()
+    } else {
+      // O jogo enviado não voltou entre os salvos: nada de "Tudo salvo!".
+      await screen.findByText('1 palpite não foi salvo. Tente novamente.')
+      expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
+      expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()
+    }
   })
 
   it('does not offer feedback when a bulk save fails', async () => {
