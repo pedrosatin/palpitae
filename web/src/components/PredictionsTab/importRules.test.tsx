@@ -19,7 +19,10 @@ const prediction = (matchId: string, home: number, away: number) => ({
 })
 
 /** Dois jogos abertos e um grupo irmão `source` que palpitou os dois. */
-function setup(siblings: unknown[] = [{ id: 'source', name: 'Origem', competition_id: 'c' }]) {
+function setup(
+  siblings: unknown[] = [{ id: 'source', name: 'Origem', competition_id: 'c' }],
+  initial: unknown[] = [],
+) {
   const pendingGets: Array<(response: Response) => void> = []
   let holdGets = false
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
@@ -33,7 +36,7 @@ function setup(siblings: unknown[] = [{ id: 'source', name: 'Origem', competitio
     if (path.includes('/predictions/import')) return json({ imported: 2, locked_skipped: 0 })
     if (path.includes('/predictions?')) {
       if (holdGets) return new Promise<Response>((resolve) => pendingGets.push(resolve))
-      return json({ predictions: [], import_sources: { source: ['m', 'm2'] } })
+      return json({ predictions: initial, import_sources: { source: ['m', 'm2'] } })
     }
     throw new Error(path)
   })
@@ -77,6 +80,44 @@ describe('Leitura antiga depois de uma escrita', () => {
     expect(result.current.predictions.get('m2')).toMatchObject({
       predicted_home_score: 0,
       predicted_away_score: 0,
+    })
+  })
+})
+
+describe('Leitura antiga com palpites preexistentes', () => {
+  it('conserva só o jogo salvo depois que a listagem saiu e mostra o importado nos outros', async () => {
+    const state = setup(undefined, [prediction('m', 1, 1), prediction('m2', 0, 0)])
+    const { result } = renderHook(() => usePredictionsTab('target', 'c'))
+    await waitFor(() => expect(result.current.otherGroups).toHaveLength(1))
+    // Os dois jogos já têm palpite: só o seletor completo sobrescreve.
+    act(() => result.current.setImportExpanded(true))
+    await waitFor(() => expect(result.current.importSourceId).toBe('source'))
+
+    state.hold()
+    let importing!: Promise<void>
+    act(() => {
+      importing = result.current.handleImport()
+    })
+    await waitFor(() => expect(state.pendingGets).toHaveLength(1))
+    // A importação sobrescreveu os dois (2x1 e 4x2). O card salva 3x1 só em `m`.
+    act(() => result.current.handleSaved('m', 3, 1, null))
+    await act(async () => {
+      state.pendingGets[0](
+        json({
+          predictions: [prediction('m', 2, 1), prediction('m2', 4, 2)],
+          import_sources: { source: ['m', 'm2'] },
+        }),
+      )
+      await importing
+    })
+
+    expect(result.current.predictions.get('m')).toMatchObject({
+      predicted_home_score: 3,
+      predicted_away_score: 1,
+    })
+    expect(result.current.predictions.get('m2')).toMatchObject({
+      predicted_home_score: 4,
+      predicted_away_score: 2,
     })
   })
 })

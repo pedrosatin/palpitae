@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import { hasPilotAccess } from '../auth/permissions'
 import { competitionStatusSql } from '../groups/competitionStatus'
-import { isMatchLocked, lockedSql } from '../matches/locking'
+import { isMatchLocked, lockedSql, SQL_NOW } from '../matches/locking'
 import { resolveTwoLegClassified } from '../matches/scoring'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { fetchTieMatches, indexTies, type TieInfo, type TieMatch } from '../matches/ties'
@@ -193,6 +193,8 @@ function derivedClassified(
 
 type Plan = {
   statements: D1PreparedStatement[]
+  /** Jogo de cada instrução de `statements`, na mesma ordem. */
+  statementMatches: string[]
   results: ReplicateGroupResult[]
 }
 
@@ -208,13 +210,14 @@ function planWrites(input: {
   onlyMissing: boolean
 }): Plan {
   const { db, userId, sourceGroupId, now, targets, ties, existing, onlyMissing } = input
-  // O jogo é relido na própria escrita. Se ele travou depois das consultas, nada é gravado.
+  // O jogo é relido na própria escrita, com o relógio do banco. Se ele travou ou
+  // começou depois das consultas, nada é gravado.
   // Com `onlyMissing`, o palpite salvo no destino depois das consultas também fica.
   const insert = db.prepare(
     `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
      SELECT ?, ?, ?, m.id, ?, ?, ?, ?, ?
      FROM matches m
-     WHERE m.id = ? AND NOT ${lockedSql('m')}
+     WHERE m.id = ? AND NOT ${lockedSql('m', SQL_NOW)}
      ON CONFLICT (user_id, group_id, match_id) DO ${
        onlyMissing
          ? 'NOTHING'
@@ -227,6 +230,7 @@ function planWrites(input: {
   )
   const allSourceByMatch = new Map(input.open.map((r) => [r.match_id, r]))
   const statements: D1PreparedStatement[] = []
+  const statementMatches: string[] = []
   const results: ReplicateGroupResult[] = []
 
   for (const group of targets) {
@@ -299,13 +303,13 @@ function planWrites(input: {
           now,
           now,
           source.match_id,
-          now,
         ),
       )
+      statementMatches.push(source.match_id)
     }
     results.push(result)
   }
-  return { statements, results }
+  return { statements, statementMatches, results }
 }
 
 export type CopyPlan = Plan & {
@@ -341,7 +345,7 @@ export async function planCopy(
   const open = sourceRows.filter((r) => !lockedSet.has(r.match_id))
   const empty = targets.map((g) => ({ group_id: g.id, saved: 0, replaced: 0 }))
   if (targets.length === 0 || open.length === 0) {
-    return { statements: [], results: empty, lockedMatches, missingMatches }
+    return { statements: [], statementMatches: [], results: empty, lockedMatches, missingMatches }
   }
 
   const ties = await fetchTies(db, source.competition_id, open)

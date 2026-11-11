@@ -3,7 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess } from '../auth/permissions'
 import { defaultRoundSql, roundRuleBinds } from '../matches/defaultRound'
-import { isMatchLocked, lockedSql } from '../matches/locking'
+import { isMatchLocked, lockedSql, SQL_NOW } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { isKnockoutPhase, orderByRound, roundLabel } from '../matches/rounds'
 import { resolveSingleMatchClassified, resolveTwoLegClassified } from '../matches/scoring'
@@ -1281,7 +1281,11 @@ router.put('/bulk', requireAuth, handleBulkPut)
  * as regras de `POST /predictions/replicate` (`planCopy`):
  *   - origem "só vencedor" não grava em destino que pontua placar exato (422);
  *   - destino "só vencedor" recebe o resultado do placar (1x0, 0x0 ou 0x1);
- *   - jogo travado não é copiado, entra em `locked_skipped` e é reconferido na escrita;
+ *   - jogo travado não é copiado e entra em `locked_skipped`. A escrita confere o
+ *     travamento de novo, com o relógio do banco;
+ *   - `imported` conta o que ficou no destino: o palpite gravado e o que já era igual.
+ *     O jogo que a escrita recusou sai da conta, e a importação só fica marcada como
+ *     concluída se `imported` for maior que zero;
  *   - o vencedor dos pênaltis da volta sai do agregado que o destino vai ter;
  *   - o palpite do destino que já é igual não é regravado.
  * O palpite que o destino já tinha é substituído, salvo com `only_missing`, que
@@ -1378,40 +1382,63 @@ async function handleImportPost(c: Context<AppContext>) {
     return c.json({ error: verified.error }, verified.status)
   }
 
+  const now = new Date().toISOString()
   const plan = await planCopy(db, {
     userId,
     source: verified.source,
     targets: [verified.target],
     matchIds: null,
     onlyMissing,
-    now: new Date().toISOString(),
+    now,
   })
-  const imported = plan.results[0].saved
-  const lockedSkipped = plan.lockedMatches.length
+  const planned = plan.results[0].saved
+  let lockedSkipped = plan.lockedMatches.length
 
-  if (imported === 0) {
+  if (planned === 0) {
     return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })
   }
 
-  // Palpites e marcador no mesmo lote: se um falha, nada fica gravado.
-  await db.batch([
+  // Palpites e marcador no mesmo lote: se um falha, nada fica gravado. O marcador
+  // entra se algum palpite já era igual ou se o lote gravou algum, o que deixa
+  // no destino uma linha com o `updated_at` deste lote.
+  const alreadyEqual = planned - plan.statements.length
+  const written = await db.batch([
     ...plan.statements,
     db
       .prepare(`UPDATE group_members SET predictions_import_completed = 1
-      WHERE group_id = ? AND user_id = ?`)
-      .bind(target_group_id, userId),
+      WHERE group_id = ? AND user_id = ?
+        AND (? > 0 OR EXISTS (
+          SELECT 1 FROM predictions p
+          WHERE p.user_id = ? AND p.group_id = ? AND p.updated_at = ?))`)
+      .bind(target_group_id, userId, alreadyEqual, userId, target_group_id, now),
   ])
+  // A escrita recusa o jogo que travou depois do plano e, com `only_missing`, o
+  // que o destino palpitou nesse intervalo. Nenhum dos dois foi importado.
+  const refused = plan.statementMatches.filter((_, i) => written[i].meta.changes === 0)
+  const imported = planned - refused.length
+  if (refused.length > 0) {
+    const locked = await db
+      .prepare(
+        `SELECT COUNT(*) AS total FROM matches m
+         WHERE m.id IN (SELECT value FROM json_each(?)) AND ${lockedSql('m', SQL_NOW)}`,
+      )
+      .bind(JSON.stringify(refused))
+      .first<{ total: number }>()
+    lockedSkipped += locked?.total ?? 0
+  }
 
-  logEvent(c.env.AE, 'prediction_saved', {
-    blobs: [
-      target_group_id,
-      '',
-      await hashUserId(userId),
-      'import',
-      verified.target.competition_id,
-    ],
-    doubles: [imported],
-  })
+  if (imported > 0) {
+    logEvent(c.env.AE, 'prediction_saved', {
+      blobs: [
+        target_group_id,
+        '',
+        await hashUserId(userId),
+        'import',
+        verified.target.competition_id,
+      ],
+      doubles: [imported],
+    })
+  }
 
   return c.json({
     ok: true,

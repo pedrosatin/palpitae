@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { AppContext } from '../types'
@@ -7,6 +7,7 @@ import { predictionsRouter } from './router'
 
 const handles: ReturnType<typeof createSqliteD1>['sqlite'][] = []
 afterEach(() => {
+  vi.useRealTimers()
   for (const sqlite of handles.splice(0)) sqlite.close()
 })
 
@@ -184,6 +185,79 @@ describe('POST /predictions/import, palpites bloqueados', () => {
       expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
     },
   )
+})
+
+describe('POST /predictions/import, recusa na escrita', () => {
+  it('não grava o jogo cujo início passou entre o planejamento e a escrita', async () => {
+    const { importFrom, predict, stored, sqlite } = setup()
+    // O relógio do handler fica 10 s atrás do relógio do banco: o plano sai antes do
+    // início de m1, e a escrita chega depois. `status` e `locked_at` não mudam.
+    const real = Date.now()
+    sqlite
+      .prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`)
+      .run(new Date(real - 5_000).toISOString())
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(real - 10_000)
+    predict('exato', 'm1', 3, 1)
+    predict('exato', 'm2', 1, 1)
+
+    const { body } = await importFrom('exato', 'exato2')
+
+    expect(stored('exato2', 'm1')).toBeUndefined()
+    expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
+    expect(body).toMatchObject({ imported: 1, locked_skipped: 1 })
+  })
+
+  it.each([false, true])(
+    'responde zero e não marca quando o único jogo trava antes da escrita (only_missing: %s)',
+    async (onlyMissing) => {
+      const { importFrom, predict, stored, marker, sqlite, hooks } = setup()
+      predict('exato', 'm1', 3, 1)
+      hooks.beforeBatch = () => sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
+
+      const { status, body } = await importFrom('exato', 'exato2', onlyMissing)
+
+      expect(status).toBe(200)
+      expect(body).toMatchObject({ imported: 0, locked_skipped: 1 })
+      expect(stored('exato2', 'm1')).toBeUndefined()
+      expect(marker('exato2')).toBe(0)
+    },
+  )
+
+  it('conta só o que gravou quando um dos jogos trava antes da escrita', async () => {
+    const { importFrom, predict, marker, sqlite, hooks } = setup()
+    predict('exato', 'm1', 3, 1)
+    predict('exato', 'm2', 1, 1)
+    hooks.beforeBatch = () => sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
+
+    const { body } = await importFrom('exato', 'exato2')
+
+    expect(body).toMatchObject({ imported: 1, locked_skipped: 1 })
+    expect(marker('exato2')).toBe(1)
+  })
+
+  it('com only_missing, o palpite salvo no destino depois do plano não conta nem vira bloqueado', async () => {
+    const { importFrom, predict, stored, marker, hooks } = setup()
+    predict('exato', 'm1', 3, 1)
+    hooks.beforeBatch = () => predict('exato2', 'm1', 0, 0)
+
+    const { body } = await importFrom('exato', 'exato2', true)
+
+    expect(body).toMatchObject({ imported: 0, locked_skipped: 0 })
+    expect(stored('exato2', 'm1')).toMatchObject({ h: 0, a: 0 })
+    expect(marker('exato2')).toBe(0)
+  })
+
+  it('o palpite igual conta como importado e marca a importação, mesmo sem escrita', async () => {
+    const { importFrom, predict, marker } = setup()
+    predict('exato', 'm1', 3, 1)
+    predict('exato2', 'm1', 3, 1)
+
+    const { body } = await importFrom('exato', 'exato2')
+
+    expect(body).toMatchObject({ imported: 1, locked_skipped: 0 })
+    expect(marker('exato2')).toBe(1)
+  })
 })
 
 describe('POST /predictions/import, importação repetida', () => {
