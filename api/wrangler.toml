@@ -28,14 +28,17 @@ dataset = "palpitae_events"
 #    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
 #  - "0 10 * * *"   → lembrete: e-mail para quem tem jogo de hoje sem palpite.
 #    1x/dia às 10h UTC (07h BRT). Máximo de um e-mail por usuário por dia (ADR-020).
-#  - "0 6 * * *"    → fixture discovery: busca jogos novos (mata-mata, remarcações)
-#    das competições ativas. 1x/dia às 06h UTC (03h BRT), sem jogos. Ver fixtureDiscovery.ts.
+#  - "15 6 * * *"   → fixture discovery: busca jogos novos (mata-mata, remarcações)
+#    das competições ativas. 1x/dia às 06:15 UTC (03:15 BRT), sem jogos e fora dos
+#    ticks 0/30 do poller. Ver fixtureDiscovery.ts.
+# As expressões abaixo precisam bater com api/src/crons.ts (um teste compara as duas).
+# Cron sem ramo no handler só registra `scheduled_unknown_cron`.
 # O radar de competições (/admin/oportunidades) NÃO tem cron aqui: a
 # API-Football limita por IP e os IPs de saída dos Workers são compartilhados
 # (429 na 1ª chamada, com a quota intacta). A coleta roda no GitHub Actions —
 # .github/workflows/radar-sync.yml. Ver ADR-014.
 [triggers]
-crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "0 6 * * *"]
+crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *"]
 
 # Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
 # Criar antes do deploy: wrangler r2 bucket create palpitae-events

@@ -3,7 +3,7 @@ import { tryLogEvent } from '../observability/events'
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
-import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
+import { FD_RETRY_BACKOFF_MS, FD_TIMEOUT_MS } from './footballDataQuota'
 import { indexTies } from './ties'
 
 const PROVIDER = 'football-data'
@@ -257,6 +257,7 @@ async function fetchMatchesFromApi(
     try {
       const res = await fetch(url.toString(), {
         headers: { 'X-Auth-Token': apiKey },
+        signal: AbortSignal.timeout(FD_TIMEOUT_MS),
       })
       notifyHttpAttempt(onAttempt, {
         provider: 'football-data',

@@ -5,26 +5,43 @@ import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import { authRouter } from './auth/router'
 import { competitionsRouter } from './competitions/router'
+import {
+  DAILY_EXPORT_CRON,
+  FIXTURE_DISCOVERY_CRON,
+  RESULT_POLLER_CRON,
+  ROUND_REMINDER_CRON,
+} from './crons'
 import { groupsRouter } from './groups/router'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
 import { sendRoundReminders } from './notifications/roundReminder'
-import { logError } from './observability/events'
+import { logError, tryLogEvent } from './observability/events'
 import { exportRecentDays } from './observability/export'
 import { metricsRouter } from './observability/metricsRouter'
 import { predictionsRouter } from './predictions/router'
 import { publicRouter } from './public/router'
 import type { AppContext, Env } from './types'
 
-// Cron do cold path diário (deve bater com wrangler.toml). Os demais ticks rodam o poller.
-const DAILY_EXPORT_CRON = '5 0 * * *'
-// Cron do lembrete de jogos sem palpite (deve bater com wrangler.toml). 1x/dia.
-const ROUND_REMINDER_CRON = '0 10 * * *'
-// Cron de descoberta de jogos (deve bater com wrangler.toml). 1x/dia de madrugada
-// (06:00 UTC = 03:00 BRT — sem jogos), busca novos confrontos das competições ativas.
-const FIXTURE_DISCOVERY_CRON = '0 6 * * *'
+// Configurações opcionais cuja ausência desativa funções sem aviso.
+const OPTIONAL_CONFIG = [
+  'AE',
+  'EVENTS',
+  'PROXY_SHARED_SECRET',
+  'BASE_URL',
+  'CF_ACCOUNT_ID',
+  'AE_SQL_TOKEN',
+] as const
+
+/** Registra, uma vez por execução agendada, cada configuração opcional ausente. */
+function reportMissingConfig(env: Env): void {
+  const missing = OPTIONAL_CONFIG.filter((name) => !env[name])
+  if (missing.length === 0) return
+  // Sem `AE` o evento não tem onde ser gravado: o aviso fica só no log.
+  console.error(`[scheduled] Configuração ausente: ${missing.join(', ')}`)
+  for (const name of missing) tryLogEvent(env.AE, 'scheduled_config_missing', { blobs: [name] })
+}
 
 const app = new Hono<AppContext>()
 
@@ -81,6 +98,8 @@ export default {
         ),
       ),
     )
+    reportMissingConfig(env)
+
     if (controller.cron === DAILY_EXPORT_CRON) {
       // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))
@@ -109,9 +128,16 @@ export default {
       return
     }
 
-    // Result poller — resultados da janela ativa + pontuação (ADR-007).
-    ctx.waitUntil(
-      pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
-    )
+    if (controller.cron === RESULT_POLLER_CRON) {
+      // Result poller — resultados da janela ativa + pontuação (ADR-007).
+      ctx.waitUntil(
+        pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+      )
+      return
+    }
+
+    // Cron do wrangler.toml sem ramo aqui: registra em vez de rodar o poller no lugar.
+    console.error(`[scheduled] Cron desconhecido: ${controller.cron}`)
+    tryLogEvent(env.AE, 'scheduled_unknown_cron', { blobs: [controller.cron] })
   },
 }

@@ -198,7 +198,7 @@ resgate, de jogos iniciados há até 24 horas que ainda não estão finalizados 
 terminaram sem pontuação. Jogos adiados ficam fora do resgate. Depois de 24 horas,
 um jogo sem resultado só volta a ser atualizado pela descoberta diária ou pelo
 sync manual. Competição nova sem jogos recebe os jogos no próximo cron de
-descoberta (06:00 UTC).
+descoberta (06:15 UTC).
 
 ## Proteção de borda (Cloudflare Rate Limiting)
 

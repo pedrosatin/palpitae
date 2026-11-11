@@ -3,6 +3,8 @@
 import { describe, expect, it } from 'vitest'
 import deployWorkflow from '../../.github/workflows/deploy-api.yml?raw'
 import packageJsonFile from '../package.json'
+import wranglerToml from '../wrangler.toml?raw'
+import { FIXTURE_DISCOVERY_CRON, RESULT_POLLER_CRON, SCHEDULED_CRONS } from './crons'
 
 type PackageJson = {
   scripts?: Record<string, string>
@@ -51,5 +53,19 @@ describe('wrangler api config', () => {
     expect(deployWorkflow).toContain(
       'npx wrangler d1 migrations apply palpitae --remote --config ./wrangler.toml',
     )
+  })
+
+  it('declara no wrangler.toml os mesmos crons que o handler scheduled conhece', () => {
+    const declared = wranglerToml.match(/^crons = (\[.*\])$/m)?.[1]
+
+    expect(declared).toBeDefined()
+    expect((JSON.parse(declared!) as string[]).sort()).toEqual([...SCHEDULED_CRONS].sort())
+  })
+
+  it('roda a descoberta diária num minuto diferente dos ticks do poller', () => {
+    const minutes = (cron: string) => cron.split(' ')[0].split(',')
+
+    expect(minutes(RESULT_POLLER_CRON)).toEqual(['0', '30'])
+    expect(minutes(RESULT_POLLER_CRON)).not.toContain(minutes(FIXTURE_DISCOVERY_CRON)[0])
   })
 })

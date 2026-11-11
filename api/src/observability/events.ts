@@ -20,6 +20,9 @@ export type EventType =
   | 'poller_run'
   | 'fixture_discovery_run'
   | 'football_api_error'
+  // Rotina agendada: cron sem ramo no handler e configuração opcional ausente
+  | 'scheduled_unknown_cron'
+  | 'scheduled_config_missing'
   // Fallback de resultados via ESPN (ADR-016)
   | 'match_results_fallback'
   // Tentativa HTTP a um provedor de partidas (ESPN, football-data): toda falha + amostra de sucessos

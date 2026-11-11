@@ -55,12 +55,18 @@ const ctx = {
   waitUntil: (p: Promise<unknown>) => p,
 } as unknown as ExecutionContext
 
-function run(cron: string, scheduledTime = Date.now()) {
+function run(cron: string, scheduledTime = Date.now(), runEnv: Env = env) {
   const controller = {
     cron,
     scheduledTime,
   } as unknown as ScheduledController
-  return worker.scheduled!(controller, env, ctx)
+  return worker.scheduled!(controller, runEnv, ctx)
+}
+
+/** Eventos gravados no Analytics Engine de teste, como [event_type, blob2]. */
+function events(runEnv: Env) {
+  const write = vi.mocked((runEnv.AE as AnalyticsEngineDataset).writeDataPoint)
+  return write.mock.calls.map(([point]) => point?.blobs?.slice(0, 2))
 }
 
 describe('scheduled handler routing', () => {
@@ -117,7 +123,7 @@ describe('scheduled handler routing', () => {
   })
 
   it('routes the fixture-discovery cron to discoverFixtures only', async () => {
-    await run('0 6 * * *', 1792022400000)
+    await run('15 6 * * *', 1792022400000)
 
     expect(discoverFixtures).toHaveBeenCalledTimes(1)
     expect(discoverFixtures).toHaveBeenCalledWith(env.DB, 'fk', env.AE, 1792022400000)
@@ -126,14 +132,69 @@ describe('scheduled handler routing', () => {
     expect(exportRecentDays).not.toHaveBeenCalled()
   })
 
-  it('falls back to the result poller for any other cron', async () => {
-    await run('*/30 * * * *', 1792022400000)
+  it('routes the poller cron to pollActiveMatches only', async () => {
+    await run('0,30 * * * *', 1792022400000)
 
     expect(pollActiveMatches).toHaveBeenCalledTimes(1)
     expect(pollActiveMatches).toHaveBeenCalledWith(env.DB, 'fk', env.AE, 1792022400000)
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(discoverFixtures).not.toHaveBeenCalled()
+  })
+
+  it('cron desconhecido registra evento e não roda o poller', async () => {
+    await run('0 6 * * *')
+
+    expect(events(env)).toContainEqual(['scheduled_unknown_cron', '0 6 * * *'])
+    expect(pollActiveMatches).not.toHaveBeenCalled()
+    expect(sendRoundReminders).not.toHaveBeenCalled()
+    expect(exportRecentDays).not.toHaveBeenCalled()
+    expect(discoverFixtures).not.toHaveBeenCalled()
+  })
+})
+
+describe('configuração opcional ausente', () => {
+  const complete = {
+    ...env,
+    EVENTS: {} as never,
+    PROXY_SHARED_SECRET: 'proxy',
+    CF_ACCOUNT_ID: 'account',
+    AE_SQL_TOKEN: 'token',
+  } as Env
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('não registra nada com tudo configurado', async () => {
+    await run('0,30 * * * *', Date.now(), complete)
+
+    expect(events(complete)).toEqual([])
+  })
+
+  it.each(['EVENTS', 'PROXY_SHARED_SECRET', 'BASE_URL', 'CF_ACCOUNT_ID', 'AE_SQL_TOKEN'] as const)(
+    'sem %s registra um evento por execução',
+    async (name) => {
+      const partial = { ...complete, [name]: undefined } as Env
+
+      await run('0,30 * * * *', Date.now(), partial)
+      expect(events(partial)).toEqual([['scheduled_config_missing', name]])
+
+      await run('5 0 * * *', Date.now(), partial)
+      expect(events(partial)).toEqual([
+        ['scheduled_config_missing', name],
+        ['scheduled_config_missing', name],
+      ])
+    },
+  )
+
+  it('sem AE o aviso sai no log, já que o evento não tem onde ser gravado', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await run('0,30 * * * *', Date.now(), { ...complete, AE: undefined } as Env)
+
+    expect(error).toHaveBeenCalledWith('[scheduled] Configuração ausente: AE')
+    error.mockRestore()
   })
 })
 
