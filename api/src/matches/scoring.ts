@@ -167,21 +167,46 @@ function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
     .bind(new Date().toISOString(), JSON.stringify(groupIds))
 }
 
-async function recalculateLeaderboards(groupIds: string[], db: D1Database): Promise<void> {
-  if (groupIds.length > 0) await db.batch([leaderboardRefreshStatement(db, groupIds)])
-}
-
-/** Run D1 statements in parallel chunks of 100 (D1 batch limit). */
+/**
+ * Run D1 statements in parallel chunks of 100 (D1 batch limit). `tail` closes
+ * every chunk, inside the same transaction.
+ */
 async function runStatementBatches(
   db: D1Database,
   statements: ReturnType<D1Database['prepare']>[],
+  tail: ReturnType<D1Database['prepare']>[] = [],
 ): Promise<void> {
+  const size = 100 - tail.length
   const batches = []
-  for (let i = 0; i < statements.length; i += 100) {
-    const chunk = statements.slice(i, i + 100)
-    batches.push(db.batch(chunk))
+  for (let i = 0; i < statements.length; i += size) {
+    batches.push(db.batch([...statements.slice(i, i + size), ...tail]))
   }
   await Promise.all(batches)
+}
+
+/**
+ * Condição de toda gravação da pontuação de um jogo: ele segue encerrado com o
+ * placar e o vencedor nos pênaltis lidos e, na volta, a ida não mudou. Se uma
+ * correção de placar chegou depois da leitura, a gravação não altera nada e o
+ * jogo fica para quem ler o placar novo.
+ */
+const UNCHANGED_RESULT_SQL = `EXISTS (SELECT 1 FROM matches WHERE id = ? AND status = 'finished'
+    AND home_score = ? AND away_score = ? AND penalty_winner IS ?)
+  AND NOT EXISTS (SELECT 1 FROM matches WHERE id = ?
+    AND (status IS NOT ? OR home_score IS NOT ? OR away_score IS NOT ?))`
+
+function unchangedResultBinds(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | undefined) {
+  const leg1 = tie?.role === 'leg2' ? tie.partner : null
+  return [
+    m.id,
+    m.home_score,
+    m.away_score,
+    m.penalty_winner,
+    leg1?.id ?? null,
+    leg1?.status ?? null,
+    leg1?.home_score ?? null,
+    leg1?.away_score ?? null,
+  ]
 }
 
 /** Busca os palpites dos jogos informados em lotes (limite de bind do D1 ~100). */
@@ -338,7 +363,9 @@ function evaluateClassifiedPointsForPrediction(
 
 /**
  * Finds finished matches with no scored_at in the given competition and scores them.
- * Safe to call multiple times — matches already scored are skipped.
+ * Safe to call multiple times — matches already scored are skipped. Concurrent runs,
+ * a retry after a failed batch and a score correction mid-run end with the points
+ * and ranking of a single run over the latest result.
  */
 export async function scoreUnprocessedMatches(
   competitionId: string,
@@ -402,7 +429,7 @@ export async function scoreUnprocessedMatches(
   const affectedGroups = new Set<string>()
 
   const updatePredictionStmt = db.prepare(
-    `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? * (SELECT points_classified FROM groups WHERE id = predictions.group_id) WHERE id = ?`,
+    `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? * (SELECT points_classified FROM groups WHERE id = predictions.group_id) WHERE id = ? AND ${UNCHANGED_RESULT_SQL}`,
   )
 
   // 5. Evaluate all predictions
@@ -447,22 +474,33 @@ export async function scoreUnprocessedMatches(
       leg1PredByKey,
     )
 
-    statements.push(updatePredictionStmt.bind(points, penaltyPoints, classifiedPoints, p.id))
+    statements.push(
+      updatePredictionStmt.bind(
+        points,
+        penaltyPoints,
+        classifiedPoints,
+        p.id,
+        ...unchangedResultBinds(matchCtx, tie),
+      ),
+    )
     affectedGroups.add(p.group_id)
   }
 
-  const updateMatchStmt = db.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`)
-
-  // 6. Update matches as scored
-  for (const matchId of matchIds) {
-    statements.push(updateMatchStmt.bind(now, matchId))
-  }
-
-  // 7. Execute updates in chunks of 100 to avoid D1 limits
+  // 6. Pontos primeiro: se um lote falhar, nenhum jogo recebe scored_at e a
+  // próxima execução refaz todos os palpites.
   await runStatementBatches(db, statements)
 
-  // 8. Deduplicated recalculate leaderboard
-  await recalculateLeaderboards(Array.from(affectedGroups), db)
+  // 7. scored_at e ranking na mesma transação: o jogo só fica marcado como
+  // pontuado junto com o ranking recalculado.
+  const updateMatchStmt = db.prepare(
+    `UPDATE matches SET scored_at = ? WHERE id = ? AND ${UNCHANGED_RESULT_SQL}`,
+  )
+  const markScored = matchesToScore.map((m) =>
+    updateMatchStmt.bind(now, m.id, ...unchangedResultBinds(m, ties.get(m.id))),
+  )
+  const groupIds = Array.from(affectedGroups)
+  const ranking = groupIds.length > 0 ? [leaderboardRefreshStatement(db, groupIds)] : []
+  await runStatementBatches(db, markScored, ranking)
 }
 
 /** Statements for an atomic group-rule change; other groups and scoring flags stay untouched. */
