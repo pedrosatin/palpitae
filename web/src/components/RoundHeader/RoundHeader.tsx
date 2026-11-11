@@ -1,4 +1,4 @@
-import { isGroupStageRound, leftoverMatchesMarker } from '../../lib/rounds'
+import { leftoverMatchesMarker } from '../../lib/rounds'
 import styles from '../tab-shared.module.css'
 import Select from '../Select'
 import Button from '../Button'
@@ -8,6 +8,7 @@ interface RoundHeaderProps {
   safeIndex: number
   selectedRound: string
   labelFor: (r: string) => string
+  knockoutRounds?: Set<string>
   onPrev: () => void
   onNext: () => void
   onSelect: (round: string) => void
@@ -36,6 +37,7 @@ export default function RoundHeader({
   safeIndex,
   selectedRound,
   labelFor,
+  knockoutRounds = new Set(),
   onPrev,
   onNext,
   onSelect,
@@ -72,34 +74,26 @@ export default function RoundHeader({
         value={selectedRound}
         onChange={(e) => onSelect(e.target.value)}
       >
-        {roundKeys.some((r) => !isGroupStageRound(r)) ? (
-          <>
-            {roundKeys.some(isGroupStageRound) && (
-              <optgroup label="Fase de grupos">
-                {roundKeys.filter(isGroupStageRound).map((r) => (
-                  <option key={r} value={r}>
-                    {optionLabel(r)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            <optgroup label="Mata-mata">
-              {roundKeys
-                .filter((r) => !isGroupStageRound(r))
-                .map((r) => (
-                  <option key={r} value={r}>
-                    {optionLabel(r)}
-                  </option>
-                ))}
+        {roundKeys.map((r, i) => {
+          if (!knockoutRounds.has(r)) {
+            return (
+              <option key={r} value={r}>
+                {optionLabel(r)}
+              </option>
+            )
+          }
+          if (i > 0 && knockoutRounds.has(roundKeys[i - 1])) return null
+          const end = roundKeys.findIndex((key, index) => index > i && !knockoutRounds.has(key))
+          return (
+            <optgroup key={r} label="Mata-mata">
+              {roundKeys.slice(i, end < 0 ? undefined : end).map((key) => (
+                <option key={key} value={key}>
+                  {optionLabel(key)}
+                </option>
+              ))}
             </optgroup>
-          </>
-        ) : (
-          roundKeys.map((r) => (
-            <option key={r} value={r}>
-              {optionLabel(r)}
-            </option>
-          ))
-        )}
+          )
+        })}
       </Select>
       <Button
         variant="outline"

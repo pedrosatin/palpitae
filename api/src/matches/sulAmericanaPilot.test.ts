@@ -244,18 +244,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     ).toEqual([
       {
         home: 'Independiente Petrolero',
-        away: 'Racing Club',
-        status: 'scheduled',
-        home_score: null,
-        away_score: null,
-        phase: 'GROUP_STAGE',
-        round: 'GROUP_STAGE',
-        round_label: 'Fase de grupos',
-        group_name: 'E',
-        decides_on_penalties: false,
-      },
-      {
-        home: 'Independiente Petrolero',
         away: 'Guabirá',
         status: 'scheduled',
         home_score: null,
@@ -265,6 +253,18 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
         round_label: '1ª fase',
         group_name: null,
         decides_on_penalties: true,
+      },
+      {
+        home: 'Independiente Petrolero',
+        away: 'Racing Club',
+        status: 'scheduled',
+        home_score: null,
+        away_score: null,
+        phase: 'GROUP_STAGE',
+        round: 'GROUP_STAGE',
+        round_label: 'Fase de grupos',
+        group_name: 'E',
+        decides_on_penalties: false,
       },
       {
         home: "O'Higgins",

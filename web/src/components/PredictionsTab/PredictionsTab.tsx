@@ -99,6 +99,7 @@ export default function PredictionsTab({
     selectedRound,
     roundMatches,
     labelFor,
+    knockoutRounds,
     postponedByRound,
     rescheduledByRound,
     prev,
@@ -214,6 +215,7 @@ export default function PredictionsTab({
           safeIndex={safeIndex}
           selectedRound={selectedRound}
           labelFor={labelFor}
+          knockoutRounds={knockoutRounds}
           onPrev={prev}
           onNext={next}
           postponedByRound={postponedByRound}

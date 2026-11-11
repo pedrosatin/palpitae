@@ -21,12 +21,12 @@ export function fetchCompetitionMatches(
   return fetchCachedJson(
     `matches:${competitionId}`,
     () =>
-      apiFetch(`${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}`).then(
-        (r) => {
-          if (!r.ok) throw new Error('Erro ao carregar jogos')
-          return r.json() as Promise<CompetitionMatchesResponse>
-        },
-      ),
+      apiFetch(
+        `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}&round_order=1`,
+      ).then((r) => {
+        if (!r.ok) throw new Error('Erro ao carregar jogos')
+        return r.json() as Promise<CompetitionMatchesResponse>
+      }),
     30_000,
   )
 }

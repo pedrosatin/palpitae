@@ -72,3 +72,47 @@ export function isKnockoutPhase(phase: string | null | undefined): boolean {
   if (!phase || NON_KNOCKOUT_PHASES.has(phase)) return false
   return Object.hasOwn(KNOCKOUT_LABELS, phase)
 }
+
+interface RoundMatch {
+  round: string
+  phase: string | null
+  start_time: string
+}
+
+function roundStage(match: RoundMatch): string {
+  return /^\d+$/.test(match.round) && !isKnockoutPhase(match.phase)
+    ? 'points'
+    : `round:${match.round}`
+}
+
+/**
+ * Ordena as rodadas para a navegação. As rodadas numéricas fora do mata-mata
+ * formam uma só sequência, em ordem numérica, que jogo antecipado ou adiado não
+ * altera. Essa sequência e as rodadas nomeadas seguem a menor data; no empate,
+ * vem a que aparece primeiro na entrada. Rodadas prefixadas (`FASE_N`) seguem a
+ * menor data, então um jogo antecipado pode reordená-las. Jogos da mesma rodada
+ * mantêm a ordem recebida. As duas listagens HTTP usam esta ordem, que o cliente
+ * consome sem reordenar.
+ */
+export function orderByRound<T extends RoundMatch>(matches: T[]): T[] {
+  const firstDate = new Map<string, string>()
+  const stageIndex = new Map<string, number>()
+  for (const match of matches) {
+    const stage = roundStage(match)
+    if (!stageIndex.has(stage)) stageIndex.set(stage, stageIndex.size)
+    const current = firstDate.get(stage)
+    if (current === undefined || match.start_time < current) firstDate.set(stage, match.start_time)
+  }
+  const rounds = [...new Map(matches.map((m) => [m.round, m])).values()]
+  rounds.sort((a, b) => {
+    const stageA = roundStage(a)
+    const stageB = roundStage(b)
+    if (stageA === stageB) return Number(a.round) - Number(b.round)
+    return (
+      firstDate.get(stageA)!.localeCompare(firstDate.get(stageB)!) ||
+      stageIndex.get(stageA)! - stageIndex.get(stageB)!
+    )
+  })
+  const indexes = new Map(rounds.map((m, i) => [m.round, i]))
+  return [...matches].sort((a, b) => indexes.get(a.round)! - indexes.get(b.round)!)
+}
