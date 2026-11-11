@@ -988,7 +988,7 @@ describe('MatchCard – falha no salvamento', () => {
     expect(button).not.toHaveAttribute('aria-disabled')
     expect(scoreValues()).toEqual(['1', '0'])
     expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
-    expect(screen.getByText('Erro de conexão. Tente novamente.')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Erro de conexão. Tente novamente.')
     fetchMock.mockRestore()
   })
 
@@ -1037,7 +1037,7 @@ describe('MatchCard – falha no salvamento', () => {
     fetchMock.mockRestore()
   })
 
-  it('a resposta que chega depois não apaga um placar mexido durante o envio', async () => {
+  it('com o envio pendente o placar permanece 1×0 e a resposta marca esse placar como salvo', async () => {
     let respond: (res: Response) => void = () => {}
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
       () =>
@@ -1054,12 +1054,15 @@ describe('MatchCard – falha no salvamento', () => {
     await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await user.type(screen.getByRole('spinbutton', { name: /Placar Argentina/i }), '3')
     expect(scoreValues()).toEqual(['1', '0'])
+    const card = screen.getByRole('group', { name: /^Brasil contra Argentina/ })
+    expect(card).toHaveAttribute('aria-busy', 'true')
 
-    // A resposta do 1×0 chega por último e confirma o que está na tela.
+    // A resposta do 1×0 chega e marca o placar da tela como salvo.
     respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     expect(await screen.findByRole('button', { name: 'Salvo' })).toBeInTheDocument()
     expect(scoreValues()).toEqual(['1', '0'])
     expect(screen.getByText('palpite salvo')).toBeInTheDocument()
+    expect(card).toHaveAttribute('aria-busy', 'false')
 
     // Depois da resposta, o placar volta a aceitar mudança.
     await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))

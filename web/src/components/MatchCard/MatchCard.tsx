@@ -143,6 +143,7 @@ export default function MatchCard(props: MatchCardProps) {
     <div
       role="group"
       aria-label={groupLabel}
+      aria-busy={saving}
       className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}
     >
       {/* Status badge */}
@@ -230,7 +231,11 @@ export default function MatchCard(props: MatchCardProps) {
             Salve o palpite da ida antes da volta ou use Salvar todos.
           </p>
         )}
-        {error && <p className={styles.errorMsg}>{error}</p>}
+        {error && (
+          <p role="alert" className={styles.errorMsg}>
+            {error}
+          </p>
+        )}
       </div>
     </div>
   )

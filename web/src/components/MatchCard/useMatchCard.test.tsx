@@ -505,6 +505,80 @@ describe('useMatchCard', () => {
     vi.useRealTimers()
   })
 
+  it('envio sem resposta em 10 s vira erro de conexão e libera o card', async () => {
+    vi.useFakeTimers()
+    // Como o fetch do navegador, o PUT pendente rejeita quando o sinal aborta.
+    mockFetch.mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          )
+        }),
+    )
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        onSaved: vi.fn(),
+      }),
+    )
+    act(() => {
+      result.current.updateHome('2')
+    })
+    act(() => {
+      result.current.updateAway('1')
+    })
+
+    act(() => {
+      void result.current.handleSave()
+    })
+    await act(() => vi.advanceTimersByTimeAsync(9_999))
+    expect(result.current.saving).toBe(true)
+
+    await act(() => vi.advanceTimersByTimeAsync(1))
+    expect(result.current.saving).toBe(false)
+    expect(result.current.error).toBe('Erro de conexão. Tente novamente.')
+    expect([result.current.home, result.current.away]).toEqual(['2', '1'])
+    expect(result.current.canSave).toBe(true)
+    vi.useRealTimers()
+  })
+
+  it('resposta que chega depois de o card sair da tela não avisa o pai nem arma o "salvo"', async () => {
+    vi.useFakeTimers()
+    let respond: (res: Response) => void = () => {}
+    mockFetch.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          respond = resolve
+        }),
+    )
+    const onSaved = vi.fn()
+    const { result, unmount } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        outcomeOnly: true,
+        onSaved,
+      }),
+    )
+
+    act(() => {
+      void result.current.selectOutcome('home')
+    })
+    unmount()
+    await act(async () => {
+      respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    })
+
+    expect(onSaved).not.toHaveBeenCalled()
+    expect(mockInvalidate).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    vi.useRealTimers()
+  })
+
   it('updateAway correctly updates state and clears penalty winner if leaving draw', () => {
     const match = makeMatch({ decides_on_penalties: true })
     const prediction = makePrediction({
