@@ -735,8 +735,9 @@ describe('MatchCard – travamento igual ao da API', () => {
   const future = new Date(Date.now() + 86_400_000).toISOString()
   const seenStarted = new Date(Date.now() - 3_600_000).toISOString()
 
-  // `editable` é o contrário de `isMatchLocked` em api/src/matches/locking.ts para o
-  // mesmo jogo. O card só oferece edição quando a API aceita o envio.
+  // `editable` é o contrário de `isMatchLocked` em api/src/matches/locking.ts para os
+  // campos do jogo. Essa função não lê o `locked` do palpite, e o PUT aceita o envio
+  // sempre que ela devolve false. O card só oferece edição quando o PUT aceita.
   it.each<[string, Partial<Match>, Partial<Prediction> | undefined, boolean]>([
     ['agendado com horário futuro', { start_time: future }, undefined, true],
     ['agendado com horário vencido', { start_time: past }, undefined, false],
@@ -766,10 +767,10 @@ describe('MatchCard – travamento igual ao da API', () => {
       false,
     ],
     [
-      'adiado com o palpite travado pela API',
+      'adiado com o palpite travado numa busca anterior',
       { start_time: past, postponed: 1 },
       { locked: 1 },
-      false,
+      true,
     ],
   ])('%s', (_, matchOverrides, predictionOverrides, editable) => {
     renderCard(

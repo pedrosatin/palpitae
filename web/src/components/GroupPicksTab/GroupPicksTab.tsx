@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
@@ -17,7 +17,7 @@ import styles from './GroupPicksTab.module.css'
 
 const TICK_MS = 30_000
 
-/** Por quanto tempo depois do início a aba busca de novo até a API revelar os palpites. */
+/** Por quanto tempo depois da primeira busca a aba busca de novo até a API revelar os palpites. */
 const REVEAL_RETRY_MS = 5 * 60_000
 
 interface GroupPicksTabProps {
@@ -73,30 +73,26 @@ function serverConfirmsLock(match: Match, memberPicks: MemberPrediction[]): bool
 }
 
 /**
- * Diz se algum jogo da rodada já começou pelo relógio local e a última resposta da
- * API ainda o trata como aberto, com palpite de `locked` 0 ou com a lista de quem
- * palpitou nele. Os palpites dos outros membros só chegam numa nova busca. Passados
- * `REVEAL_RETRY_MS` do início, a aba desiste, e um jogo remarcado depois da carga
- * não gera uma busca a cada tique.
+ * Jogos da rodada que já começaram pelo relógio local e que a última resposta da API
+ * ainda trata como abertos, com palpite de `locked` 0 ou com a lista de quem palpitou
+ * neles. Os palpites dos outros membros só chegam numa nova busca. Cada jogo vem como
+ * `id@start_time`, e um jogo remarcado conta de novo no horário novo.
  */
-function awaitingReveal(
+function unrevealedStarts(
   roundMatches: Match[],
   picks: GroupPicksResponse | null,
   now: number,
-): boolean {
-  if (!picks) return false
+): string[] {
+  if (!picks) return []
   const openOnServer = new Set(
     picks.predictions.filter((p) => p.locked !== 1).map((p) => p.match_id),
   )
   for (const [matchId, userIds] of Object.entries(picks.open_pickers ?? {})) {
     if (userIds.length > 0) openOnServer.add(matchId)
   }
-  return roundMatches.some(
-    (m) =>
-      openOnServer.has(m.id) &&
-      isMatchLocked(m, undefined, now) &&
-      now - Date.parse(m.start_time) < REVEAL_RETRY_MS,
-  )
+  return roundMatches
+    .filter((m) => openOnServer.has(m.id) && isMatchLocked(m, undefined, now))
+    .map((m) => `${m.id}@${m.start_time}`)
 }
 
 /**
@@ -306,11 +302,23 @@ export default function GroupPicksTab({
     roundMatches.map((m) => m.start_time),
   )
 
-  // No início do jogo, a resposta guardada ainda esconde os palpites dos outros.
-  // A aba busca de novo no início e, se a API ainda não travou, a cada tique.
-  const revealPending = awaitingReveal(roundMatches, picks, now)
+  // No início do jogo, a resposta guardada ainda esconde os palpites dos outros. Num
+  // grupo de palpites ocultos, a aba busca de novo na primeira virada do relógio depois
+  // do início e, se a API ainda não travou, a cada tique por `REVEAL_RETRY_MS` a partir
+  // dessa busca. Contar do início deixaria sem busca a aba que volta de segundo plano
+  // depois do prazo.
+  const firstRevealFetch = useRef(new Map<string, number>())
+  const unrevealed =
+    predictionsVisibility === 'hidden' ? unrevealedStarts(roundMatches, picks, now).join(',') : ''
   useEffect(() => {
-    if (!revealPending) return
+    if (!unrevealed) return
+    const firstFetch = firstRevealFetch.current
+    const due = unrevealed
+      .split(',')
+      .map((key) => `${groupId}:${key}`)
+      .filter((key) => now - (firstFetch.get(key) ?? now) < REVEAL_RETRY_MS)
+    if (due.length === 0) return
+    for (const key of due) if (!firstFetch.has(key)) firstFetch.set(key, now)
     let active = true
     invalidateApiCache(`groups:predictions:${groupId}`)
     fetchGroupPredictions<GroupPicksResponse>(groupId)
@@ -321,7 +329,7 @@ export default function GroupPicksTab({
     return () => {
       active = false
     }
-  }, [revealPending, now, groupId])
+  }, [unrevealed, now, groupId])
 
   if (loading) {
     return <p className={styles.loading}>Carregando palpites do grupo...</p>

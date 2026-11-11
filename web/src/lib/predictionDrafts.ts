@@ -25,10 +25,15 @@ export type CollectRoundDraftsInput = {
 }
 
 /**
- * Travamento do front, o mesmo no card, nos rascunhos e no "Salvar todos". Espelha
- * api/src/matches/locking.ts (ADR-004): locked_at, status live/finished ou
- * prediction.locked fecham; postponed com horário passado e sem lock explícito
- * permanece aberto (start_time original).
+ * Travamento do front, o mesmo no card, nos rascunhos e no "Salvar todos". Fecha com
+ * `locked_at`, status `live` ou `finished`, ou horário vencido sem adiado, como
+ * `api/src/matches/locking.ts` (ADR-004).
+ *
+ * Fora do adiado, o `locked` que a API devolveu no palpite também fecha. Ele cobre o
+ * relógio do aparelho atrasado em relação ao do servidor. No adiado ele não conta,
+ * porque o PUT aceita o envio enquanto o jogo não tem `locked_at` nem status `live`
+ * ou `finished`, e esse `locked` só aparece quando a busca de jogos e a de palpites
+ * se cruzam com um sync.
  */
 export function isMatchLocked(
   match: Match,
@@ -37,8 +42,8 @@ export function isMatchLocked(
 ): boolean {
   if (match.locked_at) return true
   if (match.status === 'live' || match.status === 'finished') return true
-  if (prediction?.locked) return true
   if (match.postponed) return false
+  if (prediction?.locked) return true
   return nowMs >= Date.parse(match.start_time)
 }
 

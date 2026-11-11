@@ -28,15 +28,16 @@ export function useNow(intervalMs: number, startTimes: readonly string[] = []): 
   }, [intervalMs])
 
   const next = nextStart(startTimes, now)
+  // Início além do limite do `setTimeout` espera o intervalo trazer `now` para perto.
+  const fits = next !== null && next - now <= MAX_TIMEOUT_MS
   useEffect(() => {
-    if (next === null) return
+    if (next === null || !fits) return
     const delay = next - Date.now()
-    if (delay > MAX_TIMEOUT_MS) return
     // O relógio do sistema pode estar alguns ms atrás do timer. Sem o `max`, a hora
     // ficaria antes do início e o card só travaria no intervalo seguinte.
     const id = setTimeout(() => setNow(Math.max(Date.now(), next)), Math.max(0, delay))
     return () => clearTimeout(id)
-  }, [next])
+  }, [next, fits])
 
   return now
 }

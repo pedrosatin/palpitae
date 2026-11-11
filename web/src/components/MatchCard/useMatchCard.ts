@@ -32,8 +32,9 @@ export interface UseMatchCardProps {
 }
 
 function useMatchStatus(match: Match, prediction: Prediction | undefined, now?: number) {
-  // A mesma regra dos rascunhos e do "Salvar todos", que espelha a da API em
-  // api/src/matches/locking.ts. O `locked` que a API devolveu no palpite também trava.
+  // A mesma regra dos rascunhos e do "Salvar todos". Fecha com `locked_at`, status
+  // `live` ou `finished`, ou horário vencido sem adiado, como
+  // `api/src/matches/locking.ts`. Fora do adiado, o `locked` do palpite também fecha.
   const isPostponed = Boolean(match.postponed)
   const locked = isMatchLocked(match, prediction, now ?? Date.now())
   const isFinished = match.status === 'finished'

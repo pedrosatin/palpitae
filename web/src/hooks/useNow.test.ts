@@ -44,6 +44,25 @@ describe('useNow', () => {
     expect(vi.getTimerCount()).toBe(1)
   })
 
+  it('arma o timer do início quando ele passa a caber no setTimeout', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-14T00:00:00Z'))
+    // 30 dias e meia hora à frente, além dos 2^31 - 1 ms que o setTimeout aceita.
+    const kickoff = '2026-12-14T00:30:00Z'
+    const hour = 3_600_000
+    const { result } = renderHook(() => useNow(hour, [kickoff]))
+
+    act(() => {
+      vi.advanceTimersByTime(6 * 24 * hour)
+    })
+    act(() => {
+      vi.advanceTimersByTime(Date.parse(kickoff) - Date.now())
+    })
+
+    // O intervalo de uma hora parou à meia-noite. Só o timer do início chega às 00:30.
+    expect(result.current).toBe(Date.parse(kickoff))
+  })
+
   it('limpa o timer do início ao desmontar', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-11-14T21:29:50Z'))

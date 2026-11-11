@@ -759,9 +759,16 @@ describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
   const picksCalls = (fetchSpy: ReturnType<typeof mockServer>) =>
     fetchSpy.mock.calls.filter(([url]) => url.toString().includes('/predictions/group')).length
 
-  function renderHidden() {
-    render(<GroupPicksTab groupId="g1" competitionId="c1" predictionsVisibility="hidden" />)
+  function renderTab(predictionsVisibility = 'hidden') {
+    render(
+      <GroupPicksTab
+        groupId="g1"
+        competitionId="c1"
+        predictionsVisibility={predictionsVisibility}
+      />,
+    )
   }
+  const renderHidden = () => renderTab()
 
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -810,5 +817,29 @@ describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
     await act(() => vi.advanceTimersByTimeAsync(30_000))
 
     expect(await screen.findByText('Ana Lima')).toBeInTheDocument()
+  })
+
+  it('busca ao voltar de segundo plano mais de 5 minutos depois do início', async () => {
+    const fetchSpy = mockServer()
+    renderHidden()
+    expect(await screen.findByText('Pedro')).toBeInTheDocument()
+
+    // Página congelada. O relógio do sistema anda 6 min, e os timers só disparam na volta.
+    vi.setSystemTime(Date.parse(KICKOFF) + 6 * 60_000)
+    await act(() => vi.advanceTimersByTimeAsync(10_000))
+
+    expect(await screen.findByText('Ana Lima')).toBeInTheDocument()
+    expect(picksCalls(fetchSpy)).toBe(2)
+  })
+
+  it('no grupo "Sempre visível" não busca de novo no início', async () => {
+    // A API segue tratando o jogo como aberto, mas a aba já mostra todos os palpites.
+    const fetchSpy = mockServer(10 * 60_000)
+    renderTab('public')
+    expect(await screen.findByText('Pedro')).toBeInTheDocument()
+
+    await act(() => vi.advanceTimersByTimeAsync(40_000))
+
+    expect(picksCalls(fetchSpy)).toBe(1)
   })
 })
