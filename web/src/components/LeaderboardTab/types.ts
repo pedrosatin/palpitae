@@ -15,6 +15,7 @@ export interface UserPrediction {
   home_score: number | null
   away_score: number | null
   round: string
+  is_knockout?: boolean
   round_label: string
   group_name: string | null
   home_team_name: string

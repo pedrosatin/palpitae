@@ -22,6 +22,8 @@ export interface Match {
   round: string
   /** Server-derived display label for the round (e.g. "Rodada 1", "Oitavas de final"). */
   round_label: string
+  /** Server-derived knockout classification from the match phase. */
+  is_knockout?: boolean
   group_name: string | null
   home_team_id: string
   home_team_name: string

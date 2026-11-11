@@ -9,7 +9,7 @@ import type { AppContext } from '../types'
 import { defaultRoundSql, roundRuleBinds } from './defaultRound'
 import { isEspnPrimaryCompetition } from './espnSync'
 import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
-import { roundLabel } from './rounds'
+import { isKnockoutPhase, orderByRound, roundLabel } from './rounds'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 import { fetchTieMatches, indexTies, type TieMatch } from './ties'
@@ -141,7 +141,13 @@ async function fetchMatches(
 
 function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: TieMatch[]) {
   const ties = indexTies(tieMatches)
-  return rows.map((row) => {
+  return orderByRound(
+    rows as (Record<string, unknown> & {
+      round: string
+      phase: string | null
+      start_time: string
+    })[],
+  ).map((row) => {
     const { penalty_phases, ...rest } = row
     const tie = ties.get(row.id as string)
     return {
@@ -150,6 +156,8 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
       leg1_match_id: tie?.role === 'leg2' ? (tie.partner?.id ?? null) : null,
       // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
       round_label: roundLabel((rest.round as string | null) ?? ''),
+      // Classificação eliminatória derivada da fase do jogo.
+      is_knockout: isKnockoutPhase(rest.phase as string | null),
       decides_on_penalties:
         tie?.role === 'leg2' ||
         (tie?.role !== 'leg1' &&
@@ -206,6 +214,8 @@ async function handleGetMatches(c: Context<AppContext>) {
   const cacheUrl = new URL(c.req.url)
   cacheUrl.search = ''
   cacheUrl.searchParams.set('competition_id', competitionId)
+  // Separa respostas com ordem e is_knockout do contrato antigo no cache.
+  cacheUrl.searchParams.set('round_order', '1')
   if (round) cacheUrl.searchParams.set('round', round)
   if (status) cacheUrl.searchParams.set('status', status)
   const cacheKey = new Request(cacheUrl)

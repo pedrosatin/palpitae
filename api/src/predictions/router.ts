@@ -5,7 +5,7 @@ import { hasPilotAccess } from '../auth/permissions'
 import { defaultRoundSql, roundRuleBinds } from '../matches/defaultRound'
 import { isMatchLocked, lockedSql } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
-import { isKnockoutPhase, roundLabel } from '../matches/rounds'
+import { isKnockoutPhase, orderByRound, roundLabel } from '../matches/rounds'
 import { resolveSingleMatchClassified, resolveTwoLegClassified } from '../matches/scoring'
 import {
   fetchTieMatches,
@@ -496,7 +496,7 @@ router.get('/user', requireAuth, async (c) => {
          JOIN teams at ON at.id = m.away_team_id
          LEFT JOIN predictions p
            ON p.match_id = m.id AND p.group_id = ? AND p.user_id = ? AND ${lockedSql()}
-         ORDER BY CAST(m.round AS INTEGER) ASC, m.group_name ASC NULLS LAST, m.start_time ASC`,
+         ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC, m.rowid ASC`,
       )
       .bind(groupId, groupId, targetUserId, now),
     db
@@ -529,15 +529,23 @@ router.get('/user', requireAuth, async (c) => {
   const defaultRound: string | null = activeRound ?? lastRound ?? null
 
   const enriched = attachPredictedClassifiedToRows(
-    predictions,
+    predictions.map((p) => ({ ...p, phase: p.tie_phase })),
     ties,
     (_row, leg1MatchId) => leg1Map.get(leg1MatchId) ?? null,
   )
 
-  type RawPrediction = Record<string, unknown> & { round: string }
-  const predictionsWithLabel = (enriched as RawPrediction[]).map((p) => ({
+  type RawPrediction = Record<string, unknown> & {
+    round: string
+    phase: string | null
+    match_start_time: string
+  }
+  const ordered = orderByRound(
+    (enriched as RawPrediction[]).map((p) => ({ ...p, start_time: p.match_start_time })),
+  )
+  const predictionsWithLabel = ordered.map(({ start_time: _start, phase, ...p }) => ({
     ...p,
     round_label: roundLabel(p.round),
+    is_knockout: isKnockoutPhase(phase),
   }))
 
   logRequestPerf(c.env.AE, 'GET /predictions/user', {
