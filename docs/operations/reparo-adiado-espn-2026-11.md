@@ -2,7 +2,7 @@
 
 O fallback de resultados da ESPN gravou Estoril × Marítimo (Primeira Liga, rodada 11) como `finished` 0-0 e a pontuação rodou. A ESPN mandou `STATUS_POSTPONED` com `state = 'post'`, `completed = false` e placar 0-0. A correção de código impede novos casos; este roteiro devolve o jogo ao estado de adiado: `scheduled`, sem placar e sem `scored_at`. A flag `postponed = 1` e o horário original ficam como estão, e o sync da football-data grava a data nova quando o jogo for remarcado.
 
-Em 10/11/2026 a consulta de leitura em produção achou só esta linha com a assinatura do erro. É o único jogo encerrado sem `locked_at`, ou seja, que nenhum sync do provedor viu começar. O jogo tem 0 palpites e a Primeira Liga não tem grupo, então nenhum ponto nem ranking muda.
+Em 10/11/2026 a consulta de leitura em produção achou só esta linha com a assinatura do erro: `finished` com `locked_at` nulo. O fallback não grava `locked_at`, então outra linha com essa assinatura pode ser um resultado recente e legítimo do fallback. O jogo tem 0 palpites e a Primeira Liga não tem grupo, então nenhum ponto nem ranking muda.
 
 | Campo | Valor em produção |
 |---|---|
@@ -27,7 +27,7 @@ mkdir -p ~/.cache/scratch/reparo-adiado-espn
 
 ## 1. Conferência prévia
 
-Varredura de jogos encerrados que nenhum sync viu começar, com a contagem de palpites. O resultado esperado é uma linha, a de Estoril × Marítimo, com `palpites = 0`. Se aparecer outra linha ou palpite, pare e reavalie.
+Varredura de jogos `finished` com `locked_at` nulo, com a contagem de palpites. Ela é mais larga que o `UPDATE`. O resultado esperado é uma linha, a de Estoril × Marítimo, com `palpites = 0`. Se aparecer outra linha ou palpite, pare e reavalie.
 
 ```sql
 SELECT m.id, m.external_id, m.start_time, m.status, m.postponed, m.home_score, m.away_score, m.scored_at, (SELECT COUNT(*) FROM predictions p WHERE p.match_id = m.id) AS palpites FROM matches m WHERE m.status = 'finished' AND m.locked_at IS NULL;
