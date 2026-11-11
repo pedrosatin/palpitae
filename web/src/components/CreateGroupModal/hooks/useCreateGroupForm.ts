@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { config } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { getGuideOrigin } from '../../../analytics/guideOrigin'
-import { apiFetch } from '../../../lib/api'
+import { apiFetch, CONNECTION_ERROR, readApiError } from '../../../lib/api'
 import { ScoringPreset } from '../constants'
 import { selectableCompetitions } from '../competitionStatus'
 import type { CompetitionSelectGroups } from '../competitionStatus'
@@ -130,15 +130,11 @@ export function useCreateGroupForm({
         }),
       })
 
-      const data = (await res.json()) as {
-        group?: CreatedGroup
-        error?: string
-      }
-
       if (!res.ok) {
-        setError(data.error ?? 'Erro ao criar grupo')
+        setError(await readApiError(res, 'Erro ao criar grupo'))
         return
       }
+      const data = (await res.json()) as { group?: CreatedGroup }
 
       const origem = getGuideOrigin()
       if (origem) trackEvent('submit_criar_grupo', { origem })
@@ -147,7 +143,7 @@ export function useCreateGroupForm({
       onCreated(data.group!)
     } catch (err) {
       console.error('Fetch caught error:', err)
-      setError('Erro de conexão. Tente novamente.')
+      setError(CONNECTION_ERROR)
     } finally {
       setSubmitting(false)
     }

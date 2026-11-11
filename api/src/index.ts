@@ -11,6 +11,7 @@ import {
   RESULT_POLLER_CRON,
   ROUND_REMINDER_CRON,
 } from './crons'
+import { jsonError, jsonNotFound } from './errorHandlers'
 import { groupsRouter } from './groups/router'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
@@ -81,6 +82,10 @@ app.route('/metrics', metricsRouter)
 app.route('/public', publicRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
+
+// Rota inexistente e exceção não tratada também respondem JSON com `{ error }`.
+app.notFound(jsonNotFound)
+app.onError(jsonError)
 
 export default {
   fetch: app.fetch,

@@ -10,7 +10,8 @@ import { apiFetch } from '../../lib/api'
 import { trackEvent } from '../../analytics/ga'
 import { invalidateApiCache } from '../../lib/api-cache'
 
-vi.mock('../../lib/api', () => ({
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api')>()),
   apiFetch: vi.fn(),
 }))
 
@@ -107,6 +108,38 @@ describe('RenameGroupModal', () => {
 
     expect(defaultProps.onRenamed).not.toHaveBeenCalled()
     expect(defaultProps.onClose).not.toHaveBeenCalled()
+  })
+
+  it('mostra aviso de conexão quando a rede falha', async () => {
+    const user = userEvent.setup({ delay: null })
+    vi.mocked(apiFetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    render(<RenameGroupModal {...defaultProps} />)
+
+    const input = screen.getByDisplayValue('Old Name')
+    await user.clear(input)
+    await user.type(input, 'New Name')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(await screen.findByText('Erro de conexão. Tente novamente.')).toBeInTheDocument()
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument()
+  })
+
+  it('mostra aviso legível quando a resposta de erro não é JSON', async () => {
+    const user = userEvent.setup({ delay: null })
+    vi.mocked(apiFetch).mockResolvedValueOnce(
+      new Response('<html><body><h1>502 Bad Gateway</h1></body></html>', { status: 502 }),
+    )
+
+    render(<RenameGroupModal {...defaultProps} />)
+
+    const input = screen.getByDisplayValue('Old Name')
+    await user.clear(input)
+    await user.type(input, 'New Name')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(await screen.findByText('Erro de conexão. Tente novamente.')).toBeInTheDocument()
+    expect(defaultProps.onRenamed).not.toHaveBeenCalled()
   })
 })
 

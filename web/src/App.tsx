@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import {
   matchPath,
   Navigate,
@@ -49,6 +49,8 @@ const AdminMetricsPage = lazy(() => import('./pages/AdminMetricsPage'))
 // Radar de competições (admin) — inteligência de produto: o que está rolando no
 // futebol e quanto o público brasileiro se interessa. Mesmo gate na API.
 const AdminRadarPage = lazy(() => import('./pages/AdminRadarPage'))
+// Fora do bundle crítico: só carrega quando o `/auth/me` responde 5xx.
+const AuthUnavailable = lazy(() => import('./components/AuthUnavailable'))
 
 /**
  * `/convite/:code` é o link compartilhado (a Pages Function de mesmo caminho
@@ -90,25 +92,37 @@ interface User {
   }
 }
 
-type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
+// `unavailable`: o `/auth/me` respondeu 5xx. Não sabemos se há sessão, então ninguém é
+// deslogado e a marca de sessão conhecida fica como está.
+type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'unavailable'
 
 /**
  * Marca, em localStorage, que este dispositivo já teve uma sessão autenticada.
  *
  * O cookie de sessão é HttpOnly (invisível ao JS), então essa é a única pista
  * que temos, antes de o `GET /auth/me` responder, sobre quem está chegando.
- * Ela existe só para o LCP: um visitante anônimo em "/" recebe a landing já
+ * A marca controla a pintura antecipada da landing e o aviso de indisponibilidade
+ * nas rotas públicas. Para o LCP: um visitante anônimo em "/" recebe a landing já
  * pré-renderizada no HTML; quem já logou aqui alguma vez continua vendo a tela
  * escura até o auth resolver, para não piscar a página de marketing antes do
  * dashboard.
  *
  * Quem LÊ a flag é o script inline no fim do `index.html`, antes de o React
  * existir — é ele que decide manter ou descartar a landing pré-renderizada.
- * Aqui só escrevemos. Perder a flag (storage limpo, aba anônima) faz a landing
- * ser pintada por um instante antes do dashboard; nunca quebra a navegação.
+ * O App também consulta a marca quando `/auth/me` responde 5xx. Perder a flag
+ * (storage limpo, aba anônima) faz a landing ser pintada por um instante antes do
+ * dashboard; nunca quebra a navegação.
  * A chave é duplicada no `index.html`: se mudar aqui, mude lá também.
  */
 const KNOWN_SESSION_KEY = 'palpitae:sessao-conhecida'
+
+function hasKnownSession(): boolean {
+  try {
+    return localStorage.getItem(KNOWN_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 function setKnownSession(known: boolean) {
   try {
@@ -137,6 +151,7 @@ export default function App({
 }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
+  const [retrying, setRetrying] = useState(false)
   const location = useLocation()
   useGaPageView()
   const capturedLocation = useRef<string | null>(null)
@@ -152,7 +167,7 @@ export default function App({
   // Uma vez por carga de página: o referrer não muda nas navegações internas.
   useEffect(() => captureEntryOrigin(), [])
 
-  useEffect(() => {
+  const checkSession = useCallback(() => {
     invalidateApiCache()
     // Raw fetch on purpose: an anonymous visit is the normal logged-out state,
     // not an expired session — apiFetch would flag "sessão expirou" for every
@@ -161,11 +176,14 @@ export default function App({
     // console error in devtools/Lighthouse.
     fetch(`${config.apiUrl}/auth/me`, { credentials: 'include' })
       .then((res) => {
+        if (res.status >= 500) return null
         if (!res.ok) throw new Error('unauthenticated')
         return res.json() as Promise<{ user: User } | { authenticated: false }>
       })
       .then((data) => {
-        if ('user' in data) {
+        if (data === null) {
+          setStatus('unavailable')
+        } else if ('user' in data) {
           setUser(data.user)
           setStatus('authenticated')
           setKnownSession(true)
@@ -180,7 +198,16 @@ export default function App({
         setStatus('unauthenticated')
         trackLoginIfPending(false)
       })
+      .finally(() => setRetrying(false))
   }, [])
+
+  useEffect(checkSession, [checkSession])
+
+  // O aviso fica montado durante a nova tentativa, para o foco não sair do botão.
+  function retrySession() {
+    setRetrying(true)
+    checkSession()
+  }
 
   // Any apiFetch call that hits a 401 broadcasts this event. Drop auth state so the
   // router swaps to the login screen instead of leaving tabs stuck on their own
@@ -237,11 +264,24 @@ export default function App({
   // index.html até a rota aparecer — nada de flash branco.
   if (status === 'loading' && !paintLandingEarly && !paintInviteEarly) return null
 
+  // Com o `/auth/me` em 5xx, a landing e o convite seguem no ar para quem nunca
+  // teve sessão neste dispositivo. As rotas privadas e quem tem a marca de sessão
+  // veem o aviso. A URL fica como está: com a API de volta, "Tentar novamente"
+  // abre a mesma rota.
+  const publicRoute =
+    location.pathname === '/' || matchPath('/convite/:code', location.pathname) !== null
+  if (status === 'unavailable' && (!publicRoute || hasKnownSession()))
+    return (
+      <Suspense fallback={null}>
+        <AuthUnavailable onRetry={retrySession} retrying={retrying} />
+      </Suspense>
+    )
+
   if (status !== 'authenticated')
     return (
       <Suspense fallback={null}>
         <Routes>
-          <Route path="/" element={<VisitorHome authResolved={status === 'unauthenticated'} />} />
+          <Route path="/" element={<VisitorHome authResolved={status !== 'loading'} />} />
           <Route path="/convite/:code" element={<InvitePage />} />
           {/* Durante o loading não sabemos ainda se estas rotas são do
               visitante ou de um usuário logado, então elas não pintam nada. */}

@@ -71,6 +71,18 @@ describe('JoinGroupModal', () => {
     })
   })
 
+  it('mostra aviso legível quando a resposta de erro não é JSON', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 }),
+    )
+
+    render(<JoinGroupModal {...defaultProps} />)
+    await userEvent.type(screen.getByRole('textbox'), 'ABC123')
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    expect(await screen.findByText('Erro de conexão. Tente novamente.')).toBeInTheDocument()
+  })
+
   it('fires submit_entrar_grupo when the user successfully joins a group', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,

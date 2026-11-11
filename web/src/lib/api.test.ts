@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { notifySessionExpired, consumeSessionExpired, apiFetch, SESSION_EXPIRED_EVENT } from './api'
+import {
+  notifySessionExpired,
+  consumeSessionExpired,
+  apiFetch,
+  readApiError,
+  SESSION_EXPIRED_EVENT,
+} from './api'
 
 describe('api', () => {
   beforeEach(() => {
@@ -128,5 +134,47 @@ describe('api', () => {
       expect(window.sessionStorage.getItem('palpitae:session-expired')).toBeNull()
       expect(dispatchEventSpy).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('readApiError', () => {
+  it('devolve a mensagem do servidor', async () => {
+    const res = Response.json({ error: 'Grupo cheio' }, { status: 409 })
+
+    expect(await readApiError(res, 'Erro ao entrar no grupo')).toBe('Grupo cheio')
+  })
+
+  it.each(['{}', 'null', '{"error":123}', '{"error":""}'])(
+    'usa o texto da ação quando o JSON %s não traz mensagem',
+    async (body) => {
+      const res = new Response(body, { status: 500 })
+
+      expect(await readApiError(res, 'Erro ao entrar no grupo')).toBe('Erro ao entrar no grupo')
+    },
+  )
+
+  it('usa `message` quando o JSON não traz `error`', async () => {
+    const res = Response.json({ message: 'Limite de grupos atingido' }, { status: 409 })
+
+    expect(await readApiError(res, 'Erro ao criar grupo')).toBe('Limite de grupos atingido')
+  })
+
+  it.each([
+    '{"error":"Grupo cheio","message":"Conflict"}',
+    '{"message":"Conflict","error":"Grupo cheio"}',
+  ])('prefere `error` a `message` em %s', async (body) => {
+    const res = new Response(body, { status: 409 })
+
+    expect(await readApiError(res, 'Erro ao entrar no grupo')).toBe('Grupo cheio')
+  })
+
+  it('devolve aviso de conexão quando o corpo não é JSON', async () => {
+    const res = new Response('<html><body><h1>502 Bad Gateway</h1></body></html>', {
+      status: 502,
+    })
+
+    expect(await readApiError(res, 'Erro ao entrar no grupo')).toBe(
+      'Erro de conexão. Tente novamente.',
+    )
   })
 })
