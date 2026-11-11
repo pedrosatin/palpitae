@@ -737,7 +737,8 @@ describe('MatchCard – travamento igual ao da API', () => {
 
   // `editable` é o contrário de `isMatchLocked` em api/src/matches/locking.ts para os
   // campos do jogo. Essa função não lê o `locked` do palpite, e o PUT aceita o envio
-  // sempre que ela devolve false. O card só oferece edição quando o PUT aceita.
+  // sempre que ela devolve false. Nas linhas abaixo, o card oferece edição quando o PUT
+  // aceita. Fora da matriz, o `locked` do palpite também fecha o jogo que não está adiado.
   it.each<[string, Partial<Match>, Partial<Prediction> | undefined, boolean]>([
     ['agendado com horário futuro', { start_time: future }, undefined, true],
     ['agendado com horário vencido', { start_time: past }, undefined, false],
