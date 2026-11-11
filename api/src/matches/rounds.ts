@@ -72,3 +72,38 @@ export function isKnockoutPhase(phase: string | null | undefined): boolean {
   if (!phase || NON_KNOCKOUT_PHASES.has(phase)) return false
   return Object.hasOwn(KNOCKOUT_LABELS, phase)
 }
+
+interface RoundMatch {
+  round: string
+  phase: string | null
+  start_time: string
+}
+
+function roundStage(match: RoundMatch): string {
+  return /^\d+$/.test(match.round) && !isKnockoutPhase(match.phase)
+    ? `points:${match.phase}`
+    : `round:${match.round}`
+}
+
+/**
+ * Ordena fases pela menor data; dentro de uma fase de pontos mantém a ordem
+ * numérica, mesmo com jogos antecipados. Preserva a ordem dos jogos da rodada.
+ * As duas listagens HTTP usam esta ordem, que o cliente consome sem reordenar.
+ */
+export function orderByRound<T extends RoundMatch>(matches: T[]): T[] {
+  const firstDate = new Map<string, string>()
+  for (const match of matches) {
+    const stage = roundStage(match)
+    const current = firstDate.get(stage)
+    if (current === undefined || match.start_time < current) firstDate.set(stage, match.start_time)
+  }
+  const rounds = [...new Map(matches.map((m) => [m.round, m])).values()]
+  rounds.sort((a, b) => {
+    const stageA = roundStage(a)
+    const stageB = roundStage(b)
+    if (stageA === stageB) return Number(a.round) - Number(b.round)
+    return firstDate.get(stageA)!.localeCompare(firstDate.get(stageB)!)
+  })
+  const indexes = new Map(rounds.map((m, i) => [m.round, i]))
+  return [...matches].sort((a, b) => indexes.get(a.round)! - indexes.get(b.round)!)
+}

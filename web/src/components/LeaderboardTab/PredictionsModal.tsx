@@ -66,6 +66,9 @@ export default function PredictionsModal({ member, groupId, onClose }: Predictio
             safeIndex={safeModalIndex}
             selectedRound={selectedModalRound}
             labelFor={labelFor}
+            knockoutRounds={
+              new Set(modalPredictions.filter((m) => m.is_knockout).map((m) => m.round))
+            }
             onPrev={() => {
               trackEvent('click_leaderboard_rodada_anterior', {
                 round: modalRoundKeys[Math.max(0, safeModalIndex - 1)],

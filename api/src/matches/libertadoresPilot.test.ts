@@ -254,18 +254,6 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       })),
     ).toEqual([
       {
-        home: 'Deportivo La Guaira',
-        away: 'Fluminense',
-        status: 'scheduled',
-        home_score: null,
-        away_score: null,
-        phase: 'GROUP_STAGE',
-        round: 'GROUP_STAGE',
-        round_label: 'Fase de grupos',
-        group_name: 'C',
-        decides_on_penalties: false,
-      },
-      {
         home: 'The Strongest',
         away: 'Deportivo Táchira',
         status: 'scheduled',
@@ -275,6 +263,18 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
         round: 'FIRST_STAGE',
         round_label: '1ª fase',
         group_name: null,
+        decides_on_penalties: false,
+      },
+      {
+        home: 'Deportivo La Guaira',
+        away: 'Fluminense',
+        status: 'scheduled',
+        home_score: null,
+        away_score: null,
+        phase: 'GROUP_STAGE',
+        round: 'GROUP_STAGE',
+        round_label: 'Fase de grupos',
+        group_name: 'C',
         decides_on_penalties: false,
       },
       {

@@ -81,11 +81,11 @@ describe('RoundHeader', () => {
     const props = {
       ...defaultProps,
       roundKeys: ['1', '2', 'round_of_16', 'quarter_finals'],
+      knockoutRounds: new Set(['round_of_16', 'quarter_finals']),
     }
     render(<RoundHeader {...props} />)
 
-    const groupStageOptgroup = screen.getByRole('group', { name: 'Fase de grupos' })
-    expect(groupStageOptgroup).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Rodada 1' }).closest('optgroup')).toBeNull()
 
     const knockoutOptgroup = screen.getByRole('group', { name: 'Mata-mata' })
     expect(knockoutOptgroup).toBeInTheDocument()
@@ -95,6 +95,7 @@ describe('RoundHeader', () => {
     const props = {
       ...defaultProps,
       roundKeys: ['round_of_16', 'quarter_finals'],
+      knockoutRounds: new Set(['round_of_16', 'quarter_finals']),
     }
     render(<RoundHeader {...props} />)
 
@@ -164,4 +165,25 @@ describe('RoundHeader – rodada com rascunho não salvo', () => {
     expect(screen.getByRole('option', { name: 'Rodada 35' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Rodada 36 · não salvo' })).toBeInTheDocument()
   })
+})
+
+it('preserva a ordem das preliminares e só agrupa fases eliminatórias', () => {
+  const keys = ['FIRST_STAGE', 'GROUP_STAGE', 'REGULAR_SEASON', 'TACA_GUANABARA', 'LAST_16']
+  render(
+    <RoundHeader
+      roundKeys={keys}
+      safeIndex={1}
+      selectedRound="GROUP_STAGE"
+      labelFor={(r) => r}
+      onPrev={() => {}}
+      onNext={() => {}}
+      onSelect={() => {}}
+      knockoutRounds={new Set(['FIRST_STAGE', 'LAST_16'])}
+    />,
+  )
+  expect(screen.getAllByRole('option').map((o) => o.getAttribute('value'))).toEqual(keys)
+  for (const key of keys.slice(1, 4)) {
+    expect(screen.getByRole('option', { name: key }).closest('optgroup')).toBeNull()
+  }
+  expect(screen.getAllByRole('group', { name: 'Mata-mata' })).toHaveLength(2)
 })

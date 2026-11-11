@@ -376,6 +376,7 @@ export default function GroupPicksTab({
         selectedRound={selectedRound}
         roundKeys={roundKeys}
         labelFor={labelFor}
+        knockoutRounds={new Set(matches.filter((m) => m.is_knockout).map((m) => m.round))}
         onPrev={prev}
         onNext={next}
         onSelect={(round) => {

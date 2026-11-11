@@ -21,6 +21,7 @@ export interface Match {
   phase: string
   round: string
   /** Server-derived display label for the round (e.g. "Rodada 1", "Oitavas de final"). */
+  is_knockout?: boolean
   round_label: string
   group_name: string | null
   home_team_id: string

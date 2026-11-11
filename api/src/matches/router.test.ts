@@ -320,7 +320,13 @@ describe('matches router – GET /', () => {
       expect(r2.status).toBe(200)
       await expect(r2.json()).resolves.toEqual({
         matches: [
-          { status: 'finished', round_label: '', decides_on_penalties: false, leg1_match_id: null },
+          {
+            status: 'finished',
+            round_label: '',
+            is_knockout: false,
+            decides_on_penalties: false,
+            leg1_match_id: null,
+          },
         ],
         default_round: null,
       })

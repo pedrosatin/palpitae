@@ -29,7 +29,9 @@ describe('competitionMatches', () => {
 
       const result = await fetchCompetitionMatches('comp-1')
 
-      expect(apiFetch).toHaveBeenCalledWith(`${config.apiUrl}/matches?competition_id=comp-1`)
+      expect(apiFetch).toHaveBeenCalledWith(
+        `${config.apiUrl}/matches?competition_id=comp-1&round_order=1`,
+      )
       expect(result).toEqual(mockResponse)
     })
 
@@ -39,7 +41,9 @@ describe('competitionMatches', () => {
       } as Response)
 
       await expect(fetchCompetitionMatches('comp-2')).rejects.toThrow('Erro ao carregar jogos')
-      expect(apiFetch).toHaveBeenCalledWith(`${config.apiUrl}/matches?competition_id=comp-2`)
+      expect(apiFetch).toHaveBeenCalledWith(
+        `${config.apiUrl}/matches?competition_id=comp-2&round_order=1`,
+      )
     })
 
     it('uses the cache key matches:competitionId', async () => {
@@ -52,17 +56,15 @@ describe('competitionMatches', () => {
       await fetchCompetitionMatches('comp-3')
 
       expect(apiFetch).toHaveBeenCalledTimes(1)
-      expect(apiFetch).toHaveBeenCalledWith(`${config.apiUrl}/matches?competition_id=comp-3`)
+      expect(apiFetch).toHaveBeenCalledWith(
+        `${config.apiUrl}/matches?competition_id=comp-3&round_order=1`,
+      )
     })
   })
 
   describe('applyDefaultRoundFromMatches', () => {
     it('extracts unique rounds and calls applyDefaultRound', () => {
-      const matches = [
-        { round: 'Round 1' },
-        { round: 'Round 2' },
-        { round: 'Round 1' },
-      ] as any[]
+      const matches = [{ round: 'Round 1' }, { round: 'Round 2' }, { round: 'Round 1' }] as any[]
 
       const setRoundIndex = vi.fn()
 
@@ -71,7 +73,7 @@ describe('competitionMatches', () => {
       expect(applyDefaultRound).toHaveBeenCalledWith(
         'Round 2',
         ['Round 1', 'Round 2'],
-        setRoundIndex
+        setRoundIndex,
       )
     })
 
@@ -91,11 +93,7 @@ describe('competitionMatches', () => {
 
       applyDefaultRoundFromMatches([], null, setRoundIndex)
 
-      expect(applyDefaultRound).toHaveBeenCalledWith(
-        null,
-        [],
-        setRoundIndex
-      )
+      expect(applyDefaultRound).toHaveBeenCalledWith(null, [], setRoundIndex)
     })
   })
 })
