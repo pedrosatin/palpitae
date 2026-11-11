@@ -632,6 +632,7 @@ router.get('/group', requireAuth, async (c) => {
        JOIN users u ON u.id = gm.user_id
        LEFT JOIN profiles p ON p.user_id = u.id
        WHERE gm.group_id = ?
+         AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = gm.group_id AND b.user_id = gm.user_id)
        ORDER BY display ASC`,
     )
     .bind(groupId)
@@ -661,6 +662,7 @@ router.get('/group', requireAuth, async (c) => {
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.group_id = ?
+             AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = pr.group_id AND b.user_id = pr.user_id)
            ORDER BY m.start_time ASC, user_display ASC`,
         )
         .bind(now, groupId)
@@ -686,6 +688,7 @@ router.get('/group', requireAuth, async (c) => {
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.group_id = ?
+             AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = pr.group_id AND b.user_id = pr.user_id)
              AND (
                ${lockedSql()}
                OR pr.user_id = ?
