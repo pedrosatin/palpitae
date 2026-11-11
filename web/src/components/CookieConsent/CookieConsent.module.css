@@ -74,3 +74,22 @@
     justify-content: flex-end;
   }
 }
+
+.preferences {
+  padding: var(--space-4);
+  text-align: center;
+}
+.preferences button {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+:global(body:has([data-save-all-bar])) .preferences {
+  padding-bottom: calc(8rem + var(--space-4));
+}

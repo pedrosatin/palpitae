@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import CookieConsent from './CookieConsent'
@@ -16,6 +16,57 @@ const mockSetConsent = vi.mocked(ga.setConsent)
 describe('CookieConsent', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('reabre a escolha salva e permite revogar pelo teclado', async () => {
+    mockGetStoredConsent.mockReturnValue('granted')
+    render(<CookieConsent />)
+    const preferences = screen.getByRole('button', { name: 'Preferências de cookies' })
+    preferences.focus()
+    await userEvent.keyboard('{Enter}')
+    const reject = screen.getByRole('button', { name: 'Recusar' })
+    expect(reject).toHaveFocus()
+    await userEvent.keyboard('{Enter}')
+    expect(mockSetConsent).toHaveBeenCalledWith('denied')
+    expect(preferences).toHaveFocus()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('fecha as preferências com Esc sem mudar a escolha e devolve o foco', async () => {
+    mockGetStoredConsent.mockReturnValue('granted')
+    render(<CookieConsent />)
+    const preferences = screen.getByRole('button', { name: 'Preferências de cookies' })
+    await userEvent.click(preferences)
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(preferences).toHaveFocus()
+    expect(mockSetConsent).not.toHaveBeenCalled()
+    expect(preferences).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument()
+  })
+
+  it('preserva o foco do modal quando o aviso abriu sozinho', () => {
+    mockGetStoredConsent.mockReturnValue(null)
+    render(
+      <>
+        <input aria-label="Nome do grupo" />
+        <CookieConsent />
+      </>,
+    )
+    const input = screen.getByRole('textbox', { name: 'Nome do grupo' })
+    input.focus()
+    fireEvent.click(screen.getByRole('button', { name: 'Recusar' }))
+    expect(input).toHaveFocus()
+  })
+
+  it('foca o aviso aberto por clique mesmo sem foco prévio nas preferências', () => {
+    mockGetStoredConsent.mockReturnValue('granted')
+    render(<CookieConsent />)
+    const preferences = screen.getByRole('button', { name: 'Preferências de cookies' })
+    fireEvent.click(preferences)
+    expect(screen.getByRole('button', { name: 'Recusar' })).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Recusar' }), { key: 'Escape' })
+    expect(preferences).toHaveFocus()
   })
 
   it('shows the banner when no choice has been made yet', () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getStoredConsent, setConsent, trackEvent } from './ga'
+import { getStoredConsent, setConsent } from './ga'
 
 describe('ga', () => {
   describe('gaEnabled', () => {
@@ -217,8 +217,12 @@ describe('ga', () => {
   })
 
   describe('trackEvent', () => {
-    beforeEach(() => {
+    let trackEvent: typeof import('./ga').trackEvent
+    beforeEach(async () => {
       vi.restoreAllMocks()
+      vi.resetModules()
+      localStorage.clear()
+      ;({ trackEvent } = await import('./ga'))
       window.gtag = vi.fn()
     })
 

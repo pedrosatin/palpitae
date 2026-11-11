@@ -2,21 +2,23 @@
  * Google Analytics 4 com Consent Mode v2 (LGPD).
  *
  * trackEvent() é o ponto de entrada para eventos customizados. Seguro chamar
- * mesmo sem GA configurado ou com consent negado — o gtag descarta o hit.
+ * mesmo sem GA configurado. Com consentimento negado, os helpers não enviam hits.
  * Nomes de evento seguem snake_case (padrão GA4).
  *
  * O GA só é ativado quando `config.gaMeasurementId` está definido — em dev/local
  * sem a env `VITE_GA_MEASUREMENT_ID`, nada é carregado (sem script, sem banner).
  *
  * O consentimento começa como `denied`: o gtag.js carrega de forma assíncrona e
- * coleta apenas pings sem cookie (modelagem do Consent Mode) até o usuário
- * aceitar no banner (ver `components/CookieConsent`). A escolha é persistida em
- * localStorage e restaurada nas visitas seguintes.
+ * coleta apenas pings sem cookie até a primeira escolha. Depois de recusar,
+ * nada é enviado. Revogar um aceite com o cliente carregado recarrega a página.
+ * A escolha fica no localStorage e volta nas visitas seguintes.
  */
 import { config } from '../config'
 import { gaPageLocation, gaPageTitle, internalReferrer, type GaPage } from './pageContext'
 
 const CONSENT_KEY = 'palpitae:analytics-consent'
+
+let currentConsent: Consent | undefined
 
 export type Consent = 'granted' | 'denied'
 
@@ -25,8 +27,10 @@ export const gaEnabled = config.gaMeasurementId.length > 0
 
 declare global {
   interface Window {
+    google_tag_manager?: Record<string, unknown>
     dataLayer: unknown[]
     gtag: (...args: unknown[]) => void
+    [key: `ga-disable-${string}`]: boolean
   }
 }
 
@@ -61,6 +65,9 @@ export function getStoredConsent(): Consent | null {
 
 /** Registra a escolha do usuário, persiste e atualiza o Consent Mode do gtag. */
 export function setConsent(consent: Consent): void {
+  const previousConsent = currentConsent ?? getStoredConsent()
+  currentConsent = consent
+  window[`ga-disable-${config.gaMeasurementId}`] = consent === 'denied'
   try {
     // Quando o usuário nega, salvamos o timestamp para podermos pedir novamente no futuro
     const valueToStore = consent === 'denied' ? `denied:${Date.now()}` : consent
@@ -69,6 +76,25 @@ export function setConsent(consent: Consent): void {
     // localStorage indisponível (modo privado etc.) — segue sem persistir
   }
   window.gtag?.('consent', 'update', { analytics_storage: consent })
+  if (consent === 'denied') {
+    clearGaCookies()
+    if (previousConsent === 'granted' && window.google_tag_manager && getStoredConsent() === 'denied') {
+      // A recarga encerra os eventos automáticos do cliente já carregado. A nova
+      // página restaura denied e ga-disable antes de qualquer chamada do gtag.
+      window.location.reload()
+      return
+    }
+  }
+}
+
+function clearGaCookies(): void {
+  const labels = window.location.hostname.split('.')
+  const domains = ['', ...labels.map((_, i) => labels.slice(i).join('.'))]
+  for (const name of ['_ga', `_ga_${config.gaMeasurementId.slice(2)}`]) {
+    for (const domain of domains) {
+      document.cookie = `${name}=; Max-Age=0; path=/${domain ? `; domain=${domain}` : ''}`
+    }
+  }
 }
 
 /**
@@ -79,6 +105,8 @@ export function setConsent(consent: Consent): void {
 export function initGa(): void {
   if (!gaEnabled) return
 
+  currentConsent = getStoredConsent() ?? undefined
+  window[`ga-disable-${config.gaMeasurementId}`] = currentConsent === 'denied'
   window.dataLayer = window.dataLayer || []
   window.gtag = function gtag() {
     // O GTM exige estritamente o objeto `arguments` nativo. Se usarmos rest parameters
@@ -96,8 +124,10 @@ export function initGa(): void {
   })
 
   // Restaura o consentimento concedido numa visita anterior
-  if (getStoredConsent() === 'granted') {
+  if (currentConsent === 'granted') {
     window.gtag('consent', 'update', { analytics_storage: 'granted' })
+  } else if (currentConsent === 'denied') {
+    window.gtag('consent', 'update', { analytics_storage: 'denied' })
   }
 
   window.gtag('js', new Date())
@@ -148,10 +178,12 @@ function loadGtagScript(): void {
 export function trackPageView(page: GaPage, referrer: string): void {
   const params = { ...page, page_referrer: referrer }
   window.gtag?.('set', params)
+  if ((currentConsent ?? getStoredConsent()) === 'denied') return
   window.gtag?.('event', 'page_view', params)
 }
 
-/** Dispara um evento customizado para o GA4. No-op se o GA não estiver ativo. */
+/** Dispara um evento customizado para o GA4. No-op sem GA ou com consentimento negado. */
 export function trackEvent(name: string, params?: Record<string, string | number | boolean>): void {
+  if ((currentConsent ?? getStoredConsent()) === 'denied') return
   window.gtag?.('event', name, params)
 }
