@@ -13,6 +13,7 @@ import { fetchDeadlineMatches, groupsListBinds, groupsListSql, type DeadlineMatc
 import { fetchLiveMatchesByCompetition } from './liveMatches'
 import { competitionStatusSql } from './competitionStatus'
 import { getRoundStandings } from './roundStandings'
+import { notBannedSql, rankingOrderSql, userPositionSql } from './ranking'
 
 const router = new Hono<AppContext>()
 
@@ -124,23 +125,24 @@ async function fetchGroupsPodiums(
       SELECT group_id, user_id, display, points, rank
       FROM (
         SELECT
-          l.group_id AS group_id,
-          l.user_id AS user_id,
+          gm.group_id AS group_id,
+          gm.user_id AS user_id,
+          l.user_id AS scored_user_id,
           COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display,
           l.total_points AS points,
           ROW_NUMBER() OVER (
-            PARTITION BY l.group_id
-            -- Mesmo desempate do endpoint de membros (pontos → acertos exatos →
-            -- ordem de entrada), senão o #1 do card pode divergir do leaderboard.
-            ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC, gm.user_id ASC
+            PARTITION BY gm.group_id
+            -- Mesma numeração do endpoint de membros, senão o card diverge do ranking.
+            -- Quem não tem linha no leaderboard ocupa o lugar e não aparece.
+            ORDER BY ${rankingOrderSql()}
           ) AS rank
-        FROM leaderboard l
-        JOIN users u ON u.id = l.user_id
-        JOIN group_members gm ON gm.group_id = l.group_id AND gm.user_id = l.user_id
-        LEFT JOIN profiles p ON p.user_id = l.user_id
-        WHERE l.group_id IN (${placeholders})
+        FROM group_members gm
+        JOIN users u ON u.id = gm.user_id
+        LEFT JOIN leaderboard l ON l.group_id = gm.group_id AND l.user_id = gm.user_id
+        LEFT JOIN profiles p ON p.user_id = gm.user_id
+        WHERE gm.group_id IN (${placeholders}) AND ${notBannedSql('gm')}
       )
-      WHERE rank <= 3
+      WHERE rank <= 3 AND scored_user_id IS NOT NULL
       ORDER BY group_id, rank
       `,
     )
@@ -252,7 +254,7 @@ router.get('/', requireAuth, async (c) => {
         .all<
           GroupRow & {
             points_exact: number
-            user_position: number
+            user_position: number | null
             user_points: number
             pending_summary: string | null
           }
@@ -620,15 +622,16 @@ router.get('/:id', requireAuth, async (c) => {
          g.predictions_visibility,
          COUNT(DISTINCT gm.user_id) AS member_count,
          COALESCE(l.total_points, 0) AS user_points,
-         COALESCE(l.exact_hits, 0) AS exact_hits
+         COALESCE(l.exact_hits, 0) AS exact_hits,
+         ${userPositionSql('g.id', '?')} AS user_position
        FROM groups g
-       INNER JOIN group_members gm ON g.id = gm.group_id
+       INNER JOIN group_members gm ON g.id = gm.group_id AND ${notBannedSql('gm')}
        LEFT JOIN competitions c ON g.competition_id = c.id
        LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
        WHERE g.id = ? AND g.deleted_at IS NULL
        GROUP BY g.id`,
     )
-    .bind(userId, groupId)
+    .bind(userId, userId, groupId)
     .first<
       GroupRow & {
         points_exact: number
@@ -638,26 +641,13 @@ router.get('/:id', requireAuth, async (c) => {
         predictions_visibility: string
         user_points: number
         exact_hits: number
+        user_position: number | null
       }
     >()
 
   if (!group) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
-
-  // Calculate position
-  const positionResult = await db
-    .prepare(
-      `SELECT COUNT(*) as position
-       FROM leaderboard
-       WHERE group_id = ? AND total_points > (
-         SELECT COALESCE(total_points, 0) FROM leaderboard WHERE group_id = ? AND user_id = ?
-       )`,
-    )
-    .bind(groupId, groupId, userId)
-    .first<{ position: number }>()
-
-  const user_position = ((positionResult?.position as number) ?? 0) + 1
 
   return c.json({
     group: {
@@ -679,7 +669,7 @@ router.get('/:id', requireAuth, async (c) => {
       member_count: group.member_count,
       user_points: group.user_points,
       exact_hits: group.exact_hits,
-      user_position,
+      user_position: group.user_position,
     },
   })
 })
@@ -894,8 +884,8 @@ router.get('/:id/members', requireAuth, async (c) => {
        INNER JOIN users u ON gm.user_id = u.id
        LEFT JOIN profiles p ON gm.user_id = p.user_id
        LEFT JOIN leaderboard l ON gm.group_id = l.group_id AND gm.user_id = l.user_id
-       WHERE gm.group_id = ?
-       ORDER BY total_points DESC, exact_hits DESC, gm.joined_at ASC, gm.user_id ASC`,
+       WHERE gm.group_id = ? AND ${notBannedSql('gm')}
+       ORDER BY ${rankingOrderSql()}`,
     )
     .bind(groupId)
     .all<{
@@ -968,6 +958,8 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     return c.json({ error: 'Membro não encontrado no grupo' }, 404)
   }
 
+  // A linha do `leaderboard` fica: as leituras do ranking partem de `group_members`,
+  // e quem volta ao grupo recupera os pontos que tinha.
   const removal = db
     .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
     .bind(groupId, targetUserId)

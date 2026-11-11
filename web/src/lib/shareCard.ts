@@ -7,7 +7,7 @@
  * Renderiza num <canvas> — PNG real, compartilhável como arquivo em redes sociais.
  * Sem dependência de fonte externa (stack de sistema, coerente com a marca).
  */
-import type { GroupWithStats } from '../components/GroupCard'
+import type { RankedGroup } from './groupPosition'
 
 /** Proporção retrato 1080×1350 — Stories (IG/WhatsApp) e feed. */
 export const SHARE_CARD_WIDTH = 1080
@@ -44,7 +44,7 @@ export interface ShareCardData {
  * Traduz um grupo encerrado no dado do cartão. Puro e testável — não toca canvas.
  * Reaproveita o pódio que a API já entrega pro card encerrado.
  */
-export function buildShareCardData(group: GroupWithStats, origin: string): ShareCardData {
+export function buildShareCardData(group: RankedGroup, origin: string): ShareCardData {
   const podium = group.podium ?? []
   const standings: ShareCardEntry[] = podium.map((e) => ({
     position: e.position,

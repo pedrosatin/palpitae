@@ -62,6 +62,42 @@ em vez de acertar o vencedor. Com o ramo desativado, qualquer resultado correto 
 um acerto só de vencedor). Configs onde `points_exact <= points_winner` (inclui o modo 1X2 e
 `(1,1)`) reportam `exact_hits = 0` — não há bônus de placar a detectar.
 
+## Ordem do ranking, posição e empate total
+
+O ranking do grupo tem uma ordem só, definida em `api/src/groups/ranking.ts`:
+
+1. mais pontos (`total_points`);
+2. mais placares exatos (`exact_hits`);
+3. quem entrou primeiro no grupo (`group_members.joined_at`);
+4. `user_id`, só para a ordem ser determinística quando duas entradas têm o mesmo horário.
+
+No empate total, dois participantes com os mesmos pontos e os mesmos exatos não
+dividem posição: fica à frente quem entrou antes no grupo. As posições do ranking
+geral não são compartilhadas. Quem não tem linha no `leaderboard` entra na ordem com
+0 ponto e 0 exato, como quem tem linha zerada.
+
+A lista de `GET /groups/:id/members`, o `user_position` de `GET /groups` e de
+`GET /groups/:id` e o pódio do card do grupo encerrado usam essa ordem em SQL. A
+variação de posição de `GET /groups/:id/round-standings` segue os mesmos critérios de
+ordenação no comparador TypeScript de `api/src/groups/roundStandings.ts`. O cartão de
+compartilhamento monta a imagem com o `user_position` e o pódio.
+
+A linha do `leaderboard` é criada na primeira apuração do grupo depois do palpite.
+Sem linha, o participante aparece na lista de membros com 0 ponto, na ordem normal,
+`user_position` vem `null` e ele não entra no pódio. A web mostra "—" no lugar da
+posição e não o trata como campeão. O lugar dele na lista continua contando: se um
+participante sem linha está em 1º por ter entrado antes num grupo em que ninguém
+pontuou, o pódio começa no 2º e o grupo fica sem campeão.
+
+Participante elegível é quem tem linha em `group_members` e não está em
+`group_bans`. Todas as leituras acima partem de `group_members`, então quem saiu ou
+foi banido não aparece nem conta na posição dos outros. A saída não apaga a linha do
+`leaderboard`, e o recálculo continua atualizando a linha de todos que têm palpite no
+grupo, inclusive de quem saiu. Quem volta encontra os pontos atualizados, inclusive os
+de jogos apurados durante a ausência e em competição encerrada, com a data de entrada
+nova. A entrada no grupo não recalcula o
+ranking.
+
 ## Bônus de pênalti (`points_penalty`)
 
 Em **jogo único de mata-mata** decidido nos pênaltis, um palpite de **empate** que também

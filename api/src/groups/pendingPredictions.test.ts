@@ -180,7 +180,8 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
       // Grupo sem jogos: 0, sem falso "concluído" no front (só some o hint).
       expect(aliceEmpty?.pending_predictions).toBe(0)
       expect(aliceEmpty?.user_points).toBe(0)
-      expect(aliceEmpty?.user_position).toBe(1)
+      // Sem linha no leaderboard não há posição.
+      expect(aliceEmpty?.user_position).toBeNull()
       // Pilot some da lista para usuário sem acesso (alice não é admin/pilot).
       expect(body.groups.some((g) => g.id === 'group-pilot')).toBe(false)
       expect(body.groups.some((g) => g.id === 'group-b')).toBe(false)

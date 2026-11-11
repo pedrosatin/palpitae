@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { isKnockoutPhase } from '../matches/rounds'
 import { EXACT_HIT_SQL, PREDICTION_POINTS_SQL } from '../matches/scoring'
+import { notBannedSql } from './ranking'
 
 /** Membro com os totais do ranking e o que ele fez na rodada de referência. */
 export interface RoundMemberRow {
@@ -38,7 +39,7 @@ function compareBinary(a: string, b: string): number {
   return a < b ? -1 : 1
 }
 
-/** Ordem oficial do ranking, a mesma de `GET /groups/:id/members`. */
+/** Ordem oficial do ranking, a mesma de `rankingOrderSql`. */
 function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMemberRow[] {
   return [...rows].sort(
     (a, b) =>
@@ -204,7 +205,7 @@ async function fetchRoundPhases(db: D1Database, groupId: string): Promise<RoundP
   return results
 }
 
-/** Membros atuais com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
+/** Membros elegíveis com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
 async function fetchRoundMembers(
   db: D1Database,
   groupId: string,
@@ -237,7 +238,7 @@ async function fetchRoundMembers(
            AND CAST(m.round AS INTEGER) >= CAST(? AS INTEGER)
          GROUP BY p.user_id
        ) r ON gm.user_id = r.user_id
-       WHERE gm.group_id = ?`,
+       WHERE gm.group_id = ? AND ${notBannedSql('gm')}`,
     )
     .bind(round, groupId, round, groupId)
     .all<RoundMemberRow>()
