@@ -61,7 +61,7 @@ describe('football-data result regression', () => {
               ? [
                   {
                     date: pending.utcDate,
-                    status: { type: { state: 'post' } },
+                    status: { type: { name: 'STATUS_FULL_TIME', state: 'post', completed: true } },
                     competitions: [
                       {
                         competitors: [

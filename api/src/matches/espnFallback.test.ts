@@ -62,8 +62,9 @@ function buildFakeAe() {
 }
 
 // Fábrica de evento ESPN no shape real do scoreboard (validado ao vivo):
-// date ISO (pode vir sem segundos, ex. "2026-10-05T22:30Z"), status.type.state,
-// competitions[0].competitors[] com homeAway/team.displayName/score string.
+// date ISO (pode vir sem segundos, ex. "2026-10-05T22:30Z"), status.type.state e
+// completed (true só no fim de jogo), competitions[0].competitors[] com
+// homeAway/team.displayName/score string.
 function espnEvent(opts: {
   date: string
   state?: string
@@ -72,9 +73,10 @@ function espnEvent(opts: {
   homeScore?: string
   awayScore?: string
 }) {
+  const state = opts.state ?? 'post'
   return {
     date: opts.date,
-    status: { type: { state: opts.state ?? 'post' } },
+    status: { type: { state, completed: state === 'post' } },
     competitions: [
       {
         competitors: [

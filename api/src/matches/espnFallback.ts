@@ -4,7 +4,11 @@ import {
   createProviderHttpObserver,
   type ProviderHttpObserver,
 } from '../observability/providerHttp'
-import { fetchEspnScoreboard as fetchScoreboard, type EspnScoreboardEvent } from '../providers/espn'
+import {
+  fetchEspnScoreboard as fetchScoreboard,
+  isEspnFinal,
+  type EspnScoreboardEvent,
+} from '../providers/espn'
 import { ACTIVE_RESULT_WINDOW_MS, EARLIEST_RESULT_MS, RESCUE_WINDOW_MS } from './matchPollingWindow'
 
 /**
@@ -158,7 +162,7 @@ function matchesEvent(m: WindowMatch, ev: EspnEvent): boolean {
   )
 }
 
-/** Placar final do evento ('post'), ou nulls se não-numérico/ausente. */
+/** Placar final do evento, ou nulls se não-numérico/ausente. */
 function espnScores(ev: EspnEvent): { home: number | null; away: number | null } {
   const { home, away } = espnCompetitors(ev)
   const parse = (raw: string | undefined): number | null => {
@@ -170,13 +174,14 @@ function espnScores(ev: EspnEvent): { home: number | null; away: number | null }
 
 /**
  * Para cada competição consultada: recupera os jogos ainda sem resultado cujo evento
- * correspondente na ESPN já terminou ('post'). Devolve um mapa compId → nº de
+ * correspondente na ESPN já terminou (`isEspnFinal`). Devolve um mapa compId → nº de
  * jogos atualizados (comps sem jogos na janela, sem mapeamento ou com casamento
  * ambíguo devolvem 0 e nunca lançam).
  *
  * Fail-closed em todas as dúvidas: 0 ou >1 candidatos, placar não-numérico ou
- * estado diferente de 'post' → pula o jogo. Errar por não pontuar é recuperável
- * (o primário volta); pontuar errado não é.
+ * evento sem fim de jogo confirmado (adiado, cancelado, em andamento) → pula o
+ * jogo. Errar por não pontuar é recuperável (o primário volta); pontuar errado
+ * não é.
  */
 export async function scoreWindowFromEspn(
   db: D1Database,
@@ -300,7 +305,8 @@ async function scoreCompetitionWindow(
       continue
     }
     const ev = candidates[0]
-    if (ev.status?.type?.state !== 'post') {
+    // Adiado chega como STATUS_POSTPONED, state 'post', completed false e 0-0.
+    if (!isEspnFinal(ev.status?.type)) {
       skipped++
       continue
     }
