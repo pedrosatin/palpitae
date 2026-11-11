@@ -226,6 +226,48 @@ describe('access controls with a real SQL database', () => {
     })
   })
 
+  describe('GET /predictions/user', () => {
+    type MemberPicks = {
+      error?: string
+      predictions?: { match_id: string; predicted_home_score: number | null }[]
+    }
+    const picksOfOther = async (request: Awaited<ReturnType<typeof fixture>>['request']) => {
+      const response = await request('/predictions/user?group_id=group&user_id=other')
+      return { status: response.status, body: (await response.json()) as MemberPicks }
+    }
+
+    it('de membro atual devolve só os palpites de jogos travados', async () => {
+      const { request } = await fixture()
+      const { status, body } = await picksOfOther(request)
+      expect(status).toBe(200)
+      expect(
+        body.predictions
+          ?.filter((p) => p.predicted_home_score !== null)
+          .map((p) => `${p.match_id}:${p.predicted_home_score}`),
+      ).toEqual(['past:3'])
+    })
+
+    it('de quem saiu do grupo responde 404, sem palpites', async () => {
+      const { request } = await fixture()
+      expect((await request('/groups/group/members/other', 'other', 'DELETE')).status).toBe(200)
+      const { status, body } = await picksOfOther(request)
+      expect(status).toBe(404)
+      expect(body.predictions).toBeUndefined()
+    })
+
+    it('de banido responde 404, mesmo com linha de membro antiga', async () => {
+      const { request, sqlite } = await fixture()
+      expect((await request('/groups/group/members/other', 'owner', 'DELETE')).status).toBe(200)
+      expect(await picksOfOther(request)).toMatchObject({ status: 404 })
+      sqlite.exec(
+        "INSERT INTO group_members (id,group_id,user_id,role) VALUES ('gm5','group','other','member')",
+      )
+      const { status, body } = await picksOfOther(request)
+      expect(status).toBe(404)
+      expect(body.predictions).toBeUndefined()
+    })
+  })
+
   it('returns the invite only to the owner', async () => {
     const { request } = await fixture()
     expect(
