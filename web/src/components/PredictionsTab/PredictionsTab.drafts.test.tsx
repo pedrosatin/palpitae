@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PredictionsTab from './PredictionsTab'
@@ -352,5 +352,53 @@ describe('PredictionsTab – rascunho e importação', () => {
     expect(await screen.findByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
     expect(screen.getByLabelText('Placar Brasil')).toHaveValue(3)
     expect(screen.getByLabelText('Placar Argentina')).toHaveValue(2)
+  })
+})
+
+describe('PredictionsTab – resposta de um card que saiu da tela', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+  afterEach(() => localStorage.clear())
+
+  it('a resposta do 2×1 que chega depois da troca de rodada não apaga o 3×1', async () => {
+    mockApi([makeMatch({ id: 'm1', round: '1' }), makeMatch({ id: 'm2', round: '2' })])
+    const api = vi.mocked(globalThis.fetch).getMockImplementation()!
+    let respond: (res: Response) => void = () => {}
+    vi.mocked(globalThis.fetch).mockImplementation((url, init) => {
+      if (!url.toString().includes('/predictions') || init?.method !== 'PUT') return api(url, init)
+      return new Promise<Response>((resolve) => {
+        respond = resolve
+      })
+    })
+    const user = userEvent.setup()
+    renderTab()
+
+    // Salva 2×1 no jogo da rodada 1, e o PUT fica pendente.
+    await user.type(await screen.findByLabelText('Placar Brasil'), '2')
+    await user.type(screen.getByLabelText('Placar Argentina'), '1')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    // Troca de rodada com o envio pendente, volta e muda para 3×1.
+    await user.click(screen.getByRole('button', { name: 'Próxima rodada' }))
+    await user.click(screen.getByRole('button', { name: 'Rodada anterior' }))
+    expect(screen.getByLabelText('Placar Brasil')).toHaveValue(2)
+    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+
+    // A resposta do 2×1 chega por último.
+    await act(async () => {
+      respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    })
+
+    expect(screen.getByLabelText('Placar Brasil')).toHaveValue(3)
+    expect(screen.getByLabelText('Placar Argentina')).toHaveValue(1)
+    expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem(KEY)!).scores.m1.value).toEqual({
+        home: '3',
+        away: '1',
+      }),
+    )
   })
 })
