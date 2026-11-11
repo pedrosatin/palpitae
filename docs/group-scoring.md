@@ -68,34 +68,34 @@ O ranking do grupo tem uma ordem só, definida em `api/src/groups/ranking.ts`:
 
 1. mais pontos (`total_points`);
 2. mais placares exatos (`exact_hits`);
-3. quem tem linha no `leaderboard` antes de quem não tem;
-4. quem entrou primeiro no grupo (`group_members.joined_at`);
-5. `user_id`, só para a ordem ser determinística quando duas entradas têm o mesmo horário.
+3. quem entrou primeiro no grupo (`group_members.joined_at`);
+4. `user_id`, só para a ordem ser determinística quando duas entradas têm o mesmo horário.
 
 No empate total, dois participantes com os mesmos pontos e os mesmos exatos não
 dividem posição: fica à frente quem entrou antes no grupo. As posições do ranking
-geral não são compartilhadas.
+geral não são compartilhadas. Quem não tem linha no `leaderboard` entra na ordem com
+0 ponto e 0 exato, como quem tem linha zerada.
 
 A lista de `GET /groups/:id/members`, o `user_position` de `GET /groups` e de
 `GET /groups/:id` e o pódio do card do grupo encerrado usam essa ordem em SQL. A
-variação de posição de `GET /groups/:id/round-standings` reproduz os critérios no
-comparador TypeScript de `api/src/groups/roundStandings.ts`. Na posição anterior, o
-critério 3 vale para quem tinha palpite em jogo apurado antes da rodada de
-referência. O cartão de compartilhamento monta a imagem com o `user_position` e o
-pódio, então segue a mesma ordem.
+variação de posição de `GET /groups/:id/round-standings` segue os mesmos critérios de
+ordenação no comparador TypeScript de `api/src/groups/roundStandings.ts`. O cartão de
+compartilhamento monta a imagem com o `user_position` e o pódio.
 
 A linha do `leaderboard` é criada na primeira apuração do grupo depois do palpite.
-Quem sai perde a linha e a recupera na próxima apuração depois de voltar. Sem linha,
-o participante aparece no fim da lista de membros com 0 ponto, `user_position` vem
-`null` e ele não entra no pódio. A web mostra "—" no lugar
-da posição e não o trata como campeão.
+Sem linha, o participante aparece na lista de membros com 0 ponto, na ordem normal,
+`user_position` vem `null` e ele não entra no pódio. A web mostra "—" no lugar da
+posição e não o trata como campeão. O lugar dele na lista continua contando: se um
+participante sem linha está em 1º por ter entrado antes num grupo em que ninguém
+pontuou, o pódio começa no 2º e o grupo fica sem campeão.
 
 Participante elegível é quem tem linha em `group_members` e não está em
-`group_bans`, e só ele conta. A saída e a remoção apagam a linha do `leaderboard` na mesma transação.
-Os palpites ficam no banco, e o recálculo não recria a linha de quem saiu ou foi
-banido. A entrada no grupo não recalcula o ranking: quem saiu por conta própria e
-volta fica sem linha até a próxima apuração do grupo, que soma os palpites dele
-com a data de entrada nova.
+`group_bans`. Todas as leituras acima partem de `group_members`, então quem saiu ou
+foi banido não aparece nem conta na posição dos outros. A saída não apaga a linha do
+`leaderboard`: ela fica parada, o recálculo só grava linha de participante elegível,
+e quem saiu por conta própria e volta recupera os pontos que tinha, inclusive em
+competição encerrada, com a data de entrada nova. A entrada no grupo não recalcula o
+ranking.
 
 ## Bônus de pênalti (`points_penalty`)
 

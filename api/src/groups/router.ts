@@ -125,22 +125,24 @@ async function fetchGroupsPodiums(
       SELECT group_id, user_id, display, points, rank
       FROM (
         SELECT
-          l.group_id AS group_id,
-          l.user_id AS user_id,
+          gm.group_id AS group_id,
+          gm.user_id AS user_id,
+          l.user_id AS scored_user_id,
           COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display,
           l.total_points AS points,
           ROW_NUMBER() OVER (
-            PARTITION BY l.group_id
-            -- Mesma ordem do endpoint de membros, senão o #1 do card diverge do ranking.
+            PARTITION BY gm.group_id
+            -- Mesma numeração do endpoint de membros, senão o card diverge do ranking.
+            -- Quem não tem linha no leaderboard ocupa o lugar e não aparece.
             ORDER BY ${rankingOrderSql()}
           ) AS rank
-        FROM leaderboard l
-        JOIN users u ON u.id = l.user_id
-        JOIN group_members gm ON gm.group_id = l.group_id AND gm.user_id = l.user_id
-        LEFT JOIN profiles p ON p.user_id = l.user_id
-        WHERE l.group_id IN (${placeholders}) AND ${notBannedSql('gm')}
+        FROM group_members gm
+        JOIN users u ON u.id = gm.user_id
+        LEFT JOIN leaderboard l ON l.group_id = gm.group_id AND l.user_id = gm.user_id
+        LEFT JOIN profiles p ON p.user_id = gm.user_id
+        WHERE gm.group_id IN (${placeholders}) AND ${notBannedSql('gm')}
       )
-      WHERE rank <= 3
+      WHERE rank <= 3 AND scored_user_id IS NOT NULL
       ORDER BY group_id, rank
       `,
     )
@@ -956,24 +958,21 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     return c.json({ error: 'Membro não encontrado no grupo' }, 404)
   }
 
-  // A linha do ranking sai junto com a participação. Os palpites ficam, e é
-  // deles que a linha volta na apuração seguinte se a pessoa entrar de novo.
-  const removal = [
-    db
-      .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
-      .bind(groupId, targetUserId),
-    db
-      .prepare('DELETE FROM leaderboard WHERE group_id = ? AND user_id = ?')
-      .bind(groupId, targetUserId),
-  ]
+  // A linha do `leaderboard` fica: as leituras do ranking partem de `group_members`,
+  // e quem volta ao grupo recupera os pontos que tinha.
+  const removal = db
+    .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
+    .bind(groupId, targetUserId)
   if (targetUserId !== userId) {
-    removal.unshift(
+    await db.batch([
       db
         .prepare('INSERT OR IGNORE INTO group_bans (group_id, user_id) VALUES (?, ?)')
         .bind(groupId, targetUserId),
-    )
+      removal,
+    ])
+  } else {
+    await removal.run()
   }
-  await db.batch(removal)
 
   logEvent(c.env.AE, 'member_removed', {
     // 'self' = saiu sozinho; 'admin' = removido pelo dono do grupo.

@@ -12,6 +12,10 @@ afterEach(() => {
 })
 
 type Podium = { position: number; display: string; points: number; is_you: boolean }[]
+type RoundStandingsBody = {
+  round: string | null
+  standings: { user_id: string; position_change: number | null }[]
+}
 type ListedGroup = { user_position: number | null; member_count: number; podium: Podium | null }
 
 /**
@@ -103,34 +107,51 @@ describe('posição, pódio e ranking na mesma ordem', () => {
     ])
   })
 
-  it('empate total: quem pontuou vem antes, depois vale a entrada mais antiga', async () => {
+  it('empate total: vale a entrada mais antiga, com ou sem linha no leaderboard', async () => {
     const { leaderboard, detailPosition, ranking } = setup()
     // bia e dudu empatam em pontos e exatos. caio tem linha zerada e ana, que
     // entrou antes de todos, não tem linha.
     leaderboard("('g','dudu',7,1), ('g','bia',7,1), ('g','caio',0,0)")
 
-    expect(await ranking('ana')).toEqual(['bia', 'dudu', 'caio', 'ana'])
+    expect(await ranking('ana')).toEqual(['bia', 'dudu', 'ana', 'caio'])
     expect(await detailPosition('bia')).toBe(1)
     expect(await detailPosition('dudu')).toBe(2)
-    expect(await detailPosition('caio')).toBe(3)
+    // ana ocupa o 3º lugar da lista e segue sem posição própria.
     expect(await detailPosition('ana')).toBeNull()
+    expect(await detailPosition('caio')).toBe(4)
+  })
+
+  it('pódio numera pela lista e só mostra quem tem linha', async () => {
+    const { leaderboard, listed } = setup()
+    leaderboard("('g','bia',0,0), ('g','caio',0,0)")
+
+    const group = await listed('bia')
+    expect(group.user_position).toBe(2)
+    expect(group.podium?.map((e) => [e.position, e.display])).toEqual([
+      [2, 'Bia'],
+      [3, 'Caio'],
+    ])
   })
 })
 
 describe('quem saiu ou foi banido fica fora do ranking', () => {
-  it('remoção apaga a linha do leaderboard e libera a posição dos outros', async () => {
-    const { leaderboard, request, detailPosition, listed, rows } = setup()
+  it('quem saiu não aparece na lista nem conta na posição dos outros', async () => {
+    const { leaderboard, request, detailPosition, listed, ranking, rows } = setup()
     leaderboard("('g','dudu',99,9), ('g','bia',10,1)")
     expect(await detailPosition('bia')).toBe(2)
 
     expect((await request('ana', '/groups/g/members/dudu', 'DELETE')).status).toBe(200)
 
-    expect(rows()).toEqual([{ user_id: 'bia', total_points: 10 }])
+    expect(await ranking('bia')).toEqual(['bia', 'ana', 'caio'])
     expect(await detailPosition('bia')).toBe(1)
-    expect(await listed('bia')).toMatchObject({ user_position: 1, member_count: 3 })
+    const group = await listed('bia')
+    expect(group).toMatchObject({ user_position: 1, member_count: 3 })
+    expect(group.podium?.map((e) => e.display)).toEqual(['Bia'])
+    // A linha fica parada no banco.
+    expect(rows()).toContainEqual({ user_id: 'dudu', total_points: 99 })
   })
 
-  it('recálculo da pontuação não recria a linha de quem saiu', async () => {
+  it('recálculo da pontuação não grava linha de quem saiu', async () => {
     const { sqlite, db, request, rows } = setup()
     sqlite.exec(`
       INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
@@ -150,28 +171,27 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
     expect(rows().map((r) => (r as { user_id: string }).user_id)).toEqual(['bia'])
   })
 
-  it('quem saiu e voltou recupera a linha na apuração seguinte', async () => {
-    const { sqlite, db, request, rows, detailPosition } = setup()
-    sqlite.exec(`
-      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
-        VALUES ('m2','c','m2','test','h','v','2026-02-08T00:00:00Z','finished','2',2,0);
-      INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
-        VALUES ('p1','bia','g','m2',2,0), ('p2','dudu','g','m2',2,0);
-    `)
-    await scoreUnprocessedMatches('c', db)
+  it('sair e voltar em competição encerrada recupera pontos e posição', async () => {
+    const { leaderboard, request, rows, detailPosition, listed, ranking } = setup()
+    leaderboard("('g','bia',10,1), ('g','dudu',30,2), ('g','caio',4,0)")
     const before = rows()
-    expect(before).toHaveLength(2)
 
     await request('dudu', '/groups/g/members/dudu', 'DELETE')
-    expect((await request('dudu', '/groups/join', 'POST')).status).toBe(200)
-    expect(rows()).toHaveLength(1)
-    expect(await detailPosition('dudu')).toBeNull()
+    expect(await ranking('ana')).toEqual(['bia', 'caio', 'ana'])
+    expect(await detailPosition('bia')).toBe(1)
 
-    sqlite.exec("UPDATE matches SET scored_at = NULL WHERE id = 'm2'")
-    await scoreUnprocessedMatches('c', db)
+    expect((await request('dudu', '/groups/join', 'POST')).status).toBe(200)
+
     expect(rows()).toEqual(before)
-    // Mesmos pontos e exatos de bia; dudu voltou com data de entrada nova.
-    expect(await detailPosition('dudu')).toBe(2)
+    expect(await ranking('ana')).toEqual(['dudu', 'bia', 'caio', 'ana'])
+    expect(await detailPosition('dudu')).toBe(1)
+    expect(await detailPosition('bia')).toBe(2)
+    expect(await detailPosition('caio')).toBe(3)
+    expect((await listed('dudu')).podium?.map((e) => [e.position, e.display, e.is_you])).toEqual([
+      [1, 'Dudu', true],
+      [2, 'Bia', false],
+      [3, 'Caio', false],
+    ])
   })
 
   it('entrada no grupo não cria posição para quem só tem palpite em jogo futuro', async () => {
@@ -193,30 +213,66 @@ describe('quem saiu ou foi banido fica fora do ranking', () => {
     expect(await ranking('ana')).toEqual([...order, 'dudu'])
   })
 
-  it('variação da rodada trata quem ganhou a primeira linha na rodada como sem linha antes', async () => {
+  it('variação da rodada segue a lista quando a linha zerada nasce antes do primeiro jogo apurado', async () => {
+    const { sqlite, db, request, ranking } = setup()
+    // caio pontua na rodada 1. bia só tem palpite futuro e ganha linha zerada na
+    // apuração da rodada 1. ana entrou antes de bia e só palpita na rodada 2, sem pontuar.
+    sqlite.exec(`
+      UPDATE matches SET scored_at = NULL WHERE id = 'm1';
+      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
+        VALUES ('m2','c','m2','test','h','v','2026-02-08T00:00:00Z','scheduled','2',NULL,NULL),
+               ('m9','c','m9','test','h','v','2099-01-01T00:00:00Z','scheduled','9',NULL,NULL);
+      INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+        VALUES ('p1','caio','g','m1',1,0), ('p2','bia','g','m9',1,0);
+    `)
+    await scoreUnprocessedMatches('c', db)
+    expect(await ranking('ana')).toEqual(['caio', 'ana', 'bia', 'dudu'])
+
+    sqlite.exec(`
+      INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+        VALUES ('p3','ana','g','m2',0,3);
+      UPDATE matches SET status = 'finished', home_score = 2, away_score = 0 WHERE id = 'm2';
+    `)
+    await scoreUnprocessedMatches('c', db)
+
+    expect(await ranking('ana')).toEqual(['caio', 'ana', 'bia', 'dudu'])
+    const body = (await request('ana', '/groups/g/round-standings')).body as RoundStandingsBody
+    expect(body.round).toBe('2')
+    expect(body.standings.map((s) => [s.user_id, s.position_change])).toEqual([
+      ['caio', 0],
+      ['ana', 0],
+      ['bia', 0],
+      ['dudu', 0],
+    ])
+  })
+
+  it('variação da rodada não muda quando um jogo apurado é reaberto', async () => {
     const { sqlite, leaderboard, request } = setup()
-    // ana entrou antes de bia e só pontua na rodada 2, a de referência. bia já
-    // tinha linha zerada da rodada 1, então estava à frente de ana.
+    // bia tem linha zerada pelo palpite da rodada 1. ana entrou antes e ganha a
+    // primeira linha na rodada 2, com zero ponto.
     sqlite.exec(`
       INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score,scored_at)
         VALUES ('m2','c','m2','test','h','v','2026-02-08T00:00:00Z','finished','2',2,0,'2026-02-08T03:00:00Z');
       INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score,points_awarded)
-        VALUES ('p1','caio','g','m1',1,0,10), ('p2','bia','g','m1',0,3,0), ('p3','ana','g','m2',1,0,1);
+        VALUES ('p1','caio','g','m1',1,0,10), ('p2','bia','g','m1',0,3,0), ('p3','ana','g','m2',0,3,0);
     `)
-    leaderboard("('g','caio',10,0), ('g','bia',0,0), ('g','ana',1,0)")
-
-    const body = (await request('ana', '/groups/g/round-standings')).body as {
-      round: string
-      standings: { user_id: string; position_change: number | null }[]
-    }
-
-    expect(body.round).toBe('2')
-    expect(body.standings.map((s) => [s.user_id, s.position_change])).toEqual([
+    leaderboard("('g','caio',10,0), ('g','bia',0,0), ('g','ana',0,0)")
+    const changes = async () =>
+      ((await request('ana', '/groups/g/round-standings')).body as RoundStandingsBody).standings.map(
+        (s) => [s.user_id, s.position_change],
+      )
+    const expected = [
       ['caio', 0],
-      ['ana', 1],
-      ['bia', -1],
+      ['ana', 0],
+      ['bia', 0],
       ['dudu', 0],
-    ])
+    ]
+
+    expect(await changes()).toEqual(expected)
+    // Reabrir o jogo da rodada 1 não mexe na rodada de referência nem nas linhas.
+    sqlite.exec("UPDATE matches SET scored_at = NULL, status = 'finished' WHERE id = 'm1'")
+    sqlite.exec("UPDATE matches SET postponed = 1 WHERE id = 'm1'")
+    expect(await changes()).toEqual(expected)
   })
 
   it('banido com linha residual não aparece no ranking, no pódio nem na contagem', async () => {

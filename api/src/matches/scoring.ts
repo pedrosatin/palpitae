@@ -157,9 +157,8 @@ export const EXACT_HIT_SQL =
   'CASE WHEN g.points_exact > g.points_winner AND p.points_awarded = g.points_exact THEN 1 ELSE 0 END'
 
 /**
- * Recalcula o ranking dos grupos a partir dos palpites. Só participante elegível
- * ganha linha: os palpites de quem saiu ou foi banido ficam no banco e não
- * recriam a linha dele.
+ * Recalcula o ranking dos grupos a partir dos palpites. Só a linha de participante
+ * elegível é gravada: a de quem saiu ou foi banido fica como estava na saída.
  */
 function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
   return db

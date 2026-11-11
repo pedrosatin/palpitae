@@ -12,21 +12,23 @@ export function notBannedSql(alias: string): string {
 }
 
 /**
- * Ordem do ranking: pontos, placares exatos, quem tem linha no `leaderboard`
- * antes de quem não tem, entrada mais antiga no grupo e, por último, o id do
- * usuário. No empate total (mesmos pontos e exatos) vale a ordem de entrada.
+ * Ordem do ranking: pontos, placares exatos, entrada mais antiga no grupo e, por
+ * último, o id do usuário. No empate total (mesmos pontos e exatos) vale a ordem
+ * de entrada. Quem não tem linha no `leaderboard` entra com 0 ponto e 0 exato.
  *
  * `member` é o alias de `group_members` e `board` o do `leaderboard`, que pode
  * vir de `LEFT JOIN`.
  */
 export function rankingOrderSql(member = 'gm', board = 'l'): string {
-  return `COALESCE(${board}.total_points, 0) DESC, COALESCE(${board}.exact_hits, 0) DESC, ${board}.user_id IS NULL, ${member}.joined_at ASC, ${member}.user_id ASC`
+  return `COALESCE(${board}.total_points, 0) DESC, COALESCE(${board}.exact_hits, 0) DESC, ${member}.joined_at ASC, ${member}.user_id ASC`
 }
 
 /**
- * Posição de um usuário no ranking do grupo, como subquery escalar. Conta só os
- * participantes elegíveis, na ordem de `rankingOrderSql`. Devolve NULL para quem
- * não tem linha no `leaderboard`: sem palpite apurado não há posição a mostrar.
+ * Posição de um usuário no ranking do grupo, como subquery escalar. Numera os
+ * participantes elegíveis na ordem de `rankingOrderSql`, a mesma numeração da
+ * lista de membros. Devolve NULL para quem não tem linha no `leaderboard`: sem
+ * apuração não há posição a mostrar. A linha de quem saiu fica no banco e não
+ * conta, porque a consulta parte de `group_members`.
  *
  * `groupExpr` e `userExpr` vêm da consulta de fora e não podem usar os aliases
  * `rm` e `rl`.

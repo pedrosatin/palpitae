@@ -21,11 +21,9 @@ function member(overrides: Partial<RoundMemberRow> & { user_id: string }): Round
     joined_at: '2026-01-01T00:00:00Z',
     total_points: 0,
     exact_hits: 0,
-    unscored: 0,
     round_points: 0,
     since_points: overrides.round_points ?? 0,
     since_exact: 0,
-    unscored_before: overrides.unscored ?? 0,
     ...overrides,
   }
 }
@@ -46,34 +44,6 @@ describe('computeRoundStandings', () => {
     ]
 
     expect(changes(rows)).toEqual({ lider: 0, subiu: 1, caiu: -1, ultimo: 0 })
-  })
-
-  it('quem ganhou a primeira linha na rodada estava atrás de quem já tinha linha', () => {
-    // b entrou antes de a, mas só passou a ter linha na rodada de referência.
-    const rows = [
-      member({ user_id: 'c', total_points: 10, joined_at: '2026-01-03T00:00:00Z' }),
-      member({ user_id: 'a', joined_at: '2026-01-02T00:00:00Z' }),
-      member({
-        user_id: 'b',
-        joined_at: '2026-01-01T00:00:00Z',
-        total_points: 3,
-        round_points: 3,
-        unscored_before: 1,
-      }),
-    ]
-
-    expect(changes(rows)).toEqual({ c: 0, b: 1, a: -1 })
-    expect(computeRoundStandings(rows, NO_STREAKS).map((s) => s.user_id)).toEqual(['c', 'b', 'a'])
-  })
-
-  it('primeira linha com zero ponto na rodada passa quem segue sem linha', () => {
-    const rows = [
-      member({ user_id: 'c', total_points: 10, joined_at: '2026-01-03T00:00:00Z' }),
-      member({ user_id: 'b', joined_at: '2026-01-01T00:00:00Z', unscored: 1 }),
-      member({ user_id: 'a', joined_at: '2026-01-02T00:00:00Z', unscored_before: 1 }),
-    ]
-
-    expect(changes(rows)).toEqual({ c: 0, a: 1, b: -1 })
   })
 
   it('devolve as linhas na ordem atual do ranking', () => {
