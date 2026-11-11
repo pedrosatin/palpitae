@@ -14,10 +14,14 @@ const MAX_TARGET_GROUPS = 10
 const MAX_MATCHES = 100
 const BATCH_SIZE = 100
 
-type GroupRow = {
+/** O que a cópia de palpites precisa saber de um grupo. */
+export type CopyGroup = {
   id: string
   competition_id: string
   points_exact: number
+}
+
+type GroupRow = CopyGroup & {
   competition_status: string
   visibility: string | null
 }
@@ -65,11 +69,11 @@ export function outcomeScore(home: number, away: number): { home: number; away: 
  * Origem "só vencedor" não grava em destino que pontua o placar exato. O botão
  * grava 1x0 e apagaria um placar que o destino pode ter palpitado.
  */
-function acceptsFrom(source: GroupRow, target: GroupRow): boolean {
+export function acceptsFrom(source: CopyGroup, target: CopyGroup): boolean {
   return source.points_exact > 0 || target.points_exact === 0
 }
 
-function scoreFor(group: GroupRow, source: SourceRow): { home: number; away: number } {
+function scoreFor(group: CopyGroup, source: SourceRow): { home: number; away: number } {
   const home = source.predicted_home_score
   const away = source.predicted_away_score
   return group.points_exact === 0 ? outcomeScore(home, away) : { home, away }
@@ -106,11 +110,12 @@ async function fetchMemberGroups(
   return new Map(results.map((g) => [g.id, g]))
 }
 
+/** Palpites do usuário na origem. Sem `matchIds`, todos os que ele tem no grupo. */
 async function fetchSourcePredictions(
   db: D1Database,
   userId: string,
   groupId: string,
-  matchIds: string[],
+  matchIds: string[] | null,
 ): Promise<SourceRow[]> {
   const { results } = await db
     .prepare(
@@ -119,9 +124,11 @@ async function fetchSourcePredictions(
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
        JOIN competitions c ON c.id = m.competition_id
-       WHERE p.user_id = ? AND p.group_id = ? AND p.match_id IN (SELECT value FROM json_each(?))`,
+       WHERE p.user_id = ? AND p.group_id = ?${
+         matchIds ? ' AND p.match_id IN (SELECT value FROM json_each(?))' : ''
+       }`,
     )
-    .bind(userId, groupId, JSON.stringify(matchIds))
+    .bind(userId, groupId, ...(matchIds ? [JSON.stringify(matchIds)] : []))
     .all<SourceRow>()
   return results
 }
@@ -194,30 +201,41 @@ function planWrites(input: {
   userId: string
   sourceGroupId: string
   now: string
-  targets: GroupRow[]
+  targets: CopyGroup[]
   open: SourceRow[]
   ties: Map<string, TieInfo<TieMatch>>
   existing: Map<string, ExistingRow>
+  onlyMissing: boolean
 }): Plan {
-  const { db, userId, sourceGroupId, now, targets, open, ties, existing } = input
+  const { db, userId, sourceGroupId, now, targets, ties, existing, onlyMissing } = input
   // O jogo é relido na própria escrita. Se ele travou depois das consultas, nada é gravado.
+  // Com `onlyMissing`, o palpite salvo no destino depois das consultas também fica.
   const insert = db.prepare(
     `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
      SELECT ?, ?, ?, m.id, ?, ?, ?, ?, ?
      FROM matches m
      WHERE m.id = ? AND NOT ${lockedSql('m')}
-     ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
+     ON CONFLICT (user_id, group_id, match_id) DO ${
+       onlyMissing
+         ? 'NOTHING'
+         : `UPDATE SET
        predicted_home_score     = excluded.predicted_home_score,
        predicted_away_score     = excluded.predicted_away_score,
        predicted_penalty_winner = excluded.predicted_penalty_winner,
-       updated_at               = excluded.updated_at`,
+       updated_at               = excluded.updated_at`
+     }`,
   )
-  const sourceByMatch = new Map(open.map((r) => [r.match_id, r]))
+  const allSourceByMatch = new Map(input.open.map((r) => [r.match_id, r]))
   const statements: D1PreparedStatement[] = []
   const results: ReplicateGroupResult[] = []
 
   for (const group of targets) {
     const result: ReplicateGroupResult = { group_id: group.id, saved: 0, replaced: 0 }
+    // Com `onlyMissing`, o jogo que o grupo já palpitou sai da cópia, e a volta usa a ida dele.
+    const open = onlyMissing
+      ? input.open.filter((r) => !existing.has(`${group.id}:${r.match_id}`))
+      : input.open
+    const sourceByMatch = new Map(open.map((r) => [r.match_id, r]))
     for (const source of open) {
       const { home, away } = scoreFor(group, source)
       const tie = ties.get(source.match_id)
@@ -248,7 +266,7 @@ function planWrites(input: {
         // senão o classificado que a origem previu.
         rawPenaltyWinner =
           current?.predicted_penalty_winner ??
-          derivedClassified(sourceGroupId, source, tie, sourceByMatch, existing)
+          derivedClassified(sourceGroupId, source, tie, allSourceByMatch, existing)
       }
       const penalty = resolvePenaltyPick({
         eligible: matchGoesToPenalties(parsePenaltyPhases(source.penalty_phases), source.phase),
@@ -288,6 +306,68 @@ function planWrites(input: {
     results.push(result)
   }
   return { statements, results }
+}
+
+export type CopyPlan = Plan & {
+  /** Jogos da origem já travados, que não entram na cópia. */
+  lockedMatches: string[]
+  /** Jogos pedidos que a origem não palpitou. */
+  missingMatches: string[]
+}
+
+/**
+ * Lê os palpites da origem e monta as escritas nos destinos, com as regras de
+ * `POST /predictions/replicate`. Quem chama decide os destinos e executa `statements`.
+ * Sem `matchIds`, copia todos os palpites da origem. Com `onlyMissing`, só preenche
+ * os jogos que o destino ainda não palpitou.
+ */
+export async function planCopy(
+  db: D1Database,
+  input: {
+    userId: string
+    source: CopyGroup
+    targets: CopyGroup[]
+    matchIds: string[] | null
+    onlyMissing: boolean
+    now: string
+  },
+): Promise<CopyPlan> {
+  const { userId, source, targets, matchIds, onlyMissing, now } = input
+  const sourceRows = await fetchSourcePredictions(db, userId, source.id, matchIds)
+  const found = new Set(sourceRows.map((r) => r.match_id))
+  const missingMatches = (matchIds ?? []).filter((id) => !found.has(id))
+  const lockedMatches = sourceRows.filter((r) => isMatchLocked(r, now)).map((r) => r.match_id)
+  const lockedSet = new Set(lockedMatches)
+  const open = sourceRows.filter((r) => !lockedSet.has(r.match_id))
+  const empty = targets.map((g) => ({ group_id: g.id, saved: 0, replaced: 0 }))
+  if (targets.length === 0 || open.length === 0) {
+    return { statements: [], results: empty, lockedMatches, missingMatches }
+  }
+
+  const ties = await fetchTies(db, source.competition_id, open)
+  const lookupIds = new Set(open.map((r) => r.match_id))
+  for (const r of open) {
+    const partner = ties.get(r.match_id)?.partner
+    if (ties.get(r.match_id)?.role === 'leg2' && partner) lookupIds.add(partner.id)
+  }
+  const existing = await fetchExisting(
+    db,
+    userId,
+    [source.id, ...targets.map((g) => g.id)],
+    Array.from(lookupIds),
+  )
+  const plan = planWrites({
+    db,
+    userId,
+    sourceGroupId: source.id,
+    now,
+    targets,
+    open,
+    ties,
+    existing,
+    onlyMissing,
+  })
+  return { ...plan, lockedMatches, missingMatches }
 }
 
 /**
@@ -371,59 +451,25 @@ export async function handleReplicatePost(c: Context<AppContext>) {
   }
 
   const now = new Date().toISOString()
-  const sourceRows = await fetchSourcePredictions(db, userId, sourceGroupId, matchIds)
-  const found = new Set(sourceRows.map((r) => r.match_id))
-  const missingMatches = matchIds.filter((id) => !found.has(id))
-  const lockedMatches = sourceRows.filter((r) => isMatchLocked(r, now)).map((r) => r.match_id)
-  const lockedSet = new Set(lockedMatches)
-  const open = sourceRows.filter((r) => !lockedSet.has(r.match_id))
-
-  let results: ReplicateGroupResult[] = eligible.map((g) => ({
-    group_id: g.id,
-    saved: 0,
-    replaced: 0,
-  }))
-  if (eligible.length > 0 && open.length > 0) {
-    const ties = await fetchTies(db, sourceGroup.competition_id, open)
-    const lookupIds = new Set(open.map((r) => r.match_id))
-    for (const r of open) {
-      const partner = ties.get(r.match_id)?.partner
-      if (ties.get(r.match_id)?.role === 'leg2' && partner) lookupIds.add(partner.id)
-    }
-    const existing = await fetchExisting(
-      db,
-      userId,
-      [sourceGroupId, ...eligible.map((g) => g.id)],
-      Array.from(lookupIds),
-    )
-    const plan = planWrites({
-      db,
-      userId,
-      sourceGroupId,
-      now,
-      targets: eligible,
-      open,
-      ties,
-      existing,
-    })
-    results = plan.results
+  const plan = await planCopy(db, {
+    userId,
+    source: sourceGroup,
+    targets: eligible,
+    matchIds,
+    onlyMissing: false,
+    now,
+  })
+  const { results, lockedMatches, missingMatches } = plan
+  if (plan.statements.length > 0) {
     const chunks: D1PreparedStatement[][] = []
     for (let i = 0; i < plan.statements.length; i += BATCH_SIZE) {
       chunks.push(plan.statements.slice(i, i + BATCH_SIZE))
     }
     await Promise.all(chunks.map((chunk) => db.batch(chunk)))
-    if (plan.statements.length > 0) {
-      logEvent(c.env.AE, 'prediction_saved', {
-        blobs: [
-          sourceGroupId,
-          '',
-          await hashUserId(userId),
-          'replicate',
-          sourceGroup.competition_id,
-        ],
-        doubles: [plan.statements.length],
-      })
-    }
+    logEvent(c.env.AE, 'prediction_saved', {
+      blobs: [sourceGroupId, '', await hashUserId(userId), 'replicate', sourceGroup.competition_id],
+      doubles: [plan.statements.length],
+    })
   }
 
   return c.json({
