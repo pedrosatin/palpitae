@@ -32,7 +32,7 @@ export interface GroupDetail {
   points_winner: number
   predictions_visibility: string
   member_count: number
-  user_position: number
+  user_position: number | null
   user_points: number
   exact_hits: number
 }

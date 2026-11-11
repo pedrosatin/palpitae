@@ -4,13 +4,13 @@ import Button from '../Button'
 import { trackEvent } from '../../analytics/ga'
 import { buildShareCardData, renderShareCardBlob, type ShareCardData } from '../../lib/shareCard'
 import { canShareImageFiles, downloadBlob } from '../../lib/shareImage'
-import type { GroupWithStats } from '../GroupCard'
+import type { RankedGroup } from '../../lib/groupPosition'
 import styles from './ShareGroupModal.module.css'
 
 interface ShareGroupModalProps {
   isOpen: boolean
   onClose: () => void
-  group: GroupWithStats
+  group: RankedGroup
 }
 
 function shareText(data: ShareCardData): string {

@@ -118,6 +118,7 @@ function setup() {
     INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code,
                         points_exact, points_winner, points_penalty, points_classified)
       VALUES ('g1', 'Bolão Champions', '${CL_ID}', 'u-ana', 'INVCL', 3, 1, 1, 2);
+    INSERT INTO group_members (id, group_id, user_id) SELECT id, 'g1', id FROM users;
   `)
   return { sqlite, db, provider: stubProvider() }
 }

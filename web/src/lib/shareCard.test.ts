@@ -6,9 +6,9 @@ import {
   SHARE_CARD_HEIGHT,
   type ShareCardData,
 } from './shareCard'
-import type { GroupWithStats } from '../components/GroupCard'
+import type { RankedGroup } from './groupPosition'
 
-const base: GroupWithStats = {
+const base: RankedGroup = {
   id: 'g1',
   name: 'Meu Grupo',
   is_admin: false,

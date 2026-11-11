@@ -1,6 +1,7 @@
 import { roundLabel } from '../matches/rounds'
 import { competitionStatusSql } from './competitionStatus'
 import { pendingSummaryBinds, pendingSummarySql } from './pendingPredictions'
+import { notBannedSql, userPositionSql } from './ranking'
 
 /**
  * Consulta de `GET /groups`. Traz os grupos do usuário com os números do card e
@@ -9,7 +10,8 @@ import { pendingSummaryBinds, pendingSummarySql } from './pendingPredictions'
  * `liveMatches.ts`, que roda em paralelo. O teste de plano em
  * `groupsList.queryPlan.test.ts` protege as leituras de jogos das duas.
  *
- * Sem acesso a pilotos, os grupos de competição piloto ficam de fora.
+ * Sem acesso a pilotos, os grupos de competição piloto ficam de fora. Banido com
+ * linha residual em `group_members` não vê o grupo nem entra em `member_count`.
  */
 export function groupsListSql(canSeePilot: boolean): string {
   const pilotFilter = canSeePilot ? '' : "AND (c.visibility IS NULL OR c.visibility != 'pilot')"
@@ -29,24 +31,16 @@ export function groupsListSql(canSeePilot: boolean): string {
           (
             SELECT COUNT(*)
             FROM group_members gm2
-            WHERE gm2.group_id = g.id
+            WHERE gm2.group_id = g.id AND ${notBannedSql('gm2')}
           ) AS member_count,
           COALESCE(l.total_points, 0) AS user_points,
-          COALESCE(
-            (
-              SELECT COUNT(*) + 1
-              FROM leaderboard l2
-              WHERE l2.group_id = g.id
-                AND l2.total_points > COALESCE(l.total_points, 0)
-            ),
-            1
-          ) AS user_position,
+          ${userPositionSql('g.id', 'gm.user_id')} AS user_position,
           ${pendingSummarySql('g')} AS pending_summary
         FROM groups g
         INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
         LEFT JOIN competitions c ON g.competition_id = c.id
         LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
-        WHERE g.deleted_at IS NULL
+        WHERE g.deleted_at IS NULL AND ${notBannedSql('gm')}
           ${pilotFilter}
         GROUP BY g.id
         ORDER BY g.created_at DESC

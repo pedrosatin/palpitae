@@ -8,6 +8,7 @@ import {
   groupRoundStatusText,
   type DeadlineMatch,
 } from '../../lib/dashboardStatus'
+import { hasPosition, positionLabel } from '../../lib/groupPosition'
 import styles from './GroupCard.module.css'
 
 export interface PodiumEntry {
@@ -29,7 +30,8 @@ export interface GroupWithStats {
   points_exact?: number
   created_at: string
   member_count: number
-  user_position: number
+  /** Posição no ranking. `null` quando o usuário não tem linha no `leaderboard` do grupo. */
+  user_position: number | null
   user_points: number
   pending_predictions: number
   /** Jogo sem palpite que fecha primeiro. */
@@ -82,7 +84,7 @@ function Podium({ group }: { group: GroupWithStats }) {
       {!youInPodium && (
         <li className={styles.podiumRow} data-you data-outside>
           <span className={styles.podiumRank} aria-hidden="true">
-            #{group.user_position}
+            {positionLabel(group.user_position)}
           </span>
           <span className={styles.podiumName}>Você</span>
           <span className={styles.podiumPoints}>{group.user_points}</span>
@@ -130,7 +132,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
             </div>
             <div className={styles.statItem}>
               <span className={styles.statLabel}>Sua posição</span>
-              <span className={styles.statValue}>#{group.user_position}</span>
+              <span className={styles.statValue}>{positionLabel(group.user_position)}</span>
             </div>
             <div className={styles.statItem}>
               <span className={styles.statLabel}>Seus pontos</span>
@@ -146,7 +148,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
         )}
       </a>
 
-      {isFinished && (
+      {isFinished && hasPosition(group) && (
         <div className={styles.finishedFooter}>
           <button
             type="button"
@@ -161,7 +163,7 @@ export default function GroupCard({ group, onClick }: GroupCardProps) {
         </div>
       )}
 
-      {isFinished && (
+      {isFinished && hasPosition(group) && (
         <ShareGroupModal isOpen={shareOpen} onClose={() => setShareOpen(false)} group={group} />
       )}
     </Card>

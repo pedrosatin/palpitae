@@ -73,6 +73,7 @@ async function setup(picks: [number, number][]) {
       SELECT printf('u%03d', i), printf('u%03d@example.com', i), 'google', printf('g%03d', i) FROM n;
     INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code)
       VALUES ('g1', 'Bolão', '${competition_id}', 'u001', 'INV1');
+    INSERT INTO group_members (id, group_id, user_id) SELECT id, 'g1', id FROM users;
   `)
   const insert = sqlite.prepare(
     `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score)
@@ -322,6 +323,7 @@ describe('correção da ida enquanto a volta é pontuada', () => {
         ('u001', 'ana@example.com', 'google', 'g1'), ('u002', 'beto@example.com', 'google', 'g2');
       INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_classified)
         VALUES ('g1', 'Bolão', 'c1', 'u001', 'INV1', 2);
+      INSERT INTO group_members (id, group_id, user_id) SELECT id, 'g1', id FROM users;
       INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score) VALUES
         ('a1', 'u001', 'g1', 'leg1', 1, 0), ('a2', 'u001', 'g1', 'leg2', 0, 0),
         ('b1', 'u002', 'g1', 'leg1', 0, 1), ('b2', 'u002', 'g1', 'leg2', 0, 0);

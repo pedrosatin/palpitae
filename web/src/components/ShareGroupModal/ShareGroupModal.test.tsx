@@ -2,14 +2,14 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import ShareGroupModal from './ShareGroupModal'
-import type { GroupWithStats } from '../GroupCard'
+import type { RankedGroup } from '../../lib/groupPosition'
 
 const mockTrackEvent = vi.fn()
 vi.mock('../../analytics/ga', () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
 }))
 
-const group: GroupWithStats = {
+const group: RankedGroup = {
   id: 'g1',
   name: 'Meu Grupo',
   is_admin: false,

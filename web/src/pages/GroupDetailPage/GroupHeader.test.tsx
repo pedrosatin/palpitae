@@ -39,6 +39,11 @@ describe('GroupHeader', () => {
     expect(screen.getByText('pontos')).toBeInTheDocument()
   })
 
+  it('mostra travessão na posição quando a API não devolve posição', () => {
+    render(<GroupHeader {...defaultProps} group={{ ...defaultGroup, user_position: null }} />)
+    expect(screen.getByText('sua posição').previousElementSibling).toHaveTextContent(/^—$/)
+  })
+
   it('falls back to competition_id when competition_name is null', () => {
     render(<GroupHeader {...defaultProps} group={{ ...defaultGroup, competition_name: null }} />)
     expect(screen.getByText('comp1')).toBeInTheDocument()
