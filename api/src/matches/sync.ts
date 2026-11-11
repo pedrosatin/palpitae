@@ -3,6 +3,7 @@ import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/p
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
+import { indexTies } from './ties'
 
 const PROVIDER = 'football-data'
 const API_BASE = 'https://api.football-data.org/v4'
@@ -617,14 +618,16 @@ async function upsertMatches(
   matches: ApiMatch[],
   teamIds: Map<number, string>,
   now: string,
-): Promise<number> {
+): Promise<MatchUpsertRow[]> {
   const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
+  const rows: MatchUpsertRow[] = []
   const matchStatements = []
 
   for (const m of matches) {
     const row = mapMatchUpsertRow(m, teamIds, now)
     if (!row) continue
 
+    rows.push(row)
     matchStatements.push(
       matchInsertStmt.bind(
         crypto.randomUUID(),
@@ -656,7 +659,48 @@ async function upsertMatches(
     await batchStatements(db, matchStatements)
   }
 
-  return matchStatements.length
+  return rows
+}
+
+/**
+ * Sem `leg`, a pontuação só reconhece a ida pelo par no banco. Uma ida pontuada
+ * antes de a volta existir foi tratada como jogo único e recebeu o classificado,
+ * que só a volta credita. Quando o par aparece no calendário, a ida que ainda tem
+ * classificado volta para a fila de pontuação com `scored_at` nulo, e a pontuação
+ * refaz os pontos dela como ida, junto com o ranking. Na ida a pontuação sempre
+ * grava classificado zero, então a ida não é reaberta de novo.
+ */
+async function reopenLeg1ScoredAsSingle(
+  db: D1Database,
+  competitionId: string,
+  rows: MatchUpsertRow[],
+): Promise<void> {
+  const ties = indexTies(
+    rows.map((row) => ({
+      id: row.externalId,
+      competition_id: competitionId,
+      phase: row.phase,
+      home_team_id: row.homeTeamId,
+      away_team_id: row.awayTeamId,
+      start_time: row.startTime,
+      leg: row.leg,
+    })),
+  )
+  const leg1Ids = Array.from(ties)
+    .filter(([, tie]) => tie.role === 'leg1')
+    .map(([externalId]) => externalId)
+  if (leg1Ids.length === 0) return
+
+  await db
+    .prepare(
+      `UPDATE matches SET scored_at = NULL
+       WHERE provider = ? AND external_id IN (SELECT value FROM json_each(?))
+         AND scored_at IS NOT NULL
+         AND EXISTS (SELECT 1 FROM predictions
+                     WHERE match_id = matches.id AND classified_points <> 0)`,
+    )
+    .bind(PROVIDER, JSON.stringify(leg1Ids))
+    .run()
 }
 
 export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
@@ -699,12 +743,13 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   const competition = await upsertCompetition(db, apiComp, competitionName, season)
   const { teamMap, teamIds } = await upsertTeams(db, matches)
   const now = opts.now ?? isoSeconds(new Date())
-  const matchCount = await upsertMatches(db, competition.id, matches, teamIds, now)
+  const rows = await upsertMatches(db, competition.id, matches, teamIds, now)
+  await reopenLeg1ScoredAsSingle(db, competition.id, rows)
 
   return {
     competition: competitionName,
     competitionId: competition.id,
-    matches: matchCount,
+    matches: rows.length,
     teams: teamMap.size,
   }
 }
