@@ -151,6 +151,7 @@ export async function pollActiveMatches(
           context: 'poller',
           competitionId: comp.comp_id,
         }),
+        ae,
       })
       return { success: true as const, comp, round, matches: result?.matches ?? 0 }
     } catch (err) {

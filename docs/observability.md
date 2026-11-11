@@ -93,6 +93,7 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   `football_api_error` (erro de sync de qualquer provedor, football-data ou ESPN),
   `match_results_fallback` (fallback de resultados pela ESPN, ADR-016),
   `provider_http_attempt` (uma tentativa HTTP a um provedor de partidas),
+  `match_teams_changed` (o provedor trocou os times de um jogo já gravado),
   `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms)
   e `radar_sync_error` — emitidos só quando a coleta do radar roda com um Analytics
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
@@ -118,6 +119,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
+| `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
 | `group_joined` | `group_id` | `user_hash` | `method` (`convite_link`/`convite_antigo`/`codigo`; vazio se o cliente não informou) | `recent_signup` em blob5 (`1` = conta criada há menos de 1 h, `0` = mais antiga, vazio se não foi possível ler); os dois campos estão ausentes em eventos anteriores ao deploy da medição |

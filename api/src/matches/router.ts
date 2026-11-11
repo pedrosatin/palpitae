@@ -387,6 +387,7 @@ router.post('/sync', requireAuth, async (c) => {
       apiKey,
       db: c.env.DB,
       onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
+      ae: c.env.AE,
     })
     await scoreUnprocessedMatches(result.competitionId, c.env.DB)
     return c.json({ ok: true, synced: result })
