@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { config } from '../../config'
 import { type JoinGroupEntryMethod, trackJoinGroup } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { parseInviteCode, forgetInviteDocument, wasInviteDocumentOpened } from '../../lib/invite'
 import Button from '../Button'
 import Modal from '../Modal'
@@ -72,12 +72,11 @@ export default function JoinGroupModal({
         body: JSON.stringify({ invite_code, entry_method }),
       })
 
-      const data = (await res.json()) as { group?: JoinedGroup; error?: string }
-
       if (!res.ok) {
-        setError(data.error ?? 'Erro ao entrar no grupo')
+        setError(await readApiError(res, 'Erro ao entrar no grupo'))
         return
       }
+      const data = (await res.json()) as { group?: JoinedGroup }
 
       trackEvent('submit_entrar_grupo')
       trackJoinGroup(entry_method)
@@ -85,7 +84,7 @@ export default function JoinGroupModal({
       setJoined(data.group!)
       onJoined(data.group!)
     } catch {
-      setError('Erro de conexão. Tente novamente.')
+      setError(CONNECTION_ERROR)
     } finally {
       setSubmitting(false)
     }

@@ -43,6 +43,23 @@ type PodiumEntry = {
   is_you: boolean
 }
 
+const INVALID_BODY = 'Body JSON inválido'
+
+/**
+ * Lê o corpo como objeto JSON. Devolve `null` para JSON inválido, `null`, lista
+ * ou valor solto, e o handler responde 400. Os campos chegam sem garantia de
+ * tipo: cada handler confere os que usa.
+ */
+async function readJsonObject<T extends object>(c: Context<AppContext>): Promise<T | null> {
+  const body: unknown = await c.req.json().catch(() => null)
+  return typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as T) : null
+}
+
+/** Texto sem espaços nas pontas, ou `undefined` quando o campo não é texto. */
+function trimmedString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.trim() : undefined
+}
+
 /**
  * Generates a readable invite code in the format XXXX-XXXX (uppercase alphanumeric).
  */
@@ -346,7 +363,7 @@ router.post('/', requireAuth, async (c) => {
     return c.json({ error: 'Você não tem permissão para criar grupos' }, 403)
   }
 
-  const body = await c.req.json<{
+  const body = await readJsonObject<{
     name?: string
     competition_id?: string
     points_exact?: number
@@ -354,10 +371,11 @@ router.post('/', requireAuth, async (c) => {
     points_penalty?: number
     points_classified?: number
     predictions_visibility?: string
-  }>()
+  }>(c)
+  if (!body) return c.json({ error: INVALID_BODY }, 400)
 
-  const name = body.name?.trim()
-  const competition_id = body.competition_id?.trim()
+  const name = trimmedString(body.name)
+  const competition_id = trimmedString(body.competition_id)
 
   if (!name || !competition_id) {
     return c.json({ error: 'Nome e competição são obrigatórios' }, 400)
@@ -482,9 +500,10 @@ router.post('/', requireAuth, async (c) => {
  */
 router.post('/join', requireAuth, async (c) => {
   const userId = c.get('userId')
-  const body = await c.req.json<{ invite_code?: string; entry_method?: unknown }>()
+  const body = await readJsonObject<{ invite_code?: string; entry_method?: unknown }>(c)
+  if (!body) return c.json({ error: INVALID_BODY }, 400)
 
-  const invite_code = body.invite_code?.trim().toUpperCase()
+  const invite_code = trimmedString(body.invite_code)?.toUpperCase()
 
   if (!invite_code) {
     return c.json({ error: 'Código de convite é obrigatório' }, 400)
@@ -688,8 +707,9 @@ router.patch('/:id', requireAuth, async (c) => {
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const body = await c.req.json<{ name?: string; points_classified?: number }>()
-  const name = typeof body.name === 'string' ? body.name.trim() : undefined
+  const body = await readJsonObject<{ name?: string; points_classified?: number }>(c)
+  if (!body) return c.json({ error: INVALID_BODY }, 400)
+  const name = trimmedString(body.name)
   const pointsClassified = body.points_classified
   if (
     pointsClassified !== undefined &&

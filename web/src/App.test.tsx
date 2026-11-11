@@ -464,6 +464,111 @@ describe('App', () => {
     expect(fetchMock).toHaveBeenCalledWith(`${config.apiUrl}/auth/me`, { credentials: 'include' })
   })
 
+  it('mantém a rota e oferece nova tentativa quando /auth/me responde 503', async () => {
+    localStorage.setItem('palpitae:sessao-conhecida', '1')
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 }).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/grupos/g1']}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/indisponível no momento/)).toBeInTheDocument()
+    expect(screen.queryByTestId('login-page')).not.toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/grupos/g1')
+    expect(localStorage.getItem('palpitae:sessao-conhecida')).toBe('1')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }))
+
+    expect(await screen.findByTestId('group-detail-page')).toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent('/grupos/g1')
+  })
+
+  it.each([
+    ['/', 'landing-page'],
+    ['/convite/ABC123', 'invite-page'],
+  ])(
+    'mantém %s no ar para quem não tem sessão conhecida quando /auth/me responde 503',
+    async (path, page) => {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 503 })
+
+      render(
+        <MemoryRouter initialEntries={[path]}>
+          <App />
+        </MemoryRouter>,
+      )
+
+      expect(await screen.findByTestId(page)).toBeInTheDocument()
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+      // Dá tempo de a resposta 503 chegar ao estado antes de conferir que o aviso não entrou.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(screen.getByTestId(page)).toBeInTheDocument()
+      expect(screen.queryByText(/indisponível no momento/)).not.toBeInTheDocument()
+    },
+  )
+
+  it('mostra a indisponibilidade em / para quem tem sessão conhecida', async () => {
+    localStorage.setItem('palpitae:sessao-conhecida', '1')
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503 })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/indisponível no momento/)).toBeInTheDocument()
+    expect(screen.queryByTestId('landing-page')).not.toBeInTheDocument()
+  })
+
+  it('mantém o aviso e o foco no botão quando a nova tentativa também responde 503', async () => {
+    let answerRetry: (res: unknown) => void = () => {}
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockReturnValueOnce(new Promise((resolve) => (answerRetry = resolve)))
+
+    render(
+      <MemoryRouter initialEntries={['/grupos/g1']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    const button = await screen.findByRole('button', { name: 'Tentar novamente' })
+    await userEvent.click(button)
+
+    // Durante a consulta o aviso continua montado, com o mesmo botão ocupado.
+    expect(button).toBeInTheDocument()
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    await userEvent.click(button)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    answerRetry({ ok: false, status: 503 })
+
+    await waitFor(() => expect(button).toHaveAttribute('aria-busy', 'false'))
+    expect(button).toBeInTheDocument()
+    expect(button).toHaveFocus()
+    expect(button).toHaveTextContent('Tentar novamente')
+  })
+
+  it('leva ao login quando /auth/me responde 401', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401 })
+
+    render(
+      <MemoryRouter initialEntries={['/grupos/g1']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByTestId('login-page')).toBeInTheDocument()
+    expect(screen.queryByText(/indisponível no momento/)).not.toBeInTheDocument()
+  })
+
   it('falls back to unauthenticated route when /auth/me rejects with a network error', async () => {
     fetchMock.mockRejectedValueOnce(new Error('Network request failed'))
 

@@ -18,7 +18,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
   }
 })
 
-vi.mock('../../lib/api', () => ({
+vi.mock('../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/api')>()),
   apiFetch: vi.fn(),
 }))
 
@@ -155,7 +156,7 @@ describe('useGroupActions', () => {
         await result.current.leaveGroup()
       })
 
-      expect(mockAlert).toHaveBeenCalledWith('Network failure')
+      expect(mockAlert).toHaveBeenCalledWith('Erro de conexão. Tente novamente.')
       expect(mockNavigate).not.toHaveBeenCalled()
       expect(result.current.leaving).toBe(false)
     })
@@ -306,7 +307,7 @@ describe('useGroupActions', () => {
         await result.current.deleteGroup()
       })
 
-      expect(mockAlert).toHaveBeenCalledWith('Network failure')
+      expect(mockAlert).toHaveBeenCalledWith('Erro de conexão. Tente novamente.')
       expect(mockNavigate).not.toHaveBeenCalled()
       expect(result.current.deleting).toBe(false)
     })
@@ -652,5 +653,43 @@ describe('useTabsOffset', () => {
 
     unmount()
     expect(removeEventListenerSpy).toHaveBeenCalledWith('resize', expect.any(Function))
+  })
+})
+
+describe('useGroupActions com resposta de erro que não é JSON', () => {
+  const html502 = () =>
+    new Response('<html><body><h1>502 Bad Gateway</h1></body></html>', { status: 502 })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(useNavigate).mockReturnValue(vi.fn())
+    vi.mocked(useConfirm).mockReturnValue({
+      confirm: vi.fn().mockResolvedValue(true),
+      confirmDialog: null as never,
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['sair', (actions: ReturnType<typeof useGroupActions>) => actions.leaveGroup()],
+    ['excluir', (actions: ReturnType<typeof useGroupActions>) => actions.deleteGroup()],
+    [
+      'trocar convite',
+      (actions: ReturnType<typeof useGroupActions>) => actions.rotateInvite(vi.fn()),
+    ],
+  ])('%s avisa com mensagem legível, sem SyntaxError', async (_name, run) => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    vi.mocked(apiFetch).mockResolvedValueOnce(html502())
+    const { result } = renderHook(() => useGroupActions('g1', mockUser))
+
+    await act(async () => {
+      await run(result.current)
+    })
+
+    expect(alert).toHaveBeenCalledTimes(1)
+    expect(alert).toHaveBeenCalledWith('Erro de conexão. Tente novamente.')
   })
 })

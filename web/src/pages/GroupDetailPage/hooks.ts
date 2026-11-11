@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
-import { apiFetch } from '../../lib/api'
+import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useConfirm } from '../../components/ConfirmModal'
@@ -151,14 +151,14 @@ export function useGroupActions(groupId: string | undefined, user: User) {
       })
 
       if (!res.ok) {
-        const body = (await res.json()) as { error?: string }
-        throw new Error(body.error ?? 'Erro ao sair do grupo')
+        window.alert(await readApiError(res, 'Erro ao sair do grupo'))
+        return
       }
 
       invalidateApiCache('groups:')
       navigate('/', { replace: true })
-    } catch (e: unknown) {
-      window.alert(e instanceof Error ? e.message : 'Erro ao sair do grupo')
+    } catch {
+      window.alert(CONNECTION_ERROR)
     } finally {
       setLeaving(false)
     }
@@ -185,14 +185,14 @@ export function useGroupActions(groupId: string | undefined, user: User) {
       })
 
       if (!res.ok) {
-        const body = (await res.json()) as { error?: string }
-        throw new Error(body.error ?? 'Erro ao excluir grupo')
+        window.alert(await readApiError(res, 'Erro ao excluir grupo'))
+        return
       }
 
       invalidateApiCache('groups:')
       navigate('/', { replace: true, state: { refreshGroups: true } })
-    } catch (e: unknown) {
-      window.alert(e instanceof Error ? e.message : 'Erro ao excluir grupo')
+    } catch {
+      window.alert(CONNECTION_ERROR)
     } finally {
       setDeleting(false)
     }
@@ -218,16 +218,20 @@ export function useGroupActions(groupId: string | undefined, user: User) {
       const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/invite/rotate`, {
         method: 'POST',
       })
-      const body = (await res.json()) as { invite_code?: string; error?: string }
-
-      if (!res.ok || !body.invite_code) {
-        throw new Error(body.error ?? 'Erro ao trocar o código de convite')
+      if (!res.ok) {
+        window.alert(await readApiError(res, 'Erro ao trocar o código de convite'))
+        return
+      }
+      const body = (await res.json()) as { invite_code?: string }
+      if (!body.invite_code) {
+        window.alert('Erro ao trocar o código de convite')
+        return
       }
 
       invalidateApiCache('groups:')
       onRotated(body.invite_code)
-    } catch (e: unknown) {
-      window.alert(e instanceof Error ? e.message : 'Erro ao trocar o código de convite')
+    } catch {
+      window.alert(CONNECTION_ERROR)
     } finally {
       setRotatingInvite(false)
     }

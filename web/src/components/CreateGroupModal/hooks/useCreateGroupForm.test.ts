@@ -6,7 +6,8 @@ import { trackEvent } from '../../../analytics/ga'
 import { act } from '@testing-library/react'
 import { captureGuideOrigin } from '../../../analytics/guideOrigin'
 
-vi.mock('../../../lib/api', () => ({
+vi.mock('../../../lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/api')>()),
   apiFetch: vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
     globalThis.fetch(input, { ...init, credentials: 'include' }),
   ),
@@ -439,6 +440,23 @@ describe('useCreateGroupForm', () => {
 
     expect(result.current.error).toBe('Erro de conexão. Tente novamente.')
     expect(mockTrackEvent).not.toHaveBeenCalled()
+  })
+
+  it('mostra aviso legível quando a resposta de erro não é JSON', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })))
+      .mockResolvedValueOnce(new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 }))
+
+    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    await waitFor(() => expect(result.current.competitions.length).toBe(1))
+
+    await act(async () => {
+      await result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent)
+    })
+
+    expect(result.current.error).toBe('Erro de conexão. Tente novamente.')
+    expect(result.current.created).toBeNull()
   })
 
   it('handles closing modal properly', async () => {

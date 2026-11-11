@@ -608,3 +608,38 @@ describe('groups router', () => {
     })
   })
 })
+
+describe('corpo inválido nas rotas de grupo', () => {
+  async function requestRaw(method: 'POST' | 'PATCH', path: string, rawBody: string) {
+    const token = await signJwt({ sub: 'user-1', email: 'admin@example.com' }, JWT_SECRET, 3600)
+    const app = new Hono<AppContext>()
+    app.route('/groups', groupsRouter)
+    return app.fetch(
+      new Request(`http://localhost/groups${path}`, {
+        method,
+        headers: { Cookie: `session=${token}`, 'Content-Type': 'application/json' },
+        body: rawBody,
+      }),
+      fakeEnv('admin@example.com'),
+    )
+  }
+
+  it.each([
+    ['POST', '', 'null'],
+    ['POST', '', '{"name":'],
+    ['POST', '', '[]'],
+    ['POST', '', '{"name":123,"competition_id":"comp-1"}'],
+    ['POST', '', '{"name":"Grupo","competition_id":123}'],
+    ['POST', '/join', 'null'],
+    ['POST', '/join', '{"invite_code":'],
+    ['POST', '/join', '{"invite_code":123}'],
+    ['PATCH', '/group-1', 'null'],
+    ['PATCH', '/group-1', '{"name":'],
+    ['PATCH', '/group-1', '{"name":123}'],
+  ] as const)('%s /groups%s com corpo %s responde 400 com { error }', async (method, path, raw) => {
+    const res = await requestRaw(method, path, raw)
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: expect.any(String) })
+  })
+})

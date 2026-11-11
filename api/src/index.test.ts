@@ -28,6 +28,7 @@ vi.mock('./matches/fixtureDiscovery', () => ({
   discoverFixtures: vi.fn(async () => {}),
 }))
 
+import { signJwt } from './auth/jwt'
 import worker from './index'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
@@ -204,5 +205,47 @@ describe('public routes', () => {
 
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: 'Convite não encontrado' })
+  })
+})
+
+describe('erros em JSON', () => {
+  it('rota inexistente responde 404 com { error }', async () => {
+    const res = await worker.fetch(new Request('http://localhost/rota-que-nao-existe'), env, ctx)
+
+    expect(res.status).toBe(404)
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    expect(await res.json()).toEqual({ error: 'Rota não encontrada' })
+  })
+
+  it('exceção não tratada em rota responde 500 com { error }', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const token = await signJwt({ sub: 'user-1', email: 'a@example.com' }, env.JWT_SECRET, 3600)
+    // O D1 falha depois da sessão e do limitador: o handler da rota não trata a exceção.
+    let calls = 0
+    const failingDb = {
+      prepare: () => ({
+        bind: () => ({
+          first: async () => {
+            if (++calls > 2) throw new Error('D1_ERROR: no such table')
+            return { revoked: 0, valid_after: null, hits: 1 }
+          },
+          all: async () => {
+            throw new Error('D1_ERROR: no such table')
+          },
+        }),
+      }),
+    }
+
+    const res = await worker.fetch(
+      new Request('http://localhost/groups/group-1/members', {
+        headers: { Cookie: `session=${token}` },
+      }),
+      { ...env, DB: failingDb } as unknown as Env,
+      ctx,
+    )
+
+    expect(res.status).toBe(500)
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    expect(await res.json()).toEqual({ error: 'Erro interno. Tente novamente.' })
   })
 })
