@@ -41,6 +41,11 @@ describe('GroupCard', () => {
     expect(screen.getByText('10')).toBeInTheDocument()
   })
 
+  it('mostra travessão em "Sua posição" quando a API não devolve posição', () => {
+    render(<GroupCard group={{ ...baseGroup, user_position: null }} onClick={onClick} />)
+    expect(screen.getByText('Sua posição').nextElementSibling).toHaveTextContent(/^—$/)
+  })
+
   it('shows Admin badge when currentUser is the admin', () => {
     render(<GroupCard group={{ ...baseGroup, is_admin: true }} onClick={onClick} />)
     expect(screen.getByText('Admin')).toBeInTheDocument()
@@ -246,6 +251,19 @@ describe('GroupCard', () => {
       expect(screen.getByText('Compartilhar resultado', { selector: 'h2' })).toBeInTheDocument()
       // Opening the card must not fire when clicking share.
       expect(onClick).not.toHaveBeenCalled()
+    })
+
+    it('sem posição, mostra travessão e não oferece o cartão de resultado', () => {
+      render(
+        <GroupCard
+          group={{ ...finishedGroup, user_position: null, user_points: 0 }}
+          onClick={onClick}
+        />,
+      )
+      expect(screen.getByText('Você').previousElementSibling).toHaveTextContent(/^—$/)
+      expect(
+        screen.queryByRole('button', { name: /Compartilhar resultado/i }),
+      ).not.toBeInTheDocument()
     })
 
     it('does not render a share button on active (non-finished) cards', () => {

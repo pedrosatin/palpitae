@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { isKnockoutPhase } from '../matches/rounds'
 import { EXACT_HIT_SQL, PREDICTION_POINTS_SQL } from '../matches/scoring'
+import { notBannedSql } from './ranking'
 
 /** Membro com os totais do ranking e o que ele fez na rodada de referência. */
 export interface RoundMemberRow {
@@ -8,6 +9,8 @@ export interface RoundMemberRow {
   joined_at: string
   total_points: number
   exact_hits: number
+  /** 1 para quem não tem linha no `leaderboard`, que fica atrás no empate. */
+  unscored: number
   /** Pontos só na rodada de referência, o que a coluna mostra. */
   round_points: number
   /** Pontos da rodada de referência e das rodadas numeradas posteriores. */
@@ -38,12 +41,13 @@ function compareBinary(a: string, b: string): number {
   return a < b ? -1 : 1
 }
 
-/** Ordem oficial do ranking, a mesma de `GET /groups/:id/members`. */
+/** Ordem oficial do ranking, a mesma de `rankingOrderSql`. */
 function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMemberRow[] {
   return [...rows].sort(
     (a, b) =>
       points(b) - points(a) ||
       exact(b) - exact(a) ||
+      a.unscored - b.unscored ||
       compareBinary(a.joined_at, b.joined_at) ||
       compareBinary(a.user_id, b.user_id),
   )
@@ -204,7 +208,7 @@ async function fetchRoundPhases(db: D1Database, groupId: string): Promise<RoundP
   return results
 }
 
-/** Membros atuais com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
+/** Membros elegíveis com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
 async function fetchRoundMembers(
   db: D1Database,
   groupId: string,
@@ -217,6 +221,7 @@ async function fetchRoundMembers(
          gm.joined_at,
          COALESCE(l.total_points, 0) AS total_points,
          COALESCE(l.exact_hits, 0) AS exact_hits,
+         l.user_id IS NULL AS unscored,
          COALESCE(r.round_points, 0) AS round_points,
          COALESCE(r.since_points, 0) AS since_points,
          COALESCE(r.since_exact, 0) AS since_exact
@@ -237,7 +242,7 @@ async function fetchRoundMembers(
            AND CAST(m.round AS INTEGER) >= CAST(? AS INTEGER)
          GROUP BY p.user_id
        ) r ON gm.user_id = r.user_id
-       WHERE gm.group_id = ?`,
+       WHERE gm.group_id = ? AND ${notBannedSql('gm')}`,
     )
     .bind(round, groupId, round, groupId)
     .all<RoundMemberRow>()

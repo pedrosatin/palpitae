@@ -62,6 +62,36 @@ em vez de acertar o vencedor. Com o ramo desativado, qualquer resultado correto 
 um acerto só de vencedor). Configs onde `points_exact <= points_winner` (inclui o modo 1X2 e
 `(1,1)`) reportam `exact_hits = 0` — não há bônus de placar a detectar.
 
+## Ordem do ranking, posição e empate total
+
+O ranking do grupo tem uma ordem só, definida em `api/src/groups/ranking.ts`:
+
+1. mais pontos (`total_points`);
+2. mais placares exatos (`exact_hits`);
+3. quem tem linha no `leaderboard` antes de quem não tem;
+4. quem entrou primeiro no grupo (`group_members.joined_at`);
+5. `user_id`, só para a ordem ser determinística quando duas entradas têm o mesmo horário.
+
+No empate total, dois participantes com os mesmos pontos e os mesmos exatos não
+dividem posição: fica à frente quem entrou antes no grupo. Não existe posição
+compartilhada nem título dividido.
+
+A lista de `GET /groups/:id/members`, o `user_position` de `GET /groups` e de
+`GET /groups/:id`, o pódio do card do grupo encerrado e a variação de posição de
+`GET /groups/:id/round-standings` usam essa ordem. O cartão de compartilhamento monta a
+imagem com o `user_position` e o pódio, então segue a mesma ordem.
+
+A linha do `leaderboard` nasce na primeira apuração do grupo depois que
+o participante palpitou. Antes disso ele aparece no fim da lista de membros com 0
+ponto, `user_position` vem `null` e ele não entra no pódio. A web mostra "—" no lugar
+da posição e não o trata como campeão.
+
+Participante elegível é quem tem linha em `group_members` e não está em
+`group_bans`, e só ele conta. A saída e a remoção apagam a linha do `leaderboard` na mesma transação.
+Os palpites ficam no banco, e o recálculo não recria a linha de quem saiu ou foi
+banido. Quem saiu por conta própria e volta recupera a linha na entrada, a partir
+dos palpites, com a data de entrada nova.
+
 ## Bônus de pênalti (`points_penalty`)
 
 Em **jogo único de mata-mata** decidido nos pênaltis, um palpite de **empate** que também

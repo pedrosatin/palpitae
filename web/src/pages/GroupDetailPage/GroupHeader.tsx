@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { trackEvent } from '../../analytics/ga'
+import { positionLabel } from '../../lib/groupPosition'
 import styles from './GroupDetailPage.module.css'
 
 interface GroupHeaderProps {
@@ -8,7 +9,7 @@ interface GroupHeaderProps {
     competition_id: string
     competition_name: string | null
     member_count: number
-    user_position: number
+    user_position: number | null
     user_points: number
   }
   isAdmin: boolean
@@ -170,7 +171,7 @@ export function GroupHeader({
             <span className={styles.statLabel}>membros</span>
           </div>
           <div className={styles.statItem}>
-            <span className={styles.statValue}>#{group.user_position}</span>
+            <span className={styles.statValue}>{positionLabel(group.user_position)}</span>
             <span className={styles.statLabel}>sua posição</span>
           </div>
           <div className={styles.statItem}>

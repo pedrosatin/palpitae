@@ -21,6 +21,7 @@ function member(overrides: Partial<RoundMemberRow> & { user_id: string }): Round
     joined_at: '2026-01-01T00:00:00Z',
     total_points: 0,
     exact_hits: 0,
+    unscored: 0,
     round_points: 0,
     since_points: overrides.round_points ?? 0,
     since_exact: 0,

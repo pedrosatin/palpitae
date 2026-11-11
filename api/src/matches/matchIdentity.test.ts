@@ -106,6 +106,8 @@ function setup() {
                         points_exact, points_winner, points_penalty, points_classified)
       VALUES ('g-pl', 'Bolão Premier', '${PL_ID}', 'u-ana', 'INVPL', 3, 1, 0, 0),
              ('g-cl', 'Bolão Champions', '${CL_ID}', 'u-ana', 'INVCL', 3, 1, 1, 2);
+    INSERT INTO group_members (id, group_id, user_id)
+      SELECT g.id || u.id, g.id, u.id FROM groups g, users u;
   `)
   const ae = { writeDataPoint: vi.fn() }
   const discover = () =>

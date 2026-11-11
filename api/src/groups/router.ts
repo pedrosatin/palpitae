@@ -6,13 +6,14 @@ import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
-import { classifiedRuleChangeStatements } from '../matches/scoring'
+import { classifiedRuleChangeStatements, leaderboardRefreshStatement } from '../matches/scoring'
 import { roundLabel } from '../matches/rounds'
 import { parsePendingSummary, type PendingSummary } from './pendingPredictions'
 import { fetchDeadlineMatches, groupsListBinds, groupsListSql, type DeadlineMatch } from './groupsList'
 import { fetchLiveMatchesByCompetition } from './liveMatches'
 import { competitionStatusSql } from './competitionStatus'
 import { getRoundStandings } from './roundStandings'
+import { notBannedSql, rankingOrderSql, userPositionSql } from './ranking'
 
 const router = new Hono<AppContext>()
 
@@ -130,15 +131,14 @@ async function fetchGroupsPodiums(
           l.total_points AS points,
           ROW_NUMBER() OVER (
             PARTITION BY l.group_id
-            -- Mesmo desempate do endpoint de membros (pontos → acertos exatos →
-            -- ordem de entrada), senão o #1 do card pode divergir do leaderboard.
-            ORDER BY l.total_points DESC, l.exact_hits DESC, gm.joined_at ASC, gm.user_id ASC
+            -- Mesma ordem do endpoint de membros, senão o #1 do card diverge do ranking.
+            ORDER BY ${rankingOrderSql()}
           ) AS rank
         FROM leaderboard l
         JOIN users u ON u.id = l.user_id
         JOIN group_members gm ON gm.group_id = l.group_id AND gm.user_id = l.user_id
         LEFT JOIN profiles p ON p.user_id = l.user_id
-        WHERE l.group_id IN (${placeholders})
+        WHERE l.group_id IN (${placeholders}) AND ${notBannedSql('gm')}
       )
       WHERE rank <= 3
       ORDER BY group_id, rank
@@ -252,7 +252,7 @@ router.get('/', requireAuth, async (c) => {
         .all<
           GroupRow & {
             points_exact: number
-            user_position: number
+            user_position: number | null
             user_points: number
             pending_summary: string | null
           }
@@ -574,6 +574,12 @@ router.post('/join', requireAuth, async (c) => {
     return c.json({ error: 'Este grupo atingiu o limite de membros' }, 409)
   }
 
+  // Quem volta ao grupo recupera a linha do ranking a partir dos palpites que
+  // ficaram. Se falhar, a entrada vale e a linha volta na próxima apuração.
+  await leaderboardRefreshStatement(db, [group.id])
+    .run()
+    .catch((error: unknown) => console.error('[groups] Error refreshing leaderboard:', error))
+
   logEvent(c.env.AE, 'group_joined', {
     blobs: [
       group.id,
@@ -620,15 +626,16 @@ router.get('/:id', requireAuth, async (c) => {
          g.predictions_visibility,
          COUNT(DISTINCT gm.user_id) AS member_count,
          COALESCE(l.total_points, 0) AS user_points,
-         COALESCE(l.exact_hits, 0) AS exact_hits
+         COALESCE(l.exact_hits, 0) AS exact_hits,
+         ${userPositionSql('g.id', '?')} AS user_position
        FROM groups g
-       INNER JOIN group_members gm ON g.id = gm.group_id
+       INNER JOIN group_members gm ON g.id = gm.group_id AND ${notBannedSql('gm')}
        LEFT JOIN competitions c ON g.competition_id = c.id
        LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
        WHERE g.id = ? AND g.deleted_at IS NULL
        GROUP BY g.id`,
     )
-    .bind(userId, groupId)
+    .bind(userId, userId, groupId)
     .first<
       GroupRow & {
         points_exact: number
@@ -638,26 +645,13 @@ router.get('/:id', requireAuth, async (c) => {
         predictions_visibility: string
         user_points: number
         exact_hits: number
+        user_position: number | null
       }
     >()
 
   if (!group) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
-
-  // Calculate position
-  const positionResult = await db
-    .prepare(
-      `SELECT COUNT(*) as position
-       FROM leaderboard
-       WHERE group_id = ? AND total_points > (
-         SELECT COALESCE(total_points, 0) FROM leaderboard WHERE group_id = ? AND user_id = ?
-       )`,
-    )
-    .bind(groupId, groupId, userId)
-    .first<{ position: number }>()
-
-  const user_position = ((positionResult?.position as number) ?? 0) + 1
 
   return c.json({
     group: {
@@ -679,7 +673,7 @@ router.get('/:id', requireAuth, async (c) => {
       member_count: group.member_count,
       user_points: group.user_points,
       exact_hits: group.exact_hits,
-      user_position,
+      user_position: group.user_position,
     },
   })
 })
@@ -894,8 +888,8 @@ router.get('/:id/members', requireAuth, async (c) => {
        INNER JOIN users u ON gm.user_id = u.id
        LEFT JOIN profiles p ON gm.user_id = p.user_id
        LEFT JOIN leaderboard l ON gm.group_id = l.group_id AND gm.user_id = l.user_id
-       WHERE gm.group_id = ?
-       ORDER BY total_points DESC, exact_hits DESC, gm.joined_at ASC, gm.user_id ASC`,
+       WHERE gm.group_id = ? AND ${notBannedSql('gm')}
+       ORDER BY ${rankingOrderSql()}`,
     )
     .bind(groupId)
     .all<{
@@ -968,19 +962,24 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     return c.json({ error: 'Membro não encontrado no grupo' }, 404)
   }
 
-  const removal = db
-    .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
-    .bind(groupId, targetUserId)
+  // A linha do ranking sai junto com a participação. Os palpites ficam, e é
+  // deles que a linha volta se a pessoa entrar de novo.
+  const removal = [
+    db
+      .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
+      .bind(groupId, targetUserId),
+    db
+      .prepare('DELETE FROM leaderboard WHERE group_id = ? AND user_id = ?')
+      .bind(groupId, targetUserId),
+  ]
   if (targetUserId !== userId) {
-    await db.batch([
+    removal.unshift(
       db
         .prepare('INSERT OR IGNORE INTO group_bans (group_id, user_id) VALUES (?, ?)')
         .bind(groupId, targetUserId),
-      removal,
-    ])
-  } else {
-    await removal.run()
+    )
   }
+  await db.batch(removal)
 
   logEvent(c.env.AE, 'member_removed', {
     // 'self' = saiu sozinho; 'admin' = removido pelo dono do grupo.
