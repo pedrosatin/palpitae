@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
+import { useNow } from '../../hooks/useNow'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
@@ -14,6 +15,10 @@ import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 import { usePredictionsReplicate } from './usePredictionsReplicate'
 
 type PredictionMap = Map<string, Prediction>
+
+/** Intervalo do relógio da aba. O "fecha em ..." mostra minutos. */
+const TICK_MS = 30_000
+
 /** Grupo de origem → jogos abertos que o usuário palpitou lá. `null`: API antiga, sem o campo. */
 type ImportSources = Record<string, string[]> | null
 type PredictionsResponse = {
@@ -364,8 +369,15 @@ export function usePredictionsTab(
     setImportSources,
   } = usePredictionsFetch(groupId, competitionId, requestedRound, onRequestedRoundApplied)
 
+  // Um relógio só para o cabeçalho, os cards e os rascunhos. Ele também vira no
+  // início de cada jogo, e o card trava no mesmo instante que a API.
+  const now = useNow(
+    TICK_MS,
+    matches.map((m) => m.start_time),
+  )
+
   const { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange } =
-    usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions)
+    usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions, now)
 
   const {
     importExpanded,
@@ -460,11 +472,12 @@ export function usePredictionsTab(
   // Usa `isMatchLocked`, a regra de `collectRoundDrafts`. Sem jogo aberto na rodada
   // exibida, a barra "Salvar todos" sai da tela. Ela fica enquanto um envio está em
   // andamento, mostra o erro dele e leva a confirmação de "Aplicar também em".
-  const hasOpenMatch = roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id)))
+  const hasOpenMatch = roundMatches.some((m) => !isMatchLocked(m, predictions.get(m.id), now))
   const showSaveBar =
     hasOpenMatch || savingAll || bulkError !== null || replicating || replicateFeedback.length > 0
 
   return {
+    now,
     importCompleted,
     showSaveBar,
     hasOpenMatch,

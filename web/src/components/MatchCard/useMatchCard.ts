@@ -4,6 +4,7 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
+import { isMatchLocked } from '../../lib/predictionDrafts'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 import { predictionStatus } from './predictionStatus'
 
@@ -31,15 +32,11 @@ export interface UseMatchCardProps {
 }
 
 function useMatchStatus(match: Match, prediction: Prediction | undefined, now?: number) {
-  // Jogo adiado nunca trava: o `start_time` guardado ainda é o horário original
-  // (já passou), então a checagem por data sozinha travaria o palpite para sempre.
-  // Exceção: jogo que o sync já viu iniciado (`locked_at`) trava mesmo se adiado.
-  // Espelha a regra do servidor em api/src/matches/locking.ts.
+  // A mesma regra dos rascunhos e do "Salvar todos". Fecha com `locked_at`, status
+  // `live` ou `finished`, ou horário vencido sem adiado, como
+  // `api/src/matches/locking.ts`. Fora do adiado, o `locked` do palpite também fecha.
   const isPostponed = Boolean(match.postponed)
-  const locked =
-    Boolean(match.locked_at) ||
-    (!isPostponed &&
-      (Boolean(prediction?.locked) || (now ?? Date.now()) >= Date.parse(match.start_time)))
+  const locked = isMatchLocked(match, prediction, now ?? Date.now())
   const isFinished = match.status === 'finished'
   const hasPrediction = prediction !== undefined
 

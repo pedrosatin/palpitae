@@ -89,7 +89,8 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
     ).toEqual([])
   })
 
-  it('exclui adiado com prediction.locked derivado do servidor', () => {
+  it('inclui adiado sem locked_at mesmo com prediction.locked de uma busca anterior', () => {
+    // O PUT aceita esse jogo: `isMatchLocked` da API não lê o `locked` do palpite.
     const match = makeMatch({
       id: 'm-postponed',
       start_time: past,
@@ -99,13 +100,20 @@ describe('collectRoundDrafts – locking (ADR-004)', () => {
     expect(
       collectRoundDrafts({
         roundMatches: [match],
-        drafts: new Map([['m-postponed', { home: '1', away: '0' }]]),
+        drafts: new Map([['m-postponed', { home: '2', away: '1' }]]),
         penaltyDrafts: new Map(),
         predictions: new Map([
           ['m-postponed', pred({ match_id: 'm-postponed', locked: 1 })],
         ]),
       }),
-    ).toEqual([])
+    ).toEqual([
+      {
+        match_id: 'm-postponed',
+        predicted_home_score: 2,
+        predicted_away_score: 1,
+        predicted_penalty_winner: null,
+      },
+    ])
   })
 
   it('exclui jogo live mesmo com start_time futuro ou postponed', () => {
