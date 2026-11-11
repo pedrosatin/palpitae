@@ -6,9 +6,10 @@ import { matchesRouter } from './router'
 import { predictionsRouter } from '../predictions/router'
 import type { AppContext } from '../types'
 
-// Formatos gravados pelos syncs: na ESPN, a rodada é o código da fase
-// (`resolveEspnRound`); na football-data (`mapRound`), é o número nas fases
-// de pontos e o código da fase no mata-mata.
+// Formatos gravados pelos syncs: a ESPN grava o número da semana na temporada
+// regular e o código da fase nas copas (`resolveEspnRound`); a football-data
+// grava o número nas fases de pontos, o código no mata-mata e `FASE_N` nas
+// demais (`mapRound`).
 const cases = [
   {
     name: 'Brasileirão com jogo adiado',

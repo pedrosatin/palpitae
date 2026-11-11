@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-// O teste intercepta a API no navegador com três jogos baseados nas respostas de roundOrder.test.ts.
+// O teste intercepta a API no navegador com os três jogos do cenário Libertadores de roundOrder.test.ts.
 const matches = [
   {
     id: 'order-0',
@@ -61,9 +61,6 @@ const headers = {
 
 test.use({ viewport: { width: 390, height: 844 } })
 test('Libertadores: ordem em Palpitar, Grupo e modal', async ({ page }) => {
-  await page.route('**/auth/me', (route) =>
-    route.fulfill({ headers, json: { user: { id: 'order-u', email: 'order@test.com' } } }),
-  )
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url())
     let json: unknown = {}

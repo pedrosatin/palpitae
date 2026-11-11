@@ -86,9 +86,13 @@ function roundStage(match: RoundMatch): string {
 }
 
 /**
- * Ordena fases pela menor data; dentro de uma fase de pontos mantém a ordem
- * numérica, mesmo com jogos antecipados. Preserva a ordem dos jogos da rodada.
- * As duas listagens HTTP usam esta ordem, que o cliente consome sem reordenar.
+ * Ordena as rodadas para a navegação. As rodadas numéricas fora do mata-mata
+ * formam uma só sequência, em ordem numérica, que jogo antecipado ou adiado não
+ * altera. Essa sequência e as rodadas nomeadas seguem a menor data; no empate,
+ * vem a que aparece primeiro na entrada. Rodadas prefixadas (`FASE_N`) seguem a
+ * menor data, então um jogo antecipado pode reordená-las. Jogos da mesma rodada
+ * mantêm a ordem recebida. As duas listagens HTTP usam esta ordem, que o cliente
+ * consome sem reordenar.
  */
 export function orderByRound<T extends RoundMatch>(matches: T[]): T[] {
   const firstDate = new Map<string, string>()

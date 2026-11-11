@@ -542,10 +542,10 @@ router.get('/user', requireAuth, async (c) => {
   const ordered = orderByRound(
     (enriched as RawPrediction[]).map((p) => ({ ...p, start_time: p.match_start_time })),
   )
-  const predictionsWithLabel = ordered.map(({ start_time: _start, ...p }) => ({
+  const predictionsWithLabel = ordered.map(({ start_time: _start, phase, ...p }) => ({
     ...p,
     round_label: roundLabel(p.round),
-    is_knockout: isKnockoutPhase(p.phase),
+    is_knockout: isKnockoutPhase(phase),
   }))
 
   logRequestPerf(c.env.AE, 'GET /predictions/user', {
