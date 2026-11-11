@@ -94,6 +94,8 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   `match_results_fallback` (fallback de resultados pela ESPN, ADR-016),
   `provider_http_attempt` (uma tentativa HTTP a um provedor de partidas),
   `match_teams_changed` (o provedor trocou os times de um jogo já gravado),
+  `scheduled_unknown_cron` (o `wrangler.toml` disparou um cron sem ramo no handler `scheduled`),
+  `scheduled_config_missing` (configuração opcional ausente numa execução agendada),
   `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms)
   e `radar_sync_error` — emitidos só quando a coleta do radar roda com um Analytics
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
@@ -112,10 +114,12 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 
 | event_type | blob2 | blob3 | blob4 | doubles |
 |---|---|---|---|---|
-| `poller_run` | `status` (`ok`/`error`) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
+| `poller_run` | `status` (`ok`/`error`; `error` também quando a pontuação falha) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
 | `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
 | `radar_sync_run` | `status` (`ok`/`partial`/`error`) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
+| `scheduled_unknown_cron` | `cron` (expressão recebida em `controller.cron`) | — | — | — |
+| `scheduled_config_missing` | `name` (`AE`/`EVENTS`/`PROXY_SHARED_SECRET`/`BASE_URL`/`CF_ACCOUNT_ID`/`AE_SQL_TOKEN`); um evento por nome ausente em cada execução agendada. Sem `AE` só há a linha `[scheduled] Configuração ausente` no log | — | — | — |
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |

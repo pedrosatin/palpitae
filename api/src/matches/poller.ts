@@ -221,16 +221,15 @@ export async function pollActiveMatches(
     }),
   )
 
-  for (const res of scoreResults) {
-    if (!res.success) {
-      throw res.err
-    }
-  }
+  // Falha de D1 na pontuação: o tick fica registrado como erro antes de relançar.
+  const scoringFailure = scoreResults.find((res) => !res.success)
 
   logEvent(ae, 'poller_run', {
-    blobs: [hadError ? 'error' : 'ok'],
+    blobs: [hadError || scoringFailure ? 'error' : 'ok'],
     doubles: [rows.results.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
   })
+
+  if (scoringFailure) throw scoringFailure.err
 
   console.info(
     '[perf]',

@@ -19,6 +19,9 @@ export const FD_MAX_CONCURRENT_REQUESTS = 4
 /** Espera única antes de repetir um request que voltou HTTP 429. */
 export const FD_RETRY_BACKOFF_MS = 6_000
 
+/** Tempo máximo de um request à football-data antes de abortar. */
+export const FD_TIMEOUT_MS = 10_000
+
 /**
  * Executa `worker` sobre `items` com no máximo `limit` promessas em voo.
  * Preserva a ordem dos resultados. `limit < 1` trata como 1.

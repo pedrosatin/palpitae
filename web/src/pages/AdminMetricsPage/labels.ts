@@ -20,6 +20,8 @@ const EVENT_LABELS: Record<string, string> = {
   // Saúde do cron / API Football
   poller_run: 'Poller de resultados',
   fixture_discovery_run: 'Descoberta de jogos',
+  scheduled_unknown_cron: 'Cron sem rotina',
+  scheduled_config_missing: 'Configuração ausente',
   // Poller, descoberta e sync manual cobrem football-data e ESPN.
   football_api_error: 'Erro de sync de provedor',
   match_results_fallback: 'Fallback de resultados (ESPN)',

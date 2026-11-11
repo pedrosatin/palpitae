@@ -9,6 +9,8 @@ const RESEND_API = 'https://api.resend.com/emails'
 // engajamento e reduz a chance do Gmail classificar como bulk/Promotions. Requer
 // que lembretes@ exista e roteie no Cloudflare Email Routing, senão respostas quicam.
 const FROM = 'Palpitae <lembretes@palpitae.com.br>'
+/** Tempo máximo de um envio antes de abortar. Quem chama trata como erro de rede. */
+export const RESEND_TIMEOUT_MS = 10_000
 
 export type EmailMessage = {
   to: string
@@ -54,6 +56,7 @@ export class EmailError extends Error {
 export async function sendEmail(apiKey: string, msg: EmailMessage): Promise<void> {
   const res = await fetch(RESEND_API, {
     method: 'POST',
+    signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',

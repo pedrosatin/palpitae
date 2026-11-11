@@ -35,6 +35,7 @@ describe('runAeSql', () => {
         method: 'POST',
         headers: { Authorization: 'Bearer test-token' },
         body: 'SELECT * FROM test',
+        signal: expect.any(AbortSignal),
       }
     )
     expect(result).toEqual([{ col1: 'val1' }])
