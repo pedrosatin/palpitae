@@ -155,8 +155,9 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
       ...(tie ? { tie_role: tie.role } : {}),
       leg1_match_id: tie?.role === 'leg2' ? (tie.partner?.id ?? null) : null,
       // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
-      is_knockout: isKnockoutPhase(rest.phase as string | null),
       round_label: roundLabel((rest.round as string | null) ?? ''),
+      // Classificação eliminatória derivada da fase do jogo.
+      is_knockout: isKnockoutPhase(rest.phase as string | null),
       decides_on_penalties:
         tie?.role === 'leg2' ||
         (tie?.role !== 'leg1' &&
@@ -213,6 +214,7 @@ async function handleGetMatches(c: Context<AppContext>) {
   const cacheUrl = new URL(c.req.url)
   cacheUrl.search = ''
   cacheUrl.searchParams.set('competition_id', competitionId)
+  // Separa respostas com ordem e is_knockout do contrato antigo no cache.
   cacheUrl.searchParams.set('round_order', '1')
   if (round) cacheUrl.searchParams.set('round', round)
   if (status) cacheUrl.searchParams.set('status', status)

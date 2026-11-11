@@ -290,11 +290,19 @@ export default function GroupPicksTab({
       .finally(() => setLoading(false))
   }, [groupId, competitionId])
 
-  const { roundKeys, safeIndex, selectedRound, roundMatches, labelFor, prev, next } =
-    useMatchRounds(matches, roundIndex, setRoundIndex, {
-      prev: 'click_group_picks_rodada_anterior',
-      next: 'click_group_picks_proxima_rodada',
-    })
+  const {
+    roundKeys,
+    safeIndex,
+    selectedRound,
+    roundMatches,
+    labelFor,
+    knockoutRounds,
+    prev,
+    next,
+  } = useMatchRounds(matches, roundIndex, setRoundIndex, {
+    prev: 'click_group_picks_rodada_anterior',
+    next: 'click_group_picks_proxima_rodada',
+  })
 
   // O relógio também vira no início de cada jogo da rodada exibida.
   const now = useNow(
@@ -376,7 +384,7 @@ export default function GroupPicksTab({
         selectedRound={selectedRound}
         roundKeys={roundKeys}
         labelFor={labelFor}
-        knockoutRounds={new Set(matches.filter((m) => m.is_knockout).map((m) => m.round))}
+        knockoutRounds={knockoutRounds}
         onPrev={prev}
         onNext={next}
         onSelect={(round) => {

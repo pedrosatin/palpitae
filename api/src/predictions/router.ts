@@ -482,7 +482,6 @@ router.get('/user', requireAuth, async (c) => {
            m.home_penalty_goals,
            m.away_penalty_goals,
            m.round,
-           m.phase,
            m.group_name,
            ht.name AS home_team_name,
            ht.short_name AS home_team_short_name,
@@ -530,7 +529,7 @@ router.get('/user', requireAuth, async (c) => {
   const defaultRound: string | null = activeRound ?? lastRound ?? null
 
   const enriched = attachPredictedClassifiedToRows(
-    predictions,
+    predictions.map((p) => ({ ...p, phase: p.tie_phase })),
     ties,
     (_row, leg1MatchId) => leg1Map.get(leg1MatchId) ?? null,
   )

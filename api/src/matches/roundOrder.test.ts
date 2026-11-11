@@ -6,9 +6,31 @@ import { matchesRouter } from './router'
 import { predictionsRouter } from '../predictions/router'
 import type { AppContext } from '../types'
 
-// Formatos persistidos por mapRound: ESPN usa fases nomeadas; football-data,
-// rodadas numéricas nas fases de pontos e códigos no mata-mata.
+// Formatos gravados pelos syncs: na ESPN, a rodada é o código da fase
+// (`resolveEspnRound`); na football-data (`mapRound`), é o número nas fases
+// de pontos e o código da fase no mata-mata.
 const cases = [
+  {
+    name: 'Brasileirão com jogo adiado',
+    rounds: ['19', '37', '38'],
+    phases: ['REGULAR_SEASON', 'REGULAR_SEASON', 'REGULAR_SEASON'],
+    dates: [8, 4, 6],
+    expected: ['19', '37', '38'],
+  },
+  {
+    name: 'Liga com fase nula ou divergente',
+    rounds: ['1', '2', '3', '4', '5'],
+    phases: ['REGULAR_SEASON', null, 'LEAGUE_STAGE', 'REGULAR_SEASON', 'REGULAR_SEASON'],
+    dates: [2, 4, 5, 6, 8],
+    expected: ['1', '2', '3', '4', '5'],
+  },
+  {
+    name: 'Fases com a mesma menor data',
+    rounds: ['2', 'LAST_16', '1'],
+    phases: ['LEAGUE_STAGE', 'LAST_16', 'LEAGUE_STAGE'],
+    dates: [2, 2, 2],
+    expected: ['1', '2', 'LAST_16'],
+  },
   {
     name: 'Copa do Mundo',
     rounds: ['3', 'LAST_32'],
@@ -59,7 +81,7 @@ describe('Ordem de rodadas nas respostas HTTP', () => {
       ['/matches?competition_id=order-c', 'matches'],
       ['/predictions/user?group_id=order-g&user_id=order-u', 'predictions'],
     ]) {
-      it(`${scenario.name} ${key}`, async () => {
+      it(`${scenario.name} em GET ${url.split('?')[0]}`, async () => {
         const { sqlite, db } = createSqliteD1()
         try {
           sqlite.exec(`
@@ -78,7 +100,7 @@ describe('Ordem de rodadas nas respostas HTTP', () => {
                 `order-${i}`,
                 round,
                 scenario.phases[i],
-                i === 1 ? 'A' : null,
+                scenario.phases[i] === 'GROUP_STAGE' ? 'A' : null,
                 `2026-0${scenario.dates[i]}-01T12:00:00Z`,
               )
           })
@@ -99,8 +121,15 @@ describe('Ordem de rodadas nas respostas HTTP', () => {
             >
             expect(body[key].map((m) => m.round)).toEqual(scenario.expected)
             expect(body[key].map((m) => m.is_knockout)).toEqual(
-              scenario.expected.map(
-                (r) => !['GROUP_STAGE', 'TACA_GUANABARA', '3', '8', '19', '20', '21'].includes(r),
+              scenario.expected.map((r) =>
+                [
+                  'FIRST_STAGE',
+                  'FIRST_ROUND',
+                  'THIRD_ROUND',
+                  'LAST_16',
+                  'LAST_32',
+                  'SEMI_FINALS',
+                ].includes(r),
               ),
             )
           }

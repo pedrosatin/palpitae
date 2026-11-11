@@ -99,6 +99,7 @@ export default function PredictionsTab({
     selectedRound,
     roundMatches,
     labelFor,
+    knockoutRounds,
     postponedByRound,
     rescheduledByRound,
     prev,
@@ -214,7 +215,7 @@ export default function PredictionsTab({
           safeIndex={safeIndex}
           selectedRound={selectedRound}
           labelFor={labelFor}
-          knockoutRounds={new Set(matches.filter((m) => m.is_knockout).map((m) => m.round))}
+          knockoutRounds={knockoutRounds}
           onPrev={prev}
           onNext={next}
           postponedByRound={postponedByRound}

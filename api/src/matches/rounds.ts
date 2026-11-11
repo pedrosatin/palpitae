@@ -81,7 +81,7 @@ interface RoundMatch {
 
 function roundStage(match: RoundMatch): string {
   return /^\d+$/.test(match.round) && !isKnockoutPhase(match.phase)
-    ? `points:${match.phase}`
+    ? 'points'
     : `round:${match.round}`
 }
 
@@ -92,8 +92,10 @@ function roundStage(match: RoundMatch): string {
  */
 export function orderByRound<T extends RoundMatch>(matches: T[]): T[] {
   const firstDate = new Map<string, string>()
+  const stageIndex = new Map<string, number>()
   for (const match of matches) {
     const stage = roundStage(match)
+    if (!stageIndex.has(stage)) stageIndex.set(stage, stageIndex.size)
     const current = firstDate.get(stage)
     if (current === undefined || match.start_time < current) firstDate.set(stage, match.start_time)
   }
@@ -102,7 +104,10 @@ export function orderByRound<T extends RoundMatch>(matches: T[]): T[] {
     const stageA = roundStage(a)
     const stageB = roundStage(b)
     if (stageA === stageB) return Number(a.round) - Number(b.round)
-    return firstDate.get(stageA)!.localeCompare(firstDate.get(stageB)!)
+    return (
+      firstDate.get(stageA)!.localeCompare(firstDate.get(stageB)!) ||
+      stageIndex.get(stageA)! - stageIndex.get(stageB)!
+    )
   })
   const indexes = new Map(rounds.map((m, i) => [m.round, i]))
   return [...matches].sort((a, b) => indexes.get(a.round)! - indexes.get(b.round)!)

@@ -28,9 +28,12 @@ export function useMatchRounds(
   events: MatchRoundEvents,
   defaultRound?: string | null,
 ) {
+  // A ordem vem da API; a lista não deve ser reordenada no front.
   const rounds = new Map<string, Match[]>()
+  const knockoutRounds = new Set<string>()
   for (const m of matches) {
     const key = m.round
+    if (m.is_knockout) knockoutRounds.add(key)
     if (!rounds.has(key)) rounds.set(key, [])
     rounds.get(key)!.push(m)
   }
@@ -68,6 +71,7 @@ export function useMatchRounds(
 
   return {
     roundKeys,
+    knockoutRounds,
     safeIndex,
     selectedRound,
     roundMatches,
