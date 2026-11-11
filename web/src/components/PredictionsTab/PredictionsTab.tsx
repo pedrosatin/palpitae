@@ -1,5 +1,4 @@
 import { trackEvent } from '../../analytics/ga'
-import { useNow } from '../../hooks/useNow'
 import { leftoverMatchesText } from '../../lib/rounds'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
@@ -13,9 +12,6 @@ import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
 import { usePredictionsTab } from './usePredictionsTab'
 import { findLeg2 } from '../../lib/tieSummary'
 import styles from './PredictionsTab.module.css'
-
-/** Intervalo do relógio da aba. O "fecha em ..." mostra minutos. */
-const TICK_MS = 30_000
 
 interface PredictionsTabProps {
   groupId: string
@@ -91,6 +87,7 @@ export default function PredictionsTab({
   onInitialRoundApplied,
 }: PredictionsTabProps) {
   const {
+    now,
     unsavedDrafts,
     unsavedRounds,
     matches,
@@ -145,10 +142,6 @@ export default function PredictionsTab({
     onInitialRoundApplied,
     pointsExact,
   )
-  // Um relógio só para o cabeçalho e os cards. Quando um jogo começa com a aba
-  // aberta, o cabeçalho tira o jogo e o card trava no mesmo tique.
-  const now = useNow(TICK_MS)
-
   // Avisa sobre UMA rodada com palpite aberto fora de hora: a mais próxima ANTES
   // da aberta. Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em
   // rodadas que ficaram para trás (ADR-019): nos dois casos a rodada não é o

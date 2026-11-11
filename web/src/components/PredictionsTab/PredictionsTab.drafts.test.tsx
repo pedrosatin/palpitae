@@ -402,3 +402,61 @@ describe('PredictionsTab – resposta de um card que saiu da tela', () => {
     )
   })
 })
+
+describe('PredictionsTab – jogo que começa com a aba aberta', () => {
+  const KICKOFF = '2026-11-14T21:30:00.000Z'
+  const LATER = '2026-11-14T23:30:00.000Z'
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    localStorage.clear()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-11-14T21:29:50.000Z'))
+    // m1 começa em 10 s. m2, na mesma rodada, segue aberto e mantém a barra.
+    mockApi([
+      makeMatch({ id: 'm1', start_time: KICKOFF }),
+      makeMatch({
+        id: 'm2',
+        start_time: LATER,
+        home_team_name: 'Santos',
+        home_team_short_name: 'SAN',
+        away_team_name: 'Palmeiras',
+        away_team_short_name: 'PAL',
+      }),
+    ])
+    storeDraft({ m1: { home: '2', away: '1' } })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    localStorage.clear()
+  })
+
+  it('trava o card e tira o rascunho do "Salvar todos" no horário de início', async () => {
+    renderTab()
+    expect(await screen.findByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
+    expect(screen.getByLabelText('Placar Brasil')).toBeInTheDocument()
+    await waitFor(() => expect(fireBeforeUnload()).toBe(true))
+
+    // 10 s não chegam ao tique de 30 s do relógio da aba.
+    await act(() => vi.advanceTimersByTimeAsync(10_000))
+
+    expect(
+      await screen.findByRole('group', { name: 'Brasil contra Argentina, bloqueado' }),
+    ).toBeVisible()
+    expect(screen.queryByLabelText('Placar Brasil')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
+  })
+
+  it('depois do início, o rascunho sai do seletor, do aviso de saída e do storage', async () => {
+    renderTab()
+    expect(await screen.findByRole('option', { name: 'Rodada 1 · não salvo' })).toBeInTheDocument()
+    await waitFor(() => expect(fireBeforeUnload()).toBe(true))
+
+    // Passa do início e de um tique do relógio da aba.
+    await act(() => vi.advanceTimersByTimeAsync(40_000))
+
+    expect(await screen.findByRole('option', { name: 'Rodada 1' })).toBeInTheDocument()
+    await waitFor(() => expect(fireBeforeUnload()).toBe(false))
+    await waitFor(() => expect(localStorage.getItem(KEY)).toBeNull())
+  })
+})

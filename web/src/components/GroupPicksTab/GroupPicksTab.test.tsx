@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
@@ -697,5 +697,149 @@ describe('GroupPicksTab – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('change_group_picks_rodada', {
       round: '2',
     })
+  })
+})
+
+describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
+  const KICKOFF = '2026-11-14T21:30:00.000Z'
+  const roster = [
+    { user_id: 'user-1', display: 'Pedro' },
+    { user_id: 'user-2', display: 'Ana Lima' },
+  ]
+
+  function pick(userId: string, display: string, locked: 0 | 1) {
+    return {
+      match_id: 'm1',
+      user_id: userId,
+      user_display: display,
+      predicted_home_score: userId === 'user-1' ? 2 : 0,
+      predicted_away_score: userId === 'user-1' ? 1 : 3,
+      points_awarded: 0,
+      locked,
+    }
+  }
+
+  /**
+   * API com o relógio `serverDelayMs` atrás do aparelho. Antes do travamento ela
+   * devolve só o palpite de quem pede, como no grupo de palpites ocultos.
+   */
+  function mockServer(serverDelayMs = 0) {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/matches')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            matches: [makeMatch({ id: 'm1', round: '35', start_time: KICKOFF })],
+            default_round: '35',
+          }),
+        } as Response)
+      }
+      const locked = Date.now() - serverDelayMs >= Date.parse(KICKOFF)
+      return Promise.resolve({
+        ok: true,
+        json: async () =>
+          locked
+            ? {
+                self_user_id: 'user-1',
+                members: roster,
+                predictions: [pick('user-1', 'Pedro', 1), pick('user-2', 'Ana Lima', 1)],
+                open_pickers: {},
+              }
+            : {
+                self_user_id: 'user-1',
+                members: roster,
+                predictions: [pick('user-1', 'Pedro', 0)],
+                open_pickers: { m1: ['user-1', 'user-2'] },
+              },
+      } as Response)
+    })
+  }
+
+  const picksCalls = (fetchSpy: ReturnType<typeof mockServer>) =>
+    fetchSpy.mock.calls.filter(([url]) => url.toString().includes('/predictions/group')).length
+
+  function renderTab(predictionsVisibility = 'hidden') {
+    render(
+      <GroupPicksTab
+        groupId="g1"
+        competitionId="c1"
+        predictionsVisibility={predictionsVisibility}
+      />,
+    )
+  }
+  const renderHidden = () => renderTab()
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-11-14T21:29:50.000Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('mostra os palpites dos outros no início do jogo, sem recarregar', async () => {
+    mockServer()
+    renderHidden()
+    expect(await screen.findByText('Pedro')).toBeInTheDocument()
+    expect(screen.queryByText('Ana Lima')).not.toBeInTheDocument()
+
+    await act(() => vi.advanceTimersByTimeAsync(10_000))
+
+    expect(await screen.findByText('Ana Lima')).toBeInTheDocument()
+    expect(screen.getByText('Ana Lima').closest('li')).toHaveTextContent('0 × 3')
+  })
+
+  it('não busca nem mostra os palpites dos outros antes do horário', async () => {
+    const fetchSpy = mockServer()
+    renderHidden()
+    expect(await screen.findByText('Pedro')).toBeInTheDocument()
+
+    await act(() => vi.advanceTimersByTimeAsync(9_000))
+
+    expect(picksCalls(fetchSpy)).toBe(1)
+    expect(screen.queryByText('Ana Lima')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('busca de novo no tique seguinte quando a API ainda não travou o jogo', async () => {
+    // O relógio da API está 5 s atrás. No início pelo relógio do aparelho, ela ainda
+    // esconde os palpites dos outros.
+    const fetchSpy = mockServer(5_000)
+    renderHidden()
+    expect(await screen.findByText('Pedro')).toBeInTheDocument()
+
+    await act(() => vi.advanceTimersByTimeAsync(10_000))
+    await waitFor(() => expect(picksCalls(fetchSpy)).toBe(2))
+    expect(screen.queryByText('Ana Lima')).not.toBeInTheDocument()
+
+    await act(() => vi.advanceTimersByTimeAsync(30_000))
+
+    expect(await screen.findByText('Ana Lima')).toBeInTheDocument()
+  })
+
+  it('busca ao voltar de segundo plano mais de 5 minutos depois do início', async () => {
+    const fetchSpy = mockServer()
+    renderHidden()
+    expect(await screen.findByText('Pedro')).toBeInTheDocument()
+
+    // Página congelada. O relógio do sistema anda 6 min, e os timers só disparam na volta.
+    vi.setSystemTime(Date.parse(KICKOFF) + 6 * 60_000)
+    await act(() => vi.advanceTimersByTimeAsync(10_000))
+
+    expect(await screen.findByText('Ana Lima')).toBeInTheDocument()
+    expect(picksCalls(fetchSpy)).toBe(2)
+  })
+
+  it('no grupo "Sempre visível" não busca de novo no início', async () => {
+    // A API segue tratando o jogo como aberto, mas a aba já mostra todos os palpites.
+    const fetchSpy = mockServer(10 * 60_000)
+    renderTab('public')
+    expect(await screen.findByText('Pedro')).toBeInTheDocument()
+
+    await act(() => vi.advanceTimersByTimeAsync(40_000))
+
+    expect(picksCalls(fetchSpy)).toBe(1)
   })
 })
