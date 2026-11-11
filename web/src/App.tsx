@@ -92,7 +92,8 @@ interface User {
   }
 }
 
-// `unavailable`: o `/auth/me` respondeu 5xx. Não sabemos se há sessão, então ninguém é deslogado.
+// `unavailable`: o `/auth/me` respondeu 5xx. Não sabemos se há sessão, então ninguém é
+// deslogado e a marca de sessão conhecida fica como está.
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'unavailable'
 
 /**
@@ -112,6 +113,14 @@ type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'unavailable
  * A chave é duplicada no `index.html`: se mudar aqui, mude lá também.
  */
 const KNOWN_SESSION_KEY = 'palpitae:sessao-conhecida'
+
+function hasKnownSession(): boolean {
+  try {
+    return localStorage.getItem(KNOWN_SESSION_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 function setKnownSession(known: boolean) {
   try {
@@ -140,6 +149,7 @@ export default function App({
 }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
+  const [retrying, setRetrying] = useState(false)
   const location = useLocation()
   useGaPageView()
   const capturedLocation = useRef<string | null>(null)
@@ -156,7 +166,6 @@ export default function App({
   useEffect(() => captureEntryOrigin(), [])
 
   const checkSession = useCallback(() => {
-    setStatus('loading')
     invalidateApiCache()
     // Raw fetch on purpose: an anonymous visit is the normal logged-out state,
     // not an expired session — apiFetch would flag "sessão expirou" for every
@@ -187,9 +196,16 @@ export default function App({
         setStatus('unauthenticated')
         trackLoginIfPending(false)
       })
+      .finally(() => setRetrying(false))
   }, [])
 
   useEffect(checkSession, [checkSession])
+
+  // O aviso fica montado durante a nova tentativa, para o foco não sair do botão.
+  function retrySession() {
+    setRetrying(true)
+    checkSession()
+  }
 
   // Any apiFetch call that hits a 401 broadcasts this event. Drop auth state so the
   // router swaps to the login screen instead of leaving tabs stuck on their own
@@ -246,11 +262,16 @@ export default function App({
   // index.html até a rota aparecer — nada de flash branco.
   if (status === 'loading' && !paintLandingEarly && !paintInviteEarly) return null
 
-  // A URL fica como está: com a API de volta, "Tentar novamente" abre a mesma rota.
-  if (status === 'unavailable')
+  // Com o `/auth/me` em 5xx, a landing e o convite seguem no ar para quem nunca
+  // teve sessão neste dispositivo. As rotas privadas e quem tem a marca de sessão
+  // veem o aviso. A URL fica como está: com a API de volta, "Tentar novamente"
+  // abre a mesma rota.
+  const publicRoute =
+    location.pathname === '/' || matchPath('/convite/:code', location.pathname) !== null
+  if (status === 'unavailable' && (!publicRoute || hasKnownSession()))
     return (
       <Suspense fallback={null}>
-        <AuthUnavailable onRetry={checkSession} />
+        <AuthUnavailable onRetry={retrySession} retrying={retrying} />
       </Suspense>
     )
 
@@ -258,7 +279,7 @@ export default function App({
     return (
       <Suspense fallback={null}>
         <Routes>
-          <Route path="/" element={<VisitorHome authResolved={status === 'unauthenticated'} />} />
+          <Route path="/" element={<VisitorHome authResolved={status !== 'loading'} />} />
           <Route path="/convite/:code" element={<InvitePage />} />
           {/* Durante o loading não sabemos ainda se estas rotas são do
               visitante ou de um usuário logado, então elas não pintam nada. */}

@@ -11,6 +11,7 @@ import {
   RESULT_POLLER_CRON,
   ROUND_REMINDER_CRON,
 } from './crons'
+import { jsonError, jsonNotFound } from './errorHandlers'
 import { groupsRouter } from './groups/router'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
@@ -82,13 +83,9 @@ app.route('/public', publicRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
-// O front lê `{ error }` em toda falha: rota inexistente e exceção não tratada
-// também respondem JSON, e não o texto padrão do Hono.
-app.notFound((c) => c.json({ error: 'Rota não encontrada' }, 404))
-app.onError((error, c) => {
-  console.error(`[api] Exceção não tratada em ${c.req.method} ${c.req.path}:`, error)
-  return c.json({ error: 'Erro interno. Tente novamente.' }, 500)
-})
+// Rota inexistente e exceção não tratada também respondem JSON com `{ error }`.
+app.notFound(jsonNotFound)
+app.onError(jsonError)
 
 export default {
   fetch: app.fetch,

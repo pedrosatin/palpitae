@@ -110,6 +110,21 @@ describe('RenameGroupModal', () => {
     expect(defaultProps.onClose).not.toHaveBeenCalled()
   })
 
+  it('mostra aviso de conexão quando a rede falha', async () => {
+    const user = userEvent.setup({ delay: null })
+    vi.mocked(apiFetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    render(<RenameGroupModal {...defaultProps} />)
+
+    const input = screen.getByDisplayValue('Old Name')
+    await user.clear(input)
+    await user.type(input, 'New Name')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(await screen.findByText('Erro de conexão. Tente novamente.')).toBeInTheDocument()
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument()
+  })
+
   it('mostra aviso legível quando a resposta de erro não é JSON', async () => {
     const user = userEvent.setup({ delay: null })
     vi.mocked(apiFetch).mockResolvedValueOnce(

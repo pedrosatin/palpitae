@@ -51,8 +51,9 @@ export const CONNECTION_ERROR = 'Erro de conexão. Tente novamente.'
 
 /**
  * Mensagem de erro de uma resposta da API que falhou. Único caminho de leitura:
- * devolve o `error` do corpo JSON; `fallback` quando o JSON não traz mensagem; e
- * `CONNECTION_ERROR` quando o corpo não é JSON. Nunca lança.
+ * devolve o `error` do corpo JSON ou, na falta dele, o `message`; `fallback` quando
+ * o JSON não traz nenhum dos dois; e `CONNECTION_ERROR` quando o corpo não é JSON.
+ * Nunca lança.
  */
 export async function readApiError(res: Response, fallback: string): Promise<string> {
   let body: unknown
@@ -61,8 +62,11 @@ export async function readApiError(res: Response, fallback: string): Promise<str
   } catch {
     return CONNECTION_ERROR
   }
-  const error = (body as { error?: unknown } | null)?.error
-  return typeof error === 'string' && error !== '' ? error : fallback
+  const { error, message } = (body ?? {}) as { error?: unknown; message?: unknown }
+  for (const text of [error, message]) {
+    if (typeof text === 'string' && text !== '') return text
+  }
+  return fallback
 }
 
 /**

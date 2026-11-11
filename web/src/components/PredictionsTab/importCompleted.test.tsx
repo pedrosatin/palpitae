@@ -16,6 +16,7 @@ function setup({
   skipped = 0,
   failed = false,
   badGateway = false,
+  networkDown = false,
   refetchFailed = false,
 } = {}) {
   const completed = new Set<string>()
@@ -29,6 +30,7 @@ function setup({
       return json({ groups: [{ id: 'source', name: 'Origem', competition_id: 'c' }] })
     if (path.includes('/predictions/import')) {
       posts++
+      if (networkDown) throw new TypeError('Failed to fetch')
       if (failed) return json({ error: 'Falha ao importar' }, 500)
       if (badGateway) return new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 })
       if (imported > 0) completed.add(JSON.parse(String(init?.body)).target_group_id)
@@ -105,6 +107,7 @@ describe('Barra de importação', () => {
     },
     { options: { failed: true }, message: 'Falha ao importar' },
     { options: { badGateway: true }, message: 'Erro de conexão. Tente novamente.' },
+    { options: { networkDown: true }, message: 'Erro de conexão. Tente novamente.' },
   ])('mantém seletor e mostra $message', async ({ options, message }) => {
     setup(options)
     const user = userEvent.setup()

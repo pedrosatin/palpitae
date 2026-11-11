@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import Modal from '../../components/Modal'
 import Button from '../../components/Button'
-import { apiFetch, readApiError } from '../../lib/api'
+import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { trackEvent } from '../../analytics/ga'
@@ -66,6 +66,8 @@ export function RenameGroupModal({
             ? { points_classified: pointsClassified }
             : {}),
         }),
+      }).catch(() => {
+        throw new Error(CONNECTION_ERROR)
       })
 
       if (!res.ok) throw new Error(await readApiError(res, 'Erro ao renomear grupo'))

@@ -153,6 +153,21 @@ describe('readApiError', () => {
     },
   )
 
+  it('usa `message` quando o JSON não traz `error`', async () => {
+    const res = Response.json({ message: 'Limite de grupos atingido' }, { status: 409 })
+
+    expect(await readApiError(res, 'Erro ao criar grupo')).toBe('Limite de grupos atingido')
+  })
+
+  it.each([
+    '{"error":"Grupo cheio","message":"Conflict"}',
+    '{"message":"Conflict","error":"Grupo cheio"}',
+  ])('prefere `error` a `message` em %s', async (body) => {
+    const res = new Response(body, { status: 409 })
+
+    expect(await readApiError(res, 'Erro ao entrar no grupo')).toBe('Grupo cheio')
+  })
+
   it('devolve aviso de conexão quando o corpo não é JSON', async () => {
     const res = new Response('<html><body><h1>502 Bad Gateway</h1></body></html>', {
       status: 502,

@@ -3,7 +3,7 @@ import { config } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
-import { apiFetch, readApiError } from '../../lib/api'
+import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import { fetchGroupsList } from '../../lib/groupsList'
@@ -51,7 +51,10 @@ async function fetchGroupPredictions(groupId: string): Promise<{
   }
 }
 
-/** Importa os palpites de `sourceId` para `groupId`. Erro da API vira exceção com a mensagem dela. */
+/**
+ * Importa os palpites de `sourceId` para `groupId`. Erro da API vira exceção com a
+ * mensagem dela; falha de rede, com o aviso de conexão.
+ */
 async function postPredictionsImport(
   sourceId: string,
   groupId: string,
@@ -65,6 +68,8 @@ async function postPredictionsImport(
       target_group_id: groupId,
       ...(onlyMissing ? { only_missing: true } : {}),
     }),
+  }).catch(() => {
+    throw new Error(CONNECTION_ERROR)
   })
   if (!res.ok) throw new Error(await readApiError(res, 'Erro ao importar palpites'))
   const data = (await res.json()) as { imported?: number; locked_skipped?: number }
