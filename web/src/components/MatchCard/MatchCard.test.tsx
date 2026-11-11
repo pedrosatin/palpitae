@@ -942,3 +942,133 @@ describe('MatchCard placar da ida e agregado', () => {
     expect(screen.getByText('Agregado 1 × 1 · Brasil avançou nos pênaltis')).toBeInTheDocument()
   })
 })
+
+describe('MatchCard – falha no salvamento', () => {
+  // O pai troca o palpite ao salvar, como a aba Palpitar.
+  function Parent({ onSaved, outcomeOnly }: { onSaved?: () => void; outcomeOnly?: boolean }) {
+    const [prediction, setPrediction] = useState<Prediction | undefined>(undefined)
+    return (
+      <MatchCard
+        match={makeMatch()}
+        prediction={prediction}
+        groupId="group-1"
+        outcomeOnly={outcomeOnly}
+        onSaved={(_id, home, away) => {
+          onSaved?.()
+          setPrediction(makePrediction({ predicted_home_score: home, predicted_away_score: away }))
+        }}
+      />
+    )
+  }
+
+  async function fillOneToZero(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await user.click(screen.getByRole('button', { name: /Diminuir placar Argentina/i }))
+  }
+
+  function scoreValues() {
+    return [
+      (screen.getByRole('spinbutton', { name: /Placar Brasil/i }) as HTMLInputElement).value,
+      (screen.getByRole('spinbutton', { name: /Placar Argentina/i }) as HTMLInputElement).value,
+    ]
+  }
+
+  it('falha de rede libera o botão, mantém o placar e mostra o erro', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new TypeError('Failed to fetch'))
+    const user = userEvent.setup()
+    render(<Parent />)
+    await fillOneToZero(user)
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    const button = await screen.findByRole('button', { name: 'Salvar' })
+    expect(button).toBeEnabled()
+    expect(button).not.toHaveAttribute('aria-disabled')
+    expect(scoreValues()).toEqual(['1', '0'])
+    expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Erro de conexão. Tente novamente.')
+    fetchMock.mockRestore()
+  })
+
+  it('tentar de novo depois da falha envia uma vez e limpa o erro', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    const onSaved = vi.fn()
+    const user = userEvent.setup()
+    render(<Parent onSaved={onSaved} />)
+    await fillOneToZero(user)
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+    await screen.findByText('Erro de conexão. Tente novamente.')
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+
+    expect(await screen.findByRole('button', { name: 'Salvo' })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(onSaved).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Erro de conexão. Tente novamente.')).not.toBeInTheDocument()
+    expect(scoreValues()).toEqual(['1', '0'])
+    fetchMock.mockRestore()
+  })
+
+  it('no modo só vencedor, tocar de novo na opção depois da falha envia outra vez', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    const user = userEvent.setup()
+    render(<Parent outcomeOnly />)
+
+    await user.click(screen.getByRole('radio', { name: 'Casa' }))
+    await screen.findByText('Erro de conexão. Tente novamente.')
+    expect(screen.getByRole('radio', { name: 'Casa' })).toBeEnabled()
+    await user.click(screen.getByRole('radio', { name: 'Casa' }))
+
+    expect(await screen.findByText('Salvo!')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Erro de conexão. Tente novamente.')).not.toBeInTheDocument()
+
+    // Com o palpite salvo, tocar na mesma opção não reenvia.
+    await user.click(screen.getByRole('radio', { name: 'Casa' }))
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    fetchMock.mockRestore()
+  })
+
+  it('com o envio pendente o placar permanece 1×0 e a resposta marca esse placar como salvo', async () => {
+    let respond: (res: Response) => void = () => {}
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          respond = resolve
+        }),
+    )
+    const user = userEvent.setup()
+    render(<Parent />)
+    await fillOneToZero(user)
+
+    await user.click(screen.getByRole('button', { name: 'Salvar' }))
+    // Com o envio do 1×0 em andamento, o usuário tenta mudar para 2×0.
+    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    await user.type(screen.getByRole('spinbutton', { name: /Placar Argentina/i }), '3')
+    expect(scoreValues()).toEqual(['1', '0'])
+    const card = screen.getByRole('group', { name: /^Brasil contra Argentina/ })
+    expect(card).toHaveAttribute('aria-busy', 'true')
+
+    // A resposta do 1×0 chega e marca o placar da tela como salvo.
+    respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    expect(await screen.findByRole('button', { name: 'Salvo' })).toBeInTheDocument()
+    expect(scoreValues()).toEqual(['1', '0'])
+    expect(screen.getByText('palpite salvo')).toBeInTheDocument()
+    expect(card).toHaveAttribute('aria-busy', 'false')
+
+    // Depois da resposta, o placar volta a aceitar mudança.
+    await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+    expect(scoreValues()).toEqual(['2', '0'])
+    expect(screen.getByRole('button', { name: 'Atualizar' })).toBeEnabled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    fetchMock.mockRestore()
+  })
+})

@@ -310,6 +310,12 @@
   -moz-appearance: textfield;
 }
 
+/* Placar travado durante o envio, com o mesmo esmaecido dos +/−. */
+.scoreInput:read-only {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* Campo vazio de jogo sem palpite. O traço some quando o usuário escolhe um número. */
 .scoreInput::placeholder {
   color: var(--color-text-secondary);

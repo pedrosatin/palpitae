@@ -7,6 +7,9 @@ import { invalidateApiCache } from '../../lib/api-cache'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 import { predictionStatus } from './predictionStatus'
 
+/** Prazo do PUT do card. Sem resposta até lá, o envio vira erro de conexão. */
+const SAVE_TIMEOUT_MS = 10_000
+
 export interface UseMatchCardProps {
   match: Match
   prediction: Prediction | undefined
@@ -119,25 +122,58 @@ function useMatchPersistence(
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  // O "salvo" de um envio anterior não apaga o de um envio novo.
+  const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // Envio em andamento. Fica nulo quando o card sai da tela. O PUT segue até o
+  // servidor e a resposta dele é ignorada, porque o pai pode já ter uma edição
+  // mais nova deste jogo.
+  const request = useRef<AbortController | null>(null)
+  useEffect(
+    () => () => {
+      clearTimeout(savedTimer.current)
+      request.current = null
+    },
+    [],
+  )
 
   async function persist(homeScore: number, awayScore: number, penWinner: 'home' | 'away' | null) {
+    clearTimeout(savedTimer.current)
+    const controller = new AbortController()
+    request.current = controller
+    // Sem resposta no prazo, o envio é abortado e cai no erro de conexão.
+    const timeout = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
     setSaving(true)
     setError(null)
     setSaved(false)
 
-    const res = await apiFetch(`${config.apiUrl}/predictions`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        group_id: groupId,
-        match_id: matchId,
-        predicted_home_score: homeScore,
-        predicted_away_score: awayScore,
-        predicted_penalty_winner: penWinner,
-      }),
-    })
+    let res: Response | null = null
+    try {
+      res = await apiFetch(`${config.apiUrl}/predictions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group_id: groupId,
+          match_id: matchId,
+          predicted_home_score: homeScore,
+          predicted_away_score: awayScore,
+          predicted_penalty_winner: penWinner,
+        }),
+        signal: controller.signal,
+      })
+    } catch {
+      // Rede fora ou prazo esgotado. Segue sem resposta.
+    } finally {
+      clearTimeout(timeout)
+    }
 
+    if (request.current !== controller) return
     setSaving(false)
+
+    if (!res) {
+      // Sem resposta, o placar fica na tela e o botão volta para outra tentativa.
+      setError('Erro de conexão. Tente novamente.')
+      return
+    }
 
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string }
@@ -150,7 +186,7 @@ function useMatchPersistence(
     invalidateApiCache('groups:')
     setSaved(true)
     onSaved(matchId, homeScore, awayScore, penWinner)
-    setTimeout(() => setSaved(false), 2500)
+    savedTimer.current = setTimeout(() => setSaved(false), 2500)
   }
 
   return { saving, error, saved, persist }
@@ -261,7 +297,8 @@ export function useMatchCard({
 
   async function selectOutcome(outcome: Outcome) {
     if (locked || saving) return
-    if (outcome === selectedOutcome) return
+    // A opção já salva não reenvia. Depois de uma falha, tocar nela de novo é a nova tentativa.
+    if (outcome === selectedOutcome && status === 'saved') return
     trackEvent('click_matchcard_resultado', { match_id: match.id, outcome })
     const { home: h, away: a } = OUTCOMES[outcome]
     setHome(String(h))
