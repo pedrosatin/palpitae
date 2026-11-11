@@ -184,11 +184,12 @@ export default function PredictionsTab({
     return <p className={styles.empty}>Nenhum jogo encontrado para esta competição.</p>
   }
 
-  const hasReplicateStatus = replicating || replicateFeedback.length > 0
+  // A confirmação da replicação e o aviso do "Salvar todos" podem ocupar três linhas na barra.
+  const hasTallSaveBar = replicating || replicateFeedback.length > 0 || bulkError !== null
 
   return (
     <div
-      className={`${styles.root} ${showSaveBar ? styles.rootWithSaveBar : ''} ${hasReplicateStatus ? styles.rootWithSaveBarTall : ''}`}
+      className={`${styles.root} ${showSaveBar ? styles.rootWithSaveBar : ''} ${hasTallSaveBar ? styles.rootWithSaveBarTall : ''}`}
     >
       <PredictionsImportBar
         {...{

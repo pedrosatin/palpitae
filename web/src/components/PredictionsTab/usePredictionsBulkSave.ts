@@ -58,6 +58,43 @@ function applyPredictionUpdate(
   return next
 }
 
+type BulkSaveResponse = { saved: string[]; locked?: string[]; not_found?: string[] }
+
+function count(n: number, one: string, many: string): string {
+  return n === 1 ? `1 ${one}` : `${n} ${many}`
+}
+
+/**
+ * Aviso de um "Salvar todos" em que algum jogo enviado não voltou entre os salvos:
+ * quantos foram salvos, o motivo de cada recusa e o que fazer. Jogo travado ou
+ * fora do campeonato só sai da tela depois de recarregar a lista de jogos. Sem
+ * motivo na resposta, vale tentar de novo. `null` quando todos foram salvos.
+ */
+function bulkRejectionMessage(sent: string[], data: BulkSaveResponse): string | null {
+  const saved = new Set(data.saved)
+  const rejected = sent.filter((id) => !saved.has(id))
+  if (rejected.length === 0) return null
+  const locked = rejected.filter((id) => data.locked?.includes(id)).length
+  const notFound = rejected.filter((id) => data.not_found?.includes(id)).length
+  const other = rejected.length - locked - notFound
+  const accepted = sent.length - rejected.length
+  return [
+    accepted > 0 && count(accepted, 'palpite salvo.', 'palpites salvos.'),
+    locked > 0 &&
+      count(locked, 'jogo já bloqueado ficou de fora.', 'jogos já bloqueados ficaram de fora.'),
+    notFound > 0 &&
+      count(
+        notFound,
+        'jogo não foi encontrado neste campeonato.',
+        'jogos não foram encontrados neste campeonato.',
+      ),
+    other > 0 && count(other, 'palpite não foi salvo.', 'palpites não foram salvos.'),
+    locked + notFound > 0 ? 'Recarregue a página para atualizar os jogos.' : 'Tente novamente.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 function useBulkSaveStatus(selectedRound: string | undefined) {
   const [savingAll, setSavingAll] = useState(false)
   const [savedAll, setSavedAll] = useState(false)
@@ -72,12 +109,19 @@ function useBulkSaveStatus(selectedRound: string | undefined) {
     }
   }
 
+  // Cada rodada exibida ganha um número. O envio guarda o número da rodada em que
+  // começou, e a resposta que volta depois da troca não mostra aviso na rodada nova.
+  const roundViewRef = useRef(0)
+
   // Cancel the savedAll feedback timer and reset savedAll when the round changes,
   // and on unmount — otherwise a stale timeout can fire after a second save,
-  // flipping savedAll back off (or on) at the wrong time.
+  // flipping savedAll back off (or on) at the wrong time. O aviso de erro ou de
+  // palpite recusado também é da rodada anterior e sai junto.
   useEffect(() => {
+    roundViewRef.current += 1
     clearSavedAllTimer()
     setSavedAll(false)
+    setBulkError(null)
   }, [selectedRound])
 
   useEffect(() => {
@@ -100,6 +144,7 @@ function useBulkSaveStatus(selectedRound: string | undefined) {
     setBulkError,
     clearSavedAllTimer,
     startSavedAllTimer,
+    roundViewRef,
   }
 }
 
@@ -125,7 +170,19 @@ export function usePredictionsBulkSave(
     setBulkError,
     clearSavedAllTimer,
     startSavedAllTimer,
+    roundViewRef,
   } = useBulkSaveStatus(selectedRound)
+
+  function applySaved(
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) {
+    setPredictions((prev) =>
+      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
+    )
+  }
 
   function handleSaved(
     matchId: string,
@@ -134,9 +191,7 @@ export function usePredictionsBulkSave(
     penaltyWinner: 'home' | 'away' | null,
   ) {
     setHasSavedPredictions(true)
-    setPredictions((prev) =>
-      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
-    )
+    applySaved(matchId, home, away, penaltyWinner)
   }
 
   function pendingDrafts() {
@@ -155,6 +210,7 @@ export function usePredictionsBulkSave(
     setSavingAll(true)
     setSavedAll(false)
     setBulkError(null)
+    const roundView = roundViewRef.current
 
     try {
       const res = await apiFetch(`${config.apiUrl}/predictions/bulk`, {
@@ -168,26 +224,32 @@ export function usePredictionsBulkSave(
         throw new Error(data.error ?? 'Erro ao salvar palpites')
       }
 
-      const data = (await res.json()) as { saved: string[] }
+      const data = (await res.json()) as BulkSaveResponse
       const savedSet = new Set(data.saved)
-      for (const p of toSave) {
-        if (savedSet.has(p.match_id)) {
-          handleSaved(
-            p.match_id,
-            p.predicted_home_score,
-            p.predicted_away_score,
-            p.predicted_penalty_winner ?? null,
-          )
-        }
+      const accepted = toSave.filter((p) => savedSet.has(p.match_id))
+      for (const p of accepted) {
+        applySaved(
+          p.match_id,
+          p.predicted_home_score,
+          p.predicted_away_score,
+          p.predicted_penalty_winner ?? null,
+        )
       }
 
       // Home cards leem pending_predictions via fetchCachedJson (TTL 30s).
       // Sem invalidar, voltar à dashboard dentro do TTL mostra N antigo.
       invalidateApiCache('groups:')
-      startSavedAllTimer()
       if (data.saved.length > 0) onBulkSaved?.(data.saved)
+
+      // O aceito fica gravado em qualquer rodada. O convite de avaliação, como o
+      // aviso, abre só na rodada em que o envio começou.
+      if (roundViewRef.current !== roundView) return
+      if (accepted.length > 0) setHasSavedPredictions(true)
+      const rejected = bulkRejectionMessage(toSave.map((p) => p.match_id), data)
+      if (rejected) setBulkError(rejected)
+      else startSavedAllTimer()
     } catch (e) {
-      setBulkError((e as Error).message)
+      if (roundViewRef.current === roundView) setBulkError((e as Error).message)
     } finally {
       setSavingAll(false)
     }
