@@ -168,32 +168,40 @@ describe('exportRecentDays', () => {
     }
   })
 
-  it('arquivo antigo SEM metadata e dia fora da retenção: mantém o corpo e fecha o dia com a contagem', async () => {
-    // O AE já não tem o dia: a nova coleta vem vazia e não pode sobrescrever o arquivo.
-    const fetchFake = fetchOk([])
-    vi.stubGlobal('fetch', fetchFake)
+  it.each([
+    { back: 85, date: '2026/04/06', complete: '1' },
+    { back: 6, date: '2026/06/24', complete: '0' },
+  ])(
+    'arquivo antigo SEM metadata e coleta nova vazia ($back dias atrás): mantém o corpo e grava a contagem com complete=$complete',
+    async ({ date, complete }) => {
+      // A nova coleta vem vazia e não pode sobrescrever o arquivo. Só perto do fim
+      // da retenção do AE o arquivo antigo vira o registro definitivo do dia.
+      const fetchFake = fetchOk([])
+      vi.stubGlobal('fetch', fetchFake)
 
-    const ndjson = `${JSON.stringify({ a: 1, _sample_interval: 2 })}\n${JSON.stringify({ b: 2 })}\n`
-    const head = vi.fn(async (key: string) =>
-      key.endsWith('/24.ndjson')
-        ? { size: ndjson.length, etag: 'e24' }
-        : { customMetadata: { events: '1', rows: '1', complete: '1' } },
-    )
-    const get = vi.fn(async () => ({ text: async () => ndjson }))
-    const put = vi.fn(async () => ({}))
-    const env = makeEnv({ EVENTS: { head, get, put } as unknown as R2Bucket })
+      const ndjson = `${JSON.stringify({ a: 1, _sample_interval: 2 })}\n${JSON.stringify({ b: 2 })}\n`
+      const target = `events/${date}.ndjson`
+      const head = vi.fn(async (key: string) =>
+        key === target
+          ? { size: ndjson.length, etag: 'e1' }
+          : { customMetadata: { events: '1', rows: '1', complete: '1' } },
+      )
+      const get = vi.fn(async () => ({ text: async () => ndjson }))
+      const put = vi.fn(async () => ({}))
+      const env = makeEnv({ EVENTS: { head, get, put } as unknown as R2Bucket })
 
-    await exportRecentDays(env, new Date('2026-06-30T00:05:00Z'), 6)
+      await exportRecentDays(env, new Date('2026-06-30T00:05:00Z'), 90)
 
-    expect(get).toHaveBeenCalledWith('events/2026/06/24.ndjson')
-    expect(fetchFake).toHaveBeenCalledTimes(1)
-    expect(put).toHaveBeenCalledTimes(1)
-    const [key, body, opts] = put.mock.calls[0] as unknown as [string, string, R2PutOptions]
-    expect(key).toBe('events/2026/06/24.ndjson')
-    expect(body).toBe(ndjson) // mesmo corpo — só ganha a metadata
-    expect(opts.customMetadata).toEqual({ events: '3', rows: '2', complete: '1' }) // 2 + 1 (default)
-    expect(opts.onlyIf).toEqual({ etagMatches: 'e24' })
-  })
+      expect(get).toHaveBeenCalledWith(target)
+      expect(fetchFake).toHaveBeenCalledTimes(1)
+      expect(put).toHaveBeenCalledTimes(1)
+      const [key, body, opts] = put.mock.calls[0] as unknown as [string, string, R2PutOptions]
+      expect(key).toBe(target)
+      expect(body).toBe(ndjson) // mesmo corpo — só ganha a metadata
+      expect(opts.customMetadata).toEqual({ events: '3', rows: '2', complete }) // 2 + 1 (default)
+      expect(opts.onlyIf).toEqual({ etagMatches: 'e1' })
+    },
+  )
 
   it('é no-op sem credenciais', async () => {
     const fetchFake = vi.fn()
@@ -430,7 +438,7 @@ describe('manifesto de completude e reparo do dia', () => {
     expect(store.get(key)?.customMetadata).toEqual({ events: '2', rows: '2', complete: '1' })
   })
 
-  it('nova coleta com menos linhas não substitui o arquivo, que passa a ser o registro definitivo do dia', async () => {
+  it('coleta completa com menos linhas longe do fim da retenção: mantém o arquivo e o dia continua aberto', async () => {
     const fetchFake = fakeAe([{ timestamp: '2026-06-20 10:00:00' }])
     vi.stubGlobal('fetch', fetchFake)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -439,17 +447,42 @@ describe('manifesto de completude e reparo do dia', () => {
     const { bucket, store } = fakeBucket({
       [key]: { body, customMetadata: { events: '3', rows: '3', complete: '0' } },
     })
+    const before = store.get(key)
 
     await exportRecentDays(envWith(bucket), new Date('2026-06-22T00:05:00Z'), 2)
+    expect(store.get(key)).toEqual(before)
 
-    expect(store.get(key)?.body).toBe(body)
-    expect(store.get(key)?.customMetadata).toEqual({ events: '3', rows: '3', complete: '1' })
-
-    // Dia fechado não é mais consultado.
+    // Continua aberto: a execução seguinte consulta o dia de novo.
     fetchFake.mockClear()
     await exportRecentDays(envWith(bucket), new Date('2026-06-23T00:05:00Z'), 3)
     const queried = fetchFake.mock.calls.map((c) => String((c[1] as { body: string }).body))
-    expect(queried.some((sql) => sql.includes("'2026-06-20 00:00:00'"))).toBe(false)
+    expect(queried.some((sql) => sql.includes("'2026-06-20 00:00:00'"))).toBe(true)
+    expect(store.get(key)?.body).toBe(body)
+  })
+
+  it('coleta completa com menos linhas perto do fim da retenção: o arquivo vira o registro definitivo', async () => {
+    // 80 dias antes de 2026-09-08 é 2026-06-20.
+    const fetchFake = fakeAe([{ timestamp: '2026-06-20 10:00:00' }])
+    vi.stubGlobal('fetch', fetchFake)
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const key = 'events/2026/06/20.ndjson'
+    const body = '{"a":1}\n{"a":2}\n{"a":3}\n'
+    const complete = { customMetadata: { events: '1', rows: '1', complete: '1' }, body: '{}\n' }
+    const recent = Object.fromEntries(
+      Array.from({ length: 79 }, (_, i) => {
+        const d = new Date(Date.UTC(2026, 8, 7 - i))
+        return [dayBounds(d).key, complete]
+      }),
+    )
+    const { bucket, store } = fakeBucket({
+      ...recent,
+      [key]: { body, customMetadata: { events: '3', rows: '3', complete: '0' } },
+    })
+
+    await exportRecentDays(envWith(bucket), new Date('2026-09-08T00:05:00Z'), 80)
+
+    expect(store.get(key)?.body).toBe(body)
+    expect(store.get(key)?.customMetadata).toEqual({ events: '3', rows: '3', complete: '1' })
   })
 
   it('objeto alterado durante o reparo não é sobrescrito', async () => {

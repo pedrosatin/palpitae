@@ -22,8 +22,10 @@ const DATASET = 'palpitae_events'
 // haver mais" e a coleta continua a partir do último segundo lido.
 const ROW_LIMIT = 10000
 
-// Teto de páginas por dia (100 mil linhas): limita memória e tempo do cron.
-const MAX_PAGES = 10
+// Teto de páginas por dia (30 mil linhas, cerca de 120 vezes o maior dia de
+// 2026): o dia inteiro fica em memória antes do put, e o Worker tem 128 MB.
+// Dia que passa disso é gravado truncado e reconsultado a cada execução.
+const MAX_PAGES = 3
 
 // Um dia só é dado como completo quando exportado ao menos 24 h depois de
 // terminar. O export das 00:05 é provisório e vira definitivo no cron seguinte,
@@ -32,6 +34,12 @@ const SETTLE_MS = 24 * 60 * 60 * 1000
 
 // Backfill (#4): teto de exports por execução do cron, p/ não estourar tempo/CPU.
 const MAX_EXPORTS_PER_RUN = 10
+
+// A partir de quantos dias atrás uma coleta completa com MENOS linhas que o
+// arquivo fecha o dia com o corpo arquivado. Perto do fim da retenção do AE
+// (~90 dias) a coleta só tende a encolher; antes disso, a diferença pode ser
+// passageira e o dia continua aberto para a próxima execução.
+const CLOSE_KEPT_FROM_DAYS_BACK = 80
 
 const DATE_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
 
@@ -209,9 +217,11 @@ async function replaceIfUnchanged(
  * meio do caminho, o R2 recusa e o arquivo atual fica. Falha na consulta ou no
  * upload lança antes de tocar no objeto, que continua o mesmo.
  *
- * Se a coleta nova, já completa, tem MENOS linhas (o dia saiu da retenção do AE,
- * por exemplo), o arquivo é o melhor registro que existe do dia: o corpo fica e
- * o manifesto, contado do próprio NDJSON, passa a dizer que o dia está fechado.
+ * Se a coleta nova, já completa, tem MENOS linhas, o corpo arquivado fica. Perto
+ * do fim da retenção do AE (`nearRetentionEnd`), o arquivo é o melhor registro
+ * que vai existir do dia, e o manifesto contado do próprio NDJSON passa a dizer
+ * que o dia está fechado. Antes disso (amostragem na leitura, por exemplo), o
+ * dia continua com `complete: '0'` e é reconsultado na próxima execução.
  */
 async function repairDay(
   env: Env & { EVENTS: R2Bucket },
@@ -219,6 +229,7 @@ async function repairDay(
   key: string,
   existing: R2Object,
   now: Date,
+  nearRetentionEnd: boolean,
 ): Promise<void> {
   const bucket = env.EVENTS
   const meta = existing.customMetadata ?? {}
@@ -240,13 +251,15 @@ async function repairDay(
   console.warn(
     `[export] ${key}: nova coleta tem ${fresh.rows} linhas e o arquivo tem ${counted.rows} — mantido.`,
   )
-  // Coleta nova ainda provisória ou truncada: tenta de novo na próxima execução.
-  // Só regrava agora se o arquivo nem tinha a contagem de eventos (export antigo).
-  if (!fresh.complete && meta.events !== undefined) return
+  // Fora do fim da retenção, ou com coleta nova provisória ou truncada, o dia
+  // fica aberto e volta na próxima execução. Só regrava agora para fechar o dia
+  // ou se o arquivo nem tinha a contagem de eventos (export antigo).
+  const close = fresh.complete && nearRetentionEnd
+  if (!close && meta.events !== undefined) return
   const manifest: Manifest = {
     events: String(counted.events),
     rows: String(counted.rows),
-    complete: fresh.complete ? '1' : '0',
+    complete: close ? '1' : '0',
   }
   await replaceIfUnchanged(bucket, key, archived, manifest, existing.etag)
 }
@@ -284,7 +297,7 @@ export async function exportRecentDays(env: Env, today: Date, lookbackDays = 90)
       if (existing?.customMetadata?.complete === '1') continue
       exported++
       if (existing) {
-        await repairDay(env, day, key, existing, today)
+        await repairDay(env, day, key, existing, today, back >= CLOSE_KEPT_FROM_DAYS_BACK)
       } else {
         await exportEventsToR2(env, day, today)
       }

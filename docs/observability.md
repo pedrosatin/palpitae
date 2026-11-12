@@ -63,9 +63,10 @@ cada dia (`HEAD` na chave):
 - arquivo com `complete: '1'`: não consulta mais;
 - qualquer outro (provisório, truncado ou de antes do manifesto): reconsulta o AE e troca o
   arquivo só se a coleta nova não perde linhas (mais linhas, ou completa com ao menos as mesmas).
-  Se a coleta nova, já completa, tem menos linhas (o dia saiu da retenção ou a SQL API devolve
-  menos), o corpo arquivado fica e ganha o manifesto contado do próprio NDJSON, com
-  `complete: '1'`.
+  Se a coleta nova, já completa, tem menos linhas (por exemplo, dia fora da retenção ou
+  amostragem na leitura), o corpo arquivado fica. A partir de 80 dias atrás, perto do fim da
+  retenção, ele ganha o manifesto contado do próprio NDJSON, com `complete: '1'`; antes disso o
+  dia continua com `complete: '0'` e é reconsultado na execução seguinte.
 
 O export das 00:05 é, portanto, provisório: o cron do dia seguinte reconsulta o dia e fecha o
 arquivo, pegando linhas que a SQL API ainda não devolvia (em novembro de 2026, um dia arquivado
@@ -84,9 +85,12 @@ execução pra não estourar tempo/CPU do cron — dias restantes pegam na próx
 **Limite de linhas da SQL API.** A SQL API do Analytics Engine corta o resultado silenciosamente
 (~10k linhas). O export lê o dia em páginas de `LIMIT 10000` ordenadas por `timestamp`: página
 cheia descarta as linhas do último segundo e a próxima começa nesse segundo, então nenhum
-segundo fica dividido entre páginas. Um único segundo com mais de 10 mil linhas, ou mais de 10
-páginas (100 mil linhas) no dia, grava o que foi lido com `complete: '0'` e um `console.warn`.
-Hoje o maior dia dos últimos 90 tem cerca de 250 linhas.
+segundo fica dividido entre páginas. Um único segundo com mais de 10 mil linhas, ou mais de 3
+páginas no dia, grava o que foi lido com `complete: '0'` e um `console.warn`. O teto é de 3
+páginas (30 mil linhas) porque o dia inteiro fica em memória antes do `put`, e o Worker tem
+128 MB. Um dia truncado é reconsultado em toda execução, ocupando uma vaga do teto de
+exports/run, até sair da janela de 90 dias. Em novembro de 2026, o maior dia dos 90 anteriores
+tinha cerca de 250 linhas.
 
 ## Esquema e convenção de eventos
 
