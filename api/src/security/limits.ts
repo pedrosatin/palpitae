@@ -14,8 +14,9 @@ export const LIMITS: Record<Category, number> = { read: 300, write: 60, oauth: 3
 
 // Teto do balde anônimo compartilhado: tráfego que chega por um Worker sem o
 // segredo válido, quando não há como saber o IP do visitante. Há um balde para o
-// próprio front (CF-Worker da zona do FRONTEND_URL) e outro para os demais Workers,
-// para que um Worker de terceiros não esgote a quota de quem usa o site.
+// próprio front e outro para os demais Workers, para que um Worker de terceiros não
+// esgote a quota de quem usa o site. O front é o CF-Worker igual ao host do
+// FRONTEND_URL, a um domínio pai dele ou ao FRONTEND_WORKER_ZONE.
 export const SHARED_PROXY_LIMITS: Record<Category, number> = {
   read: 3000,
   write: 600,
@@ -168,7 +169,9 @@ export async function anonymousIdentity(
   const connectingIp = c.req.header('CF-Connecting-IP')
   const workerZone = c.req.header('CF-Worker')
   if (workerZone || connectingIp === WORKER_EGRESS_IP) {
-    const source = isFrontendZone(workerZone, c.env.FRONTEND_URL) ? 'frontend' : 'worker'
+    const source = isFrontendZone(workerZone, c.env.FRONTEND_URL, c.env.FRONTEND_WORKER_ZONE)
+      ? 'frontend'
+      : 'worker'
     return { identity: `proxy:anonymous:${source}`, shared: true }
   }
   // Local requests share a dev bucket.
@@ -179,16 +182,26 @@ export async function anonymousIdentity(
 }
 
 // O CF-Worker traz a zona do Worker que fez o subrequest. É do próprio front quando
-// a zona é o host do FRONTEND_URL ou um domínio pai dele.
-function isFrontendZone(zone: string | undefined, frontendUrl: string | undefined): boolean {
-  if (!zone || !frontendUrl) return false
+// é igual ao host do FRONTEND_URL, ou a um domínio pai dele, ou ao FRONTEND_WORKER_ZONE.
+// Esse é o `<projeto>.pages.dev` que a Cloudflare preenche no proxy do Pages. A
+// comparação com o FRONTEND_WORKER_ZONE é exata, sem sufixo, e valor vazio não casa
+// nada.
+function isFrontendZone(
+  zone: string | undefined,
+  frontendUrl: string | undefined,
+  frontendWorkerZone: string | undefined,
+): boolean {
+  const value = zone?.trim().toLowerCase()
+  if (!value) return false
+  const pagesZone = frontendWorkerZone?.trim().toLowerCase()
+  if (pagesZone && value === pagesZone) return true
+  if (!frontendUrl) return false
   let host: string
   try {
     host = new URL(frontendUrl).hostname.toLowerCase()
   } catch {
     return false
   }
-  const value = zone.trim().toLowerCase()
   return value === host || host.endsWith(`.${value}`)
 }
 

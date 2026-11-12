@@ -12,6 +12,7 @@ import {
   consumeLimit,
   ipBucketIdentity,
   PROXY_SECRET_HEADER,
+  SHARED_PROXY_LIMITS,
 } from './limits'
 import type { Env } from '../types'
 import { createSqliteD1 } from '../testing/sqliteD1'
@@ -55,6 +56,7 @@ async function fixture() {
     JWT_SECRET: 'test-secret',
     BASE_URL: 'https://api.palpitae.com.br',
     FRONTEND_URL: 'https://palpitae.com.br',
+    FRONTEND_WORKER_ZONE: 'palpitae-web.pages.dev',
     FOOTBALL_API_KEY: 'test-key',
   } as Env
   const tokens = Object.fromEntries(
@@ -604,6 +606,18 @@ describe('access controls with a real SQL database', () => {
       (await anonymous('/public/invites/nope', { ...WORKER_SUBREQUEST, ...forged })).status,
     ).toBe(429)
     expect(await hits('read:ip:198.51.100.7')).toBe(300)
+  })
+
+  it('separa o proxy do Pages dos demais Workers no balde anônimo sem o segredo', async () => {
+    const { anonymous, exhaust } = await fixture()
+    await exhaust('read:proxy:anonymous:worker', SHARED_PROXY_LIMITS.read)
+    const viaWorker = (zone: string) =>
+      anonymous('/public/invites/nope', {
+        'CF-Worker': zone,
+        'CF-Connecting-IP': '2a06:98c0:3600::103',
+      })
+    expect((await viaWorker('palpitae-web.pages.dev')).status).not.toBe(429)
+    expect((await viaWorker('outro.pages.dev')).status).toBe(429)
   })
 
   it('checks session revocation once per request', async () => {
