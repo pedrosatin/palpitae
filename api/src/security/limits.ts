@@ -14,9 +14,9 @@ export const LIMITS: Record<Category, number> = { read: 300, write: 60, oauth: 3
 
 // Teto do balde anônimo compartilhado: tráfego que chega por um Worker sem o
 // segredo válido, quando não há como saber o IP do visitante. Há um balde para o
-// próprio front (CF-Worker igual ao host do FRONTEND_URL ou ao FRONTEND_WORKER_ZONE)
-// e outro para os demais Workers,
-// para que um Worker de terceiros não esgote a quota de quem usa o site.
+// próprio front e outro para os demais Workers, para que um Worker de terceiros não
+// esgote a quota de quem usa o site. O front é o CF-Worker igual ao host do
+// FRONTEND_URL, a um domínio pai dele ou ao FRONTEND_WORKER_ZONE.
 export const SHARED_PROXY_LIMITS: Record<Category, number> = {
   read: 3000,
   write: 600,
@@ -182,9 +182,10 @@ export async function anonymousIdentity(
 }
 
 // O CF-Worker traz a zona do Worker que fez o subrequest. É do próprio front quando
-// é igual ao host do FRONTEND_URL, ou a um domínio pai dele, ou ao FRONTEND_WORKER_ZONE
-// (o `<projeto>.pages.dev` que a Cloudflare preenche no proxy do Pages). A comparação
-// com o FRONTEND_WORKER_ZONE é exata, sem sufixo, e valor vazio não casa nada.
+// é igual ao host do FRONTEND_URL, ou a um domínio pai dele, ou ao FRONTEND_WORKER_ZONE.
+// Esse é o `<projeto>.pages.dev` que a Cloudflare preenche no proxy do Pages. A
+// comparação com o FRONTEND_WORKER_ZONE é exata, sem sufixo, e valor vazio não casa
+// nada.
 function isFrontendZone(
   zone: string | undefined,
   frontendUrl: string | undefined,

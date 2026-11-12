@@ -201,12 +201,17 @@ A identidade de cada requisição é uma só:
   `CF-Connecting-IP` igual ao endereço de saída dos Workers): um balde anônimo
   compartilhado, com o teto da última coluna. São dois baldes separados: um para o
   próprio front e outro para qualquer outro Worker. O balde do front reconhece o
-  `CF-Worker` igual ao host do `FRONTEND_URL` ou ao `FRONTEND_WORKER_ZONE`
-  (`palpitae-web.pages.dev`, valor que a Cloudflare preenche no proxy do Pages). Por
-  isso, sem o segredo, o front fica no próprio balde e um Worker de terceiros não
-  esgota a quota dele. A comparação é exata: `pages.dev` e outros projetos do Pages
-  não casam. Renomear o projeto Pages exige atualizar `FRONTEND_WORKER_ZONE` em
-  `api/wrangler.toml`.
+  `CF-Worker` igual ao host do `FRONTEND_URL`, a um domínio pai dele ou ao
+  `FRONTEND_WORKER_ZONE`. O valor dessa variável é `palpitae-web.pages.dev`, que a
+  Cloudflare preenche no proxy do Pages. Por isso, sem o segredo, o front fica no
+  próprio balde e um Worker de terceiros não esgota a quota dele. A comparação com o
+  `FRONTEND_WORKER_ZONE` é exata. `pages.dev` e outros projetos do Pages não casam.
+  O balde do front separa o site dos Workers de terceiros, mas não limita um
+  visitante que chama o próprio proxy sem o segredo válido, nem os deploys de
+  preview do projeto, cujo `CF-Worker` não foi conferido. Por isso o segredo
+  continua necessário. Atualize o `FRONTEND_WORKER_ZONE` em `api/wrangler.toml`
+  antes ou junto de renomear o projeto Pages. Se o projeto for apagado ou renomeado,
+  o nome `palpitae-web.pages.dev` fica livre para outra conta.
 - Sem sessão, acesso direto à API: `CF-Connecting-IP`. Requisições locais sem esse
   header compartilham um contador de desenvolvimento.
 
@@ -284,9 +289,13 @@ contado é o do visitante. As rotas do host `api.palpitae.com.br` não começam 
 à API com o IP de saída da Cloudflare, não entram na mesma contagem.
 
 Para barrar subrequests de Workers de outras contas, uma regra de WAF Custom com
-`(cf.worker.upstream_zone ne "" and cf.worker.upstream_zone ne "palpitae.com.br")`
+`(cf.worker.upstream_zone ne "" and cf.worker.upstream_zone ne "palpitae-web.pages.dev")`
 e ação **Block** resolveria na borda, mas a disponibilidade desse campo no plano
-Free não foi confirmada. Confira no painel antes de contar com ela.
+Free não foi confirmada. Confira no painel antes de contar com ela. O valor que o
+campo assume para o proxy do Pages também não foi conferido. Se ele não for
+`palpitae-web.pages.dev`, a regra bloqueia todo o `/api/*` do site. Rode a regra
+primeiro com ação Log, ou equivalente, e confira em Security > Events antes de
+trocar para Block.
 
 ## Segredo do proxy
 

@@ -178,7 +178,7 @@ describe('anonymousIdentity', () => {
     })
 
     it.each(['outro.pages.dev', 'pages.dev', 'x.palpitae-web.pages.dev'])(
-      'não casa por sufixo ou domínio pai: %s',
+      'não casa com projeto vizinho, domínio pai nem subdomínio: %s',
       async (zone) => {
         const context = createMockContext(env, { 'CF-Worker': zone })
         expect(await anonymousIdentity(context)).toEqual(worker)
