@@ -31,9 +31,10 @@ export const RESEND_FETCH_BUDGET = SUBREQUEST_LIMIT - D1_SUBREQUESTS - SUBREQUES
 
 // Por quanto tempo a última leitura de descadastro vale durante o lote. A reserva lê
 // a preferência, e uma tentativa de envio que começa depois desse prazo relê antes de
-// chamar o Resend. Um lote sem pausa termina dentro do prazo e não gasta subrequest
-// extra. Reler antes de cada envio custaria um subrequest por destinatário e cortaria
-// pela metade quem cabe no teto.
+// chamar o Resend. Na prática custa uma consulta a cada 5 s de lote: um lote cheio,
+// com envios um por vez, gasta de 1 a 3 vagas do teto nessas releituras. Reler antes
+// de cada envio custaria um subrequest por destinatário e cortaria pela metade quem
+// cabe no teto.
 const UNSUB_RECHECK_MS = 5_000
 
 /** Contador dos subrequests desta execução que não são as consultas fixas. */
@@ -98,6 +99,7 @@ class UnsubGuard {
     if (this.budget.max - this.budget.used < 2) throw new SubrequestBudgetError()
     this.budget.used++
     let rows: { id: string }[]
+    const startedAt = Date.now()
     try {
       const result = await this.db
         .prepare(
@@ -112,7 +114,7 @@ class UnsubGuard {
     }
     const still = new Set(rows.map((row) => row.id))
     for (const id of this.subscribed) if (!still.has(id)) this.subscribed.delete(id)
-    this.checkedAt = Date.now()
+    this.checkedAt = startedAt
   }
 }
 

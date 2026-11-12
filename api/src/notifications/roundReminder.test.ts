@@ -569,7 +569,7 @@ describe('sendRoundReminders', () => {
   })
 
   describe('descadastro durante o lote', () => {
-    // Uma pausa longa entre dois envios. Passa de qualquer intervalo de revalidação.
+    // Uma pausa entre dois envios maior que UNSUB_RECHECK_MS.
     const PAUSE_MS = 60_000
     let clock = WEDNESDAY
 
