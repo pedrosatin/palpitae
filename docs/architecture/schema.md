@@ -238,7 +238,7 @@ Transições:
 - `locked_at` nunca volta a nulo.
 - O fallback da ESPN (ADR-016) leva um jogo da football-data ao encerrado com `postponed = 0`, mesmo que a football-data ainda o mostre adiado ou suspenso.
 
-Cancelado não tem estado próprio. A football-data já mandou como `CANCELLED`, com placar 0-0 e data nova, o Rayo Vallecano × Athletic de 10/10/2026, que a ESPN mostra como suspenso aos 33 minutos, com retomada marcada para 09/12. Como o cancelamento dos provedores pode voltar ao calendário, o jogo cancelado segue como adiado: não ganha placar nem pontuação, não trava o palpite e sai das consultas de resultado pendente que excluem adiados (resgate do poller depois da janela ativa, jogos ao vivo do painel, `overdue_no_score` das métricas, pendências da rodada). Ele continua impedindo o encerramento da competição.
+Cancelado não tem estado próprio. A football-data já mandou como `CANCELLED`, com placar 0-0 e data nova, o Rayo Vallecano × Athletic de 10/10/2026, que a ESPN mostra como suspenso aos 33 minutos, com retomada marcada para 09/12. Como o cancelamento dos provedores pode voltar ao calendário, o jogo cancelado segue como adiado: não ganha placar nem pontuação, não trava o palpite e sai das consultas de resultado pendente que excluem adiados (resgate do poller depois da janela ativa, jogos ao vivo do painel, `overdue_no_score` das métricas, pendências da rodada). O poller volta a consultá-lo na varredura de atrasados no máximo a cada 3 horas, até 7 dias depois do último horário conhecido, para ver a remarcação que a descoberta diária ainda não trouxe. Ele continua impedindo o encerramento da competição.
 
 ---
 
