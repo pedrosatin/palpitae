@@ -15,6 +15,7 @@ import {
   isoSeconds,
   MATCH_UPSERT_SQL,
   type MatchUpsertRow,
+  NO_RESULT,
   reportDiscards,
   slugify,
   type SyncDiscard,
@@ -521,28 +522,25 @@ function mapEspnEventToRow(
   const awayParsed = parseNonNegativeInt(ev.away.score)
   const isFinished = ev.final && homeParsed !== null && awayParsed !== null
 
-  const outcome = isFinished
-    ? resolveFinishedOutcome(ev)
-    : {
-        duration: null,
-        penaltyWinner: null,
-        homePenaltyGoals: null,
-        awayPenaltyGoals: null,
+  const result = isFinished
+    ? {
+        status: 'finished' as const,
+        homeScore: homeParsed,
+        awayScore: awayParsed,
+        ...resolveFinishedOutcome(ev),
       }
+    : NO_RESULT
 
   return {
     externalId: ev.id,
     homeTeamId,
     awayTeamId,
     startTime: ev.startTime,
-    status: isFinished ? 'finished' : 'scheduled',
-    homeScore: isFinished ? homeParsed : null,
-    awayScore: isFinished ? awayParsed : null,
+    ...result,
     phase: ev.stage,
     round: ev.round,
     groupName: ev.groupName,
     leg: ev.leg,
-    ...outcome,
     postponed: ESPN_POSTPONED_STATUSES.has(ev.statusName) ? 1 : 0,
     lockedAt: resolveEspnLockedAt(ev, now),
   }
