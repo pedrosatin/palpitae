@@ -184,6 +184,8 @@ describe('competitions router', () => {
    */
   it('deriva status a partir das partidas, executando o SQL em SQLite real', async () => {
     const { sqlite, db } = createSqliteD1()
+    // A descoberta da ESPN só enxerga 7 dias adiante; a pausa conta do relógio do SQLite.
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
     try {
       sqlite.exec(`
         DELETE FROM competitions;
@@ -191,14 +193,15 @@ describe('competitions router', () => {
           ('t-h', 'Mandante', 'mandante', 'espn'),
           ('t-a', 'Visitante', 'visitante', 'espn');
         INSERT INTO competitions (id, name, slug, season, status, provider, type) VALUES
-          ('c-concluida', 'Concluída', 'deriva-concluida', '2026', 'upcoming', 'espn', 'league'), -- liga, todas encerradas → finished
+          ('c-concluida', 'Concluída', 'deriva-concluida', '2026', 'upcoming', 'football-data', 'league'), -- liga de calendário completo, todas encerradas → finished
           ('c-rolando',   'Rolando',   'deriva-rolando',   '2026', 'upcoming', 'espn', 'league'), -- encerrada + pendente → ongoing
           ('c-futura',    'Futura',    'deriva-futura',    '2027', 'upcoming', 'espn', 'league'), -- só futuras → coluna
           ('c-coluna',    'Coluna',    'deriva-coluna',    '2027', 'finished', 'espn', 'league'), -- sem jogos, coluna finished → finished
           ('c-live',      'Ao vivo',   'deriva-live',      '2026', 'upcoming', 'espn', 'league'), -- finished + live → ongoing
           ('c-bateria',   'Bateria',   'deriva-bateria',   '2027', 'upcoming', 'espn', 'league'), -- live + futura, sem finished → coluna
           ('c-entre',     'Entre fases', 'deriva-entre',  '2026', 'upcoming', 'espn', 'cup'),    -- copa, tudo encerrado, sem final → ongoing
-          ('c-final',     'Com final', 'deriva-final',    '2026', 'upcoming', 'espn', 'cup');    -- copa com final encerrada → finished
+          ('c-final',     'Com final', 'deriva-final',    '2026', 'upcoming', 'espn', 'cup'),    -- copa com final encerrada → finished
+          ('c-pausa',     'Pausa',     'deriva-pausa',    '2026', 'ongoing', 'espn', 'league');  -- liga da ESPN em data FIFA → ongoing
         INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status) VALUES
           ('m-a1', 'c-concluida', 'x1', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
           ('m-a2', 'c-concluida', 'x2', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished'),
@@ -212,7 +215,8 @@ describe('competitions router', () => {
           ('m-g1', 'c-entre',     'y1', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
           ('m-g2', 'c-entre',     'y2', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished'),
           ('m-h1', 'c-final',     'y3', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-h2', 'c-final',     'y4', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished');
+          ('m-h2', 'c-final',     'y4', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished'),
+          ('m-i1', 'c-pausa',     'y5', 'espn', 't-h', 't-a', '${tenDaysAgo}', 'finished');
         UPDATE matches SET phase = 'SEMI_FINALS' WHERE id IN ('m-g1', 'm-g2', 'm-h1');
         UPDATE matches SET phase = 'FINAL' WHERE id = 'm-h2';
       `)
@@ -247,6 +251,7 @@ describe('competitions router', () => {
       // Copa entre fases não tem final gravada: segue em andamento.
       expect(statusById['c-entre']).toBe('ongoing')
       expect(statusById['c-final']).toBe('finished')
+      expect(statusById['c-pausa']).toBe('ongoing')
     } finally {
       sqlite.close()
     }

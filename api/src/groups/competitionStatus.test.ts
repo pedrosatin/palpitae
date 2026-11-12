@@ -13,12 +13,18 @@ afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
 })
 
-type MatchSeed = { phase: string | null; status: 'scheduled' | 'live' | 'finished' }
+type MatchSeed = {
+  phase: string | null
+  status: 'scheduled' | 'live' | 'finished'
+  leg?: 1 | 2
+  startTime?: string
+}
 
 type CompetitionSeed = {
   id: string
   type: 'cup' | 'league'
   status: 'upcoming' | 'ongoing' | 'finished'
+  provider?: 'football-data' | 'espn'
   matches: MatchSeed[]
 }
 
@@ -42,21 +48,32 @@ function openDb() {
 function seedCompetition(sqlite: DatabaseSync, seed: CompetitionSeed) {
   sqlite
     .prepare(
-      `INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility)
-       VALUES (?, ?, ?, '2026', ?, ?, '[]', 'public')`,
+      `INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility, provider)
+       VALUES (?, ?, ?, '2026', ?, ?, '[]', 'public', ?)`,
     )
-    .run(seed.id, seed.id, seed.id, seed.status, seed.type)
+    .run(seed.id, seed.id, seed.id, seed.status, seed.type, seed.provider ?? null)
 
   const insertMatch = sqlite.prepare(
     `INSERT INTO matches (
        id, competition_id, external_id, provider,
-       home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
-     ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, 0, NULL)`,
+       home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at, leg
+     ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, 0, NULL, ?)`,
   )
   seed.matches.forEach((match, index) => {
     const id = `${seed.id}-m${index}`
-    const startTime = match.status === 'finished' ? '2026-06-01T19:00:00Z' : '2099-06-01T19:00:00Z'
-    insertMatch.run(id, seed.id, id, startTime, match.status, String(index + 1), match.phase)
+    const startTime =
+      match.startTime ??
+      (match.status === 'finished' ? '2026-06-01T19:00:00Z' : '2099-06-01T19:00:00Z')
+    insertMatch.run(
+      id,
+      seed.id,
+      id,
+      startTime,
+      match.status,
+      String(index + 1),
+      match.phase,
+      match.leg ?? null,
+    )
   })
 
   const groupId = `group-${seed.id}`
@@ -88,6 +105,14 @@ function statusOf(sqlite: DatabaseSync, groupId: string): string | null {
 }
 
 const done = (phase: string | null): MatchSeed => ({ phase, status: 'finished' })
+const daysAgo = (days: number) =>
+  new Date(Date.now() - days * 86_400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+/** Jogo encerrado há `days` dias. */
+const doneAgo = (phase: string, days: number): MatchSeed => ({
+  phase,
+  status: 'finished',
+  startTime: daysAgo(days),
+})
 const pending = (phase: string | null): MatchSeed => ({ phase, status: 'scheduled' })
 
 describe('competitionStatusSql', () => {
@@ -147,6 +172,54 @@ describe('competitionStatusSql', () => {
       { type: 'league', status: 'ongoing', matches: [done('REGULAR_SEASON'), pending('REGULAR_SEASON')] },
       'ongoing',
     ],
+    [
+      'final de ida e volta com só a ida gravada',
+      {
+        type: 'cup',
+        status: 'ongoing',
+        matches: [done('SEMI_FINALS'), { ...done('FINAL'), leg: 1 }],
+      },
+      'ongoing',
+    ],
+    [
+      'final de ida e volta com a volta encerrada',
+      {
+        type: 'cup',
+        status: 'ongoing',
+        matches: [{ ...done('FINAL'), leg: 1 }, { ...done('FINAL'), leg: 2 }],
+      },
+      'finished',
+    ],
+    [
+      'liga da ESPN numa pausa do calendário',
+      {
+        type: 'league',
+        status: 'ongoing',
+        provider: 'espn',
+        matches: [doneAgo('REGULAR_SEASON', 20), doneAgo('REGULAR_SEASON', 12)],
+      },
+      'ongoing',
+    ],
+    [
+      'liga da ESPN sem jogo novo há mais de 60 dias',
+      {
+        type: 'league',
+        status: 'ongoing',
+        provider: 'espn',
+        matches: [doneAgo('REGULAR_SEASON', 61)],
+      },
+      'finished',
+    ],
+    [
+      'liga da football-data sem jogo pendente, com o último jogo recente',
+      {
+        type: 'league',
+        status: 'ongoing',
+        provider: 'football-data',
+        matches: [doneAgo('REGULAR_SEASON', 2)],
+      },
+      'finished',
+    ],
     ['competição sem jogos', { type: 'cup', status: 'upcoming', matches: [] }, 'upcoming'],
     ['coluna em finished', { type: 'cup', status: 'finished', matches: [done('QUARTER_FINALS')] }, 'finished'],
   ])('%s', (_label, seed, expected) => {
@@ -168,7 +241,7 @@ describe('competitionStatusSql', () => {
       .map((row) => String((row as { detail: string }).detail))
 
     const matchSteps = steps.filter((step) => /^(SCAN|SEARCH) m\b/.test(step))
-    expect(matchSteps).toHaveLength(3)
+    expect(matchSteps).toHaveLength(4)
     for (const step of matchSteps) {
       expect(step).toMatch(/^SEARCH m USING (COVERING )?INDEX idx_matches_comp_round_start \(competition_id=\?\)/)
     }

@@ -218,6 +218,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
         matches: 6,
         teams: 9,
         discarded: 0,
+        discardedTbd: 0,
         missing: 0,
       },
     })
@@ -643,6 +644,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       matches: 6,
       teams: 9,
       discarded: 0,
+      discardedTbd: 0,
       missing: 0,
     })
     expect(second).toEqual(first)
@@ -739,6 +741,7 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       matches: 0,
       teams: 0,
       discarded: 5,
+      discardedTbd: 0,
       missing: 0,
     })
 

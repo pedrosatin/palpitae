@@ -143,6 +143,11 @@ export type SyncResult = {
   teams: number
   /** Eventos do provedor que o sync não importou (motivos em `sync_event_discarded`). */
   discarded: number
+  /**
+   * Dos descartados, os jogos com time ainda indefinido (`missing_competitor`/`tbd`):
+   * o calendário tem jogo que ainda não pode ser gravado.
+   */
+  discardedTbd: number
   /** Jogos pendentes que o calendário completo não trouxe (`match_missing_from_feed`). */
   missing: number
 }
@@ -423,6 +428,11 @@ export async function reportDiscards(
     })
   }
   return discards.length
+}
+
+/** Descartes de jogo com time ainda indefinido (`missing_competitor`/`tbd`). */
+export function countTbdDiscards(discards: SyncDiscard[]): number {
+  return discards.filter((d) => d.reason === 'missing_competitor' && d.detail === 'tbd').length
 }
 
 /** Teto de `match_missing_from_feed` por competição; o total vai no retorno. */
@@ -935,6 +945,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
       matches: 0,
       teams: 0,
       discarded: 0,
+      discardedTbd: 0,
       missing: 0,
     }
   }
@@ -962,6 +973,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     matches: rows.length,
     teams: teamMap.size,
     discarded,
+    discardedTbd: countTbdDiscards(discards),
     missing,
   }
 }

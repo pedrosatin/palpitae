@@ -11,6 +11,7 @@ import {
 import type { ProviderHttpObserver } from '../observability/providerHttp'
 import {
   batchStatements,
+  countTbdDiscards,
   isoSeconds,
   MATCH_UPSERT_SQL,
   type MatchUpsertRow,
@@ -624,6 +625,7 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
       matches: 0,
       teams: 0,
       discarded: await reportDiscards(opts.db, discards, discardScope),
+      discardedTbd: countTbdDiscards(discards),
       missing: 0,
     }
   }
@@ -650,6 +652,7 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     matches: matchCount,
     teams: teamCount,
     discarded,
+    discardedTbd: countTbdDiscards(discards),
     missing: 0,
   }
 }

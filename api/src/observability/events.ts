@@ -35,6 +35,8 @@ export type EventType =
   | 'sync_event_discarded'
   // Jogo pendente que o calendário completo da football-data deixou de trazer
   | 'match_missing_from_feed'
+  // Descoberta não conseguiu gravar o status da competição depois do sync
+  | 'competition_status_error'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'
