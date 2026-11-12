@@ -5,7 +5,14 @@ import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
-import { ACTIVE_RESULT_WINDOW_MS, EARLIEST_RESULT_MS, RESCUE_WINDOW_MS } from './matchPollingWindow'
+import {
+  ACTIVE_RESULT_WINDOW_MS,
+  EARLIEST_RESULT_MS,
+  LATE_SWEEP_INTERVAL_MS,
+  LATE_SWEEP_WINDOW_MS,
+  POLLER_TICK_MS,
+  RESCUE_WINDOW_MS,
+} from './matchPollingWindow'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -16,12 +23,25 @@ type ActiveRound = {
   season: string
   round: string
   utc_day: string
+  /** 1 = candidato da varredura de atrasados, fora da janela ativa e do resgate. */
+  late?: number
 }
 
 type SyncTask = {
   comp: ActiveRound
   round: string
   dates?: string[]
+}
+
+/**
+ * Datas do scoreboard ESPN para um dia UTC. A ESPN indexa o dia local, e um jogo
+ * após meia-noite UTC pode estar no dia anterior.
+ */
+function espnDates(utcDay: string): string[] {
+  const day = Date.parse(`${utcDay}T00:00:00Z`)
+  return [-1, 0].map((offset) =>
+    new Date(day + offset * 86_400_000).toISOString().slice(0, 10).replaceAll('-', ''),
+  )
 }
 
 function buildSyncTasks(rows: ActiveRound[]): {
@@ -37,13 +57,7 @@ function buildSyncTasks(rows: ActiveRound[]): {
     }
     entry.rounds.add(row.round)
     if (row.provider === 'espn') {
-      // A ESPN indexa o dia local. Um jogo após meia-noite UTC pode estar no dia anterior.
-      const day = Date.parse(`${row.utc_day}T00:00:00Z`)
-      for (const offset of [-1, 0]) {
-        entry.dates.add(
-          new Date(day + offset * 86_400_000).toISOString().slice(0, 10).replaceAll('-', ''),
-        )
-      }
+      for (const date of espnDates(row.utc_day)) entry.dates.add(date)
     }
   }
 
@@ -60,6 +74,31 @@ function buildSyncTasks(rows: ActiveRound[]): {
   }
 
   return { compCount: byComp.size, tasks }
+}
+
+/**
+ * Escolhe no máximo uma tarefa da varredura de atrasados. Só roda no primeiro tick
+ * de cada bloco de `LATE_SWEEP_INTERVAL_MS` e alterna entre os candidatos pelo
+ * número do bloco, sem estado gravado: um jogo que o provedor nunca resolve não
+ * prende a vez dos outros. Cada candidato é uma rodada (football-data) ou um dia
+ * (ESPN, duas datas do scoreboard).
+ */
+function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
+  if (now % LATE_SWEEP_INTERVAL_MS >= POLLER_TICK_MS) return undefined
+  const candidates = new Map<string, SyncTask>()
+  for (const row of rows) {
+    const espn = row.provider === 'espn'
+    const key = `${row.comp_id}|${espn ? row.utc_day : row.round}`
+    if (candidates.has(key)) continue
+    candidates.set(key, {
+      comp: row,
+      round: row.round,
+      dates: espn ? espnDates(row.utc_day) : undefined,
+    })
+  }
+  if (candidates.size === 0) return undefined
+  const keys = Array.from(candidates.keys()).sort()
+  return candidates.get(keys[Math.floor(now / LATE_SWEEP_INTERVAL_MS) % keys.length])
 }
 
 /**
@@ -80,6 +119,16 @@ function buildSyncTasks(rows: ActiveRound[]): {
  * (`postponed = 1`) ficam de fora do resgate, para não gastar quota da
  * football-data com partidas que não terminam. O resgate da ESPN cobre a mesma
  * janela e consulta apenas jogos ainda sem resultado, inclusive após sync HTTP 200.
+ *
+ * Varredura de atrasados (até 7 dias após o último horário conhecido): jogos sem
+ * resultado depois das 24 h, e adiados depois dos 200 min, voltam a ser
+ * consultados a cada 3 h, uma rodada ou um dia por vez (`pickLateTask`). A
+ * descoberta diária não alcança o jogo ESPN de antes de ontem, e o adiado
+ * remarcado e disputado antes da próxima descoberta ficaria aberto para palpite
+ * até ela. Para o adiado da ESPN a varredura consulta o dia corrente, onde um jogo
+ * remarcado para hoje aparece. A varredura só entra em tick sem jogo na janela
+ * ativa ou no resgate, então o pico de subrequests por execução não muda. Ela
+ * usa só o provedor primário: o fallback da ESPN segue na janela de 24 h.
  */
 export async function pollActiveMatches(
   db: D1Database,
@@ -96,31 +145,49 @@ export async function pollActiveMatches(
   const earliestOver = new Date(now - EARLIEST_RESULT_MS).toISOString() // started ≥ 115 min ago
   const stillRelevant = new Date(now - ACTIVE_RESULT_WINDOW_MS).toISOString() // started ≤ 200 min ago
   const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString() // started ≤ 24 h ago
+  const lateFloor = new Date(now - LATE_SWEEP_WINDOW_MS).toISOString() // started ≤ 7 days ago
+  const today = new Date(now).toISOString().slice(0, 10)
 
+  // `late = 0`: janela ativa e resgate, consultados em todo tick. `late = 1`:
+  // candidatos da varredura. O adiado da ESPN usa o dia corrente como `utc_day`.
   const rows = await db
     .prepare(
-      `SELECT DISTINCT
-         c.id          AS comp_id,
-         c.external_id AS external_id,
-         c.provider    AS provider,
-         c.season      AS season,
-         m.round       AS round,
-         substr(m.start_time, 1, 10) AS utc_day
-       FROM matches m
-       JOIN competitions c ON c.id = m.competition_id
-       WHERE m.start_time <= ?
-         AND m.start_time >= ?
-         AND c.provider IN ('football-data', 'espn')
-         AND (
-           (m.status != 'finished' AND (m.start_time >= ? OR m.postponed = 0))
-           OR (m.status = 'finished' AND m.scored_at IS NULL
-               AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL)
+      `SELECT DISTINCT comp_id, external_id, provider, season, round,
+              CASE WHEN late = 1 AND postponed = 1 THEN ?5
+                   ELSE substr(start_time, 1, 10) END AS utc_day,
+              late
+         FROM (
+           SELECT c.id          AS comp_id,
+                  c.external_id AS external_id,
+                  c.provider    AS provider,
+                  c.season      AS season,
+                  m.round       AS round,
+                  m.start_time  AS start_time,
+                  m.postponed   AS postponed,
+                  CASE WHEN m.start_time >= ?2
+                             AND (m.status = 'finished' OR m.postponed = 0 OR m.start_time >= ?3)
+                       THEN 0 ELSE 1 END AS late
+             FROM matches m
+             JOIN competitions c ON c.id = m.competition_id
+            WHERE m.start_time <= ?1
+              AND m.start_time >= ?4
+              AND c.provider IN ('football-data', 'espn')
+              AND (
+                m.status != 'finished'
+                OR (m.start_time >= ?2 AND m.scored_at IS NULL
+                    AND m.home_score IS NOT NULL AND m.away_score IS NOT NULL)
+              )
          )`,
     )
-    .bind(earliestOver, rescueFloor, stillRelevant)
+    .bind(earliestOver, rescueFloor, stillRelevant, lateFloor, today)
     .all<ActiveRound>()
 
-  if (rows.results.length === 0) {
+  const activeRows = rows.results.filter((row) => row.late !== 1)
+  // Só em tick ocioso: a varredura não soma subrequests a um tick com jogo na janela.
+  const lateRows = rows.results.filter((row) => row.late === 1)
+  const lateTask = activeRows.length === 0 ? pickLateTask(lateRows, now) : undefined
+
+  if (activeRows.length === 0 && !lateTask) {
     console.info('[poller] Nenhum jogo na janela ativa.')
     logEvent(ae, 'poller_run', {
       blobs: ['ok'],
@@ -130,7 +197,9 @@ export async function pollActiveMatches(
     return
   }
 
-  const { compCount, tasks } = buildSyncTasks(rows.results)
+  const { compCount, tasks } = buildSyncTasks(activeRows)
+  if (lateTask) tasks.push(lateTask)
+  const roundDays = activeRows.length + (lateTask ? 1 : 0)
 
   type SyncOutcome =
     | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
@@ -184,7 +253,8 @@ export async function pollActiveMatches(
   const fallbackCompIds = new Set<string>()
 
   for (const res of syncResults) {
-    if (res.comp.provider !== 'espn') fallbackCompIds.add(res.comp.comp_id)
+    // A varredura não chama o fallback: ela só roda sem jogo nas 24 h do fallback.
+    if (res.comp.provider !== 'espn' && !lateTask) fallbackCompIds.add(res.comp.comp_id)
     if (res.success) {
       fixturesUpdated += res.matches
       eventsDiscarded += res.discarded
@@ -236,7 +306,7 @@ export async function pollActiveMatches(
   logEvent(ae, 'poller_run', {
     blobs: [hadError || scoringFailure ? 'error' : 'ok'],
     doubles: [
-      rows.results.length,
+      roundDays,
       fixturesUpdated,
       plannedApiRequests,
       Date.now() - startedAt,
@@ -250,9 +320,10 @@ export async function pollActiveMatches(
     '[perf]',
     JSON.stringify({
       route: 'cron pollActiveMatches',
-      competitions: compCount,
-      round_days: rows.results.length,
+      competitions: compCount + (lateTask ? 1 : 0),
+      round_days: roundDays,
       sync_tasks: tasks.length,
+      late_sweep_tasks: lateTask ? 1 : 0,
       api_requests_planned: plannedApiRequests,
       espn_max_concurrent: ESPN_MAX_CONCURRENT_COMPETITIONS,
       espn_min_interval_ms: ESPN_MIN_INTERVAL_MS,
