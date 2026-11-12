@@ -1,15 +1,18 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
+import { hasPilotAccess } from '../auth/permissions'
 import { lockedSql } from '../matches/locking'
 import { roundLabel } from '../matches/rounds'
 import { isoSeconds } from '../matches/sync'
 import { hashUserId, logEvent } from '../observability/events'
+import type { Env } from '../types'
 import { EmailError, sendEmail } from './email'
 import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
 
-// Brasília é UTC-3, sem horário de verão desde 2019.
-const BRT_OFFSET_MS = 3 * 60 * 60 * 1000
+// O dia do lembrete é o de Brasília. O fuso vem da base do `Intl`; assim, se o
+// horário de verão voltar, o dia não muda.
+const REMINDER_TIME_ZONE = 'America/Sao_Paulo'
 const DAY_MS = 24 * 60 * 60 * 1000
 const SEND_LOG_RETENTION_DAYS = 7
 
@@ -23,11 +26,29 @@ const MAX_SEND_ATTEMPTS = 3
 // subrequests por invocação. O D1 conta junto com o `fetch`. A invocação gasta 4
 // consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de
 // segurança do `scheduled`) e deixa 1 de folga. Sobram 45 subrequests para os `fetch`
-// ao Resend, contando cada reenvio, e para as revalidações de descadastro.
+// ao Resend, contando cada reenvio, e para as revalidações de descadastro. É o padrão
+// do teto; `REMINDER_FETCH_BUDGET` o substitui (`reminderFetchBudget`).
 const SUBREQUEST_LIMIT = 50
 const D1_SUBREQUESTS = 4
 const SUBREQUEST_MARGIN = 1
 export const RESEND_FETCH_BUDGET = SUBREQUEST_LIMIT - D1_SUBREQUESTS - SUBREQUEST_MARGIN
+
+/**
+ * Teto de `fetch` por execução a partir de `REMINDER_FETCH_BUDGET`. Vazio ou ausente
+ * vale `RESEND_FETCH_BUDGET`. Um valor que não seja inteiro positivo também volta ao
+ * padrão, com erro no log, para que um erro de digitação não desligue o lembrete.
+ * Acima de 45 só cabe com o plano Paid da Cloudflare: no Free, o Worker é cortado no
+ * 51º subrequest.
+ */
+export function reminderFetchBudget(raw: string | undefined): number {
+  const value = raw?.trim()
+  if (!value) return RESEND_FETCH_BUDGET
+  if (/^\d+$/.test(value) && Number(value) > 0) return Number(value)
+  console.error(
+    `[roundReminder] REMINDER_FETCH_BUDGET inválido (${JSON.stringify(raw)}): usando ${RESEND_FETCH_BUDGET}.`,
+  )
+  return RESEND_FETCH_BUDGET
+}
 
 // Por quanto tempo a última leitura de descadastro vale durante o lote. A reserva lê
 // a preferência, e uma tentativa de envio que começa depois desse prazo relê antes de
@@ -171,6 +192,7 @@ type PendingRow = {
   group_name: string
   competition_id: string
   competition_name: string
+  competition_visibility: string | null
   match_id: string
   round: string | null
   start_time: string
@@ -178,6 +200,8 @@ type PendingRow = {
   away_team: string
   home_logo: string | null
   away_logo: string | null
+  /** Último dia com lembrete enviado ao usuário, nos 7 dias guardados. */
+  last_sent: string | null
 }
 
 type DigestMatch = {
@@ -209,6 +233,7 @@ type Digest = {
   /** Jogos distintos. O mesmo jogo sem palpite em dois grupos conta uma vez. */
   matchIds: Set<string>
   firstStart: string
+  lastSent: string | null
 }
 
 /**
@@ -223,6 +248,9 @@ type Digest = {
  * Os `CROSS JOIN` fixam a ordem. A consulta parte dos jogos do dia pelo índice de
  * `start_time`, e cada junção seguinte é uma busca por chave. Binds em
  * `pendingMatchesBinds`.
+ *
+ * `last_sent` ordena a fila de envio (`byQueueOrder`). Vem da chave primária de
+ * `email_reminder_sends`, sem consulta a mais.
  */
 export const PENDING_MATCHES_SQL = `SELECT
          u.id         AS user_id,
@@ -231,13 +259,16 @@ export const PENDING_MATCHES_SQL = `SELECT
          g.name       AS group_name,
          c.id         AS competition_id,
          c.name       AS competition_name,
+         c.visibility AS competition_visibility,
          m.id         AS match_id,
          m.round      AS round,
          m.start_time AS start_time,
          ht.name      AS home_team,
          awt.name     AS away_team,
          ht.logo_url  AS home_logo,
-         awt.logo_url AS away_logo
+         awt.logo_url AS away_logo,
+         (SELECT MAX(ls.reminder_date) FROM email_reminder_sends ls
+          WHERE ls.user_id = u.id) AS last_sent
        FROM matches m
        CROSS JOIN groups g         ON g.competition_id = m.competition_id AND g.deleted_at IS NULL
        CROSS JOIN group_members gm ON gm.group_id = g.id
@@ -269,12 +300,61 @@ type ReminderDay = {
   retentionCutoff: string
 }
 
+const REMINDER_ZONE_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: REMINDER_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+
+/** Relógio de Brasília no instante, lido como se fosse UTC. */
+function zonedWallClockMs(instantMs: number): number {
+  const instant = new Date(instantMs)
+  const parts: Record<string, number> = {}
+  for (const { type, value } of REMINDER_ZONE_FORMAT.formatToParts(instant)) {
+    if (type !== 'literal') parts[type] = Number(value)
+  }
+  // O formato para nos segundos. Os milissegundos voltam para o deslocamento sair exato.
+  return Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+    instant.getUTCMilliseconds(),
+  )
+}
+
+/** Dia em Brasília no instante, YYYY-MM-DD. */
+function zonedDate(instantMs: number): string {
+  return new Date(zonedWallClockMs(instantMs)).toISOString().slice(0, 10)
+}
+
+/**
+ * Primeiro instante do dia seguinte em Brasília. A meia-noite usa o deslocamento de
+ * agora e, se ele mudar até lá, o de depois da mudança. Fica o menor candidato que já
+ * cai no dia seguinte. No início do horário de verão a meia-noite não existe e o dia
+ * acaba quando 00:00 vira 01:00. No fim, a hora repetida ainda conta como dia anterior.
+ */
+function nextZonedMidnightMs(nowMs: number, date: string): number {
+  const next = new Date(Date.parse(`${date}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10)
+  const wallMidnight = Date.parse(`${next}T00:00:00Z`)
+  const before = wallMidnight - (zonedWallClockMs(nowMs) - nowMs)
+  const after = wallMidnight - (zonedWallClockMs(before) - before)
+  return Math.min(...[before, after].filter((candidate) => zonedDate(candidate) >= next))
+}
+
 function reminderDay(nowMs: number): ReminderDay {
-  const date = new Date(nowMs - BRT_OFFSET_MS).toISOString().slice(0, 10)
+  const date = zonedDate(nowMs)
   const dayMs = Date.parse(`${date}T00:00:00Z`)
   return {
     date,
-    endIso: isoSeconds(new Date(dayMs + DAY_MS + BRT_OFFSET_MS)),
+    endIso: isoSeconds(new Date(nextZonedMidnightMs(nowMs, date))),
     retentionCutoff: new Date(dayMs - SEND_LOG_RETENTION_DAYS * DAY_MS).toISOString().slice(0, 10),
   }
 }
@@ -301,6 +381,7 @@ function buildDigests(rows: PendingRow[]): Digest[] {
         groups: [],
         matchIds: new Set(),
         firstStart: row.start_time,
+        lastSent: row.last_sent,
       }
       digests.set(row.user_id, digest)
     }
@@ -332,6 +413,39 @@ function buildDigests(rows: PendingRow[]): Digest[] {
     digest.matchIds.add(row.match_id)
   }
   return [...digests.values()]
+}
+
+/**
+ * Ordem da fila de envio quando o teto não cobre todos. Primeiro quem recebeu o
+ * lembrete há mais tempo, ou não recebeu nos últimos 7 dias. Quem ficou de fora num
+ * dia não tem linha desse dia e passa à frente de quem recebeu. Sem essa regra a fila
+ * seguiria só o horário do primeiro jogo, e quem joga à noite ficaria de fora todo dia.
+ * No empate vale o jogo que fecha primeiro e, por fim, o id, para a ordem ser estável.
+ */
+function byQueueOrder(a: Digest, b: Digest): number {
+  const lastSent = (a.lastSent ?? '').localeCompare(b.lastSent ?? '')
+  if (lastSent !== 0) return lastSent
+  const firstStart = a.firstStart.localeCompare(b.firstStart)
+  if (firstStart !== 0) return firstStart
+  return a.userId < b.userId ? -1 : 1
+}
+
+/**
+ * Linhas de competição em piloto ficam só para quem tem acesso ao piloto, o mesmo
+ * critério da lista de grupos. Quem saiu de `PILOT_EMAILS` continua membro do grupo,
+ * mas não abre o link.
+ */
+function withPilotAccess(rows: PendingRow[], access: PilotAccess): PendingRow[] {
+  const allowed = new Map<string, boolean>()
+  return rows.filter((row) => {
+    if (row.competition_visibility !== 'pilot') return true
+    let ok = allowed.get(row.user_id)
+    if (ok === undefined) {
+      ok = hasPilotAccess(row.email, access)
+      allowed.set(row.user_id, ok)
+    }
+    return ok
+  })
 }
 
 /** Rodadas distintas nos e-mails, para o evento agregado do cron. */
@@ -555,13 +669,22 @@ async function dispatchDigests(
   return { sent, matchesListed, failedUserIds, unsubscribedUserIds }
 }
 
+type PilotAccess = Pick<Env, 'ADMIN_EMAIL' | 'PILOT_EMAILS'>
+
+export type ReminderOptions = {
+  /** Teto de `fetch` da execução. Padrão `RESEND_FETCH_BUDGET`. */
+  fetchBudget?: number
+  /** Quem vê competição em piloto. Sem ele, grupo de competição em piloto não gera lembrete. */
+  pilotAccess?: PilotAccess
+}
+
 /**
  * Envia, uma vez por dia (07:00 em Brasília), um e-mail a cada usuário com jogo
  * de hoje ainda aberto e sem palpite. O e-mail lista só esses jogos, por grupo e
  * rodada. Quem palpitou todos os jogos do dia ou cancelou os lembretes não recebe.
  * Vale no máximo um e-mail por usuário por dia (`email_reminder_sends`, ADR-020).
  *
- * `nowMs` e `fetchBudget` existem para os testes fixarem o dia e o saldo.
+ * `nowMs` existe para os testes fixarem o dia.
  */
 export async function sendRoundReminders(
   db: D1Database,
@@ -570,7 +693,7 @@ export async function sendRoundReminders(
   appUrl: string = APP_URL,
   unsub?: UnsubConfig,
   nowMs: number = Date.now(),
-  fetchBudget?: number,
+  { fetchBudget, pilotAccess = {} }: ReminderOptions = {},
 ): Promise<void> {
   const startedAt = Date.now()
 
@@ -587,7 +710,7 @@ export async function sendRoundReminders(
     .prepare(PENDING_MATCHES_SQL)
     .bind(...pendingMatchesBinds(isoSeconds(new Date(nowMs)), day))
     .all<PendingRow>()
-  const digests = buildDigests(results)
+  const digests = buildDigests(withPilotAccess(results, pilotAccess))
 
   if (digests.length === 0) {
     console.info('[roundReminder] Nenhum jogo sem palpite hoje.')
@@ -600,7 +723,7 @@ export async function sendRoundReminders(
     digests.map((digest) => digest.userId),
     day,
   )
-  const recipients = digests.filter((digest) => claimed.has(digest.userId))
+  const recipients = digests.filter((digest) => claimed.has(digest.userId)).sort(byQueueOrder)
 
   // Sem apiBaseUrl o e-mail sai sem o link, e o `.replace` não quebra o lote.
   const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
