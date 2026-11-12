@@ -217,6 +217,7 @@ The Cron Trigger is added to the **existing `palpitae-api` Worker** (not a separ
 - `GET /matches` is now a pure DB read — no background API calls piggybacking on user requests
 - football-data.org is called only while matches are actively in their time window — no wasted polling
 - Knockout extra time and penalties are covered by the 200-min upper bound; if still not finished, the next day's manual admin sync catches edge cases
+- Atualização (12/11/2026): depois da janela ativa vêm o resgate de 24 h e a varredura de atrasados, que consulta a cada 3 h, uma rodada por vez, jogos sem resultado e adiados de até 7 dias, só em tick sem jogo na janela ativa ou no resgate (`api/src/matches/poller.ts`)
 - If football-data.org is down during a tick, the next tick retries automatically; the scoring gap is bounded by the 30-min cron interval
 - During the transition, both the Cron and `maybeSyncResults` may sync — this is safe because `scoreUnprocessedMatches` is idempotent (skips matches with `scored_at` set)
 

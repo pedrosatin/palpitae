@@ -58,12 +58,12 @@ Cliente: `fetchMatchesFromApi` em `api/src/matches/sync.ts`. Token `FOOTBALL_API
 
 | Chamador | Gatilho | Chamadas por execução (sem retry) |
 |---|---|---|
-| Poller (`pollActiveMatches`) | cron `0,30 * * * *` | 1 por (competição, rodada) com jogo na janela ativa ou de resgate |
+| Poller (`pollActiveMatches`) | cron `0,30 * * * *` | 1 por (competição, rodada) com jogo na janela ativa ou de resgate; sem jogo nelas, a varredura de atrasados faz no máximo 1 a cada 3 h |
 | Discovery (`discoverFixtures`) | cron `0 6 * * *` | 1 por competição FD com `status != finished` |
 | `POST /matches/sync` | admin (`ADMIN_EMAIL`) | 1 |
 | `api/scripts/test-results-api.ts` | manual local | ilimitado; fora da telemetria do Worker |
 
-Janelas do poller [código, `matchPollingWindow.ts`]: ativa de `start + 115 min` até `start + 200 min`; resgate até `start + 24 h` (`RESCUE_WINDOW_MS`). Isso é distinto do parâmetro `days=7` do painel de métricas (janela de consulta AE) e da janela ESPN de discovery (ontem UTC até hoje+7 dias = 9 datas).
+Janelas do poller [código, `matchPollingWindow.ts`]: ativa de `start + 115 min` até `start + 200 min`; resgate até `start + 24 h` (`RESCUE_WINDOW_MS`); varredura de atrasados até `start + 7 dias` (`LATE_SWEEP_WINDOW_MS`), no primeiro tick de cada bloco de 3 h (`LATE_SWEEP_INTERVAL_MS`), uma rodada football-data ou um dia ESPN por vez e só em tick sem jogo na janela ativa ou no resgate. Entram os jogos sem resultado depois das 24 h e os adiados depois dos 200 min; o adiado da ESPN é procurado nas datas do dia corrente. Isso é distinto do parâmetro `days=7` do painel de métricas (janela de consulta AE) e da janela ESPN de discovery (ontem UTC até hoje+7 dias = 9 datas).
 
 ### 2.2 ESPN
 
@@ -72,7 +72,7 @@ Cliente: `fetchEspnScoreboard` em `api/src/providers/espn.ts`. Sem credencial. M
 | Chamador | Gatilho | Chamadas por execução (sem retry) |
 |---|---|---|
 | Discovery ESPN-primária | `0 6 * * *` | 9 datas × E competições (ontem UTC … hoje+7) |
-| Poller ESPN-primária | `0,30 * * * *` | até 3 datas por competição quando jogos pendentes abrangem dois dias UTC (dia do jogo e o anterior) |
+| Poller ESPN-primária | `0,30 * * * *` | até 3 datas por competição quando jogos pendentes abrangem dois dias UTC (dia do jogo e o anterior); a varredura de atrasados consulta 2 datas, no máximo a cada 3 h |
 | Fallback (`scoreWindowFromEspn`) | após sync do poller em competições FD | até 3 datas por competição FD elegível |
 | `POST /matches/sync` (código ESPN) | admin | lista `dates` validada só como `YYYYMMDD[]`; **sem teto de nove** em `validateSyncParams` / `isValidDatesList` |
 | Radar (`radar-sync.yml` + `radarSync.ts`) | GitHub Actions `0 7 * * *` | ~40 slugs (`ESPN_LEAGUES`, contados no código) + Wikimedia pageviews; pool de tarefas 5, HTTP ESPN serializado com pacing (ver §6.4) |

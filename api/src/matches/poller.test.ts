@@ -116,7 +116,8 @@ describe('pollActiveMatches', () => {
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
-    const [earliestOver, rescueFloor, stillRelevant] = db._captured.params as [
+    const [earliestOver, rescueFloor, stillRelevant, lateFloor] = db._captured.params as [
+      string,
       string,
       string,
       string,
@@ -134,6 +135,9 @@ describe('pollActiveMatches', () => {
     // The rescue floor reaches back 24 h from now (115 min before earliestOver's now).
     expect(rescueFloor).toMatch(isoRe)
     expect(Date.parse(earliestOver) - Date.parse(rescueFloor)).toBe((24 * 60 - 115) * 60 * 1000)
+    // A varredura de atrasados alcança jogos de até 7 dias.
+    expect(lateFloor).toMatch(isoRe)
+    expect(Date.parse(rescueFloor) - Date.parse(lateFloor)).toBe(6 * 24 * 60 * 60 * 1000)
   })
 
   it('passes matchday for numeric rounds (group stage)', async () => {

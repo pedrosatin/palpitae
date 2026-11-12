@@ -182,7 +182,8 @@ descoberta é N competições ESPN primárias × 9 datas antes de retries
 (ex.: 90 com 10). O cron usa `scheduledTime` como referência
 para a janela de resgate e as datas de descoberta. `duration_ms` mede tempo real.
 O campo legado `matches_checked` do poller conta grupos de competição, rodada e dia
-UTC selecionados, não partidas individuais.
+UTC selecionados, não partidas individuais. Na varredura de atrasados ele vale 1, e o
+log `[perf]` traz `late_sweep_tasks = 1`.
 
 
 Observação sobre `football_api_error`: tem **três formas** de chamada. No poller
