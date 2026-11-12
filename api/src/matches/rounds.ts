@@ -73,6 +73,11 @@ export function isKnockoutPhase(phase: string | null | undefined): boolean {
   return Object.hasOwn(KNOCKOUT_LABELS, phase)
 }
 
+/** As fases em que `isKnockoutPhase` dá verdadeiro, para filtros em SQL. */
+export const KNOCKOUT_PHASES: readonly string[] = Object.keys(KNOCKOUT_LABELS).filter(
+  isKnockoutPhase,
+)
+
 interface RoundMatch {
   round: string
   phase: string | null

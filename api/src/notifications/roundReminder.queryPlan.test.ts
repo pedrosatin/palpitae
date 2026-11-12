@@ -22,7 +22,11 @@ const BY_COMPETITION_ONLY = /idx_matches_comp_round_start \(competition_id=\?\)/
 
 describe('planos de consulta das subqueries por rodada', () => {
   it('pendências do GET /groups buscam os jogos da rodada pelo índice', () => {
-    const steps = plan(`SELECT g.id, ${pendingSummarySql('g')} FROM groups g`, 7)
+    const steps = plan(
+      `SELECT g.id, ${pendingSummarySql('g', 'c')}
+       FROM groups g LEFT JOIN competitions c ON c.id = g.competition_id`,
+      8,
+    )
     // Uma busca do índice coberto por competição numera as rodadas candidatas.
     // Os jogos vêm de uma busca por competição e rodada. Com JOIN no lugar do
     // CROSS JOIN, o SQLite busca m só por competição e lê a competição inteira
@@ -36,6 +40,11 @@ describe('planos de consulta das subqueries por rodada', () => {
       'SEARCH p USING COVERING INDEX sqlite_autoindex_predictions_2 (user_id=? AND group_id=? AND match_id=?) LEFT-JOIN',
     ])
     expect(steps.filter((s) => /^SCAN (m|mr|p)\b/.test(s))).toEqual([])
+    // As fases de pênalti vêm da competição já lida pelo JOIN de fora, sem nova
+    // leitura de `competitions` a cada jogo.
+    expect(steps.filter((s) => s.includes('competitions'))).toEqual([
+      'SEARCH c USING INDEX sqlite_autoindex_competitions_1 (id=?) LEFT-JOIN',
+    ])
   })
 
   it('lembrete parte dos jogos do dia pelo índice de horário, sem varrer tabela', () => {

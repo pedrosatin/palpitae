@@ -12,6 +12,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
 import { deadlineBanner, sortByUrgency } from '../../lib/dashboardStatus'
 import { useDashboardGroups } from './hooks/useDashboardGroups'
+import { useStatusClock } from './hooks/useStatusClock'
 import NextDeadlineBanner from './NextDeadlineBanner'
 import styles from './DashboardPage.module.css'
 
@@ -138,13 +139,13 @@ function FinishedGroupsSection({ groups }: { groups: GroupWithStats[] }) {
   )
 }
 
-function GroupsList({ groups }: { groups: GroupWithStats[] }) {
+function GroupsList({ groups, nowMs }: { groups: GroupWithStats[]; nowMs: number }) {
   // Os grupos em andamento seguem a ordem de urgência, com o jogo sem palpite que
   // fecha antes no topo. Encerrados mantêm a ordem da API.
   const ongoing = sortByUrgency(groups.filter((g) => g.competition_status !== 'finished'))
   const finished = groups.filter((g) => g.competition_status === 'finished')
   const banner = deadlineBanner(ongoing)
-  const bannerNode = banner && <NextDeadlineBanner banner={banner} nowMs={Date.now()} />
+  const bannerNode = banner && <NextDeadlineBanner banner={banner} nowMs={nowMs} />
 
   // Sem grupos encerrados: mantém a visão simples de sempre, sem seções extras.
   if (finished.length === 0) {
@@ -183,11 +184,21 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
   const canCreateGroup = user.feature_flags?.create_group ?? false
 
-  const { groups, loading, error, joinOpen, setJoinOpen, matchedInviteGroupId, fetchGroups } =
-    useDashboardGroups({
-      userId: user.id,
-      normalizedPendingInvite,
-    })
+  const {
+    groups,
+    loading,
+    error,
+    joinOpen,
+    setJoinOpen,
+    matchedInviteGroupId,
+    fetchGroups,
+    refreshGroups,
+  } = useDashboardGroups({
+    userId: user.id,
+    normalizedPendingInvite,
+  })
+  // Pendências, prazo e jogo ao vivo mudam com o relógio, sem nova edição.
+  const nowMs = useStatusClock(groups, refreshGroups)
 
   // O CTA do guia pede uma competição em `?competicao=`. Na montagem, o painel
   // abre a criação com ela escolhida. Convite na URL tem prioridade.
@@ -295,7 +306,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
                 onJoinGroup={() => setJoinOpen(true)}
               />
             ) : (
-              <GroupsList groups={groups} />
+              <GroupsList groups={groups} nowMs={nowMs} />
             )}
           </div>
         )}

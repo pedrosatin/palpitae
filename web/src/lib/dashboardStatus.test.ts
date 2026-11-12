@@ -8,8 +8,10 @@ import {
   groupRoundStatus,
   groupRoundStatusLabel,
   groupRoundStatusText,
+  lastPassedBoundary,
   pendingCountText,
   sortByUrgency,
+  statusBoundaries,
   type DeadlineMatch,
   type RoundStatusFields,
 } from './dashboardStatus'
@@ -218,6 +220,31 @@ describe('deadlineBanner', () => {
   it('não mostra faixa sem pendência e sem rodada aberta', () => {
     expect(deadlineBanner([group('a'), group('b', { live_matches: 2 })])).toBeNull()
     expect(deadlineBanner([])).toBeNull()
+  })
+})
+
+describe('horários que mudam o painel', () => {
+  it('junta prazo, próximo jogo e fim da rodada, sem os campos vazios', () => {
+    expect(
+      statusBoundaries([
+        group('a', {
+          pending_predictions: 1,
+          next_deadline: deadline('2026-11-14T21:30:00Z'),
+          next_match_at: '2026-11-13T00:00:00Z',
+          round_ends_at: '2026-11-20T00:30:00Z',
+        }),
+        // Só adiado sem data: pendente e sem horário.
+        group('b', { pending_predictions: 1 }),
+        { id: 'c', name: 'API antiga', pending_predictions: 0 },
+      ]),
+    ).toEqual(['2026-11-14T21:30:00Z', '2026-11-13T00:00:00Z', '2026-11-20T00:30:00Z'])
+  })
+
+  it('aponta o horário mais recente que já passou', () => {
+    const boundaries = ['2026-11-12T14:00:00Z', '2026-11-12T15:00:00Z', '2026-11-12T16:00:00Z']
+    expect(lastPassedBoundary(boundaries, NOW)).toBe(Date.parse('2026-11-12T15:00:00Z'))
+    expect(lastPassedBoundary(boundaries, NOW - 2 * 60 * 60 * 1000)).toBeNull()
+    expect(lastPassedBoundary([], NOW)).toBeNull()
   })
 })
 
