@@ -47,31 +47,46 @@ e S3-compatible. Um arquivo/dia ⇒ ~365 escritas/ano, irrisório. O Analytics E
 **staging** (query rápida, ~3 meses); o cron "congela" tudo em R2 pra sempre. Reaproveita o
 cron que já existe — sem Queues (pago) nem Durable Object.
 
-**Contagem em customMetadata.** Cada NDJSON leva `customMetadata: { events: '<n>' }` — a
-contagem REAL de eventos do dia (`SUM(_sample_interval)` das linhas, não o nº de linhas; ver
-sampling acima). Serve pro dashboard montar a série histórica de eventos além da janela do AE
-**sem ler arquivo nenhum**: o `list()` do R2 já devolve o customMetadata de cada objeto.
-Arquivo de antes dessa contagem existir é migrado pelo próprio cron: no loop do backfill, dia
-com arquivo mas **sem** a metadata tem o corpo lido do R2, contado e re-gravado com a metadata
-(nunca re-consulta o AE — se o dia já saiu da retenção, o re-export gravaria um marcador vazio
-por cima do arquivo bom). Conta no teto de exports/run.
+**Manifesto em customMetadata.** Cada NDJSON leva `customMetadata: { events, rows, complete }`.
+`events` é a contagem REAL de eventos do dia (`SUM(_sample_interval)` das linhas, não o nº de
+linhas; ver sampling acima) e serve pro dashboard montar a série histórica além da janela do AE
+**sem ler arquivo nenhum**: o `list()` do R2 já devolve o customMetadata de cada objeto. `rows` é
+o nº de linhas do arquivo. `complete: '1'` diz que o dia foi lido inteiro **e** consultado ao
+menos 24 h depois de terminar; `'0'` é arquivo provisório ou truncado. Arquivo sem `complete`
+é de antes do manifesto.
 
-**Backfill (dias faltantes).** O export não cobre só "ontem": `exportRecentDays` varre de
-`today-1` até `today-lookbackDays` (90 por padrão, dentro da janela de ~3 meses do AE), e para
-cada dia **sem** arquivo no R2 (`HEAD` na chave) dispara o export. Idempotente — re-`put` na
-mesma chave é seguro. Um dia **sem eventos** grava um arquivo NDJSON **vazio** (0 bytes) como
-marcador, pra não ser re-consultado em toda execução (senão um dia ocioso gastaria o teto de
-exports/run pra sempre). Assim, se um cron falhou ou o Worker ficou indisponível, o dia perdido é
-re-exportado numa execução seguinte, **desde que ainda esteja dentro da janela de retenção do
-AE** (depois disso o dado já saiu do staging e é irrecuperável). Há um teto de
-`MAX_EXPORTS_PER_RUN` (10) exports por execução pra não estourar tempo/CPU do cron — dias
-restantes pegam na próxima rodada.
+**Backfill e reparo.** O export não cobre só "ontem": `exportRecentDays` varre de `today-1` até
+`today-lookbackDays` (90 por padrão, dentro da janela de ~3 meses do AE) e lê o manifesto de
+cada dia (`HEAD` na chave):
 
-**Limite de linhas da SQL API (caveat).** A SQL API do Analytics Engine corta o resultado
-silenciosamente (~10k linhas). O export fixa `LIMIT 10000` explícito justamente pra **detectar**
-o corte: se `rows.length >= ROW_LIMIT`, provavelmente truncou e eventos daquele dia foram
-perdidos no arquivo — emite `console.warn` nos Workers Logs. Hoje o volume está muito abaixo
-disso; se um dia chegar perto, paginar por janela de tempo (ex.: por hora) dentro do mesmo dia.
+- dia **sem** arquivo: exporta;
+- arquivo com `complete: '1'`: não consulta mais;
+- qualquer outro (provisório, truncado ou de antes do manifesto): reconsulta o AE e troca o
+  arquivo só se a coleta nova não perde linhas (mais linhas, ou completa com ao menos as mesmas).
+  Se a coleta nova, já completa, tem menos linhas (o dia saiu da retenção ou a SQL API devolve
+  menos), o corpo arquivado fica e ganha o manifesto contado do próprio NDJSON, com
+  `complete: '1'`.
+
+O export das 00:05 é, portanto, provisório: o cron do dia seguinte reconsulta o dia e fecha o
+arquivo, pegando linhas que a SQL API ainda não devolvia (em novembro de 2026, um dia arquivado
+tinha uma linha a menos que o AE). Toda troca é condicionada ao etag lido no `HEAD`: se o
+objeto mudou no meio do caminho, o R2 recusa e o arquivo atual fica. Falha na consulta ou no
+upload não toca no objeto, e o dia volta na execução seguinte.
+
+**Dia vazio x coleta falha.** Um dia **sem eventos** grava um NDJSON **vazio** (0 bytes) com
+`rows: '0'`; com `complete: '1'` ele não é re-consultado (senão um dia ocioso gastaria o teto de
+exports/run pra sempre). Coleta que falha não grava nada: resposta HTTP de erro ou resposta sem a
+lista `data` lançam antes do `put`. Marcador vazio de antes do manifesto é reconsultado uma vez.
+Um dia perdido é recuperável **enquanto estiver dentro da janela de retenção do AE** (depois
+disso o dado já saiu do staging). Há um teto de `MAX_EXPORTS_PER_RUN` (10) exports e reparos por
+execução pra não estourar tempo/CPU do cron — dias restantes pegam na próxima rodada.
+
+**Limite de linhas da SQL API.** A SQL API do Analytics Engine corta o resultado silenciosamente
+(~10k linhas). O export lê o dia em páginas de `LIMIT 10000` ordenadas por `timestamp`: página
+cheia descarta as linhas do último segundo e a próxima começa nesse segundo, então nenhum
+segundo fica dividido entre páginas. Um único segundo com mais de 10 mil linhas, ou mais de 10
+páginas (100 mil linhas) no dia, grava o que foi lido com `complete: '0'` e um `console.warn`.
+Hoje o maior dia dos últimos 90 tem cerca de 250 linhas.
 
 ## Esquema e convenção de eventos
 
@@ -125,7 +140,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 |---|---|---|---|---|
 | `poller_run` | `status` (`ok`/`error`; `error` também quando a pontuação falha) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms, `double5`=events_discarded (eventos que o sync não importou; ausente antes do registro de descartes). Descarte não muda o `status` |
 | `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms, `double5`=events_discarded, `double6`=matches_missing (jogos pendentes ausentes do calendário da football-data); os dois ausentes antes do registro de descartes. Descarte e ausência não mudam o `status` |
-| `radar_sync_run` | `status` (`ok`/`partial`/`error`) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
+| `radar_sync_run` | `status` (`ok`/`partial`/`error`; `partial` quando algum slug da ESPN ou artigo da Wikipédia falhou) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
 | `scheduled_unknown_cron` | `cron` (expressão recebida em `controller.cron`) | — | — | — |
 | `scheduled_config_missing` | `name` (`AE`/`EVENTS`/`PROXY_SHARED_SECRET`/`BASE_URL`/`CF_ACCOUNT_ID`/`AE_SQL_TOKEN`); um evento por nome ausente em cada execução agendada. Sem `AE` só há a linha `[scheduled] Configuração ausente` no log | — | — | — |

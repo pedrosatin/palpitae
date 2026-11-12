@@ -42,11 +42,32 @@ function isRelevant(league: ProviderLeague): boolean {
   return RADAR_COUNTRIES.has(league.country) || findEntry(league.country, league.name) !== undefined
 }
 
+/**
+ * Zera `is_current` só onde a coleta desta execução responde pelo estado: todas
+ * as ligas do provedor, menos as dos slugs que falharam. Liga de slug com falha
+ * mantém o estado do último snapshot válido, em vez de sumir do radar porque a
+ * ESPN não respondeu hoje. Slug que saiu do recorte não está em `failed` e é
+ * rebaixado normalmente.
+ */
+function resetCurrent(db: D1Database, failedSlugs: string[]): D1PreparedStatement {
+  if (failedSlugs.length === 0) {
+    return db.prepare(`UPDATE competition_radar SET is_current = 0 WHERE provider = ?`).bind(PROVIDER)
+  }
+  const placeholders = failedSlugs.map(() => '?').join(', ')
+  return db
+    .prepare(
+      `UPDATE competition_radar SET is_current = 0
+        WHERE provider = ? AND external_id NOT IN (${placeholders})`,
+    )
+    .bind(PROVIDER, ...failedSlugs)
+}
+
 async function writeCompetitions(
   db: D1Database,
   leagues: ProviderLeague[],
   matchCounts: Map<string, number>,
   today: string,
+  failedSlugs: string[],
 ): Promise<void> {
   // `is_current` é reconstruído a cada execução: uma temporada que saiu do
   // catálogo tem que parar de aparecer como "acontecendo agora".
@@ -59,7 +80,7 @@ async function writeCompetitions(
       .prepare(`DELETE FROM competition_radar_daily WHERE radar_id LIKE ?`)
       .bind(`${LEGACY_PROVIDER}:%`),
     db.prepare(`DELETE FROM competition_radar WHERE provider = ?`).bind(LEGACY_PROVIDER),
-    db.prepare(`UPDATE competition_radar SET is_current = 0 WHERE provider = ?`).bind(PROVIDER),
+    resetCurrent(db, failedSlugs),
   ]
 
   for (const league of leagues) {
@@ -175,6 +196,15 @@ async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promis
   await Promise.all(workers)
 }
 
+/** Resultado de uma execução — o script do Actions usa para sinalizar coleta parcial. */
+export type RadarSyncResult = {
+  status: 'ok' | 'partial' | 'error'
+  /** Slugs da ESPN sem resposta; as ligas deles mantêm o snapshot anterior. */
+  failedSlugs: string[]
+  /** Artigos da Wikipédia cujos pageviews não foram atualizados. */
+  pageviewErrors: number
+}
+
 /**
  * Radar de competições — snapshot diário do que está acontecendo no futebol e
  * de quanto o público brasileiro se interessa por cada torneio. Insumo do
@@ -183,7 +213,9 @@ async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promis
  * nem cobre).
  *
  * Não toca em nada do produto: escreve só em `competition_radar*`. Se falhar,
- * o snapshot do dia anterior continua valendo e a dashboard segue de pé.
+ * o snapshot do dia anterior continua valendo e a dashboard segue de pé. Falha
+ * parcial atualiza só o que respondeu: liga de slug com falha fica como estava,
+ * e a execução sai como `partial`.
  *
  * Custo por execução: ~35 chamadas à ESPN (uma por slug do recorte curado —
  * sem chave, sem quota conhecida; ver ADR-015) e ~1 chamada à Wikimedia por
@@ -194,20 +226,22 @@ export async function syncRadar(
   db: D1Database,
   ae?: AnalyticsEngineDataset,
   now: Date = new Date(),
-): Promise<void> {
+): Promise<RadarSyncResult> {
   const startedAt = Date.now()
 
   let leagues: ProviderLeague[]
   let matchCounts: Map<string, number>
+  let failedSlugs: string[]
   const today = isoDay(now)
 
   try {
     const fetched = await fetchEspnLeaguesAndCounts(today)
     leagues = fetched.leagues.filter(isRelevant)
     matchCounts = fetched.counts
+    failedSlugs = fetched.failed
     if (fetched.failed.length > 0) {
       // Falha parcial não derruba o snapshot: os slugs que responderam seguem,
-      // os falhos ficam registrados para investigar no log do Actions.
+      // os falhos mantêm o estado anterior e ficam registrados no log do Actions.
       logError(
         ae,
         'radar_sync_error',
@@ -224,7 +258,7 @@ export async function syncRadar(
       blobs: ['error'],
       doubles: [0, 0, 0, Date.now() - startedAt],
     })
-    return
+    return { status: 'error', failedSlugs: [], pageviewErrors: 0 }
   }
 
   if (leagues.length === 0) {
@@ -242,16 +276,17 @@ export async function syncRadar(
       blobs: ['error'],
       doubles: [0, 0, 0, Date.now() - startedAt],
     })
-    return
+    return { status: 'error', failedSlugs, pageviewErrors: 0 }
   }
 
-  await writeCompetitions(db, leagues, matchCounts, today)
+  await writeCompetitions(db, leagues, matchCounts, today, failedSlugs)
 
   const mapped = leagues.filter((l) => findEntry(l.country, l.name))
   const { pageviewErrors, pageviewRows } = await writePageviews(db, ae, mapped, today, now)
 
+  const status = failedSlugs.length > 0 || pageviewErrors > 0 ? 'partial' : 'ok'
   logEvent(ae, 'radar_sync_run', {
-    blobs: [pageviewErrors > 0 ? 'partial' : 'ok'],
+    blobs: [status],
     // competições, mapeadas, linhas de pageviews, duração
     doubles: [leagues.length, mapped.length, pageviewRows, Date.now() - startedAt],
   })
@@ -263,7 +298,11 @@ export async function syncRadar(
       leagues: leagues.length,
       mapped: mapped.length,
       pageview_rows: pageviewRows,
+      failed_slugs: failedSlugs.length,
+      pageview_errors: pageviewErrors,
       total_ms: Date.now() - startedAt,
     }),
   )
+
+  return { status, failedSlugs, pageviewErrors }
 }
