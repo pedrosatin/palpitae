@@ -3,6 +3,7 @@ import { tryLogEvent } from '../observability/events'
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
+import { footballDataCompetitionConfig } from './footballDataCompetitions'
 import { FD_RETRY_BACKOFF_MS, FD_TIMEOUT_MS } from './footballDataQuota'
 import { indexTies } from './ties'
 
@@ -61,22 +62,6 @@ const TEAM_TRANSLATIONS: Record<string, { name: string; short_name: string }> = 
   Turkey: { name: 'Turquia', short_name: 'TUR' },
   Ukraine: { name: 'Ucrânia', short_name: 'UCR' },
   Venezuela: { name: 'Venezuela', short_name: 'VEN' },
-}
-
-const COMP_TRANSLATIONS: Record<string, string> = {
-  'World Cup': 'Copa do Mundo FIFA',
-  'European Championship': 'Eurocopa',
-  'Copa América': 'Copa América',
-  'Champions League': 'Liga dos Campeões',
-  'Primera Division': 'La Liga',
-  // "Serie A" sem acento: não casa com "Campeonato Brasileiro Série A".
-  'Serie A': 'Serie A Italiana',
-}
-
-// Prefixo de slug de produto quando o nome cru da API geraria outro slug.
-// Mesma chave substring de COMP_TRANSLATIONS, via includes.
-const COMP_SLUG_OVERRIDES: Record<string, string> = {
-  'Primera Division': 'la-liga',
 }
 
 type ApiTeam = {
@@ -290,65 +275,68 @@ async function fetchMatchesFromApi(
   return (await res.json()) as ApiMatchesResponse
 }
 
-function resolveCompetitionName(
-  apiComp: ApiCompetition | undefined,
-  competitionCode: string,
-): string {
-  // Fuzzy lookup: a API manda "FIFA World Cup", o mapa tem a chave "World Cup".
-  // includes() casa sem precisar duplicar variações da chave no mapa.
-  const translationKey = apiComp
-    ? Object.keys(COMP_TRANSLATIONS).find((key) => apiComp.name.includes(key))
-    : undefined
-  return apiComp
-    ? translationKey
-      ? COMP_TRANSLATIONS[translationKey]
-      : apiComp.name
-    : competitionCode
-}
-
+/**
+ * Acha a competição pela chave do provedor (id externo + temporada), nunca pelo
+ * nome que a API envia: renomear a competição na football-data não pode criar
+ * outra. Se ela ainda não existe, cria em piloto com a configuração de
+ * `FOOTBALL_DATA_COMPETITIONS`. Código sem configuração não cria nada.
+ */
 async function upsertCompetition(
   db: D1Database,
   apiComp: ApiCompetition,
-  competitionName: string,
   season: number,
-): Promise<{ id: string }> {
-  const competitionExternalId = String(apiComp.id)
-  // Slug deriva do nome CRU da API (não do traduzido) p/ ficar estável: mudar a
-  // tradução de exibição não pode mudar a chave de conflito do upsert, senão um
-  // re-sync criaria uma competição duplicada (slug = 'fifa-world-cup-2026' em prod).
-  // COMP_SLUG_OVERRIDES cobre slug de produto distinto do nome cru da API.
-  // Exemplo: produto fixou la-liga, API envia Primera Division.
-  const slugOverrideKey = Object.keys(COMP_SLUG_OVERRIDES).find((key) => apiComp.name.includes(key))
-  const competitionSlug = slugOverrideKey
-    ? `${COMP_SLUG_OVERRIDES[slugOverrideKey]}-${season}`
-    : slugify(`${apiComp.name}-${season}`)
+  ae: AnalyticsEngineDataset | undefined,
+): Promise<{ id: string; name: string }> {
+  const externalId = String(apiComp.id)
+  const findByKey = () =>
+    db
+      .prepare(
+        `SELECT id, name FROM competitions
+          WHERE provider = ? AND external_id = ? AND season = ?`,
+      )
+      .bind(PROVIDER, externalId, String(season))
+      .first<{ id: string; name: string }>()
 
+  const existing = await findByKey()
+  if (existing) return existing
+
+  const config = footballDataCompetitionConfig(apiComp.code)
+  if (!config) {
+    tryLogEvent(ae, 'competition_unconfigured', {
+      blobs: [PROVIDER, apiComp.code, externalId, String(season)],
+    })
+    throw new Error(
+      `Competição ${apiComp.code} (${externalId}) sem configuração em FOOTBALL_DATA_COMPETITIONS`,
+    )
+  }
+
+  // Sem alvo no ON CONFLICT: outra sync que criou a mesma competição antes desta
+  // não é erro. Um slug já usado por outra competição também não grava nada, e
+  // aí a busca abaixo não acha a linha.
   await db
     .prepare(
-      `INSERT INTO competitions (id, name, slug, external_id, provider, season, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'upcoming')
-       ON CONFLICT (slug) DO UPDATE SET
-         external_id = excluded.external_id,
-         provider    = excluded.provider,
-         season      = excluded.season`,
+      `INSERT INTO competitions
+         (id, name, slug, external_id, provider, season, status, type, penalty_phases, visibility)
+       VALUES (?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, 'pilot')
+       ON CONFLICT DO NOTHING`,
     )
     .bind(
       crypto.randomUUID(),
-      competitionName,
-      competitionSlug,
-      competitionExternalId,
+      config.name,
+      `${config.slugPrefix}-${season}`,
+      externalId,
       PROVIDER,
       String(season),
+      config.type,
+      JSON.stringify(config.penaltyPhases),
     )
     .run()
 
-  const competition = await db
-    .prepare(`SELECT id FROM competitions WHERE slug = ?`)
-    .bind(competitionSlug)
-    .first<{ id: string }>()
-
-  if (!competition) throw new Error('Competição não encontrada após upsert')
-  return competition
+  const created = await findByKey()
+  if (!created) {
+    throw new Error(`Slug ${config.slugPrefix}-${season} já pertence a outra competição`)
+  }
+  return created
 }
 
 export async function batchStatements(
@@ -475,7 +463,7 @@ function mapGroupName(group: string | null): string | null {
   return group ? group.replace(/^GROUP_/, '') : null
 }
 
-const KNOCKOUT_STAGES = new Set([
+export const KNOCKOUT_STAGES = new Set([
   'PLAYOFFS',
   'LAST_32',
   'LAST_16',
@@ -805,25 +793,24 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   )
   const { competition: apiComp, matches } = data
 
-  const competitionName = resolveCompetitionName(apiComp, competitionCode)
-
   if (matches.length === 0) {
     return {
-      competition: competitionName,
+      competition:
+        footballDataCompetitionConfig(apiComp?.code)?.name ?? apiComp?.name ?? competitionCode,
       competitionId: '',
       matches: 0,
       teams: 0,
     }
   }
 
-  const competition = await upsertCompetition(db, apiComp, competitionName, season)
+  const competition = await upsertCompetition(db, apiComp, season, opts.ae)
   const { teamMap, teamIds } = await upsertTeams(db, matches)
   const now = opts.now ?? isoSeconds(new Date())
   const rows = await upsertMatches(db, competition.id, matches, teamIds, now, opts.ae)
   await reopenLeg1ScoredAsSingle(db, competition.id, rows)
 
   return {
-    competition: competitionName,
+    competition: competition.name,
     competitionId: competition.id,
     matches: rows.length,
     teams: teamMap.size,

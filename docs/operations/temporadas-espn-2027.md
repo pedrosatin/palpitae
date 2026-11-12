@@ -35,7 +35,7 @@ O admin registra as evidências por competição: publicação da fonte, carga �
 
 Ligas football-data (lotes 2 e 3) seguem o [roteiro de promoção](promocao-lote2.md).
 
-A Série A 2027 do football-data, código `BSA`, precisa ser cadastrada com o slug `campeonato-brasileiro-serie-a-2027`, o mesmo que o sync gera a partir do nome da API. O CTA do guia `bolao-do-brasileirao` pede esse slug em `competicao`. Com outro slug, o formulário de criação mostra o aviso de competição indisponível.
+A Série A 2027 do football-data, código `BSA`, precisa ser cadastrada com o slug `campeonato-brasileiro-serie-a-2027`, o mesmo que o sync gera a partir de `FOOTBALL_DATA_COMPETITIONS` (`api/src/matches/footballDataCompetitions.ts`). O CTA do guia `bolao-do-brasileirao` pede esse slug em `competicao`. Com outro slug, o formulário de criação mostra o aviso de competição indisponível. O sync cria a temporada nova como `league` e em `pilot`; ela só aparece para todos depois do promote do admin (`POST /competitions/campeonato-brasileiro-serie-a-2027/promote`, como no [roteiro de promoção](promocao-lote2.md)).
 
 ## Conferência da fonte (estado observado)
 

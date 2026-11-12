@@ -1,0 +1,21 @@
+-- Identidade da competição: provedor + id externo + temporada.
+--
+-- O sync da football-data achava a competição pelo slug, derivado do nome que a
+-- API envia. Um nome novo para a mesma competição criava uma segunda linha
+-- (pública, tipo `cup`, sem fases de pênaltis) e os jogos novos iam para ela.
+-- Com este índice o banco recusa a segunda linha, e o sync passa a buscar a
+-- competição por esta chave.
+--
+-- Checagem de duplicatas antes de aplicar (precisa voltar vazia, senão o CREATE
+-- falha):
+--   SELECT provider, external_id, season, COUNT(*) AS total
+--     FROM competitions
+--    GROUP BY provider, external_id, season
+--   HAVING COUNT(*) > 1;
+-- Em 12/11/2026 voltou vazia no banco local e em produção (15 competições).
+--
+-- Linhas com external_id, provider ou season nulos não colidem: o SQLite trata
+-- NULL como distinto em índice UNIQUE. O Worker anterior continua funcionando
+-- (o upsert por slug dele não muda a chave de uma linha existente).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_competitions_provider_external_season
+  ON competitions(provider, external_id, season);
