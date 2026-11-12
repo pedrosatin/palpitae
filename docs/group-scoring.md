@@ -122,6 +122,11 @@ empata, um empate no placar da volta não pede pênaltis. Sem palpite na ida, n�
 há bônus de pênaltis na volta. Essa regra vale nas fases de mata-mata mesmo
 quando a fase não consta em `penalty_phases`, como as oitavas da Champions.
 
+Jogo que decide nos pênaltis e termina empatado (jogo único elegível ou volta com o
+agregado igual) só é pontuado quando o provedor informa o vencedor da disputa. Até
+lá o jogo fica sem `scored_at` e os palpites dele sem pontos, para que placar, pênaltis
+e classificado entrem juntos.
+
 A API de jogos retorna `decides_on_penalties`, `tie_role` e `leg1_match_id`. O vínculo
 entre jogos não contém palpites de usuários. A interface combina esse vínculo
 com os palpites do próprio usuário para decidir se mostra o seletor.
