@@ -125,11 +125,16 @@ export type SyncOptions = {
   ae?: AnalyticsEngineDataset
   /**
    * Compara o calendário completo da football-data (sem `matchday`) com os jogos
-   * pendentes gravados e registra os que sumiram. Só a descoberta liga: o poller
-   * também busca a temporada inteira em rodadas de mata-mata, a cada 30 minutos.
+   * pendentes gravados e registra os que sumiram, gastando deste saldo de eventos
+   * compartilhado entre as competições da mesma execução. Só a descoberta passa:
+   * o poller também busca a temporada inteira em rodadas de mata-mata, a cada
+   * 30 minutos.
    */
-  reportMissing?: boolean
+  missingEvents?: MissingEventBudget
 }
+
+/** Saldo de `match_missing_from_feed` que ainda cabe na execução. */
+export type MissingEventBudget = { remaining: number }
 
 export type SyncResult = {
   competition: string
@@ -420,8 +425,8 @@ export async function reportDiscards(
   return discards.length
 }
 
-/** Teto de `match_missing_from_feed` por sync; o total vai no retorno. */
-const MISSING_EVENTS_PER_SYNC = 10
+/** Teto de `match_missing_from_feed` por competição; o total vai no retorno. */
+export const MISSING_EVENTS_PER_COMPETITION = 10
 
 /**
  * Jogos pendentes da competição que o calendário completo da football-data não
@@ -434,6 +439,7 @@ async function reportMissingFromFeed(
   competitionId: string,
   matches: ApiMatch[],
   ae: AnalyticsEngineDataset | undefined,
+  budget: MissingEventBudget,
 ): Promise<number> {
   try {
     const { results } = await db
@@ -445,7 +451,11 @@ async function reportMissingFromFeed(
       )
       .bind(competitionId, PROVIDER, JSON.stringify(matches.map((m) => String(m.id))))
       .all<{ external_id: string; start_time: string }>()
-    for (const match of results.slice(0, MISSING_EVENTS_PER_SYNC)) {
+    // Leitura e baixa do saldo no mesmo trecho síncrono: competições em paralelo
+    // não gastam o mesmo saldo duas vezes.
+    const logged = results.slice(0, Math.min(MISSING_EVENTS_PER_COMPETITION, budget.remaining))
+    budget.remaining -= logged.length
+    for (const match of logged) {
       tryLogEvent(ae, 'match_missing_from_feed', {
         blobs: [PROVIDER, competitionId, match.external_id, match.start_time],
       })
@@ -942,8 +952,8 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     competitionId: competition.id,
   })
   const missing =
-    opts.reportMissing && matchday === undefined
-      ? await reportMissingFromFeed(db, competition.id, matches, opts.ae)
+    opts.missingEvents && matchday === undefined
+      ? await reportMissingFromFeed(db, competition.id, matches, opts.ae, opts.missingEvents)
       : 0
 
   return {

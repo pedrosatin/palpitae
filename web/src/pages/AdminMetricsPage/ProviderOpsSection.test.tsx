@@ -231,7 +231,7 @@ describe('ProviderOpsSection', () => {
               reason: 'season_mismatch',
               detail: '2027',
               events: 1,
-              syncs: 1,
+              syncs: 0,
             },
           ],
         })}
@@ -247,13 +247,25 @@ describe('ProviderOpsSection', () => {
     expect(stage.getByText('Libertadores')).toBeInTheDocument()
     expect(stage.getByText('Fase desconhecida')).toBeInTheDocument()
     expect(stage.getByText('round-of-32')).toBeInTheDocument()
-    expect(stage.getByText('6')).toBeInTheDocument()
+    // 6 eventos somados em 3 execuções: o mesmo descarte se repete, 2 por execução.
+    const numbers = (row: HTMLElement) =>
+      within(row)
+        .getAllByRole('cell')
+        .slice(4)
+        .map((cell) => cell.textContent)
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(numbers(rows[0])).toEqual(['6', '3', '2'])
+    expect(numbers(rows[1])).toEqual(['2', '2', '1'])
+    expect(
+      screen.getByText(/volta a ser descartado e contado em cada execução/),
+    ).toBeInTheDocument()
     // Sem competição gravada, a linha mostra o código do provedor.
     expect(tbd.getByText('bra.copa_do_brazil')).toBeInTheDocument()
-    expect(tbd.getByText('Competidor ausente')).toBeInTheDocument()
+    expect(tbd.getByText('Time ausente')).toBeInTheDocument()
     expect(tbd.getByText('time a definir')).toBeInTheDocument()
     expect(season.getByText('Outra temporada')).toBeInTheDocument()
     expect(season.getByText('2027')).toBeInTheDocument()
+    expect(numbers(rows[2])).toEqual(['1', '0', '—'])
   })
 
   it('lista os jogos pendentes que sumiram do calendário do provedor', () => {

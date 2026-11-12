@@ -7,6 +7,13 @@ import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQu
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
+/**
+ * Teto de `match_missing_from_feed` por execução, somando as competições (cada
+ * uma tem o próprio teto em `MISSING_EVENTS_PER_COMPETITION`). Mantém a descoberta
+ * longe do limite de `writeDataPoint` por invocação; o total real vai em `double6`.
+ */
+export const MISSING_EVENTS_PER_DISCOVERY = 30
+
 type ActiveCompetition = {
   id: string
   external_id: string
@@ -64,6 +71,7 @@ export async function discoverFixtures(
   // Requests primárias planejadas, excluindo retries do provedor.
   let plannedApiRequests = 0
   let fixturesUpdated = 0
+  const missingEvents = { remaining: MISSING_EVENTS_PER_DISCOVERY }
   let eventsDiscarded = 0
   let matchesMissing = 0
   let hadError = false
@@ -85,7 +93,7 @@ export async function discoverFixtures(
           competitionId: comp.id,
         }),
         ae,
-        reportMissing: true,
+        missingEvents,
       })
       fixturesUpdated += result?.matches ?? 0
       eventsDiscarded += result?.discarded ?? 0

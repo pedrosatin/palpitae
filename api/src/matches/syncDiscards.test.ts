@@ -307,6 +307,28 @@ function premierLeague() {
   return { sqlite, db }
 }
 
+/** Jogos pendentes gravados que o calendário do provedor não traz. */
+function insertPendingMatches(
+  sqlite: DatabaseSync,
+  competitionId: string,
+  firstId: number,
+  count: number,
+) {
+  sqlite.exec(`
+    INSERT OR IGNORE INTO teams (id, name, short_name, slug, external_id, provider) VALUES
+      ('t-old-a', 'Antigo A', 'ANA', 'antigo-a', 'old-a', 'football-data'),
+      ('t-old-b', 'Antigo B', 'ANB', 'antigo-b', 'old-b', 'football-data');
+  `)
+  const insert = sqlite.prepare(
+    `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id,
+                          start_time, status, round)
+     VALUES (?, ?, ?, 'football-data', 't-old-a', 't-old-b', ?, 'scheduled', '20')`,
+  )
+  for (let i = 1; i <= count; i++) {
+    insert.run(`m-${firstId + i}`, competitionId, String(firstId + i), DECEMBER)
+  }
+}
+
 const NOVEMBER = '2026-11-08T16:30:00Z'
 const DECEMBER = '2026-12-06T16:30:00Z'
 const DISCOVERY = Date.parse('2026-11-01T06:15:00Z')
@@ -353,6 +375,58 @@ describe('descoberta da football-data quando um jogo pendente some do calendári
     expect(run.blobs).toEqual(['fixture_discovery_run', 'ok'])
     // doubles[5] = jogos pendentes ausentes do calendário
     expect(run.doubles[5]).toBe(1)
+  })
+
+  it('registra no máximo 10 ausentes por competição, com o total real na execução', async () => {
+    const { sqlite, db } = premierLeague()
+    const provider = premierLeagueFeed()
+    provider.matches = [fdMatch(9001, NOVEMBER, ARSENAL, CHELSEA)]
+    insertPendingMatches(sqlite, PL_ID, 5000, 12)
+    const { dataset, of } = analytics()
+
+    await discoverFixtures(db, 'key', dataset, DISCOVERY)
+
+    expect(of('match_missing_from_feed')).toHaveLength(10)
+    expect(of('fixture_discovery_run')[0].doubles[5]).toBe(12)
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM matches WHERE status = 'scheduled'`).get(),
+    ).toEqual({ n: 13 })
+  })
+
+  it('registra no máximo 30 ausentes por execução, somando as competições', async () => {
+    const { sqlite, db } = database()
+    const codes = [3001, 3002, 3003, 3004]
+    for (const code of codes) {
+      sqlite.exec(
+        `INSERT INTO competitions (id, name, slug, external_id, provider, season, status)
+         VALUES ('comp-${code}', 'Liga ${code}', 'liga-${code}', '${code}', 'football-data', '2026', 'ongoing')`,
+      )
+      insertPendingMatches(sqlite, `comp-${code}`, code * 100, 11)
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        const code = Number(new URL(String(input)).pathname.split('/')[3])
+        return Response.json({
+          competition: { id: code, code: `L${code}`, name: `Liga ${code}` },
+          matches: [fdMatch(code * 10, NOVEMBER, ARSENAL, CHELSEA)],
+        })
+      }),
+    )
+    const { dataset, of } = analytics()
+
+    await discoverFixtures(db, 'key', dataset, DISCOVERY)
+
+    const missing = of('match_missing_from_feed')
+    expect(missing).toHaveLength(30)
+    const perCompetition = new Map<string, number>()
+    for (const point of missing) {
+      perCompetition.set(point.blobs[2], (perCompetition.get(point.blobs[2]) ?? 0) + 1)
+    }
+    expect(Math.max(...perCompetition.values())).toBeLessThanOrEqual(10)
+    const [run] = of('fixture_discovery_run')
+    expect(run.blobs[1]).toBe('ok')
+    expect(run.doubles[5]).toBe(44)
   })
 
   it('fora da descoberta (poller e sync manual), o calendário completo não registra ausentes', async () => {

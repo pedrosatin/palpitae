@@ -133,7 +133,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
-| `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, no máximo 10 por competição em cada execução (o total vai em `fixture_discovery_run.double6`) |
+| `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
 | `competition_unconfigured` | `provider` (`football-data`) | `code` da competição no provedor (ex.: `CLI`) | `external_id` da competição no provedor | `season` em blob5; sem doubles |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
@@ -531,7 +531,10 @@ e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
   (`apiErrors`), lidos de `football_api_error` pela forma posicional descrita acima;
 - execuções, jogos atualizados e falhas do fallback por competição (`fallback`);
 - eventos que o sync descartou por provedor, competição, motivo e detalhe (`discards`), lidos de
-  `sync_event_discarded`, com a soma de `double1` ponderada pelo sampling;
+  `sync_event_discarded`: `events` soma `double1` ponderado pelo sampling e `syncs` conta as
+  execuções que registraram o descarte. O mesmo evento do provedor é descartado de novo a cada
+  execução (o poller roda a cada 30 minutos), então `events` acumula repetições; o painel mostra
+  as duas contagens e a média por execução;
 - jogos pendentes que a descoberta não viu no calendário da football-data (`missingMatches`),
   lidos de `match_missing_from_feed`, com quantas vezes e quando foram registrados por último.
 

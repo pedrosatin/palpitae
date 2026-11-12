@@ -253,10 +253,17 @@ function toValidCompetitor(comp: EspnCompetitor | undefined): ValidEspnCompetito
   }
 }
 
+/** Evento que o sync não importa, com o motivo. */
+type Discarded = { ok: false; discard: SyncDiscard }
+
+function discarded(reason: SyncDiscard['reason'], detail: string): Discarded {
+  return { ok: false, discard: { reason, detail } }
+}
+
 /** Mandante e visitante válidos, ou o motivo do descarte. */
 function extractCompetitors(
   comp: EspnEventCompetition,
-): { home: ValidEspnCompetitor; away: ValidEspnCompetitor } | SyncDiscard {
+): { ok: true; home: ValidEspnCompetitor; away: ValidEspnCompetitor } | Discarded {
   const competitors = comp.competitors ?? []
   const rawHome = competitors.find((c) => c.homeAway === 'home')
   const rawAway = competitors.find((c) => c.homeAway === 'away')
@@ -264,10 +271,10 @@ function extractCompetitors(
   const away = toValidCompetitor(rawAway)
   if (!home || !away) {
     const tbd = isPlaceholderCompetitor(rawHome) || isPlaceholderCompetitor(rawAway)
-    return { reason: 'missing_competitor', detail: tbd ? 'tbd' : '' }
+    return discarded('missing_competitor', tbd ? 'tbd' : '')
   }
-  if (home.team.id === away.team.id) return { reason: 'invalid_event', detail: 'same_team' }
-  return { home, away }
+  if (home.team.id === away.team.id) return discarded('invalid_event', 'same_team')
+  return { ok: true, home, away }
 }
 
 function resolveStartTime(rawDate: unknown): string | null {
@@ -277,50 +284,49 @@ function resolveStartTime(rawDate: unknown): string | null {
   return isoSeconds(new Date(parsed))
 }
 
-function isDiscard(value: object): value is SyncDiscard {
-  return 'reason' in value
-}
-
 /** Evento importável, ou o motivo pelo qual o sync o descarta. */
 function extractValidEvent(
   ev: EspnScoreboardEvent,
   season: number,
   competitionCode?: string,
-): ValidEspnEvent | SyncDiscard {
+): { ok: true; event: ValidEspnEvent } | Discarded {
   const id = typeof ev.id === 'string' ? ev.id.trim() : ''
-  if (!id) return { reason: 'invalid_event', detail: 'id' }
+  if (!id) return discarded('invalid_event', 'id')
   // O scoreboard pode responder com outra edição ao consultar datas futuras.
   // Só o ano explícito do evento autoriza importá-lo para a temporada pedida.
   if (ev.season?.year !== season) {
-    return { reason: 'season_mismatch', detail: String(ev.season?.year ?? '') }
+    return discarded('season_mismatch', String(ev.season?.year ?? ''))
   }
 
   const stage = resolveEspnStage(ev.season?.slug, competitionCode)
-  if (!stage) return { reason: 'unknown_stage', detail: ev.season?.slug ?? '' }
+  if (!stage) return discarded('unknown_stage', ev.season?.slug ?? '')
   const startTime = resolveStartTime(ev.date)
-  if (!startTime) return { reason: 'invalid_event', detail: 'date' }
+  if (!startTime) return discarded('invalid_event', 'date')
   const comp: EspnEventCompetition | undefined = ev.competitions?.[0]
-  if (!comp) return { reason: 'invalid_event', detail: 'competition' }
+  if (!comp) return discarded('invalid_event', 'competition')
 
   const competitors = extractCompetitors(comp)
-  if (isDiscard(competitors)) return competitors
+  if (!competitors.ok) return competitors
   const { home, away } = competitors
 
   const statusType = comp.status?.type ?? ev.status?.type
   const rawLeg = comp.leg?.value
   const leg: 1 | 2 | null = rawLeg === 1 || rawLeg === 2 ? rawLeg : null
   return {
-    id,
-    startTime,
-    stage,
-    round: resolveEspnRound(ev, stage),
-    leg,
-    groupName: parseGroupName(comp.group?.name),
-    state: statusType?.state,
-    statusName: statusType?.name ?? '',
-    final: isEspnFinal(statusType),
-    home,
-    away,
+    ok: true,
+    event: {
+      id,
+      startTime,
+      stage,
+      round: resolveEspnRound(ev, stage),
+      leg,
+      groupName: parseGroupName(comp.group?.name),
+      state: statusType?.state,
+      statusName: statusType?.name ?? '',
+      final: isEspnFinal(statusType),
+      home,
+      away,
+    },
   }
 }
 
@@ -601,8 +607,8 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
   const discards: SyncDiscard[] = []
   for (const raw of rawEvents) {
     const extracted = extractValidEvent(raw, opts.season, opts.competitionCode)
-    if (isDiscard(extracted)) discards.push(extracted)
-    else validEvents.push(extracted)
+    if (extracted.ok) validEvents.push(extracted.event)
+    else discards.push(extracted.discard)
   }
   const discardScope = {
     ae: opts.ae,

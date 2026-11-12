@@ -398,6 +398,12 @@ function formatKickoff(iso: string): string {
   return iso ? formatSince(iso.replace('T', ' ').replace('Z', '')) : '—'
 }
 
+/** Média de eventos descartados por execução que registrou o descarte. */
+function perSync(row: OpsDiscardRow): string {
+  if (row.syncs <= 0) return '—'
+  return (row.events / row.syncs).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+}
+
 function DiscardsTable({ rows, names }: { rows: OpsDiscardRow[]; names: CompetitionNames }) {
   return (
     <div className={styles.tableScroll}>
@@ -408,7 +414,9 @@ function DiscardsTable({ rows, names }: { rows: OpsDiscardRow[]; names: Competit
             <th>provedor</th>
             <th>motivo</th>
             <th>detalhe</th>
-            <th className={styles.num}>eventos</th>
+            <th className={styles.num}>eventos somados</th>
+            <th className={styles.num}>execuções</th>
+            <th className={styles.num}>por execução</th>
           </tr>
         </thead>
         <tbody>
@@ -427,6 +435,8 @@ function DiscardsTable({ rows, names }: { rows: OpsDiscardRow[]; names: Competit
                   {r.detail ? discardDetailLabel(r.detail) : '—'}
                 </td>
                 <td className={styles.num}>{formatNumber(r.events)}</td>
+                <td className={styles.num}>{formatNumber(r.syncs)}</td>
+                <td className={styles.num}>{perSync(r)}</td>
               </tr>
             )
           })}
@@ -487,7 +497,10 @@ function Discards({ ops, names }: { ops: OpsResponse; names: CompetitionNames })
       <h3 className={styles.subTitle}>Eventos descartados pelo sync</h3>
       <p className={styles.hint}>
         O sync descarta o que não consegue importar (fase desconhecida, outra temporada, time
-        ausente) e segue com os demais jogos.
+        ausente) e segue com os demais jogos. O mesmo evento volta a ser descartado e contado em
+        cada execução (o poller roda a cada 30 minutos): "eventos somados" acumula essas repetições,
+        "execuções" conta os syncs que registraram o descarte e "por execução" é a média entre os
+        dois.
       </p>
       {ops.discards.length === 0 ? (
         <p className={styles.hint}>Nenhum evento descartado no período.</p>

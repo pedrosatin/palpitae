@@ -64,7 +64,7 @@ const SYNC_ERROR_ORIGIN_LABELS: Record<string, string> = {
 const DISCARD_REASON_LABELS: Record<string, string> = {
   unknown_stage: 'Fase desconhecida',
   season_mismatch: 'Outra temporada',
-  missing_competitor: 'Competidor ausente',
+  missing_competitor: 'Time ausente',
   invalid_event: 'Evento inválido',
 }
 
@@ -74,7 +74,7 @@ const DISCARD_DETAIL_LABELS: Record<string, string> = {
   same_team: 'mesmo time dos dois lados',
   id: 'sem id',
   date: 'data inválida',
-  competition: 'sem confronto',
+  competition: 'sem dados da partida',
 }
 
 /** Provedor legível; desconhecido volta cru. */
