@@ -31,9 +31,15 @@ export const SQL_NOW = `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
 /**
  * Fragmento SQL. Consome UM parâmetro posicional: o `now` em ISO 8601. Com
  * `nowSql` (por exemplo `SQL_NOW`), usa essa expressão e não consome parâmetro.
+ *
+ * O `now` é truncado para segundos antes da comparação de texto, porque o
+ * `start_time` é gravado sem milissegundos (migration 0043). Com o `now` cru,
+ * '2026-11-09T20:00:00Z' <= '2026-11-09T20:00:00.500Z' é falso (`Z` vem depois de
+ * `.`), e o jogo seguia aberto até o fim do primeiro segundo enquanto
+ * `isMatchLocked` já o tratava como travado.
  */
 export function lockedSql(alias = 'm', nowSql = '?'): string {
-  return `(${alias}.locked_at IS NOT NULL OR ${alias}.status IN ('live', 'finished') OR (${alias}.start_time <= ${nowSql} AND ${alias}.postponed = 0))`
+  return `(${alias}.locked_at IS NOT NULL OR ${alias}.status IN ('live', 'finished') OR (${alias}.start_time <= strftime('%Y-%m-%dT%H:%M:%SZ', ${nowSql}) AND ${alias}.postponed = 0))`
 }
 
 /**

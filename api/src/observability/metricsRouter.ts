@@ -857,7 +857,9 @@ const OVERDUE_RESULT_HOURS = 3
  * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
  * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
  * base), não a janela de `days`; só contagens "criados no período" respeitam
- * `days`. Ignora grupos soft-deleted (deleted_at) em todas as contagens que
+ * `days`. `datetime(created_at)` normaliza o ISO com `Z` que o login grava em
+ * `users` antes de comparar com `datetime('now')`; o texto cru contava o dia do
+ * limite inteiro. Ignora grupos soft-deleted (deleted_at) em todas as contagens que
  * passam por grupo, inclusive usuários em grupo e usuários que palpitaram.
  *
  * `competitions` é o snapshot por temporada: TODAS as linhas de competitions,
@@ -891,8 +893,8 @@ metricsRouter.get('/business', async (c) => {
           (SELECT COUNT(DISTINCT p.user_id) FROM predictions p
             JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL) AS usersWhoPredicted,
           (SELECT COUNT(*) FROM users) AS usersTotal,
-          (SELECT COUNT(*) FROM users WHERE created_at > datetime('now', ?)) AS usersCreated,
-          (SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL AND created_at > datetime('now', ?)) AS groupsCreated`,
+          (SELECT COUNT(*) FROM users WHERE datetime(created_at) > datetime('now', ?)) AS usersCreated,
+          (SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL AND datetime(created_at) > datetime('now', ?)) AS groupsCreated`,
       )
       .bind(`-${days} days`, `-${days} days`)
       .first<{

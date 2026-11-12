@@ -203,19 +203,21 @@ A game between two teams within a competition.
 | `provider`       | TEXT    | Data provider                                    |
 | `home_team_id`   | TEXT FK | References `teams.id`                            |
 | `away_team_id`   | TEXT FK | References `teams.id`                            |
-| `start_time`     | TEXT    | ISO 8601 UTC — **the prediction lock boundary**  |
+| `start_time`     | TEXT    | `YYYY-MM-DDTHH:MM:SSZ`, sem milissegundos (gatilho da migration 0043) — **the prediction lock boundary** |
 | `status`         | TEXT    | `scheduled` \| `live` \| `finished`              |
 | `home_score`     | INTEGER | `NULL` until finished (partial scores are not stored) |
 | `away_score`     | INTEGER | `NULL` until finished (partial scores are not stored) |
 | `phase`          | TEXT    | `group` \| `round_of_16` \| `quarter_final` etc. |
-| `round`          | TEXT    | e.g., `'Rodada 5'`, `'Matchday 3'`               |
+| `round`          | TEXT    | e.g., `'5'`, `'LAST_16'`; nunca nulo (gatilho da migration 0043) |
 | `postponed`      | INTEGER | `1` while the provider reports the match as postponed, suspended or cancelled (migration 0013) |
 | `locked_at`      | TEXT    | `NULL` until the sync first sees the match started (migration 0016); never cleared. It is the sync time, not the actual kickoff |
 | `created_at`     | TEXT    | ISO 8601 UTC                                     |
 
 Unique constraint: `(external_id, provider)`
 
-> **Prediction lock rule:** A prediction for this match is locked when `matches.locked_at` is set, when `status` is `live` or `finished`, or when `now() >= start_time` and `postponed = 0` (`api/src/matches/locking.ts`). `matches.locked_at` is written only when the sync sees the match started (football-data `IN_PLAY`, `PAUSED`, `EXTRA_TIME`, `PENALTY_SHOOTOUT`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED`; ESPN state `in` or `post` outside postponed/cancelled, or `STATUS_SUSPENDED`; or local status `live`/`finished`), so a match suspended after starting stays locked, while a match postponed before starting reopens. No lock column is stored on `predictions` (ADR-004).
+Gatilhos `matches_format_insert` e `matches_format_update` (migration 0043, sem rebuild de tabela, ADR-013) recusam `start_time` fora de `YYYY-MM-DDTHH:MM:SSZ`, `status = 'finished'` sem `home_score` e `away_score`, e `round` nulo. Na atualização, cada regra só vale para a coluna que mudou, para que uma linha antiga fora do formato continue aceitando as gravações que não mexem nela.
+
+> **Prediction lock rule:** A prediction for this match is locked when `matches.locked_at` is set, when `status` is `live` or `finished`, or when `now() >= start_time` and `postponed = 0` (`api/src/matches/locking.ts`; em SQL o `now` é truncado para segundos, então SQL e TS travam no mesmo milissegundo). `matches.locked_at` is written only when the sync sees the match started (football-data `IN_PLAY`, `PAUSED`, `EXTRA_TIME`, `PENALTY_SHOOTOUT`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED`; ESPN state `in` or `post` outside postponed/cancelled, or `STATUS_SUSPENDED`; or local status `live`/`finished`), so a match suspended after starting stays locked, while a match postponed before starting reopens. No lock column is stored on `predictions` (ADR-004).
 
 #### Ciclo da partida
 

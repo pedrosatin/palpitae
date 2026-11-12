@@ -223,11 +223,11 @@ function createBusinessFixture(extraSql = '') {
       ('fla', 'Flamengo', 'FLA', 'flamengo'),
       ('pal', 'Palmeiras', 'PAL', 'palmeiras');
 
-    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, scored_at) VALUES
-      ('m-br26-1', 'comp-br26', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', 1, 0, '2026-06-01T21:00:00Z'),
-      ('m-br26-2', 'comp-br26', 'fd-2', 'football-data', 'pal', 'fla', '2026-06-08T19:00:00Z', 'finished', 2, 2, '2026-06-08T21:00:00Z'),
-      ('m-br25-1', 'comp-br25', 'fd-3', 'football-data', 'fla', 'pal', '2025-06-01T19:00:00Z', 'finished', 0, 1, '2025-06-01T21:00:00Z'),
-      ('m-pilot-1', 'comp-pilot', 'espn-1', 'espn', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', 3, 1, '2026-06-01T21:00:00Z');
+    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, round, home_score, away_score, scored_at) VALUES
+      ('m-br26-1', 'comp-br26', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', '1', 1, 0, '2026-06-01T21:00:00Z'),
+      ('m-br26-2', 'comp-br26', 'fd-2', 'football-data', 'pal', 'fla', '2026-06-08T19:00:00Z', 'finished', '1', 2, 2, '2026-06-08T21:00:00Z'),
+      ('m-br25-1', 'comp-br25', 'fd-3', 'football-data', 'fla', 'pal', '2025-06-01T19:00:00Z', 'finished', '1', 0, 1, '2025-06-01T21:00:00Z'),
+      ('m-pilot-1', 'comp-pilot', 'espn-1', 'espn', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', '1', 3, 1, '2026-06-01T21:00:00Z');
 
     INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, created_at, deleted_at) VALUES
       ('g-br26-a', 'Bolão da Firma', 'comp-br26', 'alice', 'SECRET-AAAA', datetime('now', '-60 days'), NULL),
@@ -281,11 +281,14 @@ function healthMatchesSql() {
     status: string,
     extra: { home?: number; away?: number; postponed?: number; scoredAt?: string } = {},
   ) =>
-    `('${id}', '${comp}', 'ext-${id}', 'football-data', 'fla', 'pal', ${start}, '${status}', ` +
+    `('${id}', '${comp}', 'ext-${id}', 'football-data', 'fla', 'pal', ${start}, '${status}', '1', ` +
     `${extra.home ?? 'NULL'}, ${extra.away ?? 'NULL'}, ${extra.postponed ?? 0}, ` +
     `${extra.scoredAt ? `'${extra.scoredAt}'` : 'NULL'})`
+  // Horário com offset ou milissegundos e finished sem placar são linhas gravadas
+  // antes da migration 0043, que hoje recusa as três. O painel continua contando.
   return `
-    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, home_score, away_score, postponed, scored_at) VALUES
+    DROP TRIGGER matches_format_insert;
+    INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, round, home_score, away_score, postponed, scored_at) VALUES
       -- Atrasados contados (br26): scheduled e live, 1 min além das 3h.
       ${row('h-late-sched', 'comp-br26', at('-3 hours', '-1 minutes'), 'scheduled')},
       ${row('h-late-live', 'comp-br26', at('-5 hours'), 'live')},
@@ -1187,6 +1190,27 @@ describe('GET /metrics/business', () => {
       medianGroupsPerUser: 2,
       activeGroupDays: 14,
     })
+  })
+
+  it('cadastros no período comparam o ISO gravado pelo login no formato de datetime', async () => {
+    // O login grava created_at como ISO com T e Z. Na comparação de texto com
+    // datetime('now'), o T vence o espaço e a conta criada no dia do limite,
+    // mas antes do horário de corte, entrava na contagem.
+    const res = await makeApp().request(
+      '/metrics/business?days=7',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({
+        DB: createBusinessFixture(`
+          INSERT INTO users (id, email, provider, provider_id, created_at) VALUES
+            ('fora', 'fora@example.com', 'google', 'g-fora',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days', '-1 minutes')),
+            ('dentro', 'dentro@example.com', 'google', 'g-dentro',
+              strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-6 days'));
+        `),
+      }),
+    )
+
+    expect(await res.json()).toMatchObject({ usersTotal: 7, usersCreatedInPeriod: 2 })
   })
 
   it('lista todas as temporadas, inclusive sem grupo, sem multiplicar contagens', async () => {

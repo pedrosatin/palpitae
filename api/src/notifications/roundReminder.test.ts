@@ -2,6 +2,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import {
   RESEND_FETCH_BUDGET,
@@ -81,10 +82,22 @@ function addMatch(
   sqlite
     .prepare(
       `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id,
-         start_time, status, round, postponed, locked_at)
-       VALUES (?, ?, ?, 'football-data', ?, ?, ?, ?, ?, ?, ?)`,
+         start_time, status, round, postponed, locked_at, home_score, away_score)
+       VALUES (?, ?, ?, 'football-data', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, competition, id, home, away, start, status, round, postponed, lockedAt)
+    .run(
+      id,
+      competition,
+      id,
+      home,
+      away,
+      start,
+      status,
+      round,
+      postponed,
+      lockedAt,
+      ...finalScore(status),
+    )
 }
 
 function addMember(sqlite: DatabaseSync, group: string, user: string) {
