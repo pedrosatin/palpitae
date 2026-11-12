@@ -779,6 +779,69 @@ describe('follow-up security controls with a real SQL database', () => {
     expect(await exhausted.json()).toEqual({ error: 'Erro interno ao gerar convite' })
   })
 
+  it('repete o sorteio quando outra criação grava o mesmo código entre a consulta e o INSERT', async () => {
+    const { request, env, db, sqlite } = await fixture()
+    // Simula a corrida: logo depois da consulta de códigos livres, outro grupo
+    // grava o primeiro candidato, que é o que a criação escolheria.
+    let races = 1
+    env.DB = {
+      ...db,
+      prepare(sql: string) {
+        const statement = db.prepare(sql)
+        if (!sql.includes('SELECT invite_code FROM groups WHERE invite_code IN')) return statement
+        return {
+          bind(...candidates: string[]) {
+            const bound = statement.bind(...candidates)
+            return {
+              ...bound,
+              async all<T>() {
+                const result = await bound.all<T>()
+                if (races-- > 0) {
+                  sqlite
+                    .prepare(
+                      `INSERT INTO groups (id,name,competition_id,owner_user_id,invite_code)
+                       VALUES (?,'Rival','competition','other',?)`,
+                    )
+                    .run(races === 0 ? 'rival' : crypto.randomUUID(), candidates[0]!)
+                }
+                return result
+              },
+            }
+          },
+        }
+      },
+    } as unknown as D1Database
+
+    const res = await request('/groups', 'owner', 'POST', {
+      name: 'Grupo novo',
+      competition_id: 'competition',
+    })
+
+    expect(res.status).toBe(201)
+    const { group } = (await res.json()) as { group: { id: string; invite_code: string } }
+    const rival = sqlite.prepare("SELECT invite_code FROM groups WHERE id = 'rival'").get() as {
+      invite_code: string
+    }
+    expect(group.invite_code).not.toBe(rival.invite_code)
+    expect(
+      sqlite.prepare('SELECT invite_code FROM groups WHERE id = ?').get(group.id),
+    ).toEqual({ invite_code: group.invite_code })
+    expect(
+      sqlite.prepare("SELECT role FROM group_members WHERE group_id = ? AND user_id = 'owner'").get(
+        group.id,
+      ),
+    ).toEqual({ role: 'owner' })
+
+    races = 10
+    const exhausted = await request('/groups', 'owner', 'POST', {
+      name: 'Sem convite',
+      competition_id: 'competition',
+    })
+    expect(exhausted.status).toBe(503)
+    expect(await exhausted.json()).toEqual({ error: 'Erro interno ao gerar convite' })
+    expect(sqlite.prepare("SELECT id FROM groups WHERE name = 'Sem convite'").all()).toEqual([])
+  })
+
   it('never lets concurrent joins exceed the member cap', async () => {
     const { request, sqlite, tokens, env } = await fixture()
     sqlite.exec(`

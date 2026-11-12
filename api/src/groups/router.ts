@@ -6,6 +6,7 @@ import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
+import { parseGroupName } from './groupName'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
 import { roundLabel } from '../matches/rounds'
 import { parsePendingSummary, type PendingSummary } from './pendingPredictions'
@@ -90,6 +91,30 @@ async function pickUniqueInviteCode(db: D1Database): Promise<string | null> {
 
 function isUniqueViolation(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message)
+}
+
+/**
+ * Sorteia um código livre e grava com `write`. Outra criação ou troca pode gravar
+ * o mesmo código entre a consulta e a escrita: o UNIQUE de invite_code barra a
+ * duplicata e o sorteio se repete, até 3 vezes. Devolve o código gravado, ou
+ * null quando as tentativas acabam.
+ */
+async function writeWithUniqueInviteCode(
+  db: D1Database,
+  write: (inviteCode: string) => Promise<unknown>,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const inviteCode = await pickUniqueInviteCode(db)
+    if (!inviteCode) continue
+    try {
+      await write(inviteCode)
+    } catch (error) {
+      if (isUniqueViolation(error)) continue
+      throw error
+    }
+    return inviteCode
+  }
+  return null
 }
 
 /**
@@ -374,16 +399,15 @@ router.post('/', requireAuth, async (c) => {
   }>(c)
   if (!body) return c.json({ error: INVALID_BODY }, 400)
 
-  const name = trimmedString(body.name)
   const competition_id = trimmedString(body.competition_id)
 
-  if (!name || !competition_id) {
+  if (!trimmedString(body.name) || !competition_id) {
     return c.json({ error: 'Nome e competição são obrigatórios' }, 400)
   }
 
-  if (name.length < 2 || name.length > 30) {
-    return c.json({ error: 'Nome deve ter entre 2 e 30 caracteres' }, 400)
-  }
+  const parsedName = parseGroupName(body.name)
+  if ('error' in parsedName) return c.json({ error: parsedName.error }, 400)
+  const { name } = parsedName
 
   // Scoring rules & visibility — set at creation, immutable afterwards.
   const points_exact = body.points_exact ?? 3
@@ -438,42 +462,38 @@ router.post('/', requireAuth, async (c) => {
     return c.json({ error: 'Competição não encontrada' }, 404)
   }
 
-  // Generate a unique invite code (retry up to 5 times on collision)
-  const invite_code = await pickUniqueInviteCode(db)
-
-  if (!invite_code) {
-    return c.json({ error: 'Erro interno ao gerar convite' }, 500)
-  }
-
   const groupId = crypto.randomUUID()
   const memberId = crypto.randomUUID()
 
   try {
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, points_penalty, points_classified, predictions_visibility)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          groupId,
-          name,
-          competition_id,
-          userId,
-          invite_code,
-          points_exact,
-          points_winner,
-          points_penalty,
-          points_classified,
-          predictions_visibility,
-        ),
-      db
-        .prepare(
-          `INSERT INTO group_members (id, group_id, user_id, role)
-           VALUES (?, ?, ?, 'owner')`,
-        )
-        .bind(memberId, groupId, userId),
-    ])
+    const invite_code = await writeWithUniqueInviteCode(db, (inviteCode) =>
+      db.batch([
+        db
+          .prepare(
+            `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, points_penalty, points_classified, predictions_visibility)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            groupId,
+            name,
+            competition_id,
+            userId,
+            inviteCode,
+            points_exact,
+            points_winner,
+            points_penalty,
+            points_classified,
+            predictions_visibility,
+          ),
+        db
+          .prepare(
+            `INSERT INTO group_members (id, group_id, user_id, role)
+             VALUES (?, ?, ?, 'owner')`,
+          )
+          .bind(memberId, groupId, userId),
+      ]),
+    )
+    if (!invite_code) return c.json({ error: 'Erro interno ao gerar convite' }, 503)
 
     logEvent(c.env.AE, 'group_created', {
       blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
@@ -709,7 +729,6 @@ router.patch('/:id', requireAuth, async (c) => {
 
   const body = await readJsonObject<{ name?: string; points_classified?: number }>(c)
   if (!body) return c.json({ error: INVALID_BODY }, 400)
-  const name = trimmedString(body.name)
   const pointsClassified = body.points_classified
   if (
     pointsClassified !== undefined &&
@@ -722,9 +741,9 @@ router.patch('/:id', requireAuth, async (c) => {
     return c.json({ error: 'Informe nome ou pontos de classificado' }, 400)
   }
 
-  if (body.name !== undefined && (!name || name.length < 2 || name.length > 30)) {
-    return c.json({ error: 'Nome deve ter entre 2 e 30 caracteres' }, 400)
-  }
+  const parsedName = body.name === undefined ? undefined : parseGroupName(body.name)
+  if (parsedName && 'error' in parsedName) return c.json({ error: parsedName.error }, 400)
+  const name = parsedName?.name
 
   const group = await db
     .prepare(
@@ -815,29 +834,19 @@ router.post('/:id/invite/rotate', requireAuth, async (c) => {
     return c.json({ error: 'Apenas o administrador pode trocar o convite' }, 403)
   }
 
-  // Outra troca ou criação pode gravar o mesmo código entre o SELECT e o UPDATE.
-  // O UNIQUE de invite_code barra a duplicata; tenta de novo com outro sorteio.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const inviteCode = await pickUniqueInviteCode(db)
-    if (!inviteCode) continue
-    try {
-      await db
-        .prepare('UPDATE groups SET invite_code = ? WHERE id = ? AND deleted_at IS NULL')
-        .bind(inviteCode, groupId)
-        .run()
-    } catch (error) {
-      if (isUniqueViolation(error)) continue
-      throw error
-    }
+  const inviteCode = await writeWithUniqueInviteCode(db, (code) =>
+    db
+      .prepare('UPDATE groups SET invite_code = ? WHERE id = ? AND deleted_at IS NULL')
+      .bind(code, groupId)
+      .run(),
+  )
+  if (!inviteCode) return c.json({ error: 'Erro interno ao gerar convite' }, 503)
 
-    logEvent(c.env.AE, 'group_invite_rotated', {
-      blobs: [groupId, await hashUserId(userId)],
-    })
+  logEvent(c.env.AE, 'group_invite_rotated', {
+    blobs: [groupId, await hashUserId(userId)],
+  })
 
-    return c.json({ invite_code: inviteCode })
-  }
-
-  return c.json({ error: 'Erro interno ao gerar convite' }, 503)
+  return c.json({ invite_code: inviteCode })
 })
 
 /**

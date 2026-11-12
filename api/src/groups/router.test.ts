@@ -444,6 +444,59 @@ describe('groups router', () => {
       expect(body.error).toContain('Visibilidade inválida')
     })
 
+    it.each([
+      ['dois espaços de largura zero', '\u{200B}\u{200B}'],
+      ['só caracteres de controle', '\u{1}\u{2}\u{3}'],
+      ['marcador de direção', 'Grupo \u{202E}abc'],
+      ['isolador de direção', '\u{2067}Grupo\u{2069}'],
+      ['quebra de linha', 'Grupo\nnovo'],
+      ['preenchedor Hangul', '\u{3164}\u{3164}'],
+      ['só seletores de variação', '\u{FE0F}\u{FE0F}'],
+      ['seletor de variação repetido', 'Grupo\u{FE0F}\u{FE0F}'],
+      ['braille em branco', '\u{2800}\u{2800}'],
+      ['preenchedor Hangul de meia largura', 'Grupo \u{FFA0}'],
+      ['joiner de grafema', 'Gru\u{34F}po'],
+      ['vogal inerente khmer', 'Grupo \u{17B4}'],
+      ['ZWNJ', 'Gru\u{200C}po'],
+      ['ZWJ fora de emoji', 'Gru\u{200D}po'],
+      ['tags fora do formato de subdivisão', 'Grupo \u{1F3F4}\u{E0041}\u{E0042}\u{E0043}\u{E007F}'],
+      ['tags sem bandeira', 'Grupo \u{E0067}\u{E0062}\u{E007F}'],
+      ['surrogate isolado', 'Grupo \u{D800}'],
+      ['uso privado', 'Grupo \u{E000}'],
+    ])('rejeita nome com %s', async (_caso, name) => {
+      const res = await request('user@example.com', { name, competition_id: 'comp-1' })
+
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Nome não pode ter caracteres invisíveis' })
+    })
+
+    it('grava o nome normalizado em NFC', async () => {
+      const decomposto = 'Sa\u{303}o Joa\u{303}o'
+      const res = await request('user@example.com', { name: decomposto, competition_id: 'comp-1' })
+
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { group: { name: string } }
+      expect(body.group.name).toBe('S\u{E3}o Jo\u{E3}o')
+      expect(body.group.name).toBe(decomposto.normalize('NFC'))
+    })
+
+    it.each([
+      ['junção de emoji (família)', 'Fã \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}'],
+      ['bandeira de subdivisão (Inglaterra)', 'Fã \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}'],
+      ['coração com seletor de emoji', 'Amor \u{2764}\u{FE0F}'],
+      ['bandeira arco-íris', 'Orgulho \u{1F3F3}\u{FE0F}\u{200D}\u{1F308}'],
+      ['coração em chamas', 'Fogo \u{2764}\u{FE0F}\u{200D}\u{1F525}'],
+      ['seletor de texto', 'Sol \u{2600}\u{FE0E}'],
+      ['tecla com número', 'Time \u{31}\u{FE0F}\u{20E3}'],
+      ['tom de pele', 'Joinha \u{1F44D}\u{1F3FD}'],
+    ])('aceita nome com %s', async (_caso, name) => {
+      const res = await request('user@example.com', { name, competition_id: 'comp-1' })
+
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { group: { name: string } }
+      expect(body.group.name).toBe(name)
+    })
+
     it('defaults to classic 3/1 hidden when fields are omitted', async () => {
       const res = await request('user@example.com', {
         name: 'Default',
@@ -562,6 +615,32 @@ describe('groups router', () => {
 
       expect(res.status).toBe(400)
       expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['dois espaços de largura zero', '\u200B\u200B'],
+      ['marcador de direção', 'Grupo \u200Fnovo'],
+    ])('rejeita renomear para nome com %s', async (_caso, name) => {
+      const { db, updateRun } = createGroupByIdDbMock('user-1')
+      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
+        name,
+      })
+
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Nome não pode ter caracteres invisíveis' })
+      expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it('renomeia com o nome normalizado em NFC', async () => {
+      const { db, updateRun } = createGroupByIdDbMock('user-1')
+      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
+        name: 'Sa\u0303o Joa\u0303o',
+      })
+
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { group: { name: string } }
+      expect(body.group.name).toBe('São João')
+      expect(updateRun).toHaveBeenCalled()
     })
 
     it('returns 404 when the group does not exist or is already deleted', async () => {
