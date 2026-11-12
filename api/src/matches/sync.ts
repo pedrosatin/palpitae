@@ -4,7 +4,12 @@ import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/p
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 import { footballDataCompetitionConfig } from './footballDataCompetitions'
-import { FD_RETRY_BACKOFF_MS, FD_TIMEOUT_MS } from './footballDataQuota'
+import {
+  FD_TIMEOUT_MS,
+  noteFootballDataResponse,
+  readFootballDataQuota,
+  waitForFootballDataQuota,
+} from './footballDataQuota'
 import { indexTies } from './ties'
 
 const PROVIDER = 'football-data'
@@ -280,16 +285,23 @@ async function fetchMatchesFromApi(
   if (matchday !== undefined) url.searchParams.set('matchday', String(matchday))
 
   const request = async () => {
+    // Pausa por cota (429 ou cota zerada) vista antes neste isolate: espera ou
+    // falha sem request.
+    await waitForFootballDataQuota()
     const startedAt = Date.now()
     try {
       const res = await fetch(url.toString(), {
         headers: { 'X-Auth-Token': apiKey },
         signal: AbortSignal.timeout(FD_TIMEOUT_MS),
       })
+      const quota = readFootballDataQuota(res.headers, Date.now())
+      noteFootballDataResponse(res.status, quota, Date.now())
       notifyHttpAttempt(onAttempt, {
         provider: 'football-data',
         status: res.status,
         durationMs: Date.now() - startedAt,
+        quotaRemaining: quota.remaining,
+        quotaResetSeconds: quota.resetSeconds,
       })
       return res
     } catch (err) {
@@ -303,11 +315,9 @@ async function fetchMatchesFromApi(
   }
 
   let res = await request()
-  // Um único retry com backoff de 6s. Evita martelar o free tier de 10 req/min em 429.
-  if (res.status === 429) {
-    await new Promise((resolve) => setTimeout(resolve, FD_RETRY_BACKOFF_MS))
-    res = await request()
-  }
+  // Um único retry, depois do reset que o 429 informou. Reset além de
+  // FD_QUOTA_MAX_WAIT_MS falha sem segundo request.
+  if (res.status === 429) res = await request()
 
   if (!res.ok) {
     const text = await res.text()

@@ -131,7 +131,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `scheduled_config_missing` | `name` (`AE`/`EVENTS`/`PROXY_SHARED_SECRET`/`BASE_URL`/`CF_ACCOUNT_ID`/`AE_SQL_TOKEN`); um evento por nome ausente em cada execução agendada. Sem `AE` só há a linha `[scheduled] Configuração ausente` no log | — | — | — |
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
-| `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
+| `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha ou cota zerada, 10 em sucesso amostrado); só football-data: `double3`=requests restantes na janela e `double4`=segundos até o reset, os dois `-1` sem cabeçalho válido |
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
 | `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
@@ -203,7 +203,8 @@ execução sem liga e não entram no recorte por competição.
 ### Tentativas HTTP aos provedores (`provider_http_attempt`)
 
 Cada `fetch` ao football-data.org ou à ESPN gera no máximo um evento, inclusive o segundo
-`fetch` do retry. A ESPN retenta respostas 429 e 5xx; o football-data.org retenta 429.
+`fetch` do retry. A ESPN retenta respostas 429 e 5xx; o football-data.org retenta 429 uma vez,
+depois do reset que a resposta informou (ver "Cota da football-data" abaixo).
 A medição fica nos clientes (`providers/espn.ts` e
 `fetchMatchesFromApi` em `matches/sync.ts`) e não adiciona nenhuma chamada externa. O processo
 que chamou e a competição vêm do chamador, por um observer criado em
@@ -226,8 +227,28 @@ que chamou e a competição vêm do chamador, por um observer criado em
   `SUM(_sample_interval)`; duração média ponderada = `SUM(double1 * _sample_interval * double2)
   / SUM(_sample_interval * double2)`. Falha é contagem (sujeita só ao sampling do Analytics
   Engine); sucesso é estimativa.
-- **Privacidade:** só provedor, status, contexto, duração e UUID de competição. Nunca URL, query,
-  slug do provedor, chave de API, corpo nem mensagem de erro.
+- **Cota (football-data):** `double3` guarda as requests restantes e `double4` os segundos até
+  o reset, lidos dos cabeçalhos da resposta (`-1` quando ausentes ou inválidos). Um 2xx com cota
+  zerada sai sempre, com peso 1, fora da amostra dos sucessos. Eventos da ESPN e os anteriores
+  ao deploy não têm essas posições.
+- **Privacidade:** só provedor, status, contexto, duração, cota e UUID de competição. Nunca URL,
+  query, slug do provedor, chave de API, corpo nem mensagem de erro.
+
+#### Cota da football-data
+
+O cliente (`fetchMatchesFromApi`) lê a cota de toda resposta: requests restantes em
+`x-requests-available-minute` (também aceita `X-Requests-Available` e `X-RequestsAvailable`) e o
+reset no maior valor entre `X-RequestCounter-Reset`, `x-request_counter-reset` e `Retry-After`.
+Um 429, ou uma resposta com zero requests restantes, pausa as chamadas até o reset. Sem reset
+válido a pausa é de 60 s; o 429 pausa no mínimo 6 s; nenhuma pausa passa de 1 h. Durante a
+pausa, uma chamada espera até 65 s; se o reset estiver mais longe, falha sem request
+(`FootballDataQuotaError`, registrada como `football_api_error`) e o próximo ciclo tenta de novo.
+O retry do 429 passa pela mesma regra.
+
+A pausa vale só para o isolate que viu a resposta. Outro isolate do Worker, o radar no GitHub
+Actions e scripts locais não a enxergam, então ela não é um orçamento global: discovery e poller
+em isolates diferentes ainda podem coincidir no mesmo minuto. A coordenação entre eles é do
+backlog de resiliência dos provedores.
 
 Ausência de linha não é zero: o evento só existe a partir do deploy, e uma competição sem
 tentativa no período não aparece. O painel mostra "indisponível" quando a API não envia o
