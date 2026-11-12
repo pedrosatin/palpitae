@@ -79,6 +79,13 @@
   padding: var(--space-4);
   text-align: center;
 }
+
+/* Enquanto o auth ou o chunk da rota carregam, o App não pinta nada e o botão
+   vira o primeiro filho do #root, solto no topo da tela escura. Escondido
+   nesse intervalo, ele só aparece já abaixo da página, sem salto de layout. */
+.preferences:first-child {
+  display: none;
+}
 .preferences button {
   background: transparent;
   border: 0;
