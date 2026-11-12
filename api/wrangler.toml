@@ -49,6 +49,9 @@ bucket_name = "palpitae-events"
 [vars]
 BASE_URL = "https://api.palpitae.com.br"
 FRONTEND_URL = "https://palpitae.com.br"
+# Opcional: teto de chamadas ao Resend por execução do lembrete diário (padrão 45,
+# que cabe nos 50 subrequests do plano Free). Ver ADR-020.
+# REMINDER_FETCH_BUDGET = "45"
 # Secrets — set via:
 #   wrangler secret put JWT_SECRET
 #   wrangler secret put GOOGLE_CLIENT_ID

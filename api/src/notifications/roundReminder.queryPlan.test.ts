@@ -46,5 +46,9 @@ describe('planos de consulta das subqueries por rodada', () => {
     expect(steps.filter((s) => s.startsWith('SCAN'))).toEqual([])
     // A ordem por horário vem do próprio índice, sem ordenar em memória.
     expect(steps.filter((s) => s.includes('TEMP B-TREE'))).toEqual([])
+    // O último envio de cada usuário, que ordena a fila, vem da chave primária.
+    expect(steps).toContain(
+      'SEARCH ls USING COVERING INDEX sqlite_autoindex_email_reminder_sends_1 (user_id=?)',
+    )
   })
 })

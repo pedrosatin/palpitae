@@ -15,7 +15,8 @@ vi.mock('./observability/events', async (importOriginal) => {
   }
 })
 
-vi.mock('./notifications/roundReminder', () => ({
+vi.mock('./notifications/roundReminder', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./notifications/roundReminder')>()),
   sendRoundReminders: vi.fn(async () => {}),
 }))
 vi.mock('./observability/export', () => ({
@@ -105,13 +106,39 @@ describe('scheduled handler routing', () => {
     await run('0 10 * * *')
 
     expect(sendRoundReminders).toHaveBeenCalledTimes(1)
-    expect(sendRoundReminders).toHaveBeenCalledWith(env.DB, 'rk', env.AE, 'http://localhost:5173', {
-      secret: 'jwt-secret',
-      apiBaseUrl: 'https://api.palpitae.com.br',
-    })
+    expect(sendRoundReminders).toHaveBeenCalledWith(
+      env.DB,
+      'rk',
+      env.AE,
+      'http://localhost:5173',
+      { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
+      undefined,
+      { fetchBudget: 45, pilotAccess: env },
+    )
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(pollActiveMatches).not.toHaveBeenCalled()
     expect(discoverFixtures).not.toHaveBeenCalled()
+  })
+
+  it('passes the configured reminder budget and pilot list to sendRoundReminders', async () => {
+    const reminderEnv = {
+      ...env,
+      REMINDER_FETCH_BUDGET: '120',
+      ADMIN_EMAIL: 'admin@example.com',
+      PILOT_EMAILS: 'piloto@example.com',
+    } as Env
+
+    await run('0 10 * * *', Date.now(), reminderEnv)
+
+    expect(sendRoundReminders).toHaveBeenCalledWith(
+      env.DB,
+      'rk',
+      env.AE,
+      'http://localhost:5173',
+      { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
+      undefined,
+      { fetchBudget: 120, pilotAccess: reminderEnv },
+    )
   })
 
   it('routes the daily-export cron to exportRecentDays only', async () => {

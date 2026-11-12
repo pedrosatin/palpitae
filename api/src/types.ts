@@ -19,6 +19,8 @@ export type Env = {
   FRONTEND_URL: string
   FOOTBALL_API_KEY: string
   RESEND_API_KEY: string
+  // Teto de chamadas ao Resend por execução do lembrete diário. Padrão 45 (plano Free).
+  REMINDER_FETCH_BUDGET?: string
   // Segredo compartilhado com o proxy do Pages para confiar no IP repassado.
   PROXY_SHARED_SECRET?: string
 }
