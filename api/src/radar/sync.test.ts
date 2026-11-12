@@ -175,7 +175,8 @@ describe('syncRadar', () => {
     const errors = pointsOfType(ae, 'radar_sync_error')
     expect(errors[0]?.blobs?.[1]).toBe('espn')
     expect(errors[0]?.blobs?.at(-1)).toContain('bra.1,ven.1')
-    expect(pointsOfType(ae, 'radar_sync_run')[0]?.blobs?.[1]).toBe('ok')
+    // Coleta parcial não sai como completa.
+    expect(pointsOfType(ae, 'radar_sync_run')[0]?.blobs?.[1]).toBe('partial')
   })
 
   it('aborta sem escrever quando a ESPN falha inteira', async () => {
