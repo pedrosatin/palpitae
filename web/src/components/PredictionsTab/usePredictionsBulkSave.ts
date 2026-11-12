@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, Dispatch, SetStateAction } from 'react'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
@@ -213,7 +213,7 @@ export function usePredictionsBulkSave(
     const roundView = roundViewRef.current
 
     try {
-      const res = await apiFetch(`${config.apiUrl}/predictions/bulk`, {
+      const res = await apiFetch(buildApiUrl('/predictions/bulk'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId, predictions: toSave }),

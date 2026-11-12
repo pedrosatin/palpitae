@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { needsPenaltyPick } from '../../lib/predictedTie'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
@@ -145,7 +145,7 @@ function useMatchPersistence(
 
     let res: Response | null = null
     try {
-      res = await apiFetch(`${config.apiUrl}/predictions`, {
+      res = await apiFetch(buildApiUrl('/predictions'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

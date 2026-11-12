@@ -18,7 +18,8 @@ import {
   clearSignupAttribution,
 } from './analytics/signupOrigin'
 import { useGaPageView } from './analytics/useGaPageView'
-import { config } from './config'
+import { RouteErrorBoundary } from './components/ErrorBoundary'
+import { buildApiUrl } from './config'
 import {
   clearSessionExpired,
   notifyLogoutUnconfirmed,
@@ -142,7 +143,8 @@ function setKnownSession(known: boolean) {
  * Root application component.
  *
  * Resolves authentication state on mount by calling GET /auth/me.
- * Renders the appropriate page based on the result.
+ * Renders the appropriate page based on the result. Uma página que quebra no
+ * render mostra a tela de erro da rota em vez de deixar a tela em branco.
  *
  * `landingPrerenderizada` é verdadeiro quando a landing já está pintada na tela
  * pelo HTML gerado no build e o React está apenas hidratando (ver `main.tsx` e
@@ -154,6 +156,14 @@ export default function App({
 }: {
   landingPrerenderizada?: boolean
 }) {
+  return (
+    <RouteErrorBoundary>
+      <AppRoutes landingPrerenderizada={landingPrerenderizada} />
+    </RouteErrorBoundary>
+  )
+}
+
+function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
   const [user, setUser] = useState<User | null>(null)
   const [retrying, setRetrying] = useState(false)
@@ -180,7 +190,7 @@ export default function App({
     // visitor. The endpoint answers 200 either way (`{ user }` or
     // `{ authenticated: false }`) so a logged-out visit never surfaces as a
     // console error in devtools/Lighthouse.
-    fetch(`${config.apiUrl}/auth/me`, { credentials: 'include' })
+    fetch(buildApiUrl('/auth/me'), { credentials: 'include' })
       .then((res) => {
         if (res.status >= 500) return null
         if (!res.ok) throw new Error('unauthenticated')
@@ -241,7 +251,7 @@ export default function App({
     clearSignupAttribution()
     // Raw fetch on purpose: the user is leaving deliberately — a 401 from an
     // already-dead session must not trigger the "sessão expirou" notice.
-    fetch(`${config.apiUrl}/auth/logout`, {
+    fetch(buildApiUrl('/auth/logout'), {
       method: 'POST',
       credentials: 'include',
     })

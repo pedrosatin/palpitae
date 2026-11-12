@@ -1,4 +1,4 @@
-import { config } from '../config'
+import { buildApiUrl } from '../config'
 import type { Match } from '../components/MatchCard'
 import { apiFetch } from './api'
 import { fetchCachedJson } from './api-cache'
@@ -22,7 +22,10 @@ export function fetchCompetitionMatches(
     `matches:${competitionId}`,
     () =>
       apiFetch(
-        `${config.apiUrl}/matches?competition_id=${encodeURIComponent(competitionId)}&round_order=1`,
+        buildApiUrl(
+          '/matches',
+          new URLSearchParams({ competition_id: competitionId, round_order: '1' }),
+        ),
       ).then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar jogos')
         return r.json() as Promise<CompetitionMatchesResponse>
