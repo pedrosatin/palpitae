@@ -22,7 +22,7 @@ const BY_COMPETITION_ONLY = /idx_matches_comp_round_start \(competition_id=\?\)/
 
 describe('planos de consulta das subqueries por rodada', () => {
   it('pendências do GET /groups buscam os jogos da rodada pelo índice', () => {
-    const steps = plan(`SELECT g.id, ${pendingSummarySql('g')} FROM groups g`, 7)
+    const steps = plan(`SELECT g.id, ${pendingSummarySql('g')} FROM groups g`, 8)
     // Uma busca do índice coberto por competição numera as rodadas candidatas.
     // Os jogos vêm de uma busca por competição e rodada. Com JOIN no lugar do
     // CROSS JOIN, o SQLite busca m só por competição e lê a competição inteira

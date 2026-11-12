@@ -2,7 +2,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
-import { parsePendingSummary, pendingSummarySql } from './pendingPredictions'
+import { parsePendingSummary, pendingSummarySql, withMissingPenalties } from './pendingPredictions'
 import { lockedSql } from '../matches/locking'
 import { signJwt } from '../auth/jwt'
 import { createSqliteD1 } from '../testing/sqliteD1'
@@ -497,6 +497,220 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
   })
 })
 
+describe('GET /groups pendência de pênalti, como o contador da aba Palpitar (SQLite D1)', () => {
+  // Quartas de uma copa com pênaltis no jogo único. Agora = 15/06 12:00.
+  // - q1: ida (leg 1) encerrada e volta em 17/06, com `leg` da ESPN.
+  // - q3: ida e volta sem `leg`, como na football-data. A volta é a de horário maior.
+  // - q2: jogo único em 18/06.
+  // `roundProgress` no web conta como palpitado o palpite salvo sem pênalti
+  // faltando. Na volta, falta pênalti quando a soma com o palpite salvo da ida
+  // empata; no jogo único, quando o placar empata.
+  function setupCup(sqlite: DatabaseSync) {
+    sqlite.exec(`
+      INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility) VALUES
+        ('comp-cup', 'Copa', 'copa-2026', '2026', 'ongoing', 'cup', '["QUARTER_FINALS"]', 'public');
+      INSERT INTO teams (id, name, short_name, slug) VALUES
+        ('gre', 'Grêmio', 'GRE', 'gremio'),
+        ('int', 'Internacional', 'INT', 'internacional');
+      INSERT INTO matches (
+        id, competition_id, external_id, provider,
+        home_team_id, away_team_id, start_time, status, round, phase, leg, postponed, locked_at
+      ) VALUES
+        ('q1-ida', 'comp-cup', 'c-1', 'espn', 'fla', 'pal', '2026-06-10T19:00:00Z', 'finished', 'QUARTER_FINALS', 'QUARTER_FINALS', 1, 0, '2026-06-10T19:00:00Z'),
+        ('q1-volta', 'comp-cup', 'c-2', 'espn', 'pal', 'fla', '2026-06-17T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', 2, 0, NULL),
+        ('q2-unico', 'comp-cup', 'c-3', 'espn', 'cor', 'sao', '2026-06-18T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, NULL),
+        ('q3-ida', 'comp-cup', 'c-4', 'football-data', 'gre', 'int', '2026-06-11T19:00:00Z', 'finished', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, '2026-06-11T19:00:00Z'),
+        ('q3-volta', 'comp-cup', 'c-5', 'football-data', 'int', 'gre', '2026-06-19T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, NULL);
+      INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner) VALUES
+        ('cup-placar', 'Copa placar', 'comp-cup', 'alice', 'KKKK-LLLL', 3, 1),
+        ('cup-vencedor', 'Copa só vencedor', 'comp-cup', 'alice', 'MMMM-NNNN', 0, 1);
+      INSERT INTO group_members (group_id, user_id, joined_at) VALUES
+        ('cup-placar', 'alice', '2026-01-01T00:00:00Z'),
+        ('cup-vencedor', 'alice', '2026-01-01T00:00:00Z');
+    `)
+  }
+
+  type Pick = [match: string, home: number, away: number, penalty?: 'home' | 'away']
+
+  function predictIn(sqlite: DatabaseSync, groupId: string, picks: Pick[]) {
+    const insert = sqlite.prepare(`
+      INSERT INTO predictions (
+        id, group_id, user_id, match_id, predicted_home_score, predicted_away_score,
+        predicted_penalty_winner, created_at, updated_at
+      ) VALUES (?, ?, 'alice', ?, ?, ?, ?, '2026-06-14T00:00:00Z', '2026-06-14T00:00:00Z')
+    `)
+    for (const [match, home, away, penalty] of picks) {
+      insert.run(`p-${groupId}-${match}`, groupId, match, home, away, penalty ?? null)
+    }
+  }
+
+  async function cupGroups(setup: (sqlite: DatabaseSync, env: Env) => void) {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'))
+    try {
+      const { sqlite, request, env } = await createFixture()
+      setupCup(sqlite)
+      setup(sqlite, env)
+      const res = await request('alice')
+      expect(res.status).toBe(200)
+      return ((await res.json()) as GroupsBody).groups
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  // Mesmos palpites nos dois modos. No só vencedor o card grava 1x0, 0x0 ou 0x1.
+  const placar: Pick[] = [
+    ['q1-ida', 2, 1],
+    // Palmeiras 1 + 1 da ida = 2; Flamengo 0 + 2 = 2. Agregado empata, sem pênalti.
+    ['q1-volta', 1, 0],
+    // Empate no jogo único sem pênalti: palpite gravado antes de a fase ir aos pênaltis.
+    ['q2-unico', 1, 1],
+    ['q3-ida', 2, 0],
+    ['q3-volta', 0, 1],
+  ]
+  const vencedor: Pick[] = [
+    ['q1-ida', 1, 0],
+    ['q1-volta', 1, 0],
+    ['q2-unico', 0, 0],
+    ['q3-ida', 1, 0],
+    ['q3-volta', 0, 1],
+  ]
+
+  it.each([
+    ['placar', 'cup-placar', placar],
+    ['só vencedor', 'cup-vencedor', vencedor],
+  ])('modo %s: palpite salvo sem o pênalti que falta segue pendente', async (_mode, groupId, picks) => {
+    const groups = await cupGroups((sqlite) => predictIn(sqlite, groupId, picks))
+    const group = groups.find((g) => g.id === groupId)
+
+    // A aba conta 3 de 5 palpitados: as duas idas travadas e a volta do q3.
+    // Faltam a volta do q1 e o jogo único, os mesmos 2 do painel.
+    expect(group?.pending_predictions).toBe(2)
+    expect(group?.next_deadline).toMatchObject({ match_id: 'q1-volta', round: 'QUARTER_FINALS' })
+    expect(group?.next_deadline?.start_time).toBe('2026-06-17T19:00:00Z')
+  })
+
+  it('pênalti escolhido completa o palpite e o prazo passa ao jogo sem palpite', async () => {
+    const groups = await cupGroups((sqlite) =>
+      predictIn(sqlite, 'cup-placar', [
+        ['q1-ida', 2, 1],
+        ['q1-volta', 1, 0, 'away'],
+        ['q2-unico', 1, 1, 'home'],
+        ['q3-ida', 2, 0],
+      ]),
+    )
+    const group = groups.find((g) => g.id === 'cup-placar')
+
+    expect(group?.pending_predictions).toBe(1)
+    expect(group?.next_deadline?.match_id).toBe('q3-volta')
+  })
+
+  it('volta sem palpite da ida e volta sem empate no agregado contam como palpitadas', async () => {
+    const groups = await cupGroups((sqlite) =>
+      predictIn(sqlite, 'cup-placar', [
+        // Sem a ida não há agregado, e o card não pede o pênalti.
+        ['q1-volta', 1, 1],
+        ['q2-unico', 2, 1],
+        ['q3-ida', 2, 0],
+        ['q3-volta', 1, 1],
+      ]),
+    )
+    const group = groups.find((g) => g.id === 'cup-placar')
+
+    expect(group?.pending_predictions).toBe(0)
+    expect(group?.next_deadline).toBeNull()
+  })
+
+  it('volta adiada sem pênalti segue pendente, sem prazo', async () => {
+    const groups = await cupGroups((sqlite) => {
+      // Adiada antes do apito: o horário original já passou e o jogo segue aberto.
+      sqlite.exec(`
+        UPDATE matches SET postponed = 1, start_time = '2026-06-14T19:00:00Z' WHERE id = 'q1-volta';
+      `)
+      predictIn(sqlite, 'cup-placar', [
+        ['q1-ida', 2, 1],
+        ['q1-volta', 1, 0],
+        ['q2-unico', 1, 1, 'home'],
+        ['q3-ida', 2, 0],
+        ['q3-volta', 0, 1],
+      ])
+    })
+    const group = groups.find((g) => g.id === 'cup-placar')
+
+    expect(group?.pending_predictions).toBe(1)
+    expect(group?.next_deadline).toBeNull()
+  })
+
+  it('penalty_phases inválido não derruba a lista e deixa o jogo único sem pênalti', async () => {
+    const groups = await cupGroups((sqlite) => {
+      sqlite.exec(`UPDATE competitions SET penalty_phases = 'QUARTER_FINALS' WHERE id = 'comp-cup';`)
+      predictIn(sqlite, 'cup-placar', placar)
+    })
+    const group = groups.find((g) => g.id === 'cup-placar')
+
+    // Sem fase de pênaltis válida, o empate no jogo único fica completo, como no card.
+    // A volta empatada no agregado segue pedindo o pênalti.
+    expect(group?.pending_predictions).toBe(1)
+    expect(group?.next_deadline?.match_id).toBe('q1-volta')
+  })
+
+  it('se a conferência do pênalti falhar, conta só os jogos sem palpite', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const groups = await cupGroups((sqlite, env) => {
+        predictIn(sqlite, 'cup-placar', placar.slice(0, 3))
+        const prepare = env.DB.prepare.bind(env.DB)
+        vi.spyOn(env.DB, 'prepare').mockImplementation((sql: string) => {
+          if (sql.includes('AND phase IN (SELECT value FROM json_each(?))')) {
+            throw new Error('D1 indisponível')
+          }
+          return prepare(sql)
+        })
+      })
+      const group = groups.find((g) => g.id === 'cup-placar')
+
+      expect(group?.pending_predictions).toBe(1)
+      expect(group?.next_deadline?.match_id).toBe('q3-volta')
+      expect(error).toHaveBeenCalledOnce()
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('liga com empate palpitado não faz a consulta do pênalti', async () => {
+    let tieQueries = 0
+    const groups = await cupGroups((sqlite, env) => {
+      sqlite.exec(`
+        UPDATE matches SET phase = 'REGULAR_SEASON' WHERE competition_id = 'comp-a';
+        INSERT INTO predictions (
+          id, group_id, user_id, match_id, predicted_home_score, predicted_away_score, created_at, updated_at
+        ) VALUES ('p-liga', 'group-a', 'alice', 'm-r2-open-1', 1, 1, '2026-06-14T00:00:00Z', '2026-06-14T00:00:00Z');
+        DELETE FROM group_members WHERE group_id IN ('cup-placar', 'cup-vencedor');
+      `)
+      const prepare = env.DB.prepare.bind(env.DB)
+      vi.spyOn(env.DB, 'prepare').mockImplementation((sql: string) => {
+        if (sql.includes('AND phase IN (SELECT value FROM json_each(?))')) tieQueries++
+        return prepare(sql)
+      })
+    })
+
+    expect(groups.find((g) => g.id === 'group-a')?.pending_predictions).toBe(3)
+    expect(tieQueries).toBe(0)
+  })
+
+  it('volta que já começou sai da pendência, mesmo sem o pênalti', async () => {
+    const groups = await cupGroups((sqlite) => {
+      sqlite.exec(`UPDATE matches SET locked_at = '2026-06-15T11:00:00Z' WHERE id = 'q1-volta';`)
+      predictIn(sqlite, 'cup-placar', placar)
+    })
+    const group = groups.find((g) => g.id === 'cup-placar')
+
+    expect(group?.pending_predictions).toBe(1)
+    expect(group?.next_deadline?.match_id).toBe('q2-unico')
+  })
+})
+
 describe('parsePendingSummary', () => {
   it('separa o horário e o id do jogo de prazo', () => {
     expect(
@@ -506,24 +720,84 @@ describe('parsePendingSummary', () => {
     ).toEqual({
       pending: 2,
       deadline: { start_time: '2026-11-14T21:30:00Z', match_id: 'abc-123' },
+      deadline_key: '2026-11-14T21:30:00Z|0|abc-123',
       next_match_at: '2026-11-14T21:30:00Z',
       round: '35',
       round_ends_at: '2026-11-20T00:30:00Z',
+      penalty_candidates: [],
     })
+  })
+
+  it('lê os candidatos a pênalti e descarta item fora do formato', () => {
+    const summary = parsePendingSummary(
+      JSON.stringify({
+        pending: 0,
+        penalty_candidates: [
+          { match_id: 'v', phase: 'FINAL', deadline: '2026-11-14T21:30:00Z|0|v' },
+          { match_id: 'w', phase: 'FINAL', deadline: null },
+          { match_id: 'x', phase: null, deadline: null },
+          { match_id: 7, phase: 'FINAL', deadline: null },
+          null,
+        ],
+      }),
+    )
+    expect(summary.penalty_candidates).toEqual([
+      { match_id: 'v', phase: 'FINAL', deadline: '2026-11-14T21:30:00Z|0|v' },
+      { match_id: 'w', phase: 'FINAL', deadline: null },
+    ])
   })
 
   it('devolve o resumo vazio para valor nulo ou JSON inválido', () => {
     const empty = {
       pending: 0,
       deadline: null,
+      deadline_key: null,
       next_match_at: null,
       round: null,
       round_ends_at: null,
+      penalty_candidates: [],
     }
     expect(parsePendingSummary(null)).toEqual(empty)
     expect(parsePendingSummary('{')).toEqual(empty)
     expect(parsePendingSummary('{"pending":0,"deadline":null}')).toEqual(empty)
     expect(parsePendingSummary('{"pending":0,"deadline":"2026-11-14T21:30:00Z|abc"}')).toEqual(empty)
+  })
+})
+
+describe('withMissingPenalties', () => {
+  const base = parsePendingSummary(
+    '{"pending":1,"deadline":"2026-11-14T21:30:00Z|0|sem-palpite","round":"35"}',
+  )
+  const candidate = (match_id: string, deadline: string | null) => ({
+    match_id,
+    phase: 'FINAL',
+    deadline,
+  })
+
+  it('soma os pênaltis faltando e mantém o prazo que fecha antes', () => {
+    const summary = withMissingPenalties(base, [
+      candidate('depois', '2026-11-15T21:30:00Z|0|depois'),
+      candidate('adiado', null),
+    ])
+    expect(summary.pending).toBe(3)
+    expect(summary.deadline).toEqual({ start_time: '2026-11-14T21:30:00Z', match_id: 'sem-palpite' })
+  })
+
+  it('passa o prazo ao pênalti faltando que fecha antes, ou que é o único', () => {
+    const antes = candidate('antes', '2026-11-13T21:30:00Z|1|antes')
+    expect(withMissingPenalties(base, [antes]).deadline).toEqual({
+      start_time: '2026-11-13T21:30:00Z',
+      match_id: 'antes',
+    })
+    const semPrazo = parsePendingSummary('{"pending":0,"round":"35"}')
+    expect(withMissingPenalties(semPrazo, [antes])).toMatchObject({
+      pending: 1,
+      deadline_key: '2026-11-13T21:30:00Z|1|antes',
+    })
+  })
+
+  it('sem pênalti faltando devolve o mesmo resumo', () => {
+    expect(withMissingPenalties(base, [])).toBe(base)
   })
 })
 

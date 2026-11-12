@@ -30,6 +30,30 @@ export interface RoundStatusFields {
   live_matches?: number
 }
 
+/**
+ * Horários em que os números do painel mudam sem ação do usuário: o início do jogo
+ * de prazo (sai da pendência), o do próximo jogo (fica ao vivo) e o fim da rodada
+ * padrão (a seguinte vira padrão e traz pendências novas). Adiado sem data nova
+ * não tem horário aqui e segue pendente.
+ */
+export function statusBoundaries(groups: RoundStatusFields[]): string[] {
+  return groups.flatMap((group) =>
+    [group.next_deadline?.start_time, group.next_match_at, group.round_ends_at].filter(
+      (time): time is string => Boolean(time),
+    ),
+  )
+}
+
+/** O mais recente de `boundaries` que já passou em `nowMs`, em ms. Null quando nenhum passou. */
+export function lastPassedBoundary(boundaries: readonly string[], nowMs: number): number | null {
+  let last: number | null = null
+  for (const boundary of boundaries) {
+    const at = Date.parse(boundary)
+    if (at <= nowMs && (last === null || at > last)) last = at
+  }
+  return last
+}
+
 export type GroupRoundStatus =
   | { kind: 'pending'; count: number; deadline: string | null }
   | { kind: 'live'; count: number }

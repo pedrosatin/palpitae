@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import {
@@ -538,6 +538,99 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     expect(within(banner).queryByRole('link')).not.toBeInTheDocument()
     expect(screen.getByText('Rodada 35 completa ✓ · próximo jogo sáb 18:30')).toBeInTheDocument()
     expect(screen.getByText('Sem jogos marcados')).toBeInTheDocument()
+  })
+
+  it('busca o painel de novo quando o jogo de prazo começa, sem tela de carregamento', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
+    invalidateApiCache('groups:')
+    const kickoff = { ...deadline, start_time: '2026-11-12T16:00:00Z' }
+    let resolveRefresh: (value: Response) => void = () => {}
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        mockGroupsResponse([
+          ongoingGroup('realidade', 'Realidade do BR', {
+            pending_predictions: 1,
+            next_deadline: kickoff,
+            next_match_at: kickoff.start_time,
+            current_round_label: 'Rodada 21',
+            round_ends_at: '2026-11-14T21:30:00Z',
+          }),
+        ]),
+      )
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (resolveRefresh = resolve)))
+
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    expect(screen.getByRole('region', { name: 'Próximo prazo' })).toHaveTextContent(
+      'Chapecoense × Vasco fecha hoje às 13:00',
+    )
+    expect(screen.getByText('1 sem palpite · fecha hoje 13:00')).toBeInTheDocument()
+
+    // Um segundo antes do início, nada muda.
+    await act(() => vi.advanceTimersByTimeAsync(60 * 60 * 1000 - 1000))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    await act(() => vi.advanceTimersByTimeAsync(1000))
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    // A lista antiga fica na tela enquanto a nova chega.
+    expect(screen.queryByText('Carregando...')).not.toBeInTheDocument()
+    expect(screen.getByText('Realidade do BR')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveRefresh(
+        mockGroupsResponse([
+          ongoingGroup('realidade', 'Realidade do BR', {
+            live_matches: 1,
+            next_match_at: '2026-11-14T21:30:00Z',
+            current_round_label: 'Rodada 21',
+            round_ends_at: '2026-11-14T21:30:00Z',
+          }),
+        ]),
+      )
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getByRole('region', { name: 'Próximo prazo' })).toHaveTextContent(
+      'Rodada 21 toda palpitada',
+    )
+    expect(screen.getByText('1 jogo ao vivo')).toBeInTheDocument()
+  })
+
+  it('não repete a busca quando a API ainda devolve o horário que passou', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
+    invalidateApiCache('groups:')
+    const groups = [
+      ongoingGroup('realidade', 'Realidade do BR', {
+        pending_predictions: 1,
+        next_deadline: { ...deadline, start_time: '2026-11-12T15:30:00Z' },
+        next_match_at: '2026-11-12T15:30:00Z',
+      }),
+      // Só adiado sem data: pendente e sem horário, não agenda busca.
+      ongoingGroup('adiado', 'Só adiado', { pending_predictions: 1, next_match_at: null }),
+    ]
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => mockGroupsResponse(groups))
+
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    await act(() => vi.advanceTimersByTimeAsync(0))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    // O relógio do aparelho passa do início antes da API: ela devolve o mesmo prazo.
+    await act(() => vi.advanceTimersByTimeAsync(30 * 60 * 1000))
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+    await act(() => vi.advanceTimersByTimeAsync(60 * 60 * 1000))
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
   it('não mostra a faixa sem grupo em andamento', async () => {

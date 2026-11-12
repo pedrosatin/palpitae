@@ -9,7 +9,12 @@ import { getGroupMembership } from './membership'
 import { parseGroupName } from './groupName'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
 import { roundLabel } from '../matches/rounds'
-import { parsePendingSummary, type PendingSummary } from './pendingPredictions'
+import {
+  parsePendingSummary,
+  type PendingSummary,
+  withMissingPenalties,
+} from './pendingPredictions'
+import { missingPenalties } from './missingPenalties'
 import { fetchDeadlineMatches, groupsListBinds, groupsListSql, type DeadlineMatch } from './groupsList'
 import { fetchLiveMatchesByCompetition } from './liveMatches'
 import { competitionStatusSql } from './competitionStatus'
@@ -275,6 +280,55 @@ function emptyOnError<T>(query: Promise<Map<string, T>>, what: string): Promise<
   })
 }
 
+/**
+ * Resumo dos jogos abertos de cada grupo, com rodada e times do jogo de prazo
+ * dos grupos em andamento, para a faixa "Próximo prazo" do painel.
+ *
+ * Palpite salvo em que falta o pênalti conta como pendente, como na aba
+ * Palpitar. Ele pode virar o prazo, então entra antes da busca do jogo de prazo.
+ * Se a conferência falhar, o resumo fica só com os jogos sem palpite.
+ */
+async function roundSummaries(
+  db: D1Database,
+  userId: string,
+  groups: ReadonlyArray<
+    Pick<GroupRow, 'id' | 'competition_id' | 'competition_status'> & {
+      penalty_phases: string | null
+      pending_summary: string | null
+    }
+  >,
+) {
+  const ongoing = groups.filter((group) => group.competition_status !== 'finished')
+  const parsed = new Map(
+    groups.map((group) => [group.id, parsePendingSummary(group.pending_summary)]),
+  )
+  const missingByGroup = await emptyOnError(
+    missingPenalties(
+      db,
+      userId,
+      ongoing.map((group) => ({
+        id: group.id,
+        competition_id: group.competition_id,
+        penalty_phases: group.penalty_phases,
+        candidates: parsed.get(group.id)!.penalty_candidates,
+      })),
+    ),
+    'missing penalties',
+  )
+  const summaries = new Map<string, PendingSummary>()
+  for (const [id, summary] of parsed) {
+    summaries.set(id, withMissingPenalties(summary, missingByGroup.get(id) ?? []))
+  }
+  const deadlineMatchIds = ongoing.flatMap(
+    (group) => summaries.get(group.id)?.deadline?.match_id ?? [],
+  )
+  const deadlineMatches = await emptyOnError(
+    fetchDeadlineMatches(db, deadlineMatchIds),
+    'deadline matches',
+  )
+  return { summaries, deadlineMatches }
+}
+
 router.get('/', requireAuth, async (c) => {
   const userId = c.get('userId')
   const startedAt = Date.now()
@@ -298,6 +352,7 @@ router.get('/', requireAuth, async (c) => {
             points_exact: number
             user_position: number | null
             user_points: number
+            penalty_phases: string | null
             pending_summary: string | null
           }
         >(),
@@ -315,18 +370,9 @@ router.get('/', requireAuth, async (c) => {
       .filter((group) => group.competition_status === 'finished')
       .map((group) => group.id)
 
-    // Rodada e times do jogo de prazo de cada grupo em andamento, para a faixa
-    // "Próximo prazo" do painel. Roda junto com o pódio.
-    const summaries = new Map(
-      groups.results.map((group) => [group.id, parsePendingSummary(group.pending_summary)]),
-    )
-    const deadlineMatchIds = groups.results
-      .filter((group) => group.competition_status !== 'finished')
-      .flatMap((group) => summaries.get(group.id)?.deadline?.match_id ?? [])
-
-    const [podiumByGroup, deadlineMatches] = await Promise.all([
+    const [podiumByGroup, { summaries, deadlineMatches }] = await Promise.all([
       fetchGroupsPodiums(db, finishedGroupIds, userId),
-      emptyOnError(fetchDeadlineMatches(db, deadlineMatchIds), 'deadline matches'),
+      roundSummaries(db, userId, groups.results),
     ])
 
     const dbMs = Date.now() - dbStartedAt

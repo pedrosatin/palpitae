@@ -6,6 +6,29 @@ export type Leg1ScorePair = {
 }
 
 /**
+ * Placar que pede o vencedor dos pênaltis, pela regra de `needsPenaltyPick` em
+ * `web/src/lib/predictedTie.ts`, que mostra "falta pênalti" no card:
+ *   - a ida nunca pede;
+ *   - a volta pede quando a soma com o palpite da ida empata. Sem o palpite da
+ *     ida, não há agregado e ela não pede;
+ *   - o jogo único pede no empate, se a fase vai aos pênaltis (`eligible`).
+ */
+export function penaltyPickNeeded(input: {
+  eligible: boolean
+  role: TieRole
+  home: number
+  away: number
+  leg1Score: Leg1ScorePair | null
+}): boolean {
+  const { eligible, role, home, away, leg1Score } = input
+  if (role === 'leg1') return false
+  if (role === 'leg2') {
+    return leg1Score !== null && home + leg1Score.awayScore === away + leg1Score.homeScore
+  }
+  return eligible && home === away
+}
+
+/**
  * Vencedor dos pênaltis a gravar no palpite. Regras:
  *   - obrigatório no empate de jogo único numa fase de penalty_phases;
  *   - a ida nunca aceita vencedor de pênaltis;

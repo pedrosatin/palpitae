@@ -56,6 +56,25 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
     [userId, normalizedPendingInvite],
   )
 
+  /**
+   * Busca a lista de novo sem a tela de carregamento, para os números que mudam com
+   * o relógio. A lista atual fica na tela até a nova chegar. Se a busca falhar, ela
+   * continua, e a próxima carga tenta de novo. Uma carga pedida depois descarta a
+   * resposta.
+   */
+  const refreshGroups = useCallback(() => {
+    const requestId = ++requestIdRef.current
+    invalidateApiCache('groups:')
+    fetchGroupsList(userId)
+      .then((data) => {
+        if (requestId !== requestIdRef.current) return
+        setLoad((current) =>
+          current.status === 'ready' ? { status: 'ready', groups: data.groups } : current,
+        )
+      })
+      .catch(() => {})
+  }, [userId])
+
   // Parâmetros da última busca disparada pelo efeito.
   const lastRequestRef = useRef<{ userId: string; state: unknown } | null>(null)
 
@@ -77,5 +96,6 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
     setJoinOpen,
     matchedInviteGroupId,
     fetchGroups,
+    refreshGroups,
   }
 }

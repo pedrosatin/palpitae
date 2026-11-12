@@ -1,5 +1,13 @@
 import { openRoundsSql, roundRuleBinds } from '../matches/defaultRound'
 import { lockedSql } from '../matches/locking'
+import { KNOCKOUT_PHASES } from '../matches/rounds'
+
+/** Fases de mata-mata como lista SQL. São constantes do código, sem entrada do usuário. */
+const KNOCKOUT_PHASES_SQL = KNOCKOUT_PHASES.map((phase) => `'${phase}'`).join(', ')
+
+/** Chave de prazo `start_time|fora|id`, só para jogo com horário futuro e sem adiamento. */
+const DEADLINE_KEY_SQL = `CASE WHEN m.postponed = 0 AND m.start_time > ?
+                THEN m.start_time || '|' || (r.position <> 1) || '|' || m.id END`
 
 /**
  * Resumo dos jogos abertos do grupo para o painel, numa subquery correlacionada
@@ -26,6 +34,12 @@ import { lockedSql } from '../matches/locking'
  * - `round`: a rodada padrão.
  * - `round_ends_at`: horário do último jogo aberto da rodada padrão. Quando ele
  *   começa, a rodada seguinte vira padrão e traz pendências novas.
+ * - `penalty_candidates`: jogos palpitados que podem pedir o vencedor dos
+ *   pênaltis: os de mata-mata, menos a ida com `leg` informado, e os de fase que
+ *   vai aos pênaltis. Quem decide se falta o pênalti é `missingPenalties`, que lê
+ *   o palpite e o da ida e acha o papel no confronto com `indexTies`, em TS. Em
+ *   liga, a lista fica vazia. O palpite não é lido aqui: o índice único de
+ *   `predictions` responde se ele existe sem ler a linha.
  *
  * Tudo sai de uma varredura só do índice coberto da competição, que numera as
  * candidatas e já traz a rodada padrão e as que ficaram para trás. Os jogos de
@@ -51,11 +65,23 @@ export function pendingSummarySql(groupAlias = 'g'): string {
   return `(
             SELECT json_object(
               'pending', COUNT(*) - COUNT(p.match_id),
-              'deadline', MIN(
-                CASE WHEN p.match_id IS NULL AND m.postponed = 0 AND m.start_time > ?
-                THEN m.start_time || '|' || (r.position <> 1) || '|' || m.id END
-              ),
+              'deadline', MIN(CASE WHEN p.match_id IS NULL THEN ${DEADLINE_KEY_SQL} END),
               'next_match_at', MIN(CASE WHEN m.postponed = 0 AND m.start_time > ? THEN m.start_time END),
+              'penalty_candidates', json_group_array(
+                json_object('match_id', m.id, 'phase', m.phase, 'deadline', ${DEADLINE_KEY_SQL})
+              ) FILTER (
+                WHERE p.match_id IS NOT NULL
+                  AND (m.leg IS NULL OR m.leg = 2)
+                  AND (
+                    m.phase IN (${KNOCKOUT_PHASES_SQL})
+                    OR m.phase IN (
+                      SELECT pp.value
+                      FROM competitions pc,
+                           json_each(iif(json_valid(pc.penalty_phases), pc.penalty_phases, '[]')) pp
+                      WHERE pc.id = ${competition}
+                    )
+                  )
+              ),
               'round', MIN(CASE WHEN r.position = 1 THEN r.round END),
               'round_ends_at', MAX(CASE WHEN r.position = 1 THEN m.start_time END)
             )
@@ -74,24 +100,37 @@ export function pendingSummarySql(groupAlias = 'g'): string {
 
 /** Binds na ordem exigida por `pendingSummarySql`. */
 export function pendingSummaryBinds(nowIso: string, userId: string): string[] {
-  return [nowIso, nowIso, ...roundRuleBinds(nowIso), userId, nowIso, nowIso]
+  return [nowIso, nowIso, nowIso, ...roundRuleBinds(nowIso), userId, nowIso, nowIso]
+}
+
+/** Jogo palpitado que pode pedir o pênalti, a conferir em `missingPenalties`. */
+export type PenaltyCandidate = {
+  match_id: string
+  phase: string
+  /** Chave de prazo `start_time|fora|id`. Null para adiado ou horário passado. */
+  deadline: string | null
 }
 
 export type PendingSummary = {
   pending: number
-  /** Jogo sem palpite que começa primeiro. */
+  /** Jogo sem palpite (ou com pênalti faltando) que começa primeiro. */
   deadline: { match_id: string; start_time: string } | null
+  /** Chave crua de `deadline`, para comparar com a dos pênaltis faltando. */
+  deadline_key: string | null
   next_match_at: string | null
   round: string | null
   round_ends_at: string | null
+  penalty_candidates: PenaltyCandidate[]
 }
 
 const EMPTY_SUMMARY: PendingSummary = {
   pending: 0,
   deadline: null,
+  deadline_key: null,
   next_match_at: null,
   round: null,
   round_ends_at: null,
+  penalty_candidates: [],
 }
 
 /** Separa `start_time|fora|id` em horário e jogo. Chave fora do formato vira null. */
@@ -113,11 +152,51 @@ export function parsePendingSummary(raw: string | null | undefined): PendingSumm
     return EMPTY_SUMMARY
   }
   const text = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null)
+  const deadline = parseDeadlineKey(text(value.deadline))
   return {
     pending: typeof value.pending === 'number' ? value.pending : 0,
-    deadline: parseDeadlineKey(text(value.deadline)),
+    deadline,
+    deadline_key: deadline ? text(value.deadline) : null,
     next_match_at: text(value.next_match_at),
     round: text(value.round),
     round_ends_at: text(value.round_ends_at),
+    penalty_candidates: parsePenaltyCandidates(value.penalty_candidates),
+  }
+}
+
+function parsePenaltyCandidate(raw: unknown): PenaltyCandidate | null {
+  if (!raw || typeof raw !== 'object') return null
+  const { match_id, phase, deadline } = raw as Record<string, unknown>
+  if (typeof match_id !== 'string' || typeof phase !== 'string') return null
+  return { match_id, phase, deadline: typeof deadline === 'string' ? deadline : null }
+}
+
+/** Lista de `penalty_candidates`. Item fora do formato é descartado. */
+function parsePenaltyCandidates(raw: unknown): PenaltyCandidate[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item) => parsePenaltyCandidate(item) ?? [])
+}
+
+/**
+ * Soma ao resumo os palpites em que falta o pênalti. Eles contam como pendentes,
+ * como na aba Palpitar, e podem ser o prazo: vale a menor chave
+ * `start_time|fora|id`, a mesma ordem do SQL.
+ */
+export function withMissingPenalties(
+  summary: PendingSummary,
+  missing: readonly PenaltyCandidate[],
+): PendingSummary {
+  if (missing.length === 0) return summary
+  let deadlineKey = summary.deadline_key
+  for (const candidate of missing) {
+    if (candidate.deadline && (deadlineKey === null || candidate.deadline < deadlineKey)) {
+      deadlineKey = candidate.deadline
+    }
+  }
+  return {
+    ...summary,
+    pending: summary.pending + missing.length,
+    deadline: parseDeadlineKey(deadlineKey),
+    deadline_key: deadlineKey,
   }
 }
