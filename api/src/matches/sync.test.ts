@@ -12,20 +12,20 @@ import {
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
-// SELECT id lookups (competition + teams) sync.ts depends on. We don't run real
+// SELECT lookups (competition + teams) sync.ts depends on. We don't run real
 // SQLite, so the ON CONFLICT clause (scored_at reset) isn't *executed* here — it
 // is covered by a SQL-shape assertion below. Everything sync.ts computes in JS
-// (canonical score, penalty mapping, translation/slug) IS exercised end to end.
+// (canonical score, penalty mapping, round/phase) IS exercised end to end.
+// A criação da competição roda no SQLite real em footballDataCompetitions.test.ts.
 // ---------------------------------------------------------------------------
 
 type Captured = {
-  competition: unknown[][]
   teams: unknown[][]
   matches: unknown[][]
 }
 
 function buildFakeDb() {
-  const captured: Captured = { competition: [], teams: [], matches: [] }
+  const captured: Captured = { teams: [], matches: [] }
   const sqls = { match: '' as string }
 
   const db = {
@@ -38,15 +38,16 @@ function buildFakeDb() {
           return db.prepare(sql, args)
         },
         async run() {
-          if (sql.includes('INSERT INTO competitions')) captured.competition.push(bound)
-          else if (sql.includes('INSERT INTO teams')) captured.teams.push(bound)
+          if (sql.includes('INSERT INTO teams')) captured.teams.push(bound)
           else if (sql.includes('INSERT INTO matches')) {
             captured.matches.push(bound)
             sqls.match = sql
           }
         },
         async first<T>(): Promise<T | null> {
-          if (sql.includes('SELECT id FROM competitions')) return { id: 'comp-1' } as T
+          if (sql.includes('SELECT id, name FROM competitions')) {
+            return { id: 'comp-1', name: 'Copa do Mundo FIFA' } as T
+          }
           return null
         },
         async all<T>(): Promise<{ results: T[] }> {
@@ -379,67 +380,7 @@ describe('syncFixtures — upsert preserves scored_at reset on penalty_winner ch
   })
 })
 
-describe('syncFixtures — competition translation & stable slug (Decision 7/8)', () => {
-  it('translates the display name but derives the slug from the RAW api name', async () => {
-    mockFetch(
-      [
-        match(107, {
-          winner: 'DRAW',
-          duration: 'REGULAR',
-          fullTime: { home: 0, away: 0 },
-        }),
-      ],
-      'FIFA World Cup',
-    )
-    const { db, captured } = buildFakeDb()
-    await syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
-
-    // competition INSERT bind order: [id, name, slug, external_id, provider, season]
-    const comp = captured.competition[0]
-    expect(comp[1]).toBe('Copa do Mundo FIFA') // fuzzy-translated display name
-    expect(comp[2]).toBe('fifa-world-cup-2026') // slug from raw name, stays stable
-  })
-
-  it('traduz UEFA Champions League para Liga dos Campeões e mantém Premier League e slugs estáveis', async () => {
-    mockFetch(
-      [match(108, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 0, away: 0 } })],
-      'UEFA Champions League',
-    )
-    const clDb = buildFakeDb()
-    await syncFixtures({ competitionCode: 'CL', season: 2026, apiKey: 'k', db: clDb.db })
-    expect(clDb.captured.competition[0][1]).toBe('Liga dos Campeões')
-    expect(clDb.captured.competition[0][2]).toBe('uefa-champions-league-2026')
-
-    mockFetch(
-      [match(109, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 0, away: 0 } })],
-      'Premier League',
-    )
-    const plDb = buildFakeDb()
-    await syncFixtures({ competitionCode: 'PL', season: 2026, apiKey: 'k', db: plDb.db })
-    expect(plDb.captured.competition[0][1]).toBe('Premier League')
-    expect(plDb.captured.competition[0][2]).toBe('premier-league-2026')
-  })
-
-  it('traduz Primera Division e Serie A do lote 2 e mantém slugs estáveis', async () => {
-    mockFetch(
-      [match(210, { winner: 'DRAW', duration: 'REGULAR', fullTime: { home: 1, away: 1 } })],
-      'Primera Division',
-    )
-    const pdDb = buildFakeDb()
-    await syncFixtures({ competitionCode: 'PD', season: 2026, apiKey: 'k', db: pdDb.db })
-    expect(pdDb.captured.competition[0][1]).toBe('La Liga')
-    expect(pdDb.captured.competition[0][2]).toBe('la-liga-2026')
-
-    mockFetch(
-      [match(211, { winner: 'HOME_TEAM', duration: 'REGULAR', fullTime: { home: 2, away: 0 } })],
-      'Serie A',
-    )
-    const saDb = buildFakeDb()
-    await syncFixtures({ competitionCode: 'SA', season: 2026, apiKey: 'k', db: saDb.db })
-    expect(saDb.captured.competition[0][1]).toBe('Serie A Italiana')
-    expect(saDb.captured.competition[0][2]).toBe('serie-a-2026')
-  })
-
+describe('syncFixtures — rodada e fase', () => {
   it('mapeia matchday numérico na fase de liga e usa stage no mata-mata mesmo com matchday de ida e volta', async () => {
     mockFetch(
       [
@@ -974,11 +915,19 @@ describe('MATCH_UPSERT_SQL', () => {
   })
 
   it('should have matching number of columns and placeholders', () => {
-    const insertMatch = MATCH_UPSERT_SQL.match(/INSERT INTO matches \(([\s\S]*?)\)\s*VALUES \(([\s\S]*?)\)/)
+    const insertMatch = MATCH_UPSERT_SQL.match(
+      /INSERT INTO matches \(([\s\S]*?)\)\s*VALUES \(([\s\S]*?)\)/,
+    )
     expect(insertMatch).not.toBeNull()
     if (insertMatch) {
-      const columns = insertMatch[1].split(',').map(c => c.trim()).filter(c => c.length > 0)
-      const placeholders = insertMatch[2].split(',').map(c => c.trim()).filter(c => c === '?')
+      const columns = insertMatch[1]
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c) => c.length > 0)
+      const placeholders = insertMatch[2]
+        .split(',')
+        .map((c) => c.trim())
+        .filter((c) => c === '?')
       expect(columns.length).toBe(placeholders.length)
     }
   })
