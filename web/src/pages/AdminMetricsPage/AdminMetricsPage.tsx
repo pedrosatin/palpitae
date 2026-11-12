@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
 import { apiFetch } from '../../lib/api'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
-import ErrorState from '../../components/ErrorState'
-import AdminPageShell from '../AdminPageShell'
+import AdminPageShell, { AdminLoadError } from '../AdminPageShell'
+import { useAdminLoad, type AdminLoad } from '../useAdminLoad'
 import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
@@ -1287,73 +1287,104 @@ async function optionalJson<T>(res: Response | null): Promise<T | null> {
   return res?.ok ? ((await res.json().catch(() => null)) as T | null) : null
 }
 
+/** Tudo o que a página mostra para um período, lido de uma vez. */
+interface MetricsSnapshot {
+  overview: OverviewResponse
+  business: BusinessResponse | null
+  archive: ArchiveResponse | null
+  ops: OpsResponse | null
+  activity: CompetitionActivityResponse | null
+  heatmap: HeatmapResponse | null
+  inviteFunnel: InviteFunnelResponse | null
+  signupOrigins: SignupOriginsResponse | null
+}
+
+/** Nada carregado: período em carga, com falha ou sem acesso. */
+const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
+  overview: null,
+  business: null,
+  archive: null,
+  ops: null,
+  activity: null,
+  heatmap: null,
+  inviteFunnel: null,
+  signupOrigins: null,
+}
+
+/**
+ * Lê todas as seções do período. Não lança: 403 do overview vira `forbidden`,
+ * qualquer outra falha do overview (ou corpo inválido de negócio/arquivo) vira
+ * `failed`. Seção secundária que falha fica null, nunca com o dado de outro período.
+ */
+async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
+  const params = new URLSearchParams({ days: String(days) })
+  try {
+    const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes] =
+      await Promise.all([
+        apiFetch(buildApiUrl('/metrics/overview', params)),
+        apiFetch(buildApiUrl('/metrics/business', params)),
+        apiFetch(buildApiUrl('/metrics/archive')),
+        // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
+        apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/signup-origins', params)).catch(() => null),
+      ])
+    if (ovRes.status === 403) return { kind: 'forbidden' }
+    if (!ovRes.ok) return { kind: 'failed' }
+    return {
+      kind: 'ok',
+      data: {
+        overview: (await ovRes.json()) as OverviewResponse,
+        // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
+        business: bizRes.ok ? ((await bizRes.json()) as BusinessResponse) : null,
+        archive: arRes.ok ? ((await arRes.json()) as ArchiveResponse) : null,
+        ops: await optionalJson<OpsResponse>(opsRes),
+        activity: await optionalJson<CompetitionActivityResponse>(activityRes),
+        heatmap: await optionalJson<HeatmapResponse>(heatmapRes),
+        inviteFunnel: await optionalJson<InviteFunnelResponse>(funnelRes),
+        signupOrigins: await optionalJson<SignupOriginsResponse>(originsRes),
+      },
+    }
+  } catch {
+    return { kind: 'failed' }
+  }
+}
+
+/** GET /metrics/archive/query de um mês. Falha vira null: o mês fica sem resultado. */
+async function loadArchiveQuery(month: string): Promise<ArchiveQueryResponse | null> {
+  try {
+    const res = await apiFetch(
+      buildApiUrl('/metrics/archive/query', new URLSearchParams(monthBounds(month))),
+    )
+    return res.ok ? ((await res.json()) as ArchiveQueryResponse) : null
+  } catch {
+    return null
+  }
+}
+
 export default function AdminMetricsPage() {
   useDocumentTitle('Métricas')
 
   const [days, setDays] = useState<number>(30)
-  const [overview, setOverview] = useState<OverviewResponse | null>(null)
-  const [business, setBusiness] = useState<BusinessResponse | null>(null)
-  const [ops, setOps] = useState<OpsResponse | null>(null)
-  const [activity, setActivity] = useState<CompetitionActivityResponse | null>(null)
-  const [heatmap, setHeatmap] = useState<HeatmapResponse | null>(null)
-  const [inviteFunnel, setInviteFunnel] = useState<InviteFunnelResponse | null>(null)
-  const [signupOrigins, setSignupOrigins] = useState<SignupOriginsResponse | null>(null)
-  const [archive, setArchive] = useState<ArchiveResponse | null>(null)
-  const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data, error, loading, retry } = useAdminLoad(days, loadMetrics)
+  const { overview, business, archive, ops, activity, heatmap, inviteFunnel, signupOrigins } =
+    data ?? NO_METRICS
 
   // Análise do arquivo frio, sob demanda (um mês por vez) — independente do período.
+  // Só o último mês pedido grava resultado e encerra o "Lendo arquivos…".
   const [queryMonth, setQueryMonth] = useState<string | null>(null)
   const [queryResult, setQueryResult] = useState<ArchiveQueryResponse | null>(null)
   const [queryLoading, setQueryLoading] = useState(false)
-
+  const latestQuery = useRef(0)
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-
-    const params = new URLSearchParams({ days: String(days) })
-    Promise.all([
-      apiFetch(buildApiUrl('/metrics/overview', params)),
-      apiFetch(buildApiUrl('/metrics/business', params)),
-      apiFetch(buildApiUrl('/metrics/archive')),
-      // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
-      apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
-      apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
-      apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
-      apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
-      apiFetch(buildApiUrl('/metrics/signup-origins', params)).catch(() => null),
-    ])
-      .then(async (responses) => {
-        const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes] =
-          responses
-        if (cancelled) return
-        if (ovRes.status === 403) {
-          setError('forbidden')
-          return
-        }
-        if (!ovRes.ok) throw new Error(`overview ${ovRes.status}`)
-        setOverview((await ovRes.json()) as OverviewResponse)
-        // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
-        if (bizRes.ok) setBusiness((await bizRes.json()) as BusinessResponse)
-        if (arRes.ok) setArchive((await arRes.json()) as ArchiveResponse)
-        setOps(await optionalJson<OpsResponse>(opsRes))
-        setActivity(await optionalJson<CompetitionActivityResponse>(activityRes))
-        setHeatmap(await optionalJson<HeatmapResponse>(heatmapRes))
-        setInviteFunnel(await optionalJson<InviteFunnelResponse>(funnelRes))
-        setSignupOrigins(await optionalJson<SignupOriginsResponse>(originsRes))
-      })
-      .catch(() => {
-        if (!cancelled) setError('failed')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
+    const queries = latestQuery
     return () => {
-      cancelled = true
+      // Desmontou: nenhum pedido em voo é o último.
+      queries.current += 1
     }
-  }, [days])
+  }, [])
 
   const {
     stacked,
@@ -1377,19 +1408,14 @@ export default function AdminMetricsPage() {
   )
 
   async function runArchiveQuery(month: string) {
+    const query = ++latestQuery.current
     setQueryMonth(month)
     setQueryLoading(true)
     setQueryResult(null)
-    const { from, to } = monthBounds(month)
-    try {
-      const params = new URLSearchParams({ from, to })
-      const res = await apiFetch(buildApiUrl('/metrics/archive/query', params))
-      if (res.ok) setQueryResult((await res.json()) as ArchiveQueryResponse)
-    } catch {
-      // Falha na análise não derruba a página — o mês fica sem resultado.
-    } finally {
-      setQueryLoading(false)
-    }
+    const result = await loadArchiveQuery(month)
+    if (query !== latestQuery.current) return
+    setQueryResult(result)
+    setQueryLoading(false)
   }
 
   return (
@@ -1403,7 +1429,11 @@ export default function AdminMetricsPage() {
     >
       <>
         {error === 'failed' && (
-          <ErrorState message="Falha ao carregar as métricas. Tente de novo." />
+          <AdminLoadError
+            message="Falha ao carregar as métricas."
+            retryEventName="click_admin_metrics_tentar_novamente"
+            onRetry={retry}
+          />
         )}
 
         {loading && <p className={styles.hint}>Carregando…</p>}

@@ -1216,3 +1216,224 @@ describe('AdminMetricsPage · mapa de calor', () => {
     }
   })
 })
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0))
+const daysOf = (url: string) => new URL(url, 'http://x').searchParams.get('days')
+const isOverview = (url: string) => url.includes('/metrics/overview')
+const failedResponse = () => ({ ok: false, status: 500, json: async () => ({}) })
+// Overview que ecoa o período pedido: o título "Eventos por dia · últimos N" mostra de qual veio.
+const overviewFor = (url: string) => ({
+  ok: true,
+  status: 200,
+  json: async () => ({ ...overview, days: Number(daysOf(url)) }),
+})
+
+const twoMonthsArchive = {
+  files: [
+    { key: 'events/2026/05/10.ndjson', size: 1024, uploaded: '', events: 10 },
+    { key: 'events/2026/06/10.ndjson', size: 1024, uploaded: '', events: 20 },
+  ],
+}
+
+// Análise do arquivo com a resposta de cada mês controlada pelo teste.
+function archiveQueryFetch(byMonth: Record<string, Promise<unknown>>) {
+  const base = mockFetch()
+  return vi.fn(async (url: string) => {
+    if (url.includes('/metrics/archive/query')) {
+      const from = new URL(url, 'http://x').searchParams.get('from') ?? ''
+      return { ok: true, status: 200, json: () => byMonth[from.slice(0, 7)] }
+    }
+    if (url.includes('/metrics/archive')) {
+      return { ok: true, status: 200, json: async () => twoMonthsArchive }
+    }
+    return base(url)
+  })
+}
+
+const monthQuery = (month: string, last: string) => ({
+  ...archiveQuery,
+  from: `${month}-01`,
+  to: `${month}-${last}`,
+})
+
+describe('AdminMetricsPage: respostas fora de ordem', () => {
+  it('descarta o corpo do período anterior que chega depois do atual', async () => {
+    const corpo30 = deferred<unknown>()
+    const base = mockFetch()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (!isOverview(url)) return base(url)
+        // O cabeçalho do overview de 30 dias chega, o corpo demora.
+        if (daysOf(url) === '30') return { ok: true, status: 200, json: () => corpo30.promise }
+        return overviewFor(url)
+      }),
+    )
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    await user.click(screen.getByRole('button', { name: '7d' }))
+    expect(await screen.findByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
+
+    corpo30.resolve({ ...overview, days: 30 })
+    await flush()
+
+    expect(screen.getByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
+    expect(screen.queryByText(/Eventos por dia · últimos 30/)).not.toBeInTheDocument()
+  })
+
+  it('ignora o erro tardio do período anterior', async () => {
+    const pedido30 = deferred<unknown>()
+    const base = mockFetch()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (!isOverview(url)) return base(url)
+        return daysOf(url) === '30' ? pedido30.promise : overviewFor(url)
+      }),
+    )
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+
+    await user.click(screen.getByRole('button', { name: '7d' }))
+    expect(await screen.findByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
+
+    pedido30.reject(new TypeError('Failed to fetch'))
+    await flush()
+
+    expect(screen.queryByText(/Falha ao carregar as métricas/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
+  })
+
+  it('não mostra dados do período anterior quando o atual falha', async () => {
+    const base = mockFetch()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => (daysOf(url) === '7' ? failedResponse() : base(url))),
+    )
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+    expect(await screen.findByText(/Eventos por dia · últimos 30/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '7d' }))
+
+    expect(await screen.findByText(/Falha ao carregar as métricas/)).toBeInTheDocument()
+    expect(screen.queryByText(/Eventos por dia · últimos 30/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Visão geral do produto')).not.toBeInTheDocument()
+    expect(screen.queryByText('Carregando…')).not.toBeInTheDocument()
+  })
+
+  it('não mantém a seção secundária do período anterior quando ela falha no atual', async () => {
+    const base = mockFetch()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/metrics/business') && daysOf(url) === '7') return failedResponse()
+        return isOverview(url) ? overviewFor(url) : base(url)
+      }),
+    )
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+    expect(await screen.findByText('Visão geral do produto')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '7d' }))
+
+    expect(await screen.findByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
+    expect(screen.queryByText('Visão geral do produto')).not.toBeInTheDocument()
+  })
+
+  it('tentar novamente refaz o pedido do período selecionado', async () => {
+    let falhas = 1
+    const base = mockFetch()
+    const fetchFake = vi.fn(async (url: string) => {
+      if (!isOverview(url)) return base(url)
+      if (daysOf(url) === '7' && falhas-- > 0) return failedResponse()
+      return overviewFor(url)
+    })
+    vi.stubGlobal('fetch', fetchFake)
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+    await screen.findByText(/Eventos por dia · últimos 30/)
+    await user.click(screen.getByRole('button', { name: '7d' }))
+    await screen.findByText(/Falha ao carregar as métricas/)
+
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }))
+
+    expect(trackEvent).toHaveBeenCalledWith('click_admin_metrics_tentar_novamente')
+    expect(await screen.findByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
+    expect(screen.queryByText(/Falha ao carregar as métricas/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Carregando…')).not.toBeInTheDocument()
+    const overview7 = fetchFake.mock.calls.filter(([url]) => isOverview(url) && daysOf(url) === '7')
+    expect(overview7).toHaveLength(2)
+  })
+
+  it('desmontar com pedido pendente não atualiza nada depois', async () => {
+    const corpo30 = deferred<unknown>()
+    const base = mockFetch()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        isOverview(url) ? { ok: true, status: 200, json: () => corpo30.promise } : base(url),
+      ),
+    )
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { unmount } = render(<AdminMetricsPage />)
+    await waitFor(() => expect(fetch).toHaveBeenCalled())
+
+    unmount()
+    corpo30.resolve(overview)
+    await flush()
+
+    expect(consoleError).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it('a análise do arquivo mostra só o mês selecionado por último', async () => {
+    const maio = deferred<unknown>()
+    const junho = Promise.resolve(monthQuery('2026-06', '30'))
+    vi.stubGlobal('fetch', archiveQueryFetch({ '2026-05': maio.promise, '2026-06': junho }))
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+    await screen.findByText('Análise do arquivo (além da janela do AE)')
+
+    await user.click(screen.getByRole('button', { name: '2026-05' }))
+    await user.click(screen.getByRole('button', { name: '2026-06' }))
+    expect(await screen.findByText(/2026-06-01 a 2026-06-30/)).toBeInTheDocument()
+
+    maio.resolve(monthQuery('2026-05', '31'))
+    await flush()
+
+    expect(screen.getByText(/2026-06-01 a 2026-06-30/)).toBeInTheDocument()
+    expect(screen.queryByText(/2026-05-01 a 2026-05-31/)).not.toBeInTheDocument()
+  })
+
+  it('a análise do arquivo segue carregando o mês atual quando o anterior termina', async () => {
+    const maio = deferred<unknown>()
+    const junho = deferred<unknown>()
+    vi.stubGlobal('fetch', archiveQueryFetch({ '2026-05': maio.promise, '2026-06': junho.promise }))
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+    await screen.findByText('Análise do arquivo (além da janela do AE)')
+
+    await user.click(screen.getByRole('button', { name: '2026-05' }))
+    await user.click(screen.getByRole('button', { name: '2026-06' }))
+    maio.resolve(monthQuery('2026-05', '31'))
+    await flush()
+
+    expect(screen.getByText('Lendo arquivos…')).toBeInTheDocument()
+
+    junho.resolve(monthQuery('2026-06', '30'))
+    expect(await screen.findByText(/2026-06-01 a 2026-06-30/)).toBeInTheDocument()
+    expect(screen.queryByText('Lendo arquivos…')).not.toBeInTheDocument()
+  })
+})
