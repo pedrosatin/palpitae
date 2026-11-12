@@ -221,7 +221,7 @@ igual para todos os visitantes
 Um cliente que chama `api.palpitae.com.br` não consegue forjar a origem de Worker. Em 12/11/2026, pedidos diretos a
 `api.palpitae.com.br` com `CF-Worker: attacker.example` ou
 `CF-Worker: palpitae.com.br` chegaram ao Worker sem o header (conferido com
-`wrangler tail`), e o mesmo header enviado ao proxy chegou como
+`wrangler tail --config ./wrangler.toml`), e o mesmo header enviado ao proxy chegou como
 `palpitae-web.pages.dev`, valor preenchido pela Cloudflare. Um pedido direto com
 `CF-Connecting-IP` forjado recebeu 403 na borda e não chegou ao Worker. Por isso o
 balde compartilhado continua aceitando `CF-Worker` ou o IP de saída dos Workers
