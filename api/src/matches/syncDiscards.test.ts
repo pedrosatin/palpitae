@@ -493,3 +493,65 @@ describe('descoberta da football-data quando um jogo pendente some do calendári
     expect(of('match_missing_from_feed')).toEqual([])
   })
 })
+
+describe('horário e rodada da football-data no formato que o banco aceita', () => {
+  async function sync(matches: ReturnType<typeof fdMatch>[]) {
+    const provider = premierLeagueFeed()
+    provider.matches = matches
+    const { dataset, of } = analytics()
+    const result = await syncFixtures({
+      competitionCode: '2021',
+      season: 2026,
+      apiKey: 'key',
+      db: premierLeagueDb.db,
+      ae: dataset,
+    })
+    return { result, of }
+  }
+  let premierLeagueDb: ReturnType<typeof premierLeague>
+  beforeEach(() => {
+    premierLeagueDb = premierLeague()
+  })
+  const stored = () =>
+    premierLeagueDb.sqlite
+      .prepare('SELECT external_id, start_time, round FROM matches ORDER BY external_id')
+      .all()
+
+  it('grava utcDate com milissegundos ou com +00:00 sem milissegundos e em UTC com Z', async () => {
+    const matches = [
+      fdMatch(9001, '2026-11-08T16:30:00.000Z', ARSENAL, CHELSEA),
+      fdMatch(9002, '2026-12-06T13:30:00-03:00', CHELSEA, ARSENAL),
+      fdMatch(9003, '2026-12-13T16:30:00+00:00', ARSENAL, CHELSEA),
+    ]
+    // O segundo tick passa pelo ON CONFLICT do upsert com os mesmos valores.
+    await sync(matches)
+    const { result } = await sync(matches)
+
+    expect(result).toMatchObject({ matches: 3, discarded: 0 })
+    expect(stored()).toEqual([
+      { external_id: '9001', start_time: '2026-11-08T16:30:00Z', round: '11' },
+      { external_id: '9002', start_time: '2026-12-06T16:30:00Z', round: '11' },
+      { external_id: '9003', start_time: '2026-12-13T16:30:00Z', round: '11' },
+    ])
+  })
+
+  it('descarta data inválida e jogo sem rodada nem fase sem derrubar o lote', async () => {
+    const semRodada = {
+      ...fdMatch(9003, DECEMBER, ARSENAL, CHELSEA),
+      matchday: null,
+      stage: null,
+    } as unknown as ReturnType<typeof fdMatch>
+    const { result, of } = await sync([
+      fdMatch(9001, NOVEMBER, ARSENAL, CHELSEA),
+      fdMatch(9002, 'a definir', CHELSEA, ARSENAL),
+      semRodada,
+    ])
+
+    expect(result).toMatchObject({ matches: 1, discarded: 2 })
+    expect(stored()).toEqual([{ external_id: '9001', start_time: NOVEMBER, round: '11' }])
+    expect(of('sync_event_discarded').map((point) => point.blobs.slice(3, 5))).toEqual([
+      ['invalid_event', 'date'],
+      ['invalid_event', 'round'],
+    ])
+  })
+})

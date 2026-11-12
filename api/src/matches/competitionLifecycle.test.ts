@@ -6,6 +6,7 @@ vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
 vi.mock('./scoring', () => ({ scoreUnprocessedMatches: vi.fn(async () => undefined) }))
 
 import { competitionStatusSql } from '../groups/competitionStatus'
+import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { FINISH_CONFIRMATION_DAYS, reconcileCompetitionStatus } from './competitionLifecycle'
 import { discoverFixtures } from './fixtureDiscovery'
@@ -75,9 +76,10 @@ function openDb() {
       .prepare(
         `INSERT INTO matches (
            id, competition_id, external_id, provider, home_team_id, away_team_id,
-           start_time, status, round, phase, leg, postponed
-         ) VALUES (?, ?, ?, 'espn', 'fla', 'pal', ?, ?, '1', ?, ?, 0)
-         ON CONFLICT (id) DO UPDATE SET status = excluded.status, start_time = excluded.start_time`,
+           start_time, status, round, phase, leg, postponed, home_score, away_score
+         ) VALUES (?, ?, ?, 'espn', 'fla', 'pal', ?, ?, '1', ?, ?, 0, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET status = excluded.status, start_time = excluded.start_time,
+           home_score = excluded.home_score, away_score = excluded.away_score`,
       )
       .run(
         match.id,
@@ -87,6 +89,7 @@ function openDb() {
         match.status,
         match.phase ?? 'REGULAR_SEASON',
         match.leg ?? null,
+        ...finalScore(match.status),
       )
   }
 

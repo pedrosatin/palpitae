@@ -41,7 +41,9 @@ function database() {
   return { sqlite, db }
 }
 
-const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000).toISOString()
+/** Horário no formato que os provedores gravam (migration 0043), sem milissegundos. */
+const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
+const minutesAgo = (minutes: number) => iso(Date.now() - minutes * 60 * 1000)
 
 const handles: DatabaseSync[] = []
 afterEach(() => {
@@ -106,7 +108,7 @@ function seed(
       m.id,
       m.comp ?? 'c1',
       m.id,
-      new Date(m.start).toISOString(),
+      iso(m.start),
       m.round,
       m.postponed ?? 0,
     )
@@ -181,7 +183,7 @@ describe('pollActiveMatches varredura de atrasados', () => {
 
     // Com jogo na janela ativa, o tick não soma a varredura ao custo dele.
     const busy = sweep + 3 * LATE_SWEEP_INTERVAL_MS
-    insert.run('now', 'c1', 'now', new Date(busy - 2 * HOUR).toISOString(), '20', 0)
+    insert.run('now', 'c1', 'now', iso(busy - 2 * HOUR), '20', 0)
     vi.mocked(syncFixtures).mockClear()
     await pollActiveMatches(db, 'key', undefined, busy)
     expect(vi.mocked(syncFixtures).mock.calls.map(([options]) => options.matchday)).toEqual([20])
@@ -203,7 +205,7 @@ describe('pollActiveMatches varredura de atrasados', () => {
       now += LATE_SWEEP_INTERVAL_MS
     ) {
       const busy = new Date(now).getUTCHours() === 0
-      if (busy) insert.run('busy', 'c1', 'busy', new Date(now - 2 * HOUR).toISOString(), '99', 0)
+      if (busy) insert.run('busy', 'c1', 'busy', iso(now - 2 * HOUR), '99', 0)
       vi.mocked(syncFixtures).mockClear()
       await pollActiveMatches(db, 'key', undefined, now)
       for (const [options] of vi.mocked(syncFixtures).mock.calls) {

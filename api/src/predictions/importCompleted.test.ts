@@ -76,9 +76,9 @@ describe('Conclusão da importação por membro', () => {
     const { sqlite, request } = setup()
     sqlite.exec(`
       INSERT INTO competitions (id,name,slug,status) VALUES ('c2','C2','test-c2','ongoing');
-      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round)
-        VALUES ('m2','c2','test-m2','test','h','v','2099-01-01T00:00:00Z','scheduled','1'),
-               ('done','c','test-done','test','h','v','2000-01-01T00:00:00Z','finished','1');
+      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
+        VALUES ('m2','c2','test-m2','test','h','v','2099-01-01T00:00:00Z','scheduled','1',NULL,NULL),
+               ('done','c','test-done','test','h','v','2000-01-01T00:00:00Z','finished','1',1,0);
       INSERT INTO groups (id,name,competition_id,owner_user_id,invite_code)
         VALUES ('alien','Alheio','c2','a','alien');
       INSERT INTO group_members (id,group_id,user_id) VALUES ('aa','alien','a');
@@ -102,9 +102,9 @@ describe('Conclusão da importação por membro', () => {
   it('only_missing preenche só os jogos sem palpite e preserva os existentes', async () => {
     const { sqlite, request } = setup()
     sqlite.exec(`
-      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round)
-        VALUES ('m2','c','test-m2','test','h','v','2099-01-01T00:00:00Z','scheduled','2'),
-               ('done','c','test-done','test','h','v','2000-01-01T00:00:00Z','finished','1');
+      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
+        VALUES ('m2','c','test-m2','test','h','v','2099-01-01T00:00:00Z','scheduled','2',NULL,NULL),
+               ('done','c','test-done','test','h','v','2000-01-01T00:00:00Z','finished','1',1,0);
       INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
         VALUES ('p2','a','source','m2',4,4), ('p3','a','source','done',1,1), ('mine','a','target','m',0,0);
     `)

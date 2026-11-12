@@ -48,20 +48,20 @@ async function createFixture() {
 
     INSERT INTO matches (
       id, competition_id, external_id, provider,
-      home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+      home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at, home_score, away_score
     ) VALUES
       -- Rodada 1: encerrada (não é default_round)
-      ('m-r1-1', 'comp-a', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-01T19:00:00Z'),
+      ('m-r1-1', 'comp-a', 'fd-1', 'football-data', 'fla', 'pal', '2026-06-01T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-01T19:00:00Z', 1, 0),
       -- Rodada 2: default_round (MAX start futuro). 3 jogos abertos + 1 travado + 1 adiado aberto
-      ('m-r2-open-1', 'comp-a', 'fd-2', 'football-data', 'fla', 'cor', '2026-06-20T19:00:00Z', 'scheduled', '2', NULL, 0, NULL),
-      ('m-r2-open-2', 'comp-a', 'fd-3', 'football-data', 'pal', 'sao', '2026-06-21T19:00:00Z', 'scheduled', '2', NULL, 0, NULL),
-      ('m-r2-open-3', 'comp-a', 'fd-4', 'football-data', 'cor', 'sao', '2026-06-22T19:00:00Z', 'scheduled', '2', NULL, 0, NULL),
-      ('m-r2-locked', 'comp-a', 'fd-5', 'football-data', 'sao', 'fla', '2026-06-23T19:00:00Z', 'scheduled', '2', NULL, 0, '2026-06-15T10:00:00Z'),
-      ('m-r2-postponed', 'comp-a', 'fd-6', 'football-data', 'pal', 'cor', '2026-06-10T19:00:00Z', 'scheduled', '2', NULL, 1, NULL),
+      ('m-r2-open-1', 'comp-a', 'fd-2', 'football-data', 'fla', 'cor', '2026-06-20T19:00:00Z', 'scheduled', '2', NULL, 0, NULL, NULL, NULL),
+      ('m-r2-open-2', 'comp-a', 'fd-3', 'football-data', 'pal', 'sao', '2026-06-21T19:00:00Z', 'scheduled', '2', NULL, 0, NULL, NULL, NULL),
+      ('m-r2-open-3', 'comp-a', 'fd-4', 'football-data', 'cor', 'sao', '2026-06-22T19:00:00Z', 'scheduled', '2', NULL, 0, NULL, NULL, NULL),
+      ('m-r2-locked', 'comp-a', 'fd-5', 'football-data', 'sao', 'fla', '2026-06-23T19:00:00Z', 'scheduled', '2', NULL, 0, '2026-06-15T10:00:00Z', NULL, NULL),
+      ('m-r2-postponed', 'comp-a', 'fd-6', 'football-data', 'pal', 'cor', '2026-06-10T19:00:00Z', 'scheduled', '2', NULL, 1, NULL, NULL, NULL),
       -- Rodada 3: futura, fora da default_round
-      ('m-r3-1', 'comp-a', 'fd-7', 'football-data', 'fla', 'sao', '2026-07-01T19:00:00Z', 'scheduled', '3', NULL, 0, NULL),
+      ('m-r3-1', 'comp-a', 'fd-7', 'football-data', 'fla', 'sao', '2026-07-01T19:00:00Z', 'scheduled', '3', NULL, 0, NULL, NULL, NULL),
       -- Pilot: não vaza para usuário comum
-      ('m-pilot-1', 'comp-pilot', 'cl-1', 'football-data', 'fla', 'pal', '2026-06-25T19:00:00Z', 'scheduled', '1', 'QUARTER_FINALS', 0, NULL);
+      ('m-pilot-1', 'comp-pilot', 'cl-1', 'football-data', 'fla', 'pal', '2026-06-25T19:00:00Z', 'scheduled', '1', 'QUARTER_FINALS', 0, NULL, NULL, NULL);
 
     INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code) VALUES
       ('group-a', 'Bolão A', 'comp-a', 'alice', 'AAAA-BBBB'),
@@ -332,10 +332,10 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
       sqlite.exec(`
         INSERT INTO matches (
           id, competition_id, external_id, provider,
-          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at, home_score, away_score
         ) VALUES
-          ('m-r1-2', 'comp-a', 'fd-r1-2', 'football-data', 'cor', 'sao', '2026-06-02T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-02T19:00:00Z'),
-          ('m-r1-remarcado', 'comp-a', 'fd-r1-3', 'football-data', 'sao', 'pal', '2026-06-18T19:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+          ('m-r1-2', 'comp-a', 'fd-r1-2', 'football-data', 'cor', 'sao', '2026-06-02T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-02T19:00:00Z', 1, 0),
+          ('m-r1-remarcado', 'comp-a', 'fd-r1-3', 'football-data', 'sao', 'pal', '2026-06-18T19:00:00Z', 'scheduled', '1', NULL, 0, NULL, NULL, NULL);
       `),
     )
     const groupA = groups.find((g) => g.id === 'group-a')
@@ -386,10 +386,10 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
       sqlite.exec(`
         INSERT INTO matches (
           id, competition_id, external_id, provider,
-          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at, home_score, away_score
         ) VALUES
-          ('m-r1-2', 'comp-a', 'fd-r1-2', 'football-data', 'cor', 'sao', '2026-06-02T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-02T19:00:00Z'),
-          ('m-r1-remarcado', 'comp-a', 'fd-r1-3', 'football-data', 'sao', 'pal', '2026-06-20T19:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+          ('m-r1-2', 'comp-a', 'fd-r1-2', 'football-data', 'cor', 'sao', '2026-06-02T19:00:00Z', 'finished', '1', NULL, 0, '2026-06-02T19:00:00Z', 1, 0),
+          ('m-r1-remarcado', 'comp-a', 'fd-r1-3', 'football-data', 'sao', 'pal', '2026-06-20T19:00:00Z', 'scheduled', '1', NULL, 0, NULL, NULL, NULL);
       `),
     )
     const groupA = groups.find((g) => g.id === 'group-a')
@@ -449,19 +449,19 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
       sqlite.exec(`
         INSERT INTO matches (
           id, competition_id, external_id, provider,
-          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at
+          home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at, home_score, away_score
         ) VALUES
           -- Começou há 1 h e segue sem resultado, então está ao vivo
-          ('m-live-1', 'comp-a', 'fd-l1', 'football-data', 'pal', 'fla', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL),
-          ('m-live-2', 'comp-a', 'fd-l2', 'football-data', 'cor', 'sao', '2026-06-15T10:30:00Z', 'scheduled', '1', NULL, 0, '2026-06-15T10:30:00Z'),
+          ('m-live-1', 'comp-a', 'fd-l1', 'football-data', 'pal', 'fla', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL, NULL, NULL),
+          ('m-live-2', 'comp-a', 'fd-l2', 'football-data', 'cor', 'sao', '2026-06-15T10:30:00Z', 'scheduled', '1', NULL, 0, '2026-06-15T10:30:00Z', NULL, NULL),
           -- Encerrado na janela
-          ('m-done', 'comp-a', 'fd-l3', 'football-data', 'sao', 'pal', '2026-06-15T10:00:00Z', 'finished', '1', NULL, 0, '2026-06-15T10:00:00Z'),
+          ('m-done', 'comp-a', 'fd-l3', 'football-data', 'sao', 'pal', '2026-06-15T10:00:00Z', 'finished', '1', NULL, 0, '2026-06-15T10:00:00Z', 1, 0),
           -- Adiado com horário na janela
-          ('m-adiado', 'comp-a', 'fd-l4', 'football-data', 'fla', 'sao', '2026-06-15T11:30:00Z', 'scheduled', '1', NULL, 1, NULL),
+          ('m-adiado', 'comp-a', 'fd-l4', 'football-data', 'fla', 'sao', '2026-06-15T11:30:00Z', 'scheduled', '1', NULL, 1, NULL, NULL, NULL),
           -- Começou há 4 h e segue sem resultado, fora da janela do poller
-          ('m-velho', 'comp-a', 'fd-l5', 'football-data', 'cor', 'fla', '2026-06-15T08:00:00Z', 'scheduled', '1', NULL, 0, NULL),
+          ('m-velho', 'comp-a', 'fd-l5', 'football-data', 'cor', 'fla', '2026-06-15T08:00:00Z', 'scheduled', '1', NULL, 0, NULL, NULL, NULL),
           -- Outra competição
-          ('m-outra', 'comp-empty', 'fd-l6', 'football-data', 'pal', 'cor', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL);
+          ('m-outra', 'comp-empty', 'fd-l6', 'football-data', 'pal', 'cor', '2026-06-15T11:00:00Z', 'scheduled', '1', NULL, 0, NULL, NULL, NULL);
       `),
     )
 
@@ -552,13 +552,13 @@ describe('GET /groups pendência de pênalti, como o contador da aba Palpitar (S
         ('int', 'Internacional', 'INT', 'internacional');
       INSERT INTO matches (
         id, competition_id, external_id, provider,
-        home_team_id, away_team_id, start_time, status, round, phase, leg, postponed, locked_at
+        home_team_id, away_team_id, start_time, status, round, phase, leg, postponed, locked_at, home_score, away_score
       ) VALUES
-        ('q1-ida', 'comp-cup', 'c-1', 'espn', 'fla', 'pal', '2026-06-10T19:00:00Z', 'finished', 'QUARTER_FINALS', 'QUARTER_FINALS', 1, 0, '2026-06-10T19:00:00Z'),
-        ('q1-volta', 'comp-cup', 'c-2', 'espn', 'pal', 'fla', '2026-06-17T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', 2, 0, NULL),
-        ('q2-unico', 'comp-cup', 'c-3', 'espn', 'cor', 'sao', '2026-06-18T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, NULL),
-        ('q3-ida', 'comp-cup', 'c-4', 'football-data', 'gre', 'int', '2026-06-11T19:00:00Z', 'finished', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, '2026-06-11T19:00:00Z'),
-        ('q3-volta', 'comp-cup', 'c-5', 'football-data', 'int', 'gre', '2026-06-19T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, NULL);
+        ('q1-ida', 'comp-cup', 'c-1', 'espn', 'fla', 'pal', '2026-06-10T19:00:00Z', 'finished', 'QUARTER_FINALS', 'QUARTER_FINALS', 1, 0, '2026-06-10T19:00:00Z', 1, 0),
+        ('q1-volta', 'comp-cup', 'c-2', 'espn', 'pal', 'fla', '2026-06-17T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', 2, 0, NULL, NULL, NULL),
+        ('q2-unico', 'comp-cup', 'c-3', 'espn', 'cor', 'sao', '2026-06-18T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, NULL, NULL, NULL),
+        ('q3-ida', 'comp-cup', 'c-4', 'football-data', 'gre', 'int', '2026-06-11T19:00:00Z', 'finished', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, '2026-06-11T19:00:00Z', 1, 0),
+        ('q3-volta', 'comp-cup', 'c-5', 'football-data', 'int', 'gre', '2026-06-19T19:00:00Z', 'scheduled', 'QUARTER_FINALS', 'QUARTER_FINALS', NULL, 0, NULL, NULL, NULL);
       INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner) VALUES
         ('cup-placar', 'Copa placar', 'comp-cup', 'alice', 'KKKK-LLLL', 3, 1),
         ('cup-vencedor', 'Copa só vencedor', 'comp-cup', 'alice', 'MMMM-NNNN', 0, 1);

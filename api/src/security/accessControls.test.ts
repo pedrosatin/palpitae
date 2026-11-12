@@ -31,9 +31,9 @@ function database() {
     INSERT INTO group_members (id,group_id,user_id,role) VALUES
       ('gm1','group','owner','owner'),('gm2','group','member','member'),('gm3','group','other','member');
     INSERT INTO teams (id,name,slug) VALUES ('home','Home','home'),('away','Away','away');
-    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status)
-      VALUES ('future','competition','1','football-data','home','away','2099-01-01T00:00:00Z','scheduled'),
-             ('past','competition','2','football-data','home','away','2020-01-01T00:00:00Z','finished');
+    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
+      VALUES ('future','competition','1','football-data','home','away','2099-01-01T00:00:00Z','scheduled','1',NULL,NULL),
+             ('past','competition','2','football-data','home','away','2020-01-01T00:00:00Z','finished','1',1,0);
     INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
       VALUES ('p1','member','group','future',1,0),('p2','other','group','future',2,0),
              ('p3','other','group','past',3,0);
@@ -504,10 +504,10 @@ describe('access controls with a real SQL database', () => {
     const matchInserts = Array.from(
       { length: 100 },
       (_, i) =>
-        `('bulk-${i}', 'competition', 'ext-${i}', 'football-data', 'home', 'away', '2099-01-01T00:00:00Z', 'scheduled')`,
+        `('bulk-${i}', 'competition', 'ext-${i}', 'football-data', 'home', 'away', '2099-01-01T00:00:00Z', 'scheduled', '1')`,
     ).join(', ')
     sqlite.exec(
-      `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status) VALUES ${matchInserts}`,
+      `INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, round) VALUES ${matchInserts}`,
     )
 
     const predictions = Array.from({ length: 100 }, (_, i) => ({

@@ -256,6 +256,19 @@ export function isoSeconds(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
+/**
+ * Horário do provedor no formato que `matches.start_time` aceita
+ * (`YYYY-MM-DDTHH:MM:SSZ`, migration 0043), ou null se a data não é válida.
+ * Milissegundos e fuso são normalizados; o sync descarta a data inválida em vez
+ * de deixar o gatilho derrubar o lote inteiro.
+ */
+export function resolveStartTime(rawDate: unknown): string | null {
+  if (typeof rawDate !== 'string') return null
+  const parsed = Date.parse(rawDate)
+  if (!Number.isFinite(parsed)) return null
+  return isoSeconds(new Date(parsed))
+}
+
 export function slugify(str: string): string {
   return str
     .toLowerCase()
@@ -638,8 +651,8 @@ export const KNOCKOUT_STAGES = new Set([
 /** Fases de pontos: o `matchday` é a rodada numérica. */
 const LEAGUE_STAGES = new Set(['REGULAR_SEASON', 'GROUP_STAGE', 'LEAGUE_STAGE'])
 
-function mapRound(matchday: number | null, stage: string): string {
-  if (KNOCKOUT_STAGES.has(stage) || matchday === null) return stage
+function mapRound(matchday: number | null, stage: string | null): string | null {
+  if ((stage && KNOCKOUT_STAGES.has(stage)) || matchday === null) return stage || null
   if (!stage || LEAGUE_STAGES.has(stage)) return String(matchday)
   // Em outra fase o matchday recomeça em 1. Sem o prefixo, o jogo entraria na
   // Rodada 1 da fase de pontos.
@@ -664,19 +677,27 @@ function mapMatchUpsertRow(
   m: ApiMatch,
   teamIds: Map<number, string>,
   now: string,
-): MatchUpsertRow | null {
+): MatchUpsertRow | SyncDiscard {
   const homeTeamId = teamIds.get(m.homeTeam?.id)
   const awayTeamId = teamIds.get(m.awayTeam?.id)
-  if (!homeTeamId || !awayTeamId) return null
+  if (!homeTeamId || !awayTeamId) {
+    // Sem id de time é confronto ainda indefinido (mata-mata antes do sorteio).
+    const tbd = !m.homeTeam?.id || !m.awayTeam?.id
+    return { reason: 'missing_competitor', detail: tbd ? 'tbd' : '' }
+  }
+  const startTime = resolveStartTime(m.utcDate)
+  if (!startTime) return { reason: 'invalid_event', detail: 'date' }
+  const round = mapRound(m.matchday, m.stage)
+  if (!round) return { reason: 'invalid_event', detail: 'round' }
 
   return {
     externalId: String(m.id),
     homeTeamId,
     awayTeamId,
-    startTime: m.utcDate,
+    startTime,
     ...resolveFootballDataResult(m),
     phase: m.stage ?? null,
-    round: mapRound(m.matchday, m.stage),
+    round,
     groupName: mapGroupName(m.group),
     // A football-data não informa ida e volta: `matchday` não serve para isso
     // (jogo único de mata-mata também vem com matchday 1). O par do confronto é
@@ -890,10 +911,8 @@ async function upsertMatches(
 
   for (const m of matches) {
     const row = mapMatchUpsertRow(m, teamIds, now)
-    if (!row) {
-      // Sem id de time é confronto ainda indefinido (mata-mata antes do sorteio).
-      const tbd = !m.homeTeam?.id || !m.awayTeam?.id
-      discards.push({ reason: 'missing_competitor', detail: tbd ? 'tbd' : '' })
+    if ('reason' in row) {
+      discards.push(row)
       continue
     }
 
