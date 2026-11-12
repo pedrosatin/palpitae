@@ -71,6 +71,9 @@ function createMatchesDbMock(
             },
             async first() {
               if (sql.includes('FROM revoked_sessions')) return null
+              if (sql.includes('FROM competitions c')) {
+                return { visibility: 'public', last_scored_at: null }
+              }
               if (sql.includes('FROM competitions WHERE id = ?')) {
                 return {
                   external_id: 'WC',
@@ -244,7 +247,23 @@ describe('matches router – GET /', () => {
   })
 
   describe('Cache-Control derived from response contents', () => {
-    async function cacheHeaderFor(matchRows: { status: string }[]): Promise<string | null> {
+    afterEach(() => {
+      delete (globalThis as { caches?: unknown }).caches
+    })
+
+    /** Cache-Control da resposta ao navegador e da cópia guardada na borda. */
+    async function cacheHeadersFor(
+      matchRows: { status: string }[],
+    ): Promise<{ browser: string | null; edge: string | null }> {
+      const stored: Response[] = []
+      ;(globalThis as { caches?: unknown }).caches = {
+        default: {
+          match: async () => undefined,
+          put: async (_req: Request, res: Response) => {
+            stored.push(res)
+          },
+        },
+      }
       const app = new Hono<AppContext>()
       app.route('/matches', matchesRouter)
 
@@ -254,23 +273,28 @@ describe('matches router – GET /', () => {
         { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} },
       )
 
-      return response.headers.get('Cache-Control')
+      return {
+        browser: response.headers.get('Cache-Control'),
+        edge: stored[0]?.headers.get('Cache-Control') ?? null,
+      }
     }
 
-    it('caches an all-finished list for 24h', async () => {
-      expect(await cacheHeaderFor([{ status: 'finished' }, { status: 'finished' }])).toBe(
-        'public, max-age=86400',
-      )
+    it('caches an all-finished list for 24h at the edge and 60s in the browser', async () => {
+      expect(await cacheHeadersFor([{ status: 'finished' }, { status: 'finished' }])).toEqual({
+        browser: 'public, max-age=60',
+        edge: 'public, max-age=86400',
+      })
     })
 
     it('uses a short TTL for a list with not-yet-finished scheduled matches', async () => {
-      expect(await cacheHeaderFor([{ status: 'finished' }, { status: 'scheduled' }])).toBe(
-        'public, max-age=60',
-      )
+      expect(await cacheHeadersFor([{ status: 'finished' }, { status: 'scheduled' }])).toEqual({
+        browser: 'public, max-age=60',
+        edge: 'public, max-age=60',
+      })
     })
 
-    it('uses a short TTL for an empty list so it repopulates quickly', async () => {
-      expect(await cacheHeaderFor([])).toBe('public, max-age=60')
+    it('uses a short TTL for an empty list and keeps it out of the edge cache', async () => {
+      expect(await cacheHeadersFor([])).toEqual({ browser: 'public, max-age=60', edge: null })
     })
   })
 
