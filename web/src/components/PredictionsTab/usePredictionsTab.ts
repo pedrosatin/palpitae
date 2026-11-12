@@ -470,6 +470,7 @@ export function usePredictionsTab(
     replicateFeedback,
     handleReplicateToggle,
     replicate,
+    canRetryReplicate,
     retryReplicate,
   } = usePredictionsReplicate(
     { groupId, competitionId, userId, round: selectedRound, pointsExact },
@@ -568,6 +569,7 @@ export function usePredictionsTab(
     replicating,
     replicateFeedback,
     handleReplicateToggle,
+    canRetryReplicate,
     retryReplicate,
     handleDraftChange,
     handlePenaltyDraftChange,

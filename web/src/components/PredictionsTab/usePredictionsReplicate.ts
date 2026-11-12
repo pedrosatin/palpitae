@@ -3,12 +3,14 @@ import { trackEvent } from '../../analytics/ga'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { readReplicatePreference, writeReplicatePreference } from '../../lib/replicatePreference'
 import {
+  clearReplicateFeedback,
   finishReplicate,
   keepReplicateFeedback,
   readReplicateStatus,
   replicateContextKey,
   startReplicate,
   subscribeReplicateStatus,
+  viewReplicateContext,
 } from '../../lib/replicateStatus'
 import {
   describeReplicate,
@@ -40,7 +42,8 @@ type Scope = {
  *
  * Cada envio pertence ao grupo e à rodada dos jogos salvos. A resposta que volta
  * depois de trocar de rodada ou de grupo fica guardada lá e aparece quando a pessoa
- * volta; a rodada exibida não mostra resultado de outra.
+ * volta; a rodada exibida não mostra resultado de outra. A confirmação de sucesso
+ * sai quando a pessoa deixa o contexto em que a viu.
  */
 export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
   const { groupId, competitionId, userId, round, pointsExact } = scope
@@ -59,13 +62,29 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
     latest.current = { groupId, userId, round, targets, enabled }
   })
 
+  // Confirmações de sucesso mostradas neste contexto. Saem do contexto quando a
+  // pessoa troca de rodada ou de grupo; numa rodada sem jogo aberto, a opção some e
+  // não haveria como tirá-las da barra.
+  // A troca de contexto vem antes do registro do que a tela mostra.
+  const shown = useRef(new Set<number>())
+  useEffect(() => {
+    const seen = new Set<number>()
+    shown.current = seen
+    const leave = viewReplicateContext(viewKey)
+    return () => leave(seen)
+  }, [viewKey])
+  useEffect(() => {
+    for (const f of feedback) if (f.ok) shown.current.add(f.id)
+  }, [feedback])
+
   useEffect(() => {
     setEnabled(readReplicatePreference(userId, competitionId))
   }, [competitionId, userId])
 
   function handleToggle(next: boolean) {
     setEnabled(next)
-    keepReplicateFeedback(viewKey, () => false)
+    // A confirmação de antes não vale para o que for salvo com a opção nova.
+    clearReplicateFeedback(userId, groupId)
     writeReplicatePreference(userId, competitionId, next)
     trackEvent('change_predictions_aplicar_outros_grupos', { enabled: next })
   }
@@ -105,8 +124,14 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
     }
   }, [])
 
+  // Sem a opção marcada ou sem grupo de destino, não há para onde reenviar.
+  const canRetry =
+    enabled && targets.length > 0 && inFlight === 0 && feedback.some((f) => !f.ok)
+
   /** Envia de novo os jogos dos envios que falharam na rodada exibida. */
   const retry = useCallback(() => {
+    const { targets: current, enabled: on } = latest.current
+    if (!on || current.length === 0) return
     const ids = Array.from(new Set(feedback.filter((f) => !f.ok).flatMap((f) => f.matchIds ?? [])))
     keepReplicateFeedback(viewKey, (f) => f.ok)
     void replicate(ids, round)
@@ -120,6 +145,7 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
     replicateFeedback: feedback,
     handleReplicateToggle: handleToggle,
     replicate,
+    canRetryReplicate: canRetry,
     retryReplicate: retry,
   }
 }

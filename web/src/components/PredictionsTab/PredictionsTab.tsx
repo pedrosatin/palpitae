@@ -132,6 +132,7 @@ export default function PredictionsTab({
     replicating,
     replicateFeedback,
     handleReplicateToggle,
+    canRetryReplicate,
     retryReplicate,
     handleDraftChange,
     handlePenaltyDraftChange,
@@ -281,7 +282,7 @@ export default function PredictionsTab({
                 {f.message}
               </span>
             ))}
-            {replicateFeedback.some((f) => !f.ok) && !replicating && (
+            {canRetryReplicate && (
               <button type="button" className={styles.retryLink} onClick={retryReplicate}>
                 Tentar de novo
               </button>

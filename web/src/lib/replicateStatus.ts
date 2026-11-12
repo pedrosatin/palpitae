@@ -1,9 +1,10 @@
 /**
  * Estado de "Aplicar também nos outros grupos" por contexto de origem: usuário,
  * grupo e rodada em que o palpite foi salvo. Fica fora do componente porque a
- * resposta pode voltar depois que a pessoa trocou de rodada ou de grupo (a aba
- * remonta). O resultado fica no contexto de origem e aparece quando ela volta
- * para lá. Vale até recarregar a página.
+ * resposta pode voltar depois que a pessoa trocou de rodada ou de grupo (na troca
+ * de grupo a aba remonta). O resultado fica no contexto de origem e aparece quando
+ * ela volta para lá. A confirmação de sucesso sai depois de vista uma vez; a falha
+ * fica até uma nova tentativa. Vale até recarregar a página.
  */
 
 export type ReplicateFeedback = {
@@ -27,6 +28,8 @@ const EMPTY: ReplicateStatus = { inFlight: 0, feedback: [] }
 
 const statuses = new Map<string, ReplicateStatus>()
 const listeners = new Set<() => void>()
+/** Telas que mostram cada contexto agora. */
+const viewers = new Map<string, number>()
 let nextId = 0
 
 export function replicateContextKey(
@@ -48,7 +51,9 @@ export function subscribeReplicateStatus(listener: () => void): () => void {
 }
 
 function update(key: string, change: (status: ReplicateStatus) => ReplicateStatus) {
-  const next = change(readReplicateStatus(key))
+  const current = readReplicateStatus(key)
+  const next = change(current)
+  if (next === current) return
   if (next.inFlight === 0 && next.feedback.length === 0) statuses.delete(key)
   else statuses.set(key, next)
   for (const listener of listeners) listener()
@@ -69,11 +74,41 @@ export function finishReplicate(key: string, entry: Omit<ReplicateFeedback, 'id'
 
 /** Mantém só as confirmações do contexto que passam no filtro. */
 export function keepReplicateFeedback(key: string, keep: (f: ReplicateFeedback) => boolean) {
-  update(key, (s) => ({ ...s, feedback: s.feedback.filter(keep) }))
+  update(key, (s) => {
+    const feedback = s.feedback.filter(keep)
+    return feedback.length === s.feedback.length ? s : { ...s, feedback }
+  })
+}
+
+/** Apaga as confirmações de todas as rodadas do usuário no grupo. */
+export function clearReplicateFeedback(userId: string | undefined, groupId: string) {
+  for (const key of Array.from(statuses.keys())) {
+    const [user, group] = JSON.parse(key) as string[]
+    if (user === (userId ?? '') && group === groupId) keepReplicateFeedback(key, () => false)
+  }
+}
+
+/**
+ * A tela passou a mostrar o contexto. A função devolvida marca a saída: as
+ * confirmações de sucesso em `shownIds` já foram vistas e saem do contexto. A
+ * checagem espera uma microtarefa porque o StrictMode desmonta e monta o efeito de
+ * novo na mesma hora, e essa volta imediata não conta como saída.
+ */
+export function viewReplicateContext(key: string): (shownIds: ReadonlySet<number>) => void {
+  viewers.set(key, (viewers.get(key) ?? 0) + 1)
+  return (shownIds) => {
+    viewers.set(key, (viewers.get(key) ?? 1) - 1)
+    queueMicrotask(() => {
+      if ((viewers.get(key) ?? 0) > 0) return
+      viewers.delete(key)
+      keepReplicateFeedback(key, (f) => !f.ok || !shownIds.has(f.id))
+    })
+  }
 }
 
 /** Para testes: esquece todos os contextos. */
 export function resetReplicateStatus() {
   statuses.clear()
+  viewers.clear()
   for (const listener of listeners) listener()
 }
