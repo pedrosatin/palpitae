@@ -10,9 +10,11 @@ export async function sessionHash(token: string): Promise<string> {
 
 /**
  * Valida o JWT e consulta, numa única leitura do D1, a revogação do token
- * (logout) e o corte de sessões do usuário (`users.sessions_valid_after`, gravado
- * por `POST /auth/logout-all`). Token com `iat` menor ou igual ao corte é
- * rejeitado, inclusive o da sessão que pediu a saída.
+ * (logout), a conta e o corte de sessões dela (`users.sessions_valid_after`,
+ * gravado por `POST /auth/logout-all`). Token com `iat` menor ou igual ao corte é
+ * rejeitado, inclusive o da sessão que pediu a saída, e token de conta que não
+ * existe mais também. O e-mail devolvido é o gravado na conta, não o do token:
+ * admin e acesso ao piloto seguem o e-mail atual da conta Google.
  */
 export async function verifySession(
   token: string,
@@ -21,23 +23,28 @@ export async function verifySession(
 ): Promise<JwtPayload> {
   const payload = await verifyJwt(token, secret)
   const hash = await sessionHash(token)
-  let row: { revoked: number; valid_after: number | null } | null
+  let row: SessionRow | null
   try {
     row = await db
       .prepare(
         `SELECT
            EXISTS (SELECT 1 FROM revoked_sessions WHERE token_hash = ? AND expires_at > ?) AS revoked,
-           (SELECT sessions_valid_after FROM users WHERE id = ?) AS valid_after`,
+           u.sessions_valid_after AS valid_after,
+           u.email AS email
+         FROM (SELECT 1) LEFT JOIN users u ON u.id = ?`,
       )
       .bind(hash, Math.floor(Date.now() / 1000), payload.sub)
-      .first<{ revoked: number; valid_after: number | null }>()
+      .first<SessionRow>()
   } catch {
     throw new SessionStorageError('Session storage unavailable')
   }
   if (row?.revoked) throw new Error('Session revoked')
-  if (isBeforeCutoff(payload, row?.valid_after)) throw new Error('Session revoked')
-  return payload
+  if (!row?.email) throw new Error('User not found')
+  if (isBeforeCutoff(payload, row.valid_after)) throw new Error('Session revoked')
+  return { ...payload, email: row.email }
 }
+
+type SessionRow = { revoked: number; valid_after: number | null; email: string | null }
 
 /** Sem `iat` numérico o token conta como emitido antes de qualquer corte. */
 function isBeforeCutoff(payload: JwtPayload, validAfter: number | null | undefined): boolean {

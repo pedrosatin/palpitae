@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { Hono } from 'hono'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { withSessionAccounts } from '../testing/session'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { metricsRouter } from './metricsRouter'
 import type { AppContext, Env } from '../types'
@@ -16,8 +17,9 @@ function makeApp() {
   return app
 }
 
+// Nas contas deste arquivo, o id é o próprio e-mail (ver authHeaders).
 function makeEnv(overrides: Partial<Env> = {}): Env {
-  return {
+  const env = {
     JWT_SECRET,
     DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } as unknown as D1Database,
     ADMIN_EMAIL: ADMIN,
@@ -25,10 +27,11 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     AE_SQL_TOKEN: 'tok',
     ...overrides,
   } as unknown as Env
+  return { ...env, DB: withSessionAccounts(env.DB, (id) => id) }
 }
 
 async function authHeaders(email: string) {
-  const token = await signJwt({ sub: 'user-1', email }, JWT_SECRET, 3600)
+  const token = await signJwt({ sub: email, email }, JWT_SECRET, 3600)
   return { Cookie: `session=${token}` }
 }
 

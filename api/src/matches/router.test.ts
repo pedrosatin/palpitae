@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { matchesRouter } from './router'
 import type { AppContext } from '../types'
 import { signJwt } from '../auth/jwt'
+import { withSessionAccounts } from '../testing/session'
 import * as observability from '../observability'
 
 const { syncFixturesSpy, scoreUnprocessedMatchesSpy } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ vi.mock('./scoring', () => ({
   scoreUnprocessedMatches: scoreUnprocessedMatchesSpy,
 }))
 
+// Nas contas deste arquivo, o id é o próprio e-mail (ver os tokens).
 function fakeEnv(
   db: D1Database,
   overrides: Partial<AppContext['Bindings']> = {},
@@ -31,7 +33,7 @@ function fakeEnv(
     FRONTEND_URL: 'http://localhost:5173',
     FOOTBALL_API_KEY: 'test-api-key',
     RESEND_API_KEY: 'test-resend-key',
-    DB: db,
+    DB: withSessionAccounts(db, (id) => id),
     ...overrides,
   }
 }
@@ -109,7 +111,7 @@ function createMatchesDbMock(
 
 describe('matches router – GET /', () => {
   async function authRequest(url: string) {
-    const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, 'secret', 3600)
+    const token = await signJwt({ sub: 'test@example.com', email: 'test@example.com' }, 'secret', 3600)
     return new Request(url, { headers: { Cookie: `session=${token}` } })
   }
 
@@ -340,7 +342,7 @@ describe('matches router – GET /', () => {
     const ADMIN = 'admin@example.com'
 
     const syncRequest = async (email: string) => {
-      const token = await signJwt({ sub: 'user-1', email }, 'secret', 3600)
+      const token = await signJwt({ sub: email, email }, 'secret', 3600)
       return new Request('http://localhost/matches/sync', {
         method: 'POST',
         headers: {
@@ -361,7 +363,7 @@ describe('matches router – GET /', () => {
     it('returns 400 when body is invalid JSON', async () => {
       const app = new Hono<AppContext>()
       app.route('/matches', matchesRouter)
-      const token = await signJwt({ sub: 'admin-1', email: ADMIN }, 'secret', 3600)
+      const token = await signJwt({ sub: ADMIN, email: ADMIN }, 'secret', 3600)
 
       const req = new Request('http://localhost/matches/sync', {
         method: 'POST',
@@ -426,7 +428,7 @@ describe('matches router – GET /', () => {
         season: 2026,
         matchday: undefined,
         apiKey: env.FOOTBALL_API_KEY,
-        db,
+        db: env.DB,
       })
       await expect(response.json()).resolves.toMatchObject({
         ok: true,
@@ -461,8 +463,11 @@ describe('matches router – GET /', () => {
 
     beforeEach(async () => {
       vi.clearAllMocks()
-      adminToken = await signJwt({ sub: 'admin-1', email: 'admin@palpitae.test' }, 'secret', 3600)
-      userToken = await signJwt({ sub: 'user-1', email: 'user@example.com' }, 'secret', 3600)
+      adminToken = await signJwt({
+        sub: 'admin@palpitae.test',
+        email: 'admin@palpitae.test',
+      }, 'secret', 3600)
+      userToken = await signJwt({ sub: 'user@example.com', email: 'user@example.com' }, 'secret', 3600)
     })
 
     it('returns 500 and logs error when syncFixtures fails', async () => {
@@ -717,7 +722,7 @@ describe('matches router – GET /', () => {
           apiKey: 'fake-api-key',
         }),
       )
-      expect(scoreUnprocessedMatchesSpy).toHaveBeenCalledWith('comp-1', db)
+      expect(scoreUnprocessedMatchesSpy).toHaveBeenCalledWith('comp-1', env.DB)
     })
   })
 })

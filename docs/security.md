@@ -79,7 +79,11 @@ rota responde 503, mantém o cookie para o usuário tentar de novo e registra
 continua logado.
 
 Cada requisição faz uma consulta ao D1 para validar a sessão: o mesmo `SELECT` lê a
-revogação em `revoked_sessions` e o corte em `users.sessions_valid_after`. O
+revogação em `revoked_sessions`, a conta e o corte em `users.sessions_valid_after`.
+Token de conta apagada recebe 401 nas rotas autenticadas, e `/auth/me` responde
+como sessão ausente. O e-mail usado nas permissões (admin, piloto) é o gravado na
+conta nessa leitura, não o do token, então uma troca de e-mail vale também para
+sessões abertas antes dela. O
 limitador verifica o cookie e guarda o resultado no contexto, e o `requireAuth` e o
 `/auth/me` o reaproveitam. Se o D1 não responder nessa consulta, rotas autenticadas
 e `/auth/me` respondem 503. No logout, o cookie é apagado na resposta mesmo quando a

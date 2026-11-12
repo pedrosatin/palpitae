@@ -254,7 +254,7 @@ describe('erros em JSON', () => {
         bind: () => ({
           first: async () => {
             if (++calls > 2) throw new Error('D1_ERROR: no such table')
-            return { revoked: 0, valid_after: null, hits: 1 }
+            return { revoked: 0, valid_after: null, email: 'a@example.com', hits: 1 }
           },
           all: async () => {
             throw new Error('D1_ERROR: no such table')

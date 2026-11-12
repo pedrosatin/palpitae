@@ -3,6 +3,7 @@ import app from '../index'
 import type { AppContext } from '../types'
 import { signJwt, verifyJwt } from './jwt'
 import * as googleAuth from './google'
+import { activeSessionRow, isSessionQuery } from '../testing/session'
 
 const JWT_SECRET = 'test-secret-auth-router'
 
@@ -35,6 +36,7 @@ function fakeEnv(email: string): AppContext['Bindings'] {
               },
               async first() {
                 if (sql.includes('INSERT INTO request_limits')) return { hits: 1 }
+                if (isSessionQuery(sql)) return activeSessionRow(email)
                 if (sql.includes('FROM users u LEFT JOIN profiles')) {
                   return {
                     id: 'user-1',
@@ -362,7 +364,7 @@ describe('auth router', () => {
     expect(location).toBe('http://localhost:5173/invalid')
   })
 
-  it('returns 404 from me endpoint if user is not found', async () => {
+  it('treats a session of a missing user as signed out on the me endpoint', async () => {
     // Override fakeEnv specifically for this test
     function fakeEnvNotFound(): AppContext['Bindings'] {
       return {
@@ -393,9 +395,9 @@ describe('auth router', () => {
       new Request('http://localhost/auth/me', { headers }),
       fakeEnvNotFound(),
     )
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toEqual({ error: 'User not found' })
+    expect(body).toEqual({ authenticated: false })
   })
 
   // Visita anônima é o caso comum (toda visita chama /auth/me). Responder 200

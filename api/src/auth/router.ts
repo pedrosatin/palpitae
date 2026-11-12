@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import {
   buildAuthUrl,
+  EmailConflictError,
   exchangeCode,
   generateNonce,
   generatePkce,
@@ -203,6 +204,11 @@ authRouter.get('/callback', async (c) => {
     const destination = sameOriginDestination(oauth.redirect, c.env.FRONTEND_URL)
     return c.redirect(destination?.toString() ?? c.env.FRONTEND_URL)
   } catch (err) {
+    // E-mail de outra conta: motivo próprio, sem sessão e sem mexer nas contas.
+    if (err instanceof EmailConflictError) {
+      logEvent(c.env.AE, 'login_failure', { blobs: ['email_conflict'] })
+      return c.redirect(`${c.env.FRONTEND_URL}?auth_error=email_conflict`)
+    }
     console.error('OAuth callback failed:', err)
     logEvent(c.env.AE, 'login_failure', { blobs: ['exchange_failed'] })
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=exchange_failed`)
@@ -287,7 +293,8 @@ authRouter.get('/me', async (c) => {
       avatar_url: string | null
     }>()
 
-  if (!user) return c.json({ error: 'User not found' }, 404)
+  // Conta apagada entre a validação da sessão e esta leitura.
+  if (!user) return c.json({ authenticated: false }, 200)
 
   return c.json({
     user: {

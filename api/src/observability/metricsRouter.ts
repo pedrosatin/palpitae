@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from '../auth/middleware'
+import { isAdminUser } from '../auth/permissions'
 import { radarRouter } from '../radar/router'
 import type { AppContext } from '../types'
 import { runAeSql } from './aeSql'
@@ -36,10 +37,8 @@ export const metricsRouter = new Hono<AppContext>()
 metricsRouter.use('*', requireAuth)
 
 metricsRouter.use('*', async (c, next) => {
-  // Comparação case-insensitive: o casing do e-mail no ID token do Google
-  // não é garantido, e um mismatch aqui trancaria o admin pra fora.
-  const admin = c.env.ADMIN_EMAIL?.toLowerCase()
-  if (!admin || c.get('userEmail')?.toLowerCase() !== admin) {
+  // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts).
+  if (!isAdminUser(c.get('userEmail'), c.env)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
   await next()

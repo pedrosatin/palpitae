@@ -1,9 +1,18 @@
 import { Hono } from 'hono'
 import { describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { withSessionAccounts } from '../testing/session'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { competitionsRouter } from './router'
 import type { AppContext } from '../types'
+
+// Contas dos tokens deste arquivo: id → e-mail gravado.
+const ACCOUNTS = {
+  'test-user': 'test@example.com',
+  'u-ordinary': 'comum@example.com',
+  'u-guest': 'convidado@example.com',
+  'u-admin': 'admin@palpitae.com.br',
+}
 
 function fakeEnv(
   db: D1Database,
@@ -17,7 +26,7 @@ function fakeEnv(
     FRONTEND_URL: 'http://localhost:5173',
     FOOTBALL_API_KEY: 'test-api-key',
     RESEND_API_KEY: 'test-resend-key',
-    DB: db,
+    DB: withSessionAccounts(db, ACCOUNTS),
     ...overrides,
   }
 }

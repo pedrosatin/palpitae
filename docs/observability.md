@@ -146,7 +146,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `login_success` | `user_hash` | — | — | — |
 | `account_created` | `origin` (`convite`/`guia`/`busca`/`direto`/`desconhecida`) | `guide_slug` (só em `guia`, slug de guia publicado; vazio no índice dos guias e nas outras origens) | — | — (sem `user_hash`; ver "Origem do cadastro") |
 | `logout_all` | `user_hash` | — | — | — |
-| `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`) | — | — | — |
+| `login_failure` | `reason` (`session_expired`/`state_mismatch`/`exchange_failed`/`email_conflict`) | — | — | — |
 | `oauth_error` | `error_code` | — | — | — |
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
 | `security_storage_error` | `source` (`request_limits`/`logout`/`logout_all`/`cleanup`) | `category` (`read`/`write`/`oauth`) em `request_limits`; `error_message` nos demais | `error_message` (só em `request_limits`) | — |
@@ -485,6 +485,15 @@ Gravado no `catch` do callback em `auth/router.ts` com
 `blobs: ['exchange_failed']` (só o motivo em `blob2`). O código atual grava
 apenas o motivo no Analytics Engine; o detalhe fica no `console.error` do
 Worker. A falha observada na calibração foi resposta 520 na troca de código.
+
+#### `email_conflict`
+
+O e-mail da conta Google já está gravado em outra conta do Palpitaê. Acontece
+com conta Google nova que recebe o e-mail de uma conta antiga, ou com conta
+existente que troca para o e-mail de outra. O login termina sem sessão,
+redireciona com `?auth_error=email_conflict` e não altera nenhuma das duas
+contas: o app não junta contas pelo e-mail. Resolver exige olhar as duas linhas
+de `users` e decidir à mão.
 
 #### `state_mismatch`
 

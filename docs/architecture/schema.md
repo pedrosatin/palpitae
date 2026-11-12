@@ -131,12 +131,16 @@ Registered users. One row per Google account.
 | Column        | Type        | Notes                 |
 | ------------- | ----------- | --------------------- |
 | `id`          | TEXT PK     | UUID generated in app |
-| `email`       | TEXT UNIQUE | From OAuth provider   |
+| `email`       | TEXT UNIQUE | From OAuth provider, lowercased; updated on every login |
 | `provider`    | TEXT        | e.g., `'google'`      |
 | `provider_id` | TEXT        | Provider's user ID    |
 | `created_at`  | TEXT        | ISO 8601 UTC          |
 
 Unique constraint: `(provider, provider_id)`
+
+Unique index `idx_users_email_lower` on `lower(email)` (migration `0041`): one account per e-mail,
+case-insensitive. A login whose Google e-mail belongs to another account is refused with
+`auth_error=email_conflict`; neither account changes.
 
 ---
 

@@ -3,8 +3,14 @@ import { describe, expect, it, vi } from 'vitest'
 import type { AppContext } from '../types'
 import { signJwt } from './jwt'
 import { requireAuth, resolveSession } from './middleware'
+import { activeSessionRow } from '../testing/session'
 
 const JWT_SECRET = 'test-secret-middleware'
+
+/** D1 em que a conta existe com este e-mail e a sessão não foi revogada. */
+const activeAccountDb = (email: string | null) => ({
+  prepare: () => ({ bind: () => ({ first: async () => activeSessionRow(email) }) }),
+})
 
 function buildMockContext(cookieHeader: string | null, dbMock?: any): Context<AppContext> {
   return {
@@ -106,9 +112,31 @@ describe('requireAuth middleware', () => {
     expect(c.json).toHaveBeenCalledWith({ error: 'Unauthorized' }, 401)
   })
 
+  it('returns 401 when the account no longer exists', async () => {
+    const token = await signJwt({ sub: 'user-1', email: 'a@b.com' }, JWT_SECRET, 3600)
+    const c = buildMockContext(`session=${token}`, activeAccountDb(null))
+    const next = vi.fn()
+
+    await requireAuth(c, next)
+
+    expect(next).not.toHaveBeenCalled()
+    expect(c.json).toHaveBeenCalledWith({ error: 'Unauthorized' }, 401)
+  })
+
+  it('sets userEmail from the account, not from the token', async () => {
+    const token = await signJwt({ sub: 'user-42', email: 'antigo@example.com' }, JWT_SECRET, 3600)
+    const c = buildMockContext(`session=${token}`, activeAccountDb('novo@example.com'))
+    const next = vi.fn()
+
+    await requireAuth(c, next)
+
+    expect(c.set).toHaveBeenCalledWith('userEmail', 'novo@example.com')
+    expect(next).toHaveBeenCalled()
+  })
+
   it('calls next and sets userId and userEmail for a valid token', async () => {
     const token = await signJwt({ sub: 'user-42', email: 'user@example.com' }, JWT_SECRET, 3600)
-    const c = buildMockContext(`session=${token}`)
+    const c = buildMockContext(`session=${token}`, activeAccountDb('user@example.com'))
     const next = vi.fn()
 
     await requireAuth(c, next)
@@ -144,7 +172,7 @@ describe('resolveSession', () => {
 
   it('returns state with payload for a valid session token', async () => {
     const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, JWT_SECRET, 3600)
-    const c = buildMockContext(`session=${token}`)
+    const c = buildMockContext(`session=${token}`, activeAccountDb('test@example.com'))
     vi.mocked(c.get).mockReturnValue(undefined)
 
     const result = await resolveSession(c)

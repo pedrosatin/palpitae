@@ -4,6 +4,7 @@ import { Hono } from 'hono'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { signJwt } from '../auth/jwt'
+import { withSessionAccounts } from '../testing/session'
 import { metricsRouter } from '../observability/metricsRouter'
 import type { AppContext, Env } from '../types'
 
@@ -17,12 +18,18 @@ function makeApp() {
   return app
 }
 
+// Nas contas deste arquivo, o id é o próprio e-mail (ver authHeaders).
 function makeEnv(db: D1Database, overrides: Partial<Env> = {}): Env {
-  return { JWT_SECRET, ADMIN_EMAIL: ADMIN, DB: db, ...overrides } as unknown as Env
+  return {
+    JWT_SECRET,
+    ADMIN_EMAIL: ADMIN,
+    DB: withSessionAccounts(db, (id) => id),
+    ...overrides,
+  } as unknown as Env
 }
 
 async function authHeaders(email: string) {
-  const token = await signJwt({ sub: 'user-1', email }, JWT_SECRET, 3600)
+  const token = await signJwt({ sub: email, email }, JWT_SECRET, 3600)
   return { Cookie: `session=${token}` }
 }
 
