@@ -21,14 +21,18 @@ const DESTRUCTIVE: { label: string; pattern: RegExp }[] = [
   },
   { label: 'RENAME TABLE', pattern: /\balter\s+table\s+\S+\s+rename\s+to\b/i },
   { label: 'DROP TABLE', pattern: /\bdrop\s+table\b/i },
+  { label: 'DROP VIEW', pattern: /\bdrop\s+view\b/i },
 ]
 
-/** Tira comentários e literais de texto para não confundir dado com comando. */
+/**
+ * Tira comentários e literais de texto numa passada só, para não confundir dado
+ * com comando. Uma passada por vez quebraria com apóstrofo dentro de comentário
+ * (`-- don't`), que abriria um literal falso até a próxima aspa.
+ */
+const STRING_OR_COMMENT = /'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//g
+
 function sqlWithoutCommentsAndStrings(sql: string) {
-  return sql
-    .replace(/'(?:[^']|'')*'/g, "''")
-    .replace(/--[^\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
+  return sql.replace(STRING_OR_COMMENT, (token) => (token.startsWith("'") ? "''" : ' '))
 }
 
 function uncheckedContractStatements(sql: string): string[] {
@@ -55,6 +59,7 @@ describe('compatibilidade das migrations com o Worker anterior', () => {
     ['ALTER TABLE users RENAME user_name TO display_name;', 'RENAME COLUMN'],
     ['ALTER TABLE users RENAME TO accounts;', 'RENAME TABLE'],
     ['DROP TABLE IF EXISTS email_reminder_sends;', 'DROP TABLE'],
+    ['DROP VIEW IF EXISTS ranking_view;', 'DROP VIEW'],
   ])('recusa %s sem marcação de contract', (sql, label) => {
     expect(uncheckedContractStatements(sql)).toEqual([label])
   })
@@ -76,6 +81,14 @@ describe('compatibilidade das migrations com o Worker anterior', () => {
         UPDATE competitions SET name = 'drop table; alter table x drop column y';
       `),
     ).toEqual([])
+  })
+
+  it.each([
+    ["-- users don't need this\nALTER TABLE users DROP COLUMN x;\nUPDATE t SET a = 'b';"],
+    ["-- copo d'água\nALTER TABLE users DROP COLUMN x;\nUPDATE t SET a = 'b';"],
+    ["/* it's */\nALTER TABLE users DROP COLUMN x;\nUPDATE t SET a = 'b';"],
+  ])('acha o DROP depois de comentário com apóstrofo: %s', (sql) => {
+    expect(uncheckedContractStatements(sql)).toEqual(['DROP COLUMN'])
   })
 
   it('não aceita a palavra contract sem motivo', () => {

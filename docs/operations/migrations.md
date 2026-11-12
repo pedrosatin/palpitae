@@ -6,8 +6,8 @@ O workflow `.github/workflows/deploy-api.yml` aplica as migrations no D1 de prod
 
 Toda mudança de schema é de uma destas duas fases:
 
-- **Expand.** Acrescenta sem tirar nada: `ADD COLUMN` anulável ou com `DEFAULT`, tabela nova, índice, trigger, backfill com `UPDATE`. O Worker anterior ignora o que não conhece. Pode ir no mesmo deploy do código que passa a usar o acréscimo.
-- **Contract.** Remove ou renomeia algo que já existia: `DROP COLUMN`, `RENAME COLUMN`, `DROP TABLE`, `ALTER TABLE ... RENAME TO`, ou um trigger novo que recusa um valor que o Worker anterior ainda grava. Só pode entrar num deploy posterior ao que tirou do código toda leitura e escrita do que será removido. Assim, o Worker que fica no ar se a publicação falhar já não depende do que a migration remove.
+- **Expand.** Acrescenta sem tirar nada: `ADD COLUMN` anulável ou com `DEFAULT`, tabela nova, índice não único, trigger que não recusa valor, backfill com `UPDATE`. O Worker anterior ignora o que não conhece. Pode ir no mesmo deploy do código que passa a usar o acréscimo.
+- **Contract.** Remove ou renomeia algo que já existia: `DROP COLUMN`, `RENAME COLUMN`, `DROP TABLE`, `DROP VIEW`, `ALTER TABLE ... RENAME TO`, `DROP INDEX` ou índice `UNIQUE` novo que afete o que o Worker anterior grava, ou um trigger novo que recusa um valor que o Worker anterior ainda grava. Um `DROP INDEX` de índice único quebra o `ON CONFLICT` que dependa dele, e um `UNIQUE` novo recusa linhas que o Worker anterior ainda insere (o índice da 0040, por exemplo, recusa uma segunda competição com o mesmo provedor, id externo e temporada). Só pode entrar num deploy posterior ao que tirou do código toda leitura e escrita do que será removido. Assim, o Worker que fica no ar se a publicação falhar já não depende do que a migration remove.
 
 A migration de contract traz uma linha que diz por que a remoção é segura:
 
@@ -15,7 +15,7 @@ A migration de contract traz uma linha que diz por que a remoção é segura:
 -- contract: users.user_name sem leitura nem escrita desde o deploy de <commit ou PR>
 ```
 
-`api/src/migrationCompat.test.ts` falha quando uma migration faz `DROP COLUMN`, `RENAME COLUMN`, `DROP TABLE` ou `RENAME TO` sem essa linha. O teste não confere se o motivo é verdadeiro. Quem revisa a PR confere que o deploy citado já está em produção.
+`api/src/migrationCompat.test.ts` falha quando uma migration faz `DROP COLUMN`, `RENAME COLUMN`, `DROP TABLE`, `DROP VIEW` ou `RENAME TO` sem essa linha. `DROP INDEX` e índice `UNIQUE` novo ficam para a revisão da PR, porque a 0034 apaga com segurança um índice não único coberto por outro mais largo. O teste também não confere se o motivo é verdadeiro. Quem revisa a PR confere que o deploy citado já está em produção.
 
 Outras restrições do D1:
 
@@ -67,7 +67,7 @@ Se a publicação do deploy 2 falhar, quem fica no ar é o Worker do deploy 1, q
 
 ### Rollback
 
-- Reverter o código do deploy 1 antes do deploy 2 volta a ler `user_name`. O que o Worker do deploy 1 gravou ficou só em `display_name`: quem trocou de nome depois do deploy 1 aparece com o nome antigo, e quem entrou depois dele aparece sem nome.
+- Se o código do deploy 1 for revertido antes do deploy 2, o Worker volta a ler `user_name`. O que o Worker do deploy 1 gravou ficou só em `display_name`: quem trocou de nome depois do deploy 1 aparece com o nome antigo, e quem entrou depois dele aparece sem nome.
 - Depois do deploy 2, o Worker anterior ao deploy 1 não funciona mais: a coluna não existe. O `git revert` do deploy 2 não recria a coluna. Para voltar, escreva uma migration nova de expand que recrie `user_name` e copie os dados de `display_name`.
 
 ## Rodar migrations à mão

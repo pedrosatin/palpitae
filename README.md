@@ -39,7 +39,7 @@ docs/   Architecture decisions, schema, observability and analytics conventions
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/): installed by `npm install` in `api/`, run it with `npx wrangler`
 - A Cloudflare account (`npx wrangler login`)
 
-> **Always pass `--config ./wrangler.toml` to Wrangler inside `api/`.**
+> Inside `api/`, always pass `--config ./wrangler.toml` to Wrangler.
 > Wrangler looks for `wrangler.json` and `wrangler.jsonc` in every parent directory before it accepts a `wrangler.toml`, so the root `wrangler.jsonc` (the Pages project) wins over `api/wrangler.toml`. Without the flag, `secret put` sends the secret to the `palpitae-web` Worker and `d1` commands find no migrations. The npm scripts (`dev`, `dev:cron`, `deploy`) already pass the flag.
 
 ### First-time setup

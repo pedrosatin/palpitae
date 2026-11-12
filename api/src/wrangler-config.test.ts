@@ -27,6 +27,31 @@ const OPERATOR_DOCS = [
 
 /** Subcomandos que leem a configuração do Worker. `pages` e `login` não leem. */
 const WORKER_COMMAND = /\bwrangler\s+(secret|d1|r2|kv|deploy|dev|tail|versions|rollback|types)\b/
+const API_CONFIG = /--config[ =]\S*wrangler\.toml/
+
+/**
+ * Linhas com comando wrangler do Worker sem a config da API. Junta antes as
+ * linhas terminadas em `\`, para aceitar o `--config` na linha seguinte.
+ */
+function commandsWithoutApiConfig(text: string): { line: number; command: string }[] {
+  const commands: { line: number; command: string }[] = []
+  let pending: { line: number; command: string } | null = null
+  text.split('\n').forEach((raw, index) => {
+    const continues = raw.trimEnd().endsWith('\\')
+    const part = continues ? raw.trimEnd().slice(0, -1).trimEnd() : raw
+    pending = pending
+      ? { line: pending.line, command: `${pending.command} ${part.trim()}` }
+      : { line: index + 1, command: part }
+    if (!continues) {
+      commands.push(pending)
+      pending = null
+    }
+  })
+  if (pending) commands.push(pending)
+  return commands
+    .filter(({ command }) => WORKER_COMMAND.test(command) && !API_CONFIG.test(command))
+    .map(({ line, command }) => ({ line, command: command.trim() }))
+}
 
 type PackageJson = {
   scripts?: Record<string, string>
@@ -77,15 +102,40 @@ describe('wrangler api config', () => {
     )
   })
 
+  it.each([
+    ['npx wrangler secret put JWT_SECRET --config ./wrangler.toml'],
+    ['npx wrangler secret put JWT_SECRET --config=./wrangler.toml'],
+    ['npx wrangler d1 execute palpitae --config api/wrangler.toml --command "SELECT 1"'],
+    [
+      'npx wrangler d1 execute palpitae --local \\\n  --config ./wrangler.toml \\\n  --command "SELECT 1"',
+    ],
+    ['npx wrangler pages secret put PROXY_SHARED_SECRET --project-name palpitae-web'],
+    ['npx wrangler login'],
+  ])('aceita %j', (text) => {
+    expect(commandsWithoutApiConfig(text)).toEqual([])
+  })
+
+  it('aponta o comando do Worker sem a config da API, na linha em que ele começa', () => {
+    expect(
+      commandsWithoutApiConfig(
+        [
+          'cd api',
+          'npx wrangler d1 execute palpitae --local \\',
+          '  --command "SELECT 1"',
+          'npx wrangler secret put JWT_SECRET --config ./wrangler.jsonc',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      { line: 2, command: 'npx wrangler d1 execute palpitae --local --command "SELECT 1"' },
+      { line: 4, command: 'npx wrangler secret put JWT_SECRET --config ./wrangler.jsonc' },
+    ])
+  })
+
   it('documenta todo comando wrangler do Worker com --config ./wrangler.toml', () => {
     const missing = OPERATOR_DOCS.flatMap((path) =>
-      readFileSync(new URL(path, REPO_ROOT), 'utf8')
-        .split('\n')
-        .map((line, index) => ({ line, where: `${path}:${index + 1}` }))
-        .filter(
-          ({ line }) => WORKER_COMMAND.test(line) && !line.includes('--config ./wrangler.toml'),
-        )
-        .map(({ where, line }) => `${where}: ${line.trim()}`),
+      commandsWithoutApiConfig(readFileSync(new URL(path, REPO_ROOT), 'utf8')).map(
+        ({ line, command }) => `${path}:${line}: ${command}`,
+      ),
     )
 
     expect(missing).toEqual([])
