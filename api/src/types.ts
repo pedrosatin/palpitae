@@ -13,6 +13,9 @@ export type Env = {
   // Lista separada por vírgula de e-mails convidados para testar competições em modo piloto.
   PILOT_EMAILS?: string
   JWT_SECRET: string
+  // Assina os links de descadastro; não acompanha a rotação do JWT_SECRET. Sem ele,
+  // o link é assinado com o JWT_SECRET. Ver docs/security.md.
+  UNSUBSCRIBE_SECRET?: string
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
   BASE_URL: string

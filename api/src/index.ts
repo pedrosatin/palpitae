@@ -18,6 +18,7 @@ import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
 import { reminderFetchBudget, sendRoundReminders } from './notifications/roundReminder'
+import { unsubSigningSecret } from './notifications/unsubscribeToken'
 import { logError, tryLogEvent } from './observability/events'
 import { exportRecentDays } from './observability/export'
 import { metricsRouter } from './observability/metricsRouter'
@@ -127,7 +128,7 @@ export default {
           env.RESEND_API_KEY ?? '',
           env.AE,
           env.FRONTEND_URL,
-          env.BASE_URL ? { secret: env.JWT_SECRET, apiBaseUrl: env.BASE_URL } : undefined,
+          env.BASE_URL ? { secret: unsubSigningSecret(env), apiBaseUrl: env.BASE_URL } : undefined,
           undefined,
           { fetchBudget: reminderFetchBudget(env.REMINDER_FETCH_BUDGET), pilotAccess: env },
         ),

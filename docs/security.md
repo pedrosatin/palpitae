@@ -272,6 +272,55 @@ tráfego anônimo que passa pelo proxy divide o balde compartilhado. Para trocar
 valor sem 429 em massa, atualize os dois lados em sequência; durante a troca o
 tráfego anônimo cai no balde compartilhado.
 
+## Rotação de segredos
+
+Dois segredos do Worker da API assinam tokens e são rotacionados de formas diferentes.
+
+`JWT_SECRET` assina o cookie de sessão e as chaves dos contadores de rate limit.
+Trocar o valor encerra todas as sessões (cada pessoa precisa entrar de novo) e
+recomeça os contadores da janela atual.
+
+`UNSUBSCRIBE_SECRET` assina o link de descadastro dos e-mails. O link não expira, e
+trocar este segredo invalida o link de todo e-mail já enviado com ele. Só troque
+este segredo se ele vazar. A API aceita um link assinado com o `UNSUBSCRIBE_SECRET`
+ou com o `JWT_SECRET` atual. Sem `UNSUBSCRIBE_SECRET`, os links novos saem
+assinados com o `JWT_SECRET`, e uma rotação do `JWT_SECRET` invalida todos eles.
+
+Para configurar o `UNSUBSCRIBE_SECRET` (uma vez):
+
+- Se você tem o valor atual do `JWT_SECRET` e ele não vazou, use o mesmo valor. Os
+  links já enviados continuam válidos depois de uma rotação planejada do
+  `JWT_SECRET`. Se um dia o `JWT_SECRET` vazar, o `UNSUBSCRIBE_SECRET` vazou junto
+  e precisa ser trocado também (passo 2 abaixo).
+- Se não tem o valor (o painel não mostra secrets) ou se ele vazou, gere um novo
+  com `openssl rand -hex 32`. Os links novos deixam de depender do `JWT_SECRET`. Os
+  de e-mails enviados antes disso valem até a próxima troca do `JWT_SECRET`; depois
+  dela, quem quiser sair usa o link de um e-mail mais recente ou `/configuracoes`.
+  Não reaproveite um valor vazado: com ele, qualquer pessoa monta o link de
+  descadastro de um usuário cujo id conheça.
+
+Grave o valor pelo prompt interativo do `wrangler secret put`, ou com
+`printf '%s'` no pipe, para não gravar uma quebra de linha no fim do segredo:
+
+```bash
+cd api && npx wrangler secret put UNSUBSCRIBE_SECRET --config ./wrangler.toml
+# ou, sem quebra de linha:
+printf '%s' "$NOVO_VALOR" | npx wrangler secret put UNSUBSCRIBE_SECRET --config ./wrangler.toml
+```
+
+Para rotacionar o `JWT_SECRET`:
+
+1. Confira que o `UNSUBSCRIBE_SECRET` existe:
+   `cd api && npx wrangler secret list --config ./wrangler.toml` (lista só os nomes).
+   Se não existir, configure-o antes, como acima.
+2. Se a rotação for por vazamento e o `UNSUBSCRIBE_SECRET` tiver o valor do
+   `JWT_SECRET` antigo, troque os dois, cada um com um valor novo gerado à parte.
+   Os links de descadastro já enviados param de valer, e quem quiser sair usa
+   `/configuracoes` ou o link de um e-mail mais recente.
+3. Gere o valor novo e grave: `npx wrangler secret put JWT_SECRET --config ./wrangler.toml`.
+4. Resultado esperado: as sessões caem. Numa rotação planejada, os links de
+   descadastro assinados com o `UNSUBSCRIBE_SECRET` continuam funcionando.
+
 ## Migrações
 
 A migração `0017_sessions_valid_after.sql` adiciona `users.sessions_valid_after`

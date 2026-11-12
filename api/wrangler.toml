@@ -54,6 +54,7 @@ FRONTEND_URL = "https://palpitae.com.br"
 # REMINDER_FETCH_BUDGET = "45"
 # Secrets — set via:
 #   wrangler secret put JWT_SECRET
+#   wrangler secret put UNSUBSCRIBE_SECRET # link de descadastro; trocar só se vazar, ver docs/security.md
 #   wrangler secret put GOOGLE_CLIENT_ID
 #   wrangler secret put GOOGLE_CLIENT_SECRET
 #   wrangler secret put FOOTBALL_API_KEY
