@@ -76,6 +76,10 @@ async function fixture() {
     }
   }
   sqlite.exec("UPDATE competitions SET status = 'finished' WHERE provider = 'football-data'")
+  sqlite.exec(`INSERT INTO users (id,email,provider,provider_id) VALUES
+    ('admin','admin@test.com','google','admin'),
+    ('pilot','pilot@test.com','google','pilot'),
+    ('ordinary','ordinary@test.com','google','ordinary')`)
   const env = {
     DB: db,
     JWT_SECRET,

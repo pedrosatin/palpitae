@@ -33,6 +33,11 @@ describe('lote 2: radar suportadas e piloto', () => {
   it('marca as cinco seedadas como supported no radar e as mantém fora do GET /competitions do usuário comum', async () => {
     const { sqlite, db } = createSqliteD1()
     try {
+      for (const email of [ADMIN, ORDINARY]) {
+        sqlite
+          .prepare("INSERT INTO users (id,email,provider,provider_id) VALUES (?,?,'google',?)")
+          .run(`user-${email}`, email, email)
+      }
       for (const row of LOTE2) {
         sqlite
           .prepare(

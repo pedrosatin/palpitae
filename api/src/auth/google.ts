@@ -215,6 +215,25 @@ export async function verifyGoogleIdToken(
  * SELECT, mas o UNIQUE de `users` deixa um único INSERT vencer: o outro cai no
  * catch, encontra a linha do vencedor e entra como conta existente.
  */
+/** A conta Google tem o e-mail de outra conta do Palpitaê. */
+export class EmailConflictError extends Error {
+  constructor() {
+    super('E-mail já usado por outra conta')
+    this.name = 'EmailConflictError'
+  }
+}
+
+/** Forma gravada em `users.email` e comparada nas permissões. */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+/**
+ * Cria a conta ou atualiza a existente (mesmo `provider_id`) com o e-mail atual
+ * da conta Google, normalizado. Se o e-mail pertence a outra conta, lança
+ * `EmailConflictError` sem alterar nenhuma das duas: o login não junta contas
+ * pelo e-mail nem tira o e-mail de quem o tem gravado.
+ */
 export async function upsertUser(
   db: D1Database,
   data: {
@@ -226,6 +245,7 @@ export async function upsertUser(
   },
 ): Promise<{ id: string; email: string; isNew: boolean }> {
   const now = new Date().toISOString()
+  const email = normalizeEmail(data.email)
   const findExisting = () =>
     db
       .prepare('SELECT id, email FROM users WHERE provider = ? AND provider_id = ?')
@@ -235,11 +255,17 @@ export async function upsertUser(
   const existing = await findExisting()
 
   if (existing) {
-    await db
-      .prepare('UPDATE users SET last_login = ?, user_name = COALESCE(user_name, ?) WHERE id = ?')
-      .bind(now, data.name ?? null, existing.id)
-      .run()
-    return { ...existing, isNew: false }
+    try {
+      await db
+        .prepare(
+          'UPDATE users SET last_login = ?, user_name = COALESCE(user_name, ?), email = ? WHERE id = ?',
+        )
+        .bind(now, data.name ?? null, email, existing.id)
+        .run()
+    } catch (error) {
+      throw await emailConflictOr(db, email, existing.id, error)
+    }
+    return { id: existing.id, email, isNew: false }
   }
 
   const id = crypto.randomUUID()
@@ -250,16 +276,31 @@ export async function upsertUser(
         .prepare(
           'INSERT INTO users (id, email, provider, provider_id, created_at, user_name, last_login) VALUES (?, ?, ?, ?, ?, ?, ?)',
         )
-        .bind(id, data.email, data.provider, data.providerId, now, data.name ?? null, now),
+        .bind(id, email, data.provider, data.providerId, now, data.name ?? null, now),
       db
         .prepare('INSERT INTO profiles (user_id, nickname, avatar_url) VALUES (?, ?, ?)')
         .bind(id, data.name ?? null, data.avatarUrl ?? null),
     ])
   } catch (error) {
+    // Outro callback da mesma conta pode ter inserido primeiro.
     const winner = await findExisting()
-    if (!winner) throw error
-    return { ...winner, isNew: false }
+    if (winner) return { ...winner, isNew: false }
+    throw await emailConflictOr(db, email, id, error)
   }
 
-  return { id, email: data.email, isNew: true }
+  return { id, email, isNew: true }
+}
+
+/** Erro da escrita vira conflito quando outra conta já tem o e-mail. */
+async function emailConflictOr(
+  db: D1Database,
+  email: string,
+  ownId: string,
+  error: unknown,
+): Promise<unknown> {
+  const taken = await db
+    .prepare('SELECT 1 AS taken FROM users WHERE lower(email) = ? AND id <> ?')
+    .bind(email, ownId)
+    .first<{ taken: number }>()
+  return taken ? new EmailConflictError() : error
 }

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { withSessionAccounts } from '../testing/session'
 import { groupsRouter } from './router'
 import type { AppContext } from '../types'
 
@@ -109,7 +110,7 @@ function fakeEnv(email: string): AppContext['Bindings'] {
     FRONTEND_URL: 'http://localhost:5173',
     FOOTBALL_API_KEY: 'test-api-key',
     RESEND_API_KEY: 'test-resend-key',
-    DB: createDbMock(email),
+    DB: withSessionAccounts(createDbMock(email), { 'user-1': email }),
   }
 }
 
@@ -153,7 +154,7 @@ async function requestGroupsList(email: string, inviteCode?: string, dbOverride?
     }),
     {
       ...fakeEnv(email),
-      DB: dbOverride || createGroupsListDbMock(),
+      DB: withSessionAccounts(dbOverride || createGroupsListDbMock(), { 'user-1': email }),
     },
   )
 }
@@ -223,7 +224,7 @@ async function requestRemoveMember(
       FRONTEND_URL: 'http://localhost:5173',
       FOOTBALL_API_KEY: 'test-api-key',
       RESEND_API_KEY: 'test-resend-key',
-      DB: db,
+      DB: withSessionAccounts(db, { [callerId]: callerEmail }),
     },
   )
 }
@@ -275,7 +276,7 @@ async function requestGroupMutation(
       headers,
       body: body ? JSON.stringify(body) : undefined,
     }),
-    { ...fakeEnv(callerEmail), DB: db },
+    { ...fakeEnv(callerEmail), DB: withSessionAccounts(db, { [callerId]: callerEmail }) },
   )
 }
 

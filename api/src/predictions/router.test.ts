@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { withSessionAccounts } from '../testing/session'
 import { OPEN_PICKERS_SQL } from './openPickers'
 import { predictionsRouter } from './router'
 import type { AppContext } from '../types'
@@ -68,7 +69,7 @@ function fakeEnv(db: D1Database): AppContext['Bindings'] {
     FRONTEND_URL: 'http://localhost:5173',
     FOOTBALL_API_KEY: 'test-api-key',
     RESEND_API_KEY: 'test-resend-key',
-    DB: db,
+    DB: withSessionAccounts(db, { 'user-1': 'user@example.com' }),
   }
 }
 
