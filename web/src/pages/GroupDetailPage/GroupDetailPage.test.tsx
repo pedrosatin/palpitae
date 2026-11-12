@@ -495,6 +495,21 @@ describe('GroupDetailPage – group not found', () => {
     await userEvent.click(back)
     expect(screen.getByText('Home')).toBeInTheDocument()
   })
+
+  it('mostra erro com saída quando o grupo chega fora do formato', async () => {
+    mockGroupFetch({ id: 'abc', name: 42 } as unknown as typeof baseGroup)
+
+    renderPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Resposta inesperada do servidor. Tente novamente.',
+    )
+    expect(screen.getByRole('link', { name: /voltar para meus grupos/i })).toHaveAttribute(
+      'href',
+      '/',
+    )
+    expect(screen.queryByTestId('group-tabs')).not.toBeInTheDocument()
+  })
 })
 
 describe('GroupDetailPage – admin: rename & delete', () => {
