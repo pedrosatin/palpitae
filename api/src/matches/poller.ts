@@ -102,9 +102,13 @@ function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
   }
   if (candidates.size === 0) return undefined
   const keys = Array.from(candidates.keys()).sort()
+  // O bloco avança um candidato por vez e cada dia desloca a fase em 3, para que
+  // nenhum candidato fique preso a um horário sempre ocupado. Simulado: até 10
+  // candidatos, com até 3 blocos do dia ocupados, todos são consultados em 7 dias.
+  // Acima disso, quem sobrar fica para a descoberta diária, como antes.
   const block = Math.floor(now / LATE_SWEEP_INTERVAL_MS)
   const day = Math.floor(now / DAY_MS)
-  return candidates.get(keys[(block + day) % keys.length])
+  return candidates.get(keys[(block + 3 * day) % keys.length])
 }
 
 /**

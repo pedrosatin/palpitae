@@ -187,9 +187,9 @@ describe('pollActiveMatches varredura de atrasados', () => {
     expect(vi.mocked(syncFixtures).mock.calls.map(([options]) => options.matchday)).toEqual([20])
   })
 
-  it('com 8 atrasados e o bloco das 00:00 sempre ocupado, todos são consultados em 7 dias', async () => {
+  it.each([8, 9, 10])('com %i atrasados e o bloco das 00:00 sempre ocupado, todos são consultados em 7 dias', async (count) => {
     const { db, insert, sqlite } = seed(
-      Array.from({ length: 8 }, (_, i) => ({
+      Array.from({ length: count }, (_, i) => ({
         id: `r${i + 1}`,
         round: String(i + 1),
         start: KICKOFF,
@@ -212,7 +212,7 @@ describe('pollActiveMatches varredura de atrasados', () => {
       if (busy) sqlite.exec("DELETE FROM matches WHERE id = 'busy'")
     }
 
-    expect([...visited].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+    expect([...visited].sort((a, b) => a - b)).toEqual(Array.from({ length: count }, (_, i) => i + 1))
   })
 
   it('não consulta jogo encerrado nem jogo de mais de 7 dias fora da janela', async () => {
