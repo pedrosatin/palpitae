@@ -568,6 +568,163 @@ describe('sendRoundReminders', () => {
     })
   })
 
+  describe('descadastro durante o lote', () => {
+    // Uma pausa longa entre dois envios. Passa de qualquer intervalo de revalidação.
+    const PAUSE_MS = 60_000
+    let clock = WEDNESDAY
+
+    beforeEach(() => {
+      clock = WEDNESDAY
+      vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    function unsubscribe(sqlite: DatabaseSync, user: string) {
+      sqlite
+        .prepare(`UPDATE users SET email_unsubscribed_at = datetime('now') WHERE id = ?`)
+        .run(user)
+    }
+
+    function reserved(sqlite: DatabaseSync) {
+      return sqlite
+        .prepare('SELECT user_id FROM email_reminder_sends ORDER BY user_id')
+        .all()
+        .map((row) => (row as { user_id: string }).user_id)
+    }
+
+    /** Destinatário de uma chamada ao Resend. */
+    function recipientOf(init: RequestInit | undefined): string {
+      return (JSON.parse(init!.body as string) as { to: string }).to.split('@')[0]
+    }
+
+    it('quem sai entre a consulta e a reserva não é reservado nem recebe', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      // A Bia descadastra depois da consulta dos pendentes e antes da reserva.
+      const batch = db.batch.bind(db)
+      const racing = Object.assign(Object.create(db) as D1Database, {
+        batch: (statements: Parameters<D1Database['batch']>[0]) => {
+          unsubscribe(sqlite, 'bia')
+          return batch(statements)
+        },
+      })
+
+      await run(racing)
+
+      expect(sentBodies().map((email) => email.to)).toEqual(['ana@example.com'])
+      expect(reserved(sqlite)).toEqual(['ana'])
+    })
+
+    it('pausar o lote, descadastrar e retomar não envia para quem saiu', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      const { ae, writeDataPoint } = fakeAe()
+      let first: string | undefined
+      vi.mocked(fetch).mockImplementation(async (_url, init) => {
+        if (!first) {
+          // O lote para no primeiro envio, o outro usuário descadastra e o lote segue.
+          first = recipientOf(init)
+          unsubscribe(sqlite, first === 'ana' ? 'bia' : 'ana')
+          clock += PAUSE_MS
+        }
+        return new Response(null, { status: 200 })
+      })
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(reserved(sqlite)).toEqual([first])
+      // Quem saiu não é falha de envio.
+      expect(eventsOf(writeDataPoint, 'email_reminder_failed')).toEqual([])
+      expect(eventsOf(writeDataPoint, 'cron_round_reminder')[0].doubles).toEqual([1, 1, 0, 1])
+    })
+
+    it('descadastro durante a espera do reenvio cancela o reenvio', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch).mockImplementationOnce(async () => {
+        unsubscribe(sqlite, 'ana')
+        clock += PAUSE_MS
+        return new Response('', { status: 500, headers: { 'Retry-After': '0' } })
+      })
+
+      await run(db)
+
+      // O 500 deixa incerto se o Resend aceitou. O reenvio não sai, e a reserva volta.
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(reserved(sqlite)).toEqual([])
+    })
+
+    it('descadastro depois do aceite pelo provedor não desfaz o envio', async () => {
+      // Limite conhecido: depois que o Resend aceita, o e-mail já saiu. O descadastro
+      // vale do próximo envio em diante.
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      const { ae, writeDataPoint } = fakeAe()
+      vi.mocked(fetch).mockImplementationOnce(async () => {
+        const accepted = new Response(null, { status: 200 })
+        unsubscribe(sqlite, 'ana')
+        clock += PAUSE_MS
+        return accepted
+      })
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY)
+      await run(db, WEDNESDAY + 3_600_000)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(eventsOf(writeDataPoint, 'email_reminder_sent')).toHaveLength(1)
+      expect(reserved(sqlite)).toEqual(['ana'])
+    })
+
+    it('a revalidação desconta do teto de subrequests', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMembers(sqlite, RESEND_FETCH_BUDGET + 5)
+      vi.mocked(fetch).mockImplementationOnce(async () => {
+        clock += PAUSE_MS
+        return new Response(null, { status: 200 })
+      })
+
+      await run(db)
+
+      // Uma consulta de revalidação depois da pausa ocupa o lugar de um envio.
+      expect(fetch).toHaveBeenCalledTimes(RESEND_FETCH_BUDGET - 1)
+      expect(reserved(sqlite)).toHaveLength(RESEND_FETCH_BUDGET - 1)
+    })
+
+    it('falha na revalidação encerra a fila e devolve as reservas', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      const { ae, writeDataPoint } = fakeAe()
+      const prepare = db.prepare.bind(db)
+      const flaky = Object.assign(Object.create(db) as D1Database, {
+        prepare: (sql: string) => {
+          if (sql.trimStart().startsWith('SELECT id FROM users')) throw new Error('D1 indisponível')
+          return prepare(sql)
+        },
+      })
+      let first: string | undefined
+      vi.mocked(fetch).mockImplementation(async (_url, init) => {
+        first ??= recipientOf(init)
+        clock += PAUSE_MS
+        return new Response(null, { status: 200 })
+      })
+
+      await sendRoundReminders(flaky, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(reserved(sqlite)).toEqual([first])
+      const reasons = eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])
+      expect(reasons).toEqual(['unsub_check_failed'])
+    })
+  })
+
   describe('observabilidade', () => {
     it('registra enviados, falhas e jogos listados por envio', async () => {
       const { sqlite, db } = createFixture()

@@ -22,14 +22,21 @@ const MAX_SEND_ATTEMPTS = 3
 // capacidade-coordenacao-provedores.md), então vale o pior caso: Free, com 50
 // subrequests por invocação. O D1 conta junto com o `fetch`. A invocação gasta 4
 // consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de
-// segurança do `scheduled`) e deixa 1 de folga. Sobram 45 `fetch` ao Resend, contando
-// cada reenvio.
+// segurança do `scheduled`) e deixa 1 de folga. Sobram 45 subrequests para os `fetch`
+// ao Resend, contando cada reenvio, e para as revalidações de descadastro.
 const SUBREQUEST_LIMIT = 50
 const D1_SUBREQUESTS = 4
 const SUBREQUEST_MARGIN = 1
 export const RESEND_FETCH_BUDGET = SUBREQUEST_LIMIT - D1_SUBREQUESTS - SUBREQUEST_MARGIN
 
-/** Contador dos `fetch` ao Resend desta execução. */
+// Por quanto tempo a última leitura de descadastro vale durante o lote. A reserva lê
+// a preferência, e uma tentativa de envio que começa depois desse prazo relê antes de
+// chamar o Resend. Um lote sem pausa termina dentro do prazo e não gasta subrequest
+// extra. Reler antes de cada envio custaria um subrequest por destinatário e cortaria
+// pela metade quem cabe no teto.
+const UNSUB_RECHECK_MS = 5_000
+
+/** Contador dos subrequests desta execução que não são as consultas fixas. */
 type FetchBudget = { used: number; max: number }
 
 /** O teto de subrequests chegou. Quem não enviou volta para a próxima execução. */
@@ -37,6 +44,75 @@ class SubrequestBudgetError extends Error {
   constructor() {
     super('Teto de subrequests da execução atingido')
     this.name = 'SubrequestBudgetError'
+  }
+}
+
+/** O usuário descadastrou depois da reserva. Não é falha: a reserva volta e ele sai do lote. */
+class UnsubscribedError extends Error {
+  constructor() {
+    super('Usuário descadastrado durante o lote')
+    this.name = 'UnsubscribedError'
+  }
+}
+
+/** A leitura de descadastro falhou. Sem ela nenhum envio segue. */
+class UnsubCheckError extends Error {
+  constructor(cause: unknown) {
+    super('Falha ao revalidar descadastro', { cause })
+    this.name = 'UnsubCheckError'
+  }
+}
+
+/**
+ * Confere o descadastro de quem ainda vai receber. A leitura vale por
+ * `UNSUB_RECHECK_MS`. Vencido o prazo, uma consulta só relê todos os pendentes e
+ * desconta um subrequest do saldo. Ela só roda se sobrar saldo para a consulta e um
+ * envio.
+ */
+class UnsubGuard {
+  private readonly subscribed: Set<string>
+  private checkedAt: number
+
+  constructor(
+    private readonly db: D1Database,
+    userIds: string[],
+    private readonly budget: FetchBudget,
+  ) {
+    // A reserva acabou de ler a preferência de todos.
+    this.subscribed = new Set(userIds)
+    this.checkedAt = Date.now()
+  }
+
+  /** Lança `UnsubscribedError` se o usuário saiu da lista depois da última leitura. */
+  async assertSubscribed(userId: string): Promise<void> {
+    if (Date.now() - this.checkedAt >= UNSUB_RECHECK_MS) await this.recheck()
+    if (!this.subscribed.has(userId)) throw new UnsubscribedError()
+  }
+
+  /** O usuário saiu da fila, com ou sem envio. A próxima leitura não o inclui. */
+  done(userId: string): void {
+    this.subscribed.delete(userId)
+  }
+
+  private async recheck(): Promise<void> {
+    if (this.budget.max - this.budget.used < 2) throw new SubrequestBudgetError()
+    this.budget.used++
+    let rows: { id: string }[]
+    try {
+      const result = await this.db
+        .prepare(
+          `SELECT id FROM users
+           WHERE id IN (SELECT value FROM json_each(?)) AND email_unsubscribed_at IS NULL`,
+        )
+        .bind(JSON.stringify([...this.subscribed]))
+        .all<{ id: string }>()
+      rows = result.results
+    } catch (err) {
+      throw new UnsubCheckError(err)
+    }
+    const still = new Set(rows.map((row) => row.id))
+    for (const id of this.subscribed) if (!still.has(id)) this.subscribed.delete(id)
+    this.checkedAt = Date.now()
   }
 }
 
@@ -48,15 +124,23 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  * outros 4xx falham na primeira tentativa. Cada tentativa gasta o saldo de `fetch` da
  * execução, e sem saldo lança `SubrequestBudgetError`. Lança o erro quando as tentativas acabam,
  * e quem chama contabiliza a falha e segue.
+ *
+ * `beforeAttempt` roda antes de cada tentativa, inclusive dos reenvios, e cancela o
+ * envio lançando erro. É o último ponto em que o descadastro ainda impede o e-mail.
+ * Depois que o `fetch` começa, o Resend pode aceitar, e o e-mail aceito não volta.
+ * Um reenvio cancelado depois de uma resposta 5xx ou de erro de rede pode ter sido
+ * precedido de um aceite que a resposta não confirmou.
  */
 async function sendWithRetry(
   apiKey: string,
   msg: Parameters<typeof sendEmail>[1],
   budget: FetchBudget,
+  beforeAttempt: () => Promise<void>,
 ): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     // Cada tentativa é um `fetch`. Sem saldo, para antes de chamar a rede.
     if (budget.used >= budget.max) throw new SubrequestBudgetError()
+    await beforeAttempt()
     budget.used++
     try {
       await sendEmail(apiKey, msg)
@@ -268,6 +352,9 @@ function countRounds(digests: Digest[]): number {
  * limite de subrequests do Worker junto com os envios ao Resend. O plano Free tem
  * 50 por invocação. A consequência é que uma invocação interrompida no meio deixa
  * os restantes sem e-mail naquele dia. Perder um aviso é melhor do que repetir.
+ *
+ * A reserva relê o descadastro na mesma gravação. Quem saiu da lista depois da
+ * consulta dos pendentes não é reservado.
  */
 async function claimRecipients(
   db: D1Database,
@@ -279,7 +366,9 @@ async function claimRecipients(
     db
       .prepare(
         `INSERT INTO email_reminder_sends (user_id, reminder_date)
-         SELECT value, ? FROM json_each(?) WHERE true
+         SELECT u.id, ? FROM json_each(?) j
+         JOIN users u ON u.id = j.value
+         WHERE u.email_unsubscribed_at IS NULL
          ON CONFLICT (user_id, reminder_date) DO NOTHING
          RETURNING user_id`,
       )
@@ -309,18 +398,32 @@ async function releaseClaims(db: D1Database, userIds: string[], day: ReminderDay
 
 function failureReason(err: unknown): string {
   if (err instanceof SubrequestBudgetError) return 'subrequest_budget'
+  if (err instanceof UnsubCheckError) return 'unsub_check_failed'
   if (!(err instanceof EmailError)) return 'unknown'
   return err.quotaExceeded ? 'quota_exceeded' : `http_${err.status}`
 }
 
+/**
+ * Motivo que encerra a fila: toda tentativa seguinte falharia, ou sairia sem a
+ * leitura de descadastro. `null` deixa a fila seguir.
+ */
+function stopReason(err: unknown): string | null {
+  if (err instanceof EmailError && err.quotaExceeded) return 'quota_exceeded'
+  if (err instanceof SubrequestBudgetError || err instanceof UnsubCheckError) {
+    return failureReason(err)
+  }
+  return null
+}
+
 type DispatchOptions = {
+  db: D1Database
   resendApiKey: string
   appUrl: string
   apiBaseUrl: string | undefined
   unsub: UnsubConfig | undefined
   ae: AnalyticsEngineDataset | undefined
   day: ReminderDay
-  /** Saldo de `fetch` ao Resend. Os testes reduzem para exercitar o teto. */
+  /** Saldo de `fetch` ao Resend e revalidações. Os testes reduzem para exercitar o teto. */
   fetchBudget?: number
 }
 
@@ -328,16 +431,20 @@ type DispatchResult = {
   sent: number
   matchesListed: number
   failedUserIds: string[]
+  /** Descadastraram depois da reserva e não receberam. */
+  unsubscribedUserIds: string[]
 }
 
 /**
  * Envia um e-mail por usuário, sem endereço compartilhado. Uma falha não derruba
- * os demais. Cota esgotada ou teto de subrequests encerram a fila, porque toda
- * tentativa seguinte falharia. Quem fica de fora volta em `failedUserIds`.
+ * os demais. Cota esgotada, teto de subrequests ou falha na leitura de descadastro
+ * encerram a fila. Quem fica de fora volta em `failedUserIds`, e quem descadastrou
+ * durante o lote volta em `unsubscribedUserIds`.
  */
 async function dispatchDigests(
   digests: Digest[],
   {
+    db,
     resendApiKey,
     appUrl,
     apiBaseUrl,
@@ -347,6 +454,14 @@ async function dispatchDigests(
     fetchBudget = RESEND_FETCH_BUDGET,
   }: DispatchOptions,
 ): Promise<DispatchResult> {
+  // Criado logo depois da reserva, que leu o descadastro de todos.
+  const budget: FetchBudget = { used: 0, max: fetchBudget }
+  const guard = new UnsubGuard(
+    db,
+    digests.map((digest) => digest.userId),
+    budget,
+  )
+
   // Hash e token saem em paralelo antes dos envios. O try/catch por usuário impede
   // que um token com erro derrube o lote.
   const prepared = await Promise.all(
@@ -367,10 +482,9 @@ async function dispatchDigests(
 
   let sent = 0
   let matchesListed = 0
-  const budget: FetchBudget = { used: 0, max: fetchBudget }
-  let quotaExceeded = false
-  let budgetExhausted = false
+  let stopped: string | null = null
   const failedUserIds: string[] = []
+  const unsubscribedUserIds: string[] = []
 
   for (const { digest, hashedId, unsubToken, tokenError } of prepared) {
     const matchCount = digest.matchIds.size
@@ -382,13 +496,8 @@ async function dispatchDigests(
       })
     }
 
-    if (quotaExceeded) {
-      recordFailure('quota_exceeded')
-      continue
-    }
-
-    if (budgetExhausted) {
-      recordFailure('subrequest_budget')
+    if (stopped) {
+      recordFailure(stopped)
       continue
     }
 
@@ -419,6 +528,7 @@ async function dispatchDigests(
           idempotencyKey: `lembrete-diario/${digest.userId}/${day.date}`,
         },
         budget,
+        () => guard.assertSubscribed(digest.userId),
       )
       sent++
       matchesListed += matchCount
@@ -428,14 +538,19 @@ async function dispatchDigests(
         doubles: [matchCount, digest.groups.length],
       })
     } catch (err) {
-      recordFailure(failureReason(err))
-      quotaExceeded = err instanceof EmailError && err.quotaExceeded
-      budgetExhausted = err instanceof SubrequestBudgetError
-      console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
+      if (err instanceof UnsubscribedError) {
+        unsubscribedUserIds.push(digest.userId)
+      } else {
+        recordFailure(failureReason(err))
+        stopped = stopReason(err)
+        console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
+      }
+    } finally {
+      guard.done(digest.userId)
     }
   }
 
-  return { sent, matchesListed, failedUserIds }
+  return { sent, matchesListed, failedUserIds, unsubscribedUserIds }
 }
 
 /**
@@ -488,16 +603,13 @@ export async function sendRoundReminders(
   // Sem apiBaseUrl o e-mail sai sem o link, e o `.replace` não quebra o lote.
   const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
 
-  const { sent, matchesListed, failedUserIds } = await dispatchDigests(recipients, {
-    resendApiKey,
-    appUrl,
-    apiBaseUrl,
-    unsub,
-    ae,
-    day,
-    fetchBudget,
-  })
-  await releaseClaims(db, failedUserIds, day)
+  const { sent, matchesListed, failedUserIds, unsubscribedUserIds } = await dispatchDigests(
+    recipients,
+    { db, resendApiKey, appUrl, apiBaseUrl, unsub, ae, day, fetchBudget },
+  )
+  // Quem descadastrou no meio do lote também devolve a reserva. A consulta dos
+  // pendentes já não o traz, e se ele reativar no mesmo dia uma nova execução envia.
+  await releaseClaims(db, [...failedUserIds, ...unsubscribedUserIds], day)
 
   const failed = failedUserIds.length
   const rounds = countRounds(recipients)
@@ -512,6 +624,7 @@ export async function sendRoundReminders(
       failed,
       matches_listed: matchesListed,
       already_claimed: digests.length - recipients.length,
+      unsubscribed_during_run: unsubscribedUserIds.length,
       total_ms: Date.now() - startedAt,
     }),
   )
