@@ -1,7 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { replicatePreferenceKey } from '../../lib/replicatePreference'
+import { resetReplicateStatus } from '../../lib/replicateStatus'
 import { makeMatch } from '../matchFixtures'
 import type { Prediction } from '../MatchCard'
 import PredictionsTab from './PredictionsTab'
@@ -39,47 +41,83 @@ function mockApi({
   } as Record<string, unknown>,
   replicateFails = 0,
   matches = [makeMatch({ id: 'm1' })],
+  /** Segura a resposta da replicação até `release()`. */
+  holdReplicate = false,
+  /** Segura a resposta do "Salvar todos" até `release()`. */
+  holdBulk = false,
 } = {}) {
   const replicateCalls: Replicate[] = []
+  const held: (() => void)[] = []
   let failuresLeft = replicateFails
   const json = (body: unknown, ok = true) =>
     Promise.resolve({ ok, json: async () => body } as Response)
+  const hold = (respond: () => Promise<Response>) =>
+    new Promise<Response>((resolve) => held.push(() => resolve(respond())))
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
     const u = url.toString()
     if (u.includes('/matches')) return json({ matches, default_round: '1' })
     if (u.includes('/predictions/replicate')) {
       replicateCalls.push(JSON.parse(init!.body as string) as Replicate)
-      if (failuresLeft > 0) {
-        failuresLeft -= 1
-        return json({ error: 'Indisponível' }, false)
-      }
-      return json(response)
+      const fails = failuresLeft > 0
+      if (fails) failuresLeft -= 1
+      const respond = () => (fails ? json({ error: 'Indisponível' }, false) : json(response))
+      return holdReplicate ? hold(respond) : respond()
     }
-    if (u.includes('/predictions/bulk'))
-      return json({
-        saved: (JSON.parse(init!.body as string).predictions as { match_id: string }[]).map(
-          (p) => p.match_id,
-        ),
-      })
+    if (u.includes('/predictions/bulk')) {
+      const respond = () =>
+        json({
+          saved: (JSON.parse(init!.body as string).predictions as { match_id: string }[]).map(
+            (p) => p.match_id,
+          ),
+        })
+      return holdBulk ? hold(respond) : respond()
+    }
     if (u.includes('/predictions') && init?.method === 'PUT') return json({ ok: true })
     if (u.includes('/predictions')) return json({ predictions: [saved()] })
     if (u.includes('/groups'))
       return json({ groups: [{ id: 'g1', name: 'Bolão Gama', competition_id: 'c1' }, ...siblings] })
     return Promise.reject(new Error(`Unexpected fetch: ${u}`))
   })
-  return { replicateCalls }
+  /** Entrega as respostas seguradas, na ordem em que os pedidos saíram. */
+  function release() {
+    for (const respond of held.splice(0)) respond()
+  }
+  return { replicateCalls, release }
 }
 
-function renderTab(pointsExact?: number) {
+// StrictMode como no app: a montagem dupla não pode contar como saída do contexto.
+function renderTab(pointsExact?: number, groupId = 'g1') {
   return render(
-    <PredictionsTab groupId="g1" competitionId="c1" userId="u1" pointsExact={pointsExact} />,
+    <StrictMode>
+      <PredictionsTab
+        key={groupId}
+        groupId={groupId}
+        competitionId="c1"
+        userId="u1"
+        pointsExact={pointsExact}
+      />
+    </StrictMode>,
   )
+}
+
+const twoRounds = [makeMatch({ id: 'm1' }), makeMatch({ id: 'm2', round: '2' })]
+
+async function saveCardWithReplicate() {
+  await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+  await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+  await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+}
+
+async function leaveAndReturn() {
+  await userEvent.click(screen.getByRole('button', { name: 'Próxima rodada' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Rodada anterior' }))
 }
 
 describe('Aplicar o palpite nos outros grupos', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     localStorage.clear()
+    resetReplicateStatus()
   })
   afterEach(() => localStorage.clear())
 
@@ -265,5 +303,139 @@ describe('Aplicar o palpite nos outros grupos', () => {
     await userEvent.click(screen.getByLabelText(/Aplicar também em/))
     await waitFor(() => expect(localStorage.getItem(replicatePreferenceKey('u1', 'c1'))).toBe('0'))
     expect(localStorage.getItem(replicatePreferenceKey('u2', 'c1'))).toBeNull()
+  })
+  it('resposta que volta depois da troca de rodada fica na rodada de origem', async () => {
+    const api = mockApi({
+      holdReplicate: true,
+      matches: [makeMatch({ id: 'm1' }), makeMatch({ id: 'm2', round: '2' })],
+    })
+    renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await screen.findByText('Aplicando nos outros grupos...')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Próxima rodada' }))
+    expect(screen.queryByText('Aplicando nos outros grupos...')).not.toBeInTheDocument()
+    await act(async () => api.release())
+    expect(screen.queryByText(/Salvo em 3 grupos\./)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rodada anterior' }))
+    expect(await screen.findByText(/Salvo em 3 grupos\./)).toBeInTheDocument()
+    expect(screen.queryByText('Aplicando nos outros grupos...')).not.toBeInTheDocument()
+  })
+
+  it('"Salvar todos" que termina depois da troca de rodada confirma na rodada de origem', async () => {
+    const api = mockApi({
+      holdBulk: true,
+      matches: [makeMatch({ id: 'm1' }), makeMatch({ id: 'm2', round: '2' })],
+    })
+    renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /Salvar todos \(1\)/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Próxima rodada' }))
+
+    await act(async () => api.release())
+    await waitFor(() => expect(api.replicateCalls).toHaveLength(1))
+    expect(api.replicateCalls[0].match_ids).toEqual(['m1'])
+    await act(async () => {})
+    expect(screen.queryByText(/Salvo em 3 grupos\./)).not.toBeInTheDocument()
+    expect(screen.queryByText('Aplicando nos outros grupos...')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Rodada anterior' }))
+    expect(await screen.findByText(/Salvo em 3 grupos\./)).toBeInTheDocument()
+  })
+
+  it('falha que volta depois da troca de grupo fica no grupo de origem e a nova tentativa não trava', async () => {
+    const api = mockApi({ holdReplicate: true, replicateFails: 1 })
+    const origin = renderTab()
+    await userEvent.click(await screen.findByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
+    await userEvent.click(screen.getByRole('button', { name: 'Atualizar' }))
+    await screen.findByText('Aplicando nos outros grupos...')
+    origin.unmount()
+
+    const other = renderTab(undefined, 'g2')
+    await screen.findByLabelText(/Aplicar também em/)
+    expect(screen.queryByText('Aplicando nos outros grupos...')).not.toBeInTheDocument()
+    await act(async () => api.release())
+    expect(screen.queryByText(/Não foi possível aplicar/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).not.toBeInTheDocument()
+    other.unmount()
+
+    renderTab()
+    expect(
+      await screen.findByText(
+        'Salvo só neste grupo. Não foi possível aplicar nos outros. Indisponível',
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }))
+    await screen.findByText('Aplicando nos outros grupos...')
+    await act(async () => api.release())
+    expect(await screen.findByText(/Salvo em 3 grupos\./)).toBeInTheDocument()
+    expect(screen.queryByText('Aplicando nos outros grupos...')).not.toBeInTheDocument()
+    expect(api.replicateCalls).toHaveLength(2)
+    expect(api.replicateCalls[1]).toEqual(api.replicateCalls[0])
+  })
+  it('confirmação de sucesso sai depois de vista; falha fica até nova tentativa', async () => {
+    const api = mockApi({ replicateFails: 1, matches: twoRounds })
+    renderTab()
+    await saveCardWithReplicate()
+    const failure = 'Salvo só neste grupo. Não foi possível aplicar nos outros. Indisponível'
+    await screen.findByText(failure)
+
+    await leaveAndReturn()
+    expect(await screen.findByText(failure)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }))
+    expect(await screen.findByText(/Salvo em 3 grupos\./)).toBeInTheDocument()
+    expect(screen.queryByText(failure)).not.toBeInTheDocument()
+
+    await leaveAndReturn()
+    await screen.findByLabelText(/Aplicar também em/)
+    expect(screen.queryByText(/Salvo em 3 grupos\./)).not.toBeInTheDocument()
+    expect(api.replicateCalls).toHaveLength(2)
+  })
+
+  it('desmarcar a opção em outra rodada apaga a falha da rodada de origem', async () => {
+    const api = mockApi({ replicateFails: 1, matches: twoRounds })
+    renderTab()
+    await saveCardWithReplicate()
+    await screen.findByText(/Não foi possível aplicar/)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Próxima rodada' }))
+    await userEvent.click(screen.getByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: 'Rodada anterior' }))
+    await screen.findByLabelText(/Aplicar também em/)
+    expect(screen.queryByText(/Não foi possível aplicar/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).not.toBeInTheDocument()
+    expect(api.replicateCalls).toHaveLength(1)
+  })
+
+  it('desmarcar a opção apaga a confirmação que chegou enquanto a pessoa estava em outra rodada', async () => {
+    const api = mockApi({ holdReplicate: true, matches: twoRounds })
+    renderTab()
+    await saveCardWithReplicate()
+    await screen.findByText('Aplicando nos outros grupos...')
+    await userEvent.click(screen.getByRole('button', { name: 'Próxima rodada' }))
+    await act(async () => api.release())
+
+    await userEvent.click(screen.getByLabelText(/Aplicar também em/))
+    await userEvent.click(screen.getByRole('button', { name: 'Rodada anterior' }))
+    await screen.findByLabelText(/Aplicar também em/)
+    expect(screen.queryByText(/Salvo em 3 grupos\./)).not.toBeInTheDocument()
+  })
+
+  it('com a opção desmarcada, a falha que chega depois não oferece "Tentar de novo"', async () => {
+    const api = mockApi({ holdReplicate: true, replicateFails: 1 })
+    renderTab()
+    await saveCardWithReplicate()
+    await screen.findByText('Aplicando nos outros grupos...')
+    await userEvent.click(screen.getByLabelText(/Aplicar também em/))
+    await act(async () => api.release())
+
+    expect(await screen.findByText(/Não foi possível aplicar/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tentar de novo' })).not.toBeInTheDocument()
+    expect(api.replicateCalls).toHaveLength(1)
   })
 })

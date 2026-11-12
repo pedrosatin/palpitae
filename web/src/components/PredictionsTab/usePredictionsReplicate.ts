@@ -1,7 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { readReplicatePreference, writeReplicatePreference } from '../../lib/replicatePreference'
+import {
+  clearReplicateFeedback,
+  finishReplicate,
+  keepReplicateFeedback,
+  readReplicateStatus,
+  replicateContextKey,
+  startReplicate,
+  subscribeReplicateStatus,
+  viewReplicateContext,
+} from '../../lib/replicateStatus'
 import {
   describeReplicate,
   MAX_REPLICATE_TARGETS,
@@ -14,22 +24,12 @@ type TargetGroup = {
   competition_status?: string | null
   points_exact?: number
 }
-export type ReplicateFeedback = {
-  id: number
-  ok: boolean
-  message: string
-  /** Jogos do envio que falhou, para tentar de novo. */
-  matchIds?: string[]
-}
-
-/** Confirmações que ficam na barra ao mesmo tempo. As mais antigas saem primeiro. */
-const MAX_FEEDBACK = 3
 
 type Scope = {
   groupId: string
   competitionId: string
   userId: string | undefined
-  round: string
+  round: string | undefined
   pointsExact: number
 }
 
@@ -39,6 +39,11 @@ type Scope = {
  * grupo que ainda aceita palpite. Num grupo "só vencedor", ficam de fora os grupos
  * que pontuam o placar exato, que a API também recusa. A escolha fica no navegador,
  * por usuário e campeonato.
+ *
+ * Cada envio pertence ao grupo e à rodada dos jogos salvos. A resposta que volta
+ * depois de trocar de rodada ou de grupo fica guardada lá e aparece quando a pessoa
+ * volta; a rodada exibida não mostra resultado de outra. A confirmação de sucesso
+ * sai quando a pessoa deixa o contexto em que a viu.
  */
 export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
   const { groupId, competitionId, userId, round, pointsExact } = scope
@@ -49,87 +54,88 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
   const targets = usable.slice(0, MAX_REPLICATE_TARGETS)
   const overflow = usable.length - targets.length
   const [enabled, setEnabled] = useState(() => readReplicatePreference(userId, competitionId))
-  const [inFlight, setInFlight] = useState(0)
-  const [feedback, setFeedbackState] = useState<ReplicateFeedback[]>([])
-  const feedbackRef = useRef<ReplicateFeedback[]>([])
-  const setFeedback = useCallback((next: ReplicateFeedback[]) => {
-    feedbackRef.current = next
-    setFeedbackState(next)
-  }, [])
-  // Trocar de grupo ou de rodada muda a época. Resposta de época antiga não aparece.
-  const epoch = useRef(0)
-  const nextId = useRef(0)
-  const latest = useRef({ groupId, targets, enabled })
+  const viewKey = replicateContextKey(userId, groupId, round)
+  const readView = () => readReplicateStatus(viewKey)
+  const { inFlight, feedback } = useSyncExternalStore(subscribeReplicateStatus, readView, readView)
+  const latest = useRef({ groupId, userId, round, targets, enabled })
   useEffect(() => {
-    latest.current = { groupId, targets, enabled }
+    latest.current = { groupId, userId, round, targets, enabled }
   })
 
+  // Confirmações de sucesso mostradas neste contexto. Saem do contexto quando a
+  // pessoa troca de rodada ou de grupo; numa rodada sem jogo aberto, a opção some e
+  // não haveria como tirá-las da barra.
+  // A troca de contexto vem antes do registro do que a tela mostra.
+  const shown = useRef(new Set<number>())
   useEffect(() => {
-    epoch.current += 1
+    const seen = new Set<number>()
+    shown.current = seen
+    const leave = viewReplicateContext(viewKey)
+    return () => leave(seen)
+  }, [viewKey])
+  useEffect(() => {
+    for (const f of feedback) if (f.ok) shown.current.add(f.id)
+  }, [feedback])
+
+  useEffect(() => {
     setEnabled(readReplicatePreference(userId, competitionId))
-    setFeedback([])
-    setInFlight(0)
-  }, [groupId, competitionId, userId, round])
+  }, [competitionId, userId])
 
   function handleToggle(next: boolean) {
     setEnabled(next)
-    setFeedback([])
+    // A confirmação de antes não vale para o que for salvo com a opção nova.
+    clearReplicateFeedback(userId, groupId)
     writeReplicatePreference(userId, competitionId, next)
     trackEvent('change_predictions_aplicar_outros_grupos', { enabled: next })
   }
 
-  const push = useCallback(
-    (entry: Omit<ReplicateFeedback, 'id'>) =>
-      setFeedback(
-        [...feedbackRef.current, { ...entry, id: ++nextId.current }].slice(-MAX_FEEDBACK),
-      ),
-    [setFeedback],
-  )
+  /**
+   * Envia `matchIds` para os outros grupos. `originRound` é a rodada dos jogos
+   * salvos; o resultado fica nela, mesmo que a tela já mostre outra.
+   */
+  const replicate = useCallback(async (matchIds: string[], originRound?: string) => {
+    const { groupId: source, userId: user, round: shown, targets: current, enabled: on } =
+      latest.current
+    if (!on || current.length === 0 || matchIds.length === 0) return
+    const names = new Map(current.map((g) => [g.id, g.name]))
+    const origin = replicateContextKey(user, source, originRound ?? shown)
+    startReplicate(origin)
+    try {
+      const result = await postReplicate(
+        source,
+        current.map((g) => g.id),
+        matchIds,
+      )
+      // Os outros grupos mudaram os palpites pendentes do painel.
+      invalidateApiCache('groups:')
+      trackEvent('click_predictions_aplicar_outros_grupos', {
+        groups: result.groups.filter((g) => g.saved > 0).length,
+      })
+      finishReplicate(origin, {
+        ok: true,
+        message: describeReplicate(result, (id) => names.get(id) ?? 'outro grupo'),
+      })
+    } catch (e) {
+      finishReplicate(origin, {
+        ok: false,
+        message: `Salvo só neste grupo. Não foi possível aplicar nos outros. ${(e as Error).message}`,
+        matchIds,
+      })
+    }
+  }, [])
 
-  const replicate = useCallback(
-    async (matchIds: string[]) => {
-      const { groupId: source, targets: current, enabled: on } = latest.current
-      if (!on || current.length === 0 || matchIds.length === 0) return
-      const names = new Map(current.map((g) => [g.id, g.name]))
-      const mine = epoch.current
-      setInFlight((n) => n + 1)
-      try {
-        const result = await postReplicate(
-          source,
-          current.map((g) => g.id),
-          matchIds,
-        )
-        // Os outros grupos mudaram os palpites pendentes do painel.
-        invalidateApiCache('groups:')
-        if (mine !== epoch.current) return
-        trackEvent('click_predictions_aplicar_outros_grupos', {
-          groups: result.groups.filter((g) => g.saved > 0).length,
-        })
-        push({
-          ok: true,
-          message: describeReplicate(result, (id) => names.get(id) ?? 'outro grupo'),
-        })
-      } catch (e) {
-        if (mine !== epoch.current) return
-        push({
-          ok: false,
-          message: `Salvo só neste grupo. Não foi possível aplicar nos outros. ${(e as Error).message}`,
-          matchIds,
-        })
-      } finally {
-        if (mine === epoch.current) setInFlight((n) => Math.max(0, n - 1))
-      }
-    },
-    [push],
-  )
+  // Sem a opção marcada ou sem grupo de destino, não há para onde reenviar.
+  const canRetry =
+    enabled && targets.length > 0 && inFlight === 0 && feedback.some((f) => !f.ok)
 
-  /** Envia de novo os jogos dos envios que falharam. */
+  /** Envia de novo os jogos dos envios que falharam na rodada exibida. */
   const retry = useCallback(() => {
-    const failed = feedbackRef.current.filter((f) => !f.ok)
-    const ids = Array.from(new Set(failed.flatMap((f) => f.matchIds ?? [])))
-    setFeedback(feedbackRef.current.filter((f) => f.ok))
-    void replicate(ids)
-  }, [replicate, setFeedback])
+    const { targets: current, enabled: on } = latest.current
+    if (!on || current.length === 0) return
+    const ids = Array.from(new Set(feedback.filter((f) => !f.ok).flatMap((f) => f.matchIds ?? [])))
+    keepReplicateFeedback(viewKey, (f) => f.ok)
+    void replicate(ids, round)
+  }, [feedback, viewKey, round, replicate])
 
   return {
     replicateTargets: targets,
@@ -139,6 +145,7 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
     replicateFeedback: feedback,
     handleReplicateToggle: handleToggle,
     replicate,
+    canRetryReplicate: canRetry,
     retryReplicate: retry,
   }
 }

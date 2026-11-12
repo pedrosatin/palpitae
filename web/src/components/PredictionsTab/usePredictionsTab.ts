@@ -470,11 +470,17 @@ export function usePredictionsTab(
     replicateFeedback,
     handleReplicateToggle,
     replicate,
+    canRetryReplicate,
     retryReplicate,
   } = usePredictionsReplicate(
     { groupId, competitionId, userId, round: selectedRound, pointsExact },
     siblings,
   )
+  // A replicação pertence à rodada dos jogos salvos. Um "Salvar todos" pode terminar
+  // depois que a tela passou para outra rodada.
+  function replicateSaved(matchIds: string[]) {
+    void replicate(matchIds, matches.find((m) => m.id === matchIds[0])?.round ?? selectedRound)
+  }
 
   const {
     savingAll,
@@ -494,7 +500,7 @@ export function usePredictionsTab(
     unsavedDrafts,
     (matchIds) => {
       noteSaved(matchIds)
-      void replicate(matchIds)
+      replicateSaved(matchIds)
     },
   )
 
@@ -507,7 +513,7 @@ export function usePredictionsTab(
   ) {
     noteSaved([matchId])
     handleSaved(matchId, home, away, penaltyWinner)
-    void replicate([matchId])
+    replicateSaved([matchId])
   }
 
   // Usa `isMatchLocked`, a regra de `collectRoundDrafts`. Sem jogo aberto na rodada
@@ -563,6 +569,7 @@ export function usePredictionsTab(
     replicating,
     replicateFeedback,
     handleReplicateToggle,
+    canRetryReplicate,
     retryReplicate,
     handleDraftChange,
     handlePenaltyDraftChange,
