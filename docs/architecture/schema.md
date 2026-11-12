@@ -233,7 +233,7 @@ A private competition created by a user for a specific competition.
 
 - `payment_status`: reservado, sem efeito. Nenhum código lê ou grava a coluna; todo grupo fica com o default `pending`, que não bloqueia nenhum fluxo.
 - `max_members`: só `POST /groups/join` lê o valor, no `INSERT` da entrada, e recusa quem passaria do limite. Nenhuma rota altera a coluna, então todo grupo usa o default 50.
-- `deleted_at`: `DELETE /groups/:id` grava a data. O grupo some das rotas e para de receber pontuação e ranking; palpites, pontos e ranking ficam como estavam no momento da exclusão.
+- `deleted_at`: `DELETE /groups/:id` grava a data. O grupo some das rotas e para de receber pontuação e ranking; pontos e ranking ficam como estavam no momento da exclusão.
 
 ---
 

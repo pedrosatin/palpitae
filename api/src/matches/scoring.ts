@@ -156,8 +156,8 @@ export const EXACT_HIT_SQL =
   'CASE WHEN g.points_exact > g.points_winner AND p.points_awarded = g.points_exact THEN 1 ELSE 0 END'
 
 /**
- * Grupo não excluído. A pontuação e o ranking param na exclusão: palpites, pontos e
- * ranking de um grupo excluído ficam como estavam (ADR-017).
+ * Grupo não excluído. A pontuação e o ranking param na exclusão: pontos e ranking de
+ * um grupo excluído ficam como estavam.
  * Exige o alias `g` para `groups`.
  */
 const ACTIVE_GROUP_SQL = 'g.deleted_at IS NULL'

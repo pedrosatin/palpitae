@@ -139,7 +139,7 @@ describe('Grupo excluído', () => {
     ])
   })
 
-  it('exclusão durante a pontuação não grava pontos nem ranking do grupo', async () => {
+  it('exclusão entre a leitura e a gravação dos pontos não pontua o grupo', async () => {
     const { sqlite, db, finish, points, leaderboard } = setup()
     finish(2, 1)
     // A exclusão chega depois da leitura dos palpites e antes da primeira gravação.
