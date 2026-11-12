@@ -716,6 +716,79 @@ describe('App', () => {
     expect(localStorage.getItem('palpitae:analytics-consent')).toBe('granted')
   })
 
+  it('um novo login descarta o aviso de expiração da sessão anterior', async () => {
+    // A sessão anterior expirou em "/", onde a landing não consome o aviso.
+    sessionStorage.setItem('palpitae:session-expired', '1')
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'test@example.com' } }),
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    await screen.findByTestId('dashboard-page')
+    expect(sessionStorage.getItem('palpitae:session-expired')).toBeNull()
+  })
+
+  it('sair com sucesso não deixa aviso de expiração para a tela de login', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'test@example.com' } }),
+    })
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200 })
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+    await screen.findByTestId('dashboard-page')
+    // Um 401 de outra requisição chegou durante a saída.
+    sessionStorage.setItem('palpitae:session-expired', '1')
+    await userEvent.setup({ delay: null }).click(screen.getByTestId('logout-button'))
+
+    await screen.findByTestId('landing-page')
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/)
+    expect(sessionStorage.getItem('palpitae:session-expired')).toBeNull()
+    expect(sessionStorage.getItem('palpitae:logout-unconfirmed')).toBeNull()
+  })
+
+  it.each([
+    ['responde 503', () => fetchMock.mockResolvedValueOnce({ ok: false, status: 503 })],
+    ['não responde', () => fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))],
+  ])(
+    'quando o logout %s, sai deste navegador e leva ao login com o aviso',
+    async (_caso, answerLogout) => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ user: { id: '1', email: 'test@example.com' } }),
+      })
+      answerLogout()
+      const drafts = [draftStorageKey('1', 'g1')]
+      for (const key of drafts) localStorage.setItem(key, '{}')
+
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+          <LocationProbe />
+        </MemoryRouter>,
+      )
+      await screen.findByTestId('dashboard-page')
+      await userEvent.setup({ delay: null }).click(screen.getByTestId('logout-button'))
+
+      expect(await screen.findByTestId('login-page')).toBeInTheDocument()
+      expect(screen.getByTestId('location')).toHaveTextContent('/entrar')
+      expect(sessionStorage.getItem('palpitae:logout-unconfirmed')).toBe('1')
+      expect(sessionStorage.getItem('palpitae:session-expired')).toBeNull()
+      for (const key of drafts) expect(localStorage.getItem(key)).toBeNull()
+    },
+  )
+
   it('handles logout and falls back to unauthenticated routes', async () => {
     captureGuideOrigin('?from=guia_planilha-de-bolao')
     const user = userEvent.setup({ delay: null })
