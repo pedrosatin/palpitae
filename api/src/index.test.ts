@@ -141,6 +141,38 @@ describe('scheduled handler routing', () => {
     )
   })
 
+  it('assina o link de descadastro com UNSUBSCRIBE_SECRET quando ele existe', async () => {
+    const reminderEnv = { ...env, UNSUBSCRIBE_SECRET: 'unsub-secret' } as Env
+
+    await run('0 10 * * *', Date.now(), reminderEnv)
+
+    expect(sendRoundReminders).toHaveBeenCalledWith(
+      env.DB,
+      'rk',
+      env.AE,
+      'http://localhost:5173',
+      { secret: 'unsub-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
+      undefined,
+      { fetchBudget: 45, pilotAccess: reminderEnv },
+    )
+  })
+
+  it('volta ao JWT_SECRET quando UNSUBSCRIBE_SECRET está vazio', async () => {
+    const reminderEnv = { ...env, UNSUBSCRIBE_SECRET: '  ' } as Env
+
+    await run('0 10 * * *', Date.now(), reminderEnv)
+
+    expect(sendRoundReminders).toHaveBeenCalledWith(
+      env.DB,
+      'rk',
+      env.AE,
+      'http://localhost:5173',
+      { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
+      undefined,
+      { fetchBudget: 45, pilotAccess: reminderEnv },
+    )
+  })
+
   it('routes the daily-export cron to exportRecentDays only', async () => {
     await run('5 0 * * *')
 
