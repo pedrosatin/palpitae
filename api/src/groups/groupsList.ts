@@ -36,7 +36,7 @@ export function groupsListSql(canSeePilot: boolean): string {
           ) AS member_count,
           COALESCE(l.total_points, 0) AS user_points,
           ${userPositionSql('g.id', 'gm.user_id')} AS user_position,
-          ${pendingSummarySql('g')} AS pending_summary
+          ${pendingSummarySql('g', 'c')} AS pending_summary
         FROM groups g
         INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
         LEFT JOIN competitions c ON g.competition_id = c.id

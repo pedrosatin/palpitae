@@ -57,11 +57,13 @@ const DEADLINE_KEY_SQL = `CASE WHEN m.postponed = 0 AND m.start_time > ?
  * porque a linha existe em `predictions`. TBD não entra: o sync ESPN descarta
  * placeholders antes de persistir.
  *
- * Fragmento correlacionado ao alias do grupo (padrão `g`). Binds na ordem de
- * `pendingSummaryBinds`.
+ * Fragmento correlacionado ao alias do grupo (padrão `g`) e ao da competição
+ * do grupo (padrão `c`), de onde vem `penalty_phases`, sem ler `competitions` de
+ * novo a cada jogo. Binds na ordem de `pendingSummaryBinds`.
  */
-export function pendingSummarySql(groupAlias = 'g'): string {
+export function pendingSummarySql(groupAlias = 'g', competitionAlias = 'c'): string {
   const competition = `${groupAlias}.competition_id`
+  const penaltyPhases = `${competitionAlias}.penalty_phases`
   return `(
             SELECT json_object(
               'pending', COUNT(*) - COUNT(p.match_id),
@@ -75,10 +77,8 @@ export function pendingSummarySql(groupAlias = 'g'): string {
                   AND (
                     m.phase IN (${KNOCKOUT_PHASES_SQL})
                     OR m.phase IN (
-                      SELECT pp.value
-                      FROM competitions pc,
-                           json_each(iif(json_valid(pc.penalty_phases), pc.penalty_phases, '[]')) pp
-                      WHERE pc.id = ${competition}
+                      SELECT value
+                      FROM json_each(iif(json_valid(${penaltyPhases}), ${penaltyPhases}, '[]'))
                     )
                   )
               ),

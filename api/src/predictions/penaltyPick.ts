@@ -48,12 +48,10 @@ export function resolvePenaltyPick(input: {
   const validPick: 'home' | 'away' | null =
     rawPenaltyWinner === 'home' || rawPenaltyWinner === 'away' ? rawPenaltyWinner : null
 
-  if (role === 'leg1') return { ok: true, value: null }
-  if (role === 'leg2') {
-    const tied = leg1Score && home + leg1Score.awayScore === away + leg1Score.homeScore
-    return { ok: true, value: tied ? validPick : null }
+  if (!penaltyPickNeeded({ eligible, role, home, away, leg1Score })) {
+    return { ok: true, value: null }
   }
-  if (eligible && home === away) return validPick ? { ok: true, value: validPick } : { ok: false }
-
-  return { ok: true, value: null }
+  // Na volta, o palpite sem pick é aceito e só não pontua o classificado.
+  if (role === 'leg2') return { ok: true, value: validPick }
+  return validPick ? { ok: true, value: validPick } : { ok: false }
 }

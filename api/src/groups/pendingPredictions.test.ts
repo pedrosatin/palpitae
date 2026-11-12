@@ -816,10 +816,12 @@ describe('pendingSummarySql unit tests', () => {
   })
 
   it('returns correctly formatted sql string with custom alias', () => {
-    const sql = pendingSummarySql('customAlias')
+    const sql = pendingSummarySql('customAlias', 'customComp')
     expect(sql.trim().replace(/\s+/g, ' ')).toContain(
       `ON m.competition_id = customAlias.competition_id AND m.round = r.round`
     )
+    expect(sql).toContain('json_valid(customComp.penalty_phases)')
+    expect(sql).not.toContain('FROM competitions')
     expect(sql.trim().replace(/\s+/g, ' ')).toContain(
       `AND p.group_id = customAlias.id`
     )

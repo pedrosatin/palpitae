@@ -58,21 +58,22 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
 
   /**
    * Busca a lista de novo sem a tela de carregamento, para os números que mudam com
-   * o relógio. A lista atual fica na tela até a nova chegar. Se a busca falhar, ela
-   * continua, e a próxima carga tenta de novo. Uma carga pedida depois descarta a
-   * resposta.
+   * o relógio. A lista atual fica na tela até a nova chegar. Devolve a lista nova,
+   * ou null quando a busca falha ou uma carga pedida depois descarta a resposta.
+   * Na falha, a lista atual continua.
    */
-  const refreshGroups = useCallback(() => {
+  const refreshGroups = useCallback((): Promise<GroupWithStats[] | null> => {
     const requestId = ++requestIdRef.current
     invalidateApiCache('groups:')
-    fetchGroupsList(userId)
+    return fetchGroupsList(userId)
       .then((data) => {
-        if (requestId !== requestIdRef.current) return
+        if (requestId !== requestIdRef.current) return null
         setLoad((current) =>
           current.status === 'ready' ? { status: 'ready', groups: data.groups } : current,
         )
+        return data.groups
       })
-      .catch(() => {})
+      .catch(() => null)
   }, [userId])
 
   // Parâmetros da última busca disparada pelo efeito.
