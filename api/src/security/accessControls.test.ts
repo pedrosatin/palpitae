@@ -622,6 +622,30 @@ describe('access controls with a real SQL database', () => {
     expect(response.headers.get('Set-Cookie')).toMatch(/session=;.*Max-Age=0/)
   })
 
+  it('does not report a failed revocation as success and revokes the token on retry', async () => {
+    const { request, sqlite, tokens, env, db } = await fixture()
+    sqlite.exec(
+      "CREATE TRIGGER block_revocation BEFORE INSERT ON revoked_sessions BEGIN SELECT RAISE(ABORT, 'down'); END",
+    )
+    const failed = await request('/auth/logout', 'member', 'POST')
+    expect(failed.status).toBe(503)
+    expect(await failed.json()).not.toHaveProperty('ok')
+    // A cópia do cookie que ficou em outro lugar continua valendo até a revogação gravar.
+    await expect(verifySession(tokens.member, env.JWT_SECRET, db)).resolves.toHaveProperty(
+      'sub',
+      'member',
+    )
+
+    sqlite.exec('DROP TRIGGER block_revocation')
+    const retried = await request('/auth/logout', 'member', 'POST')
+    expect(retried.status).toBe(200)
+    expect(await retried.json()).toEqual({ ok: true })
+    await expect(verifySession(tokens.member, env.JWT_SECRET, db)).rejects.toThrow(
+      'Session revoked',
+    )
+    expect((await request('/groups')).status).toBe(401)
+  })
+
   it('fails closed on unavailable revocation storage and rejects a foreign Origin on writes', async () => {
     const { request, env, tokens, sqlite, ctx } = await fixture()
     const foreignRequest = new Request('https://api.palpitae.com.br/groups', {

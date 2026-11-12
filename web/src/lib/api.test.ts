@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   notifySessionExpired,
   consumeSessionExpired,
+  clearSessionExpired,
+  notifyLogoutUnconfirmed,
+  consumeLogoutUnconfirmed,
   apiFetch,
   readApiError,
   SESSION_EXPIRED_EVENT,
@@ -83,6 +86,42 @@ describe('api', () => {
       })
       expect(consumeSessionExpired()).toBe(false)
       spy.mockRestore()
+    })
+  })
+
+  describe('clearSessionExpired', () => {
+    it('apaga o aviso pendente sem disparar o evento', () => {
+      window.sessionStorage.setItem('palpitae:session-expired', '1')
+      const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
+
+      clearSessionExpired()
+
+      expect(consumeSessionExpired()).toBe(false)
+      expect(dispatchEventSpy).not.toHaveBeenCalled()
+    })
+
+    it('não lança sem sessionStorage', () => {
+      vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+        throw new Error('SecurityError')
+      })
+      expect(() => clearSessionExpired()).not.toThrow()
+    })
+  })
+
+  describe('logout sem confirmação do servidor', () => {
+    it('o aviso vale para uma única leitura', () => {
+      expect(consumeLogoutUnconfirmed()).toBe(false)
+      notifyLogoutUnconfirmed()
+      expect(consumeLogoutUnconfirmed()).toBe(true)
+      expect(consumeLogoutUnconfirmed()).toBe(false)
+    })
+
+    it('não lança quando o sessionStorage recusa a escrita', () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('Quota exceeded')
+      })
+      expect(() => notifyLogoutUnconfirmed()).not.toThrow()
+      expect(consumeLogoutUnconfirmed()).toBe(false)
     })
   })
 

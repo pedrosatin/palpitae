@@ -26,20 +26,51 @@ const SESSION_EXPIRED_FLAG = 'palpitae:session-expired'
  */
 export function notifySessionExpired(): void {
   if (typeof window === 'undefined') return
-  try {
-    window.sessionStorage.setItem(SESSION_EXPIRED_FLAG, '1')
-  } catch {
-    // sessionStorage can throw (private mode / quota) — the event still fires.
-  }
+  // sessionStorage can throw (private mode / quota) — the event still fires.
+  setFlag(SESSION_EXPIRED_FLAG)
   window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
 }
 
 /** Read-and-clear the session-expired flag. Returns true once per expiry. */
 export function consumeSessionExpired(): boolean {
+  return consumeFlag(SESSION_EXPIRED_FLAG)
+}
+
+/**
+ * Descarta o aviso de expiração pendente. Novo login e saída pedida pelo usuário
+ * encerram a sessão a que o aviso se referia, e a próxima tela de login não o herda.
+ */
+export function clearSessionExpired(): void {
+  consumeFlag(SESSION_EXPIRED_FLAG)
+}
+
+/** Flag de sessionStorage: o `POST /auth/logout` não confirmou a revogação no servidor. */
+const LOGOUT_UNCONFIRMED_FLAG = 'palpitae:logout-unconfirmed'
+
+/** Marca, para a tela de login, que a saída não foi confirmada pelo servidor. */
+export function notifyLogoutUnconfirmed(): void {
+  setFlag(LOGOUT_UNCONFIRMED_FLAG)
+}
+
+/** Lê e apaga a marca de saída sem confirmação. Verdadeiro uma vez por saída. */
+export function consumeLogoutUnconfirmed(): boolean {
+  return consumeFlag(LOGOUT_UNCONFIRMED_FLAG)
+}
+
+function setFlag(key: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(key, '1')
+  } catch {
+    // Storage indisponível: o aviso não aparece, e o fluxo segue.
+  }
+}
+
+function consumeFlag(key: string): boolean {
   if (typeof window === 'undefined') return false
   try {
-    const flag = window.sessionStorage.getItem(SESSION_EXPIRED_FLAG)
-    if (flag) window.sessionStorage.removeItem(SESSION_EXPIRED_FLAG)
+    const flag = window.sessionStorage.getItem(key)
+    if (flag) window.sessionStorage.removeItem(key)
     return flag === '1'
   } catch {
     return false

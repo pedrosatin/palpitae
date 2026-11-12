@@ -22,3 +22,38 @@ describe('LoginPage – analytics', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_login_conheca')
   })
 })
+
+describe('LoginPage – avisos', () => {
+  beforeEach(() => sessionStorage.clear())
+
+  function renderLogin() {
+    return render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    )
+  }
+
+  it('mostra o aviso de sessão expirada uma vez', () => {
+    sessionStorage.setItem('palpitae:session-expired', '1')
+    const { unmount } = renderLogin()
+    expect(screen.getByRole('alert')).toHaveTextContent('Sua sessão expirou')
+    unmount()
+
+    renderLogin()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('avisa, uma vez, que o servidor não confirmou o fim da sessão', () => {
+    sessionStorage.setItem('palpitae:logout-unconfirmed', '1')
+    const { unmount } = renderLogin()
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Não conseguimos confirmar no servidor')
+    expect(alert).toHaveTextContent('Sair de todos os dispositivos')
+    expect(alert).not.toHaveTextContent('Sua sessão expirou')
+    unmount()
+
+    renderLogin()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})

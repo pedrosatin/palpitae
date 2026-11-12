@@ -5,8 +5,23 @@ import ErrorState from '../../components/ErrorState'
 import GoogleLoginButton from '../../components/GoogleLoginButton'
 import { trackEvent } from '../../analytics/ga'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
-import { consumeSessionExpired } from '../../lib/api'
+import { consumeLogoutUnconfirmed, consumeSessionExpired } from '../../lib/api'
 import styles from './LoginPage.module.css'
+
+const SESSION_EXPIRED_NOTICE = 'Sua sessão expirou. Entre novamente para continuar.'
+const LOGOUT_UNCONFIRMED_NOTICE =
+  'Não conseguimos confirmar no servidor o fim da sua sessão. Se este aparelho for compartilhado, entre de novo e use “Sair de todos os dispositivos” em Configurações.'
+
+/**
+ * Aviso que explica por que a pessoa chegou ao login. Consome as duas marcas,
+ * para nenhuma sobrar para a próxima visita.
+ */
+function consumeLoginNotice(): string | null {
+  const logoutUnconfirmed = consumeLogoutUnconfirmed()
+  const sessionExpired = consumeSessionExpired()
+  if (logoutUnconfirmed) return LOGOUT_UNCONFIRMED_NOTICE
+  return sessionExpired ? SESSION_EXPIRED_NOTICE : null
+}
 
 /**
  * Login page — entry point for unauthenticated users.
@@ -20,21 +35,15 @@ import styles from './LoginPage.module.css'
 export default function LoginPage() {
   useDocumentTitle('Entrar')
 
-  // Set once if we got here because a 401 dropped the session (read-and-clear,
-  // so a manual refresh of /entrar doesn't keep showing the notice).
-  const [sessionExpired] = useState(consumeSessionExpired)
+  // Lido uma vez e apagado, para um refresh de /entrar não repetir o aviso.
+  const [notice] = useState(consumeLoginNotice)
 
   return (
     <main className={styles.root}>
       <Card className={styles.card}>
         <img src="/logo-text.svg" alt="Palpitae logo" className={styles.logo} />
 
-        {sessionExpired && (
-          <ErrorState
-            className={styles.sessionNotice}
-            message="Sua sessão expirou. Entre novamente para continuar."
-          />
-        )}
+        {notice && <ErrorState className={styles.sessionNotice} message={notice} />}
 
         <div className={styles.text}>
           <h1 className={styles.title}>Bem-vindo ao Palpitae</h1>
