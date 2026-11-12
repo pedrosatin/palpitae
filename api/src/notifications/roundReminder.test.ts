@@ -3,7 +3,12 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { RESEND_FETCH_BUDGET, formatTimeBRT, sendRoundReminders } from './roundReminder'
+import {
+  RESEND_FETCH_BUDGET,
+  formatTimeBRT,
+  reminderFetchBudget,
+  sendRoundReminders,
+} from './roundReminder'
 
 // 07:00 em Brasília de sexta 13/11/2026 e de quarta 18/11/2026.
 const FRIDAY = Date.UTC(2026, 10, 13, 10)
@@ -265,6 +270,51 @@ describe('sendRoundReminders', () => {
       })
 
       await run(db)
+
+      const [email] = sentBodies()
+      expect(email.subject).toBe('1 jogo sem palpite hoje. Fecha às 23:30')
+      expect(email.html).not.toContain('Corinthians')
+    })
+
+    // A base de fusos tem o horário de verão de Brasília até 2019. Um ano desses
+    // simula a volta dele sem depender da data em que o teste roda.
+    it('com horário de verão, o jogo de 00:30 do dia seguinte fica de fora', async () => {
+      const { sqlite, db } = createFixture()
+      // 23:30 de 10/12/2018 em Brasília, que estava em UTC-2.
+      addMatch(sqlite, { id: 'noite', start: '2018-12-11T01:30:00Z' })
+      // 00:30 de 11/12/2018 em Brasília: já é o dia seguinte.
+      addMatch(sqlite, { id: 'madrugada', start: '2018-12-11T02:30:00Z', home: 'cor', away: 'sao' })
+
+      await run(db, Date.UTC(2018, 11, 10, 10, 0, 0, 750))
+
+      const [email] = sentBodies()
+      expect(email.subject).toBe('1 jogo sem palpite hoje. Fecha às 23:30')
+      expect(email.html).not.toContain('Corinthians')
+      expect(sqlite.prepare('SELECT reminder_date FROM email_reminder_sends').all()).toEqual([
+        { reminder_date: '2018-12-10' },
+      ])
+    })
+
+    it('no dia em que o horário de verão começa, a meia-noite pulada fecha o dia', async () => {
+      const { sqlite, db } = createFixture()
+      // 03/11/2018 termina às 03:00 UTC, quando 00:00 local vira 01:00.
+      addMatch(sqlite, { id: 'noite', start: '2018-11-04T02:30:00Z' })
+      addMatch(sqlite, { id: 'madrugada', start: '2018-11-04T03:30:00Z', home: 'cor', away: 'sao' })
+
+      await run(db, Date.UTC(2018, 10, 3, 10))
+
+      const [email] = sentBodies()
+      expect(email.subject).toBe('1 jogo sem palpite hoje. Fecha às 23:30')
+      expect(email.html).not.toContain('Corinthians')
+    })
+
+    it('no dia em que o horário de verão termina, a hora repetida ainda é do mesmo dia', async () => {
+      const { sqlite, db } = createFixture()
+      // 16/02/2019 tem 25 horas e termina às 03:00 UTC de 17/02.
+      addMatch(sqlite, { id: 'noite', start: '2019-02-17T02:30:00Z' })
+      addMatch(sqlite, { id: 'madrugada', start: '2019-02-17T03:30:00Z', home: 'cor', away: 'sao' })
+
+      await run(db, Date.UTC(2019, 1, 16, 10))
 
       const [email] = sentBodies()
       expect(email.subject).toBe('1 jogo sem palpite hoje. Fecha às 23:30')
@@ -565,6 +615,113 @@ describe('sendRoundReminders', () => {
 
       expect(fetch).toHaveBeenCalledTimes(RESEND_FETCH_BUDGET)
       expect(eventsOf(writeDataPoint, 'email_reminder_failed')).toEqual([])
+    })
+
+    it('quem ficou sem e-mail por jogar à noite tem a vez no dia seguinte', async () => {
+      const { sqlite, db } = createFixture()
+      const THURSDAY = WEDNESDAY + 86_400_000
+      addMatch(sqlite, { id: 'tarde-1', start: '2026-11-18T18:00:00Z' })
+      addMatch(sqlite, { id: 'noite-1', start: '2026-11-18T23:30:00Z' })
+      addMatch(sqlite, { id: 'tarde-2', start: '2026-11-19T18:00:00Z' })
+      addMatch(sqlite, { id: 'noite-2', start: '2026-11-19T23:30:00Z' })
+      // Três a mais que o teto. Os três últimos já palpitaram os jogos da tarde
+      // e só têm pendência à noite.
+      addMembers(sqlite, RESEND_FETCH_BUDGET + 2)
+      const night = ['u45', 'u46', 'u47']
+      for (const user of night) {
+        addPrediction(sqlite, user, 'g1', 'tarde-1')
+        addPrediction(sqlite, user, 'g1', 'tarde-2')
+      }
+      const members = Array.from({ length: RESEND_FETCH_BUDGET + 2 }, (_, i) => `u${String(i + 1).padStart(2, '0')}`)
+      const everyone = ['ana', ...members]
+      const leftOut = (recipients: string[]) => everyone.filter((user) => !recipients.includes(user))
+
+      await run(db, WEDNESDAY)
+      const day1 = sentBodies().map((body) => body.to.split('@')[0])
+      vi.mocked(fetch).mockClear()
+      await run(db, THURSDAY)
+      const day2 = sentBodies().map((body) => body.to.split('@')[0])
+
+      expect(day1).toHaveLength(RESEND_FETCH_BUDGET)
+      expect(day2).toHaveLength(RESEND_FETCH_BUDGET)
+      expect(leftOut(day1)).toEqual(night)
+      expect(day2.slice(0, 3)).toEqual(night)
+      expect(leftOut(day2).filter((user) => leftOut(day1).includes(user))).toEqual([])
+    })
+
+    it('o teto da execução vem da configuração', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMembers(sqlite, 4)
+      const { ae, writeDataPoint } = fakeAe()
+
+      await sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY, { fetchBudget: 3 })
+
+      expect(fetch).toHaveBeenCalledTimes(3)
+      const reasons = eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])
+      expect(reasons).toEqual(['subrequest_budget', 'subrequest_budget'])
+    })
+  })
+
+  describe('competição em piloto', () => {
+    const access = { ADMIN_EMAIL: 'admin@example.com', PILOT_EMAILS: ' Ana@Example.com , outro@example.com' }
+
+    function addPilotGroup(sqlite: DatabaseSync, members: string[]) {
+      sqlite.exec(`
+        INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
+          ('admin', 'admin@example.com', 'google', 'g-admin', 'Admin');
+        INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility) VALUES
+          ('pil', 'Liga Piloto', 'pil-2026', '2026', 'ongoing', 'league', '[]', 'pilot');
+        INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code) VALUES
+          ('g4', 'Grupo Piloto', 'pil', 'ana', 'DDDD-4444');
+      `)
+      for (const user of members) addMember(sqlite, 'g4', user)
+      addMatch(sqlite, { id: 'pil-1', competition: 'pil', start: '2026-11-18T21:00:00Z', home: 'cor', away: 'sao' })
+    }
+
+    it('quem está fora de PILOT_EMAILS não recebe lembrete do grupo em piloto', async () => {
+      const { sqlite, db } = createFixture()
+      sqlite.exec(`DELETE FROM group_members`)
+      addPilotGroup(sqlite, ['ana', 'bia', 'admin'])
+
+      await sendRoundReminders(db, 'key', undefined, undefined, undefined, WEDNESDAY, {
+        pilotAccess: access,
+      })
+
+      expect(sentBodies().map((email) => email.to).sort()).toEqual([
+        'admin@example.com',
+        'ana@example.com',
+      ])
+      expect(sqlite.prepare('SELECT user_id FROM email_reminder_sends ORDER BY user_id').all()).toEqual([
+        { user_id: 'admin' },
+        { user_id: 'ana' },
+      ])
+    })
+
+    it('o e-mail de quem não tem acesso lista só os grupos públicos', async () => {
+      const { sqlite, db } = createFixture()
+      addMember(sqlite, 'g1', 'bia')
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addPilotGroup(sqlite, ['bia'])
+
+      await sendRoundReminders(db, 'key', undefined, undefined, undefined, WEDNESDAY, {
+        pilotAccess: access,
+      })
+
+      const bia = sentBodies().find((email) => email.to === 'bia@example.com')!
+      expect(bia.subject).toBe('1 jogo sem palpite hoje. Fecha às 19:00')
+      expect(bia.html).toContain('Realidade do BR')
+      expect(bia.html).not.toContain('Grupo Piloto')
+    })
+
+    it('sem a lista de acesso, grupo em piloto não gera lembrete', async () => {
+      const { sqlite, db } = createFixture()
+      sqlite.exec(`DELETE FROM group_members`)
+      addPilotGroup(sqlite, ['ana'])
+
+      await run(db)
+
+      expect(fetch).not.toHaveBeenCalled()
     })
   })
 
@@ -911,6 +1068,23 @@ describe('sendRoundReminders', () => {
       expect(email.html).not.toContain('Cancelar inscrição')
       expect(email.headers).toBeUndefined()
     })
+  })
+})
+
+describe('reminderFetchBudget', () => {
+  it.each([
+    [undefined, RESEND_FETCH_BUDGET],
+    ['', RESEND_FETCH_BUDGET],
+    ['120', 120],
+    [' 30 ', 30],
+    ['0', RESEND_FETCH_BUDGET],
+    ['-5', RESEND_FETCH_BUDGET],
+    ['12.5', RESEND_FETCH_BUDGET],
+    ['muitos', RESEND_FETCH_BUDGET],
+  ])('%j vira %d', (raw, expected) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(reminderFetchBudget(raw)).toBe(expected)
+    vi.restoreAllMocks()
   })
 })
 
