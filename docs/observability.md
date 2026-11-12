@@ -242,8 +242,9 @@ reset no maior valor entre `X-RequestCounter-Reset`, `x-request_counter-reset` e
 Um 429, ou uma resposta com zero requests restantes, pausa as chamadas até o reset. Sem reset
 válido a pausa é de 60 s; o 429 pausa no mínimo 6 s; nenhuma pausa passa de 1 h. Durante a
 pausa, uma chamada espera até 65 s; se o reset estiver mais longe, falha sem request
-(`FootballDataQuotaError`, registrada como `football_api_error`) e o próximo ciclo tenta de novo.
-O retry do 429 passa pela mesma regra.
+(`FootballDataQuotaError`, registrada como `football_api_error`), e o próximo ciclo tenta de
+novo: 30 min no poller (com o fallback da ESPN no mesmo tick), 24 h na descoberta. O retry do 429
+passa pela mesma regra.
 
 A pausa vale só para o isolate que viu a resposta. Outro isolate do Worker, o radar no GitHub
 Actions e scripts locais não a enxergam, então ela não é um orçamento global: discovery e poller

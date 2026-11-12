@@ -681,10 +681,11 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
   }
 
   it('repete o 429 uma vez só depois do reset informado, não em 6 s', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(fdResponse(429, { 'X-RequestCounter-Reset': '37' }))
-      .mockResolvedValueOnce(fdResponse(200))
+    const limited = {
+      ...fdResponse(429, { 'X-RequestCounter-Reset': '37' }),
+      body: { cancel: vi.fn() },
+    }
+    const fetchMock = vi.fn().mockResolvedValueOnce(limited).mockResolvedValueOnce(fdResponse(200))
     vi.stubGlobal('fetch', fetchMock)
 
     const promise = sync()
@@ -693,6 +694,8 @@ describe('syncFixtures — football-data 429 e cota informada', () => {
     await vi.advanceTimersByTimeAsync(1_000)
     await expect(promise).resolves.toMatchObject({ matches: 0 })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    // O corpo do 429 é descartado antes do retry, sem segurar a conexão.
+    expect(limited.body.cancel).toHaveBeenCalledTimes(1)
   })
 
   it('429 sem cabeçalho espera a janela padrão antes do único retry', async () => {
@@ -915,7 +918,13 @@ describe('syncFixtures — telemetria por tentativa HTTP', () => {
     await expect(
       syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db, onHttpAttempt }),
     ).rejects.toThrow('fetch failed')
-    expect(onHttpAttempt.mock.calls[0][0]).toMatchObject({ provider: 'football-data', status: 0 })
+    expect(onHttpAttempt.mock.calls[0][0]).toEqual({
+      provider: 'football-data',
+      status: 0,
+      durationMs: expect.any(Number),
+      quotaRemaining: null,
+      quotaResetSeconds: null,
+    })
   })
 
   it('football-data: observer que lança não muda o resultado do sync', async () => {

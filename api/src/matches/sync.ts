@@ -309,6 +309,9 @@ async function fetchMatchesFromApi(
         provider: 'football-data',
         status: 0,
         durationMs: Date.now() - startedAt,
+        // Sem resposta não há cabeçalho de cota: grava -1, como as respostas sem ele.
+        quotaRemaining: null,
+        quotaResetSeconds: null,
       })
       throw err
     }
@@ -317,7 +320,11 @@ async function fetchMatchesFromApi(
   let res = await request()
   // Um único retry, depois do reset que o 429 informou. Reset além de
   // FD_QUOTA_MAX_WAIT_MS falha sem segundo request.
-  if (res.status === 429) res = await request()
+  if (res.status === 429) {
+    // O corpo do 429 não é lido: libera a conexão antes do retry.
+    await res.body?.cancel()
+    res = await request()
+  }
 
   if (!res.ok) {
     const text = await res.text()

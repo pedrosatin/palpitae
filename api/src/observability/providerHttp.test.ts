@@ -67,6 +67,21 @@ describe('createProviderHttpObserver', () => {
     ])
   })
 
+  it('football-data sem resposta (status 0) grava a cota como -1', () => {
+    const ae = fakeAe()
+    const observe = createProviderHttpObserver(ae, { context: 'poller' }, () => 0.99)
+
+    observe?.({
+      provider: 'football-data',
+      status: 0,
+      durationMs: 10_000,
+      quotaRemaining: null,
+      quotaResetSeconds: null,
+    })
+
+    expect(written(ae).map((p) => [p.blobs?.[3], p.doubles])).toEqual([['0', [10_000, 1, -1, -1]]])
+  })
+
   it('sucesso com cota zerada sai sempre, com peso 1, fora da amostra', () => {
     const ae = fakeAe()
     const observe = createProviderHttpObserver(ae, { context: 'discovery' }, () => 0.99)
