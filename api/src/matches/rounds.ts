@@ -9,39 +9,50 @@
  * lembrete em `roundReminder.ts` e pela resposta de `GET /matches` em
  * `router.ts` no campo `round_label`. Por isso o mapa vive no back e não é
  * duplicado no front.
+ *
+ * Cada rótulo leva a concordância de gênero e número, que o painel usa para
+ * escrever "Semifinais completas" ou "Terceiro lugar completo". Quem renomeia
+ * um rótulo revê a concordância na mesma linha, e `rounds.test.ts` fixa os pares.
  */
-const KNOCKOUT_LABELS: Record<string, string> = {
-  GROUP_STAGE: 'Fase de grupos',
-  REGULAR_SEASON: 'Temporada regular',
-  LEAGUE_PHASE: 'Fase de pontos',
-  TACA_GUANABARA: 'Taça Guanabara',
-  RELEGATION_STAGE: 'Rebaixamento',
-  FIRST_STAGE: '1ª fase',
-  SECOND_STAGE: '2ª fase',
-  THIRD_STAGE: '3ª fase',
-  FIRST_ROUND: '1ª fase',
-  SECOND_ROUND: '2ª fase',
-  THIRD_ROUND: '3ª fase',
-  FOURTH_ROUND: '4ª fase',
-  FIFTH_ROUND: '5ª fase',
-  PLAYOFFS: 'Playoffs',
-  LAST_32: 'Rodada de 32',
-  LAST_16: 'Oitavas de final',
-  QUARTER_FINALS: 'Quartas de final',
-  SEMI_FINALS: 'Semifinais',
-  THIRD_PLACE: 'Terceiro lugar',
-  FINAL: 'Final',
-  TACA_GUANABARA_QUARTER_FINALS: 'Quartas da Taça Guanabara',
-  TACA_GUANABARA_SEMI_FINALS: 'Semifinais da Taça Guanabara',
-  TACA_GUANABARA_FINAL: 'Final da Taça Guanabara',
-  TACA_RIO_SEMI_FINALS: 'Semifinais da Taça Rio',
-  TACA_RIO_FINAL: 'Final da Taça Rio',
-  TROFEU_INCONFIDENCIA_SEMI_FINALS: 'Semifinais do Troféu Inconfidência',
-  TROFEU_INCONFIDENCIA_FINAL: 'Final do Troféu Inconfidência',
-  PLAYOFFS_SEMI_FINALS: 'Semifinais dos playoffs',
-  PLAYOFFS_FINAL: 'Final dos playoffs',
-  FARROUPILHA_SEMI_FINALS: 'Semifinais do Farroupilha',
-  FARROUPILHA_FINAL: 'Final do Farroupilha',
+
+/** Gênero e número do rótulo: feminino ou masculino, singular ou plural. */
+export type RoundAgreement = 'fs' | 'fp' | 'ms' | 'mp'
+
+const KNOCKOUT_LABELS: Record<string, { label: string; agreement: RoundAgreement }> = {
+  GROUP_STAGE: { label: 'Fase de grupos', agreement: 'fs' },
+  REGULAR_SEASON: { label: 'Temporada regular', agreement: 'fs' },
+  LEAGUE_PHASE: { label: 'Fase de pontos', agreement: 'fs' },
+  TACA_GUANABARA: { label: 'Taça Guanabara', agreement: 'fs' },
+  RELEGATION_STAGE: { label: 'Rebaixamento', agreement: 'ms' },
+  FIRST_STAGE: { label: '1ª fase', agreement: 'fs' },
+  SECOND_STAGE: { label: '2ª fase', agreement: 'fs' },
+  THIRD_STAGE: { label: '3ª fase', agreement: 'fs' },
+  FIRST_ROUND: { label: '1ª fase', agreement: 'fs' },
+  SECOND_ROUND: { label: '2ª fase', agreement: 'fs' },
+  THIRD_ROUND: { label: '3ª fase', agreement: 'fs' },
+  FOURTH_ROUND: { label: '4ª fase', agreement: 'fs' },
+  FIFTH_ROUND: { label: '5ª fase', agreement: 'fs' },
+  PLAYOFFS: { label: 'Playoffs', agreement: 'mp' },
+  LAST_32: { label: 'Rodada de 32', agreement: 'fs' },
+  LAST_16: { label: 'Oitavas de final', agreement: 'fp' },
+  QUARTER_FINALS: { label: 'Quartas de final', agreement: 'fp' },
+  SEMI_FINALS: { label: 'Semifinais', agreement: 'fp' },
+  THIRD_PLACE: { label: 'Terceiro lugar', agreement: 'ms' },
+  FINAL: { label: 'Final', agreement: 'fs' },
+  TACA_GUANABARA_QUARTER_FINALS: { label: 'Quartas da Taça Guanabara', agreement: 'fp' },
+  TACA_GUANABARA_SEMI_FINALS: { label: 'Semifinais da Taça Guanabara', agreement: 'fp' },
+  TACA_GUANABARA_FINAL: { label: 'Final da Taça Guanabara', agreement: 'fs' },
+  TACA_RIO_SEMI_FINALS: { label: 'Semifinais da Taça Rio', agreement: 'fp' },
+  TACA_RIO_FINAL: { label: 'Final da Taça Rio', agreement: 'fs' },
+  TROFEU_INCONFIDENCIA_SEMI_FINALS: {
+    label: 'Semifinais do Troféu Inconfidência',
+    agreement: 'fp',
+  },
+  TROFEU_INCONFIDENCIA_FINAL: { label: 'Final do Troféu Inconfidência', agreement: 'fs' },
+  PLAYOFFS_SEMI_FINALS: { label: 'Semifinais dos playoffs', agreement: 'fp' },
+  PLAYOFFS_FINAL: { label: 'Final dos playoffs', agreement: 'fs' },
+  FARROUPILHA_SEMI_FINALS: { label: 'Semifinais do Farroupilha', agreement: 'fp' },
+  FARROUPILHA_FINAL: { label: 'Final do Farroupilha', agreement: 'fs' },
 }
 
 /** Fases de pontos/grupos no mapa de rótulos que não são mata-mata. */
@@ -59,7 +70,16 @@ const NON_KNOCKOUT_PHASES = new Set([
  */
 export function roundLabel(round: string): string {
   if (/^\d+$/.test(round)) return `Rodada ${round}`
-  return KNOCKOUT_LABELS[round] ?? round
+  return Object.hasOwn(KNOCKOUT_LABELS, round) ? KNOCKOUT_LABELS[round].label : round
+}
+
+/**
+ * Concordância do rótulo de `roundLabel`. Null quando a rodada é desconhecida e o
+ * rótulo é o valor cru, que os resumos do painel não mostram.
+ */
+export function roundAgreement(round: string): RoundAgreement | null {
+  if (/^\d+$/.test(round)) return 'fs'
+  return Object.hasOwn(KNOCKOUT_LABELS, round) ? KNOCKOUT_LABELS[round].agreement : null
 }
 
 /**
@@ -72,6 +92,9 @@ export function isKnockoutPhase(phase: string | null | undefined): boolean {
   if (!phase || NON_KNOCKOUT_PHASES.has(phase)) return false
   return Object.hasOwn(KNOCKOUT_LABELS, phase)
 }
+
+/** Os códigos de rodada com rótulo no mapa, para o teste que fixa rótulo e concordância. */
+export const LABELED_ROUNDS: readonly string[] = Object.keys(KNOCKOUT_LABELS)
 
 /** As fases em que `isKnockoutPhase` dá verdadeiro, para filtros em SQL. */
 export const KNOCKOUT_PHASES: readonly string[] = Object.keys(KNOCKOUT_LABELS).filter(

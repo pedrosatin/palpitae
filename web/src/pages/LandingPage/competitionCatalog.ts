@@ -7,13 +7,18 @@
  * `docs/operations/promocao-lote2.md`). Para anunciar uma nova, acrescente uma
  * linha aqui. A seção, o FAQ visível e o JSON-LD do `index.html` saem desta lista.
  *
+ * O `npm run catalog:verify` (`scripts/catalog-verify.mjs`, workflow
+ * `landing-catalog.yml`) confere os slugs daqui contra `GET /public/competitions`.
+ * Reprova o PR que altera este arquivo e anuncia competição em piloto, encerrada
+ * ou de outra temporada; fora dele, e na execução diária, a divergência só avisa.
+ *
  * Os nomes não levam temporada, para o texto não envelhecer a cada ano.
  */
 
 export type CatalogRegion = 'brasil' | 'europa'
 
 export type CatalogCompetition = {
-  /** Slug da temporada vigente em `competitions.slug`, usado só para conferência em teste. */
+  /** Slug da temporada vigente em `competitions.slug`, usado só nas conferências do catálogo. */
   slug: string
   name: string
   region: CatalogRegion

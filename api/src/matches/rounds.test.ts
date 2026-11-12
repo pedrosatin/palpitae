@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { isKnockoutPhase, roundLabel } from './rounds'
+import {
+  isKnockoutPhase,
+  LABELED_ROUNDS,
+  roundAgreement,
+  roundLabel,
+  type RoundAgreement,
+} from './rounds'
 
 describe('roundLabel', () => {
   describe('numeric group-stage rounds', () => {
@@ -78,6 +84,68 @@ describe('roundLabel', () => {
       expect(roundLabel(input)).toBe(expected)
     })
   })
+})
+
+describe('roundAgreement', () => {
+  // O painel escreve "<rótulo> completa" com a concordância da API. Esta tabela
+  // fixa cada par: renomear um rótulo sem rever a concordância quebra o teste.
+  const COMPLETE: Record<RoundAgreement, string> = {
+    fs: 'completa',
+    fp: 'completas',
+    ms: 'completo',
+    mp: 'completos',
+  }
+  const phrase = (round: string) => {
+    const agreement = roundAgreement(round)
+    return agreement ? `${roundLabel(round)} ${COMPLETE[agreement]}` : null
+  }
+
+  it('concorda cada rótulo conhecido com "completa"', () => {
+    expect(Object.fromEntries(LABELED_ROUNDS.map((round) => [round, phrase(round)]))).toEqual({
+      GROUP_STAGE: 'Fase de grupos completa',
+      REGULAR_SEASON: 'Temporada regular completa',
+      LEAGUE_PHASE: 'Fase de pontos completa',
+      TACA_GUANABARA: 'Taça Guanabara completa',
+      RELEGATION_STAGE: 'Rebaixamento completo',
+      FIRST_STAGE: '1ª fase completa',
+      SECOND_STAGE: '2ª fase completa',
+      THIRD_STAGE: '3ª fase completa',
+      FIRST_ROUND: '1ª fase completa',
+      SECOND_ROUND: '2ª fase completa',
+      THIRD_ROUND: '3ª fase completa',
+      FOURTH_ROUND: '4ª fase completa',
+      FIFTH_ROUND: '5ª fase completa',
+      PLAYOFFS: 'Playoffs completos',
+      LAST_32: 'Rodada de 32 completa',
+      LAST_16: 'Oitavas de final completas',
+      QUARTER_FINALS: 'Quartas de final completas',
+      SEMI_FINALS: 'Semifinais completas',
+      THIRD_PLACE: 'Terceiro lugar completo',
+      FINAL: 'Final completa',
+      TACA_GUANABARA_QUARTER_FINALS: 'Quartas da Taça Guanabara completas',
+      TACA_GUANABARA_SEMI_FINALS: 'Semifinais da Taça Guanabara completas',
+      TACA_GUANABARA_FINAL: 'Final da Taça Guanabara completa',
+      TACA_RIO_SEMI_FINALS: 'Semifinais da Taça Rio completas',
+      TACA_RIO_FINAL: 'Final da Taça Rio completa',
+      TROFEU_INCONFIDENCIA_SEMI_FINALS: 'Semifinais do Troféu Inconfidência completas',
+      TROFEU_INCONFIDENCIA_FINAL: 'Final do Troféu Inconfidência completa',
+      PLAYOFFS_SEMI_FINALS: 'Semifinais dos playoffs completas',
+      PLAYOFFS_FINAL: 'Final dos playoffs completa',
+      FARROUPILHA_SEMI_FINALS: 'Semifinais do Farroupilha completas',
+      FARROUPILHA_FINAL: 'Final do Farroupilha completa',
+    })
+  })
+
+  it('rodada numérica é "Rodada N", no feminino singular', () => {
+    expect(phrase('35')).toBe('Rodada 35 completa')
+  })
+
+  it.each(['SOMETHING_NEW', 'LEAGUE_STAGE_3', '', 'constructor'])(
+    'rodada desconhecida %s fica sem concordância',
+    (round) => {
+      expect(roundAgreement(round)).toBeNull()
+    },
+  )
 })
 
 describe('isKnockoutPhase', () => {

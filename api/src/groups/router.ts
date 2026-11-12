@@ -8,7 +8,7 @@ import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
 import { parseGroupName } from './groupName'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
-import { roundLabel } from '../matches/rounds'
+import { roundAgreement, roundLabel } from '../matches/rounds'
 import {
   parsePendingSummary,
   type PendingSummary,
@@ -250,6 +250,7 @@ function roundStatusFields(
       next_deadline: null,
       next_match_at: null,
       current_round_label: null,
+      current_round_agreement: null,
       round_ends_at: null,
       live_matches: 0,
     }
@@ -259,11 +260,15 @@ function roundStatusFields(
     summary.deadline && deadlineMatch
       ? { ...deadlineMatch, start_time: summary.deadline.start_time }
       : null
+  // Rodada desconhecida sai sem rótulo: o painel escreve "Tudo palpitado" em vez
+  // do código cru do provedor.
+  const agreement = summary.round ? roundAgreement(summary.round) : null
   return {
     pending_predictions: summary.pending,
     next_deadline: nextDeadline,
     next_match_at: summary.next_match_at,
-    current_round_label: summary.round ? roundLabel(summary.round) : null,
+    current_round_label: summary.round && agreement ? roundLabel(summary.round) : null,
+    current_round_agreement: agreement,
     round_ends_at: summary.round_ends_at,
     live_matches: liveMatches,
   }

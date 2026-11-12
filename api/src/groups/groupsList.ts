@@ -1,4 +1,4 @@
-import { roundLabel } from '../matches/rounds'
+import { roundAgreement, roundLabel, type RoundAgreement } from '../matches/rounds'
 import { competitionStatusSql } from './competitionStatus'
 import { pendingSummaryBinds, pendingSummarySql } from './pendingPredictions'
 import { notBannedSql, userPositionSql } from './ranking'
@@ -59,6 +59,8 @@ export type DeadlineMatch = {
   start_time: string
   round: string
   round_label: string
+  /** Concordância de `round_label`; null quando a rodada é desconhecida e o rótulo vem cru. */
+  round_agreement: RoundAgreement | null
   home_team: string
   away_team: string
 }
@@ -95,6 +97,7 @@ export async function fetchDeadlineMatches(
       match_id: row.id,
       round,
       round_label: roundLabel(round),
+      round_agreement: roundAgreement(round),
       home_team: row.home_team,
       away_team: row.away_team,
     })
