@@ -96,6 +96,35 @@ e `/auth/me` respondem 503. No logout, o cookie é apagado na resposta mesmo qua
 revogação falha; nesse caso a resposta é 503 e a falha vai para o evento
 `security_storage_error`.
 
+### Escopo do cookie
+
+O callback do OAuth em `api.palpitae.com.br` grava o cookie `session` com
+`Domain=.palpitae.com.br`, `HttpOnly`, `Secure` e `SameSite=Lax`, e os cookies
+temporários do OAuth (`oauth_*`) saem com o mesmo `Domain`. Dois hosts leem o
+cookie:
+
+- `palpitae.com.br`: o front chama a API por `/api/*` (`VITE_API_URL=/api`), e o
+  proxy do Pages repassa o header `Cookie` para a API.
+- `api.palpitae.com.br`: recebe o início e o callback do OAuth (`VITE_AUTH_URL`) e
+  todo pedido repassado pelo proxy.
+
+Hosts fora de `palpitae.com.br` não recebem o cookie: as previews
+`*.palpitae-web.pages.dev` e o endereço `workers.dev` da API ficam em outro domínio
+registrável. Em 12/11/2026, só `palpitae.com.br` e `api.palpitae.com.br` resolviam
+no DNS; `www`, `staging` e `app` não existiam. A visão de produto prevê um app por
+competição em subdomínio (`brasileirao.palpitae.com.br`), e esses hosts também
+receberiam o cookie.
+
+O `Domain` fica como está. Um cookie gravado por `api.palpitae.com.br` só pode
+valer para esse host ou para `.palpitae.com.br` inteiro, e o front precisa dele em
+`palpitae.com.br`. Restringir a dois hosts exigiria mover o callback do OAuth para
+`palpitae.com.br/api` (URI de redirecionamento nova no Google) e conviver, por até
+30 dias, com dois cookies `session` de escopos diferentes no mesmo pedido, sem
+deslogar quem já entrou. Antes de criar um subdomínio que sirva conteúdo de
+terceiros ou rode código fora deste repositório, reavalie essa decisão: o host
+novo receberia o cookie de sessão de todo usuário logado. Um registro DNS que
+aponte para serviço desativado (CNAME órfão) tem o mesmo efeito.
+
 ## Content-Security-Policy do site
 
 O `web/public/_headers` envia `Content-Security-Policy` em todas as páginas do
@@ -172,7 +201,9 @@ A identidade de cada requisição é uma só:
   `CF-Connecting-IP` igual ao endereço de saída dos Workers): um balde anônimo
   compartilhado, com o teto da última coluna. São dois baldes separados: um para o
   próprio front (`CF-Worker` igual à zona do `FRONTEND_URL`) e outro para qualquer
-  outro Worker. Um Worker de terceiros esgota só o segundo.
+  outro Worker. Um Worker de terceiros esgota só o segundo. O proxy do Pages chega
+  com `CF-Worker: palpitae-web.pages.dev`, que não é a zona do `FRONTEND_URL`;
+  sem o segredo, ele cairia no balde dos demais Workers.
 - Sem sessão, acesso direto à API: `CF-Connecting-IP`. Requisições locais sem esse
   header compartilham um contador de desenvolvimento.
 
@@ -185,6 +216,16 @@ subrequest de Worker para outra zona, e nesse caso a Cloudflare preenche
 `CF-Connecting-IP` com o endereço de saída dos Workers (`2a06:98c0:3600::103`),
 igual para todos os visitantes
 ([documentação](https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-connecting-ip-in-worker-subrequests)).
+
+O cliente não consegue forjar a origem de Worker. Em 12/11/2026, pedidos diretos a
+`api.palpitae.com.br` com `CF-Worker: attacker.example` ou
+`CF-Worker: palpitae.com.br` chegaram ao Worker sem o header (conferido com
+`wrangler tail`), e o mesmo header enviado ao proxy chegou como
+`palpitae-web.pages.dev`, valor preenchido pela Cloudflare. Um pedido direto com
+`CF-Connecting-IP` forjado recebeu 403 na borda e não chegou ao Worker. Por isso o
+balde compartilhado continua aceitando `CF-Worker` ou o IP de saída dos Workers
+como prova de origem. Se a Cloudflare mudar esse tratamento, refaça o teste antes
+de confiar nos dois headers.
 
 O contador usa um upsert atômico no D1, compartilhado entre instâncias do Worker.
 Requisições aceitas gravam uma linha; quando o balde da janela já está cheio, o
