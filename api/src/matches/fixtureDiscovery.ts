@@ -7,6 +7,13 @@ import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQu
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
+/**
+ * Teto de `match_missing_from_feed` por execução, somando as competições (cada
+ * uma tem o próprio teto em `MISSING_EVENTS_PER_COMPETITION`). Mantém a descoberta
+ * longe do limite de `writeDataPoint` por invocação; o total real vai em `double6`.
+ */
+export const MISSING_EVENTS_PER_DISCOVERY = 30
+
 type ActiveCompetition = {
   id: string
   external_id: string
@@ -51,7 +58,8 @@ export async function discoverFixtures(
     console.info('[discovery] Nenhuma competição ativa.')
     logEvent(ae, 'fixture_discovery_run', {
       blobs: ['ok'],
-      doubles: [0, 0, 0, Date.now() - startedAt], // competitions, fixtures_updated, api_calls, duration_ms
+      // competitions, fixtures_updated, api_calls, duration_ms, events_discarded, matches_missing
+      doubles: [0, 0, 0, Date.now() - startedAt, 0, 0],
     })
     return
   }
@@ -63,6 +71,9 @@ export async function discoverFixtures(
   // Requests primárias planejadas, excluindo retries do provedor.
   let plannedApiRequests = 0
   let fixturesUpdated = 0
+  const missingEvents = { remaining: MISSING_EVENTS_PER_DISCOVERY }
+  let eventsDiscarded = 0
+  let matchesMissing = 0
   let hadError = false
 
   for (const comp of rows.results) {
@@ -82,8 +93,11 @@ export async function discoverFixtures(
           competitionId: comp.id,
         }),
         ae,
+        missingEvents,
       })
       fixturesUpdated += result?.matches ?? 0
+      eventsDiscarded += result?.discarded ?? 0
+      matchesMissing += result?.missing ?? 0
       // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
       // correção de placar que o upsert do sync zerou).
       await scoreUnprocessedMatches(comp.id, db)
@@ -105,7 +119,14 @@ export async function discoverFixtures(
 
   logEvent(ae, 'fixture_discovery_run', {
     blobs: [hadError ? 'error' : 'ok'],
-    doubles: [rows.results.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
+    doubles: [
+      rows.results.length,
+      fixturesUpdated,
+      plannedApiRequests,
+      Date.now() - startedAt,
+      eventsDiscarded,
+      matchesMissing,
+    ],
   })
 
   console.info(

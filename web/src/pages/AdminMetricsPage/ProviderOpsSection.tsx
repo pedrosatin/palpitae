@@ -1,9 +1,16 @@
-import { httpContextLabel, providerLabel, syncErrorOriginLabel } from './labels'
+import {
+  discardDetailLabel,
+  discardReasonLabel,
+  httpContextLabel,
+  providerLabel,
+  syncErrorOriginLabel,
+} from './labels'
 import styles from './AdminMetricsPage.module.css'
 
 /**
  * Operação dos provedores de partidas (ESPN e football-data.org): tentativas
- * HTTP, erros de sync e fallback de resultados, por processo e campeonato.
+ * HTTP, erros de sync, fallback de resultados, eventos que o sync descartou e
+ * jogos pendentes que sumiram do calendário, por processo e campeonato.
  * Consome GET /metrics/ops (Analytics Engine).
  *
  * Duas ressalvas guiam a leitura dos números:
@@ -26,6 +33,29 @@ export interface OpsResponse {
     skipped: number
     failures: number
   }[]
+  /** Ausente em API anterior ao registro de descartes. */
+  discards?: OpsDiscardRow[]
+  /** Ausente em API anterior ao registro de jogos fora do calendário. */
+  missingMatches?: OpsMissingMatchRow[]
+}
+
+interface OpsDiscardRow {
+  provider: string
+  competition_id: string
+  competition_code: string
+  reason: string
+  detail: string
+  events: number
+  syncs: number
+}
+
+interface OpsMissingMatchRow {
+  provider: string
+  competition_id: string
+  external_id: string
+  start_time: string
+  times: number
+  last_seen: string
 }
 
 interface OpsHttpRow {
@@ -357,6 +387,152 @@ function SyncAndFallback({ ops, names }: { ops: OpsResponse; names: CompetitionN
   )
 }
 
+/** Campeonato pelo id; sem competição gravada, o código do provedor. */
+function discardCompetition(row: OpsDiscardRow, names: CompetitionNames) {
+  if (row.competition_id || !row.competition_code) return competitionName(row.competition_id, names)
+  return { text: row.competition_code, title: 'Competição ainda não gravada no banco' }
+}
+
+/** "2026-12-06T16:30:00Z" → "06/12 16:30 UTC". */
+function formatKickoff(iso: string): string {
+  return iso ? formatSince(iso.replace('T', ' ').replace('Z', '')) : '—'
+}
+
+/** Média de eventos descartados por execução que registrou o descarte. */
+function perSync(row: OpsDiscardRow): string {
+  if (row.syncs <= 0) return '—'
+  return (row.events / row.syncs).toLocaleString('pt-BR', { maximumFractionDigits: 1 })
+}
+
+function DiscardsTable({ rows, names }: { rows: OpsDiscardRow[]; names: CompetitionNames }) {
+  return (
+    <div className={styles.tableScroll}>
+      <table className={styles.table} aria-label="Eventos descartados pelo sync">
+        <thead>
+          <tr>
+            <th>campeonato</th>
+            <th>provedor</th>
+            <th>motivo</th>
+            <th>detalhe</th>
+            <th className={styles.num}>eventos somados</th>
+            <th className={styles.num}>execuções</th>
+            <th className={styles.num}>por execução</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const name = discardCompetition(r, names)
+            return (
+              <tr
+                key={`${r.provider}|${r.competition_id}|${r.competition_code}|${r.reason}|${r.detail}`}
+              >
+                <td title={name.title}>{name.text}</td>
+                <td className={styles.nowrap}>{providerLabel(r.provider)}</td>
+                <td className={styles.nowrap} title={r.reason}>
+                  {discardReasonLabel(r.reason)}
+                </td>
+                <td className={styles.detail} title={r.detail}>
+                  {r.detail ? discardDetailLabel(r.detail) : '—'}
+                </td>
+                <td className={styles.num}>{formatNumber(r.events)}</td>
+                <td className={styles.num}>{formatNumber(r.syncs)}</td>
+                <td className={styles.num}>{perSync(r)}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function MissingMatchesTable({
+  rows,
+  names,
+}: {
+  rows: OpsMissingMatchRow[]
+  names: CompetitionNames
+}) {
+  return (
+    <div className={styles.tableScroll}>
+      <table className={styles.table} aria-label="Jogos pendentes fora do calendário">
+        <thead>
+          <tr>
+            <th>campeonato</th>
+            <th>id no provedor</th>
+            <th>início</th>
+            <th className={styles.num}>registros</th>
+            <th>último registro</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const name = competitionName(r.competition_id, names)
+            return (
+              <tr key={`${r.provider}|${r.competition_id}|${r.external_id}|${r.start_time}`}>
+                <td title={name.title}>{name.text}</td>
+                <td className={styles.nowrap} title={providerLabel(r.provider)}>
+                  {r.external_id || '—'}
+                </td>
+                <td className={styles.nowrap}>{formatKickoff(r.start_time)}</td>
+                <td className={styles.num}>{formatNumber(r.times)}</td>
+                <td className={styles.nowrap}>{formatSince(r.last_seen)}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * Eventos que o sync não importou. Some quando a API ainda não envia o campo,
+ * para não afirmar zero sem dado.
+ */
+function Discards({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
+  if (!Array.isArray(ops.discards)) return null
+  return (
+    <>
+      <h3 className={styles.subTitle}>Eventos descartados pelo sync</h3>
+      <p className={styles.hint}>
+        O sync descarta o que não consegue importar (fase desconhecida, outra temporada, time
+        ausente) e segue com os demais jogos. O mesmo evento volta a ser descartado e contado em
+        cada execução (o poller roda a cada 30 minutos): "eventos somados" acumula essas repetições,
+        "execuções" conta os syncs que registraram o descarte e "por execução" é a média entre os
+        dois.
+      </p>
+      {ops.discards.length === 0 ? (
+        <p className={styles.hint}>Nenhum evento descartado no período.</p>
+      ) : (
+        <DiscardsTable rows={ops.discards} names={names} />
+      )}
+    </>
+  )
+}
+
+/**
+ * Jogos pendentes que a descoberta não viu no calendário completo da
+ * football-data. Some quando a API ainda não envia o campo.
+ */
+function MissingMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
+  if (!Array.isArray(ops.missingMatches)) return null
+  return (
+    <>
+      <h3 className={styles.subTitle}>Jogos pendentes fora do calendário</h3>
+      <p className={styles.hint}>
+        Jogos ainda não encerrados que a descoberta deixou de ver na temporada da football-data,
+        como um jogo reemitido com outro id. A linha e os palpites continuam no banco.
+      </p>
+      {ops.missingMatches.length === 0 ? (
+        <p className={styles.hint}>Nenhum jogo pendente fora do calendário no período.</p>
+      ) : (
+        <MissingMatchesTable rows={ops.missingMatches} names={names} />
+      )}
+    </>
+  )
+}
+
 /** A resposta pode vir de uma API antiga ou truncada: só renderiza o que tem forma. */
 function isUsable(ops: OpsResponse | null): ops is OpsResponse {
   return (
@@ -399,6 +575,8 @@ export default function ProviderOpsSection({
             O fallback recupera placares pela ESPN quando o provedor primário atrasa ou falha.
           </p>
           <SyncAndFallback ops={ops} names={names} />
+          <Discards ops={ops} names={names} />
+          <MissingMatches ops={ops} names={names} />
         </>
       )}
     </section>

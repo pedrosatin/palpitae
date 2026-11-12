@@ -217,6 +217,8 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
         competitionId: LIBERTADORES_ID,
         matches: 6,
         teams: 9,
+        discarded: 0,
+        missing: 0,
       },
     })
 
@@ -640,6 +642,8 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       competitionId: LIBERTADORES_ID,
       matches: 6,
       teams: 9,
+      discarded: 0,
+      missing: 0,
     })
     expect(second).toEqual(first)
 
@@ -734,6 +738,8 @@ describe('ESPN primária e Copa Libertadores em piloto', () => {
       competitionId: '',
       matches: 0,
       teams: 0,
+      discarded: 5,
+      missing: 0,
     })
 
     // Eventos que cobrem STATUS_FINAL_AET, STATUS_POSTPONED, estado 'in', fallback de short_name e winner booleano nos pênaltis.

@@ -117,15 +117,45 @@ export type SyncOptions = {
   now?: string
   /** Telemetria por tentativa HTTP ao provedor (contexto e competição já embutidos). */
   onHttpAttempt?: ProviderHttpObserver
-  /** Recebe `match_teams_changed` quando o provedor troca os times de um jogo gravado. */
+  /**
+   * Recebe `match_teams_changed` quando o provedor troca os times de um jogo gravado,
+   * `sync_event_discarded` para eventos que o sync não importou e
+   * `match_missing_from_feed` para jogos pendentes ausentes do calendário.
+   */
   ae?: AnalyticsEngineDataset
+  /**
+   * Compara o calendário completo da football-data (sem `matchday`) com os jogos
+   * pendentes gravados e registra os que sumiram, gastando deste saldo de eventos
+   * compartilhado entre as competições da mesma execução. Só a descoberta passa:
+   * o poller também busca a temporada inteira em rodadas de mata-mata, a cada
+   * 30 minutos.
+   */
+  missingEvents?: MissingEventBudget
 }
+
+/** Saldo de `match_missing_from_feed` que ainda cabe na execução. */
+export type MissingEventBudget = { remaining: number }
 
 export type SyncResult = {
   competition: string
   competitionId: string
   matches: number
   teams: number
+  /** Eventos do provedor que o sync não importou (motivos em `sync_event_discarded`). */
+  discarded: number
+  /** Jogos pendentes que o calendário completo não trouxe (`match_missing_from_feed`). */
+  missing: number
+}
+
+/**
+ * Por que o sync não importou um evento do provedor. `unknown_stage`: fase fora
+ * do mapa da ESPN; `season_mismatch`: evento de outra edição; `missing_competitor`:
+ * time ausente ou ainda indefinido; `invalid_event`: id, data ou confronto inválidos.
+ */
+export type SyncDiscard = {
+  reason: 'unknown_stage' | 'season_mismatch' | 'missing_competitor' | 'invalid_event'
+  /** Slug da fase, ano da edição recebida, `tbd` ou o campo inválido; vazio se não há. */
+  detail: string
 }
 
 export function resolveCanonicalScore(score: ApiMatch['score']): {
@@ -337,6 +367,104 @@ async function upsertCompetition(
     throw new Error(`Slug ${config.slugPrefix}-${season} já pertence a outra competição`)
   }
   return created
+}
+
+/** Competição pela chave do provedor, ou vazio. Falha de leitura também vira vazio. */
+async function findCompetitionId(
+  db: D1Database,
+  provider: string,
+  externalId: string,
+  season: number,
+): Promise<string> {
+  try {
+    const row = await db
+      .prepare(`SELECT id FROM competitions WHERE provider = ? AND external_id = ? AND season = ?`)
+      .bind(provider, externalId, String(season))
+      .first<{ id: string }>()
+    return row?.id ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Registra os eventos que o sync não importou, um `sync_event_discarded` por
+ * motivo e detalhe com a quantidade, e devolve o total. Sem `competitionId` (o
+ * sync não chegou a gravar jogo), procura a competição pela chave do provedor.
+ * Nada aqui interrompe o sync: os jogos válidos já foram gravados.
+ */
+export async function reportDiscards(
+  db: D1Database,
+  discards: SyncDiscard[],
+  scope: {
+    ae?: AnalyticsEngineDataset
+    provider: string
+    competitionCode: string
+    season: number
+    competitionId?: string
+  },
+): Promise<number> {
+  if (discards.length === 0) return 0
+  const competitionId =
+    scope.competitionId ??
+    (await findCompetitionId(db, scope.provider, scope.competitionCode, scope.season))
+
+  const counts = new Map<string, { discard: SyncDiscard; count: number }>()
+  for (const discard of discards) {
+    const key = `${discard.reason}\u0000${discard.detail}`
+    const entry = counts.get(key) ?? { discard, count: 0 }
+    entry.count += 1
+    counts.set(key, entry)
+  }
+  for (const { discard, count } of counts.values()) {
+    tryLogEvent(scope.ae, 'sync_event_discarded', {
+      blobs: [scope.provider, competitionId, discard.reason, discard.detail, scope.competitionCode],
+      doubles: [count],
+    })
+  }
+  return discards.length
+}
+
+/** Teto de `match_missing_from_feed` por competição; o total vai no retorno. */
+export const MISSING_EVENTS_PER_COMPETITION = 10
+
+/**
+ * Jogos pendentes da competição que o calendário completo da football-data não
+ * trouxe: o provedor apagou o jogo ou o reemitiu com outro id, e a linha antiga
+ * ficaria `scheduled` para sempre. Só registra (`match_missing_from_feed`); a
+ * linha e os palpites ficam, porque o jogo pode voltar no próximo calendário.
+ */
+async function reportMissingFromFeed(
+  db: D1Database,
+  competitionId: string,
+  matches: ApiMatch[],
+  ae: AnalyticsEngineDataset | undefined,
+  budget: MissingEventBudget,
+): Promise<number> {
+  try {
+    const { results } = await db
+      .prepare(
+        `SELECT external_id, start_time FROM matches
+          WHERE competition_id = ? AND provider = ? AND status != 'finished'
+            AND external_id NOT IN (SELECT value FROM json_each(?))
+          ORDER BY start_time, external_id`,
+      )
+      .bind(competitionId, PROVIDER, JSON.stringify(matches.map((m) => String(m.id))))
+      .all<{ external_id: string; start_time: string }>()
+    // Leitura e baixa do saldo no mesmo trecho síncrono: competições em paralelo
+    // não gastam o mesmo saldo duas vezes.
+    const logged = results.slice(0, Math.min(MISSING_EVENTS_PER_COMPETITION, budget.remaining))
+    budget.remaining -= logged.length
+    for (const match of logged) {
+      tryLogEvent(ae, 'match_missing_from_feed', {
+        blobs: [PROVIDER, competitionId, match.external_id, match.start_time],
+      })
+    }
+    return results.length
+  } catch (err) {
+    console.error('[sync] Falha ao conferir jogos ausentes do calendário:', err)
+    return 0
+  }
 }
 
 export async function batchStatements(
@@ -683,14 +811,20 @@ async function upsertMatches(
   teamIds: Map<number, string>,
   now: string,
   ae: AnalyticsEngineDataset | undefined,
-): Promise<MatchUpsertRow[]> {
+): Promise<{ rows: MatchUpsertRow[]; discards: SyncDiscard[] }> {
   const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
   const rows: MatchUpsertRow[] = []
+  const discards: SyncDiscard[] = []
   const matchStatements = []
 
   for (const m of matches) {
     const row = mapMatchUpsertRow(m, teamIds, now)
-    if (!row) continue
+    if (!row) {
+      // Sem id de time é confronto ainda indefinido (mata-mata antes do sorteio).
+      const tbd = !m.homeTeam?.id || !m.awayTeam?.id
+      discards.push({ reason: 'missing_competitor', detail: tbd ? 'tbd' : '' })
+      continue
+    }
 
     rows.push(row)
     matchStatements.push(
@@ -722,7 +856,7 @@ async function upsertMatches(
 
   await writeMatchUpserts(db, matchStatements, rows, { ae, provider: PROVIDER, competitionId })
 
-  return rows
+  return { rows, discards }
 }
 
 /**
@@ -800,19 +934,34 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
       competitionId: '',
       matches: 0,
       teams: 0,
+      discarded: 0,
+      missing: 0,
     }
   }
 
   const competition = await upsertCompetition(db, apiComp, season, opts.ae)
   const { teamMap, teamIds } = await upsertTeams(db, matches)
   const now = opts.now ?? isoSeconds(new Date())
-  const rows = await upsertMatches(db, competition.id, matches, teamIds, now, opts.ae)
+  const { rows, discards } = await upsertMatches(db, competition.id, matches, teamIds, now, opts.ae)
   await reopenLeg1ScoredAsSingle(db, competition.id, rows)
+  const discarded = await reportDiscards(db, discards, {
+    ae: opts.ae,
+    provider: PROVIDER,
+    competitionCode,
+    season,
+    competitionId: competition.id,
+  })
+  const missing =
+    opts.missingEvents && matchday === undefined
+      ? await reportMissingFromFeed(db, competition.id, matches, opts.ae, opts.missingEvents)
+      : 0
 
   return {
     competition: competition.name,
     competitionId: competition.id,
     matches: rows.length,
     teams: teamMap.size,
+    discarded,
+    missing,
   }
 }

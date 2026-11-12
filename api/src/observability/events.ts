@@ -31,6 +31,10 @@ export type EventType =
   | 'match_teams_changed'
   // Sync achou competição nova sem configuração cadastrada e não a criou
   | 'competition_unconfigured'
+  // Sync não importou eventos do provedor (fase desconhecida, outra edição, time ausente)
+  | 'sync_event_discarded'
+  // Jogo pendente que o calendário completo da football-data deixou de trazer
+  | 'match_missing_from_feed'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'

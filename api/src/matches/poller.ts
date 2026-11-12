@@ -124,7 +124,8 @@ export async function pollActiveMatches(
     console.info('[poller] Nenhum jogo na janela ativa.')
     logEvent(ae, 'poller_run', {
       blobs: ['ok'],
-      doubles: [0, 0, 0, Date.now() - startedAt], // matches_checked, fixtures_updated, api_calls, duration_ms
+      // matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded
+      doubles: [0, 0, 0, Date.now() - startedAt, 0],
     })
     return
   }
@@ -132,7 +133,7 @@ export async function pollActiveMatches(
   const { compCount, tasks } = buildSyncTasks(rows.results)
 
   type SyncOutcome =
-    | { success: true; comp: ActiveRound; round: string; matches: number }
+    | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
     | { success: false; comp: ActiveRound; round: string; err: unknown }
 
   const runSyncTask = async ({ comp, round, dates }: SyncTask): Promise<SyncOutcome> => {
@@ -153,7 +154,13 @@ export async function pollActiveMatches(
         }),
         ae,
       })
-      return { success: true as const, comp, round, matches: result?.matches ?? 0 }
+      return {
+        success: true as const,
+        comp,
+        round,
+        matches: result?.matches ?? 0,
+        discarded: result?.discarded ?? 0,
+      }
     } catch (err) {
       return { success: false as const, comp, round, err }
     }
@@ -171,6 +178,7 @@ export async function pollActiveMatches(
   // Requests primárias planejadas, sem retries nem chamadas do fallback.
   const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)
   let fixturesUpdated = 0
+  let eventsDiscarded = 0
   let hadError = false
   const syncedComps = new Set<string>()
   const fallbackCompIds = new Set<string>()
@@ -179,6 +187,7 @@ export async function pollActiveMatches(
     if (res.comp.provider !== 'espn') fallbackCompIds.add(res.comp.comp_id)
     if (res.success) {
       fixturesUpdated += res.matches
+      eventsDiscarded += res.discarded
       syncedComps.add(res.comp.comp_id)
     } else {
       hadError = true
@@ -226,7 +235,13 @@ export async function pollActiveMatches(
 
   logEvent(ae, 'poller_run', {
     blobs: [hadError || scoringFailure ? 'error' : 'ok'],
-    doubles: [rows.results.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
+    doubles: [
+      rows.results.length,
+      fixturesUpdated,
+      plannedApiRequests,
+      Date.now() - startedAt,
+      eventsDiscarded,
+    ],
   })
 
   if (scoringFailure) throw scoringFailure.err
