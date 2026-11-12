@@ -29,9 +29,9 @@ const collector = new SqlCollector()
 
 // O mesmo syncRadar de sempre, sem alteração: o coletor implementa a fatia da
 // interface do D1 que ele usa.
-await syncRadar(collector as never)
+const result = await syncRadar(collector as never)
 
-if (collector.size === 0) {
+if (result.status === 'error' || collector.size === 0) {
   // Sem statements = a coleta falhou (a própria syncRadar já logou o motivo).
   // Falhar aqui é o que faz o workflow ficar vermelho em vez de aplicar um
   // arquivo vazio e fingir sucesso.
@@ -41,3 +41,13 @@ if (collector.size === 0) {
 
 writeFileSync(outputPath, collector.toSql(), 'utf8')
 console.info(`[radar] ${collector.size} statements gravados em ${outputPath}`)
+
+if (result.status === 'partial') {
+  // Coleta parcial ainda é aplicada (as ligas sem resposta mantêm o snapshot
+  // anterior), mas o aviso aparece no resumo da execução do Actions.
+  console.info(
+    `::warning title=Radar parcial::${result.failedSlugs.length} slug(s) da ESPN sem resposta` +
+      `${result.failedSlugs.length > 0 ? ` (${result.failedSlugs.join(', ')})` : ''}, ` +
+      `${result.pageviewErrors} artigo(s) sem pageviews. Os itens afetados mantêm o snapshot anterior.`,
+  )
+}

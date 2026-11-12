@@ -369,7 +369,7 @@ GitHub Actions e aplicado via wrangler — ADR-015).
 | `type`        | TEXT       | `League` \| `Cup`, como vem do provider                       |
 | `season`      | TEXT       | Ano da temporada corrente                                     |
 | `starts_on` / `ends_on` | TEXT | Janela do torneio (YYYY-MM-DD); deriva o status          |
-| `is_current`  | INTEGER    | Reconstruído a cada sync — saiu do catálogo, deixa de valer   |
+| `is_current`  | INTEGER    | Reconstruído a cada sync — saiu do catálogo, deixa de valer; slug que falhou na coleta mantém o valor anterior |
 | `wiki_article`| TEXT       | Artigo canônico da pt.wikipedia; NULL = sem sinal de interesse |
 | `last_seen_at`| TEXT       | Frescor do snapshot (a UI avisa se passar de 30h)             |
 

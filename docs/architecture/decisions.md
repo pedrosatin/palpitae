@@ -626,7 +626,7 @@ done | sort -u
 - **Risco de API não-oficial** (sem SLA, pode mudar sem aviso) mitigado pelo desenho fail-closed: coleta que falha ou volta vazia preserva o snapshot do dia anterior e deixa o workflow vermelho; a dashboard avisa quando o snapshot passa de 30h.
 - **Sem chave → sem secret**: `API_FOOTBALL_KEY` sai do workflow e pode ser removido do repositório no GitHub. A coleta continua no Actions **por escolha de arquitetura** (SQL + wrangler, credenciais separadas — ver ADR-014), não por rate limit: a ESPN não tem chave nem política por IP.
 - Custo por execução: ~35 chamadas à ESPN + ~1 chamada à Wikimedia por competição mapeada (~26). Nenhuma quota conhecida dos dois lados.
-- Falha parcial de slugs é tolerada (o snapshot segue com os que responderam, os falhos vão no log); todos em erro aborta a coleta.
+- Falha parcial de slugs é tolerada: o snapshot atualiza os slugs que responderam, e as ligas dos que falharam mantêm o `is_current` do último snapshot válido em vez de sumir do radar. A execução sai como `partial` e o workflow mostra um aviso com os slugs; todos em erro aborta a coleta.
 - A ADR-014 permanece válida exceto na fonte de oferta e na consequência do rate limit por IP, que esta supersede.
 
 ---
