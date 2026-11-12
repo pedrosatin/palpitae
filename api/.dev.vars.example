@@ -1,5 +1,7 @@
 # Copy to .dev.vars (never commit the real file)
 JWT_SECRET=dev-only-secret-change-before-production
+# Optional: signs e-mail unsubscribe links (falls back to JWT_SECRET)
+# UNSUBSCRIBE_SECRET=dev-only-unsubscribe-secret
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 BASE_URL=http://localhost:8787

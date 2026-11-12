@@ -3,7 +3,7 @@ import { html } from 'hono/html'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
-import { verifyUnsubToken } from './unsubscribeToken'
+import { verifyUnsubTokenForEnv } from './unsubscribeToken'
 
 const router = new Hono<AppContext>()
 
@@ -92,7 +92,7 @@ router.get('/unsubscribe', async (c) => {
     return c.html(confirmationPage('Link inválido ou expirado.'), 400)
   }
   try {
-    await verifyUnsubToken(token, c.env.JWT_SECRET)
+    await verifyUnsubTokenForEnv(token, c.env)
   } catch {
     return c.html(confirmationPage('Link inválido ou expirado.'), 400)
   }
@@ -111,7 +111,7 @@ router.post('/unsubscribe', async (c) => {
 
   let userId: string
   try {
-    userId = await verifyUnsubToken(token, c.env.JWT_SECRET)
+    userId = await verifyUnsubTokenForEnv(token, c.env)
   } catch {
     return c.text('invalid token', 400)
   }
