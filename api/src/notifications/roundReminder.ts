@@ -10,8 +10,8 @@ import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
 
-// O dia do lembrete é o de Brasília. O fuso vem da base do `Intl`, e não de um
-// deslocamento fixo, para que uma volta do horário de verão não mude o dia.
+// O dia do lembrete é o de Brasília. O fuso vem da base do `Intl`; assim, se o
+// horário de verão voltar, o dia não muda.
 const REMINDER_TIME_ZONE = 'America/Sao_Paulo'
 const DAY_MS = 24 * 60 * 60 * 1000
 const SEND_LOG_RETENTION_DAYS = 7

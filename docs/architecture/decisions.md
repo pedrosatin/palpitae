@@ -760,7 +760,7 @@ O plano da conta Cloudflare não está confirmado (`docs/architecture/capacidade
 
 Quando o teto não cobre todos, a fila de envio começa por quem recebeu o lembrete há mais tempo, pelo dia mais recente em `email_reminder_sends`. Quem ficou de fora num dia não tem linha desse dia e passa à frente, no dia seguinte, de quem recebeu. No empate vale o jogo que fecha primeiro. Antes a fila seguia só o horário do primeiro jogo, e quem tinha jogo apenas à noite ficava de fora todos os dias.
 
-O dia do lembrete e a meia-noite que fecha a lista saem do fuso `America/Sao_Paulo` pela base do `Intl`, e não de um deslocamento fixo de 3 horas. Se o horário de verão voltar, o jogo de 00:30 do dia seguinte continua fora da lista.
+O dia do lembrete e a meia-noite que fecha a lista saem do fuso `America/Sao_Paulo` pela base do `Intl`. Antes vinham de um deslocamento fixo de 3 horas. Se o horário de verão voltar, o jogo de 00:30 do dia seguinte continua fora da lista.
 
 Grupo de competição em piloto só entra no e-mail de quem tem acesso ao piloto (`ADMIN_EMAIL` ou `PILOT_EMAILS`), o mesmo critério da lista de grupos.
 
@@ -772,7 +772,7 @@ O ponto sem volta é o início do `fetch` ao Resend. Descadastro depois disso n�
 
 - Risco aceito: uma invocação interrompida entre a reserva e o envio deixa os restantes sem e-mail naquele dia. Perder um aviso é preferível a repetir o e-mail.
 - Quem nunca palpita recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
-- Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. A fila por último envio reveza o excedente entre os dias. Se o excedente passar do teto, alguém fica de fora dois dias seguidos, sempre o que recebeu há menos tempo.
+- Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. A fila por último envio reveza o excedente entre os dias. Se o excedente passar do teto, alguém fica de fora dois dias seguidos, sempre quem recebeu mais recentemente.
 - O revezamento olha os 7 dias guardados em `email_reminder_sends`. Quem não recebeu nesse período é tratado como quem nunca recebeu.
 - `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia e o número de jogos listados.
 
