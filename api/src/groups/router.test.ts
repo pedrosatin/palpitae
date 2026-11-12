@@ -444,6 +444,38 @@ describe('groups router', () => {
       expect(body.error).toContain('Visibilidade inválida')
     })
 
+    it.each([
+      ['dois espaços de largura zero', '​​'],
+      ['só caracteres de controle', '\u0001\u0002\u0003'],
+      ['marcador de direção', 'Grupo ‮abc'],
+      ['isolador de direção', '⁧Grupo⁩'],
+      ['quebra de linha', 'Grupo\nnovo'],
+    ])('rejeita nome com %s', async (_caso, name) => {
+      const res = await request('user@example.com', { name, competition_id: 'comp-1' })
+
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Nome não pode ter caracteres invisíveis' })
+    })
+
+    it('grava o nome normalizado em NFC', async () => {
+      const decomposto = 'São João'
+      const res = await request('user@example.com', { name: decomposto, competition_id: 'comp-1' })
+
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { group: { name: string } }
+      expect(body.group.name).toBe('São João')
+      expect(body.group.name).toBe(decomposto.normalize('NFC'))
+    })
+
+    it('aceita emoji com junção e bandeira de subdivisão', async () => {
+      const name = 'Fã 👨‍👩‍👧 🏴󠁧󠁢󠁥󠁮󠁧󠁿'
+      const res = await request('user@example.com', { name, competition_id: 'comp-1' })
+
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as { group: { name: string } }
+      expect(body.group.name).toBe(name)
+    })
+
     it('defaults to classic 3/1 hidden when fields are omitted', async () => {
       const res = await request('user@example.com', {
         name: 'Default',
@@ -562,6 +594,32 @@ describe('groups router', () => {
 
       expect(res.status).toBe(400)
       expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['dois espaços de largura zero', '\u200B\u200B'],
+      ['marcador de direção', 'Grupo \u200Fnovo'],
+    ])('rejeita renomear para nome com %s', async (_caso, name) => {
+      const { db, updateRun } = createGroupByIdDbMock('user-1')
+      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
+        name,
+      })
+
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Nome não pode ter caracteres invisíveis' })
+      expect(updateRun).not.toHaveBeenCalled()
+    })
+
+    it('renomeia com o nome normalizado em NFC', async () => {
+      const { db, updateRun } = createGroupByIdDbMock('user-1')
+      const res = await requestGroupMutation('PATCH', 'user-1', 'admin@example.com', 'group-1', db, {
+        name: 'Sa\u0303o Joa\u0303o',
+      })
+
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { group: { name: string } }
+      expect(body.group.name).toBe('São João')
+      expect(updateRun).toHaveBeenCalled()
     })
 
     it('returns 404 when the group does not exist or is already deleted', async () => {
