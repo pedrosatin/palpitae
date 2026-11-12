@@ -219,7 +219,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   // Só quem tocou em "Entrar com Google e participar" nesta aba entra sem
   // confirmar. Um link `?convite=` aberto sozinho continua pedindo o toque.
-  // Fechar o modal gasta essa entrada: o mesmo link seguido de novo pede o toque.
+  // Fechar o modal descarta essa entrada: seguir o mesmo link de novo pede o toque.
   const [autoJoin, setAutoJoin] = useState(
     () => !!normalizedPendingInvite && consumeAcceptedInvite(normalizedPendingInvite),
   )
@@ -316,7 +316,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
         onClose={closeJoinGroup}
         onJoined={handleGroupJoined}
         initialCode={pendingInvite}
-        autoSubmit={autoJoin}
+        autoSubmit={autoJoin && !!pendingInvite}
       />
     </>
   )
