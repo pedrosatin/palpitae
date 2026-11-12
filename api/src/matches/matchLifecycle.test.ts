@@ -11,9 +11,9 @@ import { syncFixtures } from './sync'
 
 /**
  * Ciclo de vida de uma partida visto pelos dois provedores. Cada cenário passa a
- * mesma sequência de estados pela football-data e pela ESPN primária e compara a
- * projeção pública que `GET /matches` devolve (status, adiado, travamento, placar
- * e horário). A tabela de transições está em docs/architecture/schema.md.
+ * mesma sequência de estados pela football-data e pela ESPN primária e compara as
+ * colunas que `GET /matches` expõe (status, adiado, travamento, placar e horário).
+ * A tabela de transições está em docs/architecture/schema.md.
  */
 
 const KICKOFF = '2026-11-08T15:30:00Z'

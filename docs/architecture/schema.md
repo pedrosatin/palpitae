@@ -219,7 +219,7 @@ Unique constraint: `(external_id, provider)`
 
 #### Ciclo da partida
 
-Os dois provedores gravam a mesma combinação de colunas para o mesmo estado do jogo (`api/src/matches/sync.ts` e `espnSync.ts`; regressão em `matchLifecycle.test.ts`). O sync nunca grava `live`: o valor fica no CHECK e os leitores o aceitam, mas o jogo em andamento é `scheduled` com `locked_at` ou com o horário vencido.
+Os dois provedores gravam a mesma combinação de colunas para o mesmo estado do jogo (`api/src/matches/sync.ts` e `espnSync.ts`; regressão em `matchLifecycle.test.ts`), com uma exceção conhecida: num jogo suspenso depois do início, o `CANCELLED` da football-data não grava `locked_at`, e o `STATUS_SUSPENDED` da ESPN grava. O status da football-data não diz se o jogo chegou a começar, então pela football-data esse jogo fica aberto para palpite até a retomada. O sync nunca grava `live`: o valor fica no CHECK e os leitores o aceitam, mas o jogo em andamento é `scheduled` com `locked_at` ou com o horário vencido.
 
 | Estado | `status` | `postponed` | `locked_at` | Placar | `scored_at` |
 | --- | --- | --- | --- | --- | --- |
@@ -238,7 +238,7 @@ Transições:
 - `locked_at` nunca volta a nulo.
 - O fallback da ESPN (ADR-016) leva um jogo da football-data ao encerrado com `postponed = 0`, mesmo que a football-data ainda o mostre adiado ou suspenso.
 
-Cancelado não tem estado próprio. A football-data já mandou como `CANCELLED`, com placar 0-0 e data nova, o Rayo Vallecano × Athletic de 10/10/2026, que a ESPN mostra como suspenso aos 33 minutos e retomado em 09/12. Como o cancelamento dos provedores pode voltar ao calendário, o jogo cancelado segue como adiado: não ganha placar nem pontuação, não trava o palpite e sai das consultas de resultado pendente que excluem adiados (resgate do poller depois da janela ativa, jogos ao vivo do painel, `overdue_no_score` das métricas, pendências da rodada). Ele continua impedindo o encerramento da competição.
+Cancelado não tem estado próprio. A football-data já mandou como `CANCELLED`, com placar 0-0 e data nova, o Rayo Vallecano × Athletic de 10/10/2026, que a ESPN mostra como suspenso aos 33 minutos, com retomada marcada para 09/12. Como o cancelamento dos provedores pode voltar ao calendário, o jogo cancelado segue como adiado: não ganha placar nem pontuação, não trava o palpite e sai das consultas de resultado pendente que excluem adiados (resgate do poller depois da janela ativa, jogos ao vivo do painel, `overdue_no_score` das métricas, pendências da rodada). Ele continua impedindo o encerramento da competição.
 
 ---
 

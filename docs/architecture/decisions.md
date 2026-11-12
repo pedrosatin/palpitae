@@ -535,7 +535,7 @@ Três consequências no comportamento:
 
 ### Atualização — 2026-11-12
 
-Cancelado continua na flag `postponed`, sem coluna nem status próprios. A football-data mandou como `CANCELLED`, com 0-0 e data nova, um jogo que a ESPN mostra suspenso aos 33 minutos e com retomada marcada (Rayo Vallecano × Athletic, LaLiga 2026/27). Um estado terminal de cancelado tiraria esse jogo do calendário e do encerramento da competição enquanto ele ainda vai ser disputado. Em nenhum dos dois provedores o jogo adiado, cancelado ou suspenso grava placar: o 0-0 que a football-data envia nesses status ficava gravado na linha. A tabela de transições está em `docs/architecture/schema.md`, seção "Ciclo da partida".
+Cancelado continua na flag `postponed`, sem coluna nem status próprios. A football-data mandou como `CANCELLED`, com 0-0 e data nova, um jogo que a ESPN mostra suspenso aos 33 minutos e com retomada marcada (Rayo Vallecano × Athletic, LaLiga 2026/27). Um estado terminal de cancelado tiraria esse jogo do calendário e do encerramento da competição enquanto ele ainda vai ser disputado. Agora nenhum dos dois provedores grava placar em jogo adiado, cancelado ou suspenso. Antes, o 0-0 que a football-data envia nesses status ficava gravado na linha. A tabela de transições está em `docs/architecture/schema.md`, seção "Ciclo da partida".
 
 ---
 
