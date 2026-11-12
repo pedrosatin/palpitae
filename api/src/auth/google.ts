@@ -209,12 +209,6 @@ export async function verifyGoogleIdToken(
 // User upsert
 // ---------------------------------------------------------------------------
 
-/**
- * Cria ou atualiza o usuário do login. `isNew` é verdadeiro só para quem de fato
- * inseriu a linha. Dois callbacks simultâneos da mesma conta passam juntos pelo
- * SELECT, mas o UNIQUE de `users` deixa um único INSERT vencer: o outro cai no
- * catch, encontra a linha do vencedor e entra como conta existente.
- */
 /** A conta Google tem o e-mail de outra conta do Palpitaê. */
 export class EmailConflictError extends Error {
   constructor() {
@@ -233,6 +227,10 @@ export function normalizeEmail(email: string): string {
  * da conta Google, normalizado. Se o e-mail pertence a outra conta, lança
  * `EmailConflictError` sem alterar nenhuma das duas: o login não junta contas
  * pelo e-mail nem tira o e-mail de quem o tem gravado.
+ * `isNew` é verdadeiro só para quem de fato inseriu a linha. Dois callbacks
+ * simultâneos da mesma conta passam juntos pelo SELECT, mas o UNIQUE de `users`
+ * deixa um único INSERT vencer: o outro cai no catch, encontra a linha do vencedor
+ * e entra como conta existente.
  */
 export async function upsertUser(
   db: D1Database,
