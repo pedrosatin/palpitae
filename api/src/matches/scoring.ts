@@ -303,6 +303,26 @@ function findLeg2ToRescore(
 }
 
 /**
+ * Jogo que decide nos pênaltis, terminou empatado (no placar do jogo único ou no
+ * agregado da volta) e ainda não tem o vencedor da disputa. Fica sem pontuação até
+ * o provedor informar o vencedor: pontuar antes daria zero de classificado e de
+ * pênaltis a todos. Segue a regra de `decides_on_penalties` de `GET /matches`.
+ */
+function awaitsPenaltyWinner(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | undefined): boolean {
+  if (m.penalty_winner !== null || tie?.role === 'leg1') return false
+  if (tie?.role === 'leg2') {
+    const leg1 = tie.partner
+    if (leg1?.status !== 'finished' || leg1.home_score === null || leg1.away_score === null)
+      return false
+    return m.home_score + leg1.away_score === m.away_score + leg1.home_score
+  }
+  return (
+    m.home_score === m.away_score &&
+    matchGoesToPenalties(parsePenaltyPhases(m.penalty_phases), m.phase)
+  )
+}
+
+/**
  * Pontos de classificado de um palpite. Só o jogo decisivo do confronto credita:
  * a volta no ida e volta, ou o jogo único. Vale em toda fase de mata-mata,
  * independente de `penalty_phases`. Sem palpite na ida, a volta não pontua.
@@ -397,7 +417,8 @@ export async function scoreUnprocessedMatches(
   if (unscored.results.length === 0) return
 
   // 2. Knockout ties: pair each match with the other leg and pull back the
-  // already-scored leg 2 of any leg 1 whose score was corrected.
+  // already-scored leg 2 of any leg 1 whose score was corrected. A decisive match
+  // tied without the shootout winner waits, with no scored_at, for the provider.
   const tieMatches = await fetchTieMatches<TieMatchRow>(
     db,
     competitionId,
@@ -405,7 +426,10 @@ export async function scoreUnprocessedMatches(
     TIE_MATCH_COLUMNS,
   )
   const ties = indexTies(tieMatches)
-  const matchesToScore = [...unscored.results, ...findLeg2ToRescore(unscored.results, ties)]
+  const matchesToScore = [
+    ...unscored.results,
+    ...findLeg2ToRescore(unscored.results, ties),
+  ].filter((m) => !awaitsPenaltyWinner(m, ties.get(m.id)))
 
   // 3. Fetch predictions for all matches to score in chunks (D1 bind limit ~100),
   // plus the leg 1 predictions that the leg 2 classified bonus depends on.
