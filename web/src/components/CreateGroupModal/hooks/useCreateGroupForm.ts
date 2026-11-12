@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { config } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { getGuideOrigin } from '../../../analytics/guideOrigin'
@@ -46,6 +46,13 @@ export function useCreateGroupForm({
 
   const [created, setCreated] = useState<CreatedGroup | null>(null)
 
+  // Cada abertura do formulário tem um número. Fechar o modal troca o número, e a
+  // resposta de um envio feito antes não mexe no formulário reaberto. O envio em
+  // andamento fica num ref para que um segundo submit, antes do novo render, não
+  // crie outro grupo.
+  const formInstanceRef = useRef(0)
+  const inFlightRef = useRef(false)
+
   // O padrão é a competição pedida pelo link, se ela estiver na lista
   // selecionável, ou a primeira da lista. Quando ela fica fora da lista, por
   // falta de cadastro ou porque a competição está encerrada, o modal mostra um
@@ -82,6 +89,8 @@ export function useCreateGroupForm({
   }, [isOpen, competitions.length])
 
   function reset() {
+    formInstanceRef.current += 1
+    inFlightRef.current = false
     setName('')
     setCompetitionId('')
     setScoringPreset('classic')
@@ -102,6 +111,7 @@ export function useCreateGroupForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (inFlightRef.current) return
 
     if (pointsExact > 0 && pointsExact < pointsWinner) {
       setError('Pontos por placar exato deve ser maior ou igual a pontos por vencedor')
@@ -112,6 +122,9 @@ export function useCreateGroupForm({
       return
     }
 
+    const instance = formInstanceRef.current
+    const isCurrent = () => formInstanceRef.current === instance
+    inFlightRef.current = true
     setError(null)
     setSubmitting(true)
 
@@ -131,7 +144,8 @@ export function useCreateGroupForm({
       })
 
       if (!res.ok) {
-        setError(await readApiError(res, 'Erro ao criar grupo'))
+        const message = await readApiError(res, 'Erro ao criar grupo')
+        if (isCurrent()) setError(message)
         return
       }
       const data = (await res.json()) as { group?: CreatedGroup }
@@ -139,13 +153,18 @@ export function useCreateGroupForm({
       const origem = getGuideOrigin()
       if (origem) trackEvent('submit_criar_grupo', { origem })
       else trackEvent('submit_criar_grupo')
-      setCreated(data.group!)
+      // O grupo existe mesmo que o modal tenha fechado: a tela de pronto só vale
+      // para o formulário que enviou, mas quem abriu o modal ainda atualiza a lista.
+      if (isCurrent()) setCreated(data.group!)
       onCreated(data.group!)
     } catch (err) {
       console.error('Fetch caught error:', err)
-      setError(CONNECTION_ERROR)
+      if (isCurrent()) setError(CONNECTION_ERROR)
     } finally {
-      setSubmitting(false)
+      if (isCurrent()) {
+        inFlightRef.current = false
+        setSubmitting(false)
+      }
     }
   }
 
