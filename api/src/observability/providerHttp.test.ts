@@ -42,6 +42,68 @@ describe('createProviderHttpObserver', () => {
     ])
   })
 
+  it('football-data grava a cota restante e o reset em double3 e double4 (-1 se ausente)', () => {
+    const ae = fakeAe()
+    const observe = createProviderHttpObserver(ae, { context: 'poller' }, () => 0)
+
+    observe?.({
+      provider: 'football-data',
+      status: 429,
+      durationMs: 80,
+      quotaRemaining: null,
+      quotaResetSeconds: 37,
+    })
+    observe?.({
+      provider: 'football-data',
+      status: 200,
+      durationMs: 40,
+      quotaRemaining: 9,
+      quotaResetSeconds: 60,
+    })
+
+    expect(written(ae).map((p) => p.doubles)).toEqual([
+      [80, 1, -1, 37],
+      [40, 10, 9, 60],
+    ])
+  })
+
+  it('football-data sem resposta (status 0) grava a cota como -1', () => {
+    const ae = fakeAe()
+    const observe = createProviderHttpObserver(ae, { context: 'poller' }, () => 0.99)
+
+    observe?.({
+      provider: 'football-data',
+      status: 0,
+      durationMs: 10_000,
+      quotaRemaining: null,
+      quotaResetSeconds: null,
+    })
+
+    expect(written(ae).map((p) => [p.blobs?.[3], p.doubles])).toEqual([['0', [10_000, 1, -1, -1]]])
+  })
+
+  it('sucesso com cota zerada sai sempre, com peso 1, fora da amostra', () => {
+    const ae = fakeAe()
+    const observe = createProviderHttpObserver(ae, { context: 'discovery' }, () => 0.99)
+
+    observe?.({
+      provider: 'football-data',
+      status: 200,
+      durationMs: 40,
+      quotaRemaining: 0,
+      quotaResetSeconds: 20,
+    })
+    observe?.({
+      provider: 'football-data',
+      status: 200,
+      durationMs: 40,
+      quotaRemaining: 3,
+      quotaResetSeconds: 20,
+    })
+
+    expect(written(ae).map((p) => [p.blobs?.[3], p.doubles])).toEqual([['200', [40, 1, 0, 20]]])
+  })
+
   it('competition_id ausente vira blob vazio e mantém as posições seguintes', () => {
     const ae = fakeAe()
     const observe = createProviderHttpObserver(ae, { context: 'sync' }, () => 0.99)

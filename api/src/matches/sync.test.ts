@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FD_RETRY_BACKOFF_MS } from './footballDataQuota'
+import realHeaders from './__fixtures__/football-data-headers-200.json'
+import {
+  clearFootballDataPause,
+  FD_QUOTA_DEFAULT_PAUSE_MS,
+  FD_QUOTA_MAX_WAIT_MS,
+  FD_RETRY_BACKOFF_MS,
+  FootballDataQuotaError,
+  footballDataPausedUntil,
+} from './footballDataQuota'
 import {
   MATCH_UPSERT_SQL,
   batchStatements,
@@ -642,71 +650,170 @@ describe('resolveLockedAt', () => {
   })
 })
 
-describe('syncFixtures — football-data 429 retry', () => {
+describe('syncFixtures — football-data 429 e cota informada', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    clearFootballDataPause()
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
+    clearFootballDataPause()
   })
 
-  it('retries once after 429 and succeeds on the second response', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 429,
-        async text() {
-          return 'rate limit'
-        },
-        async json() {
-          return {}
-        },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        async json() {
-          return {
-            competition: { id: 2000, name: 'FIFA World Cup', code: 'WC' },
-            matches: [],
-          }
-        },
-        async text() {
-          return ''
-        },
-      })
+  /** Resposta da football-data com cabeçalhos reais (`Headers` do runtime). */
+  const fdResponse = (status: number, headers: Record<string, string> = {}) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: new Headers(headers),
+    async text() {
+      return status === 429 ? 'still limited' : ''
+    },
+    async json() {
+      return { competition: { id: 2000, name: 'FIFA World Cup', code: 'WC' }, matches: [] }
+    },
+  })
+
+  const sync = () => {
+    const { db } = buildFakeDb()
+    return syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+  }
+
+  it('repete o 429 uma vez só depois do reset informado, não em 6 s', async () => {
+    const limited = {
+      ...fdResponse(429, { 'X-RequestCounter-Reset': '37' }),
+      body: { cancel: vi.fn() },
+    }
+    const fetchMock = vi.fn().mockResolvedValueOnce(limited).mockResolvedValueOnce(fdResponse(200))
     vi.stubGlobal('fetch', fetchMock)
 
-    const { db } = buildFakeDb()
-    const promise = syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
-    await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
+    const promise = sync()
+    await vi.advanceTimersByTimeAsync(36_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1_000)
     await expect(promise).resolves.toMatchObject({ matches: 0 })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    // O corpo do 429 é descartado antes do retry, sem segurar a conexão.
+    expect(limited.body.cancel).toHaveBeenCalledTimes(1)
   })
 
-  it('throws a clear error when 429 persists after the single retry', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 429,
-      async text() {
-        return 'still limited'
-      },
-      async json() {
-        return {}
-      },
-    })
+  it('429 sem cabeçalho espera a janela padrão antes do único retry', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fdResponse(429))
     vi.stubGlobal('fetch', fetchMock)
 
-    const { db } = buildFakeDb()
-    const promise = syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db })
+    const promise = sync()
     const assertion = expect(promise).rejects.toThrow(
       'football-data.org respondeu 429: still limited',
     )
     await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(FD_QUOTA_DEFAULT_PAUSE_MS)
     await assertion
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('reset longo: falha sem retry e o isolate não chama a API até o reset', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(fdResponse(429, { 'Retry-After': '600' }))
+      .mockResolvedValue(fdResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(sync()).rejects.toBeInstanceOf(FootballDataQuotaError)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Outro sync no mesmo isolate, com o reset ainda longe: nenhuma request sai.
+    await vi.advanceTimersByTimeAsync(500_000)
+    await expect(sync()).rejects.toThrow('cota esgotada')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // Perto do reset, o sync espera em vez de falhar, e a request só sai nele.
+    await vi.advanceTimersByTimeAsync(60_000)
+    const waiting = sync()
+    await vi.advanceTimersByTimeAsync(39_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await expect(waiting).resolves.toMatchObject({ matches: 0 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    // Inválido: pausa padrão de 60 s, cabe na espera, então o retry sai e volta 429.
+    ['inválido', { 'X-RequestCounter-Reset': 'abc', 'Retry-After': '-5' }, 60_000, 2],
+    // Absurdo: limitado a 1 h, além da espera, então falha sem retry.
+    ['absurdo', { 'X-RequestCounter-Reset': '999999999' }, 60 * 60_000, 1],
+  ])('reset %s não bloqueia o serviço para sempre', async (_label, headers, pauseMs, tries) => {
+    const fetchMock = vi.fn()
+    for (let i = 0; i < tries; i++) fetchMock.mockResolvedValueOnce(fdResponse(429, headers))
+    fetchMock.mockResolvedValue(fdResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const first = sync()
+    const assertion = expect(first).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(Math.min(pauseMs, FD_QUOTA_MAX_WAIT_MS))
+    await assertion
+    expect(fetchMock).toHaveBeenCalledTimes(tries)
+    // Pausado, mas por um tempo finito: no máximo `pauseMs` depois do último 429.
+    expect(footballDataPausedUntil()).toBeGreaterThan(Date.now())
+    expect(footballDataPausedUntil()).toBeLessThanOrEqual(Date.now() + pauseMs)
+
+    await vi.advanceTimersByTimeAsync(pauseMs)
+    await expect(sync()).resolves.toMatchObject({ matches: 0 })
+    expect(fetchMock).toHaveBeenCalledTimes(tries + 1)
+  })
+
+  it('200 com cota zerada faz a próxima chamada esperar o reset', async () => {
+    const exhausted = {
+      ...realHeaders.headers,
+      'x-requests-available-minute': '0',
+      'X-RequestCounter-Reset': '20',
+      'x-request_counter-reset': '19',
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(fdResponse(200, exhausted))
+      .mockResolvedValue(fdResponse(200, realHeaders.headers))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await sync()
+    const next = sync()
+    await vi.advanceTimersByTimeAsync(19_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1_000)
+    await next
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('cabeçalhos reais com cota sobrando não atrasam a chamada seguinte', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(fdResponse(200, realHeaders.headers))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await sync()
+    await sync()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('a pausa vale só para o isolate: outro isolate chama a API normalmente', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(fdResponse(429, { 'X-RequestCounter-Reset': '600' }))
+      .mockResolvedValue(fdResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(sync()).rejects.toBeInstanceOf(FootballDataQuotaError)
+    expect(footballDataPausedUntil()).toBe(Date.now() + 600_000)
+
+    // Módulos recarregados = isolate novo: a pausa não é coordenação global.
+    vi.resetModules()
+    const fresh = await import('./sync')
+    const { db } = buildFakeDb()
+    await expect(
+      fresh.syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db }),
+    ).resolves.toMatchObject({ matches: 0 })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // Este isolate continua pausado.
+    expect(footballDataPausedUntil()).toBe(Date.now() + 600_000)
   })
 
   it('does not retry non-429 HTTP errors', async () => {
@@ -731,9 +838,12 @@ describe('syncFixtures — football-data 429 retry', () => {
 })
 
 describe('syncFixtures — telemetria por tentativa HTTP', () => {
-  const response = (status: number, body: unknown = {}) => ({
+  afterEach(() => clearFootballDataPause())
+
+  const response = (status: number, body: unknown = {}, headers?: Record<string, string>) => ({
     ok: status >= 200 && status < 300,
     status,
+    headers: headers && new Headers(headers),
     async text() {
       return 'corpo do provedor'
     },
@@ -749,9 +859,13 @@ describe('syncFixtures — telemetria por tentativa HTTP', () => {
         'fetch',
         vi
           .fn()
-          .mockResolvedValueOnce(response(429))
+          .mockResolvedValueOnce(response(429, {}, { 'X-RequestCounter-Reset': '30' }))
           .mockResolvedValueOnce(
-            response(200, { competition: { id: 2000, name: 'FIFA World Cup' }, matches: [] }),
+            response(
+              200,
+              { competition: { id: 2000, name: 'FIFA World Cup' }, matches: [] },
+              realHeaders.headers,
+            ),
           ),
       )
       const onHttpAttempt = vi.fn()
@@ -764,12 +878,20 @@ describe('syncFixtures — telemetria por tentativa HTTP', () => {
         db,
         onHttpAttempt,
       })
-      await vi.advanceTimersByTimeAsync(FD_RETRY_BACKOFF_MS)
+      await vi.advanceTimersByTimeAsync(30_000)
       await promise
 
-      expect(onHttpAttempt.mock.calls.map(([a]) => [a.provider, a.status])).toEqual([
-        ['football-data', 429],
-        ['football-data', 200],
+      // A cota restante e o reset informados seguem junto de cada tentativa.
+      expect(
+        onHttpAttempt.mock.calls.map(([a]) => [
+          a.provider,
+          a.status,
+          a.quotaRemaining,
+          a.quotaResetSeconds,
+        ]),
+      ).toEqual([
+        ['football-data', 429, null, 30],
+        ['football-data', 200, 9, 60],
       ])
     } finally {
       vi.useRealTimers()
@@ -796,7 +918,13 @@ describe('syncFixtures — telemetria por tentativa HTTP', () => {
     await expect(
       syncFixtures({ competitionCode: 'WC', season: 2026, apiKey: 'k', db, onHttpAttempt }),
     ).rejects.toThrow('fetch failed')
-    expect(onHttpAttempt.mock.calls[0][0]).toMatchObject({ provider: 'football-data', status: 0 })
+    expect(onHttpAttempt.mock.calls[0][0]).toEqual({
+      provider: 'football-data',
+      status: 0,
+      durationMs: expect.any(Number),
+      quotaRemaining: null,
+      quotaResetSeconds: null,
+    })
   })
 
   it('football-data: observer que lança não muda o resultado do sync', async () => {
