@@ -234,6 +234,18 @@ const GROUP_DAILY_LIMIT = 5000
 /** UUID de competição; qualquer outra coisa em blob de competição é lixo legado. */
 const COMPETITION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/** Identificador do provedor (slug, código, id): letras, dígitos, `.`, `_` e `-`. */
+const PROVIDER_TOKEN_RE = /^[\w.-]{1,80}$/
+
+/** Horário no formato de `matches.start_time`. */
+const ISO_SECONDS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
+
+/** Identificador do provedor ou vazio: texto livre no blob não sai no payload. */
+function providerToken(raw: unknown): string {
+  const value = String(raw ?? '')
+  return PROVIDER_TOKEN_RE.test(value) ? value : ''
+}
+
 /** Id válido ou vazio ("sem liga"): nunca devolve texto livre de blob antigo. */
 function competitionIdOrEmpty(raw: unknown): string {
   const id = String(raw ?? '')
@@ -273,7 +285,13 @@ function footballApiErrorOrigin(
  * Posições: provider_http_attempt → blob2 provider, blob3 competition_id,
  * blob4 status, blob5 contexto, double1 duration_ms, double2 peso;
  * match_results_fallback → blob2 competition_id; sucesso: double1 atualizados,
- * double2 pulados; falha: blob3 = mensagem.
+ * double2 pulados; falha: blob3 = mensagem; sync_event_discarded → blob2
+ * provider, blob3 competition_id, blob4 motivo, blob5 detalhe, blob6 código da
+ * competição, double1 eventos; match_missing_from_feed → blob2 provider, blob3
+ * competition_id, blob4 id do jogo no provedor, blob5 início.
+ *
+ * Descartes e jogos ausentes só levam identificadores do provedor (slug,
+ * código, id, horário ISO); qualquer outro texto sai vazio.
  */
 metricsRouter.get('/ops', async (c) => {
   if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
@@ -295,6 +313,8 @@ metricsRouter.get('/ops', async (c) => {
       apiErrors,
       fallbackRuns,
       fallbackFailures,
+      discards,
+      missingMatches,
     ] = await Promise.all([
       runAeSql(
         c.env,
@@ -330,6 +350,23 @@ metricsRouter.get('/ops', async (c) => {
         `SELECT blob2 AS competition_id, SUM(_sample_interval) AS failures ` +
           `FROM ${DATASET} WHERE blob1 = 'match_results_fallback' AND blob3 != '' AND ${since} ` +
           `GROUP BY competition_id ORDER BY failures DESC LIMIT 500`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS provider, blob3 AS competition_id, blob6 AS competition_code, ` +
+          `blob4 AS reason, blob5 AS detail, ` +
+          `SUM(double1 * _sample_interval) AS events, SUM(_sample_interval) AS syncs ` +
+          `FROM ${DATASET} WHERE blob1 = 'sync_event_discarded' AND ${since} ` +
+          `GROUP BY provider, competition_id, competition_code, reason, detail ` +
+          `ORDER BY events DESC LIMIT 200`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS provider, blob3 AS competition_id, blob4 AS external_id, ` +
+          `blob5 AS start_time, SUM(_sample_interval) AS times, MAX(timestamp) AS last_seen ` +
+          `FROM ${DATASET} WHERE blob1 = 'match_missing_from_feed' AND ${since} ` +
+          `GROUP BY provider, competition_id, external_id, start_time ` +
+          `ORDER BY last_seen DESC LIMIT 200`,
       ),
     ])
 
@@ -402,6 +439,23 @@ metricsRouter.get('/ops', async (c) => {
       fallback: [...fallbackByComp.values()].sort(
         (a, b) => b.failures - a.failures || b.runs - a.runs,
       ),
+      discards: discards.map((r) => ({
+        provider: providerToken(r.provider),
+        competition_id: competitionIdOrEmpty(r.competition_id),
+        competition_code: providerToken(r.competition_code),
+        reason: providerToken(r.reason),
+        detail: providerToken(r.detail),
+        events: Number(r.events ?? 0),
+        syncs: Number(r.syncs ?? 0),
+      })),
+      missingMatches: missingMatches.map((r) => ({
+        provider: providerToken(r.provider),
+        competition_id: competitionIdOrEmpty(r.competition_id),
+        external_id: providerToken(r.external_id),
+        start_time: ISO_SECONDS_RE.test(String(r.start_time ?? '')) ? String(r.start_time) : '',
+        times: Number(r.times ?? 0),
+        last_seen: String(r.last_seen ?? ''),
+      })),
     })
   } catch (err) {
     console.error('[metrics] falha na SQL API (ops):', err)

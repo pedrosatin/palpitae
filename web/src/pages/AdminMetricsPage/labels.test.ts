@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { eventLabel, httpContextLabel, providerLabel, syncErrorOriginLabel } from './labels'
+import {
+  discardDetailLabel,
+  discardReasonLabel,
+  eventLabel,
+  httpContextLabel,
+  providerLabel,
+  syncErrorOriginLabel,
+} from './labels'
 
 describe('labels', () => {
   describe('eventLabel', () => {
@@ -24,6 +31,14 @@ describe('labels', () => {
     it('não rotula football_api_error como exclusivo de um provedor', () => {
       expect(eventLabel('football_api_error')).toBe('Erro de sync de provedor')
       expect(eventLabel('football_api_error')).not.toMatch(/Football/)
+    })
+
+    it('traduz os eventos de descarte e de jogo fora do calendário', () => {
+      expect(eventLabel('sync_event_discarded')).toBe('Evento descartado no sync')
+      expect(eventLabel('match_missing_from_feed')).toBe('Jogo fora do calendário')
+      expect(discardReasonLabel('missing_competitor')).toBe('Time ausente')
+      expect(discardDetailLabel('competition')).toBe('sem dados da partida')
+      expect(discardDetailLabel('round-of-32')).toBe('round-of-32')
     })
 
     it('returns raw key for unknown event types', () => {
