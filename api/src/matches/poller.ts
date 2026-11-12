@@ -80,9 +80,13 @@ function buildSyncTasks(rows: ActiveRound[]): {
  * Escolhe no máximo uma tarefa da varredura de atrasados. Só roda no primeiro tick
  * de cada bloco de `LATE_SWEEP_INTERVAL_MS` e alterna entre os candidatos pelo
  * número do bloco, sem estado gravado: um jogo que o provedor nunca resolve não
- * prende a vez dos outros. Cada candidato é uma rodada (football-data) ou um dia
- * (ESPN, duas datas do scoreboard).
+ * prende a vez dos outros. O índice soma o número do dia ao do bloco, para que um
+ * candidato não fique preso ao mesmo horário todo dia: com 8 candidatos e um bloco
+ * sempre ocupado, `bloco % 8` nunca escolheria quem cai nele. Cada candidato é uma
+ * rodada (football-data) ou um dia (ESPN, duas datas do scoreboard).
  */
+const DAY_MS = 24 * 60 * 60 * 1000
+
 function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
   if (now % LATE_SWEEP_INTERVAL_MS >= POLLER_TICK_MS) return undefined
   const candidates = new Map<string, SyncTask>()
@@ -98,46 +102,16 @@ function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
   }
   if (candidates.size === 0) return undefined
   const keys = Array.from(candidates.keys()).sort()
-  return candidates.get(keys[Math.floor(now / LATE_SWEEP_INTERVAL_MS) % keys.length])
+  const block = Math.floor(now / LATE_SWEEP_INTERVAL_MS)
+  const day = Math.floor(now / DAY_MS)
+  return candidates.get(keys[(block + day) % keys.length])
 }
 
 /**
- * Polls football-data.org and ESPN for results of matches currently inside
- * their active window, then scores them. Designed to run on a Cron Trigger
- * (every 30 min).
- *
- * Active window per match (see ADR-007):
- *   start_time + 115min  ≤ now ≤  start_time + 200min
- *
- * 115 min = 45 + 5 (stoppage) + 15 (interval) + 45 + 5 (stoppage) — the earliest
- * a match can realistically be over. 200 min upper bound covers knockout extra
- * time + penalties, and stops polling matches that never resolve (abnormal cases).
- *
- * Resgate (até 24 h após o início): jogos que saíram da janela ativa sem status
- * final (resultado atrasado no provedor, falha nos dois ticks) e jogos finalizados
- * ainda sem pontuação continuam entrando na consulta. Jogos adiados
- * (`postponed = 1`) ficam de fora do resgate, para não gastar quota da
- * football-data com partidas que não terminam. O resgate da ESPN cobre a mesma
- * janela e consulta apenas jogos ainda sem resultado, inclusive após sync HTTP 200.
- *
- * Varredura de atrasados (até 7 dias após o último horário conhecido): jogos sem
- * resultado depois das 24 h, e adiados depois dos 200 min, voltam a ser
- * consultados a cada 3 h, uma rodada ou um dia por vez (`pickLateTask`). A
- * descoberta diária não alcança o jogo ESPN de antes de ontem, e o adiado
- * remarcado e disputado antes da próxima descoberta ficaria aberto para palpite
- * até ela. Para o adiado da ESPN a varredura consulta o dia corrente, onde um jogo
- * remarcado para hoje aparece. A varredura só entra em tick sem jogo na janela
- * ativa ou no resgate, então o pico de subrequests por execução não muda. Ela
- * usa só o provedor primário: o fallback da ESPN segue na janela de 24 h.
+ * Jogos da janela ativa e do resgate (`late = 0`, consultados em todo tick) e
+ * candidatos da varredura de atrasados (`late = 1`), numa consulta só ao D1.
  */
-export async function pollActiveMatches(
-  db: D1Database,
-  apiKey: string,
-  ae?: AnalyticsEngineDataset,
-  now = Date.now(),
-): Promise<void> {
-  const startedAt = Date.now()
-
+async function loadPollerRows(db: D1Database, now: number): Promise<ActiveRound[]> {
   // start_time is stored as ISO 8601 with `T`/`Z` (e.g. "2026-06-16T22:00:00Z").
   // Compute the bounds the same way so the TEXT comparison stays lexicographic.
   // SQLite's datetime('now', ...) would produce "2026-06-16 23:21:20" (space, no Z)
@@ -182,12 +156,72 @@ export async function pollActiveMatches(
     .bind(earliestOver, rescueFloor, stillRelevant, lateFloor, today)
     .all<ActiveRound>()
 
-  const activeRows = rows.results.filter((row) => row.late !== 1)
-  // Só em tick ocioso: a varredura não soma subrequests a um tick com jogo na janela.
-  const lateRows = rows.results.filter((row) => row.late === 1)
-  const lateTask = activeRows.length === 0 ? pickLateTask(lateRows, now) : undefined
+  return rows.results
+}
 
-  if (activeRows.length === 0 && !lateTask) {
+type PollerPlan = {
+  lateTask: SyncTask | undefined
+  tasks: SyncTask[]
+  compCount: number
+  roundDays: number
+}
+
+/** Tarefas do tick: as da janela ativa e do resgate, ou, em tick ocioso, a da varredura. */
+function planTasks(rows: ActiveRound[], now: number): PollerPlan {
+  const activeRows = rows.filter((row) => row.late !== 1)
+  // Só em tick ocioso: a varredura não soma subrequests a um tick com jogo na janela.
+  const lateRows = rows.filter((row) => row.late === 1)
+  const lateTask = activeRows.length === 0 ? pickLateTask(lateRows, now) : undefined
+  const { compCount, tasks } = buildSyncTasks(activeRows)
+  if (lateTask) tasks.push(lateTask)
+  return {
+    lateTask,
+    tasks,
+    compCount: compCount + (lateTask ? 1 : 0),
+    roundDays: activeRows.length + (lateTask ? 1 : 0),
+  }
+}
+
+/**
+ * Polls football-data.org and ESPN for results of matches currently inside
+ * their active window, then scores them. Designed to run on a Cron Trigger
+ * (every 30 min).
+ *
+ * Active window per match (see ADR-007):
+ *   start_time + 115min  ≤ now ≤  start_time + 200min
+ *
+ * 115 min = 45 + 5 (stoppage) + 15 (interval) + 45 + 5 (stoppage) — the earliest
+ * a match can realistically be over. 200 min upper bound covers knockout extra
+ * time + penalties, and stops polling matches that never resolve (abnormal cases).
+ *
+ * Resgate (até 24 h após o início): jogos que saíram da janela ativa sem status
+ * final (resultado atrasado no provedor, falha nos dois ticks) e jogos finalizados
+ * ainda sem pontuação continuam entrando na consulta. Jogos adiados
+ * (`postponed = 1`) ficam de fora do resgate, para não gastar quota da
+ * football-data com partidas que não terminam. O resgate da ESPN cobre a mesma
+ * janela e consulta apenas jogos ainda sem resultado, inclusive após sync HTTP 200.
+ *
+ * Varredura de atrasados (até 7 dias após o último horário conhecido): jogos sem
+ * resultado depois das 24 h, e adiados depois dos 200 min, voltam a ser
+ * consultados a cada 3 h, uma rodada ou um dia por vez (`pickLateTask`). A
+ * descoberta diária não alcança o jogo ESPN de antes de ontem, e o adiado
+ * remarcado e disputado antes da próxima descoberta ficaria aberto para palpite
+ * até ela. Para o adiado da ESPN a varredura consulta o dia corrente, onde um jogo
+ * remarcado para hoje aparece. A varredura só entra em tick sem jogo na janela
+ * ativa ou no resgate, então o pico de subrequests por execução não muda. Ela
+ * usa só o provedor primário: o fallback da ESPN segue na janela de 24 h.
+ */
+export async function pollActiveMatches(
+  db: D1Database,
+  apiKey: string,
+  ae?: AnalyticsEngineDataset,
+  now = Date.now(),
+): Promise<void> {
+  const startedAt = Date.now()
+
+  const { lateTask, tasks, compCount, roundDays } = planTasks(await loadPollerRows(db, now), now)
+
+  if (tasks.length === 0) {
     console.info('[poller] Nenhum jogo na janela ativa.')
     logEvent(ae, 'poller_run', {
       blobs: ['ok'],
@@ -196,10 +230,6 @@ export async function pollActiveMatches(
     })
     return
   }
-
-  const { compCount, tasks } = buildSyncTasks(activeRows)
-  if (lateTask) tasks.push(lateTask)
-  const roundDays = activeRows.length + (lateTask ? 1 : 0)
 
   type SyncOutcome =
     | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
@@ -320,7 +350,7 @@ export async function pollActiveMatches(
     '[perf]',
     JSON.stringify({
       route: 'cron pollActiveMatches',
-      competitions: compCount + (lateTask ? 1 : 0),
+      competitions: compCount,
       round_days: roundDays,
       sync_tasks: tasks.length,
       late_sweep_tasks: lateTask ? 1 : 0,

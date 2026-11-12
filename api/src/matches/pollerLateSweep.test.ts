@@ -105,7 +105,7 @@ describe('pollActiveMatches varredura de atrasados (ESPN)', () => {
     }
 
     expect(row(sqlite)).toMatchObject({ status: 'finished', home_score: 1, scored: 1 })
-    // Depois das 24 h, só nos blocos de 3 h: 00:00, 03:00 e 06:00 UTC de 16/10.
+    // Depois das 24 h, só nos blocos de 3 h: 00:00 e 03:00 UTC de 16/10.
     expect(fetchesAfter24h.every((t) => t % LATE_SWEEP_INTERVAL_MS === 0)).toBe(true)
     expect(fetchesAfter24h.map((t) => new Date(t).toISOString())).toEqual([
       '2026-10-16T00:00:00.000Z',

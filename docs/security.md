@@ -202,12 +202,12 @@ competição, rodada e status. Parâmetros desconhecidos não criam novas entrad
 Atualizações externas dependem dos crons e do sync manual autenticado como admin.
 O poller busca resultados na janela ativa (115 a 200 minutos após o início) e, como
 resgate, de jogos iniciados há até 24 horas que ainda não estão finalizados ou que
-terminaram sem pontuação. Jogos adiados ficam fora do resgate. Depois disso, a
-varredura de atrasados consulta a cada 3 horas, uma rodada por vez, os jogos sem
-resultado e os adiados de até 7 dias, e só em execução sem jogo na janela ativa
-ou no resgate. Depois de 7 dias, um jogo sem resultado só volta a ser atualizado
-pela descoberta diária ou pelo sync manual. Competição nova sem jogos recebe os jogos no próximo cron de
-descoberta (06:15 UTC).
+terminaram sem pontuação. Jogos adiados ficam fora do resgate. Depois das 24 horas
+(200 minutos, no adiado), a varredura de atrasados consulta a cada 3 horas, uma
+rodada por vez, os jogos sem resultado e os adiados de até 7 dias, e só em execução
+sem jogo na janela ativa ou no resgate. Depois de 7 dias, um jogo sem resultado só
+volta a ser atualizado pela descoberta diária ou pelo sync manual. Competição nova
+sem jogos recebe os jogos no próximo cron de descoberta (06:15 UTC).
 
 ## Proteção de borda (Cloudflare Rate Limiting)
 

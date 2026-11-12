@@ -111,7 +111,7 @@ function seed(
       m.postponed ?? 0,
     )
   }
-  return { db, insert }
+  return { db, insert, sqlite }
 }
 
 /** Roda o poller a cada 30 min de `from` até `to` e devolve os instantes em que ele sincronizou. */
@@ -155,14 +155,14 @@ describe('pollActiveMatches varredura de atrasados', () => {
     expect(synced.slice(0, 3)).toEqual([2, 2.5, 3].map((h) => KICKOFF + h * HOUR))
     const after = synced.slice(3)
     expect(after.every((t) => t % LATE_SWEEP_INTERVAL_MS === 0)).toBe(true)
-    // Primeiro bloco de 3 h depois dos 200 min (21:00 UTC) até 7 dias.
+    // Primeiro bloco de 3 h depois dos 200 min (00:00 UTC) até 7 dias.
     expect(after[0]).toBe(KICKOFF + 6 * HOUR)
     expect(after).toHaveLength((7 * 24) / 3 - 1)
     expect(Math.max(...after)).toBeLessThanOrEqual(KICKOFF + 7 * 24 * HOUR)
   })
 
   it('consulta um atrasado por varredura, alterna entre eles e cede a vez ao tick com jogo na janela', async () => {
-    const sweep = KICKOFF + 2 * 24 * HOUR // 18:00 UTC, bloco de 3 h
+    const sweep = KICKOFF + 2 * 24 * HOUR + 6 * HOUR // 00:00 UTC, três blocos no mesmo dia
     const { db, insert } = seed([
       { id: 'a', round: '10', start: KICKOFF },
       { id: 'b', round: '11', start: KICKOFF + HOUR },
@@ -185,6 +185,34 @@ describe('pollActiveMatches varredura de atrasados', () => {
     vi.mocked(syncFixtures).mockClear()
     await pollActiveMatches(db, 'key', undefined, busy)
     expect(vi.mocked(syncFixtures).mock.calls.map(([options]) => options.matchday)).toEqual([20])
+  })
+
+  it('com 8 atrasados e o bloco das 00:00 sempre ocupado, todos são consultados em 7 dias', async () => {
+    const { db, insert, sqlite } = seed(
+      Array.from({ length: 8 }, (_, i) => ({
+        id: `r${i + 1}`,
+        round: String(i + 1),
+        start: KICKOFF,
+      })),
+    )
+
+    const visited = new Set<number>()
+    for (
+      let now = KICKOFF + 27 * HOUR;
+      now <= KICKOFF + 7 * 24 * HOUR;
+      now += LATE_SWEEP_INTERVAL_MS
+    ) {
+      const busy = new Date(now).getUTCHours() === 0
+      if (busy) insert.run('busy', 'c1', 'busy', new Date(now - 2 * HOUR).toISOString(), '99', 0)
+      vi.mocked(syncFixtures).mockClear()
+      await pollActiveMatches(db, 'key', undefined, now)
+      for (const [options] of vi.mocked(syncFixtures).mock.calls) {
+        if (options.matchday !== 99) visited.add(options.matchday!)
+      }
+      if (busy) sqlite.exec("DELETE FROM matches WHERE id = 'busy'")
+    }
+
+    expect([...visited].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
   })
 
   it('não consulta jogo encerrado nem jogo de mais de 7 dias fora da janela', async () => {
