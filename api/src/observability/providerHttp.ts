@@ -10,7 +10,11 @@ import { logEvent } from './events'
  * o próprio peso (`double2`) para o painel estimar o total sem fixar a taxa:
  * 1 para falha, `1 / taxa` para sucesso amostrado.
  *
- * Privacidade: só provedor, status, contexto, duração e `competition_id`
+ * Cota: na football-data, `double3` e `double4` levam as requests restantes e
+ * os segundos até o reset que a resposta informou (`-1` sem cabeçalho válido).
+ * Resposta com cota zerada sai sempre, como uma falha.
+ *
+ * Privacidade: só provedor, status, contexto, duração, cota e `competition_id`
  * (UUID interno). Nunca URL, query, slug, chave de API nem corpo da resposta.
  */
 
@@ -24,6 +28,13 @@ export type ProviderHttpAttempt = {
   /** Status HTTP; `0` quando não houve resposta (rede, timeout, abort). */
   status: number
   durationMs: number
+  /**
+   * Cota que a resposta informou (só football-data). `null` = cabeçalho ausente
+   * ou inválido; `undefined` = provedor sem cota informada (ESPN).
+   */
+  quotaRemaining?: number | null
+  /** Segundos até zerar o contador da cota; mesma convenção de `quotaRemaining`. */
+  quotaResetSeconds?: number | null
 }
 
 /** Chamado pelo cliente do provedor depois de cada tentativa. Nunca lança. */
@@ -55,14 +66,20 @@ export function createProviderHttpObserver(
 ): ProviderHttpObserver | undefined {
   if (!ae) return undefined
 
-  return ({ provider, status, durationMs }) => {
-    const failure = isHttpFailure(status)
-    if (!failure && random() >= HTTP_SUCCESS_SAMPLE_RATE) return
+  return ({ provider, status, durationMs, quotaRemaining, quotaResetSeconds }) => {
+    // Cota zerada sai sempre, com peso 1, e fica fora da amostra dos sucessos.
+    const exact = isHttpFailure(status) || quotaRemaining === 0
+    if (!exact && random() >= HTTP_SUCCESS_SAMPLE_RATE) return
+
+    const doubles = [Math.max(0, Math.round(durationMs)), exact ? 1 : 1 / HTTP_SUCCESS_SAMPLE_RATE]
+    if (quotaRemaining !== undefined || quotaResetSeconds !== undefined) {
+      doubles.push(quotaRemaining ?? -1, quotaResetSeconds ?? -1)
+    }
 
     try {
       logEvent(ae, 'provider_http_attempt', {
         blobs: [provider, scope.competitionId ?? '', String(status), scope.context],
-        doubles: [Math.max(0, Math.round(durationMs)), failure ? 1 : 1 / HTTP_SUCCESS_SAMPLE_RATE],
+        doubles,
       })
     } catch {
       // Telemetria nunca derruba nem altera o sync.

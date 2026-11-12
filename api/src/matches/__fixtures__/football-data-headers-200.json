@@ -1,0 +1,17 @@
+{
+  "_origem": "GET /v4/competitions/BSA autenticado, 12/11/2026 12:02 GMT. Cabeçalhos da resposta 200 sem X-Authenticated-Client (identifica a conta).",
+  "status": 200,
+  "headers": {
+    "Server": "nginx",
+    "Date": "Thu, 12 Nov 2026 12:02:13 GMT",
+    "Content-Type": "application/json;charset=UTF-8",
+    "X-RequestCounter-Reset": "60",
+    "X-API-Version": "v4",
+    "Access-Control-Allow-Origin": "http://localhost",
+    "Access-Control-Allow-Methods": "GET",
+    "Content-Language": "de-DE",
+    "x-requests-available-minute": "9",
+    "x-request_counter-reset": "59",
+    "X-Cache-Status": "MISS"
+  }
+}

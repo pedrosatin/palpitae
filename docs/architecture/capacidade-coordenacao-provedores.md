@@ -54,7 +54,7 @@ Fonte: árvore em `aa5f20a`. Nomes de secrets apenas; valores não lidos.
 
 ### 2.1 football-data.org
 
-Cliente: `fetchMatchesFromApi` em `api/src/matches/sync.ts`. Token `FOOTBALL_API_KEY`. Retry único após 6 s em HTTP 429 (`FD_RETRY_BACKOFF_MS`). Concorrência por execução: `FD_MAX_CONCURRENT_REQUESTS = 4`. Sem leitura dos cabeçalhos de cota na chamada.
+Cliente: `fetchMatchesFromApi` em `api/src/matches/sync.ts`. Token `FOOTBALL_API_KEY`. Retry único em HTTP 429, depois do reset informado nos cabeçalhos (mínimo de 6 s, `FD_RETRY_BACKOFF_MS`; 60 s sem reset válido). Concorrência por execução: `FD_MAX_CONCURRENT_REQUESTS = 4`. Um 429 ou uma resposta com cota zerada pausa as chamadas seguintes até o reset, só no isolate que viu a resposta (ver `docs/observability.md`, "Cota da football-data"); não há orçamento comum entre isolates.
 
 | Chamador | Gatilho | Chamadas por execução (sem retry) |
 |---|---|---|
