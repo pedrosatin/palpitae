@@ -24,6 +24,10 @@ quota de leitura por IP descrita abaixo. A página do convite só coloca alguém
 toque em "Entrar com Google e participar", registrado no `sessionStorage` da aba; abrir o link
 sozinho nunca faz a entrada.
 
+`GET /public/competitions` também responde sem sessão, com slug e nome das competições públicas
+que não terminaram, as mesmas que a landing anuncia. Competição em piloto não aparece. O workflow
+do web usa essa lista para conferir o catálogo da landing.
+
 O limite de membros é verificado no próprio `INSERT` da entrada, então duas
 entradas simultâneas não passam do limite.
 

@@ -60,6 +60,12 @@ jobs:
       - name: Verify CSP
         run: npm run csp:verify
 
+      # Falha se a landing anunciar competição que a API não oferece (piloto,
+      # encerrada ou de outra temporada). Competição pública fora da landing e
+      # API fora do ar só geram aviso.
+      - name: Verify landing catalog
+        run: npm run catalog:verify
+
   deploy:
     name: Deploy to Cloudflare Pages
     runs-on: ubuntu-latest

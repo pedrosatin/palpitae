@@ -341,3 +341,43 @@ describe('POST /public/invite-opens', () => {
     expect(writeDataPoint).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /public/competitions', () => {
+  it('lista só as competições públicas que não terminaram', async () => {
+    const { sqlite, db } = createSqliteD1()
+    try {
+      sqlite.exec(`
+        DELETE FROM competitions;
+        INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility) VALUES
+          ('c-liga', 'Liga Aberta', 'liga-aberta-2026', '2026', 'ongoing', 'league', '[]', 'public'),
+          ('c-nova', 'Copa Nova', 'copa-nova-2027', '2027', 'upcoming', 'cup', '[]', 'public'),
+          ('c-piloto', 'Liga Piloto', 'liga-piloto-2026', '2026', 'ongoing', 'league', '[]', 'pilot'),
+          ('c-coluna', 'Copa Antiga', 'copa-antiga-2025', '2025', 'finished', 'cup', '[]', 'public'),
+          ('c-jogos', 'Copa Decidida', 'copa-decidida-2026', '2026', 'ongoing', 'cup', '[]', 'public');
+        INSERT INTO teams (id, name, short_name, slug) VALUES
+          ('t1', 'Time 1', 'T1', 'time-1'),
+          ('t2', 'Time 2', 'T2', 'time-2');
+        -- A final encerrada termina a copa pelos jogos, antes de a coluna mudar.
+        INSERT INTO matches (
+          id, competition_id, external_id, provider, home_team_id, away_team_id,
+          start_time, status, round, phase, home_score, away_score
+        ) VALUES
+          ('m-final', 'c-jogos', 'x-1', 'football-data', 't1', 't2',
+           '2026-10-01T20:00:00Z', 'finished', 'FINAL', 'FINAL', 1, 0);
+      `)
+
+      const res = await request('/public/competitions', db)
+
+      expect(res.status).toBe(200)
+      expect(res.headers.get('Cache-Control')).toBe('public, max-age=300')
+      expect(await res.json()).toEqual({
+        competitions: [
+          { slug: 'copa-nova-2027', name: 'Copa Nova' },
+          { slug: 'liga-aberta-2026', name: 'Liga Aberta' },
+        ],
+      })
+    } finally {
+      sqlite.close()
+    }
+  })
+})

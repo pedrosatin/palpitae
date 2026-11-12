@@ -5,6 +5,7 @@ import {
   allPredictedWord,
   formatLongWhen,
   pendingCountText,
+  roundName,
   type DeadlineBanner,
 } from '../../lib/dashboardStatus'
 import { predictionsPath } from '../../lib/rounds'
@@ -30,7 +31,7 @@ export default function NextDeadlineBanner({
           <span className={styles.check} aria-hidden="true">
             ✓
           </span>
-          {banner.roundLabel} {allPredictedWord(banner.roundLabel)}
+          {banner.round.label} {allPredictedWord(banner.round.agreement)}
         </p>
       </section>
     )
@@ -38,6 +39,8 @@ export default function NextDeadlineBanner({
 
   const { match } = banner
   const pendingText = pendingCountText(banner.totalPending, banner.groupsWithPending)
+  // Rótulo sem concordância é rodada desconhecida, com o código cru do provedor.
+  const roundLabel = match && roundName(match.round_label, match.round_agreement)?.label
 
   return (
     <section className={styles.banner} data-kind="pending" aria-labelledby={labelId}>
@@ -50,9 +53,7 @@ export default function NextDeadlineBanner({
             {match.home_team} × {match.away_team} fecha {formatLongWhen(match.start_time, nowMs)}
           </p>
         )}
-        <p className={styles.meta}>
-          {match ? `${match.round_label} · ${pendingText}` : pendingText}
-        </p>
+        <p className={styles.meta}>{roundLabel ? `${roundLabel} · ${pendingText}` : pendingText}</p>
       </div>
       <Link
         className={styles.action}

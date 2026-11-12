@@ -7,13 +7,17 @@
  * `docs/operations/promocao-lote2.md`). Para anunciar uma nova, acrescente uma
  * linha aqui. A seção, o FAQ visível e o JSON-LD do `index.html` saem desta lista.
  *
+ * O `npm run catalog:verify` (`scripts/catalog-verify.mjs`), no workflow do web,
+ * reprova o deploy quando um slug daqui some de `GET /public/competitions`: a
+ * competição voltou a piloto, terminou ou virou outra temporada.
+ *
  * Os nomes não levam temporada, para o texto não envelhecer a cada ano.
  */
 
 export type CatalogRegion = 'brasil' | 'europa'
 
 export type CatalogCompetition = {
-  /** Slug da temporada vigente em `competitions.slug`, usado só para conferência em teste. */
+  /** Slug da temporada vigente em `competitions.slug`, usado só nas conferências do catálogo. */
   slug: string
   name: string
   region: CatalogRegion

@@ -148,11 +148,13 @@ type GroupsBody = {
       start_time: string
       round: string
       round_label: string
+      round_agreement: string | null
       home_team: string
       away_team: string
     } | null
     next_match_at: string | null
     current_round_label: string | null
+    current_round_agreement: string | null
     round_ends_at: string | null
     live_matches: number
   }>
@@ -303,11 +305,13 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
       start_time: '2026-06-20T19:00:00Z',
       round: '2',
       round_label: 'Rodada 2',
+      round_agreement: 'fs',
       home_team: 'Flamengo',
       away_team: 'Corinthians',
     })
     expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
     expect(groupA?.current_round_label).toBe('Rodada 2')
+    expect(groupA?.current_round_agreement).toBe('fs')
     // O jogo travado de 23/06 não conta. A rodada fecha no último jogo aberto.
     expect(groupA?.round_ends_at).toBe('2026-06-22T19:00:00Z')
     expect(groupA?.live_matches).toBe(0)
@@ -490,10 +494,44 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
         next_deadline: null,
         next_match_at: null,
         current_round_label: null,
+        current_round_agreement: null,
         round_ends_at: null,
         live_matches: 0,
       })
     }
+  })
+
+  it('manda a concordância junto do rótulo da rodada e do jogo de prazo', async () => {
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec(
+        "UPDATE matches SET round = 'SEMI_FINALS', phase = 'SEMI_FINALS' WHERE round = '2'",
+      ),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.current_round_label).toBe('Semifinais')
+    expect(groupA?.current_round_agreement).toBe('fp')
+    expect(groupA?.next_deadline).toMatchObject({
+      round: 'SEMI_FINALS',
+      round_label: 'Semifinais',
+      round_agreement: 'fp',
+    })
+  })
+
+  it('rodada desconhecida sai sem rótulo no resumo e sem concordância no prazo', async () => {
+    const groups = await groupsFor((sqlite) =>
+      sqlite.exec("UPDATE matches SET round = 'LEAGUE_STAGE_2' WHERE round = '2'"),
+    )
+    const groupA = groups.find((g) => g.id === 'group-a')
+
+    expect(groupA?.pending_predictions).toBe(4)
+    expect(groupA?.current_round_label).toBeNull()
+    expect(groupA?.current_round_agreement).toBeNull()
+    // O código cru segue em `round` para o link da aba Palpitar.
+    expect(groupA?.next_deadline).toMatchObject({
+      round: 'LEAGUE_STAGE_2',
+      round_agreement: null,
+    })
   })
 })
 

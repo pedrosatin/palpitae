@@ -13,6 +13,7 @@ import {
   sortByUrgency,
   statusBoundaries,
   type DeadlineMatch,
+  type RoundAgreement,
   type RoundStatusFields,
 } from './dashboardStatus'
 
@@ -25,6 +26,7 @@ function deadline(startTime: string, round = '35'): DeadlineMatch {
     start_time: startTime,
     round,
     round_label: `Rodada ${round}`,
+    round_agreement: 'fs',
     home_team: 'Mirassol',
     away_team: 'Atlético-MG',
   }
@@ -62,8 +64,36 @@ describe('groupRoundStatus e texto do card', () => {
 
   it('mostra a rodada completa e o próximo jogo', () => {
     expect(
-      text({ current_round_label: 'Rodada 35', next_match_at: '2026-11-14T21:30:00Z' }),
+      text({
+        current_round_label: 'Rodada 35',
+        current_round_agreement: 'fs',
+        next_match_at: '2026-11-14T21:30:00Z',
+      }),
     ).toBe('Rodada 35 completa ✓ · próximo jogo sáb 18:30')
+  })
+
+  it('concorda "completa" pela concordância que a API manda, não pelo rótulo', () => {
+    const complete = (current_round_label: string, current_round_agreement: RoundAgreement) =>
+      text({ current_round_label, current_round_agreement, next_match_at: '2026-11-14T21:30:00Z' })
+
+    expect(complete('Semifinais', 'fp')).toBe('Semifinais completas ✓ · próximo jogo sáb 18:30')
+    expect(complete('Playoffs', 'mp')).toBe('Playoffs completos ✓ · próximo jogo sáb 18:30')
+    // Um rótulo renomeado na API traz a concordância dele, sem regra sobre o texto.
+    expect(complete('Repescagem', 'fs')).toBe('Repescagem completa ✓ · próximo jogo sáb 18:30')
+    expect(complete('Mata-mata', 'ms')).toBe('Mata-mata completo ✓ · próximo jogo sáb 18:30')
+  })
+
+  it('não mostra rótulo sem concordância, que é o código cru de rodada desconhecida', () => {
+    expect(
+      text({ current_round_label: 'LEAGUE_STAGE_2', next_match_at: '2026-11-14T21:30:00Z' }),
+    ).toBe('Tudo palpitado ✓ · próximo jogo sáb 18:30')
+    expect(
+      text({
+        current_round_label: 'LEAGUE_STAGE_2',
+        current_round_agreement: null,
+        next_match_at: '2026-11-14T21:30:00Z',
+      }),
+    ).toBe('Tudo palpitado ✓ · próximo jogo sáb 18:30')
   })
 
   it('mostra os jogos ao vivo quando não há pendência', () => {
@@ -101,7 +131,11 @@ describe('groupRoundStatus e texto do card', () => {
       groupRoundStatusLabel(groupRoundStatus(group('g', fields))!, NOW)
 
     expect(
-      label({ current_round_label: 'Rodada 35', next_match_at: '2026-11-14T21:30:00Z' }),
+      label({
+        current_round_label: 'Rodada 35',
+        current_round_agreement: 'fs',
+        next_match_at: '2026-11-14T21:30:00Z',
+      }),
     ).toBe('Rodada 35 completa, próximo jogo sáb 18:30')
     expect(
       label({ pending_predictions: 10, next_deadline: deadline('2026-11-14T21:30:00Z') }),
@@ -115,21 +149,19 @@ describe('groupRoundStatus e texto do card', () => {
     expect(pendingCountText(30, 3)).toBe('30 sem palpite em 3 grupos')
   })
 
-  it('concorda "completa" com o rótulo da rodada', () => {
-    expect(completeWord('Rodada 35')).toBe('completa')
-    expect(completeWord('Final')).toBe('completa')
-    expect(completeWord('Semifinais')).toBe('completas')
-    expect(completeWord('Oitavas de final')).toBe('completas')
-    expect(completeWord('Quartas da Taça Guanabara')).toBe('completas')
-    expect(completeWord('Playoffs')).toBe('completos')
-    expect(completeWord('Terceiro lugar')).toBe('completo')
-  })
-
-  it('concorda "toda palpitada" com o rótulo da rodada', () => {
-    expect(allPredictedWord('Rodada 35')).toBe('toda palpitada')
-    expect(allPredictedWord('Semifinais')).toBe('todas palpitadas')
-    expect(allPredictedWord('Playoffs')).toBe('todos palpitados')
-    expect(allPredictedWord('Terceiro lugar')).toBe('todo palpitado')
+  it('escreve "completa" e "toda palpitada" nas quatro concordâncias', () => {
+    expect(['fs', 'fp', 'ms', 'mp'].map((a) => completeWord(a as RoundAgreement))).toEqual([
+      'completa',
+      'completas',
+      'completo',
+      'completos',
+    ])
+    expect(['fs', 'fp', 'ms', 'mp'].map((a) => allPredictedWord(a as RoundAgreement))).toEqual([
+      'toda palpitada',
+      'todas palpitadas',
+      'todo palpitado',
+      'todos palpitados',
+    ])
   })
 })
 
@@ -204,17 +236,39 @@ describe('deadlineBanner', () => {
       deadlineBanner([
         group('a', {
           current_round_label: 'Rodada 35',
+          current_round_agreement: 'fs',
           next_match_at: '2026-11-14T21:30:00Z',
           round_ends_at: '2026-11-20T00:30:00Z',
         }),
         group('b', {
           current_round_label: 'Semifinais',
+          current_round_agreement: 'fp',
           next_match_at: '2026-11-13T22:00:00Z',
           round_ends_at: '2026-11-19T22:00:00Z',
         }),
         group('c'),
       ]),
-    ).toEqual({ kind: 'clear', roundLabel: 'Semifinais' })
+    ).toEqual({ kind: 'clear', round: { label: 'Semifinais', agreement: 'fp' } })
+  })
+
+  it('sem pendência, não nomeia a faixa com rótulo sem concordância', () => {
+    const unknown = group('a', {
+      current_round_label: 'LEAGUE_STAGE_2',
+      next_match_at: '2026-11-13T22:00:00Z',
+      round_ends_at: '2026-11-19T22:00:00Z',
+    })
+    const known = group('b', {
+      current_round_label: 'Rodada 35',
+      current_round_agreement: 'fs',
+      next_match_at: '2026-11-14T21:30:00Z',
+      round_ends_at: '2026-11-20T00:30:00Z',
+    })
+
+    expect(deadlineBanner([unknown, known])).toEqual({
+      kind: 'clear',
+      round: { label: 'Rodada 35', agreement: 'fs' },
+    })
+    expect(deadlineBanner([unknown])).toBeNull()
   })
 
   it('não mostra faixa sem pendência e sem rodada aberta', () => {

@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { competitionStatusSql } from '../groups/competitionStatus'
 import { logEvent } from '../observability'
 import { INVITE_OPEN_HEADER, PROXY_SECRET_HEADER, sameSecret } from '../security/limits'
 import type { AppContext } from '../types'
@@ -103,6 +104,36 @@ router.get('/invites/:code', async (c) => {
       points_winner: row.points_winner ?? null,
     },
   })
+})
+
+/**
+ * GET /public/competitions
+ *
+ * Competições em que um usuário comum consegue criar bolão: as públicas que não
+ * terminaram, como o modal "Criar grupo" lista a partir de `GET /competitions`.
+ * O build do web confere o catálogo da landing contra esta lista
+ * (`web/scripts/catalog-verify.mjs`), para a landing não anunciar competição em
+ * piloto ou encerrada. A landing já mostra estes nomes a qualquer visitante, e
+ * competição em piloto não sai daqui.
+ *
+ * Response 200: { competitions: [{ slug, name }] }, em ordem de nome.
+ */
+router.get('/competitions', async (c) => {
+  try {
+    const result = await c.env.DB.prepare(
+      `SELECT c.slug, c.name
+       FROM competitions c
+       WHERE c.visibility = 'public'
+         AND ${competitionStatusSql('c', 'c', 'c.id')} != 'finished'
+       ORDER BY c.name ASC`,
+    ).all<{ slug: string; name: string }>()
+    c.header('Cache-Control', CACHE_OK)
+    return c.json({ competitions: result.results.map(({ slug, name }) => ({ slug, name })) })
+  } catch (error) {
+    console.error('[public] Error loading competitions:', error)
+    c.header('Cache-Control', 'no-store')
+    return c.json({ error: 'Erro ao carregar competições' }, 500)
+  }
 })
 
 /**
