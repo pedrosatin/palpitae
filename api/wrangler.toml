@@ -54,6 +54,9 @@ bucket_name = "palpitae-events"
 [vars]
 BASE_URL = "https://api.palpitae.com.br"
 FRONTEND_URL = "https://palpitae.com.br"
+# CF-Worker que a Cloudflare preenche no proxy do Pages, com o nome do projeto.
+# Atualize antes ou junto de renomear o projeto Pages. Ver docs/security.md.
+FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
 # Opcional: teto de chamadas ao Resend por execução do lembrete diário (padrão 45,
 # que cabe nos 50 subrequests do plano Free). Ver ADR-020.
 # REMINDER_FETCH_BUDGET = "45"

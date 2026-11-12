@@ -147,6 +147,53 @@ describe('anonymousIdentity', () => {
     expect(result).toEqual({ identity: 'proxy:anonymous:frontend', shared: true })
   })
 
+  describe('zona do projeto Pages (FRONTEND_WORKER_ZONE)', () => {
+    const env = { FRONTEND_URL: 'https://test.com', FRONTEND_WORKER_ZONE: 'palpitae-web.pages.dev' }
+    const frontend = { identity: 'proxy:anonymous:frontend', shared: true }
+    const worker = { identity: 'proxy:anonymous:worker', shared: true }
+
+    it('manda o proxy do Pages sem segredo para o balde do front', async () => {
+      const context = createMockContext(env, { 'CF-Worker': 'palpitae-web.pages.dev' })
+      expect(await anonymousIdentity(context)).toEqual(frontend)
+    })
+
+    it('mantém o balde do front com segredo divergente', async () => {
+      const context = createMockContext(
+        { ...env, PROXY_SHARED_SECRET: 'test-secret' },
+        {
+          'CF-Worker': 'palpitae-web.pages.dev',
+          [PROXY_SECRET_HEADER]: 'outro-segredo',
+          [CLIENT_IP_HEADER]: '192.168.1.1',
+        },
+      )
+      expect(await anonymousIdentity(context)).toEqual(frontend)
+    })
+
+    it('ignora maiúsculas e espaços nas pontas', async () => {
+      const context = createMockContext(
+        { ...env, FRONTEND_WORKER_ZONE: ' Palpitae-Web.Pages.Dev ' },
+        { 'CF-Worker': '  PALPITAE-web.pages.DEV ' },
+      )
+      expect(await anonymousIdentity(context)).toEqual(frontend)
+    })
+
+    it.each(['outro.pages.dev', 'pages.dev', 'x.palpitae-web.pages.dev'])(
+      'não casa com projeto vizinho, domínio pai nem subdomínio: %s',
+      async (zone) => {
+        const context = createMockContext(env, { 'CF-Worker': zone })
+        expect(await anonymousIdentity(context)).toEqual(worker)
+      },
+    )
+
+    it.each([undefined, '', '  '])('variável %j não casa nada', async (value) => {
+      const context = createMockContext(
+        { FRONTEND_URL: 'https://test.com', FRONTEND_WORKER_ZONE: value },
+        { 'CF-Worker': 'palpitae-web.pages.dev' },
+      )
+      expect(await anonymousIdentity(context)).toEqual(worker)
+    })
+  })
+
   it('should handle other worker egress IP as proxy anonymous worker', async () => {
     const context = createMockContext(
       { FRONTEND_URL: 'https://test.com' },

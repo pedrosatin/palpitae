@@ -26,6 +26,8 @@ export type Env = {
   REMINDER_FETCH_BUDGET?: string
   // Segredo compartilhado com o proxy do Pages para confiar no IP repassado.
   PROXY_SHARED_SECRET?: string
+  // CF-Worker que a Cloudflare preenche no proxy do Pages, no formato `<projeto>.pages.dev`.
+  FRONTEND_WORKER_ZONE?: string
 }
 
 // Resultado da verificação do cookie de sessão guardado no contexto da requisição.

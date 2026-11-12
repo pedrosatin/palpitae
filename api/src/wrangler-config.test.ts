@@ -4,6 +4,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import deployWorkflow from '../../.github/workflows/deploy-api.yml?raw'
+import deployWebWorkflow from '../../.github/workflows/deploy-web.yml?raw'
 import packageJsonFile from '../package.json'
 import wranglerToml from '../wrangler.toml?raw'
 import { FIXTURE_DISCOVERY_CRON, RESULT_POLLER_CRON, SCHEDULED_CRONS } from './crons'
@@ -146,6 +147,15 @@ describe('wrangler api config', () => {
 
     expect(declared).toBeDefined()
     expect((JSON.parse(declared!) as string[]).sort()).toEqual([...SCHEDULED_CRONS].sort())
+  })
+
+  it('declara o FRONTEND_WORKER_ZONE com o projeto que o deploy do front publica', () => {
+    const project = deployWebWorkflow.match(/wrangler pages deploy\b.*--project-name=(\S+)/)?.[1]
+
+    expect(project).toBeDefined()
+    expect(wranglerToml).toMatch(
+      new RegExp(`^FRONTEND_WORKER_ZONE = "${project}\\.pages\\.dev"$`, 'm'),
+    )
   })
 
   it('roda a descoberta diária num minuto diferente dos ticks do poller', () => {
