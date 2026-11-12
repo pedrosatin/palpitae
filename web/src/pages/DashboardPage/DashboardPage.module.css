@@ -131,3 +131,16 @@
   font-size: var(--font-size-md);
   color: var(--color-text-secondary);
 }
+
+/* ─── Load Error ────────────────────────────────────────────────────────── */
+
+.loadError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.loadError p {
+  margin: 0;
+}
