@@ -35,11 +35,16 @@ describe('catalog-verify', () => {
     })
   })
 
-  it('reprova a landing que anuncia competição fora da lista pública', async () => {
+  it('reprova o PR que muda o catálogo e anuncia competição fora da lista pública', async () => {
     // A Copa B virou piloto ou terminou: a API deixa de listá-la.
     const fetchImpl = apiReturning({ competitions: [{ slug: 'liga-a-2026', name: 'Liga A' }] })
 
-    const result = await verifyCatalog({ source: SOURCE, apiUrl: 'https://api.test', fetchImpl })
+    const result = await verifyCatalog({
+      source: SOURCE,
+      apiUrl: 'https://api.test',
+      fetchImpl,
+      strict: true,
+    })
 
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://api.test/public/competitions',
@@ -48,6 +53,18 @@ describe('catalog-verify', () => {
     expect(result.code).toBe(1)
     expect(result.checked).toBe(true)
     expect(result.errors).toEqual([expect.stringContaining('copa-b-2026')])
+  })
+
+  it('fora do PR que muda o catálogo, a mesma divergência só avisa', async () => {
+    const result = await verifyCatalog({
+      source: SOURCE,
+      fetchImpl: apiReturning({ competitions: [{ slug: 'liga-a-2026', name: 'Liga A' }] }),
+    })
+
+    expect(result).toMatchObject({ code: 0, checked: true, errors: [] })
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/copa-b-2026.*só aviso: esta execução não altera o catálogo/),
+    ])
   })
 
   it('só avisa quando há competição pública fora da landing', async () => {
@@ -60,6 +77,7 @@ describe('catalog-verify', () => {
           { slug: 'liga-a-2027', name: 'Liga A' },
         ],
       }),
+      strict: true,
     })
 
     expect(result).toMatchObject({ code: 0, checked: true, errors: [] })
@@ -70,19 +88,42 @@ describe('catalog-verify', () => {
     ['API fora do ar', vi.fn(async () => Promise.reject(new Error('fetch failed')))],
     ['rota ainda não publicada', apiReturning({ error: 'Not Found' }, 404)],
     ['resposta fora do formato', apiReturning({ outra: [] })],
-  ])('não reprova o build com %s, mas avisa', async (_label, fetchImpl) => {
-    const result = await verifyCatalog({ source: SOURCE, fetchImpl })
+  ])('não reprova nem o PR do catálogo com %s, mas avisa', async (_label, fetchImpl) => {
+    const result = await verifyCatalog({ source: SOURCE, fetchImpl, strict: true })
 
     expect(result).toMatchObject({ code: 0, checked: false, errors: [] })
     expect(result.warnings).toEqual([expect.stringContaining('catálogo não conferido')])
   })
 
-  it('reprova quando não consegue ler nenhum slug do catálogo', async () => {
+  it.each([403, 429])(
+    'HTTP %i reprova o PR do catálogo e vira aviso explícito nos demais',
+    async (status) => {
+      const strict = await verifyCatalog({
+        source: SOURCE,
+        fetchImpl: apiReturning({ error: 'x' }, status),
+        strict: true,
+      })
+      const loose = await verifyCatalog({
+        source: SOURCE,
+        fetchImpl: apiReturning({ error: 'x' }, status),
+      })
+
+      expect(strict).toMatchObject({ code: 1, checked: false, warnings: [] })
+      expect(strict.errors).toEqual([expect.stringContaining(`recusou a consulta`)])
+      expect(loose).toMatchObject({ code: 0, checked: false, errors: [] })
+      expect(loose.warnings).toEqual([
+        expect.stringMatching(new RegExp(`recusou a consulta.*HTTP ${status}.*só aviso`)),
+      ])
+    },
+  )
+
+  it('reprova o PR do catálogo quando não consegue ler nenhum slug', async () => {
     const fetchImpl = apiReturning({ competitions: [] })
 
     const result = await verifyCatalog({
       source: 'export const COMPETITION_CATALOG = []',
       fetchImpl,
+      strict: true,
     })
 
     expect(result.code).toBe(1)
@@ -106,7 +147,7 @@ describe('catalog-verify', () => {
     ).toEqual([
       {
         stream: 'log',
-        text: 'catalog:verify: catálogo da landing conferido contra https://api.test.',
+        text: 'catalog:verify: catálogo da landing conferido contra https://api.test, sem divergência.',
       },
     ])
     expect(
@@ -115,5 +156,12 @@ describe('catalog-verify', () => {
         'https://api.test',
       ),
     ).toEqual([{ stream: 'warn', text: 'catalog:verify: fora do ar' }])
+    // Comparou, mas com aviso: a confirmação não aparece para não esconder o aviso.
+    expect(
+      reportLines(
+        { code: 0, checked: true, errors: [], warnings: ['z é pública'] },
+        'https://api.test',
+      ),
+    ).toEqual([{ stream: 'warn', text: 'catalog:verify: z é pública' }])
   })
 })

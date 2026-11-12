@@ -111,10 +111,10 @@ router.get('/invites/:code', async (c) => {
  *
  * Competições em que um usuário comum consegue criar bolão: as públicas que não
  * terminaram, como o modal "Criar grupo" lista a partir de `GET /competitions`.
- * O build do web confere o catálogo da landing contra esta lista
- * (`web/scripts/catalog-verify.mjs`), para a landing não anunciar competição em
- * piloto ou encerrada. A landing já mostra estes nomes a qualquer visitante, e
- * competição em piloto não sai daqui.
+ * O workflow `landing-catalog.yml` confere o catálogo da landing contra esta
+ * lista (`web/scripts/catalog-verify.mjs`), para a landing não anunciar
+ * competição em piloto ou encerrada. Os nomes já aparecem no modal "Criar grupo"
+ * para qualquer usuário logado, e competição em piloto não sai daqui.
  *
  * Response 200: { competitions: [{ slug, name }] }, em ordem de nome.
  */
