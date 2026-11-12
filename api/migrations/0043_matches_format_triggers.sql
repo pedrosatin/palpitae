@@ -6,8 +6,8 @@
 -- ISO do mesmo dia, e um horário com milissegundos não é comparável ao segundo
 -- exato. A pontuação só alcança jogo `finished` com placar completo, e a lista de
 -- rodadas agrupa por `round`. Os dois provedores já gravam nesse formato; estes
--- gatilhos fazem o banco recusar um provedor novo, ou um sync alterado, que não
--- grave.
+-- gatilhos fazem o banco recusar um provedor novo, ou um sync alterado, que grave
+-- fora dele.
 --
 -- Gatilho e não CHECK: acrescentar CHECK a uma coluna existente exige rebuild da
 -- tabela, e apagar a tabela antiga no rebuild levaria os palpites em cascata (ADR-013).
