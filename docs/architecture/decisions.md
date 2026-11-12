@@ -375,8 +375,20 @@ The first instinct — detect the last match of the current round, then fetch th
 - New phases (round of 32, 16, …) and kickoff-time changes land automatically each morning — no manual `POST /matches/sync`.
 - No new infra: reuses the Worker, its D1 binding, and `FOOTBALL_API_KEY`. One cron expression added (`crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "0 6 * * *"]`).
 - At 06:00 UTC the poller's `0,30 * * * *` also matches, but Cloudflare fires `scheduled` once **per** matching cron with its own `controller.cron`, so the two don't collide.
-- **Known limitation:** nothing currently promotes a competition's `status` to `'finished'`, so `status != 'finished'` never narrows — discovery fetches every football-data competition (including past seasons) daily. Harmless at current scale (≈1 competition, 1 call/day); revisit by flipping `status` once all matches are `finished`, or filtering by `season`, if multiple finished competitions accumulate.
+- ~~**Known limitation:** nothing currently promotes a competition's `status` to `'finished'`, so `status != 'finished'` never narrows.~~ Resolvida na atualização abaixo.
 - `POST /matches/sync` (ADR predecessor, manual) is kept as an admin escape hatch.
+
+### Atualização — 2026-11-12
+
+Depois de sincronizar uma competição sem erro, a descoberta grava `competitions.status` pelos jogos (`reconcileCompetitionStatus`, em `api/src/matches/competitionLifecycle.ts`). 'upcoming' vira 'ongoing' quando um jogo começa. A competição vira 'finished' quando nenhum jogo gravado está pendente, há sinal de fim e o último jogo começou há mais de 7 dias. O status só avança: correção posterior não reabre a competição, e a visibilidade não muda.
+
+O sinal de fim depende do provedor, porque os jogos gravados podem não cobrir o calendário (`finishedByMatchesSql`, em `api/src/groups/competitionStatus.ts`):
+
+- Copa: jogo de fase de título que não seja ida. Final em ida e volta com só a ida gravada não encerra.
+- Liga da football-data: a descoberta traz o calendário inteiro, então basta não ter jogo pendente.
+- Liga da ESPN: a descoberta só enxerga até hoje + 7 dias, então a liga só acaba com 60 dias sem jogo novo. Data FIFA e pausa de Copa do Mundo não encerram a liga.
+
+A tela usa a mesma regra sem os 7 dias de confirmação. Nesses dias a competição já aparece encerrada e a descoberta continua buscando o calendário: é a janela de correções de placar e da volta de uma final que ainda não estava no horizonte da ESPN. Depois disso a competição sai da descoberta. O poller não olha o status da competição e continua cobrindo os jogos gravados; `POST /matches/sync` segue como saída manual.
 
 ---
 

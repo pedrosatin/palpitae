@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
 import { createProviderHttpObserver } from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
+import { reconcileCompetitionStatus } from './competitionLifecycle'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
@@ -42,8 +43,10 @@ export async function discoverFixtures(
 ): Promise<void> {
   const startedAt = Date.now()
 
-  // Competições não-terminais com provider sincronizável. 'finished' fica de fora —
-  // torneio acabado não ganha jogos novos, não vale gastar chamada da API.
+  // Competições não-terminais com provider sincronizável. 'finished' fica de fora:
+  // torneio acabado não ganha jogos novos, não vale gastar chamada da API. A
+  // coluna só vira 'finished' dias depois do último jogo (`reconcileCompetitionStatus`),
+  // e esses dias são a janela de correção do calendário.
   const rows = await db
     .prepare(
       `SELECT id, external_id, season, provider
@@ -101,6 +104,11 @@ export async function discoverFixtures(
       // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
       // correção de placar que o upsert do sync zerou).
       await scoreUnprocessedMatches(comp.id, db)
+      // Só depois de um sync bem-sucedido: o status avança com o calendário atualizado.
+      const status = await reconcileCompetitionStatus(db, comp.id, now)
+      if (status === 'finished') {
+        console.info(`[discovery] Competição ${comp.id} encerrada; sai da descoberta diária.`)
+      }
     } catch (err) {
       hadError = true
       logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {

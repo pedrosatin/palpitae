@@ -5,7 +5,11 @@ vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
 vi.mock('./scoring', () => ({
   scoreUnprocessedMatches: vi.fn(async () => undefined),
 }))
+vi.mock('./competitionLifecycle', () => ({
+  reconcileCompetitionStatus: vi.fn(async () => 'ongoing'),
+}))
 
+import { reconcileCompetitionStatus } from './competitionLifecycle'
 import { discoverFixtures } from './fixtureDiscovery'
 import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
@@ -13,6 +17,7 @@ import { syncFixtures } from './sync'
 
 const syncFixturesMock = vi.mocked(syncFixtures)
 const scoreMock = vi.mocked(scoreUnprocessedMatches)
+const reconcileMock = vi.mocked(reconcileCompetitionStatus)
 
 type ActiveCompetition = {
   id: string
@@ -61,6 +66,7 @@ describe('discoverFixtures', () => {
   beforeEach(() => {
     syncFixturesMock.mockReset()
     scoreMock.mockReset()
+    reconcileMock.mockClear()
     syncFixturesMock.mockResolvedValue(undefined as never)
     scoreMock.mockResolvedValue(undefined)
   })
@@ -175,6 +181,9 @@ describe('discoverFixtures', () => {
     // First competition shouldn't be scored if sync fails
     expect(scoreMock).toHaveBeenCalledTimes(1)
     expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
+    // Nem tem o status avançado com um calendário que não foi atualizado.
+    expect(reconcileMock).toHaveBeenCalledTimes(1)
+    expect(reconcileMock).toHaveBeenCalledWith(expect.anything(), 'c2', expect.any(Number))
 
     const errors = pointsOfType(ae, 'football_api_error')
     expect(errors).toHaveLength(1)

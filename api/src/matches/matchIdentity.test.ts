@@ -20,7 +20,9 @@ const ATALANTA = { id: 102, name: 'Atalanta BC', shortName: 'Atalanta', tla: 'AT
 type Team = typeof ARSENAL
 type Result = { home: number; away: number; penalties?: { home: number; away: number } }
 
-const KICKOFF = '2026-11-08T16:30:00Z'
+// Véspera do discovery: com um jogo só, a liga parece encerrada, e a correção do
+// provedor precisa chegar dentro da confirmação de `FINISH_CONFIRMATION_DAYS`.
+const KICKOFF = '2027-02-28T16:30:00Z'
 const IDA = '2027-02-17T20:00:00Z'
 const VOLTA = '2027-02-25T20:00:00Z'
 const FINAL = '2027-05-29T19:00:00Z'
