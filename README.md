@@ -36,8 +36,11 @@ docs/   Architecture decisions, schema, observability and analytics conventions
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) 24+
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/): `npm install -g wrangler`
-- A Cloudflare account (`wrangler login`)
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/): installed by `npm install` in `api/`, run it with `npx wrangler`
+- A Cloudflare account (`npx wrangler login`)
+
+> Inside `api/`, always pass `--config ./wrangler.toml` to Wrangler.
+> Wrangler looks for `wrangler.json` and `wrangler.jsonc` in every parent directory before it accepts a `wrangler.toml`, so the root `wrangler.jsonc` (the Pages project) wins over `api/wrangler.toml`. Without the flag, `secret put` sends the secret to the `palpitae-web` Worker and `d1` commands find no migrations. The npm scripts (`dev`, `dev:cron`, `deploy`) already pass the flag.
 
 ### First-time setup
 
@@ -46,10 +49,10 @@ cd api
 npm install
 
 # 1. Create the D1 database and copy the database_id into wrangler.toml
-wrangler d1 create palpitae
+npx wrangler d1 create palpitae --config ./wrangler.toml
 
-# 2. Apply the schema migration locally
-wrangler d1 migrations apply palpitae --local
+# 2. Apply the schema migrations locally
+npx wrangler d1 migrations apply palpitae --local --config ./wrangler.toml
 
 # 3. Set up local secrets (Wrangler uses .dev.vars instead of .env — see note below)
 cp .dev.vars.example .dev.vars
@@ -57,13 +60,13 @@ cp .dev.vars.example .dev.vars
 ```
 
 > **Why `.dev.vars` and not `.env`?**
-> Cloudflare Workers have no `process.env`. Environment values are injected as *bindings* (accessible via `env.JWT_SECRET` in handler code). Wrangler reads `.dev.vars` locally to simulate those bindings during `wrangler dev`. Production secrets are set via `wrangler secret put <KEY>` and never stored in files.
+> Cloudflare Workers have no `process.env`. Environment values are injected as *bindings* (accessible via `env.JWT_SECRET` in handler code). Wrangler reads `.dev.vars` locally to simulate those bindings during `npm run dev`. Production secrets are set via `npx wrangler secret put <KEY> --config ./wrangler.toml` and never stored in files.
 
 ### Running
 
 ```bash
 # Start local dev server (http://localhost:8787)
-wrangler dev
+npm run dev
 
 # Run tests
 npm test
@@ -74,14 +77,18 @@ npm run typecheck
 
 ### Deploying
 
+A push to `main` that touches `api/` deploys through `.github/workflows/deploy-api.yml`: it applies the D1 migrations first and publishes the Worker after. If the publish fails, the previous Worker keeps running on the new schema, so every migration must follow the expand/contract rule in [docs/operations/migrations.md](docs/operations/migrations.md).
+
+Manual steps, from `api/`:
+
 ```bash
 # Set production secrets (one-time, stored encrypted in Cloudflare)
-wrangler secret put JWT_SECRET
-wrangler secret put GOOGLE_CLIENT_ID
-wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put JWT_SECRET --config ./wrangler.toml
+npx wrangler secret put GOOGLE_CLIENT_ID --config ./wrangler.toml
+npx wrangler secret put GOOGLE_CLIENT_SECRET --config ./wrangler.toml
 
-# Apply migration to production D1
-wrangler d1 migrations apply palpitae --remote
+# Apply migrations to production D1
+npx wrangler d1 migrations apply palpitae --remote --config ./wrangler.toml
 
 # Deploy the Worker
 npm run deploy

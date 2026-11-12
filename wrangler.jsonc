@@ -1,8 +1,17 @@
-// ATENCAO: este arquivo hoje NAO tem efeito nenhum. Ele foi gerado
+// ATENCAO: este arquivo nao tem efeito no deploy do Pages. Ele foi gerado
 // automaticamente pelo bot cloudflare-workers-and-pages em eb3e214,
 // quando o repositorio foi conectado a Cloudflare, e nunca foi ajustado.
 //
-// Por que e inerte: falta o campo `pages_build_output_dir`. Sem ele o
+// Mas ele tem efeito em api/: o wrangler procura wrangler.json e
+// wrangler.jsonc em todos os diretorios acima antes de aceitar um
+// wrangler.toml, entao este arquivo vence o api/wrangler.toml. Um
+// `wrangler secret put` rodado em api/ sem `--config ./wrangler.toml`
+// manda o secret para o Worker "palpitae-web", e `wrangler d1 migrations`
+// nao acha as migrations. Por isso toda instrucao documentada em api/
+// usa `--config ./wrangler.toml` (um teste em
+// api/src/wrangler-config.test.ts confere).
+//
+// Por que e inerte no Pages: falta o campo `pages_build_output_dir`. Sem ele o
 // wrangler trata a config como "nao e um projeto Pages", emite o aviso
 // "We detected a configuration file at ... but it is missing the
 // pages_build_output_dir field ... Ignoring configuration file for now,

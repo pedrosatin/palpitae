@@ -256,7 +256,7 @@ Para configurar, gere um valor aleatório (por exemplo `openssl rand -hex 32`) e
 
 ```bash
 # Worker da API
-cd api && npx wrangler secret put PROXY_SHARED_SECRET
+cd api && npx wrangler secret put PROXY_SHARED_SECRET --config ./wrangler.toml
 # Pages (ou Settings > Variables and Secrets no painel, como secret de produção)
 npx wrangler pages secret put PROXY_SHARED_SECRET --project-name palpitae-web
 ```
@@ -307,7 +307,7 @@ Para configurar o `UNSUBSCRIBE_SECRET` (uma vez):
   Não reaproveite um valor vazado: com ele, qualquer pessoa monta o link de
   descadastro de um usuário cujo id conheça.
 
-Grave o valor pelo prompt interativo do `wrangler secret put`, ou com
+Grave o valor pelo prompt interativo do primeiro comando abaixo, ou com
 `printf '%s'` no pipe, para não gravar uma quebra de linha no fim do segredo:
 
 ```bash
@@ -330,6 +330,11 @@ Para rotacionar o `JWT_SECRET`:
    descadastro assinados com o `UNSUBSCRIBE_SECRET` continuam funcionando.
 
 ## Migrações
+
+Toda migration segue a regra de expand/contract de
+[docs/operations/migrations.md](operations/migrations.md): o workflow aplica a migration
+antes de publicar o Worker, e o Worker anterior precisa continuar funcionando se a
+publicação falhar.
 
 A migração `0017_sessions_valid_after.sql` adiciona `users.sessions_valid_after`
 (inteiro, vazio por padrão), usada por "Sair de todos os dispositivos". O workflow
