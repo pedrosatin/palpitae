@@ -5,6 +5,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom'
@@ -18,7 +19,11 @@ import {
 } from './analytics/signupOrigin'
 import { useGaPageView } from './analytics/useGaPageView'
 import { config } from './config'
-import { SESSION_EXPIRED_EVENT } from './lib/api'
+import {
+  clearSessionExpired,
+  notifyLogoutUnconfirmed,
+  SESSION_EXPIRED_EVENT,
+} from './lib/api'
 import { invalidateApiCache } from './lib/api-cache'
 import { INVITE_PATH_PREFIX } from './lib/invite'
 import { loggedInLoginTarget, pageLoadedFromHistory } from './lib/loginRedirect'
@@ -153,6 +158,7 @@ export default function App({
   const [user, setUser] = useState<User | null>(null)
   const [retrying, setRetrying] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
   useGaPageView()
   const capturedLocation = useRef<string | null>(null)
 
@@ -184,6 +190,8 @@ export default function App({
         if (data === null) {
           setStatus('unavailable')
         } else if ('user' in data) {
+          // Aviso de expiração que sobrou da sessão anterior não vale para esta.
+          clearSessionExpired()
           setUser(data.user)
           setStatus('authenticated')
           setKnownSession(true)
@@ -224,6 +232,11 @@ export default function App({
 
   // Logout explícito apaga os rascunhos de palpite deste navegador. A sessão
   // expirada mantém, porque a pessoa volta a entrar e recupera o que digitou.
+  //
+  // A tela sai do estado logado mesmo quando o servidor não confirma a revogação.
+  // Num 503 a API já apagou o cookie; numa falha de rede ele pode ter ficado. Nos
+  // dois casos o token pode continuar valendo, e a tela de login diz isso em vez
+  // de tratar a saída como concluída.
   function handleLogout() {
     clearSignupAttribution()
     // Raw fetch on purpose: the user is leaving deliberately — a 401 from an
@@ -231,18 +244,29 @@ export default function App({
     fetch(`${config.apiUrl}/auth/logout`, {
       method: 'POST',
       credentials: 'include',
-    }).finally(() => {
-      // Junto com a troca de tela, para a aba Palpitar aberta não regravar antes de desmontar.
-      clearStoredDrafts()
-      invalidateApiCache()
-      setUser(null)
-      setStatus('unauthenticated')
     })
+      .then(
+        (res) => res.ok,
+        () => false,
+      )
+      .then((confirmed) => {
+        // Junto com a troca de tela, para a aba Palpitar aberta não regravar antes de desmontar.
+        clearStoredDrafts()
+        invalidateApiCache()
+        clearSessionExpired()
+        if (!confirmed) {
+          notifyLogoutUnconfirmed()
+          navigate('/entrar', { replace: true })
+        }
+        setUser(null)
+        setStatus('unauthenticated')
+      })
   }
 
   // "Sair de todos os dispositivos" já apagou o cookie e as sessões no servidor.
   function handleLoggedOutEverywhere() {
     clearSignupAttribution()
+    clearSessionExpired()
     clearStoredDrafts()
     invalidateApiCache()
     setUser(null)
