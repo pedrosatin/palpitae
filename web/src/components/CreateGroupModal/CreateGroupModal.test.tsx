@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -498,5 +498,138 @@ describe('CreateGroupModal – scoring config', () => {
     expect(screen.getByText(/maior ou igual a pontos por vencedor/)).toBeInTheDocument()
     // only the competitions fetch ran — no POST
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
+  const createdGroup = { id: 'g1', name: 'Primeiro', invite_code: 'INV123' }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /** Imita o painel: o botão reabre o modal depois de fechado. */
+  function Host({ onCreated }: { onCreated: (group: unknown) => void }) {
+    const [open, setOpen] = useState(true)
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Abrir de novo
+        </button>
+        <CreateGroupModal isOpen={open} onClose={() => setOpen(false)} onCreated={onCreated} />
+      </>
+    )
+  }
+
+  /** Lista de competições e um POST /groups que só responde quando o teste mandar. */
+  function mockPendingPost() {
+    let respond!: (response: Response) => void
+    let fail!: (err: Error) => void
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ competitions }) } as Response)
+      .mockReturnValueOnce(
+        new Promise<Response>((resolve, reject) => {
+          respond = resolve
+          fail = reject
+        }),
+      )
+    return { fetchSpy, respond: (r: Response) => respond(r), fail: (e: Error) => fail(e) }
+  }
+
+  async function submitThenCloseAndReopen() {
+    await waitFor(() => screen.getByRole('option', { name: /Copa 2026/ }))
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Primeiro')
+    await userEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
+    expect(screen.getByRole('button', { name: 'Criando...' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Fechar' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Abrir de novo' }))
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Segundo')
+  }
+
+  it('sucesso de um envio antigo não troca o formulário reaberto pela tela de pronto', async () => {
+    const onCreated = vi.fn()
+    const post = mockPendingPost()
+    render(<Host onCreated={onCreated} />)
+
+    await submitThenCloseAndReopen()
+    await act(async () => {
+      post.respond({ ok: true, json: async () => ({ group: createdGroup }) } as Response)
+    })
+
+    // O grupo foi criado: o painel atualiza a lista mesmo com o modal reaberto.
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdGroup))
+    expect(screen.queryByText('Grupo criado!')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Nome do grupo')).toHaveValue('Segundo')
+    expect(screen.getByRole('button', { name: 'Criar grupo' })).toBeEnabled()
+  })
+
+  it('falha de um envio antigo não aparece no formulário reaberto', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const onCreated = vi.fn()
+    const post = mockPendingPost()
+    render(<Host onCreated={onCreated} />)
+
+    await submitThenCloseAndReopen()
+    await act(async () => {
+      post.fail(new Error('Network offline'))
+    })
+
+    expect(screen.queryByText('Erro de conexão. Tente novamente.')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Nome do grupo')).toHaveValue('Segundo')
+    expect(screen.getByRole('button', { name: 'Criar grupo' })).toBeEnabled()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it('segundo envio antes da resposta não cria outro grupo', async () => {
+    const onCreated = vi.fn()
+    const post = mockPendingPost()
+    render(<Host onCreated={onCreated} />)
+
+    await waitFor(() => screen.getByRole('option', { name: /Copa 2026/ }))
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Primeiro')
+    const form = screen.getByLabelText('Nome do grupo').closest('form')!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+
+    await act(async () => {
+      post.respond({ ok: true, json: async () => ({ group: createdGroup }) } as Response)
+    })
+
+    await waitFor(() => expect(screen.getByText('Grupo criado!')).toBeInTheDocument())
+    const posts = post.fetchSpy.mock.calls.filter(([, init]) => init?.method === 'POST')
+    expect(posts).toHaveLength(1)
+    expect(onCreated).toHaveBeenCalledTimes(1)
+  })
+
+  it('depois de uma falha, tenta de novo com os mesmos valores', async () => {
+    const onCreated = vi.fn()
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ competitions }) } as Response)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Falhou' }), { status: 500 }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ group: createdGroup }) } as Response)
+    render(<Host onCreated={onCreated} />)
+
+    await waitFor(() => screen.getByRole('option', { name: /Copa 2026/ }))
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Primeiro')
+    await userEvent.click(screen.getByRole('button', { name: 'Só vencedor' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
+
+    expect(await screen.findByText('Falhou')).toBeInTheDocument()
+    expect(screen.getByLabelText('Nome do grupo')).toHaveValue('Primeiro')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Criar grupo' }))
+    await waitFor(() => expect(screen.getByText('Grupo criado!')).toBeInTheDocument())
+
+    const bodies = fetchSpy.mock.calls
+      .filter(([, init]) => init?.method === 'POST')
+      .map(([, init]) => JSON.parse(String(init!.body)))
+    expect(bodies).toHaveLength(2)
+    expect(bodies[1]).toEqual(bodies[0])
+    expect(bodies[1]).toMatchObject({ name: 'Primeiro', points_exact: 0, points_winner: 1 })
+    expect(onCreated).toHaveBeenCalledTimes(1)
   })
 })
