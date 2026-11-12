@@ -4,6 +4,8 @@
 
 O servidor exige participação em grupo ativo para consultar ou salvar palpites.
 Excluir um grupo revoga o acesso aos seus dados, preservando os registros no banco.
+A pontuação e o ranking do grupo também param: resultado novo ou corrigido depois da
+exclusão não altera os pontos nem o ranking que ele tinha.
 Somente o dono recebe o código de convite na resposta do detalhe do grupo.
 
 O dono pode trocar o código de convite em `POST /groups/:id/invite/rotate` (botão

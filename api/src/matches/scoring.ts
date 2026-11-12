@@ -155,12 +155,19 @@ export const PREDICTION_POINTS_SQL = 'p.points_awarded + p.penalty_points + p.cl
 export const EXACT_HIT_SQL =
   'CASE WHEN g.points_exact > g.points_winner AND p.points_awarded = g.points_exact THEN 1 ELSE 0 END'
 
+/**
+ * Grupo não excluído. A pontuação e o ranking param na exclusão: pontos e ranking de
+ * um grupo excluído ficam como estavam.
+ * Exige o alias `g` para `groups`.
+ */
+const ACTIVE_GROUP_SQL = 'g.deleted_at IS NULL'
+
 function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
   return db
     .prepare(`INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
     SELECT p.group_id, p.user_id, SUM(${PREDICTION_POINTS_SQL}),
       SUM(${EXACT_HIT_SQL}), ?
-    FROM predictions p JOIN groups g ON g.id = p.group_id
+    FROM predictions p JOIN groups g ON g.id = p.group_id AND ${ACTIVE_GROUP_SQL}
     WHERE p.group_id IN (SELECT value FROM json_each(?)) GROUP BY p.group_id, p.user_id
     ON CONFLICT (group_id, user_id) DO UPDATE SET total_points = excluded.total_points,
       exact_hits = excluded.exact_hits, last_updated = excluded.last_updated`)
@@ -227,7 +234,7 @@ async function fetchPredictionsInChunks(
                 p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner,
                 g.points_exact, g.points_winner, g.points_penalty, g.points_classified
          FROM predictions p
-         JOIN groups g ON g.id = p.group_id
+         JOIN groups g ON g.id = p.group_id AND ${ACTIVE_GROUP_SQL}
          WHERE p.match_id IN (${placeholders})`,
       )
       .bind(...chunkIds)
@@ -429,7 +436,8 @@ export async function scoreUnprocessedMatches(
   const affectedGroups = new Set<string>()
 
   const updatePredictionStmt = db.prepare(
-    `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? * (SELECT points_classified FROM groups WHERE id = predictions.group_id) WHERE id = ? AND ${UNCHANGED_RESULT_SQL}`,
+    `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? * (SELECT points_classified FROM groups WHERE id = predictions.group_id) WHERE id = ? AND ${UNCHANGED_RESULT_SQL}
+       AND EXISTS (SELECT 1 FROM groups g WHERE g.id = predictions.group_id AND ${ACTIVE_GROUP_SQL})`,
   )
 
   // 5. Evaluate all predictions
