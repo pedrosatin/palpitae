@@ -94,8 +94,9 @@ describe('auth router', () => {
         fakeEnv('test@example.com'),
       )
       expect(res.status).toBe(302)
-      const cookies = res.headers.get('Set-Cookie') || ''
-      expect(cookies).not.toContain('oauth_redirect=')
+      // Grava vazio para a tentativa não herdar o destino de uma anterior.
+      const redirectCookie = res.headers.getSetCookie().find((c) => c.startsWith('oauth_redirect='))
+      expect(redirectCookie).toMatch(/^oauth_redirect=;/)
     })
 
     it('blocks protocol-relative URL redirects', async () => {
@@ -104,8 +105,9 @@ describe('auth router', () => {
         fakeEnv('test@example.com'),
       )
       expect(res.status).toBe(302)
-      const cookies = res.headers.get('Set-Cookie') || ''
-      expect(cookies).not.toContain('oauth_redirect=')
+      // Grava vazio para a tentativa não herdar o destino de uma anterior.
+      const redirectCookie = res.headers.getSetCookie().find((c) => c.startsWith('oauth_redirect='))
+      expect(redirectCookie).toMatch(/^oauth_redirect=;/)
     })
 
     it('blocks backslash absolute redirects', async () => {
@@ -114,8 +116,9 @@ describe('auth router', () => {
         fakeEnv('test@example.com'),
       )
       expect(res.status).toBe(302)
-      const cookies = res.headers.get('Set-Cookie') || ''
-      expect(cookies).not.toContain('oauth_redirect=')
+      // Grava vazio para a tentativa não herdar o destino de uma anterior.
+      const redirectCookie = res.headers.getSetCookie().find((c) => c.startsWith('oauth_redirect='))
+      expect(redirectCookie).toMatch(/^oauth_redirect=;/)
     })
   })
 

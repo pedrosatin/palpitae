@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import {
   buildAuthUrl,
@@ -23,6 +23,7 @@ const NONCE_COOKIE = 'oauth_nonce'
 const VERIFIER_COOKIE = 'oauth_verifier'
 const REDIRECT_COOKIE = 'oauth_redirect'
 const ORIGIN_COOKIE = 'oauth_origin'
+const OAUTH_COOKIES = [STATE_COOKIE, NONCE_COOKIE, VERIFIER_COOKIE, REDIRECT_COOKIE, ORIGIN_COOKIE]
 const SESSION_TTL = 30 * 24 * 60 * 60 // 30 days (1 month)
 
 // Conjunto conhecido de códigos de erro do Google OAuth. Limita a cardinalidade
@@ -57,6 +58,46 @@ function cookieOptions(baseUrl: string, maxAge?: number) {
   }
 }
 
+function tempCookieClearOptions(baseUrl: string) {
+  const domain = cookieDomain(baseUrl)
+  return { path: '/', ...(domain && { domain }) }
+}
+
+/**
+ * Destino pós-login aceito: só caminho que resolve para a origem do frontend.
+ * Vale para a query de `/auth/google` e de novo para o cookie no callback,
+ * porque cookie também vem do navegador.
+ */
+function sameOriginDestination(value: string, frontendUrl: string): URL | null {
+  if (!value) return null
+  try {
+    const parsed = new URL(value, frontendUrl)
+    return parsed.origin === new URL(frontendUrl).origin ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Lê e apaga o contexto da tentativa (state, nonce, verifier, destino e origem).
+ * O callback chama antes de qualquer ramo, então sucesso, recusa do Google,
+ * state inválido, cookie vencido e falha na troca terminam sem deixar contexto
+ * para a próxima tentativa.
+ */
+function takeOAuthContext(c: Context<AppContext>) {
+  const context = {
+    state: getCookie(c, STATE_COOKIE),
+    nonce: getCookie(c, NONCE_COOKIE),
+    verifier: getCookie(c, VERIFIER_COOKIE),
+    redirect: getCookie(c, REDIRECT_COOKIE) ?? '',
+    // O cookie vem do navegador: ausente ou fora da lista vira "desconhecida".
+    signupOrigin: parseSignupOrigin(getCookie(c, ORIGIN_COOKIE)),
+  }
+  const clearOpts = tempCookieClearOptions(c.env.BASE_URL)
+  for (const name of OAUTH_COOKIES) deleteCookie(c, name, clearOpts)
+  return context
+}
+
 export const authRouter = new Hono<AppContext>()
 
 // GET /auth/google — initiate OAuth flow
@@ -85,18 +126,13 @@ authRouter.get('/google', async (c) => {
   const originIsKnown = parseSignupOrigin(origin).category !== 'desconhecida'
   setCookie(c, ORIGIN_COOKIE, originIsKnown ? origin : '', tempOpts)
 
-  // Store the post-login redirect securely
-  const postRedirect = c.req.query('redirect') ?? ''
-  if (postRedirect) {
-    try {
-      const parsed = new URL(postRedirect, c.env.FRONTEND_URL)
-      if (parsed.origin === new URL(c.env.FRONTEND_URL).origin) {
-        setCookie(c, REDIRECT_COOKIE, parsed.pathname + parsed.search + parsed.hash, tempOpts)
-      }
-    } catch {
-      // Ignore invalid URLs
-    }
-  }
+  // Também sempre grava: login sem destino, ou com destino recusado, não pode
+  // levar ao destino de uma tentativa anterior que não chegou ao callback.
+  const destination = sameOriginDestination(c.req.query('redirect') ?? '', c.env.FRONTEND_URL)
+  const redirectPath = destination
+    ? destination.pathname + destination.search + destination.hash
+    : ''
+  setCookie(c, REDIRECT_COOKIE, redirectPath, tempOpts)
 
   return c.redirect(url)
 })
@@ -104,6 +140,7 @@ authRouter.get('/google', async (c) => {
 // GET /auth/callback — handle Google redirect
 authRouter.get('/callback', async (c) => {
   const { code, state, error } = c.req.query()
+  const oauth = takeOAuthContext(c)
 
   if (error) {
     const errorCode = KNOWN_OAUTH_ERRORS.has(error) ? error : 'other'
@@ -111,23 +148,7 @@ authRouter.get('/callback', async (c) => {
     return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${encodeURIComponent(errorCode)}`)
   }
 
-  const storedState = getCookie(c, STATE_COOKIE)
-  const storedNonce = getCookie(c, NONCE_COOKIE)
-  const codeVerifier = getCookie(c, VERIFIER_COOKIE)
-
-  // Clear temp cookies regardless of outcome
-  const domain = cookieDomain(c.env.BASE_URL)
-  const clearOpts = { path: '/', ...(domain && { domain }) }
-  deleteCookie(c, STATE_COOKIE, clearOpts)
-  deleteCookie(c, NONCE_COOKIE, clearOpts)
-  deleteCookie(c, VERIFIER_COOKIE, clearOpts)
-
-  const storedRedirect = getCookie(c, REDIRECT_COOKIE) ?? ''
-  deleteCookie(c, REDIRECT_COOKIE, clearOpts)
-
-  // O cookie vem do navegador: ausente ou fora da lista vira "desconhecida".
-  const signupOrigin = parseSignupOrigin(getCookie(c, ORIGIN_COOKIE))
-  deleteCookie(c, ORIGIN_COOKIE, clearOpts)
+  const { state: storedState, nonce: storedNonce, verifier: codeVerifier, signupOrigin } = oauth
 
   if (!storedState || !storedNonce || !codeVerifier) {
     logEvent(c.env.AE, 'login_failure', { blobs: ['session_expired'] })
@@ -179,18 +200,8 @@ authRouter.get('/callback', async (c) => {
 
     tryLogEvent(c.env.AE, 'login_success', { blobs: [await hashUserId(user.id)] })
 
-    let destination = c.env.FRONTEND_URL
-    if (storedRedirect) {
-      try {
-        const parsed = new URL(storedRedirect, c.env.FRONTEND_URL)
-        if (parsed.origin === new URL(c.env.FRONTEND_URL).origin) {
-          destination = parsed.toString()
-        }
-      } catch {
-        // Fallback to default destination
-      }
-    }
-    return c.redirect(destination)
+    const destination = sameOriginDestination(oauth.redirect, c.env.FRONTEND_URL)
+    return c.redirect(destination?.toString() ?? c.env.FRONTEND_URL)
   } catch (err) {
     console.error('OAuth callback failed:', err)
     logEvent(c.env.AE, 'login_failure', { blobs: ['exchange_failed'] })
