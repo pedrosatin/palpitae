@@ -1,3 +1,7 @@
+# Todo comando wrangler rodado em api/ precisa de --config ./wrangler.toml. Sem ele o
+# wrangler procura wrangler.json e wrangler.jsonc em todos os diretórios acima antes
+# de aceitar este arquivo, e o wrangler.jsonc da raiz (projeto do Pages) vence.
+# Os scripts dev, dev:cron e deploy do package.json já passam a opção.
 name = "palpitae-api"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
@@ -41,7 +45,8 @@ dataset = "palpitae_events"
 crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *"]
 
 # Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
-# Criar antes do deploy: wrangler r2 bucket create palpitae-events
+# Criar antes do deploy (de api/):
+#   npx wrangler r2 bucket create palpitae-events --config ./wrangler.toml
 [[r2_buckets]]
 binding = "EVENTS"
 bucket_name = "palpitae-events"
@@ -52,15 +57,17 @@ FRONTEND_URL = "https://palpitae.com.br"
 # Opcional: teto de chamadas ao Resend por execução do lembrete diário (padrão 45,
 # que cabe nos 50 subrequests do plano Free). Ver ADR-020.
 # REMINDER_FETCH_BUDGET = "45"
-# Secrets — set via:
-#   wrangler secret put JWT_SECRET
-#   wrangler secret put UNSUBSCRIBE_SECRET # link de descadastro; trocar só se vazar, ver docs/security.md
-#   wrangler secret put GOOGLE_CLIENT_ID
-#   wrangler secret put GOOGLE_CLIENT_SECRET
-#   wrangler secret put FOOTBALL_API_KEY
-#   wrangler secret put CF_ACCOUNT_ID    # cold path: conta da SQL API do Analytics Engine
-#   wrangler secret put AE_SQL_TOKEN     # cold path: token Account Analytics:Read
-#   wrangler secret put RESEND_API_KEY   # round reminder: API key do Resend
-#   wrangler secret put ADMIN_EMAIL      # dashboard /metrics: e-mail do admin (403 sem ele)
-#   wrangler secret put PROXY_SHARED_SECRET # mesmo valor do Pages; ver docs/security.md
+# Secrets — gravar de api/, sempre com --config ./wrangler.toml. Sem ele o
+# wrangler acha primeiro o wrangler.jsonc da raiz (projeto do Pages) e manda o
+# secret para o Worker palpitae-web, não para este.
+#   npx wrangler secret put JWT_SECRET --config ./wrangler.toml
+#   npx wrangler secret put UNSUBSCRIBE_SECRET --config ./wrangler.toml # link de descadastro; trocar só se vazar, ver docs/security.md
+#   npx wrangler secret put GOOGLE_CLIENT_ID --config ./wrangler.toml
+#   npx wrangler secret put GOOGLE_CLIENT_SECRET --config ./wrangler.toml
+#   npx wrangler secret put FOOTBALL_API_KEY --config ./wrangler.toml
+#   npx wrangler secret put CF_ACCOUNT_ID --config ./wrangler.toml    # cold path: conta da SQL API do Analytics Engine
+#   npx wrangler secret put AE_SQL_TOKEN --config ./wrangler.toml     # cold path: token Account Analytics:Read
+#   npx wrangler secret put RESEND_API_KEY --config ./wrangler.toml   # round reminder: API key do Resend
+#   npx wrangler secret put ADMIN_EMAIL --config ./wrangler.toml      # dashboard /metrics: e-mail do admin (403 sem ele)
+#   npx wrangler secret put PROXY_SHARED_SECRET --config ./wrangler.toml # mesmo valor do Pages; ver docs/security.md
 # Local overrides go in .dev.vars (already has localhost values)

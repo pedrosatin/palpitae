@@ -43,9 +43,10 @@ Use **Wrangler D1 migrations** (`wrangler d1 migrations`).
 
 ### Rules
 
-- Create with: `wrangler d1 migrations create <description>`
+- Create with: `npx wrangler d1 migrations create palpitae <description> --config ./wrangler.toml` (from `api/`; without `--config` the root `wrangler.jsonc` wins)
 - **Never edit an already-applied migration** — create a new one instead
 - Every schema change, index addition, or data backfill requires a new migration file
+- Migrations run before the Worker is published, so each one must keep the previous Worker working (expand/contract, see [docs/operations/migrations.md](../operations/migrations.md)). Dropping or renaming a column, table or view needs a `-- contract: <reason>` line; `api/src/migrationCompat.test.ts` enforces it
 
 ### Consequences
 
