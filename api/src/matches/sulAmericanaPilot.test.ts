@@ -206,6 +206,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
         matches: 6,
         teams: 9,
         discarded: 0,
+        discardedTbd: 0,
         missing: 0,
       },
     })
@@ -708,6 +709,7 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       matches: 6,
       teams: 9,
       discarded: 0,
+      discardedTbd: 0,
       missing: 0,
     })
     expect(second).toEqual(first)

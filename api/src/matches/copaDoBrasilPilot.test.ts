@@ -198,6 +198,7 @@ describe('Copa do Brasil em piloto', () => {
         matches: 6,
         teams: 9,
         discarded: 0,
+        discardedTbd: 0,
         missing: 0,
       },
     })
@@ -675,6 +676,7 @@ describe('Copa do Brasil em piloto', () => {
       matches: 6,
       teams: 9,
       discarded: 0,
+      discardedTbd: 0,
       missing: 0,
     })
     expect(second).toEqual(first)
