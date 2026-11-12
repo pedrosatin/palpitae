@@ -65,7 +65,7 @@ function createFixture(secrets: Pick<Env, 'JWT_SECRET' | 'UNSUBSCRIBE_SECRET'>) 
 }
 
 describe('link de descadastro e rotação de chave', () => {
-  it('link assinado com o JWT_SECRET antigo continua descadastrando depois da rotação', async () => {
+  it('link assinado com o JWT_SECRET antigo continua descadastrando depois da rotação quando o UNSUBSCRIBE_SECRET guarda o valor antigo', async () => {
     // E-mail enviado antes de existir o segredo próprio: o token saiu com o JWT_SECRET.
     const token = await signUnsubToken('ana', OLD_JWT_SECRET)
     // O operador guardou o valor antigo como UNSUBSCRIBE_SECRET e trocou o JWT_SECRET.
@@ -121,6 +121,31 @@ describe('link de descadastro e rotação de chave', () => {
     expect((await unsubscribe(token, 'GET')).status).toBe(200)
     expect((await unsubscribe(token, 'POST')).status).toBe(200)
     expect(unsubscribedAt()).not.toBeNull()
+  })
+
+  it('UNSUBSCRIBE_SECRET em branco aceita o token assinado com o JWT_SECRET', async () => {
+    const token = await signUnsubToken('ana', OLD_JWT_SECRET)
+    const { unsubscribe, unsubscribedAt } = createFixture({
+      JWT_SECRET: OLD_JWT_SECRET,
+      UNSUBSCRIBE_SECRET: '  ',
+    })
+
+    expect((await unsubscribe(token, 'GET')).status).toBe(200)
+    expect((await unsubscribe(token, 'POST')).status).toBe(200)
+    expect(unsubscribedAt()).not.toBeNull()
+  })
+
+  it('token malformado com os dois segredos configurados responde 400 sem escrever', async () => {
+    const { unsubscribe, unsubscribedAt } = createFixture({
+      JWT_SECRET: NEW_JWT_SECRET,
+      UNSUBSCRIBE_SECRET,
+    })
+
+    for (const token of ['sem-ponto', 'a.b.c', '%%%.%%%', '.']) {
+      expect((await unsubscribe(encodeURIComponent(token), 'GET')).status).toBe(400)
+      expect((await unsubscribe(encodeURIComponent(token), 'POST')).status).toBe(400)
+    }
+    expect(unsubscribedAt()).toBeNull()
   })
 
   it('recusa token assinado com um segredo que o Worker não conhece', async () => {
