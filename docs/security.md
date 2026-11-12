@@ -200,11 +200,13 @@ A identidade de cada requisição é uma só:
 - Sem sessão, vinda de um Worker sem o segredo correto (header `CF-Worker` ou
   `CF-Connecting-IP` igual ao endereço de saída dos Workers): um balde anônimo
   compartilhado, com o teto da última coluna. São dois baldes separados: um para o
-  próprio front (`CF-Worker` igual à zona do `FRONTEND_URL`) e outro para qualquer
-  outro Worker. Na prática, o proxy do Pages chega com
-  `CF-Worker: palpitae-web.pages.dev`, que não é a zona do `FRONTEND_URL`. Sem o
-  segredo, ele divide o segundo balde com Workers de terceiros, e o balde do front
-  fica sem uso (ticket 20 de invariantes-2026-11).
+  próprio front e outro para qualquer outro Worker. O balde do front reconhece o
+  `CF-Worker` igual ao host do `FRONTEND_URL` ou ao `FRONTEND_WORKER_ZONE`
+  (`palpitae-web.pages.dev`, valor que a Cloudflare preenche no proxy do Pages). Por
+  isso, sem o segredo, o front fica no próprio balde e um Worker de terceiros não
+  esgota a quota dele. A comparação é exata: `pages.dev` e outros projetos do Pages
+  não casam. Renomear o projeto Pages exige atualizar `FRONTEND_WORKER_ZONE` em
+  `api/wrangler.toml`.
 - Sem sessão, acesso direto à API: `CF-Connecting-IP`. Requisições locais sem esse
   header compartilham um contador de desenvolvimento.
 
