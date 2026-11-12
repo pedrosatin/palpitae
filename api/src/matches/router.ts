@@ -17,17 +17,69 @@ import { fetchTieMatches, indexTies, type TieMatch } from './ties'
 const router = new Hono<AppContext>()
 
 /**
- * Picks a Cache-Control header for a /matches response based on what it
- * actually contains:
- *   - all matches finished → 24h (terminal, scores never change)
- *   - otherwise            → 60s
- * An empty list also gets the short TTL so it repopulates quickly.
+ * Cache-Control da cópia guardada no cache de borda, pelo conteúdo da lista:
+ *   - todos os jogos encerrados → 24h (a chave muda quando um placar é repontuado)
+ *   - senão                     → 60s
+ * A lista vazia também fica com o TTL curto para repovoar logo.
  */
 function matchesCacheControl(matches: { status: string }[]): string {
   if (matches.length > 0 && matches.every((m) => m.status === 'finished')) {
     return 'public, max-age=86400'
   }
   return 'public, max-age=60'
+}
+
+/**
+ * Cache-Control da resposta ao navegador. O cache do navegador não muda de chave
+ * quando um placar é corrigido nem quando a competição volta a ser piloto, então
+ * ele fica sempre no TTL curto. A revalidação cai no cache de borda.
+ */
+const BROWSER_CACHE_CONTROL = 'public, max-age=60'
+
+/**
+ * Visibilidade da competição e o último `scored_at` dos jogos dela, numa consulta
+ * só. Roda antes do cache de borda: a visibilidade barra o piloto mesmo com a
+ * lista em cache, e o `scored_at` entra na chave para que um placar corrigido e
+ * repontuado gere uma chave nova. O MAX lê uma entrada do índice parcial
+ * idx_matches_comp_scored (migration 0042), não os jogos da competição. O
+ * `scored_at IS NOT NULL` não muda o MAX, mas é o que libera o índice parcial.
+ */
+export const COMPETITION_CACHE_STATE_SQL = `SELECT c.visibility,
+       (SELECT MAX(scored_at) FROM matches
+        WHERE competition_id = c.id AND scored_at IS NOT NULL) AS last_scored_at
+FROM competitions c
+WHERE c.id = ?`
+
+async function fetchCompetitionCacheState(db: D1Database, competitionId: string) {
+  return db
+    .prepare(COMPETITION_CACHE_STATE_SQL)
+    .bind(competitionId)
+    .first<{ visibility: string | null; last_scored_at: string | null }>()
+}
+
+/** Chave canônica do cache de borda: só os filtros que mudam a resposta. */
+function matchesCacheKey(
+  requestUrl: string,
+  competitionId: string,
+  filters: { round?: string; status?: string },
+  lastScoredAt: string | null | undefined,
+): Request {
+  const cacheUrl = new URL(requestUrl)
+  cacheUrl.search = ''
+  cacheUrl.searchParams.set('competition_id', competitionId)
+  // Separa respostas com ordem e is_knockout do contrato antigo no cache.
+  cacheUrl.searchParams.set('round_order', '1')
+  if (filters.round) cacheUrl.searchParams.set('round', filters.round)
+  if (filters.status) cacheUrl.searchParams.set('status', filters.status)
+  cacheUrl.searchParams.set('scored', lastScoredAt ?? '')
+  return new Request(cacheUrl)
+}
+
+/** Resposta do cache de borda com o Cache-Control do navegador. */
+function fromEdgeCache(cached: Response): Response {
+  const response = new Response(cached.body, cached)
+  response.headers.set('Cache-Control', BROWSER_CACHE_CONTROL)
+  return response
 }
 
 // ---------------------------------------------------------------------------
@@ -203,40 +255,38 @@ async function handleGetMatches(c: Context<AppContext>) {
 
   const db = c.env.DB
 
-  // Edge cache (Cache API) — shared across users within the same Cloudflare
-  // colo, at no extra cost. Best-effort: per-colo and may be evicted. A hit
-  // returns without touching D1, so it saves rows read. `caches` is undefined
-  // outside the Workers runtime (e.g. node tests), hence the guard.
-  // `caches.default` is a Cloudflare extension; cast past the lib.dom
-  // CacheStorage type, which only knows the standard open()/match() surface.
-  const cache =
-    typeof caches !== 'undefined' ? (caches as unknown as { default: Cache }).default : undefined
-  const cacheUrl = new URL(c.req.url)
-  cacheUrl.search = ''
-  cacheUrl.searchParams.set('competition_id', competitionId)
-  // Separa respostas com ordem e is_knockout do contrato antigo no cache.
-  cacheUrl.searchParams.set('round_order', '1')
-  if (round) cacheUrl.searchParams.set('round', round)
-  if (status) cacheUrl.searchParams.set('status', status)
-  const cacheKey = new Request(cacheUrl)
-  if (cache) {
-    const cached = await cache.match(cacheKey)
-    if (cached) {
-      logEvent(c.env.AE, 'matches_cache', { blobs: ['hit', competitionId] })
-      return cached
-    }
-  }
-
   try {
     const dbStartedAt = Date.now()
-    const competition = await db
-      .prepare('SELECT id, visibility FROM competitions WHERE id = ?')
-      .bind(competitionId)
-      .first<{ id?: string; visibility?: string | null }>()
+    const competition = await fetchCompetitionCacheState(db, competitionId)
 
+    // Visibilidade antes do cache: uma competição que voltou a ser piloto não é
+    // servida por uma lista guardada quando ainda era pública.
     const isPilot = competition?.visibility === 'pilot'
     if (isPilot && !hasPilotAccess(c.get('userEmail'), c.env)) {
       return c.json({ error: 'Competição não encontrada' }, 404)
+    }
+
+    // Edge cache (Cache API) — shared across users within the same Cloudflare
+    // colo, at no extra cost. Best-effort: per-colo and may be evicted. A hit
+    // skips the match list queries, so it saves rows read. `caches` is undefined
+    // outside the Workers runtime (e.g. node tests), hence the guard.
+    // `caches.default` is a Cloudflare extension; cast past the lib.dom
+    // CacheStorage type, which only knows the standard open()/match() surface.
+    // Piloto nunca entra no cache compartilhado.
+    const cache =
+      typeof caches !== 'undefined' && !isPilot
+        ? (caches as unknown as { default: Cache }).default
+        : undefined
+    const cacheKey = matchesCacheKey(
+      c.req.url,
+      competitionId,
+      { round, status },
+      competition?.last_scored_at,
+    )
+    const cached = cache ? await cache.match(cacheKey) : undefined
+    if (cached) {
+      logEvent(c.env.AE, 'matches_cache', { blobs: ['hit', competitionId] })
+      return fromEdgeCache(cached)
     }
 
     const { results, defaultRound, hasFilters } = await fetchMatches(
@@ -247,16 +297,6 @@ async function handleGetMatches(c: Context<AppContext>) {
     )
     const dbMs = Date.now() - dbStartedAt
 
-    // Cache strategy is derived from the RESPONSE CONTENTS, not the query param:
-    // a list is only safe to cache long-term when every match is 'finished' (a
-    // terminal state). Any list with a not-yet-finished match uses a short
-    // TTL so the transition to finished doesn't serve a stale snapshot.
-    //
-    // The same Cache-Control drives two layers: the browser cache (per user)
-    // and the edge Cache API below (shared per colo). Note: a Worker-generated
-    // response is NOT edge-cached automatically by Cache-Control — only the
-    // explicit caches.default.put() does that. The Worker still runs on every
-    // request, but a cache hit (above) skips the D1 query.
     // Derive decides_on_penalties per match from the competition's penalty_phases
     // gate (parsed in TS — no SQL json_each) and strip the raw gate from the
     // payload. The frontend stays dumb: it only reads the boolean to decide
@@ -273,21 +313,21 @@ async function handleGetMatches(c: Context<AppContext>) {
       matches: matchesOut,
       ...(hasFilters ? {} : { default_round: defaultRound }),
     })
-    response.headers.set(
-      'Cache-Control',
-      isPilot ? 'private, no-store' : matchesCacheControl(results),
-    )
-
     // Só cacheia listas não-vazias. Isso (a) evita servir um snapshot vazio de uma
     // competição que ainda vai ser sincronizada e (b) fecha o abuso: um competition_id
     // inexistente sempre retorna vazio → nunca entra no edge cache → nunca vira um HIT,
     // então o blob de `matches_cache` no hit só carrega competição real (cardinalidade
     // limitada). O Cache-Control (browser) continua valendo p/ a resposta vazia.
-    if (cache && !isPilot && results.length > 0) {
+    if (cache && results.length > 0) {
       // clone(): a response body can only be consumed once — the cache keeps
-      // its own copy while we still return the original to the caller.
-      c.executionCtx.waitUntil(cache.put(cacheKey, response.clone()))
+      // its own copy while we still return the original to the caller. Uma
+      // resposta gerada pelo Worker só vai para a borda por este put explícito,
+      // e o TTL dela vem do conteúdo da lista (matchesCacheControl).
+      const edgeCopy = response.clone()
+      edgeCopy.headers.set('Cache-Control', matchesCacheControl(results))
+      c.executionCtx.waitUntil(cache.put(cacheKey, edgeCopy))
     }
+    response.headers.set('Cache-Control', isPilot ? 'private, no-store' : BROWSER_CACHE_CONTROL)
 
     // Cap dimension cardinality: only real competitions (response had games)
     // get their id; random junk competition_id from anon flooding all collapse
