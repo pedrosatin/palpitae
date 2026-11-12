@@ -154,7 +154,7 @@ export function useCreateGroupForm({
       if (origem) trackEvent('submit_criar_grupo', { origem })
       else trackEvent('submit_criar_grupo')
       // O grupo existe mesmo que o modal tenha fechado: a tela de pronto só vale
-      // para o formulário que enviou, mas quem abriu o modal ainda atualiza a lista.
+      // para o formulário que enviou, mas o pai ainda recebe `onCreated` (o painel recarrega a lista).
       if (isCurrent()) setCreated(data.group!)
       onCreated(data.group!)
     } catch (err) {
