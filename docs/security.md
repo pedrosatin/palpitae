@@ -110,17 +110,17 @@ cookie:
 
 Hosts fora de `palpitae.com.br` não recebem o cookie: as previews
 `*.palpitae-web.pages.dev` e o endereço `workers.dev` da API ficam em outro domínio
-registrável. Em 12/11/2026, só `palpitae.com.br` e `api.palpitae.com.br` resolviam
-no DNS; `www`, `staging` e `app` não existiam. A visão de produto prevê um app por
+registrável. Em 12/11/2026, dos nomes consultados, só `palpitae.com.br` e
+`api.palpitae.com.br` resolviam no DNS, e não há registro wildcard; `www`, `staging` e `app` não existiam. A visão de produto prevê um app por
 competição em subdomínio (`brasileirao.palpitae.com.br`), e esses hosts também
 receberiam o cookie.
 
 O `Domain` fica como está. Um cookie gravado por `api.palpitae.com.br` só pode
 valer para esse host ou para `.palpitae.com.br` inteiro, e o front precisa dele em
-`palpitae.com.br`. Restringir a dois hosts exigiria mover o callback do OAuth para
-`palpitae.com.br/api` (URI de redirecionamento nova no Google) e conviver, por até
-30 dias, com dois cookies `session` de escopos diferentes no mesmo pedido, sem
-deslogar quem já entrou. Antes de criar um subdomínio que sirva conteúdo de
+`palpitae.com.br`. Restringir o cookie a `palpitae.com.br` (sem `Domain`) exigiria mover o callback do OAuth para
+`palpitae.com.br/api` (URI de redirecionamento nova no Google) e, para não deslogar
+quem já entrou, aceitar por até 30 dias dois cookies `session` de escopos
+diferentes no mesmo pedido. Antes de criar um subdomínio que sirva conteúdo de
 terceiros ou rode código fora deste repositório, reavalie essa decisão: o host
 novo receberia o cookie de sessão de todo usuário logado. Um registro DNS que
 aponte para serviço desativado (CNAME órfão) tem o mesmo efeito.
@@ -201,9 +201,10 @@ A identidade de cada requisição é uma só:
   `CF-Connecting-IP` igual ao endereço de saída dos Workers): um balde anônimo
   compartilhado, com o teto da última coluna. São dois baldes separados: um para o
   próprio front (`CF-Worker` igual à zona do `FRONTEND_URL`) e outro para qualquer
-  outro Worker. Um Worker de terceiros esgota só o segundo. O proxy do Pages chega
-  com `CF-Worker: palpitae-web.pages.dev`, que não é a zona do `FRONTEND_URL`;
-  sem o segredo, ele cairia no balde dos demais Workers.
+  outro Worker. Na prática, o proxy do Pages chega com
+  `CF-Worker: palpitae-web.pages.dev`, que não é a zona do `FRONTEND_URL`. Sem o
+  segredo, ele divide o segundo balde com Workers de terceiros, e o balde do front
+  fica sem uso (ticket 20 de invariantes-2026-11).
 - Sem sessão, acesso direto à API: `CF-Connecting-IP`. Requisições locais sem esse
   header compartilham um contador de desenvolvimento.
 
@@ -217,7 +218,7 @@ subrequest de Worker para outra zona, e nesse caso a Cloudflare preenche
 igual para todos os visitantes
 ([documentação](https://developers.cloudflare.com/fundamentals/reference/http-headers/#cf-connecting-ip-in-worker-subrequests)).
 
-O cliente não consegue forjar a origem de Worker. Em 12/11/2026, pedidos diretos a
+Um cliente que chama `api.palpitae.com.br` não consegue forjar a origem de Worker. Em 12/11/2026, pedidos diretos a
 `api.palpitae.com.br` com `CF-Worker: attacker.example` ou
 `CF-Worker: palpitae.com.br` chegaram ao Worker sem o header (conferido com
 `wrangler tail`), e o mesmo header enviado ao proxy chegou como
