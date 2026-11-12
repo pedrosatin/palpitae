@@ -229,6 +229,11 @@ A private competition created by a user for a specific competition.
 | `payment_status` | TEXT        | `pending` \| `paid` \| `expired` |
 | `max_members`    | INTEGER     | Default 50, max 50               |
 | `created_at`     | TEXT        | ISO 8601 UTC                     |
+| `deleted_at`     | TEXT        | Exclusão pelo dono (migration 0006) |
+
+- `payment_status`: reservado, sem efeito. Nenhum código lê ou grava a coluna; todo grupo fica com o default `pending`, que não bloqueia nenhum fluxo.
+- `max_members`: só `POST /groups/join` lê o valor, no `INSERT` da entrada, e recusa quem passaria do limite. Nenhuma rota altera a coluna, então todo grupo usa o default 50.
+- `deleted_at`: `DELETE /groups/:id` grava a data. O grupo some das rotas e para de receber pontuação e ranking; pontos e ranking ficam como estavam no momento da exclusão.
 
 ---
 
@@ -302,7 +307,7 @@ Composite PK: `(group_id, user_id)`
 
 ### `payments`
 
-Payment records. One per group creation (admin pays).
+Reservada para cobrança, sem efeito. Nenhum código lê ou grava a tabela, e nenhuma rota condiciona a criação ou a entrada em grupo a pagamento.
 
 | Column       | Type    | Notes                           |
 | ------------ | ------- | ------------------------------- |
