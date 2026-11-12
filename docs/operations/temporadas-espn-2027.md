@@ -151,9 +151,9 @@ WHERE slug = '<SLUG_DA_COMPETICAO_2027>' AND season = '2027' AND visibility = 'p
 Conferência local (a partir de `api/`):
 
 ```bash
-npx wrangler d1 execute palpitae --local --command \
+npx wrangler d1 execute palpitae --local --config ./wrangler.toml --command \
   "SELECT slug, external_id, provider, season, status, type, visibility, penalty_phases FROM competitions WHERE season = '2027' ORDER BY slug"
-npx wrangler d1 execute palpitae --local --command \
+npx wrangler d1 execute palpitae --local --config ./wrangler.toml --command \
   "SELECT c.slug, COUNT(m.id) AS jogos FROM competitions c LEFT JOIN matches m ON m.competition_id = c.id WHERE c.season = '2027' GROUP BY c.slug"
 ```
 

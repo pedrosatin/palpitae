@@ -1,10 +1,32 @@
 /// <reference types="vite/client" />
+/// <reference types="node" />
 
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import deployWorkflow from '../../.github/workflows/deploy-api.yml?raw'
 import packageJsonFile from '../package.json'
 import wranglerToml from '../wrangler.toml?raw'
 import { FIXTURE_DISCOVERY_CRON, RESULT_POLLER_CRON, SCHEDULED_CRONS } from './crons'
+
+const REPO_ROOT = new URL('../../', import.meta.url)
+
+/**
+ * Instruções que o operador copia e roda dentro de api/. Sem `--config`, o
+ * wrangler procura wrangler.json e wrangler.jsonc em todos os diretórios acima
+ * antes de aceitar um wrangler.toml, e o wrangler.jsonc da raiz (projeto do
+ * Pages) vence o api/wrangler.toml.
+ */
+const OPERATOR_DOCS = [
+  'README.md',
+  'docs/security.md',
+  'api/wrangler.toml',
+  ...readdirSync(new URL('docs/operations/', REPO_ROOT))
+    .filter((file) => file.endsWith('.md'))
+    .map((file) => `docs/operations/${file}`),
+]
+
+/** Subcomandos que leem a configuração do Worker. `pages` e `login` não leem. */
+const WORKER_COMMAND = /\bwrangler\s+(secret|d1|r2|kv|deploy|dev|tail|versions|rollback|types)\b/
 
 type PackageJson = {
   scripts?: Record<string, string>
@@ -53,6 +75,20 @@ describe('wrangler api config', () => {
     expect(deployWorkflow).toContain(
       'npx wrangler d1 migrations apply palpitae --remote --config ./wrangler.toml',
     )
+  })
+
+  it('documenta todo comando wrangler do Worker com --config ./wrangler.toml', () => {
+    const missing = OPERATOR_DOCS.flatMap((path) =>
+      readFileSync(new URL(path, REPO_ROOT), 'utf8')
+        .split('\n')
+        .map((line, index) => ({ line, where: `${path}:${index + 1}` }))
+        .filter(
+          ({ line }) => WORKER_COMMAND.test(line) && !line.includes('--config ./wrangler.toml'),
+        )
+        .map(({ where, line }) => `${where}: ${line.trim()}`),
+    )
+
+    expect(missing).toEqual([])
   })
 
   it('declara no wrangler.toml os mesmos crons que o handler scheduled conhece', () => {
