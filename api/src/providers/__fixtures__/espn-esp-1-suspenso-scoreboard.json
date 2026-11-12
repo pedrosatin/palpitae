@@ -1,0 +1,72 @@
+{
+  "events": [
+    {
+      "id": "401882849",
+      "date": "2026-12-09T19:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14357,
+        "slug": "2026-27-laliga"
+      },
+      "status": {
+        "clock": 1980,
+        "displayClock": "33'",
+        "period": 1,
+        "type": {
+          "id": "8",
+          "name": "STATUS_SUSPENDED",
+          "state": "post",
+          "completed": false,
+          "description": "Suspended",
+          "detail": "Suspended",
+          "shortDetail": "Susp"
+        }
+      },
+      "competitions": [
+        {
+          "id": "401882849",
+          "date": "2026-12-09T19:00Z",
+          "status": {
+            "clock": 1980,
+            "displayClock": "33'",
+            "period": 1,
+            "type": {
+              "id": "8",
+              "name": "STATUS_SUSPENDED",
+              "state": "post",
+              "completed": false,
+              "description": "Suspended",
+              "detail": "Suspended",
+              "shortDetail": "Susp"
+            }
+          },
+          "wasSuspended": false,
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "0",
+              "winner": false,
+              "team": {
+                "id": "101",
+                "displayName": "Rayo Vallecano",
+                "shortDisplayName": "Rayo",
+                "abbreviation": "RAY"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": "0",
+              "winner": false,
+              "team": {
+                "id": "93",
+                "displayName": "Athletic Club",
+                "shortDisplayName": "Athletic",
+                "abbreviation": "ATH"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -44,8 +44,9 @@ ou foi removido.
 
 O palpite trava no horário do jogo. A coluna `matches.locked_at` (migração
 `0016_match_locked_at.sql`) guarda o instante em que o sync viu o jogo iniciado pela
-primeira vez: status de início do provider (`IN_PLAY`, `PAUSED`, `LIVE`,
-`SUSPENDED`, `FINISHED`, `AWARDED`) ou status local `live`/`finished`. Não é o
+primeira vez: status de início do provider (`IN_PLAY`, `PAUSED`, `EXTRA_TIME`,
+`PENALTY_SHOOTOUT`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED` na football-data) ou
+status local `live`/`finished`. Não é o
 horário em que a bola rolou, e a coluna nunca volta a ficar vazia. Com `locked_at`
 preenchido, o palpite fica travado mesmo que o provider depois marque o jogo como
 suspenso, adiado ou cancelado, ou mude o horário para mais tarde.

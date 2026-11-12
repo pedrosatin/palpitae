@@ -3,8 +3,8 @@ import { ACTIVE_RESULT_WINDOW_MS } from '../matches/matchPollingWindow'
 /**
  * Jogos em andamento por competição, para o status dos cards do painel.
  *
- * O sync grava só `scheduled` ou `finished`, pelo `mapStatus` de `sync.ts`, e
- * o início do jogo vira `locked_at`. Em andamento é o jogo que já começou pelo
+ * O sync grava só `scheduled` ou `finished` (tabela de transições em
+ * docs/architecture/schema.md), e o início do jogo vira `locked_at`. Em andamento é o jogo que já começou pelo
  * horário, não está adiado e ainda não tem resultado, dentro de
  * `ACTIVE_RESULT_WINDOW_MS`, a janela em que o poller ainda busca o resultado.
  * Fora dela, um jogo sem resultado deixa de aparecer como ao vivo. O poller

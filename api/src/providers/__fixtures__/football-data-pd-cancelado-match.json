@@ -1,0 +1,44 @@
+{
+  "competition": {
+    "id": 2014,
+    "code": "PD",
+    "name": "Primera Division"
+  },
+  "matches": [
+    {
+      "id": 564698,
+      "utcDate": "2026-12-09T19:00:00Z",
+      "status": "CANCELLED",
+      "matchday": 8,
+      "stage": "REGULAR_SEASON",
+      "group": null,
+      "lastUpdated": "2026-11-12T00:20:29Z",
+      "homeTeam": {
+        "id": 87,
+        "name": "Rayo Vallecano de Madrid",
+        "shortName": "Rayo Vallecano",
+        "tla": "RAY",
+        "crest": "https://crests.football-data.org/87.png"
+      },
+      "awayTeam": {
+        "id": 77,
+        "name": "Athletic Club",
+        "shortName": "Athletic",
+        "tla": "ATH",
+        "crest": "https://crests.football-data.org/77.png"
+      },
+      "score": {
+        "winner": "DRAW",
+        "duration": "REGULAR",
+        "fullTime": {
+          "home": 0,
+          "away": 0
+        },
+        "halfTime": {
+          "home": null,
+          "away": null
+        }
+      }
+    }
+  ]
+}

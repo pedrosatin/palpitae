@@ -205,8 +205,8 @@ A game between two teams within a competition.
 | `away_team_id`   | TEXT FK | References `teams.id`                            |
 | `start_time`     | TEXT    | ISO 8601 UTC — **the prediction lock boundary**  |
 | `status`         | TEXT    | `scheduled` \| `live` \| `finished`              |
-| `home_score`     | INTEGER | `NULL` until finished                            |
-| `away_score`     | INTEGER | `NULL` until finished                            |
+| `home_score`     | INTEGER | `NULL` until finished (partial scores are not stored) |
+| `away_score`     | INTEGER | `NULL` until finished (partial scores are not stored) |
 | `phase`          | TEXT    | `group` \| `round_of_16` \| `quarter_final` etc. |
 | `round`          | TEXT    | e.g., `'Rodada 5'`, `'Matchday 3'`               |
 | `postponed`      | INTEGER | `1` while the provider reports the match as postponed, suspended or cancelled (migration 0013) |
@@ -215,7 +215,30 @@ A game between two teams within a competition.
 
 Unique constraint: `(external_id, provider)`
 
-> **Prediction lock rule:** A prediction for this match is locked when `matches.locked_at` is set, when `status` is `live` or `finished`, or when `now() >= start_time` and `postponed = 0` (`api/src/matches/locking.ts`). `matches.locked_at` is written only when the sync sees the match started (provider status `IN_PLAY`, `PAUSED`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED`, or local status `live`/`finished`), so a match suspended after starting stays locked, while a match postponed before starting reopens. No lock column is stored on `predictions` (ADR-004).
+> **Prediction lock rule:** A prediction for this match is locked when `matches.locked_at` is set, when `status` is `live` or `finished`, or when `now() >= start_time` and `postponed = 0` (`api/src/matches/locking.ts`). `matches.locked_at` is written only when the sync sees the match started (football-data `IN_PLAY`, `PAUSED`, `EXTRA_TIME`, `PENALTY_SHOOTOUT`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED`; ESPN state `in` or `post` outside postponed/cancelled, or `STATUS_SUSPENDED`; or local status `live`/`finished`), so a match suspended after starting stays locked, while a match postponed before starting reopens. No lock column is stored on `predictions` (ADR-004).
+
+#### Ciclo da partida
+
+Os dois provedores gravam a mesma combinação de colunas para o mesmo estado do jogo (`api/src/matches/sync.ts` e `espnSync.ts`; regressão em `matchLifecycle.test.ts`). O sync nunca grava `live`: o valor fica no CHECK e os leitores o aceitam, mas o jogo em andamento é `scheduled` com `locked_at` ou com o horário vencido.
+
+| Estado | `status` | `postponed` | `locked_at` | Placar | `scored_at` |
+| --- | --- | --- | --- | --- | --- |
+| Agendado | `scheduled` | 0 | nulo | nulo | nulo |
+| Em andamento, ou encerrado sem placar no provedor | `scheduled` | 0 | preenchido quando o sync viu o início; senão o horário trava | nulo | nulo |
+| Adiado ou cancelado antes do início | `scheduled` | 1 | nulo | nulo | nulo |
+| Suspenso ou abandonado depois do início | `scheduled` | 1 | preenchido | nulo | nulo |
+| Encerrado | `finished` | 0 | preenchido (depois do fallback da ESPN, no sync seguinte) | completo | nulo até a pontuação |
+
+Transições:
+
+- Agendado → em andamento → encerrado. Resultado final exige status final do provedor e os dois placares. Placar parcial, o 0-0 que a football-data manda em adiado e cancelado e um `FINISHED` sem placar não são gravados.
+- Adiado, cancelado ou suspenso → agendado: o provedor tira o status com a data nova, `postponed` volta a 0 e `start_time` passa a valer. Enquanto `postponed = 1`, `start_time` guarda o último horário conhecido (ADR-013).
+- Encerrado → encerrado com outro placar, pênaltis, times ou fase: correção; `scored_at` volta a nulo e a pontuação refaz os pontos.
+- Encerrado → qualquer estado não final: recusado pelo upsert. Uma resposta atrasada, inclusive um final sem placar, não desfaz o resultado.
+- `locked_at` nunca volta a nulo.
+- O fallback da ESPN (ADR-016) leva um jogo da football-data ao encerrado com `postponed = 0`, mesmo que a football-data ainda o mostre adiado ou suspenso.
+
+Cancelado não tem estado próprio. A football-data já mandou como `CANCELLED`, com placar 0-0 e data nova, o Rayo Vallecano × Athletic de 10/10/2026, que a ESPN mostra como suspenso aos 33 minutos e retomado em 09/12. Como o cancelamento dos provedores pode voltar ao calendário, o jogo cancelado segue como adiado: não ganha placar nem pontuação, não trava o palpite e sai das consultas de resultado pendente que excluem adiados (resgate do poller depois da janela ativa, jogos ao vivo do painel, `overdue_no_score` das métricas, pendências da rodada). Ele continua impedindo o encerramento da competição.
 
 ---
 
