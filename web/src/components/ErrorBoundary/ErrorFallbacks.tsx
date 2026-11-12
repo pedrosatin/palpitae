@@ -5,8 +5,12 @@ import ErrorState from '../ErrorState'
 import ErrorBoundary from './ErrorBoundary'
 import styles from './ErrorBoundary.module.css'
 
-/** Tela de uma página que quebrou no render. O cabeçalho dela também caiu, então há saída. */
-function PageError() {
+/**
+ * Tela de uma página que quebrou no render. Como o cabeçalho também caiu, a tela
+ * oferece o caminho de volta. O clique em "Voltar para o início" também tira o
+ * erro, porque na própria `/` o caminho não muda.
+ */
+function PageError({ onBack }: { onBack: () => void }) {
   return (
     <main className={styles.page}>
       <ErrorState className={styles.notice}>
@@ -15,7 +19,7 @@ function PageError() {
           <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>
             Recarregar a página
           </Button>
-          <Link to="/" className={styles.link}>
+          <Link to="/" className={styles.link} onClick={onBack}>
             Voltar para o início
           </Link>
         </div>
@@ -28,7 +32,7 @@ function PageError() {
 export function RouteErrorBoundary({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   return (
-    <ErrorBoundary resetKey={pathname} fallback={() => <PageError />}>
+    <ErrorBoundary resetKey={pathname} fallback={(reset) => <PageError onBack={reset} />}>
       {children}
     </ErrorBoundary>
   )

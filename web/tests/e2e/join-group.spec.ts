@@ -70,8 +70,11 @@ test.describe('Join Group Flow', () => {
             group: {
               id: 'group-2',
               name: 'Grupo Novo',
+              competition_id: 'comp-1',
               competition_name: 'Brasileirão',
               is_admin: false,
+              points_exact: 3,
+              points_winner: 1,
               member_count: 2,
             },
           },
