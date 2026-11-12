@@ -187,7 +187,7 @@ describe('pollActiveMatches varredura de atrasados', () => {
     expect(vi.mocked(syncFixtures).mock.calls.map(([options]) => options.matchday)).toEqual([20])
   })
 
-  it.each([8, 9, 10])('com %i atrasados e o bloco das 00:00 sempre ocupado, todos são consultados em 7 dias', async (count) => {
+  it.each([8, 9, 10, 11, 16])('com %i atrasados e o bloco das 00:00 sempre ocupado, todos são consultados em 7 dias', async (count) => {
     const { db, insert, sqlite } = seed(
       Array.from({ length: count }, (_, i) => ({
         id: `r${i + 1}`,
