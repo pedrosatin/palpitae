@@ -337,11 +337,15 @@ describe('GET /metrics/ops', () => {
     apiErrors?: unknown[]
     fallbackRuns?: unknown[]
     fallbackFailures?: unknown[]
+    discards?: unknown[]
+    missing?: unknown[]
   }) {
     return vi.fn(async (_url: string, init: { body: string }) => {
       const sql = init.body
       let data: unknown[] = []
       if (sql.includes('MIN(timestamp)')) data = rows.firstSeen ?? []
+      else if (sql.includes("blob1 = 'sync_event_discarded'")) data = rows.discards ?? []
+      else if (sql.includes("blob1 = 'match_missing_from_feed'")) data = rows.missing ?? []
       else if (sql.includes("blob1 = 'provider_http_attempt'") && sql.includes('GROUP BY provider'))
         data = rows.httpByProvider ?? []
       else if (sql.includes("blob1 = 'provider_http_attempt'")) data = rows.httpByCompetition ?? []
@@ -375,6 +379,8 @@ describe('GET /metrics/ops', () => {
       skipped: number
       failures: number
     }[]
+    discards: Record<string, unknown>[]
+    missingMatches: Record<string, unknown>[]
   }
 
   it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
@@ -422,7 +428,7 @@ describe('GET /metrics/ops', () => {
     const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
       (c) => c[1].body,
     )
-    expect(bodies).toHaveLength(6)
+    expect(bodies).toHaveLength(8)
     expect(bodies.some((sql) => /COUNT\(\*\)/.test(sql))).toBe(false)
 
     const http = bodies.filter((sql) => sql.includes("blob1 = 'provider_http_attempt'"))
@@ -442,6 +448,12 @@ describe('GET /metrics/ops', () => {
       expect(sql).toContain('SUM(_sample_interval)')
       expect(sql).toContain("INTERVAL '7' DAY")
     }
+    const discards = bodies.find((q) => q.includes("blob1 = 'sync_event_discarded'"))
+    expect(discards).toContain('SUM(double1 * _sample_interval) AS events')
+    expect(discards).toContain("INTERVAL '7' DAY")
+    expect(bodies.find((q) => q.includes("blob1 = 'match_missing_from_feed'"))).toContain(
+      "INTERVAL '7' DAY",
+    )
   })
 
   it('sem eventos devolve listas vazias e httpFirstSeenAt nulo (ausência ≠ zero)', async () => {
@@ -453,6 +465,110 @@ describe('GET /metrics/ops', () => {
     expect(body.httpByCompetition).toEqual([])
     expect(body.apiErrors).toEqual([])
     expect(body.fallback).toEqual([])
+    expect(body.discards).toEqual([])
+    expect(body.missingMatches).toEqual([])
+  })
+
+  it('devolve eventos descartados por motivo e fase, e jogos pendentes fora do calendário', async () => {
+    const res = await getOps(
+      fetchBySql({
+        discards: [
+          {
+            provider: 'espn',
+            competition_id: COMP_A,
+            competition_code: 'conmebol.sudamericana',
+            reason: 'unknown_stage',
+            detail: 'round-of-32',
+            events: '6',
+            syncs: '3',
+          },
+          {
+            provider: 'espn',
+            competition_id: '',
+            competition_code: 'bra.copa_do_brazil',
+            reason: 'missing_competitor',
+            detail: 'tbd',
+            events: '2',
+            syncs: '2',
+          },
+        ],
+        missing: [
+          {
+            provider: 'football-data',
+            competition_id: COMP_B,
+            external_id: '9002',
+            start_time: '2026-12-06T16:30:00Z',
+            times: '4',
+            last_seen: '2026-11-12 06:15:03',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.discards).toEqual([
+      {
+        provider: 'espn',
+        competition_id: COMP_A,
+        competition_code: 'conmebol.sudamericana',
+        reason: 'unknown_stage',
+        detail: 'round-of-32',
+        events: 6,
+        syncs: 3,
+      },
+      {
+        provider: 'espn',
+        competition_id: '',
+        competition_code: 'bra.copa_do_brazil',
+        reason: 'missing_competitor',
+        detail: 'tbd',
+        events: 2,
+        syncs: 2,
+      },
+    ])
+    expect(body.missingMatches).toEqual([
+      {
+        provider: 'football-data',
+        competition_id: COMP_B,
+        external_id: '9002',
+        start_time: '2026-12-06T16:30:00Z',
+        times: 4,
+        last_seen: '2026-11-12 06:15:03',
+      },
+    ])
+  })
+
+  it('não repassa texto livre nos campos de descarte e de jogo ausente', async () => {
+    const res = await getOps(
+      fetchBySql({
+        discards: [
+          {
+            provider: 'espn',
+            competition_id: 'texto livre',
+            competition_code: 'código <b>',
+            reason: 'unknown_stage',
+            detail: 'fase com espaço e <script>',
+            events: '1',
+            syncs: '1',
+          },
+        ],
+        missing: [
+          {
+            provider: 'football-data',
+            competition_id: COMP_B,
+            external_id: 'id com espaço',
+            start_time: 'amanhã',
+            times: '1',
+            last_seen: '2026-11-12 06:15:03',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.discards[0]).toMatchObject({ competition_id: '', competition_code: '', detail: '' })
+    expect(body.missingMatches[0]).toMatchObject({ external_id: '', start_time: '' })
+    expect(JSON.stringify(body)).not.toMatch(/texto livre|script|espaço|amanhã/)
   })
 
   it('devolve tentativas HTTP por provedor/contexto/status e por competição, com números', async () => {

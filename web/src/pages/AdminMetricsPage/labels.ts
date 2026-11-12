@@ -26,6 +26,8 @@ const EVENT_LABELS: Record<string, string> = {
   football_api_error: 'Erro de sync de provedor',
   match_results_fallback: 'Fallback de resultados (ESPN)',
   provider_http_attempt: 'Tentativa HTTP a provedor',
+  sync_event_discarded: 'Evento descartado no sync',
+  match_missing_from_feed: 'Jogo fora do calendário',
   radar_sync_run: 'Radar de competições',
   radar_sync_error: 'Erro do radar',
   security_storage_error: 'Falha de armazenamento de segurança',
@@ -58,6 +60,23 @@ const SYNC_ERROR_ORIGIN_LABELS: Record<string, string> = {
   sync_endpoint: 'Sincronização manual',
 }
 
+/** Motivo de `sync_event_discarded` (blob4 do evento). */
+const DISCARD_REASON_LABELS: Record<string, string> = {
+  unknown_stage: 'Fase desconhecida',
+  season_mismatch: 'Outra temporada',
+  missing_competitor: 'Competidor ausente',
+  invalid_event: 'Evento inválido',
+}
+
+/** Detalhe fixo do descarte; slug de fase e ano chegam crus. */
+const DISCARD_DETAIL_LABELS: Record<string, string> = {
+  tbd: 'time a definir',
+  same_team: 'mesmo time dos dois lados',
+  id: 'sem id',
+  date: 'data inválida',
+  competition: 'sem confronto',
+}
+
 /** Provedor legível; desconhecido volta cru. */
 export function providerLabel(provider: string): string {
   return PROVIDER_LABELS[provider] ?? provider
@@ -71,6 +90,16 @@ export function httpContextLabel(context: string): string {
 /** Origem de um erro de sync; desconhecida volta crua. */
 export function syncErrorOriginLabel(origin: string): string {
   return SYNC_ERROR_ORIGIN_LABELS[origin] ?? origin
+}
+
+/** Motivo do descarte; desconhecido volta cru. */
+export function discardReasonLabel(reason: string): string {
+  return DISCARD_REASON_LABELS[reason] ?? reason
+}
+
+/** Detalhe do descarte legível; slug de fase e ano voltam crus. */
+export function discardDetailLabel(detail: string): string {
+  return DISCARD_DETAIL_LABELS[detail] ?? detail
 }
 
 /** Rótulo de negócio de um event_type; tipo desconhecido volta cru. */

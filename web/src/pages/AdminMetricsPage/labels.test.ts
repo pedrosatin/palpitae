@@ -26,6 +26,11 @@ describe('labels', () => {
       expect(eventLabel('football_api_error')).not.toMatch(/Football/)
     })
 
+    it('traduz os eventos de descarte e de jogo fora do calendário', () => {
+      expect(eventLabel('sync_event_discarded')).toBe('Evento descartado no sync')
+      expect(eventLabel('match_missing_from_feed')).toBe('Jogo fora do calendário')
+    })
+
     it('returns raw key for unknown event types', () => {
       expect(eventLabel('unknown_event')).toBe('unknown_event')
       expect(eventLabel('another_unknown')).toBe('another_unknown')

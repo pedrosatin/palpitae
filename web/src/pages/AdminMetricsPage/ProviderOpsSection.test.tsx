@@ -201,6 +201,109 @@ describe('ProviderOpsSection', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('mostra os eventos descartados pelo sync com motivo legível e a fase recebida', () => {
+    render(
+      <ProviderOpsSection
+        ops={makeOps({
+          discards: [
+            {
+              provider: 'espn',
+              competition_id: COMP_B,
+              competition_code: 'conmebol.libertadores',
+              reason: 'unknown_stage',
+              detail: 'round-of-32',
+              events: 6,
+              syncs: 3,
+            },
+            {
+              provider: 'espn',
+              competition_id: '',
+              competition_code: 'bra.copa_do_brazil',
+              reason: 'missing_competitor',
+              detail: 'tbd',
+              events: 2,
+              syncs: 2,
+            },
+            {
+              provider: 'espn',
+              competition_id: COMP_B,
+              competition_code: 'conmebol.libertadores',
+              reason: 'season_mismatch',
+              detail: '2027',
+              events: 1,
+              syncs: 1,
+            },
+          ],
+        })}
+        names={names}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: 'Eventos descartados pelo sync' })
+    const [stage, tbd, season] = within(table)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => within(row))
+    expect(stage.getByText('Libertadores')).toBeInTheDocument()
+    expect(stage.getByText('Fase desconhecida')).toBeInTheDocument()
+    expect(stage.getByText('round-of-32')).toBeInTheDocument()
+    expect(stage.getByText('6')).toBeInTheDocument()
+    // Sem competição gravada, a linha mostra o código do provedor.
+    expect(tbd.getByText('bra.copa_do_brazil')).toBeInTheDocument()
+    expect(tbd.getByText('Competidor ausente')).toBeInTheDocument()
+    expect(tbd.getByText('time a definir')).toBeInTheDocument()
+    expect(season.getByText('Outra temporada')).toBeInTheDocument()
+    expect(season.getByText('2027')).toBeInTheDocument()
+  })
+
+  it('lista os jogos pendentes que sumiram do calendário do provedor', () => {
+    render(
+      <ProviderOpsSection
+        ops={makeOps({
+          missingMatches: [
+            {
+              provider: 'football-data',
+              competition_id: COMP_A,
+              external_id: '9002',
+              start_time: '2026-12-06T16:30:00Z',
+              times: 4,
+              last_seen: '2026-11-12 06:15:03',
+            },
+          ],
+        })}
+        names={names}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: 'Jogos pendentes fora do calendário' })
+    const row = within(within(table).getAllByRole('row')[1])
+    expect(row.getByText('Brasileirão Série A 2026')).toBeInTheDocument()
+    expect(row.getByText('9002')).toBeInTheDocument()
+    expect(row.getByText('06/12 16:30 UTC')).toBeInTheDocument()
+    expect(row.getByText('4')).toBeInTheDocument()
+    expect(row.getByText('12/11 06:15 UTC')).toBeInTheDocument()
+  })
+
+  it('sem descartes nem jogos ausentes diz que não houve registro, sem tabela', () => {
+    render(<ProviderOpsSection ops={makeOps({ discards: [], missingMatches: [] })} names={names} />)
+
+    expect(screen.getByText('Nenhum evento descartado no período.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Nenhum jogo pendente fora do calendário no período.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('table', { name: 'Eventos descartados pelo sync' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('API anterior aos descartes não mostra a seção nem afirma zero', () => {
+    render(<ProviderOpsSection ops={makeOps()} names={names} />)
+
+    expect(screen.queryByText(/Nenhum evento descartado/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /Eventos descartados/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /fora do calendário/ })).not.toBeInTheDocument()
+  })
+
   it('deixa claro que as falhas são todas registradas e os sucessos amostrados (~10%)', () => {
     render(<ProviderOpsSection ops={makeOps()} names={names} />)
 

@@ -51,7 +51,8 @@ export async function discoverFixtures(
     console.info('[discovery] Nenhuma competição ativa.')
     logEvent(ae, 'fixture_discovery_run', {
       blobs: ['ok'],
-      doubles: [0, 0, 0, Date.now() - startedAt], // competitions, fixtures_updated, api_calls, duration_ms
+      // competitions, fixtures_updated, api_calls, duration_ms, events_discarded, matches_missing
+      doubles: [0, 0, 0, Date.now() - startedAt, 0, 0],
     })
     return
   }
@@ -63,6 +64,8 @@ export async function discoverFixtures(
   // Requests primárias planejadas, excluindo retries do provedor.
   let plannedApiRequests = 0
   let fixturesUpdated = 0
+  let eventsDiscarded = 0
+  let matchesMissing = 0
   let hadError = false
 
   for (const comp of rows.results) {
@@ -82,8 +85,11 @@ export async function discoverFixtures(
           competitionId: comp.id,
         }),
         ae,
+        reportMissing: true,
       })
       fixturesUpdated += result?.matches ?? 0
+      eventsDiscarded += result?.discarded ?? 0
+      matchesMissing += result?.missing ?? 0
       // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
       // correção de placar que o upsert do sync zerou).
       await scoreUnprocessedMatches(comp.id, db)
@@ -105,7 +111,14 @@ export async function discoverFixtures(
 
   logEvent(ae, 'fixture_discovery_run', {
     blobs: [hadError ? 'error' : 'ok'],
-    doubles: [rows.results.length, fixturesUpdated, plannedApiRequests, Date.now() - startedAt],
+    doubles: [
+      rows.results.length,
+      fixturesUpdated,
+      plannedApiRequests,
+      Date.now() - startedAt,
+      eventsDiscarded,
+      matchesMissing,
+    ],
   })
 
   console.info(

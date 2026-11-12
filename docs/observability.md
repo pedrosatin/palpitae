@@ -88,14 +88,20 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
 
 **Eventos atuais:**
 
-- Saúde: `poller_run` (ok/error + matches_checked, fixtures_updated, api_calls, duration_ms),
-  `fixture_discovery_run` (ok/error + competitions, fixtures_updated, api_calls, duration_ms),
+- Saúde: `poller_run` (ok/error + matches_checked, fixtures_updated, api_calls, duration_ms,
+  events_discarded),
+  `fixture_discovery_run` (ok/error + competitions, fixtures_updated, api_calls, duration_ms,
+  events_discarded, matches_missing),
   `football_api_error` (erro de sync de qualquer provedor, football-data ou ESPN),
   `match_results_fallback` (fallback de resultados pela ESPN, ADR-016),
   `provider_http_attempt` (uma tentativa HTTP a um provedor de partidas),
   `match_teams_changed` (o provedor trocou os times de um jogo já gravado),
   `competition_unconfigured` (o sync da football-data recebeu uma competição nova sem configuração
   em `FOOTBALL_DATA_COMPETITIONS` e não a criou),
+  `sync_event_discarded` (o sync não importou eventos do provedor; um registro por motivo e
+  detalhe em cada sync, com a quantidade),
+  `match_missing_from_feed` (jogo pendente que o calendário completo da football-data deixou de
+  trazer na descoberta; a linha e os palpites ficam no banco),
   `scheduled_unknown_cron` (o `wrangler.toml` disparou um cron sem ramo no handler `scheduled`),
   `scheduled_config_missing` (configuração opcional ausente numa execução agendada),
   `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms)
@@ -116,8 +122,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 
 | event_type | blob2 | blob3 | blob4 | doubles |
 |---|---|---|---|---|
-| `poller_run` | `status` (`ok`/`error`; `error` também quando a pontuação falha) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
-| `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms |
+| `poller_run` | `status` (`ok`/`error`; `error` também quando a pontuação falha) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms, `double5`=events_discarded (eventos que o sync não importou; ausente antes do registro de descartes). Descarte não muda o `status` |
+| `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms, `double5`=events_discarded, `double6`=matches_missing (jogos pendentes ausentes do calendário da football-data); os dois ausentes antes do registro de descartes. Descarte e ausência não mudam o `status` |
 | `radar_sync_run` | `status` (`ok`/`partial`/`error`) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
 | `scheduled_unknown_cron` | `cron` (expressão recebida em `controller.cron`) | — | — | — |
@@ -126,6 +132,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha, 10 em sucesso amostrado) |
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
+| `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
+| `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, no máximo 10 por competição em cada execução (o total vai em `fixture_discovery_run.double6`) |
 | `competition_unconfigured` | `provider` (`football-data`) | `code` da competição no provedor (ex.: `CLI`) | `external_id` da competição no provedor | `season` em blob5; sem doubles |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
@@ -521,7 +529,15 @@ e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
 - `httpFirstSeenAt`, o primeiro evento HTTP no Analytics Engine, sem filtro de período;
 - erros de sync por origem (`poller`, `fixture_discovery`, `sync_endpoint`) e competição
   (`apiErrors`), lidos de `football_api_error` pela forma posicional descrita acima;
-- execuções, jogos atualizados e falhas do fallback por competição (`fallback`).
+- execuções, jogos atualizados e falhas do fallback por competição (`fallback`);
+- eventos que o sync descartou por provedor, competição, motivo e detalhe (`discards`), lidos de
+  `sync_event_discarded`, com a soma de `double1` ponderada pelo sampling;
+- jogos pendentes que a descoberta não viu no calendário da football-data (`missingMatches`),
+  lidos de `match_missing_from_feed`, com quantas vezes e quando foram registrados por último.
+
+`discards` e `missingMatches` só levam identificadores do provedor (slug da fase, código da
+competição, id do jogo, horário ISO); qualquer outro texto chega vazio. Sem os dois campos (API
+anterior), a página omite a subseção em vez de mostrar zero.
 
 A página resolve o id da competição para nome e temporada com o snapshot de
 `/metrics/business`. Competição desconhecida aparece como "Campeonato" mais os 8 primeiros

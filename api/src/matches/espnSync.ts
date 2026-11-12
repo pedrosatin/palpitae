@@ -14,7 +14,9 @@ import {
   isoSeconds,
   MATCH_UPSERT_SQL,
   type MatchUpsertRow,
+  reportDiscards,
   slugify,
+  type SyncDiscard,
   type SyncResult,
   writeMatchUpserts,
 } from './sync'
@@ -67,7 +69,8 @@ export function isEspnPrimaryCompetition(code: string): boolean {
  * Farroupilha / título, rebaixamento) ficam com códigos distintos para o
  * admin configurar `penalty_phases` por fase. Slugs fora do mapa ainda podem
  * ser fase de liga via `resolveEspnStage` (padrão `YYYY-…`); qualquer outro
- * é descartado (fail-closed). Sem regex ampla e sem leitura de notas/texto.
+ * é descartado (fail-closed) e registrado com o slug em `sync_event_discarded`.
+ * Sem regex ampla e sem leitura de notas/texto.
  */
 const ESPN_STAGE_MAP: Record<string, string> = {
   'first-stage': 'FIRST_STAGE',
@@ -226,14 +229,16 @@ function isEspnPlaceholder(value: unknown): boolean {
   return typeof value === 'string' && /^TBD(?:\s+(?:Home|Away))?$/i.test(value.trim())
 }
 
+function isPlaceholderCompetitor(comp: EspnCompetitor | undefined): boolean {
+  const team = comp?.team
+  return [team?.displayName, team?.shortDisplayName, team?.abbreviation].some(isEspnPlaceholder)
+}
+
 function toValidCompetitor(comp: EspnCompetitor | undefined): ValidEspnCompetitor | null {
   const team: EspnCompetitorTeam | undefined = comp?.team
   const id = typeof team?.id === 'string' ? team.id.trim() : ''
   const displayName = typeof team?.displayName === 'string' ? team.displayName.trim() : ''
-  if (!id || !displayName) return null
-  if ([displayName, team?.shortDisplayName, team?.abbreviation].some(isEspnPlaceholder)) {
-    return null
-  }
+  if (!id || !displayName || isPlaceholderCompetitor(comp)) return null
   return {
     winner: comp?.winner,
     score: comp?.score,
@@ -248,6 +253,23 @@ function toValidCompetitor(comp: EspnCompetitor | undefined): ValidEspnCompetito
   }
 }
 
+/** Mandante e visitante válidos, ou o motivo do descarte. */
+function extractCompetitors(
+  comp: EspnEventCompetition,
+): { home: ValidEspnCompetitor; away: ValidEspnCompetitor } | SyncDiscard {
+  const competitors = comp.competitors ?? []
+  const rawHome = competitors.find((c) => c.homeAway === 'home')
+  const rawAway = competitors.find((c) => c.homeAway === 'away')
+  const home = toValidCompetitor(rawHome)
+  const away = toValidCompetitor(rawAway)
+  if (!home || !away) {
+    const tbd = isPlaceholderCompetitor(rawHome) || isPlaceholderCompetitor(rawAway)
+    return { reason: 'missing_competitor', detail: tbd ? 'tbd' : '' }
+  }
+  if (home.team.id === away.team.id) return { reason: 'invalid_event', detail: 'same_team' }
+  return { home, away }
+}
+
 function resolveStartTime(rawDate: unknown): string | null {
   if (typeof rawDate !== 'string') return null
   const parsed = Date.parse(rawDate)
@@ -255,26 +277,34 @@ function resolveStartTime(rawDate: unknown): string | null {
   return isoSeconds(new Date(parsed))
 }
 
+function isDiscard(value: object): value is SyncDiscard {
+  return 'reason' in value
+}
+
+/** Evento importável, ou o motivo pelo qual o sync o descarta. */
 function extractValidEvent(
   ev: EspnScoreboardEvent,
   season: number,
   competitionCode?: string,
-): ValidEspnEvent | null {
+): ValidEspnEvent | SyncDiscard {
   const id = typeof ev.id === 'string' ? ev.id.trim() : ''
-  if (!id) return null
+  if (!id) return { reason: 'invalid_event', detail: 'id' }
   // O scoreboard pode responder com outra edição ao consultar datas futuras.
   // Só o ano explícito do evento autoriza importá-lo para a temporada pedida.
-  if (ev.season?.year !== season) return null
+  if (ev.season?.year !== season) {
+    return { reason: 'season_mismatch', detail: String(ev.season?.year ?? '') }
+  }
 
   const stage = resolveEspnStage(ev.season?.slug, competitionCode)
+  if (!stage) return { reason: 'unknown_stage', detail: ev.season?.slug ?? '' }
   const startTime = resolveStartTime(ev.date)
+  if (!startTime) return { reason: 'invalid_event', detail: 'date' }
   const comp: EspnEventCompetition | undefined = ev.competitions?.[0]
-  if (!stage || !startTime || !comp) return null
+  if (!comp) return { reason: 'invalid_event', detail: 'competition' }
 
-  const competitors = comp.competitors ?? []
-  const home = toValidCompetitor(competitors.find((c) => c.homeAway === 'home'))
-  const away = toValidCompetitor(competitors.find((c) => c.homeAway === 'away'))
-  if (!home || !away || home.team.id === away.team.id) return null
+  const competitors = extractCompetitors(comp)
+  if (isDiscard(competitors)) return competitors
+  const { home, away } = competitors
 
   const statusType = comp.status?.type ?? ev.status?.type
   const rawLeg = comp.leg?.value
@@ -567,9 +597,19 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
   }
 
   const rawEvents = await fetchEventsForSync(opts.competitionCode, opts.dates, opts.onHttpAttempt)
-  const validEvents = rawEvents
-    .map((ev) => extractValidEvent(ev, opts.season, opts.competitionCode))
-    .filter((ev): ev is ValidEspnEvent => ev !== null)
+  const validEvents: ValidEspnEvent[] = []
+  const discards: SyncDiscard[] = []
+  for (const raw of rawEvents) {
+    const extracted = extractValidEvent(raw, opts.season, opts.competitionCode)
+    if (isDiscard(extracted)) discards.push(extracted)
+    else validEvents.push(extracted)
+  }
+  const discardScope = {
+    ae: opts.ae,
+    provider: PROVIDER,
+    competitionCode: opts.competitionCode,
+    season: opts.season,
+  }
 
   if (validEvents.length === 0) {
     return {
@@ -577,6 +617,8 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
       competitionId: '',
       matches: 0,
       teams: 0,
+      discarded: await reportDiscards(opts.db, discards, discardScope),
+      missing: 0,
     }
   }
 
@@ -591,11 +633,17 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     now,
     opts.ae,
   )
+  const discarded = await reportDiscards(opts.db, discards, {
+    ...discardScope,
+    competitionId: competition.id,
+  })
 
   return {
     competition: meta.name,
     competitionId: competition.id,
     matches: matchCount,
     teams: teamCount,
+    discarded,
+    missing: 0,
   }
 }
