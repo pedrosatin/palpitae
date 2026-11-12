@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useConfirm } from '../../components/ConfirmModal'
 import { trackEvent } from '../../analytics/ga'
 import { isStandingsTabEligible } from '../../components/StandingsTab'
-import { type Tab, type GroupDetail, type User, DEFAULT_TAB, parseTab } from './types'
+import { UNEXPECTED_RESPONSE } from '../../lib/responseShape'
+import {
+  type Tab,
+  type GroupDetail,
+  type User,
+  DEFAULT_TAB,
+  parseGroupDetail,
+  parseTab,
+} from './types'
 
 export function useGroupDetail(groupId: string | undefined) {
   const [group, setGroup] = useState<GroupDetail | null>(null)
@@ -17,12 +25,16 @@ export function useGroupDetail(groupId: string | undefined) {
     if (!groupId) return
     setLoading(true)
     setError(null)
-    apiFetch(`${config.apiUrl}/groups/${groupId}`)
+    apiFetch(buildApiUrl(`/groups/${groupId}`))
       .then((r) => {
         if (!r.ok) throw new Error('Grupo não encontrado')
-        return r.json() as Promise<{ group: GroupDetail }>
+        return r.json() as Promise<unknown>
       })
-      .then((data) => setGroup(data.group))
+      .then((body) => {
+        const detail = parseGroupDetail(body)
+        if (!detail) throw new Error(UNEXPECTED_RESPONSE)
+        setGroup(detail)
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [groupId])
@@ -146,7 +158,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setLeaving(true)
 
     try {
-      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/members/${user.id}`, {
+      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/members/${user.id}`), {
         method: 'DELETE',
       })
 
@@ -180,7 +192,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setDeleting(true)
 
     try {
-      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}`, {
+      const res = await apiFetch(buildApiUrl(`/groups/${groupId}`), {
         method: 'DELETE',
       })
 
@@ -215,7 +227,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setRotatingInvite(true)
 
     try {
-      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/invite/rotate`, {
+      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/invite/rotate`), {
         method: 'POST',
       })
       if (!res.ok) {

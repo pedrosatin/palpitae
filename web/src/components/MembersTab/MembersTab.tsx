@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers, type GroupMember } from '../../hooks/useGroupMembers'
 import { apiFetch } from '../../lib/api'
@@ -31,7 +31,7 @@ function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void)
     if (!ok) return
     setRemoving(targetUserId)
     try {
-      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}/members/${targetUserId}`, {
+      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/members/${targetUserId}`), {
         method: 'DELETE',
       })
       if (!res.ok) {

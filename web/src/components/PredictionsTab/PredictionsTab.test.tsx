@@ -867,3 +867,26 @@ describe('PredictionsTab – rodada antiga com jogo remarcado', () => {
     expect(screen.queryByText(/remarcado/i)).not.toBeInTheDocument()
   })
 })
+
+describe('PredictionsTab – palpites fora do formato', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('mostra erro legível em vez da mensagem técnica do TypeError', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      const body = u.includes('/matches')
+        ? { matches: [makeMatch({ id: 'm1', round: '1' })], default_round: '1' }
+        : {}
+      return Promise.resolve({ ok: true, json: async () => body } as Response)
+    })
+
+    render(<PredictionsTab groupId="g1" competitionId="c1" />)
+
+    expect(
+      await screen.findByText('Resposta inesperada do servidor. Tente novamente.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/not iterable/)).not.toBeInTheDocument()
+  })
+})

@@ -55,6 +55,13 @@ vi.mock('./pages/SettingsPage', () => ({
 vi.mock('./pages/AdminMetricsPage', () => ({
   default: () => <div data-testid="admin-metrics-page">AdminMetricsPage</div>,
 }))
+// Página que quebra no render, para a fronteira de erro da rota.
+vi.mock('./pages/AdminRadarPage', () => ({
+  default: () => {
+    const rows = undefined as unknown as string[]
+    return <div>{rows.map((row) => row)}</div>
+  },
+}))
 
 describe('App', () => {
   const fetchMock = vi.fn()
@@ -462,6 +469,47 @@ describe('App', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledWith(`${config.apiUrl}/auth/me`, { credentials: 'include' })
+  })
+
+  it('erro no render de uma página mostra a tela de erro com volta ao início', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ user: { id: '1', email: 'a@b.com' } }),
+    })
+    render(
+      <MemoryRouter initialEntries={['/admin/oportunidades']}>
+        <App />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Algo deu errado ao mostrar esta página.',
+    )
+    expect(screen.getByRole('button', { name: 'Recarregar a página' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('link', { name: 'Voltar para o início' }))
+
+    expect(await screen.findByTestId('dashboard-page')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('não gera // na chamada do /auth/me quando VITE_API_URL termina em barra', async () => {
+    const originalApiUrl = config.apiUrl
+    ;(config as { apiUrl: string }).apiUrl = 'https://api.example.com/'
+    try {
+      fetchMock.mockResolvedValueOnce({ ok: false })
+      render(
+        <MemoryRouter initialEntries={['/']}>
+          <App />
+        </MemoryRouter>,
+      )
+      await screen.findByTestId('landing-page')
+      expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/auth/me', {
+        credentials: 'include',
+      })
+    } finally {
+      ;(config as { apiUrl: string }).apiUrl = originalApiUrl
+    }
   })
 
   it('mantém a rota e oferece nova tentativa quando /auth/me responde 503', async () => {

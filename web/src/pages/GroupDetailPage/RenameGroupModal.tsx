@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import Modal from '../../components/Modal'
 import Button from '../../components/Button'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { trackEvent } from '../../analytics/ga'
 import styles from './GroupDetailPage.module.css'
@@ -57,7 +57,7 @@ export function RenameGroupModal({
     setRenameError(null)
 
     try {
-      const res = await apiFetch(`${config.apiUrl}/groups/${groupId}`, {
+      const res = await apiFetch(buildApiUrl(`/groups/${groupId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

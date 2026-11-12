@@ -1,4 +1,4 @@
-import { config } from '../config'
+import { buildApiUrl } from '../config'
 import { apiFetch } from './api'
 
 /** Limite de grupos de destino por requisição, o mesmo da API. */
@@ -21,7 +21,7 @@ export async function postReplicate(
   targetGroupIds: string[],
   matchIds: string[],
 ): Promise<ReplicateResponse> {
-  const res = await apiFetch(`${config.apiUrl}/predictions/replicate`, {
+  const res = await apiFetch(buildApiUrl('/predictions/replicate'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

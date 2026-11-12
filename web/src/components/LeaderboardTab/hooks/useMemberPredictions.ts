@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { config } from '../../../config'
+import { buildApiUrl } from '../../../config'
 import { apiFetch } from '../../../lib/api'
 import { applyDefaultRound } from '../../../lib/rounds'
 import type { UserPrediction } from '../types'
@@ -16,7 +16,7 @@ export function useMemberPredictions(groupId: string, userId: string) {
     setModalError(null)
 
     apiFetch(
-      `${config.apiUrl}/predictions/user?group_id=${encodeURIComponent(groupId)}&user_id=${encodeURIComponent(userId)}`,
+      buildApiUrl('/predictions/user', new URLSearchParams({ group_id: groupId, user_id: userId })),
     )
       .then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar palpites')

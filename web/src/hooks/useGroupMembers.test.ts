@@ -79,3 +79,26 @@ describe('useGroupMembers', () => {
     expect(result.current.members).toEqual([])
   })
 })
+
+describe('useGroupMembers, resposta fora do formato', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it.each([
+    ['sem a lista', {}],
+    ['lista que não é array', { members: 'x' }],
+    ['membro sem nome', { members: [{ user_id: 'u1', total_points: 0 }] }],
+  ])('%s vira erro e mantém a lista vazia', async (_case, body) => {
+    mockApiFetch.mockResolvedValueOnce(mockResponse(body))
+
+    const { result } = renderHook(() => useGroupMembers('g1'))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+    })
+
+    expect(result.current.members).toEqual([])
+    expect(result.current.error).toBe('Resposta inesperada do servidor. Tente novamente.')
+  })
+})

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
+import { isListOf, isRecord, UNEXPECTED_RESPONSE } from '../../lib/responseShape'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import { fetchGroupsList } from '../../lib/groupsList'
 import { isMatchLocked } from '../../lib/predictionDrafts'
@@ -39,15 +40,20 @@ async function fetchGroupPredictions(groupId: string): Promise<{
   importCompleted: boolean
   importSources: ImportSources
 }> {
-  const res = await apiFetch(`${config.apiUrl}/predictions?group_id=${encodeURIComponent(groupId)}`)
+  const res = await apiFetch(
+    buildApiUrl('/predictions', new URLSearchParams({ group_id: groupId })),
+  )
   if (!res.ok) throw new Error('Erro ao carregar palpites')
-  const data = (await res.json()) as PredictionsResponse
+  const data: unknown = await res.json()
+  if (!isRecord(data) || !isListOf(data.predictions, { match_id: 'string' }))
+    throw new Error(UNEXPECTED_RESPONSE)
+  const { predictions: list, import_completed, import_sources } = data as PredictionsResponse
   const predictions: PredictionMap = new Map()
-  for (const p of data.predictions) predictions.set(p.match_id, p)
+  for (const p of list) predictions.set(p.match_id, p)
   return {
     predictions,
-    importCompleted: data.import_completed === true,
-    importSources: data.import_sources ?? null,
+    importCompleted: import_completed === true,
+    importSources: isRecord(import_sources) ? import_sources : null,
   }
 }
 
@@ -60,7 +66,7 @@ async function postPredictionsImport(
   groupId: string,
   onlyMissing: boolean,
 ): Promise<{ imported: number; skipped: number }> {
-  const res = await apiFetch(`${config.apiUrl}/predictions/import`, {
+  const res = await apiFetch(buildApiUrl('/predictions/import'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { config, buildApiUrl } from './config'
+import { config, buildApiUrl, buildAuthUrl } from './config'
 
 describe('buildApiUrl', () => {
   const originalApiUrl = config.apiUrl
@@ -75,5 +75,35 @@ describe('buildApiUrl', () => {
       const params = new URLSearchParams()
       expect(buildApiUrl('users', params)).toBe('/api/v1/users')
     })
+  })
+})
+
+describe('buildAuthUrl', () => {
+  const originalAuthUrl = config.authUrl
+
+  afterEach(() => {
+    ;(config as any).authUrl = originalAuthUrl
+  })
+
+  it('não duplica a barra quando VITE_AUTH_URL termina em barra', () => {
+    ;(config as any).authUrl = 'https://api.example.com/'
+    expect(buildAuthUrl('/auth/google')).toBe('https://api.example.com/auth/google')
+  })
+})
+
+// Código-fonte do app, fora dos testes, lido como texto.
+const sources = import.meta.glob(['./**/*.{ts,tsx}', '!./**/*.test.{ts,tsx}', '!./config.ts'], {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>
+
+describe('montagem das URLs da API', () => {
+  it('toda chamada passa por buildApiUrl ou buildAuthUrl', () => {
+    const offenders = Object.entries(sources)
+      .filter(([, text]) => /config\.(apiUrl|authUrl)/.test(text))
+      .map(([file]) => file)
+    expect(Object.keys(sources).length).toBeGreaterThan(50)
+    expect(offenders).toEqual([])
   })
 })

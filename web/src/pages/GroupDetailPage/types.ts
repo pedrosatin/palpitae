@@ -1,4 +1,5 @@
 import { type CompetitionType } from '../../components/StandingsTab'
+import { hasShape, isRecord } from '../../lib/responseShape'
 
 export interface User {
   id: string
@@ -35,6 +36,24 @@ export interface GroupDetail {
   user_position: number | null
   user_points: number
   exact_hits: number
+}
+
+/**
+ * Lê `{ group }` de `GET /groups/:id`. Confere identidade, nome e os números que a
+ * página usa sem proteção. Corpo fora do formato devolve null.
+ */
+export function parseGroupDetail(body: unknown): GroupDetail | null {
+  const group = isRecord(body) ? body.group : null
+  const ok = hasShape(group, {
+    id: 'string',
+    name: 'string',
+    competition_id: 'string',
+    is_admin: 'boolean',
+    points_exact: 'number',
+    points_winner: 'number',
+    member_count: 'number',
+  })
+  return ok ? (group as unknown as GroupDetail) : null
 }
 
 const TABS = ['predictions', 'standings', 'group-picks', 'leaderboard', 'members'] as const

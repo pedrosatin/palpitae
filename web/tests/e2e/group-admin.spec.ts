@@ -71,7 +71,11 @@ test.describe('Group Admin and Member Tools', () => {
               id: 'group-1',
               name: 'Grupo Original',
               is_admin: true,
+              competition_id: 'comp-1',
               competition_name: 'Brasileirão',
+              points_exact: 3,
+              points_winner: 1,
+              member_count: 2,
             },
           },
         })
@@ -140,7 +144,11 @@ test.describe('Group Admin and Member Tools', () => {
               id: 'group-1',
               name: 'Grupo Original',
               is_admin: false,
+              competition_id: 'comp-1',
               competition_name: 'Brasileirão',
+              points_exact: 3,
+              points_winner: 1,
+              member_count: 2,
             },
           },
         })

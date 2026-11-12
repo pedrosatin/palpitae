@@ -8,12 +8,13 @@ import GroupHeader from './GroupHeader'
 import GroupInviteSection from './GroupInviteSection'
 import RenameGroupModal from './RenameGroupModal'
 import ErrorState from '../../components/ErrorState'
+import ErrorBoundary, { TabError } from '../../components/ErrorBoundary'
 import { apiFetch } from '../../lib/api'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './GroupDetailPage.module.css'
-import { type User, TAB_LABELS } from './types'
+import { type User, TAB_LABELS, parseGroupDetail } from './types'
 import GroupTabs from './GroupTabs'
 import GroupTabContent from './GroupTabContent'
 import { useGroupDetail, useGroupTabs, useTabsOffset, useGroupActions } from './hooks'
@@ -94,11 +95,10 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   }
 
   async function handlePointsClassifiedChanged() {
-    const response = await apiFetch(`${config.apiUrl}/groups/${groupId}`)
-    if (!response.ok)
-      throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
-    const data = (await response.json()) as { group: typeof group }
-    setGroup(data.group)
+    const response = await apiFetch(buildApiUrl(`/groups/${groupId}`))
+    const refreshed = response.ok ? parseGroupDetail(await response.json()) : null
+    if (!refreshed) throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
+    setGroup(refreshed)
     setSettingsVersion((value) => value + 1)
   }
 
@@ -209,18 +209,24 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
           onTabClick={handleTabClick}
         />
 
-        <GroupTabContent
-          key={settingsVersion}
-          activeTab={activeTab}
-          groupId={groupId}
-          group={group}
-          showStandings={showStandings}
-          isAdmin={isAdmin}
-          userId={user.id}
-          onOpenRules={openRules}
-          requestedRound={requestedRound}
-          onRequestedRoundApplied={clearRequestedRound}
-        />
+        {/* Aba que quebra no render mostra o erro no lugar dela; trocar de aba sai dele. */}
+        <ErrorBoundary
+          resetKey={`${groupId}:${activeTab}`}
+          fallback={(reset) => <TabError onRetry={reset} />}
+        >
+          <GroupTabContent
+            key={settingsVersion}
+            activeTab={activeTab}
+            groupId={groupId}
+            group={group}
+            showStandings={showStandings}
+            isAdmin={isAdmin}
+            userId={user.id}
+            onOpenRules={openRules}
+            requestedRound={requestedRound}
+            onRequestedRoundApplied={clearRequestedRound}
+          />
+        </ErrorBoundary>
       </>
     )
   }

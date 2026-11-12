@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { config } from '../../../config'
+import { buildApiUrl } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { getGuideOrigin } from '../../../analytics/guideOrigin'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../../lib/api'
@@ -74,7 +74,7 @@ export function useCreateGroupForm({
     setLoadingCompetitions(true)
     // apiFetch em vez de fetch cru: em dev o modal roda cross-origin (5173 →
     // 8787) e sem credentials o cookie de sessão não vai — 401 garantido.
-    apiFetch(`${config.apiUrl}/competitions`)
+    apiFetch(buildApiUrl('/competitions'))
       .then((r) => r.json() as Promise<{ competitions: Competition[] }>)
       .then((data) => {
         // Encerradas saem; em andamento entram primeiro no select e são o
@@ -129,7 +129,7 @@ export function useCreateGroupForm({
     setSubmitting(true)
 
     try {
-      const res = await apiFetch(`${config.apiUrl}/groups`, {
+      const res = await apiFetch(buildApiUrl('/groups'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,4 +1,4 @@
-import { config } from '../../config'
+import { buildAuthUrl } from '../../config'
 import { markLoginStarted } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { getSignupOrigin } from '../../analytics/signupOrigin'
@@ -35,7 +35,7 @@ export default function GoogleLoginButton({
     // entra por ele cai no painel depois do login.
     const { pathname, search } = window.location
     const target = redirect ?? (pathname.startsWith('/grupos/') ? `${pathname}${search}` : search)
-    const url = new URL(`${config.authUrl}/auth/google`)
+    const url = new URL(buildAuthUrl('/auth/google'), window.location.origin)
     if (target) url.searchParams.set('redirect', target)
     const origem = getSignupOrigin()
     if (origem) url.searchParams.set('origem', origem)

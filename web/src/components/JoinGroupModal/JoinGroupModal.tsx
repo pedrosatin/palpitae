@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { config } from '../../config'
+import { buildApiUrl } from '../../config'
 import { type JoinGroupEntryMethod, trackJoinGroup } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
@@ -66,7 +66,7 @@ export default function JoinGroupModal({
     const entry_method = joinEntryMethod(fromLink, invite_code)
 
     try {
-      const res = await apiFetch(`${config.apiUrl}/groups/join`, {
+      const res = await apiFetch(buildApiUrl('/groups/join'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invite_code, entry_method }),

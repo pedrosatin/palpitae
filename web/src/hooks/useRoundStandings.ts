@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { config } from '../config'
+import { buildApiUrl } from '../config'
 import { apiFetch } from '../lib/api'
 
 export interface RoundStanding {
@@ -30,7 +30,7 @@ export function useRoundStandings(groupId: string) {
     let current = true
     setLoading(true)
     setData(NO_ROUND)
-    apiFetch(`${config.apiUrl}/groups/${groupId}/round-standings`)
+    apiFetch(buildApiUrl(`/groups/${groupId}/round-standings`))
       .then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar a rodada')
         return r.json() as Promise<RoundStandings>

@@ -5,7 +5,7 @@ import type { Match, Prediction } from './MatchCard'
 import { invalidateApiCache } from '../../lib/api-cache'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
-vi.mock('../../config', () => ({ config: { apiUrl: 'mockApiUrl' } }))
+vi.mock('../../config', () => ({ buildApiUrl: (path: string) => `mockApiUrl${path}` }))
 vi.mock('../../lib/api-cache', () => ({
   invalidateApiCache: vi.fn(),
 }))
