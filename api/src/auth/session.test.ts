@@ -26,12 +26,28 @@ describe('verifySession', () => {
 
   it('returns payload for a valid session', async () => {
     const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, SECRET, 3600)
-    const db = createMockDb({ revoked: 0, valid_after: null })
+    const db = createMockDb({ revoked: 0, valid_after: null, email: 'test@example.com' })
 
     const payload = await verifySession(token, SECRET, db)
 
     expect(payload.sub).toBe('user-1')
     expect(payload.email).toBe('test@example.com')
+  })
+
+  it('throws if the account no longer exists', async () => {
+    const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, SECRET, 3600)
+    const db = createMockDb({ revoked: 0, valid_after: null, email: null })
+
+    await expect(verifySession(token, SECRET, db)).rejects.toThrow('User not found')
+  })
+
+  it('returns the email stored in the account instead of the one in the token', async () => {
+    const token = await signJwt({ sub: 'user-1', email: 'antigo@example.com' }, SECRET, 3600)
+    const db = createMockDb({ revoked: 0, valid_after: null, email: 'novo@example.com' })
+
+    const payload = await verifySession(token, SECRET, db)
+
+    expect(payload.email).toBe('novo@example.com')
   })
 
   it('throws SessionStorageError if DB query fails', async () => {
@@ -47,14 +63,18 @@ describe('verifySession', () => {
 
   it('throws if session is explicitly revoked in DB', async () => {
     const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, SECRET, 3600)
-    const db = createMockDb({ revoked: 1, valid_after: null })
+    const db = createMockDb({ revoked: 1, valid_after: null, email: 'test@example.com' })
 
     await expect(verifySession(token, SECRET, db)).rejects.toThrow('Session revoked')
   })
 
   it('throws if token issued before cutoff (valid_after)', async () => {
     const token = await signJwt({ sub: 'user-1', email: 'test@example.com' }, SECRET, 3600)
-    const db = createMockDb({ revoked: 0, valid_after: Math.floor(Date.now() / 1000) + 100 })
+    const db = createMockDb({
+      revoked: 0,
+      valid_after: Math.floor(Date.now() / 1000) + 100,
+      email: 'test@example.com',
+    })
 
     await expect(verifySession(token, SECRET, db)).rejects.toThrow('Session revoked')
   })
@@ -66,7 +86,7 @@ describe('verifySession', () => {
     const payload = JSON.parse(atob(body!.replace(/-/g, '+').replace(/_/g, '/')))
     const iat = payload.iat
 
-    const db = createMockDb({ revoked: 0, valid_after: iat })
+    const db = createMockDb({ revoked: 0, valid_after: iat, email: 'test@example.com' })
 
     await expect(verifySession(token, SECRET, db)).rejects.toThrow('Session revoked')
   })
@@ -77,14 +97,14 @@ describe('verifySession', () => {
     const payload = JSON.parse(atob(body!.replace(/-/g, '+').replace(/_/g, '/')))
     const iat = payload.iat
 
-    const db = createMockDb({ revoked: 0, valid_after: iat - 100 })
+    const db = createMockDb({ revoked: 0, valid_after: iat - 100, email: 'test@example.com' })
 
     const result = await verifySession(token, SECRET, db)
     expect(result.sub).toBe('user-1')
   })
 
   it('throws for invalid JWT format/signature before checking DB', async () => {
-    const db = createMockDb({ revoked: 0, valid_after: null })
+    const db = createMockDb({ revoked: 0, valid_after: null, email: 'test@example.com' })
     await expect(verifySession('invalid-token', SECRET, db)).rejects.toThrow('Invalid JWT format')
     expect(db.prepare).not.toHaveBeenCalled()
   })

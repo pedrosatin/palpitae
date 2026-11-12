@@ -1,0 +1,19 @@
+-- Um e-mail por conta, sem diferença de maiúsculas.
+--
+-- `users.email` já é UNIQUE, mas a comparação do SQLite diferencia maiúsculas:
+-- `Fulano@Example.com` e `fulano@example.com` podiam virar duas contas. O login
+-- passa a gravar o e-mail da conta Google em minúsculas e a atualizá-lo quando
+-- muda; este índice faz o banco recusar a segunda conta com o mesmo e-mail em
+-- qualquer caixa, e o login trata a recusa como conflito (`email_conflict`).
+--
+-- Checagem antes de aplicar (precisa voltar vazia, senão o CREATE falha):
+--   SELECT lower(email) AS email, COUNT(*) AS total
+--     FROM users
+--    GROUP BY lower(email)
+--   HAVING COUNT(*) > 1;
+-- Em 12/11/2026 voltou vazia em produção (256 contas, todas já em minúsculas).
+--
+-- O Worker anterior continua funcionando: ele grava o e-mail como o Google
+-- envia, e só a conta nova que colidisse com outra em caixa diferente seria
+-- recusada, como já acontece com e-mail idêntico.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(lower(email));
