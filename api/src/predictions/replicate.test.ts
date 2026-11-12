@@ -51,11 +51,11 @@ function setup() {
       ('d','D','test-d','ongoing','[]'),
       ('old','Old','test-old','finished','[]');
     INSERT INTO teams (id,name,slug) VALUES ('h','H','h'), ('v','V','v');
-    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round) VALUES
-      ('m1','c','e1','test','h','v','2099-01-01T00:00:00Z','scheduled','1'),
-      ('m2','c','e2','test','v','h','2099-01-02T00:00:00Z','scheduled','1'),
-      ('past','c','e3','test','h','v','2020-01-01T00:00:00Z','finished','1'),
-      ('md','d','e4','test','h','v','2099-01-01T00:00:00Z','scheduled','1');
+    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score) VALUES
+      ('m1','c','e1','test','h','v','2099-01-01T00:00:00Z','scheduled','1',NULL,NULL),
+      ('m2','c','e2','test','v','h','2099-01-02T00:00:00Z','scheduled','1',NULL,NULL),
+      ('past','c','e3','test','h','v','2020-01-01T00:00:00Z','finished','1',1,0),
+      ('md','d','e4','test','h','v','2099-01-01T00:00:00Z','scheduled','1',NULL,NULL);
     INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,phase) VALUES
       ('final','c','e5','test','h','v','2099-02-01T00:00:00Z','scheduled','FINAL','FINAL');
     INSERT INTO groups (id,name,competition_id,owner_user_id,invite_code,points_exact,points_winner) VALUES
@@ -264,7 +264,7 @@ describe('POST /predictions/replicate', () => {
     expect(stored('g2', 'volta')).toMatchObject({ h: 1, a: 0, pen: 'home' })
     expect(stored('g3', 'volta')).toMatchObject({ h: 1, a: 0, pen: 'home' })
     sqlite.exec(`
-      UPDATE matches SET status = 'finished' WHERE id = 'ida';
+      UPDATE matches SET status = 'finished', home_score = 1, away_score = 0 WHERE id = 'ida';
       UPDATE predictions SET predicted_home_score = 0, predicted_away_score = 0 WHERE group_id = 'g2' AND match_id = 'ida';
     `)
     await replicate({ source_group_id: 'src', target_group_ids: ['g2'], match_ids: ['volta'] })
@@ -343,8 +343,8 @@ describe('POST /predictions/replicate', () => {
     sqlite.exec(`
       INSERT INTO competitions (id,name,slug,status,type) VALUES ('liga','Liga','liga','upcoming','league');
       INSERT INTO teams (id,name,slug) VALUES ('t1','T1','t1'), ('t2','T2','t2');
-      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round)
-        VALUES ('lm','liga','e20','test','t1','t2','2020-01-01T00:00:00Z','finished','1');
+      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
+        VALUES ('lm','liga','e20','test','t1','t2','2020-01-01T00:00:00Z','finished','1',1,0);
       INSERT INTO groups (id,name,competition_id,owner_user_id,invite_code) VALUES ('l1','L1','liga','a','l1'), ('l2','L2','liga','a','l2');
       INSERT INTO group_members (id,group_id,user_id) VALUES ('7','l1','a'), ('8','l2','a');
     `)
@@ -375,7 +375,7 @@ describe('POST /predictions/replicate', () => {
     const real = Date.now()
     sqlite
       .prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`)
-      .run(new Date(real - 5_000).toISOString())
+      .run(new Date(real - 5_000).toISOString().replace(/\.\d{3}Z$/, 'Z'))
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(real - 10_000)
     await replicate({ source_group_id: 'src', target_group_ids: ['g2'], match_ids: ['m1', 'm2'] })
@@ -386,9 +386,9 @@ describe('POST /predictions/replicate', () => {
   describe('pênaltis na volta', () => {
     function twoLegs(sqlite: ReturnType<typeof setup>['sqlite'], leg1Status = 'scheduled') {
       sqlite.exec(`
-        INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,phase,leg) VALUES
-          ('ida','c','e6','test','h','v','2099-03-01T00:00:00Z','${leg1Status}','SEMI_FINALS','SEMI_FINALS',1),
-          ('volta','c','e7','test','v','h','2099-03-08T00:00:00Z','scheduled','SEMI_FINALS','SEMI_FINALS',2);
+        INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,phase,leg,home_score,away_score) VALUES
+          ('ida','c','e6','test','h','v','2099-03-01T00:00:00Z','${leg1Status}','SEMI_FINALS','SEMI_FINALS',1,${leg1Status === 'finished' ? '1,0' : 'NULL,NULL'}),
+          ('volta','c','e7','test','v','h','2099-03-08T00:00:00Z','scheduled','SEMI_FINALS','SEMI_FINALS',2,NULL,NULL);
       `)
     }
 

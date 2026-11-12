@@ -202,21 +202,21 @@ describe('competitions router', () => {
           ('c-entre',     'Entre fases', 'deriva-entre',  '2026', 'upcoming', 'espn', 'cup'),    -- copa, tudo encerrado, sem final → ongoing
           ('c-final',     'Com final', 'deriva-final',    '2026', 'upcoming', 'espn', 'cup'),    -- copa com final encerrada → finished
           ('c-pausa',     'Pausa',     'deriva-pausa',    '2026', 'ongoing', 'espn', 'league');  -- liga da ESPN em data FIFA → ongoing
-        INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status) VALUES
-          ('m-a1', 'c-concluida', 'x1', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-a2', 'c-concluida', 'x2', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished'),
-          ('m-b1', 'c-rolando',   'x3', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-b2', 'c-rolando',   'x4', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'scheduled'),
-          ('m-c1', 'c-futura',    'x5', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'scheduled'),
-          ('m-e1', 'c-live',      'x6', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-e2', 'c-live',      'x7', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'live'),
-          ('m-f1', 'c-bateria',   'x8', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'live'),
-          ('m-f2', 'c-bateria',   'x9', 'espn', 't-h', 't-a', '2027-01-02T12:00:00Z', 'scheduled'),
-          ('m-g1', 'c-entre',     'y1', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-g2', 'c-entre',     'y2', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished'),
-          ('m-h1', 'c-final',     'y3', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished'),
-          ('m-h2', 'c-final',     'y4', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished'),
-          ('m-i1', 'c-pausa',     'y5', 'espn', 't-h', 't-a', '${tenDaysAgo}', 'finished');
+        INSERT INTO matches (id, competition_id, external_id, provider, home_team_id, away_team_id, start_time, status, round, home_score, away_score) VALUES
+          ('m-a1', 'c-concluida', 'x1', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-a2', 'c-concluida', 'x2', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-b1', 'c-rolando',   'x3', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-b2', 'c-rolando',   'x4', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'scheduled', '1', NULL, NULL),
+          ('m-c1', 'c-futura',    'x5', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'scheduled', '1', NULL, NULL),
+          ('m-e1', 'c-live',      'x6', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-e2', 'c-live',      'x7', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'live', '1', NULL, NULL),
+          ('m-f1', 'c-bateria',   'x8', 'espn', 't-h', 't-a', '2027-01-01T12:00:00Z', 'live', '1', NULL, NULL),
+          ('m-f2', 'c-bateria',   'x9', 'espn', 't-h', 't-a', '2027-01-02T12:00:00Z', 'scheduled', '1', NULL, NULL),
+          ('m-g1', 'c-entre',     'y1', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-g2', 'c-entre',     'y2', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-h1', 'c-final',     'y3', 'espn', 't-h', 't-a', '2026-10-01T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-h2', 'c-final',     'y4', 'espn', 't-h', 't-a', '2026-10-02T12:00:00Z', 'finished', '1', 1, 0),
+          ('m-i1', 'c-pausa',     'y5', 'espn', 't-h', 't-a', '${tenDaysAgo}', 'finished', '1', 1, 0);
         UPDATE matches SET phase = 'SEMI_FINALS' WHERE id IN ('m-g1', 'm-g2', 'm-h1');
         UPDATE matches SET phase = 'FINAL' WHERE id = 'm-h2';
       `)

@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
 import { signJwt } from '../auth/jwt'
+import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import {
@@ -378,8 +379,8 @@ async function createFixture() {
       .prepare(
         `INSERT INTO matches (
            id, competition_id, external_id, provider, home_team_id, away_team_id,
-           start_time, status, round, phase, postponed, scored_at
-         ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, ?, ?)`,
+           start_time, status, round, phase, postponed, scored_at, home_score, away_score
+         ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -395,6 +396,7 @@ async function createFixture() {
             : seed.round,
         seed.postponed ?? 0,
         status === 'finished' && !seed.unscored ? '2026-06-02T00:00:00Z' : null,
+        ...finalScore(status),
       )
     return id
   }
@@ -596,7 +598,6 @@ describe('GET /groups/:id/round-standings', () => {
   it('devolve null quando só há rodada não numerada', async () => {
     const { standings, addMatch } = await createFixture()
     addMatch({ round: 'REGULAR_SEASON' })
-    addMatch({ round: null })
 
     expect(await standings()).toEqual({ round: null, standings: [] })
   })
@@ -645,12 +646,11 @@ describe('GET /groups/:id/round-standings', () => {
     expect(await standings()).toEqual({ round: null, standings: [] })
   })
 
-  it('não bloqueia com REGULAR_SEASON e round NULL de fase não eliminatória depois da rodada 34', async () => {
+  it('não bloqueia com REGULAR_SEASON de fase não eliminatória depois da rodada 34', async () => {
     const { standings, addMatch } = await createFixture()
     addMatch({ round: '21', start: BEFORE })
     addMatch({ round: '34', start: ROUND_START })
     addMatch({ round: 'REGULAR_SEASON', phase: 'REGULAR_SEASON', start: AFTER })
-    addMatch({ round: null, phase: 'REGULAR_SEASON', start: LATER })
 
     expect((await standings()).round).toBe('34')
   })

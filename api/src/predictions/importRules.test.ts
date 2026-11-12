@@ -34,10 +34,10 @@ function setup() {
     INSERT INTO competitions (id,name,slug,status,penalty_phases) VALUES
       ('c','C','test-c','ongoing','["FINAL"]');
     INSERT INTO teams (id,name,slug) VALUES ('h','H','h'), ('v','V','v');
-    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round) VALUES
-      ('m1','c','e1','test','h','v','2099-01-01T00:00:00Z','scheduled','1'),
-      ('m2','c','e2','test','v','h','2099-01-02T00:00:00Z','scheduled','1'),
-      ('past','c','e3','test','h','v','2020-01-01T00:00:00Z','finished','1');
+    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score) VALUES
+      ('m1','c','e1','test','h','v','2099-01-01T00:00:00Z','scheduled','1',NULL,NULL),
+      ('m2','c','e2','test','v','h','2099-01-02T00:00:00Z','scheduled','1',NULL,NULL),
+      ('past','c','e3','test','h','v','2020-01-01T00:00:00Z','finished','1',1,0);
     INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,phase,leg) VALUES
       ('ida','c','e6','test','h','v','2099-03-01T00:00:00Z','scheduled','SEMI_FINALS','SEMI_FINALS',1),
       ('volta','c','e7','test','v','h','2099-03-08T00:00:00Z','scheduled','SEMI_FINALS','SEMI_FINALS',2);
@@ -195,11 +195,29 @@ describe('POST /predictions/import, recusa na escrita', () => {
     const real = Date.now()
     sqlite
       .prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`)
-      .run(new Date(real - 5_000).toISOString())
+      .run(new Date(real - 5_000).toISOString().replace(/\.\d{3}Z$/, 'Z'))
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(real - 10_000)
     predict('exato', 'm1', 3, 1)
     predict('exato', 'm2', 1, 1)
+
+    const { body } = await importFrom('exato', 'exato2')
+
+    expect(stored('exato2', 'm1')).toBeUndefined()
+    expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
+    expect(body).toMatchObject({ imported: 1, locked_skipped: 1 })
+  })
+
+  it('recusa o jogo que começou no mesmo segundo da escrita, antes do fim desse segundo', async () => {
+    const { importFrom, predict, stored, sqlite, hooks } = setup()
+    predict('exato', 'm1', 3, 1)
+    predict('exato', 'm2', 1, 1)
+    // O plano vê m1 aberto. Logo antes da escrita, m1 passa a começar no segundo
+    // corrente do relógio do banco, que segue alguns milissegundos à frente dele.
+    hooks.beforeBatch = () =>
+      sqlite.exec(
+        `UPDATE matches SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = 'm1'`,
+      )
 
     const { body } = await importFrom('exato', 'exato2')
 

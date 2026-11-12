@@ -24,9 +24,9 @@ function setup() {
     INSERT INTO group_members (id,group_id,user_id,role) VALUES
       ('o','g','owner','owner'), ('m','g','member','member');
     INSERT INTO teams (id,name,slug) VALUES ('h','H','h'), ('v','V','v');
-    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round)
-      VALUES ('locked','c','locked','test','h','v','2000-01-01T00:00:00Z','finished','1'),
-             ('open','c','open','test','h','v','2099-01-01T00:00:00Z','scheduled','1');
+    INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
+      VALUES ('locked','c','locked','test','h','v','2000-01-01T00:00:00Z','finished','1',1,0),
+             ('open','c','open','test','h','v','2099-01-01T00:00:00Z','scheduled','1',NULL,NULL);
     INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
       VALUES ('p1','member','g','locked',2,1), ('p2','member','g','open',3,0),
              ('p3','owner','g','locked',1,0);

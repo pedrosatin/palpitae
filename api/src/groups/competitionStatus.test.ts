@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
 import { signJwt } from '../auth/jwt'
+import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import { competitionStatusSql } from './competitionStatus'
@@ -56,8 +57,9 @@ function seedCompetition(sqlite: DatabaseSync, seed: CompetitionSeed) {
   const insertMatch = sqlite.prepare(
     `INSERT INTO matches (
        id, competition_id, external_id, provider,
-       home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at, leg
-     ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, 0, NULL, ?)`,
+       home_team_id, away_team_id, start_time, status, round, phase, postponed, locked_at, leg,
+       home_score, away_score
+     ) VALUES (?, ?, ?, 'football-data', 'fla', 'pal', ?, ?, ?, ?, 0, NULL, ?, ?, ?)`,
   )
   seed.matches.forEach((match, index) => {
     const id = `${seed.id}-m${index}`
@@ -73,6 +75,7 @@ function seedCompetition(sqlite: DatabaseSync, seed: CompetitionSeed) {
       String(index + 1),
       match.phase,
       match.leg ?? null,
+      ...finalScore(match.status),
     )
   })
 

@@ -387,7 +387,7 @@ describe('scoreWindowFromEspn', () => {
       ]
       const events: Record<string, unknown[]> = {}
       for (const fixture of fixtures) {
-        const start = new Date(NOW - fixture.minutes * 60_000).toISOString()
+        const start = new Date(NOW - fixture.minutes * 60_000).toISOString().replace('.000Z', 'Z')
         for (const side of ['home', 'away']) {
           const name = `${fixture.id} ${side}`
           sqlite.prepare('INSERT INTO teams(id,name,slug) VALUES(?,?,?)').run(name, name, name)

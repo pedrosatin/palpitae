@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { describe, expect, it } from 'vitest'
 import { signJwt } from '../auth/jwt'
+import { lockedSql } from '../matches/locking'
 import { withSessionAccounts } from '../testing/session'
 import { OPEN_PICKERS_SQL } from './openPickers'
 import { predictionsRouter } from './router'
@@ -408,11 +409,11 @@ describe('predictions router – GET /group', () => {
     expect(body.predictions).toHaveLength(1)
     expect(body.predictions[0]?.match_id).toBe('m2')
 
-    // Verify the SQL uses the locked-match reveal condition (m.start_time <= ?)
+    // Verify the SQL uses the locked-match reveal condition (lockedSql)
     // in addition to the requester's own predictions subquery.
     const predSql = capturedSql.find((s) => s.includes('FROM predictions pr'))
     expect(predSql).toBeDefined()
-    expect(predSql).toContain('m.start_time <= ?')
+    expect(predSql).toContain(lockedSql())
     expect(predSql).toContain('OR pr.user_id = ?')
     expect(predSql).not.toContain('SELECT match_id FROM predictions')
   })

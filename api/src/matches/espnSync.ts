@@ -17,6 +17,7 @@ import {
   type MatchUpsertRow,
   NO_RESULT,
   reportDiscards,
+  resolveStartTime,
   slugify,
   type SyncDiscard,
   type SyncResult,
@@ -277,13 +278,6 @@ function extractCompetitors(
   }
   if (home.team.id === away.team.id) return discarded('invalid_event', 'same_team')
   return { ok: true, home, away }
-}
-
-function resolveStartTime(rawDate: unknown): string | null {
-  if (typeof rawDate !== 'string') return null
-  const parsed = Date.parse(rawDate)
-  if (!Number.isFinite(parsed)) return null
-  return isoSeconds(new Date(parsed))
 }
 
 /** Evento importável, ou o motivo pelo qual o sync o descarta. */

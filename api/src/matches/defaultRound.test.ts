@@ -4,9 +4,11 @@ import type { ExecutionContext } from '@cloudflare/workers-types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
 import { signJwt } from '../auth/jwt'
+import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import { defaultRoundSql, leftoverCutoff, roundRuleBinds } from './defaultRound'
+import { isoSeconds } from './sync'
 
 // "Agora" da auditoria de produção: 07/11/2026.
 const NOW = '2026-11-07T15:00:00.000Z'
@@ -53,8 +55,8 @@ function seed(rows: Row[]) {
   const insert = sqlite.prepare(`
     INSERT INTO matches (
       id, competition_id, external_id, provider, home_team_id, away_team_id,
-      start_time, status, round, phase, postponed, locked_at
-    ) VALUES (?, 'bra', ?, 'football-data', 'cha', 'vas', ?, ?, ?, ?, ?, ?)
+      start_time, status, round, phase, postponed, locked_at, home_score, away_score
+    ) VALUES (?, 'bra', ?, 'football-data', 'cha', 'vas', ?, ?, ?, ?, ?, ?, ?, ?)
   `)
   rows.forEach((r, i) => {
     const status = r.status ?? (r.start <= NOW ? 'finished' : 'scheduled')
@@ -68,6 +70,7 @@ function seed(rows: Row[]) {
       r.phase ?? null,
       r.postponed ?? 0,
       lockedAt,
+      ...finalScore(status),
     )
   })
   return { sqlite, db }
@@ -91,7 +94,7 @@ function brasileiraoNovembro(): Row[] {
   for (let r = 1; r <= 34; r++) {
     if (r === 21) continue
     const day = new Date(Date.parse('2026-04-01T22:00:00Z') + (r - 1) * 6 * 86_400_000)
-    const start = r === 34 ? '2026-11-02T22:00:00Z' : day.toISOString()
+    const start = r === 34 ? '2026-11-02T22:00:00Z' : isoSeconds(day)
     rows.push(...round(String(r), Array(10).fill(start)))
   }
   rows.push(
