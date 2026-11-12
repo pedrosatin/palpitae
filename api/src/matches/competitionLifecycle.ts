@@ -11,10 +11,14 @@ import { daysBeforeSql, finishedByMatchesSql } from '../groups/competitionStatus
  */
 export const FINISH_CONFIRMATION_DAYS = 7
 
-/** Instante da execução em `?1` e id da competição em `?2`. */
+/**
+ * Instante da execução em `?1`, id da competição em `?2` e, em `?3`, quantos jogos
+ * do calendário o sync descartou por time ainda indefinido.
+ */
 const RECONCILE_SQL = `UPDATE competitions
    SET status = CASE
-     WHEN ${finishedByMatchesSql('competitions', 'competitions.id', '?1')}
+     WHEN ?3 = 0
+      AND ${finishedByMatchesSql('competitions', 'competitions.id', '?1')}
       AND (
         SELECT MAX(m.start_time) FROM matches m
         WHERE m.competition_id = competitions.id
@@ -37,6 +41,13 @@ const RECONCILE_SQL = `UPDATE competitions
  * novo. Só avança: 'finished' não volta, e correção de placar depois disso não
  * reabre a competição. A visibilidade não muda.
  *
+ * `tbdDiscarded` é o `discardedTbd` do sync: os providers não gravam jogo sem
+ * os dois times definidos, e a final de uma liga com mata-mata (como a
+ * Championship) pode ficar dias no calendário sem os times. Com esse jogo
+ * descartado, a competição não encerra. Os outros descartes não contam: uma
+ * fase desconhecida da ESPN se repete em toda execução e prenderia a
+ * competição na descoberta.
+ *
  * A descoberta chama depois de sincronizar a competição, com o calendário
  * atualizado. Devolve o status gravado, ou `null` se a competição já estava
  * encerrada ou não existe.
@@ -45,10 +56,11 @@ export async function reconcileCompetitionStatus(
   db: D1Database,
   competitionId: string,
   now: number,
+  tbdDiscarded = 0,
 ): Promise<string | null> {
   const row = await db
     .prepare(RECONCILE_SQL)
-    .bind(new Date(now).toISOString(), competitionId)
+    .bind(new Date(now).toISOString(), competitionId, tbdDiscarded)
     .first<{ status: string }>()
   return row?.status ?? null
 }

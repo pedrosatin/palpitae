@@ -23,6 +23,36 @@ type ActiveCompetition = {
 }
 
 /**
+ * Avança o status da competição depois do sync. Falha do D1 aqui vira
+ * `competition_status_error`, separada dos erros de provedor; o status fica
+ * como estava e a próxima descoberta tenta de novo. Devolve `false` na falha.
+ */
+async function advanceCompetitionStatus(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  competitionId: string,
+  now: number,
+  tbdDiscarded: number,
+): Promise<boolean> {
+  try {
+    const status = await reconcileCompetitionStatus(db, competitionId, now, tbdDiscarded)
+    if (status === 'finished') {
+      console.info(`[discovery] Competição ${competitionId} encerrada; sai da descoberta diária.`)
+    }
+    return true
+  } catch (err) {
+    logError(
+      ae,
+      'competition_status_error',
+      `[discovery] Status da competição não avançou comp=${competitionId}:`,
+      err,
+      { blobs: [competitionId] },
+    )
+    return false
+  }
+}
+
+/**
  * Descobre jogos novos das competições ativas. Roda 1x/dia de madrugada via Cron
  * Trigger (ver wrangler.toml), num horário sem jogos pra não competir com o poller.
  *
@@ -84,6 +114,7 @@ export async function discoverFixtures(
   }
 
   const syncCompetition = async (comp: ActiveCompetition): Promise<void> => {
+    let tbdDiscarded = 0
     try {
       const result = await syncFixtures({
         competitionCode: comp.external_id,
@@ -104,17 +135,16 @@ export async function discoverFixtures(
       // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
       // correção de placar que o upsert do sync zerou).
       await scoreUnprocessedMatches(comp.id, db)
-      // Só depois de um sync bem-sucedido: o status avança com o calendário atualizado.
-      const status = await reconcileCompetitionStatus(db, comp.id, now)
-      if (status === 'finished') {
-        console.info(`[discovery] Competição ${comp.id} encerrada; sai da descoberta diária.`)
-      }
+      tbdDiscarded = result?.discardedTbd ?? 0
     } catch (err) {
       hadError = true
       logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
         blobs: ['fixture_discovery', comp.id],
       })
+      return
     }
+    // Só depois de um sync bem-sucedido: o status avança com o calendário atualizado.
+    if (!(await advanceCompetitionStatus(db, ae, comp.id, now, tbdDiscarded))) hadError = true
   }
 
   // football-data compartilha 10 req/min; ESPN tem teto próprio + pacing HTTP.

@@ -4,6 +4,10 @@
  * título em `PLAYOFFS_FINAL`. O Carioca 2026 decide na final da Taça Guanabara.
  * As finais paralelas da Taça Rio, do Troféu Inconfidência e do Farroupilha
  * ficam de fora. Os formatos estão nos spikes em `docs/architecture/spike-espn-*.md`.
+ *
+ * Revise esta lista antes de cadastrar um estadual ou outra copa: a descoberta
+ * grava 'finished' na coluna com base nela, e a competição encerrada por engano
+ * não volta sozinha (sai da descoberta e não recebe mais jogos novos).
  */
 export const TITLE_FINAL_PHASES = ['FINAL', 'PLAYOFFS_FINAL', 'TACA_GUANABARA_FINAL'] as const
 
@@ -39,8 +43,11 @@ export function daysBeforeSql(nowExpr: string, days: number): string {
  *   ESPN informa `leg`; com só a ida gravada, a volta ainda não entrou no
  *   horizonte da descoberta. Tipo nulo conta como copa, o mesmo default da
  *   coluna.
- * - Liga da football-data: a descoberta traz o calendário inteiro, então basta
- *   não ter jogo pendente.
+ * - Liga da football-data: a descoberta pede o calendário inteiro, então basta
+ *   não ter jogo gravado pendente. Jogo sem os dois times definidos (a final de
+ *   uma liga com mata-mata, como a Championship) não é gravado; a gravação do
+ *   status confere esses descartes antes de encerrar (`reconcileCompetitionStatus`),
+ *   mas a tela não os vê.
  * - Liga de outro provedor: o último jogo gravado começou há mais de
  *   `PARTIAL_CALENDAR_LEAGUE_IDLE_DAYS` dias.
  *
@@ -82,10 +89,8 @@ export function finishedByMatchesSql(
  * Status da competição do grupo, como a lista e o detalhe devolvem em
  * `competition_status`.
  *
- * `competitions.status` só avança na descoberta diária, depois de alguns dias
- * de confirmação (`reconcileCompetitionStatus`). Por isso o fim também vem dos
- * jogos gravados, pela regra de `finishedByMatchesSql`. Quando a coluna diz
- * 'finished', ela vale. Nos outros casos vale a coluna.
+ * Coluna em 'finished' vale; senão, `finishedByMatchesSql` decide o fim; fora
+ * disso vale a coluna.
  *
  * O fragmento usa os aliases do grupo e da competição, `g` e `c` por padrão,
  * com a competição vinda de `LEFT JOIN competitions c`. Sem grupo na consulta

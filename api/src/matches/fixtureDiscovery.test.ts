@@ -183,7 +183,7 @@ describe('discoverFixtures', () => {
     expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
     // Nem tem o status avançado com um calendário que não foi atualizado.
     expect(reconcileMock).toHaveBeenCalledTimes(1)
-    expect(reconcileMock).toHaveBeenCalledWith(expect.anything(), 'c2', expect.any(Number))
+    expect(reconcileMock).toHaveBeenCalledWith(expect.anything(), 'c2', expect.any(Number), 0)
 
     const errors = pointsOfType(ae, 'football_api_error')
     expect(errors).toHaveLength(1)
@@ -199,6 +199,39 @@ describe('discoverFixtures', () => {
     expect(competitions).toBe(2)
     expect(fixturesUpdated).toBe(3)
     expect(apiCalls).toBe(2)
+  })
+
+  it('passa à reconciliação os jogos que o sync descartou por time indefinido', async () => {
+    syncFixturesMock.mockResolvedValue({ matches: 3, discarded: 2, discardedTbd: 1 } as never)
+    const db = buildFakeDb([
+      { id: 'c1', external_id: 'ELC', season: '2026', provider: 'football-data' },
+    ])
+
+    await discoverFixtures(db as unknown as D1Database, 'key', undefined, 1_000)
+
+    expect(reconcileMock).toHaveBeenCalledWith(expect.anything(), 'c1', 1_000, 1)
+  })
+
+  it('falha ao gravar o status vira competition_status_error, não erro de provedor', async () => {
+    reconcileMock.mockRejectedValueOnce(new Error('D1_ERROR: busy'))
+    const db = buildFakeDb([
+      { id: 'c1', external_id: 'WC', season: '2026', provider: 'football-data' },
+      { id: 'c2', external_id: 'CL', season: '2026', provider: 'football-data' },
+    ])
+    const ae = buildFakeAe()
+
+    await discoverFixtures(
+      db as unknown as D1Database,
+      'key',
+      ae as unknown as AnalyticsEngineDataset,
+    )
+
+    expect(pointsOfType(ae, 'football_api_error')).toEqual([])
+    const errors = pointsOfType(ae, 'competition_status_error')
+    expect(errors).toHaveLength(1)
+    expect(errors[0].blobs?.slice(1)).toEqual(['c1', 'D1_ERROR: busy'])
+    expect(reconcileMock).toHaveBeenCalledTimes(2)
+    expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('error')
   })
 
   it('passa ao sync um observer com contexto discovery e a competição de cada chamada', async () => {

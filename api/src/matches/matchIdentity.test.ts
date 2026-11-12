@@ -20,7 +20,7 @@ const ATALANTA = { id: 102, name: 'Atalanta BC', shortName: 'Atalanta', tla: 'AT
 type Team = typeof ARSENAL
 type Result = { home: number; away: number; penalties?: { home: number; away: number } }
 
-// Véspera do discovery: com um jogo só, a liga parece encerrada, e a correção do
+// Véspera da descoberta: com um jogo só, a liga parece encerrada, e a correção do
 // provedor precisa chegar dentro da confirmação de `FINISH_CONFIRMATION_DAYS`.
 const KICKOFF = '2027-02-28T16:30:00Z'
 const IDA = '2027-02-17T20:00:00Z'

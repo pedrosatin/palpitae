@@ -207,6 +207,7 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
         matches: 5,
         teams: 7,
         discarded: 1,
+        discardedTbd: 1,
         missing: 0,
       },
     })
@@ -403,6 +404,7 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
       matches: 5,
       teams: 7,
       discarded: 1,
+      discardedTbd: 1,
       missing: 0,
     })
     expect(second).toEqual(first)

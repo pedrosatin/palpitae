@@ -204,6 +204,39 @@ describe('ciclo de vida da competição na descoberta', () => {
     expect(column('liga').status).toBe('finished')
   })
 
+  it('liga da football-data com a final ainda sem times no calendário continua em andamento', async () => {
+    const { db, addCompetition, upsertMatch, column } = openDb()
+    addCompetition({ id: 'elc', provider: 'football-data', type: 'league', status: 'ongoing' })
+    // Semifinais do playoff encerradas; a final está no calendário sem os times
+    // e o sync a descarta como `missing_competitor`/`tbd`.
+    upsertMatch('elc', { id: 'semi-1', start: NOW - 12 * DAY, status: 'finished', phase: 'PLAYOFFS' })
+    upsertMatch('elc', { id: 'semi-2', start: NOW - 11 * DAY, status: 'finished', phase: 'PLAYOFFS' })
+    syncMock.mockResolvedValue({ matches: 2, discarded: 1, discardedTbd: 1 } as never)
+
+    expect(await discover(db, NOW)).toEqual(['elc'])
+    expect(column('elc').status).toBe('ongoing')
+    expect(await discover(db, NOW + DAY)).toEqual(['elc'])
+
+    // Os times da final saem e ela entra no banco: o descarte some, a final
+    // é disputada e a liga encerra depois da confirmação.
+    syncMock.mockResolvedValue({ matches: 3, discarded: 0, discardedTbd: 0 } as never)
+    const finalStart = NOW + 2 * DAY
+    upsertMatch('elc', { id: 'final', start: finalStart, status: 'finished', phase: 'FINAL' })
+    await discover(db, finalStart + FINISH_CONFIRMATION_DAYS * DAY + 1)
+    expect(column('elc').status).toBe('finished')
+  })
+
+  it('outros descartes do sync não prendem a competição na descoberta', async () => {
+    const { db, addCompetition, upsertMatch, column } = openDb()
+    addCompetition({ id: 'copa', provider: 'espn', type: 'cup', status: 'ongoing' })
+    upsertMatch('copa', { id: 'final', start: NOW - 20 * DAY, status: 'finished', phase: 'FINAL' })
+    // Fase fora do mapa da ESPN: se repete em toda execução.
+    syncMock.mockResolvedValue({ matches: 1, discarded: 4, discardedTbd: 0 } as never)
+
+    await discover(db, NOW)
+    expect(column('copa').status).toBe('finished')
+  })
+
   it('jogo pendente impede o fim, mesmo com a final gravada', async () => {
     const { db, addCompetition, upsertMatch, column } = openDb()
     addCompetition({ id: 'copa', provider: 'football-data', type: 'cup', status: 'ongoing' })

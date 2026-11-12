@@ -380,15 +380,15 @@ The first instinct — detect the last match of the current round, then fetch th
 
 ### Atualização — 2026-11-12
 
-Depois de sincronizar uma competição sem erro, a descoberta grava `competitions.status` pelos jogos (`reconcileCompetitionStatus`, em `api/src/matches/competitionLifecycle.ts`). 'upcoming' vira 'ongoing' quando um jogo começa. A competição vira 'finished' quando nenhum jogo gravado está pendente, há sinal de fim e o último jogo começou há mais de 7 dias. O status só avança: correção posterior não reabre a competição, e a visibilidade não muda.
+Depois de sincronizar uma competição sem erro, a descoberta grava `competitions.status` pelos jogos (`reconcileCompetitionStatus`, em `api/src/matches/competitionLifecycle.ts`). 'upcoming' vira 'ongoing' quando um jogo começa. A competição vira 'finished' quando nenhum jogo gravado está pendente, há sinal de fim e o último jogo começou há mais de 7 dias. O status só avança: correção posterior não reabre a competição, e a visibilidade não muda. Falha do D1 ao gravar o status vira `competition_status_error`, separada de `football_api_error`.
 
 O sinal de fim depende do provedor, porque os jogos gravados podem não cobrir o calendário (`finishedByMatchesSql`, em `api/src/groups/competitionStatus.ts`):
 
-- Copa: jogo de fase de título que não seja ida. Final em ida e volta com só a ida gravada não encerra.
-- Liga da football-data: a descoberta traz o calendário inteiro, então basta não ter jogo pendente.
+- Copa: jogo de fase de título que não seja ida. Final em ida e volta com só a ida gravada não encerra. A gravação também exige zero descartes `tbd` no sync, como na liga. A lista de fases de título (`TITLE_FINAL_PHASES`) precisa de revisão antes de entrar um estadual: competição encerrada por engano não volta sozinha.
+- Liga da football-data: a descoberta pede o calendário inteiro, mas o sync descarta jogo sem os dois times definidos (`missing_competitor`/`tbd`). A liga encerra quando não tem jogo gravado pendente e o sync daquela execução não descartou nenhum jogo `tbd`. Exemplo: a final da Championship fica dias no calendário sem os times depois das semifinais. Os outros descartes não contam, porque uma fase desconhecida da ESPN se repete em toda execução e prenderia a competição na descoberta.
 - Liga da ESPN: a descoberta só enxerga até hoje + 7 dias, então a liga só acaba com 60 dias sem jogo novo. Data FIFA e pausa de Copa do Mundo não encerram a liga.
 
-A tela usa a mesma regra sem os 7 dias de confirmação. Nesses dias a competição já aparece encerrada e a descoberta continua buscando o calendário: é a janela de correções de placar e da volta de uma final que ainda não estava no horizonte da ESPN. Depois disso a competição sai da descoberta. O poller não olha o status da competição e continua cobrindo os jogos gravados; `POST /matches/sync` segue como saída manual.
+A tela usa a mesma regra sem os 7 dias de confirmação e sem a contagem de descartes. Nesses dias a competição já aparece encerrada e a descoberta continua buscando o calendário: é a janela de correções de placar e da volta de uma final que ainda não estava no horizonte da ESPN. Depois disso a competição sai da descoberta. O poller não olha o status da competição e continua cobrindo os jogos gravados; `POST /matches/sync` segue como saída manual.
 
 ---
 
