@@ -310,7 +310,7 @@ async function upsertCompetition(
     )
   }
 
-  // Sem alvo no ON CONFLICT: outra sync que criou a mesma competição antes desta
+  // Sem alvo no ON CONFLICT: outro sync que tenha criado a mesma competição antes deste
   // não é erro. Um slug já usado por outra competição também não grava nada, e
   // aí a busca abaixo não acha a linha.
   await db
