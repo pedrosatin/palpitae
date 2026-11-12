@@ -290,7 +290,7 @@ async function scoreCompetitionWindow(
   let updated = 0
   let skipped = 0
   const updateStmt = db.prepare(
-    `UPDATE matches SET home_score = ?, away_score = ?, status = 'finished',
+    `UPDATE matches SET home_score = ?, away_score = ?, status = 'finished', postponed = 0,
        scored_at = CASE WHEN home_score IS NOT ? OR away_score IS NOT ?
                         THEN NULL ELSE scored_at END
      WHERE id = ? AND status != 'finished'`,
@@ -317,6 +317,8 @@ async function scoreCompetitionWindow(
     }
     // Uma linha regredida pode já ter scored_at: placar corrigido precisa passar
     // de novo pelo scoring. O guard protege resultados finalizados pelo primário.
+    // O jogo disputado deixa de ser adiado: a football-data pode seguir com
+    // POSTPONED ou SUSPENDED atrasado, e o upsert não regride a linha encerrada.
     statements.push(updateStmt.bind(home, away, home, away, m.id))
     updated++
   }

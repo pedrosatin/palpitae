@@ -182,8 +182,8 @@ export function computeStreaks(
  * Agregados dos jogos da competição do grupo, por rodada e fase.
  *
  * `pending` conta jogo aberto e não adiado e jogo encerrado sem `scored_at`. O
- * segundo caso vale mesmo com `postponed = 1`, porque a football-data grava
- * `SUSPENDED` com essa flag e o fallback da ESPN encerra o jogo sem mexer nela.
+ * segundo caso vale mesmo com `postponed = 1`: até o fallback da ESPN passar a
+ * zerar a flag ao encerrar o jogo, ele gravava `finished` com `postponed = 1`.
  */
 async function fetchRoundPhases(db: D1Database, groupId: string): Promise<RoundPhaseRow[]> {
   const { results } = await db

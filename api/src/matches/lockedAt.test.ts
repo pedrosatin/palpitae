@@ -16,7 +16,9 @@ const PLACEHOLDER = '2026-08-01T00:00:00Z'
 const NEW_DATE = '2026-08-20T19:00:00Z'
 
 function providerMatch(status: string, utcDate = KICKOFF) {
-  const partial = status === 'SUSPENDED' || status === 'IN_PLAY'
+  // Placar parcial no jogo em andamento ou suspenso e placar final no FINISHED,
+  // como a football-data manda. Só o FINISHED grava o placar.
+  const scored = status === 'SUSPENDED' || status === 'IN_PLAY' || status === 'FINISHED'
   return {
     id: 777001,
     utcDate,
@@ -29,7 +31,7 @@ function providerMatch(status: string, utcDate = KICKOFF) {
     score: {
       winner: null,
       duration: 'REGULAR',
-      fullTime: { home: partial ? 2 : null, away: partial ? 0 : null },
+      fullTime: { home: scored ? 2 : null, away: scored ? 0 : null },
       halfTime: { home: null, away: null },
     },
   }

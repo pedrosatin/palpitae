@@ -201,20 +201,16 @@ export function resolveCanonicalScore(score: ApiMatch['score']): {
   return { canonicalHome, canonicalAway }
 }
 
-/**
- * Maps football-data.org status to internal status.
- * Ref: https://www.football-data.org/documentation/quickstart
- */
-function mapStatus(status: string): 'scheduled' | 'finished' {
-  if (status === 'FINISHED' || status === 'AWARDED') return 'finished'
-  return 'scheduled'
-}
+/** Status da football-data.org que encerram o jogo. */
+const FINAL_STATUSES = new Set(['FINISHED', 'AWARDED'])
 
 /**
  * Status em que o provider diz que o jogo não vai acontecer no horário marcado.
  * Todos continuam mapeando para `status = 'scheduled'` (o CHECK do schema não
  * comporta outro valor, ver migration 0013) — a flag `postponed` é que carrega
- * a informação para o locking e para a UI.
+ * a informação para o locking e para a UI. CANCELLED fica junto do adiado porque
+ * não é terminal: a football-data já mandou como CANCELLED, com data nova, um
+ * jogo suspenso que seria retomado (ver docs/architecture/schema.md).
  */
 const POSTPONED_STATUSES = new Set(['POSTPONED', 'SUSPENDED', 'CANCELLED'])
 
@@ -225,9 +221,20 @@ function isPostponed(status: string): boolean {
 /**
  * Status em que o jogo já começou (ou terminou). SUSPENDED entra aqui: o jogo foi
  * interrompido depois do início e o placar parcial já é conhecido, então o palpite
- * tem que continuar travado mesmo com `postponed = 1`.
+ * tem que continuar travado mesmo com `postponed = 1`. EXTRA_TIME e
+ * PENALTY_SHOOTOUT são a prorrogação e os pênaltis em andamento, como o state
+ * 'in' da ESPN.
  */
-const STARTED_STATUSES = new Set(['IN_PLAY', 'PAUSED', 'LIVE', 'SUSPENDED', 'FINISHED', 'AWARDED'])
+const STARTED_STATUSES = new Set([
+  'IN_PLAY',
+  'PAUSED',
+  'EXTRA_TIME',
+  'PENALTY_SHOOTOUT',
+  'LIVE',
+  'SUSPENDED',
+  'FINISHED',
+  'AWARDED',
+])
 
 /**
  * `locked_at` proposto para a linha: o instante do sync quando o provider indica
@@ -645,17 +652,12 @@ function mapMatchUpsertRow(
   const awayTeamId = teamIds.get(m.awayTeam?.id)
   if (!homeTeamId || !awayTeamId) return null
 
-  const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
-  const { canonicalHome, canonicalAway } = resolveCanonicalScore(m.score)
-
   return {
     externalId: String(m.id),
     homeTeamId,
     awayTeamId,
     startTime: m.utcDate,
-    status: mapStatus(m.status),
-    homeScore: canonicalHome,
-    awayScore: canonicalAway,
+    ...resolveFootballDataResult(m),
     phase: m.stage ?? null,
     round: mapRound(m.matchday, m.stage),
     groupName: mapGroupName(m.group),
@@ -663,12 +665,54 @@ function mapMatchUpsertRow(
     // (jogo único de mata-mata também vem com matchday 1). O par do confronto é
     // achado pelos times invertidos na mesma fase, em ties.ts.
     leg: null,
+    postponed: isPostponed(m.status) ? 1 : 0,
+    lockedAt: resolveLockedAt(m.status, now),
+  }
+}
+
+type MatchResultFields = Pick<
+  MatchUpsertRow,
+  | 'status'
+  | 'homeScore'
+  | 'awayScore'
+  | 'duration'
+  | 'penaltyWinner'
+  | 'homePenaltyGoals'
+  | 'awayPenaltyGoals'
+>
+
+/** Jogo sem resultado final: sem placar, duração nem pênaltis. */
+export const NO_RESULT: MatchResultFields = {
+  status: 'scheduled',
+  homeScore: null,
+  awayScore: null,
+  duration: null,
+  penaltyWinner: null,
+  homePenaltyGoals: null,
+  awayPenaltyGoals: null,
+}
+
+/**
+ * Resultado só com status final e placar completo, como na ESPN. A football-data
+ * manda placar em jogo em andamento (parcial) e em adiado ou cancelado (0-0), e
+ * um FINISHED sem placar gravaria `finished` com placar nulo, que a pontuação
+ * não alcança. Nesses casos a linha fica sem resultado; o travamento vem de
+ * `locked_at`.
+ */
+function resolveFootballDataResult(m: ApiMatch): MatchResultFields {
+  const { canonicalHome, canonicalAway } = resolveCanonicalScore(m.score)
+  if (!FINAL_STATUSES.has(m.status) || canonicalHome === null || canonicalAway === null) {
+    return NO_RESULT
+  }
+  const isShootout = m.score.duration === 'PENALTY_SHOOTOUT'
+  return {
+    status: 'finished',
+    homeScore: canonicalHome,
+    awayScore: canonicalAway,
     duration: m.score.duration ?? null,
     penaltyWinner: resolvePenaltyWinner(m.score),
     homePenaltyGoals: isShootout ? (m.score.penalties?.home ?? null) : null,
     awayPenaltyGoals: isShootout ? (m.score.penalties?.away ?? null) : null,
-    postponed: isPostponed(m.status) ? 1 : 0,
-    lockedAt: resolveLockedAt(m.status, now),
   }
 }
 

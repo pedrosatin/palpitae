@@ -141,7 +141,7 @@ describe('football-data result regression', () => {
     }
   })
 
-  it('continues updating kickoff and partial scores before the final result', async () => {
+  it('continues updating kickoff before the final result, without the partial score', async () => {
     const { sqlite, db } = createSqliteD1()
     try {
       const options = { competitionCode: 'BSA', season: 2026, db, apiKey: 'test' }
@@ -151,10 +151,11 @@ describe('football-data result regression', () => {
       live.utcDate = '2026-10-24T23:00:00Z'
       respond(live)
       await syncFixtures(options)
+      // O placar parcial não é resultado: a linha só ganha placar no final.
       expect(sqlite.prepare('SELECT start_time,home_score,away_score FROM matches').get()).toEqual({
         start_time: live.utcDate,
-        home_score: 1,
-        away_score: 0,
+        home_score: null,
+        away_score: null,
       })
     } finally {
       sqlite.close()
