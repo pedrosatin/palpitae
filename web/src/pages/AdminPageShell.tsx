@@ -71,3 +71,31 @@ export default function AdminPageShell({
     </div>
   )
 }
+
+/** Falha de carga dos painéis admin, com "Tentar novamente" para o período selecionado. */
+export function AdminLoadError({
+  message,
+  retryEventName,
+  onRetry,
+}: {
+  message: string
+  /** GA event fired on retry (e.g. `click_admin_metrics_tentar_novamente`). */
+  retryEventName: string
+  onRetry: () => void
+}) {
+  return (
+    <ErrorState>
+      {message}
+      <button
+        type="button"
+        className={shared.retryButton}
+        onClick={() => {
+          trackEvent(retryEventName)
+          onRetry()
+        }}
+      >
+        Tentar novamente
+      </button>
+    </ErrorState>
+  )
+}

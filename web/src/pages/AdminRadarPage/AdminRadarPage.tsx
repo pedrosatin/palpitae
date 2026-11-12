@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
-import ErrorState from '../../components/ErrorState'
 import { buildApiUrl } from '../../config'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { apiFetch } from '../../lib/api'
-import AdminPageShell from '../AdminPageShell'
+import AdminPageShell, { AdminLoadError } from '../AdminPageShell'
+import { useAdminLoad, type AdminLoad } from '../useAdminLoad'
 import shared from '../admin-shared.module.css'
 import styles from './AdminRadarPage.module.css'
 import { Sparkline } from './Sparkline'
@@ -118,93 +118,95 @@ function verdict(item: RadarItem, medianInterest: number): { label: string; leve
 
 type SortKey = 'interest' | 'matches' | 'name' | 'start'
 
+// Mediana do interesse entre as competições com sinal — régua do veredito.
+// Mediana e não média: umas poucas competições gigantes (Copa do Mundo)
+// puxariam a média e esconderiam todo o resto.
+function medianInterestOf(items: RadarItem[]): number {
+  const values = items
+    .map((i) => i.pageviewsAvg)
+    .filter((v): v is number => v !== null)
+    .sort((a, b) => a - b)
+  if (values.length === 0) return 0
+  const mid = Math.floor(values.length / 2)
+  // Amostra par: média dos dois centrais. Pegar só o de cima inflaria a régua
+  // justamente quando há poucas competições medidas.
+  return values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid]
+}
+
+const NO_ITEMS: RadarItem[] = []
+
+type RadarFilter = { statusFilter: StatusFilter; onlyUnsupported: boolean; search: string }
+
+function matchesFilter(item: RadarItem, filter: RadarFilter, term: string): boolean {
+  if (filter.statusFilter !== 'all' && item.status !== filter.statusFilter) return false
+  if (filter.onlyUnsupported && item.supported) return false
+  if (term && !`${item.name} ${item.country ?? ''}`.toLowerCase().includes(term)) return false
+  return true
+}
+
+function compareBy(sort: SortKey, a: RadarItem, b: RadarItem): number {
+  if (sort === 'name') return a.name.localeCompare(b.name, 'pt-BR')
+  if (sort === 'matches') return b.matchesInPeriod - a.matchesInPeriod
+  // Estreia mais próxima primeiro; sem data conhecida vai pro fim.
+  if (sort === 'start') return (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')
+  return (b.pageviewsAvg ?? -1) - (a.pageviewsAvg ?? -1)
+}
+
+function visibleItems(items: RadarItem[], filter: RadarFilter, sort: SortKey): RadarItem[] {
+  const term = filter.search.trim().toLowerCase()
+  return items
+    .filter((item) => matchesFilter(item, filter, term))
+    .sort((a, b) => compareBy(sort, a, b))
+}
+
+function isSyncStale(lastSync: string | null | undefined): boolean {
+  if (!lastSync) return false
+  const at = new Date(`${lastSync.replace(' ', 'T')}Z`)
+  if (Number.isNaN(at.getTime())) return false
+  return Date.now() - at.getTime() > STALE_AFTER_HOURS * 3_600_000
+}
+
+/** GET /metrics/radar do período. Não lança: rede, status ou corpo inválido viram `failed`. */
+async function loadRadar(days: number): Promise<AdminLoad<RadarResponse>> {
+  try {
+    const res = await apiFetch(
+      buildApiUrl('/metrics/radar', new URLSearchParams({ days: String(days) })),
+    )
+    if (res.status === 403) return { kind: 'forbidden' }
+    if (!res.ok) return { kind: 'failed' }
+    return { kind: 'ok', data: (await res.json()) as RadarResponse }
+  } catch {
+    return { kind: 'failed' }
+  }
+}
+
 export default function AdminRadarPage() {
   useDocumentTitle('Radar de competições')
 
   const [days, setDays] = useState<number>(30)
-  const [data, setData] = useState<RadarResponse | null>(null)
-  const [error, setError] = useState<'forbidden' | 'failed' | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data, error, loading, retry } = useAdminLoad(days, loadRadar)
   const [sort, setSort] = useState<SortKey>('interest')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ongoing')
   const [onlyUnsupported, setOnlyUnsupported] = useState(false)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-
-    apiFetch(buildApiUrl('/metrics/radar', new URLSearchParams({ days: String(days) })))
-      .then(async (res) => {
-        if (cancelled) return
-        if (res.status === 403) {
-          setError('forbidden')
-          return
-        }
-        if (!res.ok) throw new Error(`radar ${res.status}`)
-        setData((await res.json()) as RadarResponse)
-      })
-      .catch(() => {
-        if (!cancelled) setError('failed')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [days])
-
-  // Mediana do interesse entre as competições com sinal — régua do veredito.
-  // Mediana e não média: umas poucas competições gigantes (Copa do Mundo)
-  // puxariam a média e esconderiam todo o resto.
-  const medianInterest = useMemo(() => {
-    const values = (data?.items ?? [])
-      .map((i) => i.pageviewsAvg)
-      .filter((v): v is number => v !== null)
-      .sort((a, b) => a - b)
-    if (values.length === 0) return 0
-    const mid = Math.floor(values.length / 2)
-    // Amostra par: média dos dois centrais. Pegar só o de cima inflaria a régua
-    // justamente quando há poucas competições medidas.
-    return values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid]
-  }, [data])
-
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    const list = (data?.items ?? []).filter((item) => {
-      if (statusFilter !== 'all' && item.status !== statusFilter) return false
-      if (onlyUnsupported && item.supported) return false
-      if (term && !`${item.name} ${item.country ?? ''}`.toLowerCase().includes(term)) return false
-      return true
-    })
-
-    return [...list].sort((a, b) => {
-      if (sort === 'name') return a.name.localeCompare(b.name, 'pt-BR')
-      if (sort === 'matches') return b.matchesInPeriod - a.matchesInPeriod
-      // Estreia mais próxima primeiro; sem data conhecida vai pro fim.
-      if (sort === 'start') return (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')
-      return (b.pageviewsAvg ?? -1) - (a.pageviewsAvg ?? -1)
-    })
-  }, [data, statusFilter, onlyUnsupported, search, sort])
+  const items = data?.items ?? NO_ITEMS
+  const medianInterest = useMemo(() => medianInterestOf(items), [items])
+  const visible = useMemo(
+    () => visibleItems(items, { statusFilter, onlyUnsupported, search }, sort),
+    [items, statusFilter, onlyUnsupported, search, sort],
+  )
 
   // Sem artigo mapeado = sem sinal de interesse. É a fila de curadoria de
   // `api/src/radar/articles.ts`, por isso fica visível em vez de escondida.
   // Inclui as que vão começar: competição não mapeada prestes a estrear é ainda
   // mais urgente de medir do que uma já em curso.
   const unmapped = useMemo(
-    () => (data?.items ?? []).filter((i) => !i.wikiArticle && i.status !== 'finished'),
-    [data],
+    () => items.filter((i) => !i.wikiArticle && i.status !== 'finished'),
+    [items],
   )
 
-  const staleSync = useMemo(() => {
-    if (!data?.lastSync) return false
-    const at = new Date(`${data.lastSync.replace(' ', 'T')}Z`)
-    if (Number.isNaN(at.getTime())) return false
-    return Date.now() - at.getTime() > STALE_AFTER_HOURS * 3_600_000
-  }, [data])
+  const staleSync = useMemo(() => isSyncStale(data?.lastSync), [data])
 
   return (
     <AdminPageShell
@@ -221,7 +223,13 @@ export default function AdminRadarPage() {
           (proxy de audiência brasileira). Demanda = grupos ativos no Palpitae.
         </p>
 
-        {error === 'failed' && <ErrorState message="Falha ao carregar o radar. Tente de novo." />}
+        {error === 'failed' && (
+          <AdminLoadError
+            message="Falha ao carregar o radar."
+            retryEventName="click_admin_radar_tentar_novamente"
+            onRetry={retry}
+          />
+        )}
 
         {staleSync && (
           <p className={styles.staleWarning}>

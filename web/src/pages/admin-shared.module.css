@@ -45,3 +45,15 @@
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
+
+.retryButton {
+  display: block;
+  margin-top: var(--space-2);
+  padding: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  text-decoration: underline;
+}
