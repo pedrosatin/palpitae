@@ -7,6 +7,7 @@ import {
   groupRoundStatusLabel,
   groupRoundStatusText,
   type DeadlineMatch,
+  type RoundAgreement,
 } from '../../lib/dashboardStatus'
 import { hasPosition, positionLabel } from '../../lib/groupPosition'
 import styles from './GroupCard.module.css'
@@ -40,6 +41,8 @@ export interface GroupWithStats {
   next_match_at?: string | null
   /** Rótulo da rodada padrão, como "Rodada 35". */
   current_round_label?: string | null
+  /** Concordância do rótulo, para "Rodada 35 completa" ou "Semifinais completas". */
+  current_round_agreement?: RoundAgreement | null
   /** Último jogo aberto da rodada padrão. */
   round_ends_at?: string | null
   live_matches?: number

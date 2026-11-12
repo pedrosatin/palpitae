@@ -414,6 +414,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     start_time: '2026-11-14T21:30:00Z',
     round: '21',
     round_label: 'Rodada 21',
+    round_agreement: 'fs',
     home_team: 'Chapecoense',
     away_team: 'Vasco',
   }
@@ -461,6 +462,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
       mockGroupsResponse([
         ongoingGroup('champions', 'Champions', {
           current_round_label: 'Fase de pontos',
+          current_round_agreement: 'fs',
           next_match_at: '2026-11-12T20:00:00Z',
           round_ends_at: '2026-11-26T20:00:00Z',
         }),
@@ -519,6 +521,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
       mockGroupsResponse([
         ongoingGroup('a', 'Bolão A', {
           current_round_label: 'Rodada 35',
+          current_round_agreement: 'fs',
           next_match_at: '2026-11-14T21:30:00Z',
           round_ends_at: '2026-11-20T00:30:00Z',
         }),
@@ -540,6 +543,40 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     expect(screen.getByText('Sem jogos marcados')).toBeInTheDocument()
   })
 
+  it('não mostra o código cru de uma rodada que a API não conhece', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockGroupsResponse([
+        ongoingGroup('a', 'Bolão A', {
+          pending_predictions: 3,
+          next_deadline: {
+            ...deadline,
+            round: 'LEAGUE_STAGE_2',
+            round_label: 'LEAGUE_STAGE_2',
+            round_agreement: null,
+          },
+          next_match_at: deadline.start_time,
+        }),
+        ongoingGroup('b', 'Bolão B', {
+          current_round_label: null,
+          current_round_agreement: null,
+          next_match_at: '2026-11-14T21:30:00Z',
+          round_ends_at: '2026-11-20T00:30:00Z',
+        }),
+      ]),
+    )
+
+    render(
+      <MemoryRouter>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+
+    const banner = await screen.findByRole('region', { name: 'Próximo prazo' })
+    expect(within(banner).getByText('3 sem palpite')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('LEAGUE_STAGE_2')
+    expect(screen.getByText('Tudo palpitado ✓ · próximo jogo sáb 18:30')).toBeInTheDocument()
+  })
+
   it('busca o painel de novo depois do início do jogo de prazo, sem tela de carregamento', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
@@ -556,6 +593,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
             next_deadline: kickoff,
             next_match_at: kickoff.start_time,
             current_round_label: 'Rodada 21',
+            current_round_agreement: 'fs',
             round_ends_at: '2026-11-14T21:30:00Z',
           }),
         ]),
@@ -592,6 +630,7 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
             live_matches: 1,
             next_match_at: '2026-11-14T21:30:00Z',
             current_round_label: 'Rodada 21',
+            current_round_agreement: 'fs',
             round_ends_at: '2026-11-14T21:30:00Z',
           }),
         ]),

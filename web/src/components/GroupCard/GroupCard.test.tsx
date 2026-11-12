@@ -124,6 +124,7 @@ describe('GroupCard', () => {
       start_time: '2026-11-14T21:30:00Z',
       round: '35',
       round_label: 'Rodada 35',
+      round_agreement: 'fs' as const,
       home_team: 'Mirassol',
       away_team: 'Atlético-MG',
     }
@@ -137,7 +138,11 @@ describe('GroupCard', () => {
       ],
       [
         'rodada completa',
-        { current_round_label: 'Rodada 35', next_match_at: deadline.start_time },
+        {
+          current_round_label: 'Rodada 35',
+          current_round_agreement: 'fs' as const,
+          next_match_at: deadline.start_time,
+        },
         'Rodada 35 completa ✓ · próximo jogo sáb 18:30',
         'Rodada 35 completa, próximo jogo sáb 18:30',
       ],

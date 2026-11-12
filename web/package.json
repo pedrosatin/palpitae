@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/prerender.mjs",
     "csp:verify": "node scripts/csp-verify.mjs",
+    "catalog:verify": "node scripts/catalog-verify.mjs",
     "preview": "vite preview",
     "type-check": "tsc --noEmit && tsc --noEmit -p functions",
     "test": "vitest run",

@@ -4,6 +4,13 @@
 // Palpitar. Aqui fica só a escolha da mensagem, a ordem e o texto, com horários
 // no fuso de Brasília como no resto do app.
 
+/**
+ * Gênero e número do rótulo da rodada, que a API manda junto do rótulo:
+ * feminino ou masculino, singular ou plural. O adjetivo do resumo concorda com
+ * ele ("Semifinais completas", "Terceiro lugar completo").
+ */
+export type RoundAgreement = 'fs' | 'fp' | 'ms' | 'mp'
+
 /** Jogo sem palpite que fecha primeiro no grupo. */
 export interface DeadlineMatch {
   match_id: string
@@ -11,6 +18,11 @@ export interface DeadlineMatch {
   /** Rodada crua, para abrir a aba Palpitar nela. */
   round: string
   round_label: string
+  /**
+   * Concordância de `round_label`. Null quando a rodada é desconhecida e o rótulo
+   * vem cru do provedor; ausente na API antiga. Nos dois casos o painel não mostra o rótulo.
+   */
+  round_agreement?: RoundAgreement | null
   home_team: string
   away_team: string
 }
@@ -26,6 +38,8 @@ export interface RoundStatusFields {
   next_deadline?: DeadlineMatch | null
   next_match_at?: string | null
   current_round_label?: string | null
+  /** Concordância de `current_round_label`. Sem ela, o resumo diz "Tudo palpitado". */
+  current_round_agreement?: RoundAgreement | null
   round_ends_at?: string | null
   live_matches?: number
 }
@@ -54,10 +68,27 @@ export function lastPassedBoundary(boundaries: readonly string[], nowMs: number)
   return last
 }
 
+/** Rótulo da rodada com a concordância que a API manda junto. */
+export interface RoundName {
+  label: string
+  agreement: RoundAgreement
+}
+
+/**
+ * Rótulo e concordância, só quando os dois vêm da API. Rótulo sem concordância
+ * (rodada desconhecida ou API antiga) fica fora do resumo.
+ */
+export function roundName(
+  label: string | null | undefined,
+  agreement: RoundAgreement | null | undefined,
+): RoundName | null {
+  return label && agreement ? { label, agreement } : null
+}
+
 export type GroupRoundStatus =
   | { kind: 'pending'; count: number; deadline: string | null }
   | { kind: 'live'; count: number }
-  | { kind: 'complete'; roundLabel: string | null; nextMatchAt: string }
+  | { kind: 'complete'; round: RoundName | null; nextMatchAt: string }
   | { kind: 'empty' }
 
 /**
@@ -81,7 +112,7 @@ export function groupRoundStatus(group: RoundStatusFields): GroupRoundStatus | n
   if (group.next_match_at) {
     return {
       kind: 'complete',
-      roundLabel: group.current_round_label ?? null,
+      round: roundName(group.current_round_label, group.current_round_agreement),
       nextMatchAt: group.next_match_at,
     }
   }
@@ -117,8 +148,8 @@ function statusParts(
         complete: false,
       }
     case 'complete': {
-      const done = status.roundLabel
-        ? `${status.roundLabel} ${completeWord(status.roundLabel)}`
+      const done = status.round
+        ? `${status.round.label} ${completeWord(status.round.agreement)}`
         : 'Tudo palpitado'
       return {
         parts: [done, `próximo jogo ${formatShortWhen(status.nextMatchAt, nowMs)}`],
@@ -144,24 +175,14 @@ export function groupRoundStatusLabel(status: GroupRoundStatus, nowMs: number): 
   return statusParts(status, nowMs).parts.join(', ')
 }
 
-type Agreement = 'fs' | 'fp' | 'ms' | 'mp'
-
-/** Gênero e número do `roundLabel` da API, para concordar o adjetivo. */
-function roundAgreement(roundLabel: string): Agreement {
-  if (/^(Oitavas|Quartas|Semifinais)\b/.test(roundLabel)) return 'fp'
-  if (/^Playoffs\b/.test(roundLabel)) return 'mp'
-  if (/^(Rebaixamento|Terceiro lugar)\b/.test(roundLabel)) return 'ms'
-  return 'fs'
-}
-
-const COMPLETE: Record<Agreement, string> = {
+const COMPLETE: Record<RoundAgreement, string> = {
   fs: 'completa',
   fp: 'completas',
   ms: 'completo',
   mp: 'completos',
 }
 
-const ALL_PREDICTED: Record<Agreement, string> = {
+const ALL_PREDICTED: Record<RoundAgreement, string> = {
   fs: 'toda palpitada',
   fp: 'todas palpitadas',
   ms: 'todo palpitado',
@@ -169,19 +190,19 @@ const ALL_PREDICTED: Record<Agreement, string> = {
 }
 
 /**
- * Concordância de "completa" com o `roundLabel` da API. Exemplos:
+ * "Completa" na concordância que a API manda com o rótulo. Exemplos:
  * "Rodada 35 completa", "Semifinais completas", "Playoffs completos".
  */
-export function completeWord(roundLabel: string): string {
-  return COMPLETE[roundAgreement(roundLabel)]
+export function completeWord(agreement: RoundAgreement): string {
+  return COMPLETE[agreement]
 }
 
 /**
- * Concordância de "toda palpitada" com o `roundLabel` da API. Exemplos:
+ * "Toda palpitada" na concordância que a API manda com o rótulo. Exemplos:
  * "Rodada 35 toda palpitada", "Semifinais todas palpitadas".
  */
-export function allPredictedWord(roundLabel: string): string {
-  return ALL_PREDICTED[roundAgreement(roundLabel)]
+export function allPredictedWord(agreement: RoundAgreement): string {
+  return ALL_PREDICTED[agreement]
 }
 
 function urgencyTier(group: RoundStatusFields): [number, number] {
@@ -216,7 +237,7 @@ export type DeadlineBanner =
       totalPending: number
       groupsWithPending: number
     }
-  | { kind: 'clear'; roundLabel: string }
+  | { kind: 'clear'; round: RoundName }
 
 /**
  * Faixa do topo do painel, a partir dos grupos em andamento.
@@ -229,7 +250,7 @@ export type DeadlineBanner =
  * palpitada. Quando ela termina, a rodada seguinte vira padrão e traz pendências
  * novas. A faixa não diz até quando, porque um jogo da rodada seguinte pode
  * começar antes do fim da rodada padrão. Sem rodada aberta em nenhum grupo, não
- * há faixa.
+ * há faixa. Rodada sem concordância da API (desconhecida) não nomeia a faixa.
  */
 export function deadlineBanner(groups: RoundStatusFields[]): DeadlineBanner | null {
   const pending = groups.filter((group) => group.pending_predictions > 0)
@@ -246,13 +267,14 @@ export function deadlineBanner(groups: RoundStatusFields[]): DeadlineBanner | nu
   }
 
   const rounds = groups
-    .flatMap((group) =>
-      group.round_ends_at && group.current_round_label
-        ? [{ endsAt: Date.parse(group.round_ends_at), label: group.current_round_label }]
-        : [],
-    )
+    .flatMap((group) => {
+      const round = roundName(group.current_round_label, group.current_round_agreement)
+      return group.round_ends_at && round
+        ? [{ endsAt: Date.parse(group.round_ends_at), round }]
+        : []
+    })
     .sort((a, b) => a.endsAt - b.endsAt)
-  return rounds.length > 0 ? { kind: 'clear', roundLabel: rounds[0].label } : null
+  return rounds.length > 0 ? { kind: 'clear', round: rounds[0].round } : null
 }
 
 // ─── Datas no fuso de Brasília ──────────────────────────────────────────────
