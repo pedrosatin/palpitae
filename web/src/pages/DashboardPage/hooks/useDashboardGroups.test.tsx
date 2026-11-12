@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { useDashboardGroups } from './useDashboardGroups'
@@ -103,6 +103,68 @@ describe('useDashboardGroups', () => {
 
     expect(result.current.groups).toEqual([])
     expect(result.current.error).toBe('Falha ao carregar grupos')
+  })
+
+  it('limpa o erro quando a nova carga dá certo', async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(mockResponse({ error: 'Server Error' }, false))
+      .mockResolvedValueOnce(mockResponse({ groups: mockGroups, matched_invite_group_id: null }))
+
+    const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
+      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+    })
+    await waitFor(() => expect(result.current.error).toBe('Falha ao carregar grupos'))
+
+    act(() => result.current.fetchGroups(true))
+    expect(result.current.loading).toBe(true)
+    expect(result.current.error).toBeNull()
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBeNull()
+    expect(result.current.groups).toEqual(mockGroups)
+  })
+
+  it('descarta a resposta de uma carga anterior que chega por último', async () => {
+    let resolveOld!: (res: Response) => void
+    mockApiFetch
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (resolveOld = resolve)))
+      .mockResolvedValueOnce(mockResponse({ groups: mockGroups, matched_invite_group_id: null }))
+
+    const { result } = renderHook(() => useDashboardGroups({ userId: 'u1' }), {
+      wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+    })
+    act(() => result.current.fetchGroups(true))
+    await waitFor(() => expect(result.current.groups).toEqual(mockGroups))
+
+    await act(async () => {
+      resolveOld(mockResponse({ groups: [], matched_invite_group_id: null }))
+    })
+    expect(result.current.groups).toEqual(mockGroups)
+    expect(result.current.loading).toBe(false)
+  })
+
+  it('não abre o convite que saiu da URL enquanto a lista carregava', async () => {
+    let resolveList!: (res: Response) => void
+    mockApiFetch.mockReturnValueOnce(new Promise<Response>((resolve) => (resolveList = resolve)))
+
+    const { result, rerender } = renderHook(
+      ({ invite }: { invite?: string }) =>
+        useDashboardGroups({ userId: 'u1', normalizedPendingInvite: invite }),
+      {
+        initialProps: { invite: 'ABCD-EF23' } as { invite?: string },
+        wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter>,
+      },
+    )
+    rerender({ invite: undefined })
+
+    await act(async () => {
+      resolveList(mockResponse({ groups: mockGroups, matched_invite_group_id: null }))
+    })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.joinOpen).toBe(false)
+    expect(result.current.groups).toEqual(mockGroups)
+    // A lista já carregada vale sem o convite: tirar o código da URL não refaz a busca.
+    expect(mockApiFetch).toHaveBeenCalledTimes(1)
   })
 
   it('sets joinOpen to true if normalizedPendingInvite has no matched group', async () => {

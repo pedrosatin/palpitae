@@ -1,7 +1,14 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
-import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from 'react-router-dom'
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useNavigationType,
+} from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import { config } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
@@ -688,5 +695,170 @@ describe('DashboardPage com a competição pedida pelo guia', () => {
     expect(await screen.findByText('Nenhum grupo ainda')).toBeInTheDocument()
     expect(createDialog()).not.toBeInTheDocument()
     expect(competitionCalls(fetchSpy)).toHaveLength(0)
+  })
+})
+
+describe('DashboardPage, recuperação da carga e convite dispensado', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    sessionStorage.clear()
+    invalidateApiCache()
+    Object.assign(config as { apiUrl: string; authUrl: string }, {
+      apiUrl: 'http://localhost:8787',
+      authUrl: 'http://localhost:8787',
+    })
+  })
+
+  const group = {
+    id: 'g1',
+    name: 'Os Craques',
+    competition_id: 'c1',
+    invite_code: 'INV123',
+    is_admin: false,
+    created_at: '2026-06-14T00:00:00.000Z',
+    member_count: 8,
+    user_position: 2,
+    user_points: 15,
+  }
+
+  function LocationProbe() {
+    const location = useLocation()
+    return <p data-testid="location">{`${location.pathname}${location.search}`}</p>
+  }
+
+  function OpenInviteLink() {
+    const navigate = useNavigate()
+    return (
+      <button type="button" onClick={() => navigate('/?convite=ABCD-EF23')}>
+        abrir link do convite
+      </button>
+    )
+  }
+
+  function renderDashboard(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <DashboardPage user={user} onLogout={vi.fn()} />
+        <LocationProbe />
+        <OpenInviteLink />
+      </MemoryRouter>,
+    )
+  }
+
+  /** Lista de grupos vazia, criação de grupo e entrada que falha. */
+  function mockApi() {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.includes('/competitions')) {
+        return mockCompetitionsResponse([
+          { id: 'c1', name: 'Copa 2026', slug: 'copa-2026', season: '2026', status: 'upcoming' },
+        ])
+      }
+      if (url.endsWith('/groups/join')) {
+        return mockResponse({ error: 'Código de convite inválido' }, false)
+      }
+      if (url.endsWith('/groups') && init?.method === 'POST') {
+        return mockGroupCreatedResponse({ id: 'g2', name: 'Novo', invite_code: 'NEW123' })
+      }
+      if (url.includes('/groups')) return mockGroupsResponse([])
+      throw new Error(`fetch inesperado: ${url}`)
+    })
+  }
+
+  function joinDialog() {
+    return screen.queryByRole('heading', { name: 'Entrar em grupo', level: 2 })
+  }
+
+  it('mostra só o erro quando a carga falha e volta à lista vazia ao tentar de novo', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockResponse({ error: 'boom' }, false))
+      .mockResolvedValueOnce(mockGroupsResponse([]))
+
+    renderDashboard('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Falha ao carregar grupos')
+    expect(screen.queryByText('Nenhum grupo ainda')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }))
+
+    expect(await screen.findByText('Nenhum grupo ainda')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('tira o erro quando a nova tentativa traz os grupos', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockResponse({ error: 'boom' }, false))
+      .mockResolvedValueOnce(mockGroupsResponse([group]))
+
+    renderDashboard('/')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Tentar novamente' }))
+
+    expect(await screen.findByText('Os Craques')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('convite dispensado sai da URL e não reabre quando a lista recarrega', async () => {
+    mockApi()
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByRole('textbox')).toHaveValue('ABCD-EF23')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+
+    expect(joinDialog()).not.toBeInTheDocument()
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/)
+
+    // Criar um grupo recarrega a lista do painel.
+    await userEvent.click(screen.getAllByRole('button', { name: 'Criar grupo' })[0])
+    await userEvent.type(await screen.findByLabelText('Nome do grupo'), 'Novo')
+    const createDialog = screen.getByRole('dialog')
+    await userEvent.click(within(createDialog).getByRole('button', { name: 'Criar grupo' }))
+    expect(await screen.findByText('Grupo criado!')).toBeInTheDocument()
+    expect(joinDialog()).not.toBeInTheDocument()
+  })
+
+  it('abrir a entrada pela tela não traz o convite dispensado nem envia de novo', async () => {
+    markInviteAccepted('ABCD-EF23')
+    const fetchSpy = mockApi()
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByText('Código de convite inválido')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(joinDialog()).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Entrar com convite' }))
+
+    expect(screen.getByRole('textbox')).toHaveValue('')
+    expect(screen.queryByText('Código de convite inválido')).not.toBeInTheDocument()
+    const joins = fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/groups/join'))
+    expect(joins).toHaveLength(1)
+  })
+
+  it('seguir de novo o link depois de dispensar a entrada automática pede o toque', async () => {
+    markInviteAccepted('ABCD-EF23')
+    const fetchSpy = mockApi()
+    renderDashboard('/?convite=ABCD-EF23')
+
+    expect(await screen.findByText('Código de convite inválido')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    await userEvent.click(screen.getByRole('button', { name: 'abrir link do convite' }))
+
+    expect(await screen.findByRole('textbox')).toHaveValue('ABCD-EF23')
+    expect(screen.queryByText('Código de convite inválido')).not.toBeInTheDocument()
+    const joins = fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/groups/join'))
+    expect(joins).toHaveLength(1)
+  })
+
+  it('abre de novo quando a pessoa segue outra vez o link do convite', async () => {
+    mockApi()
+    renderDashboard('/?convite=ABCD-EF23')
+
+    await screen.findByRole('textbox')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(joinDialog()).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'abrir link do convite' }))
+
+    expect(await screen.findByRole('textbox')).toHaveValue('ABCD-EF23')
   })
 })

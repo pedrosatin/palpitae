@@ -219,7 +219,8 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
 
   // Só quem tocou em "Entrar com Google e participar" nesta aba entra sem
   // confirmar. Um link `?convite=` aberto sozinho continua pedindo o toque.
-  const [autoJoin] = useState(
+  // Fechar o modal descarta essa entrada: seguir o mesmo link de novo pede o toque.
+  const [autoJoin, setAutoJoin] = useState(
     () => !!normalizedPendingInvite && consumeAcceptedInvite(normalizedPendingInvite),
   )
 
@@ -236,6 +237,22 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     },
     [navigate, pendingInvite],
   )
+
+  // Fechar o modal do convite consome o `?convite=`: recarregar a lista ou a página
+  // não o reabre. Um novo link de convite volta a abrir o modal.
+  function closeJoinGroup() {
+    setJoinOpen(false)
+    setAutoJoin(false)
+    if (!searchParams.has('convite')) return
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('convite')
+        return next
+      },
+      { replace: true },
+    )
+  }
 
   function handleGroupJoined(group: { id: string; name: string }) {
     invalidateApiCache('groups:')
@@ -264,9 +281,14 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
           </div>
         ) : (
           <div className={styles.content}>
-            {error && <ErrorState message={error} />}
-
-            {groups.length === 0 ? (
+            {error ? (
+              <ErrorState className={styles.loadError}>
+                <p>{error}</p>
+                <Button variant="secondary" size="sm" onClick={() => fetchGroups(true)}>
+                  Tentar novamente
+                </Button>
+              </ErrorState>
+            ) : groups.length === 0 ? (
               <EmptyState
                 canCreateGroup={canCreateGroup}
                 onCreateGroup={() => setCreateOpen(true)}
@@ -286,12 +308,15 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
         preferredCompetitionSlug={createCompetitionSlug}
       />
 
+      {/* A chave recria o modal quando o convite sai da URL: o código dispensado não
+          fica no campo nem é reenviado ao abrir a entrada pela tela. */}
       <JoinGroupModal
+        key={pendingInvite ?? ''}
         isOpen={joinOpen}
-        onClose={() => setJoinOpen(false)}
+        onClose={closeJoinGroup}
         onJoined={handleGroupJoined}
         initialCode={pendingInvite}
-        autoSubmit={autoJoin}
+        autoSubmit={autoJoin && !!pendingInvite}
       />
     </>
   )
