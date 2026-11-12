@@ -29,6 +29,8 @@ export type EventType =
   | 'provider_http_attempt'
   // Provedor trocou os times de um jogo já gravado (mando invertido ou time substituído)
   | 'match_teams_changed'
+  // Sync achou competição nova sem configuração cadastrada e não a criou
+  | 'competition_unconfigured'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'
