@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { base64UrlDecode, base64UrlEncode } from './encoding'
+import { base64UrlDecode, base64UrlDecodeCanonical, base64UrlEncode } from './encoding'
 
 describe('base64UrlEncode', () => {
   it('produces only URL-safe characters (no +, /, or =)', () => {
@@ -108,5 +108,41 @@ describe('base64UrlEncode / base64UrlDecode roundtrip', () => {
     const buf = new TextEncoder().encode(original).buffer as ArrayBuffer
     const decoded = new TextDecoder().decode(base64UrlDecode(base64UrlEncode(buf)))
     expect(decoded).toBe(original)
+  })
+})
+
+describe('base64UrlDecodeCanonical', () => {
+  it('decodifica o que base64UrlEncode produz, em todos os tamanhos', () => {
+    for (const text of ['', 'f', 'fo', 'foo', 'foob', 'fooba', 'foobar']) {
+      const encoded = base64UrlEncode(new TextEncoder().encode(text).buffer as ArrayBuffer)
+      expect(new TextDecoder().decode(base64UrlDecodeCanonical(encoded))).toBe(text)
+    }
+    expect(new Uint8Array(base64UrlDecodeCanonical('---_'))).toEqual(
+      new Uint8Array([251, 239, 191]),
+    )
+  })
+
+  // Todas as entradas abaixo passam em base64UrlDecode e viram os bytes de um texto canônico.
+  it.each([
+    ['`==` no fim', 'Zg==', 'Zg'],
+    ['`=` no fim', 'Zm8=', 'Zm8'],
+    ['4 bits de sobra diferentes de zero', 'Zh', 'Zg'],
+    ['2 bits de sobra diferentes de zero', 'Zm9', 'Zm8'],
+    ['alfabeto `+`', '+w', '-w'],
+    ['alfabeto `/`', '//8', '__8'],
+    ['espaço interno', 'Zm 8', 'Zm8'],
+    ['quebra de linha no fim', 'Zm8\n', 'Zm8'],
+  ])('recusa %s', (_name, input, canonical) => {
+    expect(new Uint8Array(base64UrlDecode(input))).toEqual(
+      new Uint8Array(base64UrlDecode(canonical)),
+    )
+    expect(() => base64UrlDecodeCanonical(input)).toThrow('Non-canonical base64url')
+    expect(() => base64UrlDecodeCanonical(canonical)).not.toThrow()
+  })
+
+  it('recusa o que base64UrlDecode também recusa', () => {
+    expect(() => base64UrlDecodeCanonical('a')).toThrow()
+    expect(() => base64UrlDecodeCanonical('abcde')).toThrow()
+    expect(() => base64UrlDecodeCanonical('Zm9v!')).toThrow()
   })
 })

@@ -3,7 +3,7 @@
  * Compatible with Cloudflare Workers and Node.js 18+.
  */
 
-import { base64UrlEncode, base64UrlDecode } from './encoding'
+import { base64UrlEncode, base64UrlDecodeCanonical } from './encoding'
 import { HMAC_SHA256, importHmacKey } from './crypto'
 
 const ALGORITHM = HMAC_SHA256
@@ -50,17 +50,29 @@ export async function verifyJwt(token: string, secret: string): Promise<JwtPaylo
   const [header, body, sig] = parts as [string, string, string]
   const signingInput = `${header}.${body}`
 
+  // Cada token tem uma única escrita aceita. A revogação do logout guarda o hash
+  // do texto do token, e uma segunda escrita da mesma assinatura escaparia dela.
+  let bodyBytes: ArrayBuffer
+  let sigBytes: ArrayBuffer
+  try {
+    base64UrlDecodeCanonical(header)
+    bodyBytes = base64UrlDecodeCanonical(body)
+    sigBytes = base64UrlDecodeCanonical(sig)
+  } catch {
+    throw new Error('Invalid JWT encoding')
+  }
+
   const key = await importKey(secret)
   const valid = await crypto.subtle.verify(
     ALGORITHM,
     key,
-    base64UrlDecode(sig),
+    sigBytes,
     new TextEncoder().encode(signingInput),
   )
 
   if (!valid) throw new Error('Invalid JWT signature')
 
-  const payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(body))) as JwtPayload
+  const payload = JSON.parse(new TextDecoder().decode(bodyBytes)) as JwtPayload
 
   const now = Math.floor(Date.now() / 1000)
   if (!Number.isFinite(payload.exp) || payload.exp <= now) throw new Error('JWT expired')
