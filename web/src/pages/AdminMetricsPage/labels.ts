@@ -28,6 +28,8 @@ const EVENT_LABELS: Record<string, string> = {
   provider_http_attempt: 'Tentativa HTTP a provedor',
   sync_event_discarded: 'Evento descartado no sync',
   match_missing_from_feed: 'Jogo fora do calendário',
+  match_scoring_error: 'Erro na pontuação',
+  match_unscored: 'Jogo encerrado sem pontuação',
   radar_sync_run: 'Radar de competições',
   radar_sync_error: 'Erro do radar',
   security_storage_error: 'Falha de armazenamento de segurança',

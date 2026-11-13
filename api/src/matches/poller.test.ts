@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Mock the three collaborators — pollActiveMatches only orchestrates them.
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
 vi.mock('./scoring', () => ({
-  scoreUnprocessedMatches: vi.fn(async () => undefined),
+  scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
 }))
 vi.mock('./espnFallback', () => ({
   scoreWindowFromEspn: vi.fn(async () => new Map<string, number>()),
@@ -30,20 +30,23 @@ type ActiveRow = {
 }
 
 /**
- * Minimal fake D1 — pollActiveMatches issues exactly one query and reads it
- * via .all(). The query is captured so we can assert the active-window bounds.
+ * Minimal fake D1. pollActiveMatches reads the active window via .all(), and
+ * the query is captured so we can assert the active-window bounds. The closing
+ * query for finished matches still unscored (match_unscored) finds none here.
  */
 function buildFakeDb(rows: ActiveRow[]) {
   const captured: { sql: string; params: unknown[] } = { sql: '', params: [] }
   const db = {
     prepare(sql: string) {
-      captured.sql = sql
+      const unscoredReport = sql.includes('GROUP BY competition_id')
+      if (!unscoredReport) captured.sql = sql
       const stmt = {
         bind(...args: unknown[]) {
-          captured.params = args
+          if (!unscoredReport) captured.params = args
           return stmt
         },
         async all<T>(): Promise<{ results: T[] }> {
+          if (unscoredReport) return { results: [] }
           // Rows sem provider explícito são football-data (filtro do pool FD).
           return {
             results: rows.map((row) => ({
@@ -89,7 +92,7 @@ describe('pollActiveMatches', () => {
     // Restore the happy-path defaults from the vi.mock factory after the reset,
     // so a persistent mockRejectedValue in one test can't leak into the next.
     syncFixturesMock.mockResolvedValue(undefined as never)
-    scoreMock.mockResolvedValue(undefined)
+    scoreMock.mockResolvedValue({ scored: 0, complete: true })
     espnFallbackMock.mockResolvedValue(new Map<string, number>())
   })
 
@@ -154,7 +157,7 @@ describe('pollActiveMatches', () => {
         apiKey: 'key',
       }),
     )
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), expect.any(Number))
   })
 
   it('omits matchday for non-numeric rounds (knockout phase)', async () => {
@@ -178,7 +181,7 @@ describe('pollActiveMatches', () => {
     const matchdays = syncFixturesMock.mock.calls.map((c) => c[0].matchday).sort()
     expect(matchdays).toEqual([1, 2])
     expect(scoreMock).toHaveBeenCalledTimes(1)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), expect.any(Number))
   })
 
   it('groups by competition — one score call per competition', async () => {
@@ -191,8 +194,8 @@ describe('pollActiveMatches', () => {
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(2)
     expect(scoreMock).toHaveBeenCalledTimes(2)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
-    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), expect.any(Number))
+    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything(), expect.any(Number))
   })
 
   it('isolates a sync failure and still scores the competition for synced rounds', async () => {
@@ -206,7 +209,7 @@ describe('pollActiveMatches', () => {
 
     // One round failed, the other succeeded → scoring still runs once.
     expect(scoreMock).toHaveBeenCalledTimes(1)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), expect.any(Number))
   })
 
   it('does not score a competition when all its rounds fail to sync', async () => {
@@ -260,8 +263,9 @@ describe('pollActiveMatches', () => {
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
     expect(espnFallbackMock).toHaveBeenCalledTimes(1)
+    // O D1 chega embrulhado pelo contador de chamadas do tick.
     expect(espnFallbackMock).toHaveBeenCalledWith(
-      db,
+      expect.anything(),
       undefined,
       ['c1'],
       expect.objectContaining({ now: expect.any(Number) }),
@@ -275,8 +279,9 @@ describe('pollActiveMatches', () => {
 
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
+    // O D1 chega embrulhado pelo contador de chamadas do tick.
     expect(espnFallbackMock).toHaveBeenCalledWith(
-      db,
+      expect.anything(),
       undefined,
       ['c1'],
       expect.objectContaining({ now: expect.any(Number) }),
@@ -298,7 +303,7 @@ describe('pollActiveMatches', () => {
     await pollActiveMatches(db as unknown as D1Database, 'key')
 
     expect(scoreMock).toHaveBeenCalledTimes(1)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), expect.any(Number))
   })
 
   it('does not score a competition the fallback could not rescue (0 updates)', async () => {
@@ -369,6 +374,7 @@ describe('pollActiveMatches', () => {
       if (compId === 'c1') {
         throw new Error('Scoring c1 failed')
       }
+      return { scored: 0, complete: true }
     })
 
     const db = buildFakeDb([
@@ -379,7 +385,7 @@ describe('pollActiveMatches', () => {
     await expect(pollActiveMatches(db as unknown as D1Database, 'key')).rejects.toThrow(
       'Scoring c1 failed',
     )
-    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything(), expect.any(Number))
   })
 
   it('emits a poller_run with status ok and zeroed counters for an empty window', async () => {
@@ -487,12 +493,15 @@ describe('pollActiveMatches', () => {
       vi.restoreAllMocks()
     })
 
-    it('sem binding do Analytics Engine não cria observer', async () => {
+    it('sem binding do Analytics Engine o observer só conta a chamada no orçamento do tick', async () => {
       const db = buildFakeDb([{ comp_id: COMP, external_id: 'WC', season: '2026', round: '1' }])
 
       await pollActiveMatches(db as unknown as D1Database, 'key')
 
-      expect(syncFixturesMock.mock.calls[0][0].onHttpAttempt).toBeUndefined()
+      const observer = syncFixturesMock.mock.calls[0][0].onHttpAttempt
+      expect(() =>
+        observer?.({ provider: 'football-data', status: 200, durationMs: 1 }),
+      ).not.toThrow()
     })
   })
 

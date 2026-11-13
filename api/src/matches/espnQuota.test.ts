@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
 vi.mock('./scoring', () => ({
-  scoreUnprocessedMatches: vi.fn(async () => undefined),
+  scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
 }))
 vi.mock('./espnFallback', () => ({
   scoreWindowFromEspn: vi.fn(async () => new Map()),
@@ -35,13 +35,15 @@ type ActiveRound = {
 
 function buildFakeDb(rows: ActiveCompetition[] | ActiveRound[]) {
   return {
-    prepare(_sql: string) {
+    prepare(sql: string) {
+      // A leitura final do poller (jogos encerrados sem pontuação) não acha nada aqui.
+      const unscoredReport = sql.includes('GROUP BY competition_id')
       const stmt = {
         bind(..._args: unknown[]) {
           return stmt
         },
         async all<T>(): Promise<{ results: T[] }> {
-          return { results: rows as unknown as T[] }
+          return { results: (unscoredReport ? [] : rows) as unknown as T[] }
         },
       }
       return stmt

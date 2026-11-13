@@ -11,6 +11,7 @@ const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
     penalty_winner: null,
     phase: null,
     penalty_phases: 'FINAL',
+    prediction_count: numPredictionsPerMatch,
   }))
 
   const predictions = Array.from({ length: numPredictionsPerMatch * numMatches }, (_, i) => ({

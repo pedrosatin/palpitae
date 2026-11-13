@@ -9,9 +9,10 @@ import styles from './AdminMetricsPage.module.css'
 
 /**
  * Operação dos provedores de partidas (ESPN e football-data.org): tentativas
- * HTTP, erros de sync, fallback de resultados, eventos que o sync descartou e
- * jogos pendentes que sumiram do calendário, por processo e campeonato.
- * Consome GET /metrics/ops (Analytics Engine).
+ * HTTP, erros de sync, fallback de resultados, eventos que o sync descartou,
+ * jogos pendentes que sumiram do calendário e jogos encerrados que seguem sem
+ * pontuação, por processo e campeonato. Consome GET /metrics/ops (Analytics
+ * Engine).
  *
  * Duas ressalvas guiam a leitura dos números:
  * - falhas (4xx/5xx e "sem resposta") são todas registradas; sucessos entram
@@ -37,6 +38,8 @@ export interface OpsResponse {
   discards?: OpsDiscardRow[]
   /** Ausente em API anterior ao registro de jogos fora do calendário. */
   missingMatches?: OpsMissingMatchRow[]
+  /** Ausente em API anterior ao registro de jogos encerrados sem pontuação. */
+  unscoredMatches?: OpsUnscoredRow[]
 }
 
 interface OpsDiscardRow {
@@ -55,6 +58,17 @@ interface OpsMissingMatchRow {
   external_id: string
   start_time: string
   times: number
+  last_seen: string
+}
+
+interface OpsUnscoredRow {
+  competition_id: string
+  /** Pico de jogos encerrados sem pontuação no período. */
+  matches: number
+  /** Pico, em minutos, do tempo desde o início do jogo mais antigo. */
+  oldest_minutes: number
+  /** Ciclos do poller que registraram a pendência. */
+  cycles: number
   last_seen: string
 }
 
@@ -533,6 +547,75 @@ function MissingMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNa
   )
 }
 
+/** Minutos como "45 min", "3 h" ou "2 d". */
+function formatAge(minutes: number): string {
+  if (minutes < 120) return `${Math.round(minutes)} min`
+  const hours = minutes / 60
+  if (hours < 48) return `${Math.round(hours)} h`
+  return `${Math.round(hours / 24)} d`
+}
+
+function UnscoredMatchesTable({
+  rows,
+  names,
+}: {
+  rows: OpsUnscoredRow[]
+  names: CompetitionNames
+}) {
+  return (
+    <div className={styles.tableScroll}>
+      <table className={styles.table} aria-label="Jogos encerrados sem pontuação">
+        <thead>
+          <tr>
+            <th>campeonato</th>
+            <th className={styles.num}>jogos (pico)</th>
+            <th className={styles.num}>mais antigo começou há</th>
+            <th className={styles.num}>ciclos</th>
+            <th>último registro</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const name = competitionName(r.competition_id, names)
+            return (
+              <tr key={r.competition_id}>
+                <td title={name.title}>{name.text}</td>
+                <td className={styles.num}>{formatNumber(r.matches)}</td>
+                <td className={styles.num}>{formatAge(r.oldest_minutes)}</td>
+                <td className={styles.num}>{formatNumber(r.cycles)}</td>
+                <td className={styles.nowrap}>{formatSince(r.last_seen)}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * Competições com jogo encerrado que passou mais de um ciclo do poller sem
+ * pontuação. Some quando a API ainda não envia o campo.
+ */
+function UnscoredMatches({ ops, names }: { ops: OpsResponse; names: CompetitionNames }) {
+  if (!Array.isArray(ops.unscoredMatches)) return null
+  return (
+    <>
+      <h3 className={styles.subTitle}>Jogos encerrados sem pontuação</h3>
+      <p className={styles.hint}>
+        Jogos com resultado que passaram mais de um ciclo do poller (30 minutos) sem pontos nem
+        ranking: a pontuação parou no limite de chamadas do ciclo, falhou, ou o jogo decisivo espera
+        o vencedor dos pênaltis. "Ciclos" conta quantos ciclos registraram a pendência no período.
+      </p>
+      {ops.unscoredMatches.length === 0 ? (
+        <p className={styles.hint}>Nenhum jogo encerrado ficou sem pontuação no período.</p>
+      ) : (
+        <UnscoredMatchesTable rows={ops.unscoredMatches} names={names} />
+      )}
+    </>
+  )
+}
+
 /** A resposta pode vir de uma API antiga ou truncada: só renderiza o que tem forma. */
 function isUsable(ops: OpsResponse | null): ops is OpsResponse {
   return (
@@ -577,6 +660,7 @@ export default function ProviderOpsSection({
           <SyncAndFallback ops={ops} names={names} />
           <Discards ops={ops} names={names} />
           <MissingMatches ops={ops} names={names} />
+          <UnscoredMatches ops={ops} names={names} />
         </>
       )}
     </section>

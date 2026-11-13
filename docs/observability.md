@@ -113,6 +113,9 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   events_discarded, matches_missing),
   `football_api_error` (erro de sync de qualquer provedor, football-data ou ESPN),
   `competition_status_error` (descoberta não gravou o status da competição),
+  `match_scoring_error` (a pontuação de uma competição falhou no poller; as outras seguem),
+  `match_unscored` (competição com jogo encerrado sem pontuação depois de mais de um ciclo do
+  poller, ADR-024),
   `match_results_fallback` (fallback de resultados pela ESPN, ADR-016),
   `provider_http_attempt` (uma tentativa HTTP a um provedor de partidas),
   `match_teams_changed` (o provedor trocou os times de um jogo já gravado),
@@ -155,6 +158,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
 | `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
 | `competition_status_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A descoberta não gravou o status da competição depois de um sync bem-sucedido (falha do D1). O status fica como estava e a execução sai como `error` em `fixture_discovery_run` |
+| `match_scoring_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A pontuação da competição falhou num tick do poller. As outras competições do tick são pontuadas, o tick sai como `error` em `poller_run` e a invocação termina em exceção |
+| `match_unscored` | `competition_id` (UUID) | — | — | `double1`=jogos encerrados, com placar e sem `scored_at`, que começaram há mais de 145 minutos (115 do resultado mais cedo e 30 de um tick); `double2`=minutos desde o início do mais antigo. Um evento por competição ao fim de cada tick do poller, inclusive em tick sem jogo na janela, com no máximo 10 por execução. Entram a pontuação que parou no orçamento de chamadas, a que falhou e o jogo decisivo que espera o vencedor dos pênaltis |
 | `competition_unconfigured` | `provider` (`football-data`) | `code` da competição no provedor (ex.: `CLI`) | `external_id` da competição no provedor | `season` em blob5; sem doubles |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
@@ -185,6 +190,10 @@ por competição e data. Cada rodada football-data do poller corresponde a uma
 request, e a descoberta football-data consulta o calendário inteiro em uma request.
 O log `[perf]` desses crons também registra `espn_max_concurrent` e
 `espn_min_interval_ms` (teto de syncs ESPN em voo e pacing HTTP anti-403).
+O do poller traz ainda o orçamento de chamadas do tick (ADR-024): `calls_used`
+(consultas e batches do D1 mais tentativas HTTP), `calls_budget`,
+`matches_scored` e `scoring_unfinished` (competições que ficaram para o tick
+seguinte por falta de chamadas).
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
@@ -589,7 +598,12 @@ e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
   execução (o poller roda a cada 30 minutos), então `events` acumula repetições; o painel mostra
   as duas contagens e a média por execução;
 - jogos pendentes que a descoberta não viu no calendário da football-data (`missingMatches`),
-  lidos de `match_missing_from_feed`, com quantas vezes e quando foram registrados por último.
+  lidos de `match_missing_from_feed`, com quantas vezes e quando foram registrados por último;
+- competições com jogo encerrado que passou mais de um ciclo do poller sem pontuação
+  (`unscoredMatches`), lidas de `match_unscored`: `matches` e `oldest_minutes` são o pico do
+  período, `cycles` conta os ciclos que registraram a pendência e `last_seen` é o registro mais
+  recente. O painel mostra a lista em "Jogos encerrados sem pontuação". Sem o campo (API
+  anterior), a página omite a subseção.
 
 `discards` e `missingMatches` só levam identificadores do provedor (slug da fase, código da
 competição, id do jogo, horário ISO); qualquer outro texto chega vazio. Sem os dois campos (API

@@ -314,6 +314,60 @@ describe('ProviderOpsSection', () => {
     expect(screen.queryByText(/Nenhum evento descartado/)).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /Eventos descartados/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /fora do calendário/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /sem pontuação/ })).not.toBeInTheDocument()
+  })
+
+  it('lista as competições com jogo encerrado que ficou sem pontuação', () => {
+    render(
+      <ProviderOpsSection
+        ops={makeOps({
+          unscoredMatches: [
+            {
+              competition_id: COMP_A,
+              matches: 12,
+              oldest_minutes: 210,
+              cycles: 3,
+              last_seen: '2026-11-13 19:30:04',
+            },
+            {
+              competition_id: COMP_UNKNOWN,
+              matches: 1,
+              oldest_minutes: 4500,
+              cycles: 40,
+              last_seen: '2026-11-13 18:00:02',
+            },
+          ],
+        })}
+        names={names}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: 'Jogos encerrados sem pontuação' })
+    const cells = (row: HTMLElement) =>
+      within(row)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent)
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(cells(rows[0])).toEqual([
+      'Brasileirão Série A 2026',
+      '12',
+      '4 h',
+      '3',
+      '13/11 19:30 UTC',
+    ])
+    expect(cells(rows[1])).toEqual(['Campeonato 99999999', '1', '3 d', '40', '13/11 18:00 UTC'])
+    expect(screen.getByText(/passaram mais de um ciclo do poller/)).toBeInTheDocument()
+  })
+
+  it('sem jogo encerrado pendente diz que não houve registro, sem tabela', () => {
+    render(<ProviderOpsSection ops={makeOps({ unscoredMatches: [] })} names={names} />)
+
+    expect(
+      screen.getByText('Nenhum jogo encerrado ficou sem pontuação no período.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('table', { name: 'Jogos encerrados sem pontuação' }),
+    ).not.toBeInTheDocument()
   })
 
   it('deixa claro que as falhas são todas registradas e os sucessos amostrados (~10%)', () => {

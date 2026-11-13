@@ -287,10 +287,16 @@ function footballApiErrorOrigin(
  * double2 pulados; falha: blob3 = mensagem; sync_event_discarded → blob2
  * provider, blob3 competition_id, blob4 motivo, blob5 detalhe, blob6 código da
  * competição, double1 eventos; match_missing_from_feed → blob2 provider, blob3
- * competition_id, blob4 id do jogo no provedor, blob5 início.
+ * competition_id, blob4 id do jogo no provedor, blob5 início; match_unscored →
+ * blob2 competition_id, double1 jogos, double2 minutos desde o início do mais
+ * antigo.
  *
  * Descartes e jogos ausentes só levam identificadores do provedor (slug,
  * código, id, horário ISO); qualquer outro texto sai vazio.
+ *
+ * `unscoredMatches`: competições com jogo encerrado sem pontuação depois de mais
+ * de um ciclo do poller. `matches` e `oldest_minutes` são o pico do período e
+ * `cycles` conta os ciclos que registraram a pendência.
  */
 metricsRouter.get('/ops', async (c) => {
   if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
@@ -314,6 +320,7 @@ metricsRouter.get('/ops', async (c) => {
       fallbackFailures,
       discards,
       missingMatches,
+      unscoredMatches,
     ] = await Promise.all([
       runAeSql(
         c.env,
@@ -366,6 +373,14 @@ metricsRouter.get('/ops', async (c) => {
           `FROM ${DATASET} WHERE blob1 = 'match_missing_from_feed' AND ${since} ` +
           `GROUP BY provider, competition_id, external_id, start_time ` +
           `ORDER BY last_seen DESC LIMIT 200`,
+      ),
+      runAeSql(
+        c.env,
+        `SELECT blob2 AS competition_id, MAX(double1) AS matches, ` +
+          `MAX(double2) AS oldest_minutes, SUM(_sample_interval) AS cycles, ` +
+          `MAX(timestamp) AS last_seen ` +
+          `FROM ${DATASET} WHERE blob1 = 'match_unscored' AND ${since} ` +
+          `GROUP BY competition_id ORDER BY last_seen DESC LIMIT 200`,
       ),
     ])
 
@@ -453,6 +468,13 @@ metricsRouter.get('/ops', async (c) => {
         external_id: providerToken(r.external_id),
         start_time: ISO_SECONDS_RE.test(String(r.start_time ?? '')) ? String(r.start_time) : '',
         times: Number(r.times ?? 0),
+        last_seen: String(r.last_seen ?? ''),
+      })),
+      unscoredMatches: unscoredMatches.map((r) => ({
+        competition_id: competitionIdOrEmpty(r.competition_id),
+        matches: Number(r.matches ?? 0),
+        oldest_minutes: Number(r.oldest_minutes ?? 0),
+        cycles: Number(r.cycles ?? 0),
         last_seen: String(r.last_seen ?? ''),
       })),
     })
