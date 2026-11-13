@@ -7,6 +7,15 @@ import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteF
 import type { AppContext } from '../types'
 import { getGroupMembership } from './membership'
 import { parseGroupName } from './groupName'
+import {
+  ACTIVE_GROUPS_OWNED_COUNT_SQL,
+  ACTIVE_MEMBERSHIPS_COUNT_SQL,
+  CREATE_MEMBERSHIP_CAP_ERROR,
+  JOIN_MEMBERSHIP_CAP_ERROR,
+  MAX_ACTIVE_GROUPS_OWNED,
+  MAX_ACTIVE_MEMBERSHIPS,
+  OWNED_CAP_ERROR,
+} from './groupCaps'
 import { classifiedRuleChangeStatements } from '../matches/scoring'
 import { roundAgreement, roundLabel } from '../matches/rounds'
 import {
@@ -430,6 +439,9 @@ router.get('/', requireAuth, async (c) => {
  *
  * Response 201:
  * { group: { id, name, competition_id, invite_code } }
+ *
+ * Response 409: o usuário já está no teto de grupos criados ou de participações
+ * (`groupCaps.ts`).
  */
 router.post('/', requireAuth, async (c) => {
   const userId = c.get('userId')
@@ -517,12 +529,19 @@ router.post('/', requireAuth, async (c) => {
   const memberId = crypto.randomUUID()
 
   try {
-    const invite_code = await writeWithUniqueInviteCode(db, (inviteCode) =>
-      db.batch([
+    // Os tetos por usuário são conferidos no próprio INSERT do grupo: um SELECT COUNT
+    // separado deixaria duas criações simultâneas passarem do teto. O dono vira
+    // participante, então a criação também respeita o teto de participações. Com o
+    // grupo recusado, o INSERT do dono não encontra o grupo e não grava nada.
+    let created = false
+    const invite_code = await writeWithUniqueInviteCode(db, async (inviteCode) => {
+      const [group] = await db.batch([
         db
           .prepare(
             `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, points_penalty, points_classified, predictions_visibility)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              WHERE ${ACTIVE_GROUPS_OWNED_COUNT_SQL} < ?
+                AND ${ACTIVE_MEMBERSHIPS_COUNT_SQL} < ?`,
           )
           .bind(
             groupId,
@@ -535,16 +554,31 @@ router.post('/', requireAuth, async (c) => {
             points_penalty,
             points_classified,
             predictions_visibility,
+            userId,
+            MAX_ACTIVE_GROUPS_OWNED,
+            userId,
+            MAX_ACTIVE_MEMBERSHIPS,
           ),
         db
           .prepare(
             `INSERT INTO group_members (id, group_id, user_id, role)
-             VALUES (?, ?, ?, 'owner')`,
+             SELECT ?, ?, ?, 'owner'
+              WHERE EXISTS (SELECT 1 FROM groups WHERE id = ?)`,
           )
-          .bind(memberId, groupId, userId),
-      ]),
-    )
+          .bind(memberId, groupId, userId, groupId),
+      ])
+      created = group.meta.changes > 0
+    })
     if (!invite_code) return c.json({ error: 'Erro interno ao gerar convite' }, 503)
+    if (!created) {
+      // Só para escolher a mensagem: a recusa já aconteceu no INSERT.
+      const owned = await db
+        .prepare(`SELECT ${ACTIVE_GROUPS_OWNED_COUNT_SQL} AS n`)
+        .bind(userId)
+        .first<{ n: number }>()
+      const ownedCapReached = (owned?.n ?? 0) >= MAX_ACTIVE_GROUPS_OWNED
+      return c.json({ error: ownedCapReached ? OWNED_CAP_ERROR : CREATE_MEMBERSHIP_CAP_ERROR }, 409)
+    }
 
     logEvent(c.env.AE, 'group_created', {
       blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
@@ -568,6 +602,9 @@ router.post('/', requireAuth, async (c) => {
  *
  * Response 200:
  * { group: { id, name } }
+ *
+ * Response 409: já é membro, grupo lotado ou usuário no teto de participações
+ * (`groupCaps.ts`).
  */
 router.post('/join', requireAuth, async (c) => {
   const userId = c.get('userId')
@@ -623,7 +660,8 @@ router.post('/join', requireAuth, async (c) => {
   // Limite de membros checado no próprio INSERT: um SELECT COUNT separado deixaria
   // duas entradas simultâneas passarem do limite. O D1 serializa as escritas, então
   // a contagem dentro do INSERT já vê a linha da outra requisição.
-  // Pelo mesmo motivo, o INSERT reconfere banimento, convite atual e grupo não excluído.
+  // Pelo mesmo motivo, o INSERT reconfere banimento, convite atual e grupo não excluído,
+  // e confere o teto de participações de quem entra.
   const memberId = crypto.randomUUID()
   const inserted = await db
     .prepare(
@@ -632,6 +670,7 @@ router.post('/join', requireAuth, async (c) => {
         WHERE (SELECT COUNT(*) FROM group_members WHERE group_id = ?) < ?
           AND NOT EXISTS (SELECT 1 FROM group_bans WHERE group_id = ? AND user_id = ?)
           AND EXISTS (SELECT 1 FROM groups WHERE id = ? AND invite_code = ? AND deleted_at IS NULL)
+          AND ${ACTIVE_MEMBERSHIPS_COUNT_SQL} < ?
        ON CONFLICT DO NOTHING`,
     )
     .bind(
@@ -644,6 +683,8 @@ router.post('/join', requireAuth, async (c) => {
       userId,
       group.id,
       invite_code,
+      userId,
+      MAX_ACTIVE_MEMBERSHIPS,
     )
     .run()
 
@@ -663,6 +704,13 @@ router.post('/join', requireAuth, async (c) => {
       .bind(group.id, userId)
       .first()
     if (again) return c.json({ error: 'Você já é membro deste grupo' }, 409)
+    const memberships = await db
+      .prepare(`SELECT ${ACTIVE_MEMBERSHIPS_COUNT_SQL} AS n`)
+      .bind(userId)
+      .first<{ n: number }>()
+    if ((memberships?.n ?? 0) >= MAX_ACTIVE_MEMBERSHIPS) {
+      return c.json({ error: JOIN_MEMBERSHIP_CAP_ERROR }, 409)
+    }
     return c.json({ error: 'Este grupo atingiu o limite de membros' }, 409)
   }
 
