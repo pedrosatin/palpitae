@@ -263,9 +263,7 @@ export const PENDING_SCORING_SQL = `SELECT competition_id
 async function competitionsToScore(db: D1Database, synced: Set<string>): Promise<string[]> {
   let pending: string[] = []
   try {
-    const { results } = await db
-      .prepare(PENDING_SCORING_SQL)
-      .all<{ competition_id: string }>()
+    const { results } = await db.prepare(PENDING_SCORING_SQL).all<{ competition_id: string }>()
     pending = results.map((row) => row.competition_id)
   } catch (err) {
     console.error('[poller] Falha ao ler as competições com pontuação pendente:', err)
@@ -294,6 +292,55 @@ function planTasks(rows: ActiveRound[], now: number): PollerPlan {
     compCount: compCount + (lateTask ? 1 : 0),
     roundDays: activeRows.length + (lateTask ? 1 : 0),
   }
+}
+
+/** Resultado da pontuação de um tick, somando todas as competições. */
+type ScoringRun = { failures: unknown[]; matchesScored: number; unfinished: number }
+
+/**
+ * Pontuação do tick: uma competição por vez. O erro de uma fica registrado e as
+ * outras seguem. Cada competição recebe uma parte igual do que resta, para que uma
+ * com muitos palpites não gaste a vez das outras. A parte nunca fica abaixo do
+ * mínimo para planejar e gravar uma vez enquanto houver esse mínimo, senão a
+ * primeira da lista seria pulada em todo tick. O que sobrar vai, numa segunda
+ * passada, para as que pararam por falta de chamadas.
+ */
+async function scoreCompetitions(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  budget: CallBudget,
+  toScore: string[],
+): Promise<ScoringRun> {
+  const run: ScoringRun = { failures: [], matchesScored: 0, unfinished: 0 }
+  /** Devolve `false` quando a competição parou por falta de chamadas. */
+  const scoreCompetition = async (compId: string, maxCalls: number): Promise<boolean> => {
+    try {
+      const outcome = await scoreUnprocessedMatches(compId, db, maxCalls)
+      run.matchesScored += outcome.scored
+      return outcome.complete
+    } catch (err) {
+      run.failures.push(err)
+      // `tryLogEvent`, porque uma falha ao registrar não pode tirar a vez das outras competições.
+      console.error(`[poller] Pontuação falhou comp=${compId}:`, err)
+      tryLogEvent(ae, 'match_scoring_error', {
+        blobs: [compId, err instanceof Error ? err.message : String(err)],
+      })
+      return true
+    }
+  }
+
+  const stopped: string[] = []
+  for (const [i, compId] of toScore.entries()) {
+    const left = callsLeft(budget)
+    const share = Math.floor(left / (toScore.length - i))
+    if (!(await scoreCompetition(compId, Math.min(left, Math.max(MIN_SCORING_CALLS, share))))) {
+      stopped.push(compId)
+    }
+  }
+  for (const compId of stopped) {
+    if (!(await scoreCompetition(compId, callsLeft(budget)))) run.unfinished += 1
+  }
+  return run
 }
 
 /**
@@ -453,43 +500,11 @@ export async function pollActiveMatches(
     return
   }
 
-  // Pontuação: uma competição por vez. O erro de uma fica registrado e as outras seguem.
-  const scoringFailures: unknown[] = []
-  let matchesScored = 0
-  /** Devolve `false` quando a competição parou por falta de chamadas. */
-  const scoreCompetition = async (compId: string, maxCalls: number): Promise<boolean> => {
-    try {
-      const outcome = await scoreUnprocessedMatches(compId, db, maxCalls)
-      matchesScored += outcome.scored
-      return outcome.complete
-    } catch (err) {
-      scoringFailures.push(err)
-      // `tryLogEvent`, porque uma falha ao registrar não pode tirar a vez das outras competições.
-      console.error(`[poller] Pontuação falhou comp=${compId}:`, err)
-      tryLogEvent(ae, 'match_scoring_error', {
-        blobs: [compId, err instanceof Error ? err.message : String(err)],
-      })
-      return true
-    }
-  }
-
-  // Cada competição recebe uma parte igual do que resta, para que uma com muitos
-  // palpites não gaste a vez das outras. A parte nunca fica abaixo do mínimo para
-  // planejar e gravar uma vez enquanto houver esse mínimo, senão a primeira da
-  // lista seria pulada em todo tick. O que sobrar vai, numa segunda passada, para
-  // as que pararam por falta de chamadas.
-  const stopped: string[] = []
-  for (const [i, compId] of toScore.entries()) {
-    const left = callsLeft(budget)
-    const share = Math.floor(left / (toScore.length - i))
-    if (!(await scoreCompetition(compId, Math.min(left, Math.max(MIN_SCORING_CALLS, share))))) {
-      stopped.push(compId)
-    }
-  }
-  let unfinished = 0
-  for (const compId of stopped) {
-    if (!(await scoreCompetition(compId, callsLeft(budget)))) unfinished += 1
-  }
+  const {
+    failures: scoringFailures,
+    matchesScored,
+    unfinished,
+  } = await scoreCompetitions(db, ae, budget, toScore)
 
   await reportUnscoredMatches(db, ae, now)
 
