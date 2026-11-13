@@ -3,13 +3,15 @@
     "node": ">=24"
   },
   "scripts": {
-    "lint": "oxlint api web",
-    "lint:fix": "oxlint --fix api web",
-    "format": "oxfmt api web",
-    "format:check": "oxfmt --check api web",
+    "lint": "oxlint api web scripts",
+    "lint:fix": "oxlint --fix api web scripts",
+    "format": "oxfmt api web scripts",
+    "format:check": "oxfmt --check api web scripts",
     "test:api": "npm --prefix api test",
     "test:web": "npm --prefix web test",
-    "test": "npm run test:api && npm run test:web",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
+    "test": "npm run test:api && npm run test:web && npm run test:scripts",
+    "check:personal-data": "node scripts/personal-data-check.mjs",
     "typecheck": "npm --prefix api run typecheck && npm --prefix web run type-check",
     "check": "npm run lint && npm run typecheck && npm test"
   },
