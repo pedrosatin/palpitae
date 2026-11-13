@@ -71,6 +71,23 @@ describe('JoinGroupModal', () => {
     })
   })
 
+  it('mostra a mensagem do 409 de teto de participações e mantém o código digitado', async () => {
+    const capError = 'Você já participa de 50 grupos. Saia de um para entrar em outro.'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({ error: capError }, { status: 409 }),
+    )
+
+    render(<JoinGroupModal {...defaultProps} />)
+    await userEvent.type(screen.getByRole('textbox'), 'ABCD-EF23')
+    await userEvent.click(screen.getByRole('button', { name: /entrar/i }))
+
+    expect(await screen.findByText(capError)).toBeInTheDocument()
+    expect(screen.queryByText('Você entrou no grupo!')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveValue('ABCD-EF23')
+    expect(screen.getByRole('button', { name: /entrar/i })).toBeEnabled()
+    expect(defaultProps.onJoined).not.toHaveBeenCalled()
+  })
+
   it('mostra aviso legível quando a resposta de erro não é JSON', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 }),

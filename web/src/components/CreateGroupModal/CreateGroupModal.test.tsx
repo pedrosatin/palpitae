@@ -185,6 +185,26 @@ describe('CreateGroupModal', () => {
     })
   })
 
+  it('mostra a mensagem do 409 de teto de grupos e mantém o formulário preenchido', async () => {
+    mockFetchCompetitions()
+    const capError = 'Você já tem 20 grupos criados. Exclua um para criar outro.'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({ error: capError }, { status: 409 }),
+    )
+
+    render(<CreateGroupModal {...defaultProps} />)
+    await waitFor(() => screen.getByLabelText('Nome do grupo'))
+
+    await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Grupo 21')
+    await userEvent.click(screen.getByRole('button', { name: /criar/i }))
+
+    expect(await screen.findByText(capError)).toBeInTheDocument()
+    expect(screen.queryByText('Grupo criado!')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Nome do grupo')).toHaveValue('Grupo 21')
+    expect(screen.getByRole('button', { name: /criar/i })).toBeEnabled()
+    expect(defaultProps.onCreated).not.toHaveBeenCalled()
+  })
+
   it('shows connection error on fetch failure', async () => {
     mockFetchCompetitions()
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network error'))

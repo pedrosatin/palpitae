@@ -8,7 +8,9 @@ import type { AppContext } from '../types'
 const JWT_SECRET = 'test-secret-groups-router'
 
 function createDbMock(email: string) {
-  const batch = vi.fn().mockResolvedValue(undefined)
+  // Como no D1, o lote devolve um resultado por instrução: grupo e participação do dono gravados.
+  const written = { success: true, meta: { changes: 1 } }
+  const batch = vi.fn().mockResolvedValue([written, written])
 
   const db = {
     batch,
