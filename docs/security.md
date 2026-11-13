@@ -32,6 +32,14 @@ catálogo da landing.
 O limite de membros é verificado no próprio `INSERT` da entrada, então duas
 entradas simultâneas não passam do limite.
 
+Cada conta pode ter até 20 grupos ativos criados por ela e participar de até 50
+grupos ativos, contando os que criou. Grupo excluído e participação removida não
+contam. `POST /groups` e `POST /groups/join` conferem os tetos no próprio
+`INSERT`, como o limite de membros, e respondem 409 com a mensagem que o modal
+mostra. As constantes ficam em `api/src/groups/groupCaps.ts`. Os tetos limitam
+quantos grupos uma conta põe na lista de `GET /groups`, nas escritas em lote e
+no cron de pontuação.
+
 Quando o dono remove um membro, o servidor registra o bloqueio em `group_bans` e
 remove a participação na mesma transação. O convite antigo deixa de permitir a
 reentrada dessa pessoa. O bloqueio vale somente para esse grupo; a conta e os
