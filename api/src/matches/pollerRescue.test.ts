@@ -4,7 +4,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => ({ matches: 0 })) }))
-vi.mock('./scoring', () => ({
+vi.mock('./scoring', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./scoring')>()),
   scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
 }))
 vi.mock('./espnFallback', () => ({

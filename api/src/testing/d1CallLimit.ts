@@ -1,9 +1,11 @@
 /**
- * Limite de chamadas ao D1 por invocação do Worker, que o SQLite em memória de
- * `sqliteD1.ts` não tem. No plano Free são 50: cada `first`, `run`, `all` ou
- * `raw` de uma instrução conta uma chamada e um `batch` inteiro conta uma. A
- * chamada que passa do limite é rejeitada com o erro do D1 e não chega ao banco.
- * Só para testes; não depende do contador de produção (`matches/callBudget.ts`).
+ * Limite de chamadas por invocação do Worker, que o SQLite em memória de
+ * `sqliteD1.ts` não tem. No plano Free são 50. Cada `first`, `run`, `all` ou
+ * `raw` de uma instrução conta uma chamada, um `batch` inteiro conta uma e cada
+ * `fetch` que o teste registra com `chargeFetch` conta uma. A chamada ao D1 que
+ * passa do limite é rejeitada com o erro do D1 e não chega ao banco, e o `fetch`
+ * que passa lança antes da resposta.
+ * Só para testes. Não depende do contador de produção (`matches/callBudget.ts`).
  */
 export const D1_CALLS_PER_INVOCATION = 50
 
@@ -15,6 +17,8 @@ export type LimitedD1 = {
   startInvocation(): void
   /** Chamadas da invocação atual, contando as rejeitadas. */
   calls(): number
+  /** Conta um `fetch` na invocação atual. Lança se passou do limite. */
+  chargeFetch(): void
 }
 
 /** `limit` nulo só conta, sem rejeitar nada. */
@@ -69,5 +73,6 @@ export function limitD1Calls(
       calls = 0
     },
     calls: () => calls,
+    chargeFetch: charge,
   }
 }

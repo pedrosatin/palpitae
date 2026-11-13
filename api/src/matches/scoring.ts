@@ -358,6 +358,9 @@ const PREDICTIONS_PER_STATEMENT = 1000
 const PLAN_CALLS = 2
 const WRITE_CALLS = 2
 
+/** Chamadas abaixo das quais `scoreUnprocessedMatches` não começa: planejar e gravar uma vez. */
+export const MIN_SCORING_CALLS = PLAN_CALLS + WRITE_CALLS
+
 export type ScoringOutcome = {
   /** Jogos cuja gravação rodou. Ela não altera nada se o resultado mudou depois da leitura. */
   scored: number
@@ -473,7 +476,7 @@ async function scoreWrite(
       Boolean(penaltyEligible),
     )
 
-    // 0 ou 1: a gravação multiplica pelo valor do grupo naquele momento.
+    // 0 ou 1. A gravação multiplica pelo valor do grupo naquele momento.
     const classifiedPoints = evaluateClassifiedPointsForPrediction(
       matchCtx,
       { ...p, points_classified: 1 },
@@ -518,7 +521,7 @@ async function scoreWrite(
 
 /**
  * Pontua os jogos encerrados sem `scored_at` da competição, do mais antigo para o
- * mais novo. O progresso é por jogo: cada gravação fecha os jogos dela, e jogo
+ * mais novo. O progresso é por jogo. Cada gravação fecha os jogos dela, e jogo
  * com `scored_at` não é refeito. Chamar de novo é seguro. Execuções simultâneas,
  * nova tentativa depois de uma gravação que falhou e correção de placar no meio
  * terminam com os pontos e o ranking de uma execução só sobre o resultado mais
@@ -533,7 +536,7 @@ export async function scoreUnprocessedMatches(
   db: D1Database,
   maxCalls = Infinity,
 ): Promise<ScoringOutcome> {
-  if (maxCalls < PLAN_CALLS + WRITE_CALLS) return { scored: 0, complete: false }
+  if (maxCalls < MIN_SCORING_CALLS) return { scored: 0, complete: false }
 
   // 1. Jogos sem pontuação, com o contexto de pênaltis e quantos palpites cada um tem.
   const unscored = await db

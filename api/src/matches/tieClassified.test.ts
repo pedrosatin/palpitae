@@ -1300,7 +1300,7 @@ it('reverte configuração e pontuação quando o ranking falha e permite repeti
   ).toMatchObject({ total_points: 7 })
 })
 
-// A pontuação grava cada jogo num batch só: o PATCH só pode chegar antes dele.
+// O PATCH só pode chegar antes do batch, porque a pontuação grava cada jogo num batch só.
 it('mantém a regra vigente quando o cron continua após PATCH', async () => {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)

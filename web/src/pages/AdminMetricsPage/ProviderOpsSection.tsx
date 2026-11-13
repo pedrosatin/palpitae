@@ -575,10 +575,11 @@ function UnscoredMatchesTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
+          {rows.map((r, i) => {
             const name = competitionName(r.competition_id, names)
             return (
-              <tr key={r.competition_id}>
+              // O id chega vazio quando a sanitização o descarta; o índice evita a colisão.
+              <tr key={`${i}|${r.competition_id}`}>
                 <td title={name.title}>{name.text}</td>
                 <td className={styles.num}>{formatNumber(r.matches)}</td>
                 <td className={styles.num}>{formatAge(r.oldest_minutes)}</td>
@@ -604,8 +605,9 @@ function UnscoredMatches({ ops, names }: { ops: OpsResponse; names: CompetitionN
       <h3 className={styles.subTitle}>Jogos encerrados sem pontuação</h3>
       <p className={styles.hint}>
         Jogos com resultado que passaram mais de um ciclo do poller (30 minutos) sem pontos nem
-        ranking: a pontuação parou no limite de chamadas do ciclo, falhou, ou o jogo decisivo espera
-        o vencedor dos pênaltis. "Ciclos" conta quantos ciclos registraram a pendência no período.
+        ranking, porque a pontuação parou no limite de chamadas do ciclo, falhou ou espera o
+        vencedor dos pênaltis num jogo decisivo. "Ciclos" conta quantos ciclos registraram a
+        pendência no período.
       </p>
       {ops.unscoredMatches.length === 0 ? (
         <p className={styles.hint}>Nenhum jogo encerrado ficou sem pontuação no período.</p>

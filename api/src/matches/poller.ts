@@ -17,7 +17,7 @@ import {
   POLLER_TICK_MS,
   RESCUE_WINDOW_MS,
 } from './matchPollingWindow'
-import { scoreUnprocessedMatches } from './scoring'
+import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
 type ActiveRound = {
@@ -239,6 +239,40 @@ async function reportUnscoredMatches(
   }
 }
 
+/**
+ * Competições com jogo encerrado, com placar e sem `scored_at`, do jogo pendente
+ * mais antigo para o mais novo. Lê o mesmo índice parcial de
+ * `UNSCORED_REPORT_SQL`, sem o corte de horário. O jogo que acabou de encerrar
+ * também entra.
+ */
+export const PENDING_SCORING_SQL = `SELECT competition_id
+   FROM matches INDEXED BY idx_matches_unscored
+  WHERE status = 'finished' AND scored_at IS NULL
+    AND home_score IS NOT NULL AND away_score IS NOT NULL
+  GROUP BY competition_id
+  ORDER BY MIN(start_time), competition_id`
+
+/**
+ * Ordem de pontuação do tick. Primeiro as competições com pontuação pendente no
+ * D1, pelo jogo pendente mais antigo, e depois as sincronizadas no tick que não
+ * estão entre elas. A competição que parou por falta de chamadas, ou por erro,
+ * volta mesmo sem sync no tick, e a que ficou sem a vez num tick tem o jogo
+ * pendente mais antigo no seguinte. Se a leitura falha, valem só as
+ * sincronizadas, como antes.
+ */
+async function competitionsToScore(db: D1Database, synced: Set<string>): Promise<string[]> {
+  let pending: string[] = []
+  try {
+    const { results } = await db
+      .prepare(PENDING_SCORING_SQL)
+      .all<{ competition_id: string }>()
+    pending = results.map((row) => row.competition_id)
+  } catch (err) {
+    console.error('[poller] Falha ao ler as competições com pontuação pendente:', err)
+  }
+  return Array.from(new Set([...pending, ...synced]))
+}
+
 type PollerPlan = {
   lateTask: SyncTask | undefined
   tasks: SyncTask[]
@@ -292,8 +326,9 @@ function planTasks(rows: ActiveRound[], now: number): PollerPlan {
  * usa só o provedor primário: o fallback da ESPN segue na janela de 24 h.
  *
  * Pontuação (ADR-024): uma competição por vez, dentro do que sobra de
- * `POLLER_CALL_BUDGET`. A que não termina continua no tick seguinte de onde
- * parou, e o erro de uma não impede as outras.
+ * `POLLER_CALL_BUDGET`. Entram as sincronizadas no tick e as que têm jogo
+ * encerrado sem pontuação no D1, com ou sem jogo na janela. A que não termina
+ * continua no tick seguinte de onde parou, e o erro de uma não impede as outras.
  */
 export async function pollActiveMatches(
   rawDb: D1Database,
@@ -313,17 +348,6 @@ export async function pollActiveMatches(
     }
 
   const { lateTask, tasks, compCount, roundDays } = planTasks(await loadPollerRows(db, now), now)
-
-  if (tasks.length === 0) {
-    console.info('[poller] Nenhum jogo na janela ativa.')
-    await reportUnscoredMatches(db, ae, now)
-    logEvent(ae, 'poller_run', {
-      blobs: ['ok'],
-      // matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded
-      doubles: [0, 0, 0, Date.now() - startedAt, 0],
-    })
-    return
-  }
 
   type SyncOutcome =
     | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
@@ -415,6 +439,20 @@ export async function pollActiveMatches(
     }
   }
 
+  // Lida depois do sync e do fallback, para incluir os resultados que acabaram de chegar.
+  const toScore = await competitionsToScore(db, syncedComps)
+
+  if (tasks.length === 0 && toScore.length === 0) {
+    console.info('[poller] Nenhum jogo na janela ativa.')
+    await reportUnscoredMatches(db, ae, now)
+    logEvent(ae, 'poller_run', {
+      blobs: ['ok'],
+      // matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded
+      doubles: [0, 0, 0, Date.now() - startedAt, 0],
+    })
+    return
+  }
+
   // Pontuação: uma competição por vez. O erro de uma fica registrado e as outras seguem.
   const scoringFailures: unknown[] = []
   let matchesScored = 0
@@ -426,7 +464,7 @@ export async function pollActiveMatches(
       return outcome.complete
     } catch (err) {
       scoringFailures.push(err)
-      // `tryLogEvent`: uma falha ao registrar não pode tirar a vez das outras competições.
+      // `tryLogEvent`, porque uma falha ao registrar não pode tirar a vez das outras competições.
       console.error(`[poller] Pontuação falhou comp=${compId}:`, err)
       tryLogEvent(ae, 'match_scoring_error', {
         blobs: [compId, err instanceof Error ? err.message : String(err)],
@@ -436,13 +474,17 @@ export async function pollActiveMatches(
   }
 
   // Cada competição recebe uma parte igual do que resta, para que uma com muitos
-  // palpites não gaste a vez das outras. O que sobrar vai, numa segunda passada,
-  // para as que pararam por falta de chamadas.
-  const toScore = Array.from(syncedComps)
+  // palpites não gaste a vez das outras. A parte nunca fica abaixo do mínimo para
+  // planejar e gravar uma vez enquanto houver esse mínimo, senão a primeira da
+  // lista seria pulada em todo tick. O que sobrar vai, numa segunda passada, para
+  // as que pararam por falta de chamadas.
   const stopped: string[] = []
   for (const [i, compId] of toScore.entries()) {
-    const share = Math.floor(callsLeft(budget) / (toScore.length - i))
-    if (!(await scoreCompetition(compId, share))) stopped.push(compId)
+    const left = callsLeft(budget)
+    const share = Math.floor(left / (toScore.length - i))
+    if (!(await scoreCompetition(compId, Math.min(left, Math.max(MIN_SCORING_CALLS, share))))) {
+      stopped.push(compId)
+    }
   }
   let unfinished = 0
   for (const compId of stopped) {
@@ -462,7 +504,7 @@ export async function pollActiveMatches(
     ],
   })
 
-  // Falha de D1 na pontuação: depois de todas as competições terem a vez e do tick
+  // Falha de D1 na pontuação. Depois de todas as competições terem a vez e do tick
   // registrado como erro, a primeira falha é relançada e a invocação sai como exceção.
   if (scoringFailures.length > 0) throw scoringFailures[0]
 
@@ -479,6 +521,7 @@ export async function pollActiveMatches(
       espn_min_interval_ms: ESPN_MIN_INTERVAL_MS,
       calls_used: budget.used,
       calls_budget: budget.limit,
+      scoring_competitions: toScore.length,
       matches_scored: matchesScored,
       scoring_unfinished: unfinished,
       total_ms: Date.now() - startedAt,

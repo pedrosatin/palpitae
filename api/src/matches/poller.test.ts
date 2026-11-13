@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the three collaborators — pollActiveMatches only orchestrates them.
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
-vi.mock('./scoring', () => ({
+vi.mock('./scoring', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./scoring')>()),
   scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
 }))
 vi.mock('./espnFallback', () => ({

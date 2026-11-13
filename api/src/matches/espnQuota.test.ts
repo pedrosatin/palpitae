@@ -2,7 +2,8 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
-vi.mock('./scoring', () => ({
+vi.mock('./scoring', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./scoring')>()),
   scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
 }))
 vi.mock('./espnFallback', () => ({

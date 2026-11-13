@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ProviderOpsSection, {
   isFailureStatus,
   summarizeHttp,
@@ -44,6 +44,10 @@ function makeOps(overrides: Partial<OpsResponse> = {}): OpsResponse {
     ...overrides,
   }
 }
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('ProviderOpsSection', () => {
   it('sem a resposta da API avisa que está indisponível, sem apresentar zero', () => {
@@ -357,6 +361,26 @@ describe('ProviderOpsSection', () => {
     ])
     expect(cells(rows[1])).toEqual(['Campeonato 99999999', '1', '3 d', '40', '13/11 18:00 UTC'])
     expect(screen.getByText(/passaram mais de um ciclo do poller/)).toBeInTheDocument()
+  })
+
+  it('duas linhas sem id de competição aparecem as duas, sem chave repetida', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const row = { competition_id: '', matches: 1, oldest_minutes: 200, cycles: 1 }
+    render(
+      <ProviderOpsSection
+        ops={makeOps({
+          unscoredMatches: [
+            { ...row, last_seen: '2026-11-13 19:30:04' },
+            { ...row, last_seen: '2026-11-13 18:00:02' },
+          ],
+        })}
+        names={names}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: 'Jogos encerrados sem pontuação' })
+    expect(within(table).getAllByRole('row').slice(1)).toHaveLength(2)
+    expect(errors.mock.calls.flat().join(' ')).not.toMatch(/same key/)
   })
 
   it('sem jogo encerrado pendente diz que não houve registro, sem tabela', () => {

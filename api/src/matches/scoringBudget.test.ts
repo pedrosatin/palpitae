@@ -10,10 +10,10 @@ import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
 /**
- * Pontuação sob o limite de 50 chamadas ao D1 por invocação do plano Free. O
- * cron de resultados roda inteiro (`scheduled`: limpeza, planejamento, sync,
- * fallback e pontuação) sobre o SQLite em memória, com um D1 que rejeita a
- * chamada 51. Antes, uma competição com cerca de 4,7 mil palpites passava do
+ * Pontuação sob o limite de 50 chamadas por invocação do plano Free. O cron de
+ * resultados roda inteiro (`scheduled`: limpeza, planejamento, sync, fallback e
+ * pontuação) sobre o SQLite em memória. As chamadas ao D1 e os `fetch` aos
+ * provedores somam na mesma conta, e a chamada 51 é rejeitada. Antes, uma competição com cerca de 4,7 mil palpites passava do
  * limite em todo ciclo, nenhum jogo recebia `scored_at` e a outra competição do
  * mesmo ciclo também ficava sem pontuação.
  */
@@ -55,14 +55,28 @@ function fdMatches(comp: Seed, finished: boolean) {
   })
 }
 
+type Provider = {
+  /** Os jogos voltam encerrados, com placar. */
+  finished: boolean
+  /** A football-data responde 500. */
+  failing: boolean
+  /** Requisições à football-data. */
+  requests: number
+  /** Chamado a cada `fetch`, antes da resposta. Lança se a invocação passou do limite. */
+  onFetch?: () => void
+}
+
 /** A football-data responde os jogos de cada competição; a ESPN do fallback, nenhum evento. */
 function stubProvider(seeds: Seed[]) {
-  const provider = { finished: false }
+  const provider: Provider = { finished: false, failing: false, requests: 0 }
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request) => {
+      provider.onFetch?.()
       const url = new URL(String(input))
       if (url.hostname !== 'api.football-data.org') return Response.json({ events: [] })
+      provider.requests += 1
+      if (provider.failing) return new Response('erro interno', { status: 500 })
       // O sync manual pede pelo código; o poller, pelo id da competição no provedor.
       const comp = seeds.find((seed) =>
         [seed.code, String(seed.id)].some((key) => url.pathname.includes(`/competitions/${key}/`)),
@@ -222,7 +236,10 @@ function readScores(sqlite: DatabaseSync) {
 }
 
 /** A mesma semente em outro banco, pontuada de uma vez, sem limite de chamadas. */
-async function scoreWithoutLimit(seeds: Seed[], provider: { finished: boolean }) {
+async function scoreWithoutLimit(seeds: Seed[], provider: Provider) {
+  // O banco de controle fica fora da invocação contada.
+  provider.onFetch = undefined
+  provider.failing = false
   provider.finished = false
   const control = await seedDatabase(seeds)
   provider.finished = true
@@ -233,7 +250,7 @@ async function scoreWithoutLimit(seeds: Seed[], provider: { finished: boolean })
   return readScores(control.sqlite)
 }
 
-describe('cron de resultados com 50 chamadas ao D1 por invocação', () => {
+describe('cron de resultados com 50 chamadas por invocação', () => {
   it('competição com 5 mil palpites termina em ciclos sucessivos e a pequena é pontuada no primeiro', async () => {
     const seeds: Seed[] = [
       { ...BIG, matches: 40, groups: 25, members: 5 },
@@ -245,6 +262,7 @@ describe('cron de resultados com 50 chamadas ao D1 por invocação', () => {
     provider.finished = true
 
     const limited = limitD1Calls(db)
+    provider.onFetch = limited.chargeFetch
     const { env } = makeEnv(limited.db)
     const pendingAfterCycle: number[] = []
     let scoredInFirstCycle: Record<string, string> = {}
@@ -287,6 +305,7 @@ describe('cron de resultados com 50 chamadas ao D1 por invocação', () => {
     provider.finished = true
 
     const limited = limitD1Calls(db)
+    provider.onFetch = limited.chargeFetch
     const failures = await runCycle(makeEnv(limited.db).env, NOW)
 
     expect(failures).toEqual([])
@@ -314,6 +333,7 @@ describe('cron de resultados com 50 chamadas ao D1 por invocação', () => {
         BEGIN SELECT RAISE(ABORT, 'D1_ERROR: disco cheio'); END;
     `)
     const limited = limitD1Calls(db)
+    provider.onFetch = limited.chargeFetch
     const { env, events, clearEvents } = makeEnv(limited.db)
 
     // Ciclo 1: os jogos encerram agora. A falha é de uma competição só.
@@ -341,6 +361,62 @@ describe('cron de resultados com 50 chamadas ao D1 por invocação', () => {
     expect(unscoredMatches(sqlite, ids.PPL)).toBe(0)
     expect(events('match_unscored')).toEqual([])
     expect(events('poller_run').map((point) => point.blobs)).toEqual([['ok']])
+  })
+
+  it('competição que parou no orçamento é pontuada depois das 24 h, em tick sem jogo na janela', async () => {
+    const seeds: Seed[] = [{ ...BIG, matches: 40, groups: 25, members: 5 }]
+    const provider = stubProvider(seeds)
+    const { sqlite, db, ids } = await seedDatabase(seeds)
+    provider.finished = true
+    const limited = limitD1Calls(db)
+    provider.onFetch = limited.chargeFetch
+    const { env } = makeEnv(limited.db)
+
+    expect(await runCycle(env, NOW)).toEqual([])
+    const pendingAfterFirst = unscoredMatches(sqlite, ids.PPL)
+    expect(pendingAfterFirst).toBeGreaterThan(0)
+
+    // 25 h depois do início os jogos saíram do resgate e não há tarefa de sync.
+    const later = NOW + 25 * 60 * 60_000
+    const requestsBefore = provider.requests
+    const pending: number[] = []
+    for (let cycle = 0; cycle < 6; cycle++) {
+      limited.startInvocation()
+      expect(await runCycle(env, later + cycle * TICK_MS)).toEqual([])
+      expect(limited.calls()).toBeLessThanOrEqual(D1_CALLS_PER_INVOCATION)
+      pending.push(unscoredMatches(sqlite, ids.PPL))
+      if (pending.at(-1) === 0) break
+    }
+
+    expect(provider.requests).toBe(requestsBefore)
+    expect(pending[0]).toBeLessThan(pendingAfterFirst)
+    expect(pending.at(-1)).toBe(0)
+    expect(readScores(sqlite)).toEqual(await scoreWithoutLimit(seeds, provider))
+  })
+
+  it('competição pendente é pontuada no tick em que o sync dela falha', async () => {
+    const seeds: Seed[] = [{ ...BIG, matches: 40, groups: 25, members: 5 }]
+    const provider = stubProvider(seeds)
+    const { sqlite, db, ids } = await seedDatabase(seeds)
+    provider.finished = true
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const limited = limitD1Calls(db)
+    provider.onFetch = limited.chargeFetch
+    const { env, events, clearEvents } = makeEnv(limited.db)
+
+    expect(await runCycle(env, NOW)).toEqual([])
+    const pendingAfterFirst = unscoredMatches(sqlite, ids.PPL)
+    expect(pendingAfterFirst).toBeGreaterThan(0)
+
+    // A football-data passa a responder 500, e o fallback não tem o que atualizar.
+    provider.failing = true
+    clearEvents()
+    limited.startInvocation()
+    expect(await runCycle(env, NOW + TICK_MS)).toEqual([])
+
+    expect(limited.calls()).toBeLessThanOrEqual(D1_CALLS_PER_INVOCATION)
+    expect(events('football_api_error')).not.toEqual([])
+    expect(unscoredMatches(sqlite, ids.PPL)).toBeLessThan(pendingAfterFirst)
   })
 })
 

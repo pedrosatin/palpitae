@@ -192,8 +192,9 @@ O log `[perf]` desses crons também registra `espn_max_concurrent` e
 `espn_min_interval_ms` (teto de syncs ESPN em voo e pacing HTTP anti-403).
 O do poller traz ainda o orçamento de chamadas do tick (ADR-024): `calls_used`
 (consultas e batches do D1 mais tentativas HTTP), `calls_budget`,
-`matches_scored` e `scoring_unfinished` (competições que ficaram para o tick
-seguinte por falta de chamadas).
+`scoring_competitions` (competições que entraram na pontuação, sincronizadas no
+tick ou com jogo pendente no D1), `matches_scored` e `scoring_unfinished`
+(competições que ficaram para o tick seguinte por falta de chamadas).
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
@@ -600,7 +601,7 @@ e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
 - jogos pendentes que a descoberta não viu no calendário da football-data (`missingMatches`),
   lidos de `match_missing_from_feed`, com quantas vezes e quando foram registrados por último;
 - competições com jogo encerrado que passou mais de um ciclo do poller sem pontuação
-  (`unscoredMatches`), lidas de `match_unscored`: `matches` e `oldest_minutes` são o pico do
+  (`unscoredMatches`), lidas de `match_unscored`. `matches` e `oldest_minutes` são o pico do
   período, `cycles` conta os ciclos que registraram a pendência e `last_seen` é o registro mais
   recente. O painel mostra a lista em "Jogos encerrados sem pontuação". Sem o campo (API
   anterior), a página omite a subseção.
