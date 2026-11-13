@@ -529,7 +529,7 @@ router.post('/', requireAuth, async (c) => {
   const memberId = crypto.randomUUID()
 
   try {
-    // Os tetos por usuário são conferidos no próprio INSERT do grupo: um SELECT COUNT
+    // Os tetos por usuário são conferidos no próprio INSERT do grupo. Um SELECT COUNT
     // separado deixaria duas criações simultâneas passarem do teto. O dono vira
     // participante, então a criação também respeita o teto de participações. Com o
     // grupo recusado, o INSERT do dono não encontra o grupo e não grava nada.
@@ -571,7 +571,7 @@ router.post('/', requireAuth, async (c) => {
     })
     if (!invite_code) return c.json({ error: 'Erro interno ao gerar convite' }, 503)
     if (!created) {
-      // Só para escolher a mensagem: a recusa já aconteceu no INSERT.
+      // Só para escolher a mensagem. A recusa já aconteceu no INSERT.
       const owned = await db
         .prepare(`SELECT ${ACTIVE_GROUPS_OWNED_COUNT_SQL} AS n`)
         .bind(userId)

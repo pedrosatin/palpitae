@@ -17,12 +17,12 @@ export const JOIN_MEMBERSHIP_CAP_ERROR = `Você já participa de ${MAX_ACTIVE_ME
 export const CREATE_MEMBERSHIP_CAP_ERROR = `Você já participa de ${MAX_ACTIVE_MEMBERSHIPS} grupos. Saia de um para criar outro.`
 
 /**
- * Contagem das participações ativas de um usuário, como subquery escalar com um
- * bind (o id do usuário). Parte de `group_members` pelo índice
+ * Contagem das participações ativas de um usuário, como subquery escalar com o id
+ * do usuário em um bind. Parte de `group_members` pelo índice
  * `idx_group_members_user`. Participação removida não tem linha, e a de grupo
  * excluído sai pelo `deleted_at`.
  *
- * Entra no `WHERE` do `INSERT` que cria o grupo ou a participação: uma contagem
+ * Entra no `WHERE` do `INSERT` que cria o grupo ou a participação. Uma contagem
  * num `SELECT` separado deixaria dois pedidos simultâneos passarem do teto.
  */
 export const ACTIVE_MEMBERSHIPS_COUNT_SQL = `(
@@ -31,8 +31,8 @@ export const ACTIVE_MEMBERSHIPS_COUNT_SQL = `(
    WHERE cap_gm.user_id = ? AND cap_g.deleted_at IS NULL)`
 
 /**
- * Contagem dos grupos ativos criados por um usuário, com um bind (o id do
- * usuário). O dono sempre tem linha em `group_members` e não consegue sair do
+ * Contagem dos grupos ativos criados por um usuário, com o id do usuário em um
+ * bind. O dono sempre tem linha em `group_members` e não consegue sair do
  * próprio grupo, então a contagem parte das participações dele, pelo mesmo
  * índice, em vez de varrer `groups`, que não tem índice por `owner_user_id`.
  */

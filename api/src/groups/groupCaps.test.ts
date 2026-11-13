@@ -7,8 +7,8 @@ import type { Env } from '../types'
 import { createSqliteD1 } from '../testing/sqliteD1'
 
 // Tetos por usuário pela API inteira, com o SQL de produção no SQLite em memória.
-// Os números ficam literais aqui: são a decisão do operador, e o teste precisa
-// quebrar se a constante mudar sem querer.
+// Os números ficam literais aqui porque refletem a decisão do operador, e o teste
+// precisa quebrar se a constante mudar sem querer.
 const OWNED_CAP_ERROR = 'Você já tem 20 grupos criados. Exclua um para criar outro.'
 const JOIN_CAP_ERROR = 'Você já participa de 50 grupos. Saia de um para entrar em outro.'
 const CREATE_MEMBERSHIP_CAP_ERROR = 'Você já participa de 50 grupos. Saia de um para criar outro.'
@@ -189,7 +189,7 @@ describe('teto de 20 grupos criados por usuário', () => {
     expect(totals()).toEqual(before)
   })
 
-  it('não conta grupo excluído: excluir um libera a vaga', async () => {
+  it('não conta grupo excluído porque excluir um libera a vaga', async () => {
     const { create, request, seedGroups, ownedActive } = await fixture()
     const [first] = seedGroups('ana', 20)
     expect((await create()).status).toBe(409)
@@ -233,7 +233,7 @@ describe('teto de 50 participações por usuário', () => {
     expect(membershipsActive()).toBe(50)
   })
 
-  it('não conta participação removida: sair de um grupo libera a vaga', async () => {
+  it('não conta participação removida porque sair de um grupo libera a vaga', async () => {
     const { join, request, seedGroups, seedMemberships, membershipsActive } = await fixture()
     const groups = seedGroups('dono', 51)
     seedMemberships('ana', groups.slice(0, 50))
