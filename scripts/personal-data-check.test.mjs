@@ -19,6 +19,12 @@ const SYNTHETIC_UUID = '00000001-0000-4000-8000-000000000001'
 const kinds = (path, text) => scanText(path, text).map((finding) => finding.kind)
 
 describe('scanText', () => {
+  it('reprova e-mail com o @ escrito como %40 ou \\u0040', () => {
+    assert.deepEqual(kinds('docs/nota.md', 'mailto:fulano%40dominio-externo.test'), ['email'])
+    assert.deepEqual(kinds('docs/nota.md', '"fulano\\u0040dominio-externo.test"'), ['email'])
+    assert.deepEqual(kinds('docs/nota.md', 'fulano%40example.test'), [])
+  })
+
   it('reprova e-mail fora da allowlist', () => {
     assert.deepEqual(kinds('docs/nota.md', `contato: ${REAL_EMAIL}`), ['email'])
   })
@@ -44,6 +50,15 @@ describe('scanText', () => {
     assert.deepEqual(kinds('docs/nota.md', `?invite_code=${INVITE}&x=1`), ['invite'])
   })
 
+  it('reprova código de convite em link ou em invite_code, em qualquer caixa', () => {
+    const lower = INVITE.toLowerCase()
+    const mixed = `${INVITE.slice(0, 2)}${lower.slice(2, 6)}${INVITE.slice(6)}`
+    assert.deepEqual(kinds('docs/nota.md', `https://palpitae.com.br/convite/${lower}`), ['invite'])
+    assert.deepEqual(kinds('docs/nota.md', `?invite_code=${mixed}&x=1`), ['invite'])
+    assert.deepEqual(kinds('docs/nota.md', `"invite_code": "${lower}"`), ['invite'])
+    assert.deepEqual(kinds('docs/nota.md', `/convite/<INVITE_CODE> e invite_code=XXXX-XXXX`), [])
+  })
+
   it('aceita o placeholder <INVITE_CODE> e a notação XXXX-XXXX', () => {
     assert.deepEqual(kinds('docs/nota.md', 'convite <INVITE_CODE>'), [])
     assert.deepEqual(kinds('docs/nota.md', 'no formato XXXX-XXXX'), [])
@@ -59,15 +74,19 @@ describe('scanText', () => {
     assert.deepEqual(kinds('docs/nota.md', `usuário ${SYNTHETIC_UUID}`), [])
   })
 
-  it('aceita UUID de catálogo em migração e em seed, mas não em docs soltos', () => {
-    assert.deepEqual(kinds('api/migrations/0099_x.sql', `('${RANDOM_UUID}')`), [])
-    assert.deepEqual(kinds('docs/bolao-migration/sql/01b-seed.sql', `('${RANDOM_UUID}')`), [])
+  it('aceita UUID de catálogo só no seed de times e jogos, e reprova em migração e em docs soltos', () => {
+    assert.deepEqual(kinds('api/migrations/0099_x.sql', `('${RANDOM_UUID}')`), ['uuid'])
+    assert.deepEqual(kinds('api/migrations/0099_x.sql', `('${SYNTHETIC_UUID}')`), [])
+    assert.deepEqual(
+      kinds('docs/bolao-migration/sql/01b-seed-teams-matches.sql', `('${RANDOM_UUID}')`),
+      [],
+    )
     assert.deepEqual(kinds('docs/bolao-migration/sql/03-import.sql', `('${RANDOM_UUID}')`), [
       'uuid',
     ])
   })
 
-  it('aceita o UUID de logo da ESPN em fixture, mas não um UUID solto', () => {
+  it('aceita o UUID de logo da ESPN em fixture e reprova UUID solto', () => {
     const logo = `"href": "https://a.espncdn.com/guid/${RANDOM_UUID}/logos/x.png"`
     assert.deepEqual(kinds('api/src/x/__fixtures__/a.json', logo), [])
     assert.deepEqual(kinds('api/src/x/__fixtures__/a.json', `"id": "${RANDOM_UUID}"`), ['uuid'])
@@ -117,6 +136,17 @@ describe('isScannedPath', () => {
   })
 })
 
+/**
+ * Ambiente sem as variáveis `GIT_*` do processo pai (rodando dentro de um hook, elas
+ * apontariam para o repositório real) e sem a configuração global do git.
+ */
+function isolatedEnv() {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+  )
+  return { ...env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
+}
+
 describe('CLI em um repositório de teste', () => {
   let repo
   let base
@@ -133,7 +163,7 @@ describe('CLI em um repositório de teste', () => {
         'commit.gpgsign=false',
         ...args,
       ],
-      { cwd: repo, encoding: 'utf8' },
+      { cwd: repo, encoding: 'utf8', env: isolatedEnv() },
     ).trim()
 
   const commitFile = (path, content) => {
@@ -143,7 +173,8 @@ describe('CLI em um repositório de teste', () => {
     git('commit', '-q', '-m', `muda ${path}`)
   }
 
-  const check = (...args) => spawnSync('node', [SCRIPT, ...args], { cwd: repo, encoding: 'utf8' })
+  const check = (...args) =>
+    spawnSync('node', [SCRIPT, ...args], { cwd: repo, encoding: 'utf8', env: isolatedEnv() })
 
   before(() => {
     repo = mkdtempSync(join(tmpdir(), 'palpitae-dados-'))
@@ -191,7 +222,9 @@ describe('CLI em um repositório de teste', () => {
     }
   })
 
-  it('recusa argumento desconhecido', () => {
+  it('recusa argumento desconhecido e --base sem valor', () => {
     assert.equal(check('--foo').status, 2)
+    assert.equal(check('--base').status, 2)
+    assert.equal(check('--base', '--all').status, 2)
   })
 })

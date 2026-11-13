@@ -1,7 +1,7 @@
 name: Dados pessoais
 
-# Workflow à parte do ci.yml: aquele ignora `docs/**` e `**.md`, justamente onde
-# o vazamento aconteceu. Este roda em todo PR e em todo push à main.
+# Workflow à parte do ci.yml, que ignora `docs/**` e `**.md`, onde o vazamento
+# aconteceu. Este roda em todo PR e em todo push à main.
 on:
   pull_request:
     branches:

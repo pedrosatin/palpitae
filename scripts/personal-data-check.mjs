@@ -15,7 +15,7 @@
  * em `__fixtures__/` ou `fixtures/`.
  *
  * A mensagem aponta arquivo, linha e tipo do achado. O valor encontrado nunca
- * é impresso: o log do CI de um repositório público também é público.
+ * é impresso, porque o log do CI de um repositório público também é público.
  *
  * Uso, a partir da raiz:
  *   node scripts/personal-data-check.mjs --base <ref>   varre os arquivos alterados desde <ref>
@@ -23,8 +23,8 @@
  *   node scripts/personal-data-check.mjs                igual a `--base origin/main`
  *
  * `--base` compara com o ancestral comum de `<ref>` e do `HEAD`, incluindo mudanças ainda
- * não commitadas. Quando `<ref>` não existe ou não se liga ao `HEAD` (push de branch
- * nova, `before` zerado, force-push), varre tudo.
+ * não commitadas. Quando `<ref>` não existe ou não se liga ao `HEAD`, o script varre
+ * tudo. Isso cobre push de branch nova, `before` zerado e force-push.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -49,14 +49,11 @@ const PUBLIC_UUIDS = new Set([
 ])
 
 /**
- * Seeds de catálogo (competições, times e jogos) com UUIDs sorteados que não
- * identificam ninguém. A regra de UUID não vale aqui. As de e-mail e de convite
- * valem.
+ * Seed de times e jogos do bolão migrado, com UUIDs sorteados que não
+ * identificam ninguém. A regra de UUID não vale nele. As de e-mail e de convite
+ * valem. As migrações de `api/migrations/` usam UUIDs sintéticos e seguem a regra.
  */
-const UUID_EXEMPT_PATHS = [
-  /^api\/migrations\/.+\.sql$/,
-  /^docs\/bolao-migration\/sql\/01[^/]*\.sql$/,
-]
+const UUID_EXEMPT_PATHS = [/^docs\/bolao-migration\/sql\/01b-seed-teams-matches\.sql$/]
 
 /** Trecho que antecede um UUID de recurso público de terceiro (logo da ESPN). */
 const UUID_EXEMPT_PREFIX = /espncdn\.com\/guid\/$/
@@ -64,7 +61,12 @@ const UUID_EXEMPT_PREFIX = /espncdn\.com\/guid\/$/
 // Mesmo alfabeto de `generateInviteCode` em api/src/groups/router.ts: letras
 // maiúsculas sem I e O, dígitos sem 0 e 1, em dois blocos de 4 com hífen.
 const INVITE_CODE = /(?<![A-Za-z0-9-])([A-HJ-NP-Z2-9]{4})-([A-HJ-NP-Z2-9]{4})(?![A-Za-z0-9-])/g
-const EMAIL = /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g
+// Código dentro de um link `/convite/<código>` ou de `invite_code=<código>`: a API e a
+// página de convite normalizam para maiúsculas, então a caixa baixa também vale.
+const INVITE_CODE_IN_CONTEXT =
+  /(?:\/convite\/|invite_code["']?\s*[:=]\s*["']?)([A-HJ-NP-Z2-9]{4})-([A-HJ-NP-Z2-9]{4})(?![A-Za-z0-9-])/gi
+// O `@` também aparece como `%40` em URL e como `\u0040` em JSON escapado.
+const EMAIL = /[A-Za-z0-9._%+-]+(?:@|%40|\\u0040)([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
 
 /**
@@ -120,8 +122,13 @@ export function scanText(path, text) {
     for (const match of line.matchAll(EMAIL)) {
       if (!isAllowedEmailDomain(match[1])) found('email')
     }
-    for (const match of line.matchAll(INVITE_CODE)) {
+    const inContext = new Set()
+    for (const match of line.matchAll(INVITE_CODE_IN_CONTEXT)) {
+      inContext.add(match.index + match[0].length - 9)
       if (!isInviteNotation(match)) found('invite')
+    }
+    for (const match of line.matchAll(INVITE_CODE)) {
+      if (!inContext.has(match.index) && !isInviteNotation(match)) found('invite')
     }
     for (const match of line.matchAll(UUID)) {
       if (!isAllowedUuid(path, line, match)) found('uuid')
@@ -183,8 +190,12 @@ export function parseArgs(argv) {
   const args = { all: false, base: 'origin/main' }
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--all') args.all = true
-    else if (argv[i] === '--base' && argv[i + 1]) args.base = argv[++i]
-    else throw new Error(`Argumento desconhecido: ${argv[i]}`)
+    else if (argv[i] === '--base') {
+      const value = argv[i + 1]
+      if (!value || value.startsWith('-')) throw new Error('--base pede uma referência do git')
+      args.base = value
+      i += 1
+    } else throw new Error(`Argumento desconhecido: ${argv[i]}`)
   }
   return args
 }
@@ -192,7 +203,7 @@ export function parseArgs(argv) {
 export function run(argv, log = console.log) {
   const args = parseArgs(argv)
   const base = args.all ? undefined : args.base
-  if (base && !mergeBase(base)) log(`Base ${base} indisponível: varrendo todos os arquivos.`)
+  if (base && !mergeBase(base)) log(`Base ${base} indisponível. Todos os arquivos serão varridos.`)
   const { scanned, findings } = scanFiles(listFiles({ base }))
   for (const finding of findings) {
     log(`${finding.path}:${finding.line}: ${FINDING_LABELS[finding.kind]}`)
