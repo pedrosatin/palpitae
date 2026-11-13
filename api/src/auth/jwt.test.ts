@@ -115,7 +115,7 @@ describe('verifyJwt', () => {
 
   it('recusa header ou payload reescrito mesmo quando a assinatura confere', async () => {
     const header = encodeJson({ alg: 'HS256', typ: 'JWT' })
-    // 49 bytes de payload: o base64url termina com 4 bits de sobra.
+    // Um payload de 49 bytes faz o base64url terminar com 4 bits de sobra.
     const body = encodeJson({ sub: 'user-1', email: 'a@b.c', exp: 9999999999 })
     expect(body.length % 4).toBe(2)
     await expect(verifyJwt(await signRaw(header, body), SECRET)).resolves.toMatchObject({

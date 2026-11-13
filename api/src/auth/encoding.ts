@@ -28,7 +28,7 @@ const BASE64URL_ALPHABET = /^[A-Za-z0-9_-]*$/
 /**
  * Decodifica só base64url canônico: alfabeto `[A-Za-z0-9_-]`, sem `=`, e o texto
  * tem de voltar idêntico ao ser codificado de novo. `base64UrlDecode` é
- * tolerante: aceita `=` no fim, `+` e `/`, espaço no meio e bits de sobra no
+ * tolerante porque aceita `=` no fim, `+` e `/`, espaço no meio e bits de sobra no
  * último caractere, então vários textos viram os mesmos bytes. Use esta função
  * quando o texto identifica o valor, como o token de sessão, revogado pelo hash
  * do texto.
