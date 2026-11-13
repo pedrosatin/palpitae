@@ -2,6 +2,9 @@ node_modules/
 dist/
 .env
 .env.local
+.env.*.local
+*.pem
+*.key
 \*.log
 
 # graphify roda na raiz — saída acidental dentro de api/ não entra no repo
@@ -41,3 +44,7 @@ PAGESPEED_REPORT.md
 docs/bolao-migration/bolao-predictions-export.json
 docs/bolao-migration/bolao-user-map.json
 docs/bolao-migration/sql/03-import-predictions.sql
+
+# Relatórios gerados pelo Playwright e pelos testes
+playwright-report/
+test-results/
