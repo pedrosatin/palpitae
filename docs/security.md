@@ -65,7 +65,11 @@ ocultos para os outros membros. O placar de um palpite vai de 0 a 99.
 
 O logout registra o hash SHA-256 da sessão em `revoked_sessions` até seu vencimento.
 Uma cópia desse token passa a falhar tanto nas rotas autenticadas quanto em
-`/auth/me`. Cada login novo recebe um identificador aleatório; sair de uma sessão
+`/auth/me`. Cada token tem uma única escrita aceita: `verifyJwt` exige cabeçalho,
+payload e assinatura em base64url canônico (alfabeto `[A-Za-z0-9_-]`, sem `=` e
+sem bits de sobra no último caractere). A mesma assinatura reescrita com `=` no
+fim, `+` e `/` ou espaço é recusada, então o hash revogado cobre a sessão inteira.
+Cada login novo recebe um identificador aleatório; sair de uma sessão
 preserva as demais. A validade da sessão continua em 30 dias. A revogação também
 vale para tokens emitidos antes do identificador de sessão. Dois desses tokens
 antigos, emitidos no mesmo segundo para o mesmo usuário, são idênticos, então o
