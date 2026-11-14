@@ -73,13 +73,14 @@ describe('GroupDetailPage, id do grupo na URL', () => {
     ['sobe de diretório', '..%2F..%2Fauth%2Fme'],
     ['injeta query string', 'x%3Fy=1'],
     ['injeta fragmento', 'x%23y'],
-    ['curto demais', 'g1'],
+    ['é curto demais', 'g1'],
     ['tem UUID seguido de sufixo', `${VALID_ID}%2F..%2Fauth`],
   ])('id que "%s" mostra "Grupo não encontrado" sem chamar a API', async (_nome, segmento) => {
     renderPage(`/grupos/${segmento}`)
 
     expect(await screen.findByText('Grupo não encontrado')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /voltar para meus grupos/i })).toBeInTheDocument()
+    expect(document.title).toBe('Palpitae')
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 

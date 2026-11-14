@@ -74,6 +74,19 @@ function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProp
   )
 }
 
+/** Tela do id com formato inválido. Volta o título da aba para o padrão do app. */
+function GroupNotFound() {
+  useDocumentTitle(undefined)
+  return (
+    <>
+      <ErrorState message="Grupo não encontrado" />
+      <Link to="/" className={styles.backLink}>
+        ← Voltar para Meus grupos
+      </Link>
+    </>
+  )
+}
+
 /**
  * Lê o id da rota. Id ausente volta para a home e id com formato inválido mostra
  * "Grupo não encontrado", então nenhuma requisição sai para a API com ele.
@@ -86,10 +99,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   if (!isGroupId(groupId)) {
     return (
       <GroupPageFrame user={user} onLogout={onLogout}>
-        <ErrorState message="Grupo não encontrado" />
-        <Link to="/" className={styles.backLink}>
-          ← Voltar para Meus grupos
-        </Link>
+        <GroupNotFound />
       </GroupPageFrame>
     )
   }
