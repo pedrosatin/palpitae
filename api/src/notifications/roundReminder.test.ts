@@ -359,6 +359,32 @@ describe('sendRoundReminders', () => {
       expect(email.html).toContain('Rodada 35')
       expect(email.html.match(/<h3/g)).toHaveLength(1)
     })
+
+    it('grupo de onde a pessoa foi banida não entra, mesmo com a participação remanescente', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      // A Ana segue com a linha `gm1` em g1 e também participa de g2.
+      addMember(sqlite, 'g2', 'ana')
+      sqlite.prepare(`INSERT INTO group_bans (group_id, user_id) VALUES ('g1', 'ana')`).run()
+
+      await run(db)
+
+      const [email] = sentBodies()
+      expect(email.to).toBe('ana@example.com')
+      expect(email.html).toContain('/grupos/g2?rodada=35')
+      expect(email.html).not.toContain('/grupos/g1')
+      expect(email.html).not.toContain('Realidade do BR')
+    })
+
+    it('quem só tem grupos banidos não recebe e-mail', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      sqlite.prepare(`INSERT INTO group_bans (group_id, user_id) VALUES ('g1', 'ana')`).run()
+
+      await run(db)
+
+      expect(fetch).not.toHaveBeenCalled()
+    })
   })
 
   describe('um e-mail por usuário por dia', () => {

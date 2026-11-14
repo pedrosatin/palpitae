@@ -52,6 +52,10 @@ describe('planos de consulta das subqueries por rodada', () => {
     expect(steps.filter((s) => s.startsWith('SCAN'))).toEqual([])
     // A ordem por horário vem do próprio índice, sem ordenar em memória.
     expect(steps.filter((s) => s.includes('TEMP B-TREE'))).toEqual([])
+    // O banimento é uma busca pela chave primária de `group_bans`, sem leitura por grupo.
+    expect(steps.filter((s) => s.startsWith('SEARCH b '))).toEqual([
+      'SEARCH b USING COVERING INDEX sqlite_autoindex_group_bans_1 (group_id=? AND user_id=?)',
+    ])
     // O último envio de cada usuário, que ordena a fila, vem da chave primária.
     expect(steps).toContain(
       'SEARCH ls USING COVERING INDEX sqlite_autoindex_email_reminder_sends_1 (user_id=?)',
