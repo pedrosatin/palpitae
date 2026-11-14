@@ -145,7 +145,8 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
     },
     async batch(statements: unknown[]) {
       batched.push(...statements)
-      return statements.map(() => ({ success: true }))
+      // Como no D1, cada upsert aceito altera uma linha.
+      return statements.map(() => ({ success: true, meta: { changes: 1 } }))
     },
   }
 

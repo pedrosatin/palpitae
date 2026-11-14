@@ -95,6 +95,7 @@ Predictions must be locked after `match.start_time`. Options: store `locked_at` 
 - Lock check: `IF now() >= match.start_time THEN reject edit`
 - If a match is rescheduled, predictions automatically unlock/relock based on the new time — no stale data
 - Simpler schema, no risk of `locked_at` going out of sync with match data
+- A conferência em TypeScript (`isMatchLocked`) responde rápido, mas quem decide é o SQL. `PUT /predictions`, `PUT /predictions/bulk`, `POST /predictions/import` e `POST /predictions/replicate` gravam com `INSERT … SELECT … WHERE NOT lockedSql('m', SQL_NOW)` (`prepareGuardedUpsert`, em `api/src/predictions/guardedUpsert.ts`), então o jogo é relido com o relógio do banco no instante da escrita. Se o kickoff passou entre a leitura do handler e a gravação, a instrução altera zero linhas e não deixa palpite. O `PUT` único responde 422 e o `bulk` move o jogo de `saved` para `locked`. Não muda o número de instruções do lote nem a cobrança antecipada do ADR-022.
 
 ---
 
