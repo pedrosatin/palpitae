@@ -9,6 +9,7 @@ import { isKnockoutPhase, orderByRound, roundLabel } from '../matches/rounds'
 import { resolveSingleMatchClassified, resolveTwoLegClassified } from '../matches/scoring'
 import {
   fetchTieMatches,
+  fetchTiesByCompetition,
   indexTies,
   type TieInfo,
   type TieMatch,
@@ -41,6 +42,71 @@ import {
 
 const LOCKED_ERROR = { error: 'Palpite bloqueado — o jogo já começou' }
 
+type GroupMember = {
+  membership: { role: string; predictions_import_completed: number }
+  membershipMs: number
+}
+
+/**
+ * Abertura dos handlers de um grupo: grupo piloto fechado responde 404 e quem
+ * não é membro responde 403, nessa ordem. Devolve a resposta de erro ou a
+ * membresia do usuário com o tempo da consulta.
+ */
+async function requireGroupMember(
+  c: Context<AppContext>,
+  db: D1Database,
+  groupId: string,
+): Promise<GroupMember | Response> {
+  if (await isPilotGroupBlocked(c, db, groupId)) {
+    return c.json({ error: 'Grupo não encontrado' }, 404)
+  }
+  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, c.get('userId'))
+  if (!membership) {
+    return c.json({ error: 'Acesso negado' }, 403)
+  }
+  return { membership, membershipMs }
+}
+
+/** Teto do placar de um palpite. Evita números absurdos no feed e no card de compartilhar. */
+export const MAX_SCORE = 99
+
+function isValidScore(value: unknown): boolean {
+  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= MAX_SCORE
+}
+
+type BulkPrediction = {
+  match_id?: string
+  predicted_home_score?: number
+  predicted_away_score?: number
+  predicted_penalty_winner?: 'home' | 'away' | null
+}
+
+type BulkBody = {
+  group_id?: string
+  predictions?: Array<BulkPrediction>
+}
+
+type BulkMatchInfo = {
+  id: string
+  competition_id: string
+  home_team_id: string
+  away_team_id: string
+  start_time: string
+  status?: string
+  postponed: number
+  locked_at?: string | null
+  phase: string | null
+  leg: 1 | 2 | null
+  penalty_phases: string
+}
+
+type BulkPick = { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }
+
+type BulkTieContext = {
+  roleByMatch: Map<string, TieRole>
+  leg1ScoreByMatch: Map<string, Leg1ScorePair>
+}
+
 // ---------------------------------------------------------------------------
 // Confronto de mata-mata: classificado previsto e palpite da ida
 // ---------------------------------------------------------------------------
@@ -65,28 +131,17 @@ function hasPrediction(row: PredictionRow): boolean {
 }
 
 /** Confrontos dos jogos de mata-mata com palpite nas linhas, indexados pelo id do jogo. */
-async function fetchRowTies(
+function fetchRowTies(
   db: D1Database,
   rows: PredictionRow[],
 ): Promise<Map<string, TieInfo<TieMatch>>> {
-  const phasesByCompetition = new Map<string, Set<string>>()
-  for (const r of rows) {
-    if (!hasPrediction(r) || !isKnockoutPhase(r.tie_phase as string | null)) continue
-    const competitionId = r.tie_competition_id as string
-    const phases = phasesByCompetition.get(competitionId) ?? new Set<string>()
-    phases.add(r.tie_phase as string)
-    phasesByCompetition.set(competitionId, phases)
-  }
-
-  const ties = new Map<string, TieInfo<TieMatch>>()
-  const promises = Array.from(phasesByCompetition).map(async ([competitionId, phases]) => {
-    return await fetchTieMatches(db, competitionId, phases)
-  })
-  const results = await Promise.all(promises)
-  for (const tieMatches of results) {
-    for (const [matchId, tie] of indexTies(tieMatches)) ties.set(matchId, tie)
-  }
-  return ties
+  return fetchTiesByCompetition(
+    db,
+    rows.filter(hasPrediction).map((r) => ({
+      competitionId: r.tie_competition_id as string,
+      phase: r.tie_phase as string | null,
+    })),
+  )
 }
 
 /**
@@ -282,15 +337,9 @@ router.get('/', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  if (await isPilotGroupBlocked(c, db, groupId)) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
-
-  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
-
-  if (!membership) {
-    return c.json({ error: 'Acesso negado' }, 403)
-  }
+  const member = await requireGroupMember(c, db, groupId)
+  if (member instanceof Response) return member
+  const { membership, membershipMs } = member
 
   const now = new Date().toISOString()
 
@@ -421,16 +470,10 @@ router.get('/user', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  if (await isPilotGroupBlocked(c, db, groupId)) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
-
   // Requester must be a member of the group
-  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, requesterId)
-
-  if (!membership) {
-    return c.json({ error: 'Acesso negado' }, 403)
-  }
+  const member = await requireGroupMember(c, db, groupId)
+  if (member instanceof Response) return member
+  const { membershipMs } = member
 
   // Quem saiu ou foi removido do grupo deixa de ter palpites consultáveis, como no feed.
   const target = await getGroupMembershipTimed(db, groupId, targetUserId)
@@ -587,15 +630,9 @@ router.get('/group', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  if (await isPilotGroupBlocked(c, db, groupId)) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
-
-  const { membership, membershipMs } = await getGroupMembershipTimed(db, groupId, userId)
-
-  if (!membership) {
-    return c.json({ error: 'Acesso negado' }, 403)
-  }
+  const member = await requireGroupMember(c, db, groupId)
+  if (member instanceof Response) return member
+  const { membershipMs } = member
 
   // Visibility mode is set at group creation and immutable (migration 0008).
   // 'public' shows everyone's picks in real time; 'hidden' applies the anti-copy rule.
@@ -631,63 +668,40 @@ router.get('/group', requireAuth, async (c) => {
   const membersMs = Date.now() - membersStartedAt
 
   const predictionsStartedAt = Date.now()
-  const predictionsQuery = isPublic
-    ? // Public group: every member's picks are visible in real time, no anti-copy filter.
-      db
-        .prepare(
-          `SELECT
-             pr.match_id,
-             pr.user_id,
-             ${memberDisplaySql()} AS user_display,
-             pr.predicted_home_score,
-             pr.predicted_away_score,
-             pr.predicted_penalty_winner,
-             pr.points_awarded,
-             pr.penalty_points,
-             pr.classified_points,
-             ${TIE_ROW_COLUMNS},
-             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
-           FROM predictions pr
-           JOIN group_members gm ON gm.group_id = pr.group_id AND gm.user_id = pr.user_id
-           JOIN users u ON u.id = pr.user_id
-           LEFT JOIN profiles p ON p.user_id = pr.user_id
-           JOIN matches m ON m.id = pr.match_id
-           WHERE pr.group_id = ?
-             AND ${notBannedSql('pr')}
-           ORDER BY m.start_time ASC, user_display ASC`,
-        )
-        .bind(now, groupId)
-        .all<PredictionRow>()
-    : // Hidden group: only the requester or a locked match can reveal a pick.
-      db
-        .prepare(
-          `SELECT
-             pr.match_id,
-             pr.user_id,
-             ${memberDisplaySql()} AS user_display,
-             pr.predicted_home_score,
-             pr.predicted_away_score,
-             pr.predicted_penalty_winner,
-             pr.points_awarded,
-             pr.penalty_points,
-             pr.classified_points,
-             ${TIE_ROW_COLUMNS},
-             CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
-           FROM predictions pr
-           JOIN group_members gm ON gm.group_id = pr.group_id AND gm.user_id = pr.user_id
-           JOIN users u ON u.id = pr.user_id
-           LEFT JOIN profiles p ON p.user_id = pr.user_id
-           JOIN matches m ON m.id = pr.match_id
-           WHERE pr.group_id = ?
-             AND ${notBannedSql('pr')}
+  // Grupo público mostra todos os palpites em tempo real, sem filtro anti-cópia. No
+  // oculto, o palpite de outro membro só aparece com o jogo travado; o próprio, sempre.
+  const visibilityFilter = isPublic
+    ? ''
+    : `
              AND (
                ${lockedSql()}
                OR pr.user_id = ?
-             )
-           ORDER BY m.start_time ASC, user_display ASC`,
-        )
-        .bind(now, groupId, now, userId)
-        .all<PredictionRow>()
+             )`
+  const predictionsQuery = db
+    .prepare(
+      `SELECT
+         pr.match_id,
+         pr.user_id,
+         ${memberDisplaySql()} AS user_display,
+         pr.predicted_home_score,
+         pr.predicted_away_score,
+         pr.predicted_penalty_winner,
+         pr.points_awarded,
+         pr.penalty_points,
+         pr.classified_points,
+         ${TIE_ROW_COLUMNS},
+         CASE WHEN ${lockedSql()} THEN 1 ELSE 0 END AS locked
+       FROM predictions pr
+       JOIN group_members gm ON gm.group_id = pr.group_id AND gm.user_id = pr.user_id
+       JOIN users u ON u.id = pr.user_id
+       LEFT JOIN profiles p ON p.user_id = pr.user_id
+       JOIN matches m ON m.id = pr.match_id
+       WHERE pr.group_id = ?
+         AND ${notBannedSql('pr')}${visibilityFilter}
+       ORDER BY m.start_time ASC, user_display ASC`,
+    )
+    .bind(now, groupId, ...(isPublic ? [] : [now, userId]))
+    .all<PredictionRow>()
   // No grupo público os palpites abertos já vêm nas linhas, sem outra leitura no D1.
   const [predictionsResult, hiddenGroupPickers] = await Promise.all([
     predictionsQuery,
@@ -807,16 +821,9 @@ router.put('/', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  if (await isPilotGroupBlocked(c, db, group_id)) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
-
   // Verify user is a member of the group
-  const { membership } = await getGroupMembershipTimed(db, group_id, userId)
-
-  if (!membership) {
-    return c.json({ error: 'Acesso negado' }, 403)
-  }
+  const member = await requireGroupMember(c, db, group_id)
+  if (member instanceof Response) return member
 
   // Verify match belongs to the group's competition. Also pull the penalty gate
   // (phase + competition.penalty_phases) so we can validate the shootout pick, and
@@ -905,51 +912,6 @@ router.put('/', requireAuth, async (c) => {
   return c.json({ ok: true })
 })
 
-/**
- * PUT /predictions/bulk
- *
- * Create or update MANY predictions in one request (upsert by
- * user_id + group_id + match_id). Used by the "Salvar todos" action so the user
- * can submit every prediction of a round at once instead of one at a time.
- *
- * Each match is validated independently against the same rules as PUT /:
- *   - the match must belong to the group's competition
- *   - the prediction must not be locked (match.start_time not yet reached — ADR-004)
- *   - the penalty pick follows `resolvePenaltyPick`. On a leg 2, the leg 1 score
- *     comes from the payload when it is saved in the same request, or from the
- *     database otherwise (including when the payload's leg 1 is locked).
- * Matches that fail a check are skipped (not the whole request) and reported back
- * so the frontend can keep the rest. Valid upserts run in a single D1 batch.
- * Cada upsert confere a trava de novo no próprio comando, com o relógio do banco. O jogo
- * que travou depois da leitura altera zero linhas e passa de `saved` para `locked`.
- *
- * Body: { group_id, predictions: [{ match_id, predicted_home_score, predicted_away_score }] }
- *
- * Response: { ok: true, saved: string[], locked: string[], not_found: string[] }
- *
- * Errors:
- *   400 — missing/invalid fields
- *   403 — user not in group
- */
-/** Teto do placar de um palpite. Evita números absurdos no feed e no card de compartilhar. */
-export const MAX_SCORE = 99
-
-function isValidScore(value: unknown): boolean {
-  return Number.isInteger(value) && (value as number) >= 0 && (value as number) <= MAX_SCORE
-}
-
-type BulkPrediction = {
-  match_id?: string
-  predicted_home_score?: number
-  predicted_away_score?: number
-  predicted_penalty_winner?: 'home' | 'away' | null
-}
-
-type BulkBody = {
-  group_id?: string
-  predictions?: Array<BulkPrediction>
-}
-
 function validateBulkPutPayload(body: BulkBody): string | null {
   if (!body.group_id) {
     return 'group_id é obrigatório'
@@ -976,27 +938,6 @@ function validateBulkPutPayload(body: BulkBody): string | null {
   return null
 }
 
-type BulkMatchInfo = {
-  id: string
-  competition_id: string
-  home_team_id: string
-  away_team_id: string
-  start_time: string
-  status?: string
-  postponed: number
-  locked_at?: string | null
-  phase: string | null
-  leg: 1 | 2 | null
-  penalty_phases: string
-}
-
-type BulkPick = { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }
-
-type BulkTieContext = {
-  roleByMatch: Map<string, TieRole>
-  leg1ScoreByMatch: Map<string, Leg1ScorePair>
-}
-
 /**
  * Papel no confronto de cada jogo do payload e, para cada volta, o palpite da
  * ida. A ida do payload só vale se for gravada nesta requisição (não travada);
@@ -1013,23 +954,14 @@ async function fetchBulkTieContext(
   const roleByMatch = new Map<string, TieRole>()
   const leg1ScoreByMatch = new Map<string, Leg1ScorePair>()
 
-  const phasesByCompetition = new Map<string, Set<string>>()
-  for (const info of matchInfo.values()) {
-    if (!isKnockoutPhase(info.phase)) continue
-    const phases = phasesByCompetition.get(info.competition_id) ?? new Set<string>()
-    phases.add(info.phase as string)
-    phasesByCompetition.set(info.competition_id, phases)
-  }
-  if (phasesByCompetition.size === 0) return { roleByMatch, leg1ScoreByMatch }
-
-  const ties = new Map<string, TieInfo<TieMatch>>()
-  const promises = Array.from(phasesByCompetition).map(async ([competitionId, phases]) => {
-    return await fetchTieMatches(db, competitionId, phases)
-  })
-  const results = await Promise.all(promises)
-  for (const tieMatches of results) {
-    for (const [matchId, tie] of indexTies(tieMatches)) ties.set(matchId, tie)
-  }
+  const ties = await fetchTiesByCompetition(
+    db,
+    Array.from(matchInfo.values(), (info) => ({
+      competitionId: info.competition_id,
+      phase: info.phase,
+    })),
+  )
+  if (ties.size === 0) return { roleByMatch, leg1ScoreByMatch }
 
   const leg1IdByLeg2 = new Map<string, string>()
   const leg1IdsFromDb = new Set<string>()
@@ -1136,6 +1068,32 @@ function buildBulkPutStatements(
   return { saved, locked, notFound, invalidPenalty, statements }
 }
 
+/**
+ * PUT /predictions/bulk
+ *
+ * Create or update MANY predictions in one request (upsert by
+ * user_id + group_id + match_id). Used by the "Salvar todos" action so the user
+ * can submit every prediction of a round at once instead of one at a time.
+ *
+ * Each match is validated independently against the same rules as PUT /:
+ *   - the match must belong to the group's competition
+ *   - the prediction must not be locked (match.start_time not yet reached — ADR-004)
+ *   - the penalty pick follows `resolvePenaltyPick`. On a leg 2, the leg 1 score
+ *     comes from the payload when it is saved in the same request, or from the
+ *     database otherwise (including when the payload's leg 1 is locked).
+ * Matches that fail a check are skipped (not the whole request) and reported back
+ * so the frontend can keep the rest. Valid upserts run in a single D1 batch.
+ * Cada upsert confere a trava de novo no próprio comando, com o relógio do banco. O jogo
+ * que travou depois da leitura altera zero linhas e passa de `saved` para `locked`.
+ *
+ * Body: { group_id, predictions: [{ match_id, predicted_home_score, predicted_away_score }] }
+ *
+ * Response: { ok: true, saved: string[], locked: string[], not_found: string[] }
+ *
+ * Errors:
+ *   400 — missing/invalid fields
+ *   403 — user not in group
+ */
 async function handleBulkPut(c: Context<AppContext>) {
   const userId = c.get('userId')
 
@@ -1151,16 +1109,9 @@ async function handleBulkPut(c: Context<AppContext>) {
 
   const db = c.env.DB
 
-  if (await isPilotGroupBlocked(c, db, group_id as string)) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
-
   // Verify user is a member of the group
-  const { membership } = await getGroupMembershipTimed(db, group_id as string, userId)
-
-  if (!membership) {
-    return c.json({ error: 'Acesso negado' }, 403)
-  }
+  const member = await requireGroupMember(c, db, group_id as string)
+  if (member instanceof Response) return member
 
   // Dedupe by match_id (last value wins) so the IN-clause and batch stay 1:1
   const byMatch = new Map<string, BulkPick>()
@@ -1226,13 +1177,11 @@ async function handleBulkPut(c: Context<AppContext>) {
   if (statements.length > 0) {
     const budgetError = await enforceDailyWriteBudget(c, statements.length)
     if (budgetError) return budgetError
-    const batches = []
-    for (let i = 0; i < statements.length; i += 100) {
-      batches.push(db.batch(statements.slice(i, i + 100)))
-    }
-    // `planned[i]` é o jogo de `statements[i]`. A escrita relê a trava com o relógio do
-    // banco, e zero linhas alteradas significa que o jogo travou depois da leitura.
-    const written = (await Promise.all(batches)).flat()
+    // Um único `db.batch`: `validateBulkPutPayload` limita o payload a 100 palpites, o
+    // teto do lote do D1. `planned[i]` é o jogo de `statements[i]`. A escrita relê a
+    // trava com o relógio do banco, e zero linhas alteradas significa que o jogo
+    // travou depois da leitura.
+    const written = await db.batch(statements)
     saved = planned.filter((_, i) => written[i].meta.changes !== 0)
     locked.push(...planned.filter((_, i) => written[i].meta.changes === 0))
     if (saved.length > 0) {
@@ -1255,34 +1204,6 @@ async function handleBulkPut(c: Context<AppContext>) {
 
 router.put('/bulk', requireAuth, handleBulkPut)
 
-/**
- * POST /predictions/import
- *
- * Copia os palpites do usuário de um grupo para outro do mesmo campeonato, com
- * as regras de `POST /predictions/replicate` (`planCopy`):
- *   - origem "só vencedor" não grava em destino que pontua placar exato (422);
- *   - destino "só vencedor" recebe o resultado do placar (1x0, 0x0 ou 0x1);
- *   - jogo travado não é copiado e entra em `locked_skipped`. A escrita confere o
- *     travamento de novo, com o relógio do banco;
- *   - `imported` conta o que ficou no destino: o palpite gravado e o que já era igual.
- *     O jogo que a escrita recusou sai da conta, e a importação só fica marcada como
- *     concluída se `imported` for maior que zero;
- *   - o vencedor dos pênaltis da volta sai do agregado que o destino vai ter;
- *   - o palpite do destino que já é igual não é regravado.
- * O palpite que o destino já tinha é substituído, salvo com `only_missing`, que
- * só preenche os jogos sem palpite no destino.
- *
- * Body: { source_group_id, target_group_id, only_missing? }
- *
- * Response: { ok: true, imported: number, locked_skipped: number }
- *
- * Errors:
- *   400 — campos ausentes, inválidos ou acima de 1000 instruções planejadas
- *   403 — usuário fora de um dos grupos
- *   404 — grupo não encontrado
- *   422 — grupos de campeonatos diferentes, ou origem "só vencedor" com destino de placar exato
- *   429 — orçamento diário de escrita excedido
- */
 async function verifyGroupsForImport(
   db: D1Database,
   userId: string,
@@ -1331,6 +1252,34 @@ async function verifyGroupsForImport(
   return { source, target }
 }
 
+/**
+ * POST /predictions/import
+ *
+ * Copia os palpites do usuário de um grupo para outro do mesmo campeonato, com
+ * as regras de `POST /predictions/replicate` (`planCopy`):
+ *   - origem "só vencedor" não grava em destino que pontua placar exato (422);
+ *   - destino "só vencedor" recebe o resultado do placar (1x0, 0x0 ou 0x1);
+ *   - jogo travado não é copiado e entra em `locked_skipped`. A escrita confere o
+ *     travamento de novo, com o relógio do banco;
+ *   - `imported` conta o que ficou no destino: o palpite gravado e o que já era igual.
+ *     O jogo que a escrita recusou sai da conta, e a importação só fica marcada como
+ *     concluída se `imported` for maior que zero;
+ *   - o vencedor dos pênaltis da volta sai do agregado que o destino vai ter;
+ *   - o palpite do destino que já é igual não é regravado.
+ * O palpite que o destino já tinha é substituído, salvo com `only_missing`, que
+ * só preenche os jogos sem palpite no destino.
+ *
+ * Body: { source_group_id, target_group_id, only_missing? }
+ *
+ * Response: { ok: true, imported: number, locked_skipped: number }
+ *
+ * Errors:
+ *   400 — campos ausentes, inválidos ou acima de 1000 instruções planejadas
+ *   403 — usuário fora de um dos grupos
+ *   404 — grupo não encontrado
+ *   422 — grupos de campeonatos diferentes, ou origem "só vencedor" com destino de placar exato
+ *   429 — orçamento diário de escrita excedido
+ */
 async function handleImportPost(c: Context<AppContext>) {
   const userId = c.get('userId')
 
