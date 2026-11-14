@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import CreateGroupModal from '../../components/CreateGroupModal'
 import Header from '../../components/Header'
@@ -14,7 +14,7 @@ import { buildApiUrl } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './GroupDetailPage.module.css'
-import { type User, TAB_LABELS, parseGroupDetail } from './types'
+import { type User, TAB_LABELS, isGroupId, parseGroupDetail } from './types'
 import GroupTabs from './GroupTabs'
 import GroupTabContent from './GroupTabContent'
 import { useGroupDetail, useGroupTabs, useTabsOffset, useGroupActions } from './hooks'
@@ -28,10 +28,92 @@ interface GroupDetailPageProps {
 /** Tempo na tela da confirmação de entrada no grupo. */
 const JOINED_NOTICE_MS = 6000
 
+interface GroupPageFrameProps extends GroupDetailPageProps {
+  /** Modais próprios da tela, renderizados depois dos de criar e entrar. */
+  modals?: ReactNode
+  children: ReactNode
+}
+
+/** Cabeçalho, área principal e modais de criar e entrar, comuns a todos os estados da tela. */
+function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProps) {
+  const navigate = useNavigate()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [joinOpen, setJoinOpen] = useState(false)
+
+  function handleGroupCreated(nextGroup: { id: string }) {
+    invalidateApiCache('groups:')
+    navigate(`/grupos/${nextGroup.id}`)
+  }
+
+  function handleGroupJoined(nextGroup: { id: string }) {
+    invalidateApiCache('groups:')
+    navigate(`/grupos/${nextGroup.id}`)
+  }
+
+  return (
+    <>
+      <Header
+        user={user}
+        onCreateGroup={() => setCreateOpen(true)}
+        onJoinGroup={() => setJoinOpen(true)}
+        onLogout={onLogout}
+      />
+      <main className={styles.root}>{children}</main>
+      <CreateGroupModal
+        isOpen={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleGroupCreated}
+      />
+      <JoinGroupModal
+        isOpen={joinOpen}
+        onClose={() => setJoinOpen(false)}
+        onJoined={handleGroupJoined}
+      />
+      {modals}
+    </>
+  )
+}
+
+/** Tela do id com formato inválido. Volta o título da aba para o padrão do app. */
+function GroupNotFound() {
+  useDocumentTitle(undefined)
+  return (
+    <>
+      <ErrorState message="Grupo não encontrado" />
+      <Link to="/" className={styles.backLink}>
+        ← Voltar para Meus grupos
+      </Link>
+    </>
+  )
+}
+
+/**
+ * Lê o id da rota. Id ausente volta para a home e id com formato inválido mostra
+ * "Grupo não encontrado", então nenhuma requisição sai para a API com ele.
+ */
 export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps) {
+  const { groupId } = useParams<{ groupId: string }>()
+
+  if (!groupId) return <Navigate to="/" replace />
+
+  if (!isGroupId(groupId)) {
+    return (
+      <GroupPageFrame user={user} onLogout={onLogout}>
+        <GroupNotFound />
+      </GroupPageFrame>
+    )
+  }
+
+  return <GroupDetailContent groupId={groupId} user={user} onLogout={onLogout} />
+}
+
+interface GroupDetailContentProps extends GroupDetailPageProps {
+  groupId: string
+}
+
+function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { groupId } = useParams<{ groupId: string }>()
 
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
   const {
@@ -55,8 +137,6 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
 
   const [settingsVersion, setSettingsVersion] = useState(0)
   const [renameOpen, setRenameOpen] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [joinOpen, setJoinOpen] = useState(false)
   const [rulesOpen, setRulesOpen] = useState(false)
 
   const isAdmin = group?.is_admin ?? false
@@ -76,18 +156,6 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     return () => clearTimeout(timer)
   }, [joinedGroupName])
 
-  if (!groupId) return <Navigate to="/" replace />
-
-  function handleGroupCreated(nextGroup: { id: string }) {
-    invalidateApiCache('groups:')
-    navigate(`/grupos/${nextGroup.id}`)
-  }
-
-  function handleGroupJoined(nextGroup: { id: string }) {
-    invalidateApiCache('groups:')
-    navigate(`/grupos/${nextGroup.id}`)
-  }
-
   function openRename() {
     if (!group) return
     trackEvent('click_group_detail_menu_editar_nome')
@@ -95,7 +163,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   }
 
   async function handlePointsClassifiedChanged() {
-    const response = await apiFetch(buildApiUrl(`/groups/${groupId}`))
+    const response = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`))
     const refreshed = response.ok ? parseGroupDetail(await response.json()) : null
     if (!refreshed) throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
     setGroup(refreshed)
@@ -120,31 +188,12 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     )
   }
 
-  const header = (
-    <Header
-      user={user}
-      onCreateGroup={() => setCreateOpen(true)}
-      onJoinGroup={() => setJoinOpen(true)}
-      onLogout={onLogout}
-    />
-  )
-
   const modals = (
     <>
-      <CreateGroupModal
-        isOpen={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={handleGroupCreated}
-      />
-      <JoinGroupModal
-        isOpen={joinOpen}
-        onClose={() => setJoinOpen(false)}
-        onJoined={handleGroupJoined}
-      />
       <RenameGroupModal
         isOpen={renameOpen}
         onClose={() => setRenameOpen(false)}
-        groupId={groupId!}
+        groupId={groupId}
         currentName={group?.name ?? ''}
         currentPointsClassified={group?.points_classified ?? 0}
         onPointsClassifiedChanged={handlePointsClassifiedChanged}
@@ -232,10 +281,8 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   }
 
   return (
-    <>
-      {header}
-      <main className={styles.root}>{content}</main>
-      {modals}
-    </>
+    <GroupPageFrame user={user} onLogout={onLogout} modals={modals}>
+      {content}
+    </GroupPageFrame>
   )
 }

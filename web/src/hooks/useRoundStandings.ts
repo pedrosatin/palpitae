@@ -30,7 +30,7 @@ export function useRoundStandings(groupId: string) {
     let current = true
     setLoading(true)
     setData(NO_ROUND)
-    apiFetch(buildApiUrl(`/groups/${groupId}/round-standings`))
+    apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}/round-standings`))
       .then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar a rodada')
         return r.json() as Promise<RoundStandings>

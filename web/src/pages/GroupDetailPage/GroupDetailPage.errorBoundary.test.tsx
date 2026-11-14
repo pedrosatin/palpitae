@@ -32,7 +32,7 @@ vi.mock('../../components/Header', () => ({
 }))
 
 const group = {
-  id: 'abc',
+  id: '00000000-0000-4000-8000-000000000001',
   name: 'Grupo Teste',
   competition_id: 'comp-1',
   competition_name: 'Copa do Mundo',
@@ -84,7 +84,7 @@ describe('GroupDetailPage, aba que quebra no render', () => {
   })
 
   it('mostra a tela de erro na aba e mantém cabeçalho e abas navegáveis', async () => {
-    renderPage('/groups/abc?tab=leaderboard')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001?tab=leaderboard')
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível mostrar esta aba.')
     expect(screen.getByTestId('header')).toBeInTheDocument()
@@ -97,7 +97,7 @@ describe('GroupDetailPage, aba que quebra no render', () => {
   })
 
   it('"Tentar novamente" monta a aba de novo', async () => {
-    renderPage('/groups/abc?tab=leaderboard')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001?tab=leaderboard')
 
     const retry = await screen.findByRole('button', { name: 'Tentar novamente' })
     crash.leaderboard = false

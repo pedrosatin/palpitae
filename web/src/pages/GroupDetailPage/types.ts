@@ -38,6 +38,16 @@ export interface GroupDetail {
   exact_hits: number
 }
 
+const GROUP_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Diz se o segmento da URL tem o formato de id de grupo (UUID). Um id manipulado,
+ * como `../auth/me`, nunca chega à montagem de URL da API.
+ */
+export function isGroupId(value: string | undefined): value is string {
+  return value !== undefined && GROUP_ID_PATTERN.test(value)
+}
+
 /**
  * Lê `{ group }` de `GET /groups/:id`. Confere identidade, nome e os números que a
  * página usa sem proteção. Corpo fora do formato devolve null.
