@@ -7,6 +7,7 @@ import {
 import {
   fetchEspnScoreboard as fetchScoreboard,
   isEspnFinal,
+  parseNonNegativeInt,
   type EspnScoreboardEvent,
 } from '../providers/espn'
 import { ACTIVE_RESULT_WINDOW_MS, EARLIEST_RESULT_MS, RESCUE_WINDOW_MS } from './matchPollingWindow'
@@ -167,11 +168,7 @@ function matchesEvent(m: WindowMatch, ev: EspnEvent): boolean {
 /** Placar final do evento, ou nulls se não-numérico/ausente. */
 function espnScores(ev: EspnEvent): { home: number | null; away: number | null } {
   const { home, away } = espnCompetitors(ev)
-  const parse = (raw: string | undefined): number | null => {
-    const n = Number(raw)
-    return Number.isInteger(n) && n >= 0 ? n : null
-  }
-  return { home: parse(home?.score), away: parse(away?.score) }
+  return { home: parseNonNegativeInt(home?.score), away: parseNonNegativeInt(away?.score) }
 }
 
 /**

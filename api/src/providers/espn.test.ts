@@ -5,6 +5,7 @@ import {
   ESPN_TIMEOUT_MS,
   espnScoreboardUrl,
   fetchEspnScoreboard,
+  parseNonNegativeInt,
   resetEspnClientForTests,
   setEspnMinIntervalForTests,
   setEspnTimeoutForTests,
@@ -352,5 +353,20 @@ describe('fetchEspnScoreboard · telemetria por tentativa', () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ events: [] })))
 
     await expect(fetchEspnScoreboard('bra.1', '20261005')).resolves.toEqual({ events: [] })
+  })
+})
+
+describe('parseNonNegativeInt', () => {
+  it('aceita só dígitos', () => {
+    expect(parseNonNegativeInt('0')).toBe(0)
+    expect(parseNonNegativeInt('12')).toBe(12)
+  })
+
+  it.each(['', '3.0', '-1', ' 2', '1e1', 'x'])('recusa %j', (raw) => {
+    expect(parseNonNegativeInt(raw)).toBeNull()
+  })
+
+  it('recusa placar ausente', () => {
+    expect(parseNonNegativeInt(undefined)).toBeNull()
   })
 })

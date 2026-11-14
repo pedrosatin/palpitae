@@ -152,6 +152,15 @@ export function isEspnFinal(type: EspnCompetitionStatusType | undefined): boolea
   )
 }
 
+/**
+ * Placar da ESPN como inteiro não negativo. Só aceita dígitos: "" e "3.0" viram
+ * null (Number('') valeria 0 e gravaria um 0 × 0 que a ESPN nunca informou).
+ */
+export function parseNonNegativeInt(raw: string | undefined): number | null {
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null
+  return Number(raw)
+}
+
 export type EspnEventCompetition = {
   id?: string
   date?: string
