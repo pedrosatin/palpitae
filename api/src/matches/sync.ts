@@ -685,6 +685,7 @@ function mapMatchUpsertRow(
     const tbd = !m.homeTeam?.id || !m.awayTeam?.id
     return { reason: 'missing_competitor', detail: tbd ? 'tbd' : '' }
   }
+  if (homeTeamId === awayTeamId) return { reason: 'invalid_event', detail: 'same_team' }
   const startTime = resolveStartTime(m.utcDate)
   if (!startTime) return { reason: 'invalid_event', detail: 'date' }
   const round = mapRound(m.matchday, m.stage)
@@ -811,7 +812,8 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        -- Quando o jogo corrigido é a ida de um confronto já encerrado, scoring.ts
        -- repontua a volta junto, porque o classificado depende do agregado.
        -- Times e fase também mudam os pontos: o palpite é lido pela posição dos
-       -- times, e a fase decide classificado e pênaltis.
+       -- times, e a fase decide classificado e pênaltis. Perna e horário podem
+       -- mudar qual jogo decide o confronto.
        scored_at  = CASE
          WHEN matches.home_score IS NOT excluded.home_score
            OR matches.away_score IS NOT excluded.away_score
@@ -819,6 +821,8 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
            OR matches.home_team_id IS NOT excluded.home_team_id
            OR matches.away_team_id IS NOT excluded.away_team_id
            OR matches.phase IS NOT excluded.phase
+           OR matches.leg IS NOT excluded.leg
+           OR (excluded.postponed IS NOT 1 AND matches.start_time IS NOT excluded.start_time)
          THEN NULL ELSE matches.scored_at END
      -- Uma resposta atrasada do provedor não pode desfazer um resultado final
      -- (inclusive obtido pelo fallback). Correções finais continuam aceitas.
@@ -827,7 +831,7 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        -- a cada tick e quase sempre nada mudou; sem este filtro cada jogo custava
        -- uma gravação da linha e dos índices (~75% das gravações do D1). Cada
        -- linha espelha um campo do SET acima (scored_at só muda junto com placar,
-       -- penalty_winner, times ou fase): ao acrescentar um campo no SET, acrescente aqui.
+       -- penalty_winner ou contexto): ao acrescentar um campo no SET, acrescente aqui.
        AND (
          (matches.locked_at IS NULL
            AND (matches.status IN ('live', 'finished') OR excluded.locked_at IS NOT NULL

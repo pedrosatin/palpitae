@@ -475,8 +475,8 @@ describe('access controls with a real SQL database', () => {
     expect((await request('/matches?competition_id=competition&noise=one')).status).toBe(200)
     expect((await request('/matches?noise=two&competition_id=competition')).status).toBe(200)
     expect(match.mock.calls.map(([key]) => (key as Request).url)).toEqual([
-      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&scored=',
-      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&scored=',
+      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&matches_version=2',
+      'https://api.palpitae.com.br/matches?competition_id=competition&round_order=1&matches_version=2',
     ])
     await Promise.all(waitUntil.mock.calls.map(([promise]) => promise))
     expect(fetch).not.toHaveBeenCalled()

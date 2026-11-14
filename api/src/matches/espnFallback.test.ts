@@ -194,7 +194,9 @@ describe('scoreWindowFromEspn', () => {
     ] as const
     // A rodada cobre os 20 clubes do mapa.
     expect(fixtures.flatMap((f) => f.sync).sort()).toEqual(
-      Object.values(FOOTBALL_DATA_CLUBS).map((club) => club.name).sort(),
+      Object.values(FOOTBALL_DATA_CLUBS)
+        .map((club) => club.name)
+        .sort(),
     )
     mockFetch({
       '20261005': fixtures.map(({ espn: [home, away] }, i) =>
@@ -447,7 +449,17 @@ describe('scoreWindowFromEspn', () => {
         '20261005': [espnEvent({ date: IN_WINDOW_START, homeScore: '2', awayScore: '1' })],
       })
 
+      const version = () =>
+        Number(
+          sqlite.prepare("SELECT matches_version FROM competitions WHERE id = 'c1'").get()!
+            .matches_version,
+        )
+      const beforeVersion = version()
       await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+      expect(version()).toBeGreaterThan(beforeVersion)
+      const afterVersion = version()
+      await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+      expect(version()).toBe(afterVersion)
 
       expect(
         sqlite.prepare('SELECT status,home_score,away_score,scored_at FROM matches').get(),

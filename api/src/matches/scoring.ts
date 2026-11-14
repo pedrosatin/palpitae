@@ -182,14 +182,17 @@ function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
 
 /**
  * Condição de toda gravação da pontuação de um jogo: ele segue encerrado com o
- * placar e o vencedor nos pênaltis lidos e, na volta, a ida não mudou. Se uma
- * correção de placar chegou depois da leitura, a gravação não altera nada e o
- * jogo fica para quem ler o placar novo.
+ * placar, vencedor nos pênaltis e contexto lidos. Na volta, a ida também precisa
+ * manter seus times, fase, perna e horário. Uma correção posterior à leitura
+ * impede a gravação dos pontos e do marcador do snapshot anterior.
  */
 const UNCHANGED_RESULT_SQL = `EXISTS (SELECT 1 FROM matches WHERE id = ? AND status = 'finished'
-    AND home_score = ? AND away_score = ? AND penalty_winner IS ?)
+    AND home_score = ? AND away_score = ? AND penalty_winner IS ?
+    AND home_team_id = ? AND away_team_id = ? AND phase IS ? AND leg IS ? AND start_time = ?)
   AND NOT EXISTS (SELECT 1 FROM matches WHERE id = ?
-    AND (status IS NOT ? OR home_score IS NOT ? OR away_score IS NOT ?))`
+    AND (status IS NOT ? OR home_score IS NOT ? OR away_score IS NOT ?
+      OR home_team_id IS NOT ? OR away_team_id IS NOT ? OR phase IS NOT ?
+      OR leg IS NOT ? OR start_time IS NOT ?))`
 
 function unchangedResultBinds(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | undefined) {
   const leg1 = tie?.role === 'leg2' ? tie.partner : null
@@ -198,10 +201,20 @@ function unchangedResultBinds(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | u
     m.home_score,
     m.away_score,
     m.penalty_winner,
+    m.home_team_id,
+    m.away_team_id,
+    m.phase,
+    m.leg,
+    m.start_time,
     leg1?.id ?? null,
     leg1?.status ?? null,
     leg1?.home_score ?? null,
     leg1?.away_score ?? null,
+    leg1?.home_team_id ?? null,
+    leg1?.away_team_id ?? null,
+    leg1?.phase ?? null,
+    leg1?.leg ?? null,
+    leg1?.start_time ?? null,
   ]
 }
 
@@ -209,7 +222,10 @@ function unchangedResultBinds(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | u
  * Palpites dos jogos informados, só de grupos não excluídos. Um jogo de volta
  * traz junto os palpites da ida, que decidem o classificado.
  */
-async function fetchPredictions(db: D1Database, matchIds: string[]): Promise<ScoredPredictionRow[]> {
+async function fetchPredictions(
+  db: D1Database,
+  matchIds: string[],
+): Promise<ScoredPredictionRow[]> {
   const { results } = await db
     .prepare(
       `SELECT p.id, p.match_id, p.group_id, p.user_id,
@@ -568,10 +584,9 @@ export async function scoreUnprocessedMatches(
     TIE_MATCH_COLUMNS,
   )
   const ties = indexTies(tieMatches)
-  const matchesToScore = [
-    ...unscored.results,
-    ...findLeg2ToRescore(unscored.results, ties),
-  ].filter((m) => !awaitsPenaltyWinner(m, ties.get(m.id)))
+  const matchesToScore = [...unscored.results, ...findLeg2ToRescore(unscored.results, ties)].filter(
+    (m) => !awaitsPenaltyWinner(m, ties.get(m.id)),
+  )
 
   // 3. Uma gravação por vez, enquanto houver chamadas.
   let calls = PLAN_CALLS

@@ -390,3 +390,35 @@ describe('correção da ida enquanto a volta é pontuada', () => {
     },
   )
 })
+
+describe('correções de contexto durante a pontuação', () => {
+  it.each(['home_team_id', 'away_team_id', 'phase', 'leg', 'start_time'])(
+    'recusa o snapshot anterior à alteração de %s',
+    async (field) => {
+      const { sqlite, db, provider } = await setup(PICKS)
+      provider.match = fdMatch('FINISHED', 1, 0)
+      await syncFixtures({ competitionCode: 'PPL', season: 2026, db, apiKey: 'test' })
+      const beforePoints = readState(sqlite).points
+      const gate = checkpoint()
+      const run = scoreUnprocessedMatches(
+        String(sqlite.prepare('SELECT competition_id FROM matches').get()!.competition_id),
+        connection(db, gate),
+      )
+      await gate.reached
+      sqlite.exec("INSERT INTO teams (id,name,slug) VALUES ('other','Outro','outro')")
+      const value =
+        field === 'phase'
+          ? 'FINAL'
+          : field === 'leg'
+            ? 2
+            : field === 'start_time'
+              ? '2026-11-09T15:30:00Z'
+              : 'other'
+      sqlite.prepare(`UPDATE matches SET ${field} = ?`).run(value)
+      gate.release()
+      await run
+      expect(readState(sqlite).match).toMatchObject({ scored: 0 })
+      expect(readState(sqlite).points).toEqual(beforePoints)
+    },
+  )
+})

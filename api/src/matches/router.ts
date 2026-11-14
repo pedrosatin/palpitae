@@ -18,7 +18,7 @@ const router = new Hono<AppContext>()
 
 /**
  * Cache-Control da cópia guardada no cache de borda, pelo conteúdo da lista:
- *   - todos os jogos encerrados → 24h (a chave muda quando um placar é repontuado)
+ *   - todos os jogos encerrados → 24h (a versão da competição muda a cada alteração exibida)
  *   - senão                     → 60s
  * A lista vazia também fica com o TTL curto para repovoar logo.
  */
@@ -37,17 +37,8 @@ function matchesCacheControl(matches: { status: string }[]): string {
  */
 const BROWSER_CACHE_CONTROL = 'private, max-age=60'
 
-/**
- * Visibilidade da competição e o último `scored_at` dos jogos dela, numa consulta
- * só. Roda antes do cache de borda: a visibilidade barra o piloto mesmo com a
- * lista em cache, e o `scored_at` entra na chave para que um placar corrigido e
- * repontuado gere uma chave nova. O MAX lê uma entrada do índice parcial
- * idx_matches_comp_scored (migration 0042), não os jogos da competição. O
- * `scored_at IS NOT NULL` não muda o MAX, mas é o que libera o índice parcial.
- */
-export const COMPETITION_CACHE_STATE_SQL = `SELECT c.visibility,
-       (SELECT MAX(scored_at) FROM matches
-        WHERE competition_id = c.id AND scored_at IS NOT NULL) AS last_scored_at
+/** Visibilidade e versão monotônica da lista, lidas antes do cache de borda. */
+export const COMPETITION_CACHE_STATE_SQL = `SELECT c.visibility, c.matches_version
 FROM competitions c
 WHERE c.id = ?`
 
@@ -55,7 +46,7 @@ async function fetchCompetitionCacheState(db: D1Database, competitionId: string)
   return db
     .prepare(COMPETITION_CACHE_STATE_SQL)
     .bind(competitionId)
-    .first<{ visibility: string | null; last_scored_at: string | null }>()
+    .first<{ visibility: string | null; matches_version: number }>()
 }
 
 /** Chave canônica do cache de borda: só os filtros que mudam a resposta. */
@@ -63,7 +54,7 @@ function matchesCacheKey(
   requestUrl: string,
   competitionId: string,
   filters: { round?: string; status?: string },
-  lastScoredAt: string | null | undefined,
+  matchesVersion: number | undefined,
 ): Request {
   const cacheUrl = new URL(requestUrl)
   cacheUrl.search = ''
@@ -72,7 +63,7 @@ function matchesCacheKey(
   cacheUrl.searchParams.set('round_order', '1')
   if (filters.round) cacheUrl.searchParams.set('round', filters.round)
   if (filters.status) cacheUrl.searchParams.set('status', filters.status)
-  cacheUrl.searchParams.set('scored', lastScoredAt ?? '')
+  cacheUrl.searchParams.set('matches_version', String(matchesVersion ?? 0))
   return new Request(cacheUrl)
 }
 
@@ -282,7 +273,7 @@ async function handleGetMatches(c: Context<AppContext>) {
       c.req.url,
       competitionId,
       { round, status },
-      competition?.last_scored_at,
+      competition?.matches_version,
     )
     const cached = cache ? await cache.match(cacheKey) : undefined
     if (cached) {
