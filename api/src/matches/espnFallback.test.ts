@@ -352,6 +352,30 @@ describe('scoreWindowFromEspn', () => {
     expect(result.get('c1')).toBe(0)
   })
 
+  it('pula evento final com placar vazio (nunca grava 0 × 0 que a ESPN não informou)', async () => {
+    mockFetch({
+      '20261005': [espnEvent({ date: IN_WINDOW_START, homeScore: '', awayScore: '' })],
+    })
+    const { db, captured } = buildFakeDb([row()])
+
+    const result = await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+    expect(captured.updates).toHaveLength(0)
+    expect(result.get('c1')).toBe(0)
+  })
+
+  it('pula placar decimal como "3.0", igual ao espnSync', async () => {
+    mockFetch({
+      '20261005': [espnEvent({ date: IN_WINDOW_START, homeScore: '3.0', awayScore: '1' })],
+    })
+    const { db, captured } = buildFakeDb([row()])
+
+    const result = await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
+
+    expect(captured.updates).toHaveLength(0)
+    expect(result.get('c1')).toBe(0)
+  })
+
   it('UPDATE grava placar + status e é condicional a status != finished (shape da SQL)', async () => {
     mockFetch({ '20261005': [espnEvent({ date: IN_WINDOW_START })] })
     const { db, captured } = buildFakeDb([row()])

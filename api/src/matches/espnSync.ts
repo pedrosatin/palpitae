@@ -7,6 +7,7 @@ import {
   ESPN_POSTPONED_STATUSES,
   fetchEspnScoreboard,
   isEspnFinal,
+  parseNonNegativeInt,
 } from '../providers/espn'
 import type { ProviderHttpObserver } from '../observability/providerHttp'
 import {
@@ -221,11 +222,6 @@ function parseGroupName(rawName: string | undefined): string | null {
   if (!trimmed) return null
   const stripped = trimmed.replace(/^(?:Group|Grupo)\s+/i, '').trim()
   return stripped || null
-}
-
-function parseNonNegativeInt(raw: string | undefined): number | null {
-  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null
-  return Number(raw)
 }
 
 function isEspnPlaceholder(value: unknown): boolean {
