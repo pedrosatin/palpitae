@@ -844,6 +844,62 @@ A API devolve `streak` em cada linha, com as rodadas encerradas seguidas em que 
 - Caso aceito: uma fase preliminar eliminatória adiada que termine depois do início da rodada de referência tira a coluna até uma rodada posterior fechar.
 - Risco aceito: uma leitura entre a gravação dos pontos e a atualização do `leaderboard` pode mostrar variação errada por alguns segundos. A próxima abertura da aba corrige.
 
+## ADR-022: Workers Free com orçamento diário de linhas do D1 por usuário
+
+**Status:** Accepted
+**Date:** 2026-11-13
+
+### Context
+
+A API roda no plano Workers Free. Nesse plano o D1 lê até 5 milhões de linhas e escreve até 100 mil por dia. Quando uma das duas cotas acaba, toda consulta falha até 00:00 UTC, e com elas o login, os palpites, o ranking e os crons ([preços do D1](https://developers.cloudflare.com/d1/platform/pricing/)). O plano também aceita até 100 mil requisições por dia ao Worker.
+
+O limitador por minuto do ADR-017 conta requisições e não o trabalho que cada uma gera no D1. A auditoria de segurança de 13/11/2026 mostrou que uma só conta gratuita esgota as cotas do dia. Cerca de 200 `GET /groups` de uma conta com centenas de grupos passam de 5 milhões de linhas lidas, e umas 100 chamadas a `POST /predictions/replicate` passam de 100 mil linhas escritas.
+
+O plano Workers Paid cobra o excedente em vez de cortar o D1 e tem assinatura mensal.
+
+### Decision
+
+O operador decidiu em 13/11/2026 ficar no Workers Free e impor no código os limites que o plano não impõe. Os tetos de grupos criados e de participações por usuário estão em `api/src/groups/groupCaps.ts`. Esta ADR acrescenta o orçamento diário de linhas do D1.
+
+Cada usuário com sessão válida tem por dia 250 mil linhas lidas e 5 mil escritas, 5% de cada cota. O dia vira à 00:00 UTC, junto com as cotas. As variáveis `D1_DAILY_ROWS_READ_PER_USER` e `D1_DAILY_ROWS_WRITTEN_PER_USER` substituem os padrões. Um valor que não seja inteiro positivo volta ao padrão e registra erro no log.
+
+O limitador `requestLimits`, em `api/src/security/limits.ts`, troca o `DB` do contexto da requisição por um medidor antes de validar a sessão. O medidor `meterD1Rows`, em `api/src/security/d1Usage.ts`, embrulha o D1 num `Proxy` e soma o `rows_read` e o `rows_written` que o D1 informa no `meta` de cada consulta. Nenhuma rota muda o jeito de consultar. O limitador guarda o `DB` original e faz nele as próprias consultas, a leitura do orçamento, o balde por minuto e a gravação do balde diário. Assim o uso medido é só o da sessão e do handler. O embrulho reaproveita `interceptD1` (`api/src/d1Intercept.ts`), o mesmo que `countD1Calls` usa no orçamento de chamadas do ADR-024.
+
+Antes do handler, o limitador lê as duas linhas do usuário em `request_limits`, uma de linhas lidas e outra de escritas, com a janela no início do dia UTC. Se uma delas chegou ao limite, a resposta é 429 com `Retry-After` até a virada, calculado com o mesmo instante usado na checagem, e uma mensagem em português que o front mostra como os outros erros da API. A recusa só lê e vem antes do balde por minuto, que gravaria uma linha. `/auth/logout` e `/auth/logout-all` nunca são recusados pelo orçamento, porque quem tem um token roubado poderia gastar o dia e impedir a vítima de sair.
+
+Depois do handler, uma só consulta soma o total da requisição ao balde. Ela grava a linha de leitura só se a requisição leu alguma linha e a de escrita só se escreveu alguma. Sem uso nenhum, não grava nada. A própria gravação não tem como se medir. Quando a requisição escreveu, a linha de escrita leva também 2 linhas por linha do balde gravada nessa consulta, a linha e a entrada dela no índice de expiração. São 2 com só a linha de escrita e 4 com as duas. Numa requisição só de leitura, as 2 linhas que a gravação do balde de leitura escreve ficam fora do orçamento de escrita do usuário, para que ler não corte ninguém por escrita. A limpeza dos crons apaga as linhas do dia anterior, como os demais contadores.
+
+Se a leitura do balde falhar, vale a política do ADR-017. Leituras passam e escritas e OAuth respondem 503. Se a gravação depois do handler falhar, a resposta já está montada e a falha só registra `security_storage_error`.
+
+Limites da medição:
+
+- O `first()` do D1 não devolve `meta`. O medidor troca a chamada por `all()`, que executa a mesma consulta, e devolve a primeira linha ou a coluna pedida. Um fake de D1 em teste que passa pela API inteira precisa implementar `all`.
+- `raw()` e `exec()` também não devolvem `meta` e passam sem medir. O código da API não usa nenhum dos dois.
+- Consulta que falha não entra na conta.
+- O balde recebe só o que passou pelo `DB` medido até o fim do handler. Uma consulta feita com ele depois da resposta, como dentro de `ctx.waitUntil`, e as feitas por `db.withSession()` ficam fora. Hoje nenhuma rota faz isso.
+- Requisições sem sessão válida não têm orçamento diário. Elas continuam só no limitador por minuto, por IP.
+- Uma requisição que começa com saldo termina mesmo que passe do orçamento, e requisições simultâneas do mesmo usuário passam pela checagem antes de alguma gravar. O limitador por minuto limita esse excesso. As escritas em lote (`replicate`, `import` e `bulk`) ainda gravam até centenas de linhas numa requisição.
+
+O flood anônimo distribuído contra as 100 mil requisições por dia do Worker é risco aceito. O limitador por IP e a regra de rate limit da borda, descrita em [Controle de acesso e limites da API](../security.md), cortam um cliente sozinho. Muitos IPs juntos ainda esgotam a cota de requisições.
+
+O gatilho para migrar ao Workers Paid é a primeira queda por cota, ou o uso diário acima de 50% de uma cota do D1 ou de requisições por 3 dias seguidos.
+
+### Consequences
+
+- Cada requisição autenticada faz 2 chamadas a mais ao D1, a leitura do orçamento e a gravação, dentro das 50 por invocação.
+- Contando 2 linhas escritas por linha de contador, com a entrada no índice de expiração, uma requisição autenticada só de leitura grava 4 linhas no D1. São 2 do contador por minuto e 2 da linha de leitura do balde diário. A cota de 100 mil escritas comporta 25 mil dessas requisições por dia. Uma requisição que escreve `w` linhas grava `w + 6` no D1, e a cota comporta `100.000 / (w + 6)` delas.
+- Nenhuma dessas linhas do limitador entra no orçamento de escrita de uma requisição só de leitura, e um usuário que só lê é cortado apenas pelas 250 mil linhas lidas. Uma requisição que escreve `w` linhas cobra `w + 4` do orçamento, e o corte vem depois de `5.000 / (w + 4)` delas no dia. Um palpite que grave 4 linhas com os índices de `predictions` corta em 625 palpites. Se o uso normal chegar perto disso, suba `D1_DAILY_ROWS_WRITTEN_PER_USER`.
+- Vinte contas no teto de escrita, ou vinte no de leitura, somam a cota do dia. O orçamento impede que uma conta sozinha derrube o app. Um ataque com muitas contas fica no risco aceito.
+- `api/src/security/dailyD1Budget.test.ts` roda a API inteira sobre o D1 em memória embrulhado por `api/src/testing/d1RowsReported.ts`, que informa linhas lidas e escritas por consulta. O SQLite em memória sozinho não informa.
+
+### Alternatives Considered
+
+**Acumulador em memória por isolado, com limiar de flush.** Cada isolado do Worker somaria em memória o uso de cada usuário e só gravaria o balde ao passar de um limiar, por exemplo 2.500 linhas lidas ou 50 escritas. Com perto de 100 linhas lidas por requisição, a escrita do balde cairia para cerca de 1 gravação a cada 25 requisições de leitura.
+
+- A favor, a escrita do limitador no D1 cai para perto de só a do contador por minuto, e a cota de escritas comporta bem mais requisições autenticadas.
+- Contra, o isolado é efêmero. A Cloudflare descarta isolados sem aviso, e o saldo ainda não gravado se perde. Cada isolado vivo do mesmo usuário guarda até um limiar sem gravar, então o excesso possível cresce com o número de isolados. A checagem lê um balde atrasado em até um limiar por isolado.
+- Não adotado agora. Com as consultas do limitador fora da medição e sem gravar a linha sem uso, uma requisição só de leitura grava 4 linhas e não gasta o orçamento de escrita. Fica como follow-up se a cota de escritas virar o gargalo antes do gatilho de migração ao Paid. A imprecisão continuaria limitada ao limiar vezes o número de isolados.
+
 ## ADR-024: Pontuação por jogo com orçamento de chamadas por invocação
 
 **Status:** Accepted

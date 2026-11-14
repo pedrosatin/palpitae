@@ -34,6 +34,11 @@ function fakeEnv(email: string): AppContext['Bindings'] {
               async run() {
                 return { success: true }
               },
+              // O limitador mede as linhas lidas e troca o `first` por `all`.
+              async all() {
+                const row = await this.first()
+                return { results: row ? [row] : [] }
+              },
               async first() {
                 if (sql.includes('INSERT INTO request_limits')) return { hits: 1 }
                 if (isSessionQuery(sql)) return activeSessionRow(email)
@@ -376,6 +381,11 @@ describe('auth router', () => {
                 return {
                   async run() {
                     return { success: true }
+                  },
+                  async all() {
+                    return {
+                      results: sql.includes('INSERT INTO request_limits') ? [{ hits: 1 }] : [],
+                    }
                   },
                   async first() {
                     if (sql.includes('INSERT INTO request_limits')) return { hits: 1 }

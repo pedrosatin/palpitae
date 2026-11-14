@@ -1377,6 +1377,13 @@ it('recalcula o valor enviado mesmo quando outra edição muda a regra depois da
               await blocked
               return row
             },
+            // O limitador mede as linhas lidas e troca o `first` por `all`.
+            async all() {
+              const result = await bound.all()
+              paused()
+              await blocked
+              return result
+            },
           }
         },
       }
