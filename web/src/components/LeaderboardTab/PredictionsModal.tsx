@@ -1,4 +1,5 @@
 import { trackEvent } from '../../analytics/ga'
+import { groupConsecutiveBy } from '../../lib/groupConsecutiveBy'
 import Modal from '../Modal'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import styles from './LeaderboardTab.module.css'
@@ -13,26 +14,7 @@ interface PredictionsModalProps {
 }
 
 export function groupedByGroupName(ms: UserPrediction[]): [string | null, UserPrediction[]][] {
-  const result: [string | null, UserPrediction[]][] = []
-
-  if (ms.length === 0) return result
-
-  let currentGroup = ms[0].group_name ?? null
-  let currentArray = [ms[0]]
-  result.push([currentGroup, currentArray])
-
-  for (let i = 1; i < ms.length; i++) {
-    const m = ms[i]
-    const key = m.group_name ?? null
-    if (key === currentGroup) {
-      currentArray.push(m)
-    } else {
-      currentGroup = key
-      currentArray = [m]
-      result.push([currentGroup, currentArray])
-    }
-  }
-  return result
+  return groupConsecutiveBy(ms, (m) => m.group_name ?? null)
 }
 
 export default function PredictionsModal({ member, groupId, onClose }: PredictionsModalProps) {

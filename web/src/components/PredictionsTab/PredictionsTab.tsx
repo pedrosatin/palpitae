@@ -1,13 +1,14 @@
 import { trackEvent } from '../../analytics/ga'
-import { leftoverMatchesText } from '../../lib/rounds'
-import Button from '../Button'
+import { groupConsecutiveBy } from '../../lib/groupConsecutiveBy'
+import { leftoverMatchesText, previousLeftoverRound } from '../../lib/rounds'
 import ErrorState from '../ErrorState'
-import MatchCard, { type Match } from '../MatchCard'
+import MatchCard, { type Match, type Prediction } from '../MatchCard'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import PredictionsImportBar from './PredictionsImportBar'
 import PredictionsReplicateBar from './PredictionsReplicateBar'
 import RoundProgress from './RoundProgress'
 import RoundSummary from './RoundSummary'
+import SaveAllBar from './SaveAllBar'
 import PredictionsFeedback from '../PredictionsFeedback/PredictionsFeedback'
 import { usePredictionsTab } from './usePredictionsTab'
 import { findLeg2 } from '../../lib/tieSummary'
@@ -30,7 +31,7 @@ interface PredictionsTabProps {
 
 function leg1Context(
   match: Match,
-  predictions: Map<string, import('../MatchCard').Prediction>,
+  predictions: Map<string, Prediction>,
   roundMatches: Match[],
   drafts: Map<string, { home: string; away: string }>,
 ) {
@@ -64,17 +65,7 @@ function leg1Context(
 }
 
 function groupedRoundMatches(ms: Match[]): [string | null, Match[]][] {
-  const result: [string | null, Match[]][] = []
-  for (const m of ms) {
-    const key = m.group_name ?? null
-    const last = result[result.length - 1]
-    if (last && last[0] === key) {
-      last[1].push(m)
-    } else {
-      result.push([key, [m]])
-    }
-  }
-  return result
+  return groupConsecutiveBy(ms, (m) => m.group_name ?? null)
 }
 
 export default function PredictionsTab({
@@ -145,31 +136,19 @@ export default function PredictionsTab({
     pointsExact,
   )
   // Avisa sobre UMA rodada com palpite aberto fora de hora: a mais próxima ANTES
-  // da aberta. Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em
-  // rodadas que ficaram para trás (ADR-019): nos dois casos a rodada não é o
-  // default e o usuário não tem por que visitá-la.
-  //
-  // Olhar pra trás porque essas rodadas são sempre antigas. E mostrar só a mais
-  // próxima porque o Brasileirão acumula adiados distantes (a rodada 4 tem um
-  // Flamengo×Mirassol parado desde fevereiro): avisar do mais antigo primeiro
-  // fazia o usuário pular 17 rodadas pra trás e só então descobrir que a 21
-  // também tinha. O seletor continua marcando todas, então nada some — só sai
-  // do caminho.
-  //
-  // Estando numa dessas rodadas não há aviso nenhum: os cards já mostram o jogo,
-  // e apontar para a anterior recriaria o encadeamento (22 → 21 → 4).
-  const hasLeftover = (round: string) =>
-    postponedByRound.has(round) || rescheduledByRound.has(round)
-  const leftoverBefore = hasLeftover(selectedRound)
-    ? []
-    : roundKeys.slice(0, Math.max(0, safeIndex)).filter(hasLeftover)
-  const previousLeftoverRound = leftoverBefore[leftoverBefore.length - 1]
-  const leftoverElsewhere = previousLeftoverRound
+  // da aberta (ADR-013 e ADR-019). Se a rodada exibida é uma delas, não há aviso.
+  const leftoverRound = previousLeftoverRound(
+    roundKeys,
+    safeIndex,
+    postponedByRound,
+    rescheduledByRound,
+  )
+  const leftoverElsewhere = leftoverRound
     ? {
-        round: previousLeftoverRound,
+        round: leftoverRound,
         text: leftoverMatchesText(
-          postponedByRound.get(previousLeftoverRound) ?? 0,
-          rescheduledByRound.get(previousLeftoverRound) ?? 0,
+          postponedByRound.get(leftoverRound) ?? 0,
+          rescheduledByRound.get(leftoverRound) ?? 0,
         ),
       }
     : undefined
@@ -271,40 +250,18 @@ export default function PredictionsTab({
         showOption={hasOpenMatch}
       />
 
-      {showSaveBar && (
-        <div className={styles.saveAllBar} data-save-all-bar>
-          <div className={styles.saveAllStatus} aria-live="polite">
-            {replicating && (
-              <span className={styles.replicateInfo}>Aplicando nos outros grupos...</span>
-            )}
-            {replicateFeedback.map((f) => (
-              <span key={f.id} className={f.ok ? styles.importSuccess : styles.importError}>
-                {f.message}
-              </span>
-            ))}
-            {canRetryReplicate && (
-              <button type="button" className={styles.retryLink} onClick={retryReplicate}>
-                Tentar de novo
-              </button>
-            )}
-          </div>
-          {bulkError && <span className={styles.error}>{bulkError}</span>}
-          <Button
-            size="sm"
-            className={`${styles.saveAllBtn} ${savedAll ? styles.saveAllBtnSaved : ''}`}
-            onClick={handleSaveAll}
-            disabled={pendingCount === 0 || savingAll}
-          >
-            {savingAll
-              ? 'Salvando...'
-              : savedAll
-                ? 'Tudo salvo!'
-                : pendingCount > 0
-                  ? `Salvar todos (${pendingCount})`
-                  : 'Salvar todos'}
-          </Button>
-        </div>
-      )}
+      <SaveAllBar
+        showSaveBar={showSaveBar}
+        replicating={replicating}
+        replicateFeedback={replicateFeedback}
+        canRetryReplicate={canRetryReplicate}
+        retryReplicate={retryReplicate}
+        bulkError={bulkError}
+        savedAll={savedAll}
+        handleSaveAll={handleSaveAll}
+        pendingCount={pendingCount}
+        savingAll={savingAll}
+      />
 
       {hasSavedPredictions && <PredictionsFeedback />}
 
@@ -312,33 +269,32 @@ export default function PredictionsTab({
         <div key={groupName ?? '__no_group'} className={styles.matchGroup}>
           {groupName && <h3 className={styles.groupHeader}>Grupo {groupName}</h3>}
           <div className={styles.matchList}>
-            {groupMatches.map((match) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                prediction={predictions.get(match.id)}
-                draft={unsavedDrafts.drafts.get(match.id)}
-                penaltyDraft={unsavedDrafts.penaltyDrafts.get(match.id)}
-                leg1Prediction={
-                  leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts).prediction
-                }
-                leg1Pending={
-                  leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts).pending
-                }
-                leg1Match={
-                  match.leg1_match_id
-                    ? matches.find((m) => m.id === match.leg1_match_id)
-                    : undefined
-                }
-                leg2Match={findLeg2(match, matches)}
-                groupId={groupId}
-                outcomeOnly={pointsExact === 0}
-                onSaved={handleSaved}
-                onDraftChange={handleDraftChange}
-                onPenaltyDraftChange={handlePenaltyDraftChange}
-                now={now}
-              />
-            ))}
+            {groupMatches.map((match) => {
+              const leg1 = leg1Context(match, predictions, roundMatches, unsavedDrafts.drafts)
+              return (
+                <MatchCard
+                  key={match.id}
+                  match={match}
+                  prediction={predictions.get(match.id)}
+                  draft={unsavedDrafts.drafts.get(match.id)}
+                  penaltyDraft={unsavedDrafts.penaltyDrafts.get(match.id)}
+                  leg1Prediction={leg1.prediction}
+                  leg1Pending={leg1.pending}
+                  leg1Match={
+                    match.leg1_match_id
+                      ? matches.find((m) => m.id === match.leg1_match_id)
+                      : undefined
+                  }
+                  leg2Match={findLeg2(match, matches)}
+                  groupId={groupId}
+                  outcomeOnly={pointsExact === 0}
+                  onSaved={handleSaved}
+                  onDraftChange={handleDraftChange}
+                  onPenaltyDraftChange={handlePenaltyDraftChange}
+                  now={now}
+                />
+              )
+            })}
           </div>
         </div>
       ))}
