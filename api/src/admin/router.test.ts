@@ -304,6 +304,49 @@ describe('Remoção de jogo pelo operador', () => {
     ])
   })
 
+  it('pontuação em curso não grava a volta com o bônus de uma ida apagada no meio', async () => {
+    const { sqlite, db, call, rows } = setup()
+    sqlite.exec(`
+      UPDATE groups SET points_classified = 5 WHERE id = 'vizinho';
+      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,phase,leg,home_score,away_score,scored_at)
+        VALUES ('ida','c','ida','test','h','v','2000-01-01T00:00:00Z','finished','1','LAST_16',1,2,0,'2000-01-02T00:00:00Z'),
+               ('volta','c','volta','test','v','h','2000-01-08T00:00:00Z','finished','2','LAST_16',2,1,0,NULL);
+      INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score) VALUES
+        ('ida-eli','eli','vizinho','ida',2,0), ('volta-eli','eli','vizinho','volta',1,0);
+    `)
+
+    // Segura a pontuação depois de ler o confronto e antes do batch que grava pontos.
+    let arrive!: () => void
+    let release!: () => void
+    const reached = new Promise<void>((resolve) => (arrive = resolve))
+    const released = new Promise<void>((resolve) => (release = resolve))
+    let held = false
+    const paused = {
+      prepare: (sql: string) => db.prepare(sql),
+      batch: async (statements: D1PreparedStatement[]) => {
+        if (!held) {
+          held = true
+          arrive()
+          await released
+        }
+        return db.batch(statements)
+      },
+    } as unknown as D1Database
+
+    const scoring = scoreUnprocessedMatches('c', paused)
+    await reached
+    expect((await call('admin', '/admin/matches/ida', 'DELETE')).status).toBe(200)
+    release()
+    await scoring
+
+    expect(rows("SELECT scored_at FROM matches WHERE id = 'volta'")).toEqual([{ scored_at: null }])
+
+    await scoreUnprocessedMatches('c', db)
+    expect(
+      rows("SELECT total_points, exact_hits FROM leaderboard WHERE group_id = 'vizinho' AND user_id = 'eli'"),
+    ).toEqual([{ total_points: 3, exact_hits: 1 }])
+  })
+
   it('recusa quem não é admin e jogo inexistente', async () => {
     const { call, rows } = setupDuplicate()
     expect((await call('bia', '/admin/matches/dup', 'DELETE')).status).toBe(403)

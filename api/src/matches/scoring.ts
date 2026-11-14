@@ -205,8 +205,10 @@ function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
 /**
  * Condição de toda gravação da pontuação de um jogo: ele segue encerrado com o
  * placar, vencedor nos pênaltis e contexto lidos. Na volta, a ida também precisa
- * manter seus times, fase, perna e horário. Uma correção posterior à leitura
- * impede a gravação dos pontos e do marcador do snapshot anterior.
+ * continuar existindo e manter seus times, fase, perna e horário. Uma correção
+ * ou remoção posterior à leitura impede a gravação dos pontos e do marcador do
+ * snapshot anterior: se a ida for apagada entre a leitura e o batch, a volta fica
+ * pendente e é pontuada de novo sem o bônus de classificado.
  */
 const UNCHANGED_RESULT_SQL = `EXISTS (SELECT 1 FROM matches WHERE id = ? AND status = 'finished'
     AND home_score = ? AND away_score = ? AND penalty_winner IS ?
@@ -214,7 +216,8 @@ const UNCHANGED_RESULT_SQL = `EXISTS (SELECT 1 FROM matches WHERE id = ? AND sta
   AND NOT EXISTS (SELECT 1 FROM matches WHERE id = ?
     AND (status IS NOT ? OR home_score IS NOT ? OR away_score IS NOT ?
       OR home_team_id IS NOT ? OR away_team_id IS NOT ? OR phase IS NOT ?
-      OR leg IS NOT ? OR start_time IS NOT ?))`
+      OR leg IS NOT ? OR start_time IS NOT ?))
+  AND (? IS NULL OR EXISTS (SELECT 1 FROM matches WHERE id = ?))`
 
 function unchangedResultBinds(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | undefined) {
   const leg1 = tie?.role === 'leg2' ? tie.partner : null
@@ -237,6 +240,8 @@ function unchangedResultBinds(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | u
     leg1?.phase ?? null,
     leg1?.leg ?? null,
     leg1?.start_time ?? null,
+    leg1?.id ?? null,
+    leg1?.id ?? null,
   ]
 }
 
