@@ -3,7 +3,7 @@ import { buildApiUrl } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { getGuideOrigin } from '../../../analytics/guideOrigin'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../../lib/api'
-import { ScoringPreset } from '../constants'
+import { DEFAULT_SCORING, ScoringPreset } from '../constants'
 import { selectableCompetitions } from '../competitionStatus'
 import type { CompetitionSelectGroups } from '../competitionStatus'
 import { Competition, CreatedGroup } from '../types'
@@ -35,11 +35,11 @@ export function useCreateGroupForm({
   const [name, setName] = useState('')
   // Só a escolha feita no select. Vazio, vale a competição padrão abaixo.
   const [chosenCompetitionId, setCompetitionId] = useState('')
-  const [scoringPreset, setScoringPreset] = useState<ScoringPreset>('classic')
-  const [pointsExact, setPointsExact] = useState(3)
-  const [pointsWinner, setPointsWinner] = useState(1)
-  const [pointsPenalty, setPointsPenalty] = useState(1)
-  const [pointsClassified, setPointsClassified] = useState(0)
+  const [scoringPreset, setScoringPreset] = useState<ScoringPreset>(DEFAULT_SCORING.preset)
+  const [pointsExact, setPointsExact] = useState(DEFAULT_SCORING.exact)
+  const [pointsWinner, setPointsWinner] = useState(DEFAULT_SCORING.winner)
+  const [pointsPenalty, setPointsPenalty] = useState(DEFAULT_SCORING.penalty)
+  const [pointsClassified, setPointsClassified] = useState(DEFAULT_SCORING.classified)
   const [predictionsVisibility, setPredictionsVisibility] = useState<'hidden' | 'public'>('hidden')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -93,11 +93,11 @@ export function useCreateGroupForm({
     inFlightRef.current = false
     setName('')
     setCompetitionId('')
-    setScoringPreset('classic')
-    setPointsExact(3)
-    setPointsWinner(1)
-    setPointsPenalty(1)
-    setPointsClassified(0)
+    setScoringPreset(DEFAULT_SCORING.preset)
+    setPointsExact(DEFAULT_SCORING.exact)
+    setPointsWinner(DEFAULT_SCORING.winner)
+    setPointsPenalty(DEFAULT_SCORING.penalty)
+    setPointsClassified(DEFAULT_SCORING.classified)
     setPredictionsVisibility('hidden')
     setError(null)
     setCreated(null)
