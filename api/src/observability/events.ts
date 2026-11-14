@@ -15,6 +15,8 @@
  * REGRA LGPD: nunca passar PII crua (e-mail, nome) em blob. Usar `user_hash`.
  */
 
+import { hexEncode } from '../auth/encoding'
+
 export type EventType =
   // Saúde do cron / API Football
   | 'poller_run'
@@ -144,6 +146,5 @@ export function tryLogEvent(
  */
 export async function hashUserId(userId: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(userId))
-  const bytes = new Uint8Array(digest, 0, 8)
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return hexEncode(new Uint8Array(digest, 0, 8))
 }

@@ -3,6 +3,7 @@ import { createMiddleware } from 'hono/factory'
 import { getCookie } from 'hono/cookie'
 import type { AppContext } from '../types'
 import { HMAC_SHA256, importHmacKey } from '../auth/crypto'
+import { hexEncode } from '../auth/encoding'
 import { resolveSession } from '../auth/middleware'
 import { sessionHash } from '../auth/session'
 import { logError } from '../observability/events'
@@ -293,30 +294,31 @@ export function ipBucketIdentity(ip: string): string {
     .join(':')}::/64`
 }
 
+function toHextets(part: string): string[] | null {
+  if (!part) return []
+  const out: string[] = []
+  for (const piece of part.split(':')) {
+    if (piece.includes('.')) {
+      // IPv4 embutido no fim: vira dois hextets.
+      const octets = piece.split('.').map(Number)
+      if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
+        return null
+      out.push(
+        ((octets[0] << 8) | octets[1]).toString(16),
+        ((octets[2] << 8) | octets[3]).toString(16),
+      )
+    } else if (/^[0-9a-f]{1,4}$/.test(piece)) {
+      out.push(piece)
+    } else {
+      return null
+    }
+  }
+  return out
+}
+
 function expandIpv6(value: string): string[] | null {
   const halves = value.split('::')
   if (halves.length > 2) return null
-  const toHextets = (part: string): string[] | null => {
-    if (!part) return []
-    const out: string[] = []
-    for (const piece of part.split(':')) {
-      if (piece.includes('.')) {
-        // IPv4 embutido no fim: vira dois hextets.
-        const octets = piece.split('.').map(Number)
-        if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255))
-          return null
-        out.push(
-          ((octets[0] << 8) | octets[1]).toString(16),
-          ((octets[2] << 8) | octets[3]).toString(16),
-        )
-      } else if (/^[0-9a-f]{1,4}$/.test(piece)) {
-        out.push(piece)
-      } else {
-        return null
-      }
-    }
-    return out
-  }
   const head = toHextets(halves[0])
   const tail = halves.length === 2 ? toHextets(halves[1]) : []
   if (!head || !tail) return null
@@ -329,9 +331,7 @@ function expandIpv6(value: string): string[] | null {
 async function hmacHex(secret: string, value: string): Promise<string> {
   const key = await importHmacKey(secret)
   const signature = await crypto.subtle.sign(HMAC_SHA256, key, new TextEncoder().encode(value))
-  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, '0')).join(
-    '',
-  )
+  return hexEncode(signature)
 }
 
 // HMAC com segredo: um SHA-256 puro de um IPv4 sai por força bruta.
@@ -413,6 +413,11 @@ function isFrontendZone(
   return value === host || host.endsWith(`.${value}`)
 }
 
+function requestCategory(path: string, isRead: boolean): AnonymousCategory {
+  if (path.startsWith('/auth/google') || path.startsWith('/auth/callback')) return 'oauth'
+  return isRead ? 'read' : 'write'
+}
+
 export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   if (c.req.path === '/health' || c.req.method === 'OPTIONS') return next()
   const isRead = c.req.method === 'GET' || c.req.method === 'HEAD'
@@ -420,12 +425,7 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   if (!isRead && origin && origin !== c.env.FRONTEND_URL && origin !== safeOrigin(c.env.BASE_URL)) {
     return c.json({ error: 'Origem não autorizada' }, 403)
   }
-  let category: Category =
-    c.req.path.startsWith('/auth/google') || c.req.path.startsWith('/auth/callback')
-      ? 'oauth'
-      : isRead
-        ? 'read'
-        : 'write'
+  let category: Category = requestCategory(c.req.path, isRead)
 
   // Daqui em diante as consultas da sessão e do handler passam pelo medidor. As do
   // próprio limitador usam `db`, sem medidor, e ficam fora do orçamento. O env é
