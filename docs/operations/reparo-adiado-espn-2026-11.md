@@ -17,7 +17,7 @@ Em 10/11/2026 a consulta de leitura em produção achou só esta linha com a ass
 
 1. A correção do fallback e do sync ESPN já está em produção. Sem ela, um novo adiado pode voltar a ser encerrado.
 2. A aplicação no D1 remoto tem autorização específica do operador.
-3. Os comandos rodam de `api/`, sempre com `--config ./wrangler.toml`. Sem essa opção, o `wrangler.jsonc` da raiz vence.
+3. Os comandos rodam de `api/`, sempre com `--config ./wrangler.toml`. Sem essa opção, um `wrangler.json` ou `wrangler.jsonc` num diretório acima venceria o `api/wrangler.toml`.
 
 ```bash
 cd api
