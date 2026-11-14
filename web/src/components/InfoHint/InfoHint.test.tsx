@@ -1,7 +1,8 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import InfoHint, { TOOLTIP_TIMEOUT_MS } from './InfoHint'
+import { TOOLTIP_TIMEOUT_MS } from '../../hooks/useAutoClose'
+import InfoHint from './InfoHint'
 
 describe('InfoHint', () => {
   afterEach(() => {
