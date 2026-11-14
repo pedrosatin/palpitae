@@ -6,12 +6,14 @@ import { resolveTwoLegClassified } from '../matches/scoring'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { fetchTieMatches, indexTies, type TieInfo, type TieMatch } from '../matches/ties'
 import { hashUserId, logEvent } from '../observability'
+import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
 import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
 
 /** Grupos de destino e jogos por requisição. O lote de escrita cresce com o produto dos dois. */
 const MAX_TARGET_GROUPS = 10
 const MAX_MATCHES = 100
+export const MAX_BATCH_STATEMENTS = MAX_TARGET_GROUPS * MAX_MATCHES
 const BATCH_SIZE = 100
 
 /** O que a cópia de palpites precisa saber de um grupo. */
@@ -399,7 +401,8 @@ export async function planCopy(
  * }
  *
  * Errors:
- *   400 corpo inválido; 403 usuário fora da origem ou de algum destino; 404 grupo piloto.
+ *   400 corpo inválido; 403 usuário fora da origem ou de algum destino; 404 grupo piloto;
+ *   429 orçamento diário de escrita excedido.
  */
 export async function handleReplicatePost(c: Context<AppContext>) {
   const userId = c.get('userId')
@@ -465,6 +468,8 @@ export async function handleReplicatePost(c: Context<AppContext>) {
   })
   const { results, lockedMatches, missingMatches } = plan
   if (plan.statements.length > 0) {
+    const budgetError = await enforceDailyWriteBudget(c, plan.statements.length)
+    if (budgetError) return budgetError
     const chunks: D1PreparedStatement[][] = []
     for (let i = 0; i < plan.statements.length; i += BATCH_SIZE) {
       chunks.push(plan.statements.slice(i, i + BATCH_SIZE))

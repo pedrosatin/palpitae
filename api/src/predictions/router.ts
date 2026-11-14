@@ -16,11 +16,18 @@ import {
   type TieRole,
 } from '../matches/ties'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
+import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
 import { getGroupMembership, getGroupMembershipTimed } from '../groups/membership'
 import { fetchOpenPickers, indexOpenPickers } from './openPickers'
 import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
-import { acceptsFrom, type CopyGroup, handleReplicatePost, planCopy } from './replicate'
+import {
+  acceptsFrom,
+  type CopyGroup,
+  handleReplicatePost,
+  MAX_BATCH_STATEMENTS,
+  planCopy,
+} from './replicate'
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -1235,6 +1242,8 @@ async function handleBulkPut(c: Context<AppContext>) {
   }
 
   if (statements.length > 0) {
+    const budgetError = await enforceDailyWriteBudget(c, statements.length)
+    if (budgetError) return budgetError
     const batches = []
     for (let i = 0; i < statements.length; i += 100) {
       batches.push(db.batch(statements.slice(i, i + 100)))
@@ -1280,10 +1289,11 @@ router.put('/bulk', requireAuth, handleBulkPut)
  * Response: { ok: true, imported: number, locked_skipped: number }
  *
  * Errors:
- *   400 — campos ausentes ou inválidos
+ *   400 — campos ausentes, inválidos ou acima de 1000 instruções planejadas
  *   403 — usuário fora de um dos grupos
  *   404 — grupo não encontrado
  *   422 — grupos de campeonatos diferentes, ou origem "só vencedor" com destino de placar exato
+ *   429 — orçamento diário de escrita excedido
  */
 async function verifyGroupsForImport(
   db: D1Database,
@@ -1380,6 +1390,14 @@ async function handleImportPost(c: Context<AppContext>) {
   if (planned === 0) {
     return c.json({ ok: true, imported: 0, locked_skipped: lockedSkipped })
   }
+
+  if (plan.statements.length > MAX_BATCH_STATEMENTS) {
+    return c.json({ error: `Máximo de ${MAX_BATCH_STATEMENTS} palpites por requisição` }, 400)
+  }
+
+  // O lote leva os palpites e mais a instrução do marcador de importação.
+  const budgetError = await enforceDailyWriteBudget(c, plan.statements.length + 1)
+  if (budgetError) return budgetError
 
   // Palpites e marcador no mesmo lote: se um falha, nada fica gravado. O marcador
   // entra se algum palpite já era igual ou se o lote gravou algum, o que deixa

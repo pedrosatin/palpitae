@@ -83,8 +83,11 @@ export async function consumeLimit(
   return result !== null && result.hits <= limit
 }
 
-type DailyKeys = { read: string; written: string }
+export type DailyKeys = { read: string; written: string }
 type DailyLimits = { read: number; written: number }
+
+export const DAILY_BUDGET_ERROR =
+  'Você atingiu o limite diário de uso. Tente de novo depois das 21h, horário de Brasília.'
 
 /**
  * Limites diários a partir das variáveis de ambiente. Vazio ou ausente vale o
@@ -122,6 +125,36 @@ function dayStart(now: number): number {
   return Math.floor(now / DAY_SECONDS) * DAY_SECONDS
 }
 
+export function dailyBudgetRetryAfter(now = Math.floor(Date.now() / 1000)): number {
+  return dayStart(now) + DAY_SECONDS - now
+}
+
+// O lote recusado ainda pode ter saldo para um lote menor, então a mensagem não diz que
+// o limite acabou.
+export const DAILY_BATCH_BUDGET_ERROR =
+  'Este lote passa do seu limite diário de escrita. Envie menos palpites ou tente depois das 21h, horário de Brasília.'
+
+export function dailyBudgetExceededResponse(
+  c: Context<AppContext>,
+  now = Math.floor(Date.now() / 1000),
+  message = DAILY_BUDGET_ERROR,
+): Response {
+  c.header('Retry-After', String(dailyBudgetRetryAfter(now)))
+  return c.json({ error: message }, 429)
+}
+
+function dailyWriteKey(secret: string, userId: string): Promise<string> {
+  return bucketKey(secret, `d1_written:user:${userId}`)
+}
+
+export async function dailyBucketKeys(secret: string, userId: string): Promise<DailyKeys> {
+  const [read, written] = await Promise.all([
+    bucketKey(secret, `d1_read:user:${userId}`),
+    dailyWriteKey(secret, userId),
+  ])
+  return { read, written }
+}
+
 /** Se o usuário já gastou no dia de hoje as linhas lidas ou escritas do orçamento. */
 export async function dailyBudgetExhausted(
   db: D1Database,
@@ -139,6 +172,59 @@ export async function dailyBudgetExhausted(
   return results.some((row) =>
     row.bucket_key === keys.read ? row.hits >= limits.read : row.hits >= limits.written,
   )
+}
+
+/**
+ * Saldo de escrita que ainda resta ao usuário no dia UTC atual.
+ */
+export async function remainingDailyWrites(
+  db: D1Database,
+  writtenKey: string,
+  writtenLimit: number,
+  now = Math.floor(Date.now() / 1000),
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT hits FROM request_limits
+      WHERE bucket_key = ? AND window_start >= ?`,
+    )
+    .bind(writtenKey, dayStart(now))
+    .first<{ hits: number }>()
+  return Math.max(0, writtenLimit - (row?.hits ?? 0))
+}
+
+/**
+ * Recusa o lote antes da gravação quando as instruções planejadas passam do saldo
+ * restante de escrita do usuário. Cada instrução planejada conta como 1 unidade
+ * antes da execução, e o desconto real segue vindo do rows_written medido no fim.
+ */
+export async function enforceDailyWriteBudget(
+  c: Context<AppContext>,
+  plannedStatements: number,
+): Promise<Response | null> {
+  if (plannedStatements <= 0) return null
+  const userId = c.get('userId')
+  if (!userId) return null
+  const db = c.get('limiterDb') ?? c.env.DB
+  const now = Math.floor(Date.now() / 1000)
+  try {
+    const writtenKey =
+      c.get('dailyKeys')?.written ?? (await dailyWriteKey(c.env.JWT_SECRET, userId))
+    const remaining = await remainingDailyWrites(db, writtenKey, dailyD1Limits(c.env).written, now)
+    if (plannedStatements > remaining) {
+      return dailyBudgetExceededResponse(c, now, DAILY_BATCH_BUDGET_ERROR)
+    }
+    return null
+  } catch (error) {
+    logError(
+      c.env.AE,
+      'security_storage_error',
+      '[limits] Orçamento diário do D1 indisponível:',
+      error,
+      { blobs: ['request_limits', 'daily_d1'] },
+    )
+    return c.json({ error: 'Controle de requisições indisponível' }, 503)
+  }
 }
 
 /**
@@ -161,10 +247,7 @@ export async function chargeDailyBudget(
   if (usage.rowsRead > 0) charges.push([keys.read, usage.rowsRead])
   if (usage.rowsWritten > 0) {
     const bucketRows = charges.length + 1
-    charges.push([
-      keys.written,
-      usage.rowsWritten + bucketRows * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW,
-    ])
+    charges.push([keys.written, usage.rowsWritten + bucketRows * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW])
   }
   if (charges.length === 0) return
   const start = dayStart(now)
@@ -342,6 +425,7 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   const db = c.env.DB
   const usage: D1RowUsage = { rowsRead: 0, rowsWritten: 0 }
   c.env = { ...c.env, DB: meterD1Rows(db, usage) }
+  c.set('limiterDb', db)
 
   // Sessão válida: só o balde do usuário. O IP não entra, porque pelo proxy do
   // Pages ele não identifica o visitante.
@@ -362,25 +446,15 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   const now = Math.floor(Date.now() / 1000)
   try {
     if (userId) {
-      const [read, written] = await Promise.all([
-        bucketKey(c.env.JWT_SECRET, `d1_read:${identity}`),
-        bucketKey(c.env.JWT_SECRET, `d1_written:${identity}`),
-      ])
-      daily = { read, written }
+      daily = await dailyBucketKeys(c.env.JWT_SECRET, userId)
+      c.set('dailyKeys', daily)
       // Vem antes do balde por minuto, que gravaria uma linha. A recusa por orçamento
       // só lê.
       if (
         !DAILY_BUDGET_EXEMPT.has(c.req.path) &&
         (await dailyBudgetExhausted(db, daily, dailyD1Limits(c.env), now))
       ) {
-        c.header('Retry-After', String(dayStart(now) + DAY_SECONDS - now))
-        return c.json(
-          {
-            error:
-              'Você atingiu o limite diário de uso. Tente de novo depois das 21h, horário de Brasília.',
-          },
-          429,
-        )
+        return dailyBudgetExceededResponse(c, now)
       }
     }
     const key = await bucketKey(c.env.JWT_SECRET, `${category}:${identity}`)
