@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { hasFeatureAccess, hasPilotAccess } from '../auth/permissions'
+import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
@@ -56,18 +57,6 @@ type PodiumEntry = {
   display: string
   points: number
   is_you: boolean
-}
-
-const INVALID_BODY = 'Body JSON inválido'
-
-/**
- * Lê o corpo como objeto JSON. Devolve `null` para JSON inválido, `null`, lista
- * ou valor solto, e o handler responde 400. Os campos chegam sem garantia de
- * tipo: cada handler confere os que usa.
- */
-async function readJsonObject<T extends object>(c: Context<AppContext>): Promise<T | null> {
-  const body: unknown = await c.req.json().catch(() => null)
-  return typeof body === 'object' && body !== null && !Array.isArray(body) ? (body as T) : null
 }
 
 /** Texto sem espaços nas pontas, ou `undefined` quando o campo não é texto. */
