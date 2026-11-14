@@ -37,6 +37,10 @@ export type EventType =
   | 'match_missing_from_feed'
   // Descoberta não conseguiu gravar o status da competição depois do sync
   | 'competition_status_error'
+  // Pontuação de uma competição falhou no poller (as outras seguem)
+  | 'match_scoring_error'
+  // Competição com jogo encerrado que segue sem pontuação depois de mais de um ciclo do poller
+  | 'match_unscored'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'

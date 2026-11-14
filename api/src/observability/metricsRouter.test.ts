@@ -345,6 +345,7 @@ describe('GET /metrics/ops', () => {
     fallbackFailures?: unknown[]
     discards?: unknown[]
     missing?: unknown[]
+    unscored?: unknown[]
   }) {
     return vi.fn(async (_url: string, init: { body: string }) => {
       const sql = init.body
@@ -352,6 +353,7 @@ describe('GET /metrics/ops', () => {
       if (sql.includes('MIN(timestamp)')) data = rows.firstSeen ?? []
       else if (sql.includes("blob1 = 'sync_event_discarded'")) data = rows.discards ?? []
       else if (sql.includes("blob1 = 'match_missing_from_feed'")) data = rows.missing ?? []
+      else if (sql.includes("blob1 = 'match_unscored'")) data = rows.unscored ?? []
       else if (sql.includes("blob1 = 'provider_http_attempt'") && sql.includes('GROUP BY provider'))
         data = rows.httpByProvider ?? []
       else if (sql.includes("blob1 = 'provider_http_attempt'")) data = rows.httpByCompetition ?? []
@@ -387,6 +389,7 @@ describe('GET /metrics/ops', () => {
     }[]
     discards: Record<string, unknown>[]
     missingMatches: Record<string, unknown>[]
+    unscoredMatches: Record<string, unknown>[]
   }
 
   it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
@@ -434,7 +437,7 @@ describe('GET /metrics/ops', () => {
     const bodies = (fetchFake.mock.calls as unknown as [string, { body: string }][]).map(
       (c) => c[1].body,
     )
-    expect(bodies).toHaveLength(8)
+    expect(bodies).toHaveLength(9)
     expect(bodies.some((sql) => /COUNT\(\*\)/.test(sql))).toBe(false)
 
     const http = bodies.filter((sql) => sql.includes("blob1 = 'provider_http_attempt'"))
@@ -460,6 +463,10 @@ describe('GET /metrics/ops', () => {
     expect(bodies.find((q) => q.includes("blob1 = 'match_missing_from_feed'"))).toContain(
       "INTERVAL '7' DAY",
     )
+    const unscored = bodies.find((q) => q.includes("blob1 = 'match_unscored'"))
+    expect(unscored).toContain('MAX(double1) AS matches')
+    expect(unscored).toContain('SUM(_sample_interval) AS cycles')
+    expect(unscored).toContain("INTERVAL '7' DAY")
   })
 
   it('sem eventos devolve listas vazias e httpFirstSeenAt nulo (ausência ≠ zero)', async () => {
@@ -473,6 +480,48 @@ describe('GET /metrics/ops', () => {
     expect(body.fallback).toEqual([])
     expect(body.discards).toEqual([])
     expect(body.missingMatches).toEqual([])
+    expect(body.unscoredMatches).toEqual([])
+  })
+
+  it('devolve as competições com jogo encerrado sem pontuação, sem repassar texto livre', async () => {
+    const res = await getOps(
+      fetchBySql({
+        unscored: [
+          {
+            competition_id: COMP_A,
+            matches: '12',
+            oldest_minutes: '210',
+            cycles: '3',
+            last_seen: '2026-11-13 19:30:04',
+          },
+          {
+            competition_id: 'texto livre',
+            matches: '1',
+            oldest_minutes: '150',
+            cycles: '1',
+            last_seen: '2026-11-13 18:00:02',
+          },
+        ],
+      }),
+    )
+    const body = (await res.json()) as OpsBody
+
+    expect(body.unscoredMatches).toEqual([
+      {
+        competition_id: COMP_A,
+        matches: 12,
+        oldest_minutes: 210,
+        cycles: 3,
+        last_seen: '2026-11-13 19:30:04',
+      },
+      {
+        competition_id: '',
+        matches: 1,
+        oldest_minutes: 150,
+        cycles: 1,
+        last_seen: '2026-11-13 18:00:02',
+      },
+    ])
   })
 
   it('devolve eventos descartados por motivo e fase, e jogos pendentes fora do calendário', async () => {

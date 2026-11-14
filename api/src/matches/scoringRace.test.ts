@@ -255,7 +255,7 @@ describe('pontuação com discovery e poller ao mesmo tempo', () => {
 
 describe('pontuação após falha parcial', () => {
   it('falha num lote de pontos não marca o jogo, e o retry pontua todos os palpites', async () => {
-    // 120 palpites passam do limite de 100 instruções por batch: os pontos vão em mais de um lote.
+    // Os pontos dos 120 palpites, o scored_at e o ranking vão na mesma gravação.
     const { sqlite, db, provider } = await setup(Array.from({ length: 120 }, () => [1, 0]))
     provider.match = fdMatch('FINISHED', 1, 0)
     failWrites(sqlite, 'predictions', `OLD.id = 'p001'`)

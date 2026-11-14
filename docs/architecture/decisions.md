@@ -219,6 +219,7 @@ The Cron Trigger is added to the **existing `palpitae-api` Worker** (not a separ
 - football-data.org is called only while matches are actively in their time window — no wasted polling
 - Knockout extra time and penalties are covered by the 200-min upper bound; if still not finished, the next day's manual admin sync catches edge cases
 - Atualização (12/11/2026): depois da janela ativa vêm o resgate de 24 h e a varredura de atrasados, que consulta a cada 3 h, uma rodada por vez, jogos sem resultado e adiados de até 7 dias, só em tick sem jogo na janela ativa ou no resgate (`api/src/matches/poller.ts`)
+- Atualização (13/11/2026): a pontuação depois do sync roda uma competição por vez, grava o progresso por jogo e para quando acabam as chamadas da invocação. A competição que não termina continua no tick seguinte (ADR-024)
 - If football-data.org is down during a tick, the next tick retries automatically; the scoring gap is bounded by the 30-min cron interval
 - During the transition, both the Cron and `maybeSyncResults` may sync — this is safe because `scoreUnprocessedMatches` is idempotent (skips matches with `scored_at` set)
 
@@ -842,3 +843,45 @@ A API devolve `streak` em cada linha, com as rodadas encerradas seguidas em que 
 - A variação compara a ordem antes e depois da rodada de referência. Um jogo remarcado de rodada antiga que pontua depois entra no total e na posição anterior como se sempre estivesse lá, sem aparecer como movimento.
 - Caso aceito: uma fase preliminar eliminatória adiada que termine depois do início da rodada de referência tira a coluna até uma rodada posterior fechar.
 - Risco aceito: uma leitura entre a gravação dos pontos e a atualização do `leaderboard` pode mostrar variação errada por alguns segundos. A próxima abertura da aba corrige.
+
+## ADR-024: Pontuação por jogo com orçamento de chamadas por invocação
+
+**Status:** Accepted
+**Date:** 2026-11-13
+
+### Context
+
+`scoreUnprocessedMatches` pontuava a competição inteira de uma vez. Lia os palpites de todos os jogos encerrados sem `scored_at`, gravava os pontos em lotes de 100 instruções e só no fim marcava os jogos e recalculava o ranking. Se um lote falhava, nenhum jogo recebia `scored_at` e a execução seguinte refazia tudo.
+
+No plano Free uma invocação do Worker faz no máximo 50 chamadas. Cada consulta ao D1 conta uma e um `db.batch()` inteiro conta uma ([limites do D1](https://developers.cloudflare.com/d1/platform/limits/)). Sozinha, a pontuação de uma competição com 4.700 palpites usava as 50 chamadas, 47 em lotes de pontos e 3 em leitura e marcação, sem contar o planejamento e o sync do mesmo tick. Acima disso a chamada 51 falhava, todos os jogos seguiam sem `scored_at` e a falha se repetia a cada tick. O poller pontuava as competições em paralelo na mesma invocação, então a outra competição do tick também ficava sem pontuação. A auditoria de segurança de 13/11/2026 reproduziu o caso com uma conta que cria 470 grupos e replica os palpites numa rodada de 10 jogos.
+
+### Decision
+
+A pontuação grava o progresso por jogo. `scoreUnprocessedMatches` percorre os jogos do mais antigo para o mais novo, uma gravação por vez. Cada gravação é um `db.batch()`, que o D1 executa como transação, com os pontos dos palpites dos jogos dela, o `scored_at` de cada jogo e o ranking dos grupos que têm palpite nesses jogos. Jogo com `scored_at` não volta na execução seguinte.
+
+Os pontos de um jogo vão em instruções `UPDATE predictions ... FROM json_each(?)` de até 1000 palpites cada, em vez de uma instrução por palpite. Um jogo com qualquer número de palpites cabe numa gravação. Jogos com poucos palpites dividem a mesma gravação até somar 250 palpites ou 25 jogos. A pontuação custa até 2 chamadas de planejamento (jogos pendentes e confrontos de mata-mata) e 2 por gravação (leitura dos palpites e o batch).
+
+A ida e a volta de um confronto ficam na mesma gravação. Quando a ida tem o placar corrigido, a volta já pontuada é repontuada junto. Se a ida fosse gravada sozinha, ela sairia da lista de pendentes e a execução seguinte não acharia a volta para refazer.
+
+O poller tem um orçamento explícito, `POLLER_CALL_BUDGET`, de 45 das 50 chamadas da invocação (`api/src/matches/poller.ts`). As 5 restantes cobrem a limpeza de registros expirados que o handler `scheduled` dispara na mesma invocação, a leitura final dos jogos sem pontuação e 3 de folga. `countD1Calls` (`api/src/matches/callBudget.ts`) embrulha o D1 do tick e soma cada consulta e cada batch. Cada tentativa HTTP aos provedores soma também, porque a [documentação de limites do Workers](https://developers.cloudflare.com/workers/platform/limits/) define subrequest como `fetch` ou chamada a serviços como o D1 e dá um limite só por invocação. Planejamento, sync e fallback gastam o que precisam e são só contados. A pontuação recebe o que sobra.
+
+As competições são pontuadas uma por vez. Entram as que o poller sincronizou no tick e as que têm jogo encerrado, com placar e sem `scored_at`, que o poller lê depois do sync pelo índice parcial `idx_matches_unscored`. A leitura custa 1 chamada do orçamento e roda também em tick sem jogo na janela. Sem ela, a competição que parou por falta de chamadas, ou por erro, só voltava a ser pontuada num tick em que o sync dela desse certo, e nunca mais depois das 24 h do resgate.
+
+A ordem segue o jogo pendente mais antigo de cada competição, então a que ficou sem a vez num tick começa o seguinte. Cada uma recebe uma parte igual das chamadas que restam, nunca abaixo das 4 que planejar e gravar uma vez exigem, enquanto restarem 4. Sem esse piso, 11 chamadas para 3 competições davam 3 à primeira, que era pulada em todo tick. O que sobrar vai, numa segunda passada, para as que pararam por falta de chamadas. Assim uma competição com muitos palpites não gasta a vez das outras. A que não termina devolve `complete: false` e continua no tick seguinte de onde parou. Erro na pontuação de uma competição gera `match_scoring_error` e as outras seguem. Depois que todas tiveram a vez, o poller registra `poller_run` com `error` e relança a primeira falha, para a invocação aparecer como exceção na Cloudflare.
+
+Ao fim de cada tick o poller lê, pelo índice parcial `idx_matches_unscored`, as competições com jogo encerrado sem `scored_at` que começou há mais de 145 minutos, e registra um `match_unscored` por competição, com no máximo 10 por execução. Os 145 minutos somam os 115 do resultado mais cedo possível e os 30 de um tick, então o jogo já passou por um ciclo inteiro sem ser pontuado. O painel `/admin/metricas` lista essas competições em "Jogos encerrados sem pontuação" (`GET /metrics/ops`, campo `unscoredMatches`).
+
+O jogo decisivo empatado que espera o vencedor dos pênaltis continua na leitura de pendentes. A competição dele é planejada em todo tick até o provedor informar o vencedor, com até 2 chamadas e nenhuma gravação. Filtrar esse jogo no SQL exigiria repetir a regra de `awaitsPenaltyWinner`, que depende do confronto e do placar da ida. Com 45 chamadas no orçamento e a espera limitada ao atraso do provedor, essas 2 chamadas cabem no tick.
+
+A descoberta diária e o sync manual chamam `scoreUnprocessedMatches` sem teto de chamadas. O progresso por jogo vale também para eles. Uma falha no meio deixa pontuados os jogos já gravados.
+
+### Consequences
+
+- No teste `api/src/matches/scoringBudget.test.ts`, que roda o cron inteiro sobre um D1 que rejeita a chamada 51, uma competição com 5 mil palpites em 40 jogos termina em 2 ticks e a competição pequena do mesmo tick é pontuada no primeiro. A rodada da auditoria, com 10 jogos e 4,7 mil palpites, é pontuada inteira num tick com 41 das 45 chamadas do orçamento. No mesmo arquivo, uma competição que parou no orçamento termina em tick sem jogo na janela, 25 h depois do início, e em tick em que o sync dela falha. `api/src/matches/scoringShare.test.ts` mostra três competições com 11 chamadas para a pontuação, todas com jogo pontuado em dois ticks.
+- Continuam valendo a gravação condicional ao resultado lido, a repontuação da volta, a espera pelo vencedor dos pênaltis no jogo decisivo empatado, o grupo excluído sem pontuação e o classificado contado uma vez por confronto. Os testes de `scoringRace.test.ts`, `tieClassified.test.ts`, `penaltyWinnerPending.test.ts` e `groups/deletedGroup.test.ts` cobrem essas garantias.
+- Uma competição com backlog grande leva vários ticks de 30 minutos. O ranking dos grupos dela mostra os jogos já gravados enquanto o resto espera.
+- `match_unscored` também sai para o jogo decisivo que espera o vencedor dos pênaltis, a cada tick, até o provedor informar. Um resultado que chega atrasado ou uma correção que a pontuação não consegue gravar no mesmo tick aparece um ciclo antes, porque o critério é o horário de início e não o momento em que o resultado chegou.
+- O orçamento conta o sync e não o limita. Um tick com muitas competições na janela pode gastar as 50 chamadas só no sync. Nesse caso a pontuação não roda, os jogos aparecem em `match_unscored` e a chamada que passar do limite falha no próprio sync.
+- O orçamento conta chamadas. O limite de 10 ms de CPU do Cron Trigger no plano Free fica fora da conta.
+- A descoberta diária segue sem orçamento. Ela pontua cada competição logo depois do sync dela, em paralelo com as outras.
+- O D1 de teste em memória não tem o limite de 50 chamadas. `api/src/testing/d1CallLimit.ts` impõe o limite nos testes, com contagem própria, separada da de produção, que soma as chamadas ao D1 e o `fetch` stubado dos provedores.

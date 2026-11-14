@@ -4,7 +4,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => ({ matches: 0 })) }))
-vi.mock('./scoring', () => ({ scoreUnprocessedMatches: vi.fn(async () => undefined) }))
+vi.mock('./scoring', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./scoring')>()),
+  scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
+}))
 vi.mock('./espnFallback', () => ({
   scoreWindowFromEspn: vi.fn(async () => new Map<string, number>()),
 }))
@@ -81,7 +84,12 @@ describe('pollActiveMatches rescue window', () => {
       .mock.calls.map(([options]) => options.matchday)
       .sort()
     expect(rounds).toEqual([10, 11, 13])
-    expect(scoreUnprocessedMatches).toHaveBeenCalledWith('c1', db)
+    // O D1 chega embrulhado pelo contador de chamadas; o terceiro argumento é o teto de chamadas.
+    expect(scoreUnprocessedMatches).toHaveBeenCalledWith(
+      'c1',
+      expect.anything(),
+      expect.any(Number),
+    )
   })
 })
 

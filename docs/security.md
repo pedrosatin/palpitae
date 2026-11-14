@@ -275,6 +275,12 @@ sem jogo na janela ativa ou no resgate. Depois de 7 dias, um jogo sem resultado 
 volta a ser atualizado pela descoberta diária ou pelo sync manual. Competição nova
 sem jogos recebe os jogos no próximo cron de descoberta (06:15 UTC).
 
+A pontuação do poller cabe nas 50 chamadas por invocação do plano Free (ADR-024).
+Ela grava o progresso por jogo, uma competição por vez, e para quando acabam as
+chamadas do tick. A competição com muitos palpites termina nos ticks seguintes e não
+impede a pontuação das outras. Jogo encerrado que passa mais de um ciclo sem
+pontuação gera o evento `match_unscored`, listado em `/admin/metricas`.
+
 ## Proteção de borda (Cloudflare Rate Limiting)
 
 O limitador da API roda depois que a requisição chega ao Worker e ainda faz uma

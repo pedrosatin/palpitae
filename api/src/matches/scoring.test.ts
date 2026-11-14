@@ -357,6 +357,7 @@ function buildFakeDb(
             .map((m) => ({
               ...m,
               penalty_phases: JSON.stringify(penaltyPhases[m.competition_id] ?? []),
+              prediction_count: predictions.filter((p) => p.match_id === m.id).length,
             })) as unknown as T[]
           return { results }
         }
@@ -372,11 +373,6 @@ function buildFakeDb(
             .map((m) => ({ start_time: '', leg: null, ...m })) as unknown as T[]
           return { results }
         }
-        if (sql.includes('FROM predictions') && sql.includes('WHERE match_id IN')) {
-          const matchIds = params as string[]
-          const results = predictions.filter((p) => matchIds.includes(p.match_id)) as unknown as T[]
-          return { results }
-        }
         if (sql.includes('FROM predictions p JOIN groups g ON g.id = p.group_id WHERE p.group_id = ? ORDER BY p.id')) {
           const groupId = params[0] as string
           const results = predictions
@@ -388,7 +384,7 @@ function buildFakeDb(
           return { results }
         }
         if (sql.includes('FROM predictions') && sql.includes('WHERE p.match_id IN')) {
-          const matchIds = params as string[]
+          const matchIds = JSON.parse(params[0] as string) as string[]
           const results = predictions
             .filter((p) => matchIds.includes(p.match_id))
             .map((p) => ({
@@ -488,18 +484,17 @@ function buildFakeDb(
         const sql = (s as unknown as { _sql: string })._sql
         const params = (s as unknown as { _params: unknown[] })._params
         if (sql?.startsWith('UPDATE predictions SET points_awarded')) {
-          const [points, penaltyPoints, classifiedPoints, id] = params as [
-            number,
-            number,
-            number,
-            string,
-          ]
-          updatedPredictions[id] = {
-            points_awarded: points,
-            penalty_points: penaltyPoints,
-            classified_points:
-              classifiedPoints *
-              (groupConfig(predictions.find((p) => p.id === id)!.group_id).points_classified ?? 0),
+          // Uma instrução leva os pontos de vários palpites num JSON: [id, pontos, pênaltis, classificado].
+          const scored = JSON.parse(params[0] as string) as [string, number, number, number][]
+          for (const [id, points, penaltyPoints, classifiedPoints] of scored) {
+            updatedPredictions[id] = {
+              points_awarded: points,
+              penalty_points: penaltyPoints,
+              classified_points:
+                classifiedPoints *
+                (groupConfig(predictions.find((p) => p.id === id)!.group_id).points_classified ??
+                  0),
+            }
           }
         }
         if (sql?.startsWith('UPDATE matches SET scored_at')) {

@@ -41,6 +41,11 @@ describe('labels', () => {
       expect(discardDetailLabel('round-of-32')).toBe('round-of-32')
     })
 
+    it('traduz os eventos da pontuação', () => {
+      expect(eventLabel('match_scoring_error')).toBe('Erro na pontuação')
+      expect(eventLabel('match_unscored')).toBe('Jogo encerrado sem pontuação')
+    })
+
     it('returns raw key for unknown event types', () => {
       expect(eventLabel('unknown_event')).toBe('unknown_event')
       expect(eventLabel('another_unknown')).toBe('another_unknown')

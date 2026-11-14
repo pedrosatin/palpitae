@@ -1300,54 +1300,49 @@ it('reverte configuração e pontuação quando o ranking falha e permite repeti
   ).toMatchObject({ total_points: 7 })
 })
 
-for (const pauseBatch of [1, 2]) {
-  it(`mantém a regra vigente quando o cron continua após PATCH (batch ${pauseBatch})`, async () => {
-    const { sqlite, db } = createSqliteD1()
-    handles.push(sqlite)
-    seedKnockoutFixtures(sqlite)
-    const group = await createConfiguredGroup(db, 0)
-    await putPrediction(db, ANA, group.id, 'm-final-single', 1, 0)
-    finishMatch(sqlite, 'm-final-single', 1, 0)
-    let release!: () => void
-    let paused!: () => void
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const reached = new Promise<void>((resolve) => {
-      paused = resolve
-    })
-    let batches = 0
-    const delayedDb = {
-      ...db,
-      async batch(statements: D1PreparedStatement[]) {
-        batches++
-        if (batches === pauseBatch) {
-          paused()
-          await blocked
-        }
-        return db.batch(statements)
-      },
-    } as D1Database
-    const scoring = scoreUnprocessedMatches(COMP_ID, delayedDb)
-    await reached
-    const res = await apiRequest(db, ANA, `/groups/${group.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ points_classified: 5 }),
-    })
-    expect(res.status).toBe(200)
-    release()
-    await scoring
-    expect(await ownPrediction(db, ANA, group.id, 'm-final-single')).toMatchObject({
-      points_awarded: 3,
-      classified_points: 5,
-    })
-    expect(
-      sqlite
-        .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
-        .get(group.id, ANA.id),
-    ).toMatchObject({ total_points: 8 })
+// O PATCH só pode chegar antes do batch, porque a pontuação grava cada jogo num batch só.
+it('mantém a regra vigente quando o cron continua após PATCH', async () => {
+  const { sqlite, db } = createSqliteD1()
+  handles.push(sqlite)
+  seedKnockoutFixtures(sqlite)
+  const group = await createConfiguredGroup(db, 0)
+  await putPrediction(db, ANA, group.id, 'm-final-single', 1, 0)
+  finishMatch(sqlite, 'm-final-single', 1, 0)
+  let release!: () => void
+  let paused!: () => void
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve
   })
-}
+  const reached = new Promise<void>((resolve) => {
+    paused = resolve
+  })
+  const delayedDb = {
+    ...db,
+    async batch(statements: D1PreparedStatement[]) {
+      paused()
+      await blocked
+      return db.batch(statements)
+    },
+  } as D1Database
+  const scoring = scoreUnprocessedMatches(COMP_ID, delayedDb)
+  await reached
+  const res = await apiRequest(db, ANA, `/groups/${group.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ points_classified: 5 }),
+  })
+  expect(res.status).toBe(200)
+  release()
+  await scoring
+  expect(await ownPrediction(db, ANA, group.id, 'm-final-single')).toMatchObject({
+    points_awarded: 3,
+    classified_points: 5,
+  })
+  expect(
+    sqlite
+      .prepare('SELECT total_points FROM leaderboard WHERE group_id = ? AND user_id = ?')
+      .get(group.id, ANA.id),
+  ).toMatchObject({ total_points: 8 })
+})
 
 it('recalcula o valor enviado mesmo quando outra edição muda a regra depois da leitura', async () => {
   const { sqlite, db } = createSqliteD1()
