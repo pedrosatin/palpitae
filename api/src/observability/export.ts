@@ -13,7 +13,8 @@ import { runAeSqlStrict } from './aeSql'
  * Cada arquivo leva um manifesto em `customMetadata` (`events`, `rows`, `complete`
  * e, só quando o dia passou do teto, `truncatedTypes`). Só `complete: '1'` encerra
  * o dia; os demais são reconsultados pelo backfill e substituídos quando a nova
- * coleta não perde eventos de negócio nem linhas, como descreve `repairDay`.
+ * coleta tem mais linhas de negócio ou, com o mesmo número, não perde linhas, como
+ * descreve `shouldReplace`.
  */
 
 const DATASET = 'palpitae_events'
@@ -33,8 +34,8 @@ const MAX_PAGES = 3
 // Linhas no arquivo de um dia, qualquer que seja o caminho da coleta.
 const DAY_ROW_CAP = MAX_PAGES * ROW_LIMIT
 
-// Tipos de evento de alto volume e baixo valor. Quando o dia passa do teto, só
-// eles podem ficar de fora do arquivo. Os demais, como `account_created` e
+// Tipos de evento de alto volume e baixo valor. Quando o dia passa do teto, eles
+// cedem espaço aos eventos de negócio. Os demais, como `account_created` e
 // `security_storage_error`, são lidos por uma consulta própria. O tipo vem de
 // `blob1`, que o AE guarda repetido do índice, como descreve `events.ts`.
 const VOLUME_EVENT_TYPES = [
@@ -221,8 +222,9 @@ function dropLatestVolume(rows: Row[], excess: number, dropped: Set<string>): Ro
  *
  * O arquivo nunca passa de DAY_ROW_CAP linhas. A cada página de negócio, as linhas
  * de volume mais recentes da primeira leitura saem até o total caber no teto, então
- * as linhas guardadas passam do teto em no máximo uma página. Só quando não resta linha de volume
- * para tirar é que eventos de negócio ficam de fora, e o dia sai incompleto.
+ * as linhas guardadas passam do teto em no máximo uma página. Eventos de negócio ficam
+ * de fora quando não resta volume para tirar ou quando os limites de página deixam
+ * linhas deles sem ler. Nos dois casos o dia sai incompleto.
  * `truncatedTypes` reúne os tipos de volume tirados e os que a sonda achou.
  */
 async function collectRows(
@@ -380,7 +382,7 @@ async function replaceIfUnchanged(
 /**
  * Reconsulta um dia já arquivado sem manifesto completo e troca o arquivo quando
  * `shouldReplace` aprova a coleta nova. A troca é condicionada ao etag lido no
- * `head` — se o objeto mudou no meio do caminho, o R2 recusa e o arquivo atual
+ * `head`. Se o objeto mudou no meio do caminho, o R2 recusa e o arquivo atual
  * fica. Falha na consulta ou no upload lança antes de tocar no objeto, que
  * continua o mesmo.
  *

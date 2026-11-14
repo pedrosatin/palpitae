@@ -51,8 +51,10 @@ cron que já existe — sem Queues (pago) nem Durable Object.
 `events` é a contagem REAL de eventos do dia (`SUM(_sample_interval)` das linhas, não o nº de
 linhas; ver sampling acima) e serve pro dashboard montar a série histórica além da janela do AE
 **sem ler arquivo nenhum**: o `list()` do R2 já devolve o customMetadata de cada objeto. `rows` é
-o nº de linhas do arquivo. `complete: '1'` diz que o dia foi consultado ao menos 24 h depois de
-terminar e que nenhum evento de negócio lido ficou fora do arquivo. Linhas dos tipos de volume
+o nº de linhas do arquivo. Num dia com linhas fora do arquivo, `events` soma só as linhas
+arquivadas. Na coleta normal, `complete: '1'` diz que o dia foi consultado ao menos 24 h depois
+de terminar e que nenhum evento de negócio ficou fora do arquivo nem sem ler. A partir de 80
+dias, o reparo também pode fechar o arquivo que já existe, conforme a regra de reparo abaixo. Linhas dos tipos de volume
 podem faltar num dia acima do teto; nesse caso `truncatedTypes` lista os tipos que tiveram
 linhas fora do arquivo, separados por vírgula. `'0'` é arquivo provisório ou com eventos de
 negócio fora do arquivo. Arquivo sem `complete` é de antes do manifesto. Sem corte,
@@ -112,7 +114,7 @@ tirar do arquivo permanente os eventos de negócio e de segurança, como `accoun
 
 O arquivo nunca passa de 30 mil linhas e fica em ordem de tempo. A cada página de negócio, as
 linhas de volume mais recentes da primeira fase saem até o total caber no teto, então os
-eventos de negócio lidos ficam todos e os de volume ocupam o que sobra. As linhas guardadas em memória
+eventos de negócio têm prioridade até as 30 mil linhas e os de volume ocupam o que sobra. As linhas guardadas em memória
 passam do teto em no máximo uma página. O manifesto lista em `truncatedTypes` os tipos de volume
 tirados do arquivo ou com linhas sem ler. Dia cortado só em tipos de volume fecha normalmente
 (`complete: '1'` depois das 24 h), porque reconsultar não traria as linhas que sobraram. Dia
@@ -126,7 +128,8 @@ dia abaixo de 10 mil linhas). Dia cortado usa de 3 a 6: de 1 a 3 páginas em ord
 ou 2 de negócio e a sonda de tipos. O caso comum de um dia acima do teto, com poucos eventos de
 negócio, usa 5. O teto de 10 exports/run vale nos dois casos. Como o dia cortado só em volume
 fecha e deixa de ser reconsultado, o custo recorrente dele cai de até 3 chamadas em toda execução,
-até o fim da janela, para no máximo 6 em cada uma de duas execuções.
+até o fim da janela, para no máximo 6 por coleta. Se o reparo aceitar a coleta definitiva no
+cron seguinte, o dia fecha depois de duas execuções.
 
 ## Esquema e convenção de eventos
 
