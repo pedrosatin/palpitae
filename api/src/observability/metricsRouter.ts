@@ -4,6 +4,7 @@ import { isAdminUser } from '../auth/permissions'
 import { radarRouter } from '../radar/router'
 import type { AppContext } from '../types'
 import { runAeSql } from './aeSql'
+import { MAX_QUERY_SPAN_DAYS, daysInRange, queryArchive } from './archiveQuery'
 import { countInviteJoinsInD1, summarizeInviteEvents } from './inviteFunnel'
 import { countSignupsInD1, summarizeSignupOrigins } from './signupOrigin'
 
@@ -1056,29 +1057,16 @@ metricsRouter.get('/archive', async (c) => {
   return c.json({ files })
 })
 
-const MAX_QUERY_SPAN_DAYS = 92
-
-/** Lista de dias YYYY-MM-DD de `from` a `to` (inclusive), UTC. */
-function daysInRange(from: string, to: string): string[] {
-  const days: string[] = []
-  const cur = new Date(`${from}T00:00:00Z`)
-  const end = new Date(`${to}T00:00:00Z`)
-  while (cur <= end) {
-    days.push(cur.toISOString().slice(0, 10))
-    cur.setUTCDate(cur.getUTCDate() + 1)
-  }
-  return days
-}
-
 /**
  * Análise do arquivo frio — agrega os NDJSON de um intervalo lendo o CORPO dos
  * arquivos (não só a metadata do /archive). É o que permite dissecar dados além
  * da janela de ~3 meses do Analytics Engine: breakdown por tipo de evento e por
  * dia. Cada linha vale `_sample_interval` eventos reais (sampling).
  *
- * `from`/`to` em YYYY-MM-DD (UTC, inclusivo). Span limitado a
- * MAX_QUERY_SPAN_DAYS pra não estourar CPU/memória do Worker — o dashboard
- * consulta um mês por vez.
+ * `from`/`to` em YYYY-MM-DD (UTC, inclusivo), no máximo MAX_QUERY_SPAN_DAYS
+ * dias; o dashboard consulta um mês por vez. A leitura é um arquivo por vez,
+ * em streaming, com teto de bytes por consulta (ver `archiveQuery.ts`): passou
+ * dele, a resposta sai com `truncated: true` e só os dias lidos.
  */
 metricsRouter.get('/archive/query', async (c) => {
   const bucket = c.env.EVENTS
@@ -1086,66 +1074,14 @@ metricsRouter.get('/archive/query', async (c) => {
     return c.json({ error: 'Bucket R2 não configurado' }, 503)
   }
 
-  const from = c.req.query('from')
-  const to = c.req.query('to')
-  if (!from || !to || !DAY_RE.test(from) || !DAY_RE.test(to) || from > to) {
-    return c.json({ error: 'Parâmetros from/to inválidos (YYYY-MM-DD, from ≤ to)' }, 400)
+  const range = daysInRange(c.req.query('from') ?? '', c.req.query('to') ?? '')
+  if ('error' in range) {
+    return range.error === 'too_long'
+      ? c.json({ error: `Intervalo máximo é ${MAX_QUERY_SPAN_DAYS} dias` }, 400)
+      : c.json({ error: 'Parâmetros from/to inválidos (YYYY-MM-DD, from ≤ to)' }, 400)
   }
 
-  const days = daysInRange(from, to)
-  if (days.length > MAX_QUERY_SPAN_DAYS) {
-    return c.json({ error: `Intervalo máximo é ${MAX_QUERY_SPAN_DAYS} dias` }, 400)
-  }
-
-  const byType = new Map<string, number>()
-  const byDay: { day: string; count: number }[] = []
-  let filesRead = 0
-
-  const fetchPromises = days.map(async (day) => {
-    const key = `events/${day.replaceAll('-', '/')}.ndjson`
-    const obj = await bucket.get(key)
-    if (!obj) return { day, obj: null, body: null }
-    const body = await obj.text()
-    return { day, obj, body }
-  })
-
-  const results = await Promise.all(fetchPromises)
-
-  for (const { day, obj, body } of results) {
-    if (!obj || body === null) continue
-    filesRead++
-
-    let dayTotal = 0
-
-    let lastIndex = 0
-    let nextIndex = body.indexOf('\n')
-    while (nextIndex !== -1) {
-      const line = body.substring(lastIndex, nextIndex)
-      lastIndex = nextIndex + 1
-      nextIndex = body.indexOf('\n', lastIndex)
-      if (line.trim() !== '') {
-        const row = JSON.parse(line) as Record<string, unknown>
-        const weight = Number(row._sample_interval ?? 1)
-        const type = String(row.blob1 ?? 'unknown')
-        byType.set(type, (byType.get(type) ?? 0) + weight)
-        dayTotal += weight
-      }
-    }
-    const lastLine = body.substring(lastIndex)
-    if (lastLine.trim() !== '') {
-      const row = JSON.parse(lastLine) as Record<string, unknown>
-      const weight = Number(row._sample_interval ?? 1)
-      const type = String(row.blob1 ?? 'unknown')
-      byType.set(type, (byType.get(type) ?? 0) + weight)
-      dayTotal += weight
-    }
-    byDay.push({ day, count: dayTotal })
-  }
-
-  const totalEvents = byDay.reduce((sum, d) => sum + d.count, 0)
-  const byTypeSorted = [...byType.entries()]
-    .map(([event_type, count]) => ({ event_type, count }))
-    .sort((a, b) => b.count - a.count)
-
-  return c.json({ from, to, filesRead, totalEvents, byType: byTypeSorted, byDay })
+  const from = range.days[0]
+  const to = range.days[range.days.length - 1]
+  return c.json({ from, to, ...(await queryArchive(bucket, range.days)) })
 })
