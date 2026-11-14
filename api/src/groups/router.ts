@@ -219,7 +219,7 @@ async function isPilotGroupBlocked(
   db: D1Database,
   groupId: string,
 ): Promise<boolean> {
-  if (hasPilotAccess(c.get('userEmail'), c.env)) return false
+  if (hasPilotAccess(c.get('userIdentity'), c.env)) return false
   const groupComp = await db
     .prepare(
       `SELECT c.visibility
@@ -342,7 +342,7 @@ router.get('/', requireAuth, async (c) => {
     // A sessão pode mudar no mesmo navegador entre duas consultas.
     c.header('Cache-Control', 'private, no-store')
 
-    const canSeePilot = hasPilotAccess(c.get('userEmail'), c.env)
+    const canSeePilot = hasPilotAccess(c.get('userIdentity'), c.env)
 
     const dbStartedAt = Date.now()
     const nowIso = new Date().toISOString()
@@ -510,7 +510,10 @@ router.post('/', requireAuth, async (c) => {
     .bind(competition_id)
     .first<{ id: string; visibility?: string | null }>()
 
-  if (!competition || (competition.visibility === 'pilot' && !hasPilotAccess(userEmail, c.env))) {
+  if (
+    !competition ||
+    (competition.visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env))
+  ) {
     return c.json({ error: 'Competição não encontrada' }, 404)
   }
 
@@ -625,7 +628,7 @@ router.post('/join', requireAuth, async (c) => {
 
   if (
     !group ||
-    (group.competition_visibility === 'pilot' && !hasPilotAccess(c.get('userEmail'), c.env))
+    (group.competition_visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env))
   ) {
     return c.json({ error: 'Código de convite inválido' }, 404)
   }

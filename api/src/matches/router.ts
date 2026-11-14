@@ -254,7 +254,7 @@ async function handleGetMatches(c: Context<AppContext>) {
     // Visibilidade antes do cache: uma competição que voltou a ser piloto não é
     // servida por uma lista guardada quando ainda era pública.
     const isPilot = competition?.visibility === 'pilot'
-    if (isPilot && !hasPilotAccess(c.get('userEmail'), c.env)) {
+    if (isPilot && !hasPilotAccess(c.get('userIdentity'), c.env)) {
       return c.json({ error: 'Competição não encontrada' }, 404)
     }
 
@@ -392,7 +392,7 @@ router.post('/sync', requireAuth, async (c) => {
   // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
   // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts). Sem
   // ADMIN_EMAIL configurado, responde 403 — fechado por padrão.
-  if (!isAdminUser(c.get('userEmail'), c.env)) {
+  if (!isAdminUser(c.get('userIdentity'), c.env)) {
     return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
   }
 

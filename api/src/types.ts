@@ -1,4 +1,5 @@
-import type { JwtPayload } from './auth/jwt'
+import type { AccountIdentity } from './auth/permissions'
+import type { SessionPayload } from './auth/session'
 import type { DailyKeys } from './security/limits'
 
 export type Env = {
@@ -11,6 +12,10 @@ export type Env = {
   AE_SQL_TOKEN?: string
   // E-mail do administrador autorizado no painel de métricas e na gestão de competições.
   ADMIN_EMAIL?: string
+  // `sub` do Google do administrador (`users.provider_id` com `provider = 'google'`).
+  // Definido, o papel de admin exige também esse `sub`, e um e-mail reciclado não o herda.
+  // Vazio ou ausente, vale só o e-mail. Ver docs/security.md.
+  ADMIN_GOOGLE_SUB?: string
   // Lista separada por vírgula de e-mails convidados para testar competições em modo piloto.
   PILOT_EMAILS?: string
   JWT_SECRET: string
@@ -36,11 +41,13 @@ export type Env = {
 }
 
 // Resultado da verificação do cookie de sessão guardado no contexto da requisição.
-export type SessionState = { payload: JwtPayload } | { error: unknown }
+export type SessionState = { payload: SessionPayload } | { error: unknown }
 
 export type Variables = {
   userId: string
   userEmail: string
+  // E-mail e `sub` do Google da conta, como o D1 os grava. Base de admin e de piloto.
+  userIdentity: AccountIdentity
   session?: SessionState
   limiterDb?: D1Database
   dailyKeys?: DailyKeys

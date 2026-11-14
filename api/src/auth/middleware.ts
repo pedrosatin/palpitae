@@ -35,5 +35,9 @@ export const requireAuth = createMiddleware<AppContext>(async (c, next) => {
   }
   c.set('userId', session.payload.sub)
   c.set('userEmail', session.payload.email)
+  c.set('userIdentity', {
+    email: session.payload.email,
+    googleSub: session.payload.googleSub,
+  })
   await next()
 })

@@ -424,7 +424,7 @@ export async function handleReplicatePost(c: Context<AppContext>) {
   const groups = await fetchMemberGroups(db, userId, [sourceGroupId, ...targetGroupIds])
   const sourceGroup = groups.get(sourceGroupId)
   if (!sourceGroup) return c.json({ error: 'Acesso negado ao grupo de origem' }, 403)
-  if (sourceGroup.visibility === 'pilot' && !hasPilotAccess(c.get('userEmail'), c.env)) {
+  if (sourceGroup.visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env)) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
   if (targetGroupIds.some((id) => !groups.has(id))) {

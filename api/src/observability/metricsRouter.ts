@@ -15,8 +15,9 @@ import { countSignupsInD1, summarizeSignupOrigins } from './signupOrigin'
  * (Account Analytics:Read), que nunca pode ir pro cliente. O token fica em
  * secret do Worker; o navegador autentica com o cookie de sessão normal.
  *
- * Acesso: só o admin (e-mail em ADMIN_EMAIL, secret). Sem ADMIN_EMAIL
- * configurado, tudo responde 403 — fechado por padrão.
+ * Acesso: só o admin (e-mail em ADMIN_EMAIL, secret, e o `sub` do Google em
+ * ADMIN_GOOGLE_SUB quando definido). Sem ADMIN_EMAIL configurado, tudo responde
+ * 403 — fechado por padrão.
  *
  * São endpoints de LEITURA — sem logEvent, conforme a regra de instrumentação.
  */
@@ -38,7 +39,7 @@ metricsRouter.use('*', requireAuth)
 
 metricsRouter.use('*', async (c, next) => {
   // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts).
-  if (!isAdminUser(c.get('userEmail'), c.env)) {
+  if (!isAdminUser(c.get('userIdentity'), c.env)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
   await next()
