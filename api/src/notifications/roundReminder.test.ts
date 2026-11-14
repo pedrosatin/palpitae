@@ -4,12 +4,8 @@ import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-typ
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import {
-  RESEND_FETCH_BUDGET,
-  formatTimeBRT,
-  reminderFetchBudget,
-  sendRoundReminders,
-} from './roundReminder'
+import { formatTimeBRT } from './reminderEmail'
+import { RESEND_FETCH_BUDGET, reminderFetchBudget, sendRoundReminders } from './roundReminder'
 
 // 07:00 em Brasília de sexta 13/11/2026 e de quarta 18/11/2026.
 const FRIDAY = Date.UTC(2026, 10, 13, 10)
