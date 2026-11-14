@@ -179,7 +179,7 @@ function failingD1(db: D1Database, matches: (sql: string) => boolean, failures =
 
 /** Roda na hora as esperas entre tentativas. */
 function skipWaits() {
-  vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback) => {
+  return vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback) => {
     if (typeof callback === 'function') callback()
     return 0 as unknown as ReturnType<typeof setTimeout>
   })
@@ -988,6 +988,7 @@ describe('sendRoundReminders', () => {
           return prepare(sql)
         },
       })
+      skipWaits()
       let first: string | undefined
       vi.mocked(fetch).mockImplementation(async (_url, init) => {
         first ??= recipientOf(init)
@@ -1009,7 +1010,7 @@ describe('sendRoundReminders', () => {
       addMember(sqlite, 'g1', 'bia')
       const { ae, writeDataPoint } = fakeAe()
       const flaky = failingD1(db, isRecheck, 1)
-      skipWaits()
+      const waits = skipWaits()
       vi.mocked(fetch).mockImplementation(async () => {
         clock += PAUSE_MS
         return new Response(null, { status: 200 })
@@ -1017,6 +1018,7 @@ describe('sendRoundReminders', () => {
 
       await sendRoundReminders(flaky.db, 'key', ae, undefined, undefined, WEDNESDAY)
 
+      expect(waits).toHaveBeenCalledWith(expect.any(Function), 250)
       expect(flaky.calls.attempts).toBe(2)
       expect(fetch).toHaveBeenCalledTimes(2)
       expect(reserved(sqlite)).toEqual(['ana', 'bia'])
