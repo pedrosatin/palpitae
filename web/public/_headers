@@ -2,6 +2,9 @@
 # libera. Os hashes cobrem os scripts e <style> inline do index.html, dos guias
 # e do 404; `npm run csp:verify` confere a política contra o build e roda no
 # deploy. Origens e como ajustar em docs/security.md.
+# A Function de convite repete esta regra em functions/_securityHeaders.ts, porque
+# o Pages não aplica o `_headers` à resposta de Functions; o teste
+# tests/functions/conviteHeaders.test.ts compara os dois.
 
 # Força HTTPS em toda visita futura, mesmo que alguém digite http:// direto.
 /*
