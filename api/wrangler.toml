@@ -60,6 +60,10 @@ FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
 # Opcional: teto de chamadas ao Resend por execução do lembrete diário (padrão 45,
 # que cabe nos 50 subrequests do plano Free). Ver ADR-020.
 # REMINDER_FETCH_BUDGET = "45"
+# Opcional: orçamento diário de linhas do D1 por usuário (padrões 250000 lidas e
+# 5000 escritas). Valor que não seja inteiro positivo volta ao padrão. Ver ADR-022.
+# D1_DAILY_ROWS_READ_PER_USER = "250000"
+# D1_DAILY_ROWS_WRITTEN_PER_USER = "5000"
 # Secrets — gravar de api/, sempre com --config ./wrangler.toml. Sem ele o
 # wrangler acha primeiro o wrangler.jsonc da raiz (projeto do Pages) e manda o
 # secret para o Worker palpitae-web, não para este.
