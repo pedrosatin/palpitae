@@ -182,6 +182,45 @@ describe('AdminMetricsPage: cadastros por origem', () => {
   })
 })
 
+describe('AdminMetricsPage: cotas do plano Free', () => {
+  const quota = {
+    latest: {
+      day: '2026-11-13',
+      measuredAt: '2026-11-14 00:05:03',
+      metrics: [
+        { metric: 'd1_rows_read', used: 4_250_000, limit: 5_000_000, percent: 85, threshold: 80 },
+        { metric: 'd1_rows_written', used: 1_000, limit: 100_000, percent: 1, threshold: null },
+        { metric: 'worker_requests', used: 1_000, limit: 100_000, percent: 1, threshold: null },
+      ],
+    },
+  }
+
+  it('busca /metrics/quota e mostra a última medição', async () => {
+    const base = mockFetch()
+    const fetchFake = vi.fn(async (url: string) =>
+      url.includes('/metrics/quota') ? { ok: true, status: 200, json: async () => quota } : base(url),
+    )
+    vi.stubGlobal('fetch', fetchFake)
+    render(<AdminMetricsPage />)
+
+    const table = await screen.findByRole('table', { name: 'Uso das cotas do plano Free' })
+    expect(within(table).getByText('85% · a partir de 80%')).toBeInTheDocument()
+    expect(fetchFake.mock.calls.map(([url]) => url).some((u) => u.includes('/metrics/quota'))).toBe(
+      true,
+    )
+  })
+
+  it('não derruba a página numa API sem a rota', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    render(<AdminMetricsPage />)
+
+    expect(
+      await screen.findByText('Indisponível: a API ainda não envia o uso das cotas.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('usuários palpitando')).toBeInTheDocument()
+  })
+})
+
 describe('AdminMetricsPage: funil de convite', () => {
   const funnel = {
     days: 30,

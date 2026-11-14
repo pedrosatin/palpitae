@@ -10,6 +10,9 @@ export type Env = {
   EVENTS?: R2Bucket
   CF_ACCOUNT_ID?: string
   AE_SQL_TOKEN?: string
+  // Token só de leitura (Account Analytics:Read) da API GraphQL de analytics. Com o
+  // CF_ACCOUNT_ID, mede o uso diário das cotas do plano Free. Ver docs/observability.md.
+  CF_ANALYTICS_TOKEN?: string
   // E-mail do administrador autorizado no painel de métricas e na gestão de competições.
   ADMIN_EMAIL?: string
   // `sub` do Google do administrador (`users.provider_id` com `provider = 'google'`).

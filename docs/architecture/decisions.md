@@ -889,6 +889,8 @@ O flood anônimo distribuído contra as 100 mil requisições por dia do Worker 
 
 O gatilho para migrar ao Workers Paid é a primeira queda por cota, ou o uso diário acima de 50% de uma cota do D1 ou de requisições por 3 dias seguidos.
 
+O cron das 00:05 UTC mede o uso do dia anterior pela API GraphQL de analytics e grava `cloudflare_quota_alert` quando uma cota passa de 50% ou de 80%. O painel `/admin/metricas` mostra a última medição. Ver [Observabilidade](../observability.md#uso-das-cotas-do-plano-free-cloudflare_usage).
+
 ### Consequences
 
 - Cada requisição autenticada faz 2 chamadas a mais ao D1, a leitura do orçamento e a gravação, dentro das 50 por invocação. As rotas em lote fazem também 1 leitura do saldo restante antes do `db.batch`.

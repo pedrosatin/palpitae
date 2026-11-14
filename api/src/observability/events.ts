@@ -23,6 +23,10 @@ export type EventType =
   // Rotina agendada: cron sem ramo no handler e configuração opcional ausente
   | 'scheduled_unknown_cron'
   | 'scheduled_config_missing'
+  // Uso diário das cotas do plano Free (ADR-022): medição, alerta de 50%/80% e falha da consulta
+  | 'cloudflare_usage'
+  | 'cloudflare_quota_alert'
+  | 'cloudflare_usage_error'
   // Fallback de resultados via ESPN (ADR-016)
   | 'match_results_fallback'
   // Tentativa HTTP a um provedor de partidas (ESPN, football-data): toda falha + amostra de sucessos
