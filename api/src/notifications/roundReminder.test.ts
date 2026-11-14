@@ -153,6 +153,38 @@ function eventsOf(writeDataPoint: ReturnType<typeof vi.fn>, type: string) {
     .filter((point) => point.blobs[0] === type)
 }
 
+/** Revalidação de descadastro do lote. */
+const isRecheck = (sql: string) => sql.trimStart().startsWith('SELECT id FROM users')
+
+/** Liberação das reservas de quem não recebeu. A limpeza da reserva usa `<`. */
+const isRelease = (sql: string) =>
+  sql.trimStart().startsWith('DELETE FROM email_reminder_sends') &&
+  sql.includes('reminder_date = ?')
+
+/**
+ * D1 em que a consulta escolhida falha nas `failures` primeiras chamadas. `calls.attempts`
+ * conta todas as chamadas a ela.
+ */
+function failingD1(db: D1Database, matches: (sql: string) => boolean, failures = Infinity) {
+  const prepare = db.prepare.bind(db)
+  const calls = { attempts: 0 }
+  const flaky = Object.assign(Object.create(db) as D1Database, {
+    prepare: (sql: string) => {
+      if (matches(sql) && ++calls.attempts <= failures) throw new Error('D1 indisponível')
+      return prepare(sql)
+    },
+  })
+  return { db: flaky, calls }
+}
+
+/** Roda na hora as esperas entre tentativas. */
+function skipWaits() {
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback) => {
+    if (typeof callback === 'function') callback()
+    return 0 as unknown as ReturnType<typeof setTimeout>
+  })
+}
+
 function run(db: D1Database, nowMs: number = WEDNESDAY) {
   return sendRoundReminders(db, 'key', undefined, undefined, undefined, nowMs)
 }
@@ -845,6 +877,27 @@ describe('sendRoundReminders', () => {
       expect(reserved(sqlite)).toEqual(['ana'])
     })
 
+    it('a leitura da reserva vale a partir do início da gravação', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      // A gravação lê a Ana inscrita, ela descadastra e a gravação só termina depois
+      // do prazo da leitura (UNSUB_RECHECK_MS).
+      const batch = db.batch.bind(db)
+      const slow = Object.assign(Object.create(db) as D1Database, {
+        batch: async (statements: Parameters<D1Database['batch']>[0]) => {
+          const results = await batch(statements)
+          unsubscribe(sqlite, 'ana')
+          clock += 5_000
+          return results
+        },
+      })
+
+      await run(slow)
+
+      expect(fetch).not.toHaveBeenCalled()
+      expect(reserved(sqlite)).toEqual([])
+    })
+
     it('pausar o lote, descadastrar e retomar não envia para quem saiu', async () => {
       const { sqlite, db } = createFixture()
       addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
@@ -948,6 +1001,136 @@ describe('sendRoundReminders', () => {
       expect(reserved(sqlite)).toEqual([first])
       const reasons = eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])
       expect(reasons).toEqual(['unsub_check_failed'])
+    })
+
+    it('falha passageira na revalidação tem nova tentativa e a fila segue', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      const { ae, writeDataPoint } = fakeAe()
+      const flaky = failingD1(db, isRecheck, 1)
+      skipWaits()
+      vi.mocked(fetch).mockImplementation(async () => {
+        clock += PAUSE_MS
+        return new Response(null, { status: 200 })
+      })
+
+      await sendRoundReminders(flaky.db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(flaky.calls.attempts).toBe(2)
+      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(reserved(sqlite)).toEqual(['ana', 'bia'])
+      expect(eventsOf(writeDataPoint, 'email_reminder_failed')).toEqual([])
+    })
+
+    it('a nova tentativa da revalidação desconta do teto de subrequests', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMembers(sqlite, 3)
+      const { ae, writeDataPoint } = fakeAe()
+      const flaky = failingD1(db, isRecheck, 1)
+      skipWaits()
+      vi.mocked(fetch).mockImplementationOnce(async () => {
+        clock += PAUSE_MS
+        return new Response(null, { status: 200 })
+      })
+
+      await sendRoundReminders(flaky.db, 'key', ae, undefined, undefined, WEDNESDAY, {
+        fetchBudget: 4,
+      })
+
+      // Envio, consulta que falha, nova tentativa e envio esgotam o saldo de 4.
+      expect(fetch).toHaveBeenCalledTimes(2)
+      const reasons = eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])
+      expect(reasons).toEqual(['subrequest_budget', 'subrequest_budget'])
+    })
+
+    it('falha que persiste na revalidação encerra a fila depois da nova tentativa', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      const { ae, writeDataPoint } = fakeAe()
+      const flaky = failingD1(db, isRecheck)
+      skipWaits()
+      let first: string | undefined
+      vi.mocked(fetch).mockImplementation(async (_url, init) => {
+        first ??= recipientOf(init)
+        clock += PAUSE_MS
+        return new Response(null, { status: 200 })
+      })
+
+      await sendRoundReminders(flaky.db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(flaky.calls.attempts).toBe(2)
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(reserved(sqlite)).toEqual([first])
+      const reasons = eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])
+      expect(reasons).toEqual(['unsub_check_failed'])
+    })
+
+    it('sem saldo para a nova tentativa, a falha na revalidação encerra a fila', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      const { ae, writeDataPoint } = fakeAe()
+      const flaky = failingD1(db, isRecheck)
+      skipWaits()
+      vi.mocked(fetch).mockImplementation(async () => {
+        clock += PAUSE_MS
+        return new Response(null, { status: 200 })
+      })
+
+      // Depois do primeiro envio e da consulta que falha, sobra 1: não cabe consulta e envio.
+      await sendRoundReminders(flaky.db, 'key', ae, undefined, undefined, WEDNESDAY, {
+        fetchBudget: 3,
+      })
+
+      expect(flaky.calls.attempts).toBe(1)
+      expect(fetch).toHaveBeenCalledTimes(1)
+      const reasons = eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])
+      expect(reasons).toEqual(['unsub_check_failed'])
+    })
+  })
+
+  describe('liberação das reservas com o D1 instável', () => {
+    afterEach(() => vi.restoreAllMocks())
+
+    function reserved(sqlite: DatabaseSync) {
+      return sqlite.prepare('SELECT user_id FROM email_reminder_sends').all()
+    }
+
+    it('falha passageira na liberação tem nova tentativa e devolve a reserva', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch).mockResolvedValueOnce(new Response('boom', { status: 422 }))
+      const flaky = failingD1(db, isRelease, 1)
+      skipWaits()
+
+      await run(flaky.db)
+
+      expect(flaky.calls.attempts).toBe(2)
+      expect(reserved(sqlite)).toEqual([])
+    })
+
+    it('falha que persiste na liberação vai para o log e a execução registra o fim', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch).mockResolvedValueOnce(new Response('boom', { status: 422 }))
+      const flaky = failingD1(db, isRelease)
+      const { ae, writeDataPoint } = fakeAe()
+      skipWaits()
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+      await sendRoundReminders(flaky.db, 'key', ae, undefined, undefined, WEDNESDAY)
+
+      expect(flaky.calls.attempts).toBe(2)
+      expect(reserved(sqlite)).toEqual([{ user_id: 'ana' }])
+      const releaseLog = error.mock.calls.find((call) => String(call[0]).includes('liberar'))
+      expect(releaseLog?.[0]).toContain('Falha ao liberar 1 reserva(s) depois de 2 tentativas')
+      expect(releaseLog?.map(String).join(' ')).not.toMatch(/ana/)
+      expect(eventsOf(writeDataPoint, 'cron_round_reminder')[0].doubles).toEqual([1, 0, 1, 0])
+      expect(info.mock.calls.some((call) => call[0] === '[perf]')).toBe(true)
     })
   })
 
