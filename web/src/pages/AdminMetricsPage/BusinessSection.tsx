@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
+import AdminPills from '../AdminPills'
 import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { formatNumber } from './format'
@@ -93,19 +94,15 @@ function FilterPills({
   return (
     <div className={styles.filterRow}>
       <span className={styles.filterLabel}>{label}</span>
-      <div className={`${shared.periods} ${styles.filterPills}`} role="group" aria-label={label}>
-        {options.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            aria-pressed={o.value === value}
-            className={o.value === value ? shared.periodActive : shared.period}
-            onClick={() => onChange(o.value)}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
+      <AdminPills
+        options={options}
+        value={value}
+        onChange={onChange}
+        className={`${shared.periods} ${styles.filterPills}`}
+        role="group"
+        ariaLabel={label}
+        ariaPressed
+      />
     </div>
   )
 }

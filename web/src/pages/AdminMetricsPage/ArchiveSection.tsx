@@ -1,7 +1,7 @@
 import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
 import { apiFetch } from '../../lib/api'
-import shared from '../admin-shared.module.css'
+import AdminPills from '../AdminPills'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart } from './charts'
 import { formatNumber } from './format'
@@ -147,21 +147,14 @@ export function ArchiveQuerySection({
         Lê o corpo dos NDJSON de um mês e agrega por tipo — enxerga dados que já saíram dos ~3 meses
         do Analytics Engine.
       </p>
-      <div className={shared.periods}>
-        {months.map((m) => (
-          <button
-            key={m.label}
-            type="button"
-            className={m.label === selected ? shared.periodActive : shared.period}
-            onClick={() => {
-              trackEvent('click_admin_metrics_arquivo_mes', { month: m.label })
-              onSelect(m.label)
-            }}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
+      <AdminPills
+        options={months.map((m) => ({ value: m.label, label: m.label }))}
+        value={selected}
+        onChange={(month) => {
+          trackEvent('click_admin_metrics_arquivo_mes', { month })
+          onSelect(month)
+        }}
+      />
 
       {loading && <p className={styles.hint}>Lendo arquivos…</p>}
 

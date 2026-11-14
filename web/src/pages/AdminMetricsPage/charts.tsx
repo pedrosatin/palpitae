@@ -167,3 +167,24 @@ export function BarChart({
     </svg>
   )
 }
+
+export interface ChartLegendItem {
+  key: string
+  color: string
+  label: string
+  title?: string
+}
+
+/** Legenda de cores compartilhada pelos gráficos de barras empilhadas. */
+export function ChartLegend({ items }: { items: ChartLegendItem[] }) {
+  return (
+    <div className={styles.legend}>
+      {items.map((item) => (
+        <span key={item.key} className={styles.legendItem} title={item.title}>
+          <span className={styles.legendDot} style={{ backgroundColor: item.color }} />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  )
+}
