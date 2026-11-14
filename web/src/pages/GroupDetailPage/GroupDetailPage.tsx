@@ -14,7 +14,7 @@ import { buildApiUrl } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './GroupDetailPage.module.css'
-import { type User, TAB_LABELS, parseGroupDetail } from './types'
+import { type User, TAB_LABELS, isGroupId, parseGroupDetail } from './types'
 import GroupTabs from './GroupTabs'
 import GroupTabContent from './GroupTabContent'
 import { useGroupDetail, useGroupTabs, useTabsOffset, useGroupActions } from './hooks'
@@ -31,7 +31,11 @@ const JOINED_NOTICE_MS = 6000
 export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { groupId } = useParams<{ groupId: string }>()
+  const { groupId: rawGroupId } = useParams<{ groupId: string }>()
+  // Id com formato inválido segue como ausente nos hooks, então nenhuma
+  // requisição sai para a API com ele.
+  const groupId = isGroupId(rawGroupId) ? rawGroupId : undefined
+  const invalidGroupId = rawGroupId !== undefined && groupId === undefined
 
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
   const {
@@ -76,7 +80,7 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
     return () => clearTimeout(timer)
   }, [joinedGroupName])
 
-  if (!groupId) return <Navigate to="/" replace />
+  if (!rawGroupId) return <Navigate to="/" replace />
 
   function handleGroupCreated(nextGroup: { id: string }) {
     invalidateApiCache('groups:')
@@ -95,7 +99,8 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
   }
 
   async function handlePointsClassifiedChanged() {
-    const response = await apiFetch(buildApiUrl(`/groups/${groupId}`))
+    if (!groupId) return
+    const response = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`))
     const refreshed = response.ok ? parseGroupDetail(await response.json()) : null
     if (!refreshed) throw new Error('Pontuação salva. Recarregue a página para atualizar o grupo.')
     setGroup(refreshed)
@@ -141,24 +146,35 @@ export default function GroupDetailPage({ user, onLogout }: GroupDetailPageProps
         onClose={() => setJoinOpen(false)}
         onJoined={handleGroupJoined}
       />
-      <RenameGroupModal
-        isOpen={renameOpen}
-        onClose={() => setRenameOpen(false)}
-        groupId={groupId!}
-        currentName={group?.name ?? ''}
-        currentPointsClassified={group?.points_classified ?? 0}
-        onPointsClassifiedChanged={handlePointsClassifiedChanged}
-        onRenamed={handleGroupRenamed}
-      />
+      {groupId && (
+        <RenameGroupModal
+          isOpen={renameOpen}
+          onClose={() => setRenameOpen(false)}
+          groupId={groupId}
+          currentName={group?.name ?? ''}
+          currentPointsClassified={group?.points_classified ?? 0}
+          onPointsClassifiedChanged={handlePointsClassifiedChanged}
+          onRenamed={handleGroupRenamed}
+        />
+      )}
       {group && <GroupRulesModal isOpen={rulesOpen} onClose={closeRules} group={group} />}
       {confirmDialog}
     </>
   )
 
   let content
-  if (loading) {
+  if (invalidGroupId) {
+    content = (
+      <>
+        <ErrorState message="Grupo não encontrado" />
+        <Link to="/" className={styles.backLink}>
+          ← Voltar para Meus grupos
+        </Link>
+      </>
+    )
+  } else if (loading) {
     content = <p className={styles.loadingText}>Carregando grupo...</p>
-  } else if (error || !group) {
+  } else if (error || !group || !groupId) {
     content = (
       <>
         <ErrorState message={error ?? 'Grupo não encontrado'} />

@@ -31,7 +31,10 @@ function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void)
     if (!ok) return
     setRemoving(targetUserId)
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/members/${targetUserId}`), {
+      const url = buildApiUrl(
+        `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(targetUserId)}`,
+      )
+      const res = await apiFetch(url, {
         method: 'DELETE',
       })
       if (!res.ok) {

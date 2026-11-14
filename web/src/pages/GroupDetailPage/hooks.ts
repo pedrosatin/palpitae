@@ -25,7 +25,7 @@ export function useGroupDetail(groupId: string | undefined) {
     if (!groupId) return
     setLoading(true)
     setError(null)
-    apiFetch(buildApiUrl(`/groups/${groupId}`))
+    apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`))
       .then((r) => {
         if (!r.ok) throw new Error('Grupo não encontrado')
         return r.json() as Promise<unknown>
@@ -158,7 +158,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setLeaving(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/members/${user.id}`), {
+      const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(user.id)}`), {
         method: 'DELETE',
       })
 
@@ -192,7 +192,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setDeleting(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}`), {
+      const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`), {
         method: 'DELETE',
       })
 
@@ -227,7 +227,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setRotatingInvite(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}/invite/rotate`), {
+      const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}/invite/rotate`), {
         method: 'POST',
       })
       if (!res.ok) {
