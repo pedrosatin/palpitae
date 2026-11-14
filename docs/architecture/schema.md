@@ -278,7 +278,7 @@ Registro do lembrete diário por e-mail (migration 0036, ADR-020). No máximo um
 | `reminder_date` | TEXT    | Dia em Brasília, YYYY-MM-DD     |
 | `created_at`    | TEXT    | Instante da reserva, UTC        |
 
-Primary key: `(user_id, reminder_date)`. O cron apaga as linhas com mais de 7 dias. O dia mais recente de cada usuário ordena a fila de envio quando o teto não cobre todos.
+Primary key: `(user_id, reminder_date)`. A linha reserva o envio. O aceite do provedor mantém a linha. A execução apaga a linha de quem ficou sem aceite, inclusive quando o lote aborta por exceção. O cron apaga as linhas com mais de 7 dias. O dia mais recente de cada usuário ordena a fila de envio quando o teto não cobre todos.
 
 ---
 

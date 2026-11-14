@@ -396,10 +396,11 @@ describe('sendRoundReminders', () => {
 
       await run(db)
 
-      expect(sentBodies().map((email) => email.to).sort()).toEqual([
-        'ana@example.com',
-        'bia@example.com',
-      ])
+      expect(
+        sentBodies()
+          .map((email) => email.to)
+          .sort(),
+      ).toEqual(['ana@example.com', 'bia@example.com'])
     })
 
     it('nova execução no mesmo dia não envia de novo, nem com jogo novo', async () => {
@@ -645,9 +646,13 @@ describe('sendRoundReminders', () => {
         addPrediction(sqlite, user, 'g1', 'tarde-1')
         addPrediction(sqlite, user, 'g1', 'tarde-2')
       }
-      const members = Array.from({ length: RESEND_FETCH_BUDGET + 2 }, (_, i) => `u${String(i + 1).padStart(2, '0')}`)
+      const members = Array.from(
+        { length: RESEND_FETCH_BUDGET + 2 },
+        (_, i) => `u${String(i + 1).padStart(2, '0')}`,
+      )
       const everyone = ['ana', ...members]
-      const leftOut = (recipients: string[]) => everyone.filter((user) => !recipients.includes(user))
+      const leftOut = (recipients: string[]) =>
+        everyone.filter((user) => !recipients.includes(user))
 
       await run(db, WEDNESDAY)
       const day1 = sentBodies().map((body) => body.to.split('@')[0])
@@ -677,7 +682,10 @@ describe('sendRoundReminders', () => {
   })
 
   describe('competição em piloto', () => {
-    const access = { ADMIN_EMAIL: 'admin@example.com', PILOT_EMAILS: ' Ana@Example.com , outro@example.com' }
+    const access = {
+      ADMIN_EMAIL: 'admin@example.com',
+      PILOT_EMAILS: ' Ana@Example.com , outro@example.com',
+    }
 
     function addPilotGroup(sqlite: DatabaseSync, members: string[]) {
       sqlite.exec(`
@@ -689,7 +697,13 @@ describe('sendRoundReminders', () => {
           ('g4', 'Grupo Piloto', 'pil', 'ana', 'DDDD-4444');
       `)
       for (const user of members) addMember(sqlite, 'g4', user)
-      addMatch(sqlite, { id: 'pil-1', competition: 'pil', start: '2026-11-18T21:00:00Z', home: 'cor', away: 'sao' })
+      addMatch(sqlite, {
+        id: 'pil-1',
+        competition: 'pil',
+        start: '2026-11-18T21:00:00Z',
+        home: 'cor',
+        away: 'sao',
+      })
     }
 
     it('quem está fora de PILOT_EMAILS não recebe lembrete do grupo em piloto', async () => {
@@ -701,14 +715,14 @@ describe('sendRoundReminders', () => {
         pilotAccess: access,
       })
 
-      expect(sentBodies().map((email) => email.to).sort()).toEqual([
-        'admin@example.com',
-        'ana@example.com',
-      ])
-      expect(sqlite.prepare('SELECT user_id FROM email_reminder_sends ORDER BY user_id').all()).toEqual([
-        { user_id: 'admin' },
-        { user_id: 'ana' },
-      ])
+      expect(
+        sentBodies()
+          .map((email) => email.to)
+          .sort(),
+      ).toEqual(['admin@example.com', 'ana@example.com'])
+      expect(
+        sqlite.prepare('SELECT user_id FROM email_reminder_sends ORDER BY user_id').all(),
+      ).toEqual([{ user_id: 'admin' }, { user_id: 'ana' }])
     })
 
     it('o e-mail de quem não tem acesso lista só os grupos públicos', async () => {
@@ -930,6 +944,131 @@ describe('sendRoundReminders', () => {
 
       expect(eventsOf(writeDataPoint, 'cron_round_reminder')[0].doubles).toEqual([0, 0, 0, 0])
       expect(fetch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('digest limitado e devolução após interrupção', () => {
+    afterEach(() => vi.restoreAllMocks())
+
+    it('corta em 10 grupos o e-mail de quem tem 500 e mantém igual o de quem tem poucos', async () => {
+      const { sqlite, db } = createFixture()
+      sqlite.exec(`UPDATE users SET email = id || '@example.test'`)
+      for (let i = 0; i < 8; i++) {
+        addMatch(sqlite, { id: `dia-${i}`, start: `2026-11-18T${14 + i}:00:00Z` })
+      }
+      const insertGroup = sqlite.prepare(
+        `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code)
+         VALUES (?, ?, 'bra', 'bia', ?)`,
+      )
+      for (let i = 0; i < 500; i++) {
+        const id = `excesso-${String(i).padStart(3, '0')}`
+        insertGroup.run(id, `Grupo ${id}`, `<INVITE_CODE>-${i}`)
+        addMember(sqlite, id, 'bia')
+      }
+
+      await sendRoundReminders(
+        db,
+        'key',
+        undefined,
+        'https://painel.example.test',
+        undefined,
+        WEDNESDAY,
+      )
+
+      const emails = sentBodies()
+      const legitimo = emails.find((email) => email.to === 'ana@example.test')!
+      // Snapshot produzido na base antes da correção. Compara HTML e texto byte a byte.
+      expect(legitimo).toMatchSnapshot()
+      const excesso = emails.find((email) => email.to === 'bia@example.test')!
+      // 10 grupos × 8 jogos cabem em 128 KiB, com folga para o template e o texto puro.
+      expect(Buffer.byteLength(JSON.stringify(excesso), 'utf8')).toBeLessThan(128 * 1024)
+      expect(excesso.html.match(/<h3/g)).toHaveLength(10)
+      expect(excesso.text.match(/Grupo excesso-/g)).toHaveLength(10)
+      expect(excesso.html).toContain('href="https://painel.example.test">e mais 490 grupos</a>')
+      expect(excesso.text).toContain('e mais 490 grupos https://painel.example.test')
+      expect(excesso.html.indexOf('Grupo excesso-000')).toBeLessThan(
+        excesso.html.indexOf('Grupo excesso-009'),
+      )
+      expect(excesso.html).not.toContain('Grupo excesso-010')
+      expect(emails).toHaveLength(2)
+    })
+
+    it.each([10, 11])(
+      'lista até 10 dos %i grupos pela urgência e só inclui link se sobrar grupo',
+      async (total) => {
+        const { sqlite, db } = createFixture()
+        sqlite.exec(`UPDATE users SET email = id || '@example.test'`)
+        addMatch(sqlite, { id: 'tarde', start: '2026-11-18T22:00:00Z' })
+        addMatch(sqlite, { id: 'urgente', start: '2026-11-18T12:00:00Z', competition: 'cdb' })
+        addMember(sqlite, 'g3', 'ana')
+        for (let i = 0; i < total - 2; i++) {
+          const id = `grupo-sintetico-${i}`
+          sqlite
+            .prepare(
+              `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code)
+           VALUES (?, ?, 'bra', 'ana', ?)`,
+            )
+            .run(id, id, `<INVITE_CODE>-${i}`)
+          addMember(sqlite, id, 'ana')
+        }
+
+        await run(db)
+
+        const [email] = sentBodies()
+        expect(email.html.match(/<h3/g)).toHaveLength(10)
+        expect(email.html.indexOf('Copa da Família')).toBeLessThan(
+          email.html.indexOf('Realidade do BR'),
+        )
+        if (total === 10) {
+          expect(email.html).not.toContain('e mais')
+          expect(email.text).not.toContain('e mais')
+        } else {
+          expect(email.html).toContain('href="https://palpitae.com.br">e mais 1 grupo</a>')
+          expect(email.text).toContain('e mais 1 grupo https://palpitae.com.br')
+        }
+      },
+    )
+
+    it('devolve todas as reservas se a preparação aborta depois da reserva', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      const unsub = {
+        secret: 'segredo-sintetico',
+        get apiBaseUrl(): string {
+          throw new Error('Configuração indisponível')
+        },
+      }
+
+      await expect(
+        sendRoundReminders(db, 'key', undefined, undefined, unsub, WEDNESDAY),
+      ).rejects.toThrow('Configuração indisponível')
+
+      expect(fetch).not.toHaveBeenCalled()
+      expect(sqlite.prepare('SELECT user_id FROM email_reminder_sends').all()).toEqual([])
+    })
+
+    it('preserva quem recebeu e libera o restante se o tratamento da falha aborta', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response(null, { status: 200 }))
+        .mockRejectedValue(new Error('Provedor indisponível'))
+      vi.spyOn(console, 'error').mockImplementation(() => {
+        throw new Error('Log indisponível')
+      })
+      // Evita espera real entre as tentativas do provedor.
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback) => {
+        if (typeof callback === 'function') callback()
+        return 0 as unknown as ReturnType<typeof setTimeout>
+      })
+
+      await expect(run(db)).rejects.toThrow('Log indisponível')
+
+      expect(sqlite.prepare('SELECT user_id FROM email_reminder_sends').all()).toEqual([
+        { user_id: 'ana' },
+      ])
     })
   })
 

@@ -9,6 +9,7 @@ import { EmailError, sendEmail } from './email'
 import { signUnsubToken } from './unsubscribeToken'
 
 const APP_URL = 'https://palpitae.com.br'
+const MAX_DIGEST_GROUPS = 10
 
 // O dia do lembrete é o de Brasília. O fuso vem da base do `Intl`; assim, se o
 // horário de verão voltar, o dia não muda.
@@ -171,7 +172,8 @@ async function sendWithRetry(
     } catch (err) {
       const emailError = err instanceof EmailError ? err : undefined
       const status = emailError?.status ?? 0
-      const transient = !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
+      const transient =
+        !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
       if (!transient || attempt >= MAX_SEND_ATTEMPTS) throw err
       if (budget.used >= budget.max) throw new SubrequestBudgetError()
       await sleep(emailError?.retryAfterMs ?? 500 * 2 ** (attempt - 1))
@@ -371,11 +373,17 @@ function pendingMatchesBinds(nowIso: string, day: ReminderDay): string[] {
  * então grupos e rodadas ficam na ordem do primeiro jogo.
  */
 function buildDigests(rows: PendingRow[]): Digest[] {
-  const digests = new Map<string, Digest>()
+  const digests = new Map<
+    string,
+    {
+      digest: Digest
+      groups: Map<string, { group: DigestGroup; rounds: Map<string | null, DigestRound> }>
+    }
+  >()
   for (const row of rows) {
-    let digest = digests.get(row.user_id)
-    if (!digest) {
-      digest = {
+    let entry = digests.get(row.user_id)
+    if (!entry) {
+      const digest: Digest = {
         userId: row.user_id,
         email: row.email,
         groups: [],
@@ -383,24 +391,29 @@ function buildDigests(rows: PendingRow[]): Digest[] {
         firstStart: row.start_time,
         lastSent: row.last_sent,
       }
-      digests.set(row.user_id, digest)
+      entry = { digest, groups: new Map() }
+      digests.set(row.user_id, entry)
     }
+    const { digest, groups } = entry
 
-    let group = digest.groups.find((g) => g.groupId === row.group_id)
-    if (!group) {
-      group = {
+    let indexedGroup = groups.get(row.group_id)
+    if (!indexedGroup) {
+      const group: DigestGroup = {
         groupId: row.group_id,
         groupName: row.group_name,
         competitionName: row.competition_name,
         rounds: [],
       }
       digest.groups.push(group)
+      indexedGroup = { group, rounds: new Map() }
+      groups.set(row.group_id, indexedGroup)
     }
 
-    let round = group.rounds.find((r) => r.round === row.round)
+    let round = indexedGroup.rounds.get(row.round)
     if (!round) {
       round = { competitionId: row.competition_id, round: row.round, matches: [] }
-      group.rounds.push(round)
+      indexedGroup.group.rounds.push(round)
+      indexedGroup.rounds.set(row.round, round)
     }
 
     round.matches.push({
@@ -412,7 +425,7 @@ function buildDigests(rows: PendingRow[]): Digest[] {
     })
     digest.matchIds.add(row.match_id)
   }
-  return [...digests.values()]
+  return [...digests.values()].map(({ digest }) => digest)
 }
 
 /**
@@ -466,8 +479,7 @@ function countRounds(digests: Digest[]): number {
  *
  * A gravação é única porque cada consulta ao D1 conta no
  * limite de subrequests do Worker junto com os envios ao Resend. O plano Free tem
- * 50 por invocação. A consequência é que uma invocação interrompida no meio deixa
- * os restantes sem e-mail naquele dia. Perder um aviso é melhor do que repetir.
+ * 50 por invocação. O chamador libera em `finally` as reservas sem aceite do provedor.
  *
  * A reserva relê o descadastro na mesma gravação. Quem saiu da lista depois da
  * consulta dos pendentes não é reservado.
@@ -478,7 +490,9 @@ async function claimRecipients(
   day: ReminderDay,
 ): Promise<Set<string>> {
   const [, claim] = await db.batch<{ user_id: string }>([
-    db.prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?').bind(day.retentionCutoff),
+    db
+      .prepare('DELETE FROM email_reminder_sends WHERE reminder_date < ?')
+      .bind(day.retentionCutoff),
     db
       .prepare(
         `INSERT INTO email_reminder_sends (user_id, reminder_date)
@@ -541,6 +555,7 @@ type DispatchOptions = {
   day: ReminderDay
   /** Saldo de `fetch` ao Resend e revalidações. Os testes reduzem para exercitar o teto. */
   fetchBudget?: number
+  pendingClaims: Set<string>
 }
 
 type DispatchResult = {
@@ -568,6 +583,7 @@ async function dispatchDigests(
     ae,
     day,
     fetchBudget = RESEND_FETCH_BUDGET,
+    pendingClaims,
   }: DispatchOptions,
 ): Promise<DispatchResult> {
   // Criado logo depois da reserva, que leu o descadastro de todos.
@@ -646,12 +662,14 @@ async function dispatchDigests(
         budget,
         () => guard.assertSubscribed(digest.userId),
       )
+      // O aceite já aconteceu. Uma falha posterior mantém a proteção contra repetição.
+      pendingClaims.delete(digest.userId)
       sent++
       matchesListed += matchCount
       // user_hash do id, nunca o e-mail cru (regra LGPD).
       logEvent(ae, 'email_reminder_sent', {
         blobs: [hashedId, day.date],
-        doubles: [matchCount, digest.groups.length],
+        doubles: [matchCount, Math.min(digest.groups.length, MAX_DIGEST_GROUPS)],
       })
     } catch (err) {
       if (err instanceof UnsubscribedError) {
@@ -723,18 +741,28 @@ export async function sendRoundReminders(
     digests.map((digest) => digest.userId),
     day,
   )
-  const recipients = digests.filter((digest) => claimed.has(digest.userId)).sort(byQueueOrder)
-
-  // Sem apiBaseUrl o e-mail sai sem o link, e o `.replace` não quebra o lote.
-  const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
-
-  const { sent, matchesListed, failedUserIds, unsubscribedUserIds } = await dispatchDigests(
-    recipients,
-    { db, resendApiKey, appUrl, apiBaseUrl, unsub, ae, day, fetchBudget },
-  )
-  // Quem descadastrou no meio do lote também devolve a reserva. A consulta dos
-  // pendentes já não o traz, e se ele reativar no mesmo dia uma nova execução envia.
-  await releaseClaims(db, [...failedUserIds, ...unsubscribedUserIds], day)
+  // A partir da reserva, toda saída passa pela liberação. Só o aceite do provedor
+  // retira um usuário deste conjunto, antes de qualquer log ou outra operação.
+  let recipients: Digest[] = []
+  let result: DispatchResult
+  try {
+    recipients = digests.filter((digest) => claimed.has(digest.userId)).sort(byQueueOrder)
+    const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
+    result = await dispatchDigests(recipients, {
+      db,
+      resendApiKey,
+      appUrl,
+      apiBaseUrl,
+      unsub,
+      ae,
+      day,
+      fetchBudget,
+      pendingClaims: claimed,
+    })
+  } finally {
+    await releaseClaims(db, [...claimed], day)
+  }
+  const { sent, matchesListed, failedUserIds, unsubscribedUserIds } = result
 
   const failed = failedUserIds.length
   const rounds = countRounds(recipients)
@@ -851,7 +879,15 @@ function groupBlockHtml(group: DigestGroup, appUrl: string): string {
 }
 
 function buildEmailHtml({ digest, subject, appUrl, unsubUrl }: EmailTemplateOptions): string {
-  const groups = digest.groups.map((group) => groupBlockHtml(group, appUrl)).join('')
+  const groups = digest.groups
+    .slice(0, MAX_DIGEST_GROUPS)
+    .map((group) => groupBlockHtml(group, appUrl))
+    .join('')
+  const remaining = digest.groups.length - MAX_DIGEST_GROUPS
+  const more =
+    remaining > 0
+      ? `\n    <p><a href="${escapeHtml(appUrl)}">e mais ${remaining} ${remaining === 1 ? 'grupo' : 'grupos'}</a></p>`
+      : ''
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -866,7 +902,7 @@ function buildEmailHtml({ digest, subject, appUrl, unsubUrl }: EmailTemplateOpti
       <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
     </div>
     <h2 style="margin: 0 0 4px;">${escapeHtml(subject)}</h2>
-    <p style="color: #6b7280; margin-top: 0;">Cada palpite fecha no horário do jogo.</p>${groups}
+    <p style="color: #6b7280; margin-top: 0;">Cada palpite fecha no horário do jogo.</p>${groups}${more}
     <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
       Você está recebendo este e-mail porque participa de um grupo no Palpitae.${
         unsubUrl
@@ -882,7 +918,7 @@ function buildEmailHtml({ digest, subject, appUrl, unsubUrl }: EmailTemplateOpti
 /** Versão em texto puro, para clientes que preferem text/plain. */
 function buildEmailText({ digest, subject, appUrl, unsubUrl }: EmailTemplateOptions): string {
   const lines = [subject, 'Cada palpite fecha no horário do jogo.']
-  for (const group of digest.groups) {
+  for (const group of digest.groups.slice(0, MAX_DIGEST_GROUPS)) {
     lines.push('', group.groupName, group.competitionName)
     for (const round of group.rounds) {
       lines.push(roundLabel(round.round ?? ''))
@@ -892,6 +928,9 @@ function buildEmailText({ digest, subject, appUrl, unsubUrl }: EmailTemplateOpti
       lines.push(`Fazer meus palpites: ${predictionsUrl(appUrl, group.groupId, round.round)}`)
     }
   }
+  const remaining = digest.groups.length - MAX_DIGEST_GROUPS
+  if (remaining > 0)
+    lines.push('', `e mais ${remaining} ${remaining === 1 ? 'grupo' : 'grupos'} ${appUrl}`)
   lines.push('', 'Você está recebendo este e-mail porque participa de um grupo no Palpitae.')
   if (unsubUrl) lines.push(`Cancelar inscrição: ${unsubUrl}`)
   return lines.join('\n')
