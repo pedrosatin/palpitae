@@ -17,8 +17,9 @@ export function matchGoesToPenalties(penaltyPhases: string[], matchPhase: string
 }
 
 /**
- * Se o jogo decide nos pênaltis quando termina empatado. A volta de um confronto
- * sempre decide pelo agregado, a ida nunca, e o jogo único segue `penalty_phases`.
+ * Se o jogo pode ir aos pênaltis. A volta de um confronto sempre pode, e o empate
+ * que leva aos pênaltis é o do agregado. A ida nunca vai aos pênaltis, e o jogo
+ * único segue `penalty_phases`.
  * Sem papel no confronto (fora do mata-mata), vale a regra do jogo único.
  */
 export function decidesOnPenalties(

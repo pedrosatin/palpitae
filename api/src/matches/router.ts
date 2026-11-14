@@ -261,7 +261,7 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
  *       leg1_match_id,        // id da ida quando o jogo é a volta, senão null
  *       round_label,          // rótulo da rodada em PT-BR
  *       is_knockout,          // fase de mata-mata
- *       decides_on_penalties, // empate leva aos pênaltis (decidesOnPenalties)
+ *       decides_on_penalties, // pode ir aos pênaltis (decidesOnPenalties); na volta, pelo agregado
  *     }
  *   ],
  *   default_round?: string | null // só sem filtros: a rodada aberta ou a mais recente
