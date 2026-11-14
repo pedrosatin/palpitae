@@ -1,7 +1,6 @@
 import { type Context, Hono } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
-import { hasPilotAccess } from '../auth/permissions'
 import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
 import { defaultRoundSql, roundRuleBinds } from '../matches/defaultRound'
 import { isMatchLocked, lockedSql, SQL_NOW } from '../matches/locking'
@@ -18,7 +17,13 @@ import {
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
-import { getGroupMembership, getGroupMembershipTimed } from '../groups/membership'
+import {
+  getGroupMembership,
+  getGroupMembershipTimed,
+  isPilotGroupBlocked,
+  memberDisplaySql,
+} from '../groups/membership'
+import { notBannedSql } from '../groups/ranking'
 import { guardedUpsertParams, prepareGuardedUpsert } from './guardedUpsert'
 import { fetchOpenPickers, indexOpenPickers } from './openPickers'
 import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
@@ -35,24 +40,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const LOCKED_ERROR = { error: 'Palpite bloqueado — o jogo já começou' }
-
-async function isPilotGroupBlocked(
-  c: Context<AppContext>,
-  db: D1Database,
-  groupId: string,
-): Promise<boolean> {
-  if (hasPilotAccess(c.get('userIdentity'), c.env)) return false
-  const row = await db
-    .prepare(
-      `SELECT c.visibility
-       FROM groups g
-       LEFT JOIN competitions c ON g.competition_id = c.id
-       WHERE g.id = ? AND g.deleted_at IS NULL`,
-    )
-    .bind(groupId)
-    .first<{ visibility?: string | null }>()
-  return row?.visibility === 'pilot'
-}
 
 // ---------------------------------------------------------------------------
 // Confronto de mata-mata: classificado previsto e palpite da ida
@@ -387,7 +374,7 @@ async function fetchImportSources(
        JOIN group_members gm ON gm.group_id = p.group_id AND gm.user_id = p.user_id
        WHERE p.user_id = ? AND p.group_id != ?
          AND g.competition_id = (SELECT competition_id FROM groups WHERE id = ?)
-         AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = p.group_id AND b.user_id = p.user_id)
+         AND ${notBannedSql('p')}
          AND NOT ${lockedSql()}`,
     )
     .bind(userId, groupId, groupId, now)
@@ -631,12 +618,12 @@ router.get('/group', requireAuth, async (c) => {
   const membersStartedAt = Date.now()
   const membersResult = await db
     .prepare(
-      `SELECT u.id AS user_id, COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display
+      `SELECT u.id AS user_id, ${memberDisplaySql()} AS display
        FROM group_members gm
        JOIN users u ON u.id = gm.user_id
        LEFT JOIN profiles p ON p.user_id = u.id
        WHERE gm.group_id = ?
-         AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = gm.group_id AND b.user_id = gm.user_id)
+         AND ${notBannedSql('gm')}
        ORDER BY display ASC`,
     )
     .bind(groupId)
@@ -651,7 +638,7 @@ router.get('/group', requireAuth, async (c) => {
           `SELECT
              pr.match_id,
              pr.user_id,
-             COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS user_display,
+             ${memberDisplaySql()} AS user_display,
              pr.predicted_home_score,
              pr.predicted_away_score,
              pr.predicted_penalty_winner,
@@ -666,7 +653,7 @@ router.get('/group', requireAuth, async (c) => {
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.group_id = ?
-             AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = pr.group_id AND b.user_id = pr.user_id)
+             AND ${notBannedSql('pr')}
            ORDER BY m.start_time ASC, user_display ASC`,
         )
         .bind(now, groupId)
@@ -677,7 +664,7 @@ router.get('/group', requireAuth, async (c) => {
           `SELECT
              pr.match_id,
              pr.user_id,
-             COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS user_display,
+             ${memberDisplaySql()} AS user_display,
              pr.predicted_home_score,
              pr.predicted_away_score,
              pr.predicted_penalty_winner,
@@ -692,7 +679,7 @@ router.get('/group', requireAuth, async (c) => {
            LEFT JOIN profiles p ON p.user_id = pr.user_id
            JOIN matches m ON m.id = pr.match_id
            WHERE pr.group_id = ?
-             AND NOT EXISTS (SELECT 1 FROM group_bans b WHERE b.group_id = pr.group_id AND b.user_id = pr.user_id)
+             AND ${notBannedSql('pr')}
              AND (
                ${lockedSql()}
                OR pr.user_id = ?
