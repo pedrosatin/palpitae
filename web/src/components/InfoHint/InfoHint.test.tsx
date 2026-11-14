@@ -2,6 +2,7 @@ import { render, screen, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { TOOLTIP_TIMEOUT_MS } from '../../hooks/useAutoClose'
+import Modal from '../Modal'
 import InfoHint from './InfoHint'
 
 describe('InfoHint', () => {
@@ -130,6 +131,45 @@ describe('InfoHint', () => {
 
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('abre com Espaço no botão focado', async () => {
+    const user = userEvent.setup()
+    render(<InfoHint label="Help" text="This is a tooltip" />)
+
+    await user.tab()
+    await user.keyboard(' ')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('This is a tooltip')
+  })
+
+  it('com o tooltip aberto, o texto vira a descrição acessível do botão', async () => {
+    const user = userEvent.setup()
+    render(<InfoHint label="Help" text="This is a tooltip" />)
+
+    await user.click(screen.getByText('Help'))
+    expect(screen.getByRole('button', { name: 'Help', expanded: true })).toHaveAccessibleDescription(
+      'This is a tooltip',
+    )
+  })
+
+  it('dentro de um modal, o primeiro Escape fecha só o tooltip e o segundo fecha o modal', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(
+      <Modal isOpen onClose={onClose} title="Criar grupo" analyticsId="criar_grupo">
+        <InfoHint label="Help" text="This is a tooltip" />
+      </Modal>,
+    )
+
+    await user.click(screen.getByText('Help'))
+    expect(screen.getByRole('tooltip')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+
+    await user.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('não abre o tooltip no hover', async () => {
