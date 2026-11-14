@@ -559,5 +559,12 @@ describe('página de privacidade', () => {
   // o teste passa a barrar a publicação com algum marcador sobrando.
   it.skip('não publica marcador "A CONFIRMAR"', () => {
     expect(doc.body.textContent).not.toMatch(PENDING_MARKER)
+    // O <head> também publica texto: título, meta tags e dados estruturados.
+    const head = [
+      doc.title,
+      ...[...doc.querySelectorAll('meta[content]')].map((m) => m.getAttribute('content')),
+      ...[...doc.querySelectorAll('script[type="application/ld+json"]')].map((s) => s.textContent),
+    ].join('\n')
+    expect(head).not.toMatch(PENDING_MARKER)
   })
 })
