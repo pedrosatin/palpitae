@@ -26,32 +26,8 @@ export const FD_RETRY_BACKOFF_MS = 6_000
 /** Tempo máximo de um request à football-data antes de abortar. */
 export const FD_TIMEOUT_MS = 10_000
 
-/**
- * Executa `worker` sobre `items` com no máximo `limit` promessas em voo.
- * Preserva a ordem dos resultados. `limit < 1` trata como 1.
- */
-export async function runWithConcurrency<T, R>(
-  limit: number,
-  items: readonly T[],
-  worker: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  if (items.length === 0) return []
-
-  const concurrency = Math.max(1, Math.min(limit, items.length))
-  const results = Array.from({ length: items.length }) as R[]
-  let nextIndex = 0
-
-  const runners = Array.from({ length: concurrency }, async () => {
-    for (;;) {
-      const index = nextIndex++
-      if (index >= items.length) return
-      results[index] = await worker(items[index], index)
-    }
-  })
-
-  await Promise.all(runners)
-  return results
-}
+/** Reexportado de `../concurrency` para o poller e a descoberta manterem o import. */
+export { runWithConcurrency } from '../concurrency'
 
 /**
  * Pausa quando o 429, ou a resposta com cota zerada, chega sem reset legível:

@@ -1,4 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { runWithConcurrency } from '../concurrency'
+import { runInBatches } from '../d1Batch'
 import { logError, logEvent } from '../observability/events'
 import { findEntry, RADAR_COUNTRIES } from './articles'
 import { fetchEspnLeaguesAndCounts, type ProviderLeague } from './espnRadar'
@@ -145,55 +147,34 @@ async function writePageviews(
   const pageviewStatements: D1PreparedStatement[] = []
   let pageviewErrors = 0
 
-  await runLimited(
-    mapped.map((league) => async () => {
-      const article = findEntry(league.country, league.name)?.article
-      if (!article) return
-      try {
-        const byDay = await fetchPageviews(article, from, today)
-        for (const [day, views] of byDay) {
-          pageviewStatements.push(
-            db
-              .prepare(
-                `INSERT INTO competition_radar_daily (radar_id, day, pageviews)
-                 VALUES (?, ?, ?)
-                 ON CONFLICT (radar_id, day) DO UPDATE SET pageviews = excluded.pageviews`,
-              )
-              .bind(radarId(league.externalId, league.season), day, views),
-          )
-        }
-      } catch (err) {
-        // Artigo com título errado não pode derrubar o resto do snapshot.
-        pageviewErrors++
-        logError(ae, 'radar_sync_error', `[radar] Pageviews falhou para "${article}":`, err, {
-          blobs: ['wikipedia', article],
-        })
+  await runWithConcurrency(PAGEVIEW_CONCURRENCY, mapped, async (league) => {
+    const article = findEntry(league.country, league.name)?.article
+    if (!article) return
+    try {
+      const byDay = await fetchPageviews(article, from, today)
+      for (const [day, views] of byDay) {
+        pageviewStatements.push(
+          db
+            .prepare(
+              `INSERT INTO competition_radar_daily (radar_id, day, pageviews)
+               VALUES (?, ?, ?)
+               ON CONFLICT (radar_id, day) DO UPDATE SET pageviews = excluded.pageviews`,
+            )
+            .bind(radarId(league.externalId, league.season), day, views),
+        )
       }
-    }),
-    PAGEVIEW_CONCURRENCY,
-  )
-
-  if (pageviewStatements.length > 0) {
-    const batches = []
-    for (let i = 0; i < pageviewStatements.length; i += 100) {
-      const chunk = pageviewStatements.slice(i, i + 100)
-      batches.push(db.batch(chunk))
-    }
-    await Promise.all(batches)
-  }
-
-  return { pageviewErrors, pageviewRows: pageviewStatements.length }
-}
-
-/** Executa \`tasks\` com um teto de concorrência, ignorando as que falharem. */
-async function runLimited(tasks: (() => Promise<void>)[], limit: number): Promise<void> {
-  const queue = [...tasks]
-  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
-    for (let task = queue.shift(); task; task = queue.shift()) {
-      await task()
+    } catch (err) {
+      // Artigo com título errado não pode derrubar o resto do snapshot.
+      pageviewErrors++
+      logError(ae, 'radar_sync_error', `[radar] Pageviews falhou para "${article}":`, err, {
+        blobs: ['wikipedia', article],
+      })
     }
   })
-  await Promise.all(workers)
+
+  await runInBatches(db, pageviewStatements)
+
+  return { pageviewErrors, pageviewRows: pageviewStatements.length }
 }
 
 /** Resultado de uma execução — o script do Actions usa para sinalizar coleta parcial. */

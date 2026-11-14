@@ -15,6 +15,7 @@
  * (`findEntry` em articles.ts). O nome da lista é escolhido para casar.
  */
 
+import { runWithConcurrency } from '../concurrency'
 import { fetchEspnScoreboard, type EspnScoreboard, type EspnSeason } from '../providers/espn'
 
 /** Liga como o sync do radar consome — formato independente de provider. */
@@ -161,35 +162,31 @@ export async function fetchEspnLeaguesAndCounts(dateISO: string): Promise<EspnRa
   const counts = new Map<string, number>()
   const failed: string[] = []
 
-  const queue = [...ESPN_LEAGUES]
-  const workers = Array.from({ length: Math.min(ESPN_CONCURRENCY, queue.length) }, async () => {
-    for (let ref = queue.shift(); ref; ref = queue.shift()) {
-      try {
-        const board = await fetchEspnScoreboard(ref.slug, yyyymmdd)
-        const meta = board.leagues?.[0]
-        const season = parseSeason(meta?.season, dateISO)
-        // Sem `leagues[0]` ou sem temporada corrente: pular silenciosamente —
-        // não é erro, a competição só não está acontecendo.
-        if (!meta || !season) continue
+  await runWithConcurrency(ESPN_CONCURRENCY, ESPN_LEAGUES, async (ref) => {
+    try {
+      const board = await fetchEspnScoreboard(ref.slug, yyyymmdd)
+      const meta = board.leagues?.[0]
+      const season = parseSeason(meta?.season, dateISO)
+      // Sem `leagues[0]` ou sem temporada corrente: pular silenciosamente —
+      // não é erro, a competição só não está acontecendo.
+      if (!meta || !season) return
 
-        leagues.push({
-          externalId: ref.slug,
-          name: ref.name,
-          country: ref.country,
-          type: ref.type,
-          logoUrl: meta.logos?.[0]?.href ?? null,
-          season: season.year,
-          startsOn: season.startsOn,
-          endsOn: season.endsOn,
-        })
-        counts.set(ref.slug, matchesOn(board, dateISO))
-      } catch (err) {
-        failed.push(ref.slug)
-        console.warn(`[radar] ESPN falhou para ${ref.slug}:`, err)
-      }
+      leagues.push({
+        externalId: ref.slug,
+        name: ref.name,
+        country: ref.country,
+        type: ref.type,
+        logoUrl: meta.logos?.[0]?.href ?? null,
+        season: season.year,
+        startsOn: season.startsOn,
+        endsOn: season.endsOn,
+      })
+      counts.set(ref.slug, matchesOn(board, dateISO))
+    } catch (err) {
+      failed.push(ref.slug)
+      console.warn(`[radar] ESPN falhou para ${ref.slug}:`, err)
     }
   })
-  await Promise.all(workers)
 
   if (failed.length === ESPN_LEAGUES.length) {
     throw new Error(`ESPN falhou em todos os ${failed.length} slugs do recorte`)
