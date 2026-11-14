@@ -298,12 +298,12 @@ function planTasks(rows: ActiveRound[], now: number): PollerPlan {
 type ScoringRun = { failures: unknown[]; matchesScored: number; unfinished: number }
 
 /**
- * Pontuação do tick: uma competição por vez. O erro de uma fica registrado e as
- * outras seguem. Cada competição recebe uma parte igual do que resta, para que uma
- * com muitos palpites não gaste a vez das outras. A parte nunca fica abaixo do
- * mínimo para planejar e gravar uma vez enquanto houver esse mínimo, senão a
- * primeira da lista seria pulada em todo tick. O que sobrar vai, numa segunda
- * passada, para as que pararam por falta de chamadas.
+ * A pontuação do tick processa uma competição por vez. O erro de uma fica
+ * registrado e as outras seguem. Cada competição recebe uma parte igual do que
+ * resta, para que uma com muitos palpites não gaste a vez das outras. A parte
+ * nunca fica abaixo do mínimo para planejar e gravar uma vez enquanto houver esse
+ * mínimo, senão a primeira da lista seria pulada em todo tick. O que sobrar vai,
+ * numa segunda passada, para as que pararam por falta de chamadas.
  */
 async function scoreCompetitions(
   db: D1Database,
