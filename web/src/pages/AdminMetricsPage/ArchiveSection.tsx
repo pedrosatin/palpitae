@@ -150,6 +150,7 @@ export function ArchiveQuerySection({
       <AdminPills
         options={months.map((m) => ({ value: m.label, label: m.label }))}
         value={selected}
+        ariaLabel="Mês do arquivo"
         onChange={(month) => {
           trackEvent('click_admin_metrics_arquivo_mes', { month })
           onSelect(month)

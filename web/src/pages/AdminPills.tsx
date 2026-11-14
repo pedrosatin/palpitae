@@ -12,24 +12,23 @@ interface AdminPillsProps<T extends string | number> {
   value: T | null
   onChange: (value: T) => void
   className?: string
-  /** Atributos opcionais até a padronização de acessibilidade no ticket 25. */
-  role?: 'group'
+  /** Nome do grupo para leitor de tela. */
   ariaLabel?: string
-  ariaPressed?: boolean
 }
 
-/** Grupo de botões em pílula compartilhado pelos painéis admin. */
+/**
+ * Grupo de botões em pílula compartilhado pelos painéis admin. Cada botão
+ * anuncia com `aria-pressed` se é a opção ativa.
+ */
 export default function AdminPills<T extends string | number>({
   options,
   value,
   onChange,
   className = shared.periods,
-  role,
   ariaLabel,
-  ariaPressed = false,
 }: AdminPillsProps<T>) {
   return (
-    <div className={className} role={role} aria-label={ariaLabel}>
+    <div className={className} role="group" aria-label={ariaLabel}>
       {options.map((option) => {
         const active = option.value === value
         return (
@@ -37,7 +36,7 @@ export default function AdminPills<T extends string | number>({
             key={option.value}
             type="button"
             disabled={option.disabled}
-            aria-pressed={ariaPressed ? active : undefined}
+            aria-pressed={active}
             className={active ? shared.periodActive : shared.period}
             onClick={() => onChange(option.value)}
           >

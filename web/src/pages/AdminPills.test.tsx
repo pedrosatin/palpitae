@@ -28,26 +28,24 @@ describe('AdminPills', () => {
     expect(onChange).toHaveBeenCalledWith('b')
   })
 
-  it('omite role, aria-label e aria-pressed quando opcionais não são informados', () => {
+  it('sempre renderiza role="group" e aria-pressed, e omite aria-label quando não informado', () => {
     render(<AdminPills options={OPTIONS} value="a" onChange={vi.fn()} />)
 
     const alfa = screen.getByRole('button', { name: 'Alfa' })
-    expect(alfa.parentElement).not.toHaveAttribute('role')
+    expect(alfa.parentElement).toHaveAttribute('role', 'group')
     expect(alfa.parentElement).not.toHaveAttribute('aria-label')
-    expect(alfa).not.toHaveAttribute('aria-pressed')
-    expect(screen.getByRole('button', { name: 'Beta' })).not.toHaveAttribute('aria-pressed')
+    expect(alfa).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Beta' })).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('aplica role, aria-label, aria-pressed e classe extra quando informados', () => {
+  it('aplica aria-label e classe extra quando informados', () => {
     render(
       <AdminPills
         options={OPTIONS}
         value="b"
         onChange={vi.fn()}
         className="grupo-custom"
-        role="group"
         ariaLabel="Filtro de letras"
-        ariaPressed
       />,
     )
 

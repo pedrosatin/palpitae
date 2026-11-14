@@ -54,6 +54,7 @@ export default function AdminPageShell({
           <AdminPills
             options={PERIOD_OPTIONS}
             value={days}
+            ariaLabel="Período"
             onChange={(p) => {
               trackEvent(periodEventName, { days: p })
               onDaysChange(p)
