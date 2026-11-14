@@ -146,6 +146,41 @@ terceiros ou rode código fora deste repositório, reavalie essa decisão: o hos
 novo receberia o cookie de sessão de todo usuário logado. Um registro DNS que
 aponte para serviço desativado (CNAME órfão) tem o mesmo efeito.
 
+### Admin amarrado ao `sub` do Google
+
+`ADMIN_EMAIL` define quem é admin: métricas, radar, sync manual de partidas,
+promoção de competição e acesso do admin a competições em piloto, inclusive no
+e-mail de lembrete. Só o e-mail identifica a conta, então um e-mail reciclado que
+passe a ser de outra pessoa herdaria o papel.
+
+`ADMIN_GOOGLE_SUB` fecha essa brecha. Com a variável definida, a conta só é admin
+se o e-mail for o `ADMIN_EMAIL` e o `users.provider_id` dela for esse valor, com
+`users.provider = 'google'`, já que o `provider_id` de outro provedor não é um `sub`
+do Google. Quem tem o e-mail certo e outro `sub` recebe 403 nas rotas de admin e
+perde o acesso do admin ao piloto. Sem a variável, ou com ela vazia, vale só o
+e-mail, como antes. O e-mail continua sem diferenciar caixa, e espaços ou quebra de
+linha nas pontas dos dois valores são ignorados. Todos os pontos usam a mesma
+função (`isAdminUser`, e `hasPilotAccess` para o piloto), que lê o `sub` da conta na
+mesma consulta que valida a sessão.
+
+O `sub` é um identificador estável da conta Google, não um segredo de autenticação,
+mas ele identifica o admin e fica fora de arquivos versionados. Para descobrir o
+valor sem expô-lo, rode no D1 remoto uma consulta de leitura e copie o resultado
+direto para o prompt do segredo:
+
+```bash
+cd api
+npx wrangler d1 execute palpitae --remote --config ./wrangler.toml \
+  --command "SELECT provider_id FROM users WHERE email = '<ADMIN_EMAIL>' AND provider = 'google'"
+npx wrangler secret put ADMIN_GOOGLE_SUB --config ./wrangler.toml
+```
+
+O comando de `secret put` pede o valor no prompt, então ele não vai para arquivo nem
+para o histórico do shell. Não cole o `<SUB>` em issue, PR, commit ou log. Se a
+consulta não devolver linha, a conta admin ainda não entrou por Google e o `sub`
+aparece depois do primeiro login. Para desligar a amarração, apague o segredo com
+`npx wrangler secret delete ADMIN_GOOGLE_SUB --config ./wrangler.toml`.
+
 ## Content-Security-Policy do site
 
 O `web/public/_headers` envia `Content-Security-Policy` e os demais cabeçalhos de

@@ -767,6 +767,22 @@ describe('sendRoundReminders', () => {
       expect(bia.html).not.toContain('Grupo Piloto')
     })
 
+    it('com ADMIN_GOOGLE_SUB, o admin só recebe o lembrete do piloto com o sub certo', async () => {
+      const { sqlite, db } = createFixture()
+      sqlite.exec(`DELETE FROM group_members`)
+      addPilotGroup(sqlite, ['admin'])
+
+      await sendRoundReminders(db, 'key', undefined, undefined, undefined, WEDNESDAY, {
+        pilotAccess: { ...access, ADMIN_GOOGLE_SUB: 'g-outro' },
+      })
+      expect(fetch).not.toHaveBeenCalled()
+
+      await sendRoundReminders(db, 'key', undefined, undefined, undefined, WEDNESDAY, {
+        pilotAccess: { ...access, ADMIN_GOOGLE_SUB: 'g-admin' },
+      })
+      expect(sentBodies().map((email) => email.to)).toEqual(['admin@example.com'])
+    })
+
     it('sem a lista de acesso, grupo em piloto não gera lembrete', async () => {
       const { sqlite, db } = createFixture()
       sqlite.exec(`DELETE FROM group_members`)
