@@ -111,3 +111,13 @@ export function discardDetailLabel(detail: string): string {
 export function eventLabel(type: string): string {
   return EVENT_LABELS[type] ?? type
 }
+
+/** Nome e temporada do campeonato; sem nome conhecido, o prefixo do id. */
+export function competitionLabel(
+  id: string,
+  name: string | null | undefined,
+  season: string | null | undefined,
+): string {
+  if (!name) return `Campeonato ${id.slice(0, 8)}`
+  return season ? `${name} ${season}` : name
+}

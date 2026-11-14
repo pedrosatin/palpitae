@@ -53,14 +53,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.kpiValueWarn {
-  color: var(--color-warning);
-}
-
-.kpiValueDanger {
-  color: var(--color-danger);
-}
-
 .kpiLabel {
   font-size: var(--font-size-xs);
   text-transform: uppercase;

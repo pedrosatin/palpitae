@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import shared from '../admin-shared.module.css'
 import { SERIES_COLORS } from './charts'
+import { DAY_MS, formatCount } from './format'
 import styles from './AdminMetricsPage.module.css'
 
 /**
@@ -36,7 +37,6 @@ export interface HeatmapGrid {
 }
 
 const HOUR_MS = 60 * 60 * 1000
-const DAY_MS = 24 * HOUR_MS
 const BRT_OFFSET_MS = 3 * HOUR_MS
 
 const WEEKDAYS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
@@ -124,10 +124,6 @@ export function buildHeatmapGrid(
     }
   }
   return { cells, total, max: peak?.value ?? 0, peak }
-}
-
-function formatNumber(n: number): string {
-  return Math.round(n).toLocaleString('pt-BR')
 }
 
 /** Cabe na célula estreita: 950, 1,2k, 12k. */
@@ -230,7 +226,7 @@ function Grid({
                           }
                         : undefined
                     }
-                    title={`${WEEKDAYS_LONG[weekday]}, ${hourRange(hour)} BRT: ${approx}${formatNumber(value)} ${measure.noun}`}
+                    title={`${WEEKDAYS_LONG[weekday]}, ${hourRange(hour)} BRT: ${approx}${formatCount(value)} ${measure.noun}`}
                   >
                     {compact(value)}
                   </td>
@@ -321,14 +317,14 @@ function HeatmapBody({
         <>
           <h3 className={styles.subTitle}>
             {measure.label} · {estimated ? '≈' : ''}
-            {formatNumber(grid.total)} no período
+            {formatCount(grid.total)} no período
           </h3>
           <Grid grid={grid} measure={measure} estimated={estimated} />
           {grid.peak && (
             <p className={styles.hint}>
               Maior movimento: {WEEKDAYS_LONG[grid.peak.weekday]}, {hourRange(grid.peak.hour)}, com{' '}
               {estimated ? '≈' : ''}
-              {formatNumber(grid.peak.value)}. O cabeçalho das colunas é a hora inicial.
+              {formatCount(grid.peak.value)}. O cabeçalho das colunas é a hora inicial.
             </p>
           )}
         </>
