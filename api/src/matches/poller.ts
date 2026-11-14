@@ -1,7 +1,11 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logError, logEvent } from '../observability/events'
-import { createProviderHttpObserver } from '../observability/providerHttp'
+import { logError, logEvent, tryLogEvent } from '../observability/events'
+import {
+  createProviderHttpObserver,
+  type ProviderHttpObserver,
+} from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
+import { callsLeft, countD1Calls, INVOCATION_CALL_LIMIT, type CallBudget } from './callBudget'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
@@ -13,7 +17,7 @@ import {
   POLLER_TICK_MS,
   RESCUE_WINDOW_MS,
 } from './matchPollingWindow'
-import { scoreUnprocessedMatches } from './scoring'
+import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
 type ActiveRound = {
@@ -164,6 +168,109 @@ async function loadPollerRows(db: D1Database, now: number): Promise<ActiveRound[
   return rows.results
 }
 
+/**
+ * Chamadas da invocação que ficam fora do orçamento do poller (ADR-024):
+ * - a limpeza de registros expirados, que o handler `scheduled` dispara na mesma
+ *   invocação, por fora deste arquivo;
+ * - a leitura final dos jogos que seguem sem pontuação (`reportUnscoredMatches`);
+ * - folga para o que a contagem não vê.
+ */
+const CLEANUP_CALLS = 1
+const UNSCORED_REPORT_CALLS = 1
+const SPARE_CALLS = 3
+
+/**
+ * Chamadas que o tick pode fazer: consultas e batches do D1 e `fetch` aos
+ * provedores. Planejamento, sync e fallback gastam o que precisam e são só
+ * contados; a pontuação recebe o que sobra e para quando acaba.
+ */
+export const POLLER_CALL_BUDGET =
+  INVOCATION_CALL_LIMIT - CLEANUP_CALLS - UNSCORED_REPORT_CALLS - SPARE_CALLS
+
+/** Teto de `match_unscored` por execução: um evento por competição. */
+const UNSCORED_EVENTS_PER_RUN = 10
+
+/**
+ * Competições com jogo encerrado, com placar e sem `scored_at`, que começou até o
+ * instante informado. `INDEXED BY` prende a leitura ao índice parcial
+ * `idx_matches_unscored`, quase sempre vazio; sem ele o SQLite varre todos os
+ * jogos encerrados por `idx_matches_status`.
+ */
+export const UNSCORED_REPORT_SQL = `SELECT competition_id, COUNT(*) AS matches, MIN(start_time) AS oldest
+   FROM matches INDEXED BY idx_matches_unscored
+  WHERE status = 'finished' AND scored_at IS NULL
+    AND home_score IS NOT NULL AND away_score IS NOT NULL
+    AND start_time <= ?
+  GROUP BY competition_id
+  ORDER BY matches DESC, competition_id
+  LIMIT ?`
+
+/**
+ * Registra `match_unscored` para cada competição com jogo encerrado que segue sem
+ * `scored_at` depois de mais de um ciclo. O resultado chega no mínimo
+ * `EARLIEST_RESULT_MS` depois do início e a pontuação roda no mesmo tick; quem
+ * começou há mais que isso somado a um tick já passou por um ciclo inteiro sem
+ * ser pontuado. Entra aqui quem ficou para trás por orçamento ou por erro e o
+ * jogo decisivo que espera o vencedor dos pênaltis. Só registra: falha aqui fica
+ * no log e não derruba o tick.
+ */
+async function reportUnscoredMatches(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  now: number,
+): Promise<void> {
+  if (!ae) return // sem o binding não há onde registrar
+  const cutoff = new Date(now - EARLIEST_RESULT_MS - POLLER_TICK_MS).toISOString()
+  try {
+    const { results } = await db
+      .prepare(UNSCORED_REPORT_SQL)
+      .bind(cutoff, UNSCORED_EVENTS_PER_RUN)
+      .all<{ competition_id: string; matches: number; oldest: string }>()
+    for (const row of results) {
+      const oldestMinutes = Math.round((now - Date.parse(row.oldest)) / 60_000)
+      tryLogEvent(ae, 'match_unscored', {
+        blobs: [row.competition_id],
+        // matches, oldest_minutes (minutos desde o início do jogo mais antigo)
+        doubles: [row.matches, Number.isFinite(oldestMinutes) ? Math.max(0, oldestMinutes) : 0],
+      })
+    }
+  } catch (err) {
+    console.error('[poller] Falha ao conferir jogos encerrados sem pontuação:', err)
+  }
+}
+
+/**
+ * Competições com jogo encerrado, com placar e sem `scored_at`, do jogo pendente
+ * mais antigo para o mais novo. Lê o mesmo índice parcial de
+ * `UNSCORED_REPORT_SQL`, sem o corte de horário. O jogo que acabou de encerrar
+ * também entra.
+ */
+export const PENDING_SCORING_SQL = `SELECT competition_id
+   FROM matches INDEXED BY idx_matches_unscored
+  WHERE status = 'finished' AND scored_at IS NULL
+    AND home_score IS NOT NULL AND away_score IS NOT NULL
+  GROUP BY competition_id
+  ORDER BY MIN(start_time), competition_id`
+
+/**
+ * Ordem de pontuação do tick. Primeiro as competições com pontuação pendente no
+ * D1, pelo jogo pendente mais antigo, e depois as sincronizadas no tick que não
+ * estão entre elas. A competição que parou por falta de chamadas, ou por erro,
+ * volta mesmo sem sync no tick, e a que ficou sem a vez num tick tem o jogo
+ * pendente mais antigo no seguinte. Se a leitura falha, valem só as
+ * sincronizadas, como antes.
+ */
+async function competitionsToScore(db: D1Database, synced: Set<string>): Promise<string[]> {
+  let pending: string[] = []
+  try {
+    const { results } = await db.prepare(PENDING_SCORING_SQL).all<{ competition_id: string }>()
+    pending = results.map((row) => row.competition_id)
+  } catch (err) {
+    console.error('[poller] Falha ao ler as competições com pontuação pendente:', err)
+  }
+  return Array.from(new Set([...pending, ...synced]))
+}
+
 type PollerPlan = {
   lateTask: SyncTask | undefined
   tasks: SyncTask[]
@@ -185,6 +292,55 @@ function planTasks(rows: ActiveRound[], now: number): PollerPlan {
     compCount: compCount + (lateTask ? 1 : 0),
     roundDays: activeRows.length + (lateTask ? 1 : 0),
   }
+}
+
+/** Resultado da pontuação de um tick, somando todas as competições. */
+type ScoringRun = { failures: unknown[]; matchesScored: number; unfinished: number }
+
+/**
+ * A pontuação do tick processa uma competição por vez. O erro de uma fica
+ * registrado e as outras seguem. Cada competição recebe uma parte igual do que
+ * resta, para que uma com muitos palpites não gaste a vez das outras. A parte
+ * nunca fica abaixo do mínimo para planejar e gravar uma vez enquanto houver esse
+ * mínimo, senão a primeira da lista seria pulada em todo tick. O que sobrar vai,
+ * numa segunda passada, para as que pararam por falta de chamadas.
+ */
+async function scoreCompetitions(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  budget: CallBudget,
+  toScore: string[],
+): Promise<ScoringRun> {
+  const run: ScoringRun = { failures: [], matchesScored: 0, unfinished: 0 }
+  /** Devolve `false` quando a competição parou por falta de chamadas. */
+  const scoreCompetition = async (compId: string, maxCalls: number): Promise<boolean> => {
+    try {
+      const outcome = await scoreUnprocessedMatches(compId, db, maxCalls)
+      run.matchesScored += outcome.scored
+      return outcome.complete
+    } catch (err) {
+      run.failures.push(err)
+      // `tryLogEvent`, porque uma falha ao registrar não pode tirar a vez das outras competições.
+      console.error(`[poller] Pontuação falhou comp=${compId}:`, err)
+      tryLogEvent(ae, 'match_scoring_error', {
+        blobs: [compId, err instanceof Error ? err.message : String(err)],
+      })
+      return true
+    }
+  }
+
+  const stopped: string[] = []
+  for (const [i, compId] of toScore.entries()) {
+    const left = callsLeft(budget)
+    const share = Math.floor(left / (toScore.length - i))
+    if (!(await scoreCompetition(compId, Math.min(left, Math.max(MIN_SCORING_CALLS, share))))) {
+      stopped.push(compId)
+    }
+  }
+  for (const compId of stopped) {
+    if (!(await scoreCompetition(compId, callsLeft(budget)))) run.unfinished += 1
+  }
+  return run
 }
 
 /**
@@ -215,26 +371,30 @@ function planTasks(rows: ActiveRound[], now: number): PollerPlan {
  * remarcado para hoje aparece. A varredura só entra em tick sem jogo na janela
  * ativa ou no resgate, então o pico de subrequests por execução não muda. Ela
  * usa só o provedor primário: o fallback da ESPN segue na janela de 24 h.
+ *
+ * Pontuação (ADR-024): uma competição por vez, dentro do que sobra de
+ * `POLLER_CALL_BUDGET`. Entram as sincronizadas no tick e as que têm jogo
+ * encerrado sem pontuação no D1, com ou sem jogo na janela. A que não termina
+ * continua no tick seguinte de onde parou, e o erro de uma não impede as outras.
  */
 export async function pollActiveMatches(
-  db: D1Database,
+  rawDb: D1Database,
   apiKey: string,
   ae?: AnalyticsEngineDataset,
   now = Date.now(),
 ): Promise<void> {
   const startedAt = Date.now()
+  const budget: CallBudget = { limit: POLLER_CALL_BUDGET, used: 0 }
+  const db = countD1Calls(rawDb, budget)
+  /** Cada tentativa HTTP a um provedor entra no orçamento, com ou sem telemetria. */
+  const countHttp =
+    (telemetry?: ProviderHttpObserver): ProviderHttpObserver =>
+    (attempt) => {
+      budget.used += 1
+      telemetry?.(attempt)
+    }
 
   const { lateTask, tasks, compCount, roundDays } = planTasks(await loadPollerRows(db, now), now)
-
-  if (tasks.length === 0) {
-    console.info('[poller] Nenhum jogo na janela ativa.')
-    logEvent(ae, 'poller_run', {
-      blobs: ['ok'],
-      // matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded
-      doubles: [0, 0, 0, Date.now() - startedAt, 0],
-    })
-    return
-  }
 
   type SyncOutcome =
     | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
@@ -252,10 +412,9 @@ export async function pollActiveMatches(
         dates,
         apiKey,
         db,
-        onHttpAttempt: createProviderHttpObserver(ae, {
-          context: 'poller',
-          competitionId: comp.comp_id,
-        }),
+        onHttpAttempt: countHttp(
+          createProviderHttpObserver(ae, { context: 'poller', competitionId: comp.comp_id }),
+        ),
         ae,
       })
       return {
@@ -312,7 +471,10 @@ export async function pollActiveMatches(
   // e só chama a ESPN quando ainda há partidas elegíveis sem resultado final.
   if (fallbackCompIds.size > 0) {
     try {
-      const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), { now })
+      const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), {
+        now,
+        onHttpAttempt: countHttp(),
+      })
       for (const [compId, updated] of updatedByComp) {
         if (updated > 0) syncedComps.add(compId)
       }
@@ -324,22 +486,30 @@ export async function pollActiveMatches(
     }
   }
 
-  const scoreResults = await Promise.all(
-    Array.from(syncedComps).map(async (compId) => {
-      try {
-        await scoreUnprocessedMatches(compId, db)
-        return { success: true as const, compId }
-      } catch (err) {
-        return { success: false as const, compId, err }
-      }
-    }),
-  )
+  // Lida depois do sync e do fallback, para incluir os resultados que acabaram de chegar.
+  const toScore = await competitionsToScore(db, syncedComps)
 
-  // Falha de D1 na pontuação: o tick fica registrado como erro antes de relançar.
-  const scoringFailure = scoreResults.find((res) => !res.success)
+  if (tasks.length === 0 && toScore.length === 0) {
+    console.info('[poller] Nenhum jogo na janela ativa.')
+    await reportUnscoredMatches(db, ae, now)
+    logEvent(ae, 'poller_run', {
+      blobs: ['ok'],
+      // matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded
+      doubles: [0, 0, 0, Date.now() - startedAt, 0],
+    })
+    return
+  }
+
+  const {
+    failures: scoringFailures,
+    matchesScored,
+    unfinished,
+  } = await scoreCompetitions(db, ae, budget, toScore)
+
+  await reportUnscoredMatches(db, ae, now)
 
   logEvent(ae, 'poller_run', {
-    blobs: [hadError || scoringFailure ? 'error' : 'ok'],
+    blobs: [hadError || scoringFailures.length > 0 ? 'error' : 'ok'],
     doubles: [
       roundDays,
       fixturesUpdated,
@@ -349,7 +519,9 @@ export async function pollActiveMatches(
     ],
   })
 
-  if (scoringFailure) throw scoringFailure.err
+  // Falha de D1 na pontuação. Depois de todas as competições terem a vez e do tick
+  // registrado como erro, a primeira falha é relançada e a invocação sai como exceção.
+  if (scoringFailures.length > 0) throw scoringFailures[0]
 
   console.info(
     '[perf]',
@@ -362,6 +534,11 @@ export async function pollActiveMatches(
       api_requests_planned: plannedApiRequests,
       espn_max_concurrent: ESPN_MAX_CONCURRENT_COMPETITIONS,
       espn_min_interval_ms: ESPN_MIN_INTERVAL_MS,
+      calls_used: budget.used,
+      calls_budget: budget.limit,
+      scoring_competitions: toScore.length,
+      matches_scored: matchesScored,
+      scoring_unfinished: unfinished,
       total_ms: Date.now() - startedAt,
     }),
   )

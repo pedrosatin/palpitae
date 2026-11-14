@@ -95,6 +95,8 @@ export type EspnFallbackOptions = {
    * mesmo computou, garantindo janelas idênticas entre a query dele e a daqui.
    */
   now?: number
+  /** Chamado a cada tentativa HTTP à ESPN, além da telemetria. O poller conta as chamadas da invocação. */
+  onHttpAttempt?: ProviderHttpObserver
 }
 
 /**
@@ -209,6 +211,7 @@ export async function scoreWindowFromEspn(
           earliestOver,
           rescueFloor,
           stillRelevant,
+          opts.onHttpAttempt,
         )
         updatedByComp.set(compId, updated)
       } catch (err) {
@@ -232,6 +235,7 @@ async function scoreCompetitionWindow(
   earliestOver: string,
   rescueFloor: string,
   stillRelevant: string,
+  onHttpAttempt: ProviderHttpObserver | undefined,
 ): Promise<number> {
   const { results } = await db
     .prepare(
@@ -281,7 +285,11 @@ async function scoreCompetitionWindow(
     )
   }
 
-  const onAttempt = createProviderHttpObserver(ae, { context: 'fallback', competitionId: compId })
+  const telemetry = createProviderHttpObserver(ae, { context: 'fallback', competitionId: compId })
+  const onAttempt: ProviderHttpObserver = (attempt) => {
+    onHttpAttempt?.(attempt)
+    telemetry?.(attempt)
+  }
   const eventsArrays = await Promise.all(
     Array.from(dates).map((date) => fetchEspnScoreboard(slug, date, onAttempt)),
   )

@@ -115,6 +115,12 @@ type UnscoredMatchRow = {
   penalty_phases: string
 }
 
+/** Jogo a pontuar com o número de palpites, que só dimensiona as gravações. */
+type PlannedMatch = UnscoredMatchRow & {
+  /** Palpites do jogo, contando os de grupos excluídos. */
+  prediction_count: number
+}
+
 type ScoredPredictionRow = {
   id: string
   match_id: string
@@ -175,23 +181,6 @@ function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
 }
 
 /**
- * Run D1 statements in parallel chunks of 100 (D1 batch limit). `tail` closes
- * every chunk, inside the same transaction.
- */
-async function runStatementBatches(
-  db: D1Database,
-  statements: ReturnType<D1Database['prepare']>[],
-  tail: ReturnType<D1Database['prepare']>[] = [],
-): Promise<void> {
-  const size = 100 - tail.length
-  const batches = []
-  for (let i = 0; i < statements.length; i += size) {
-    batches.push(db.batch([...statements.slice(i, i + size), ...tail]))
-  }
-  await Promise.all(batches)
-}
-
-/**
  * Condição de toda gravação da pontuação de um jogo: ele segue encerrado com o
  * placar e o vencedor nos pênaltis lidos e, na volta, a ida não mudou. Se uma
  * correção de placar chegou depois da leitura, a gravação não altera nada e o
@@ -216,62 +205,23 @@ function unchangedResultBinds(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | u
   ]
 }
 
-/** Busca os palpites dos jogos informados em lotes (limite de bind do D1 ~100). */
-async function fetchPredictionsInChunks(
-  db: D1Database,
-  matchIds: string[],
-): Promise<ScoredPredictionRow[]> {
-  const allPredictions: ScoredPredictionRow[] = []
-  const CHUNK_SIZE = 90 // Safe limit under 100 for D1 IN clauses
-
-  for (let i = 0; i < matchIds.length; i += CHUNK_SIZE) {
-    const chunkIds = matchIds.slice(i, i + CHUNK_SIZE)
-    const placeholders = chunkIds.map(() => '?').join(',')
-
-    const chunkPredictions = await db
-      .prepare(
-        `SELECT p.id, p.match_id, p.group_id, p.user_id,
-                p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner,
-                g.points_exact, g.points_winner, g.points_penalty, g.points_classified
-         FROM predictions p
-         JOIN groups g ON g.id = p.group_id AND ${ACTIVE_GROUP_SQL}
-         WHERE p.match_id IN (${placeholders})`,
-      )
-      .bind(...chunkIds)
-      .all<ScoredPredictionRow>()
-
-    allPredictions.push(...chunkPredictions.results)
-  }
-
-  return allPredictions
-}
-
-/** Palpites dos jogos de ida, indexados por `match_id:group_id:user_id`. */
-async function fetchLeg1Predictions(
-  db: D1Database,
-  leg1Ids: string[],
-): Promise<Map<string, Leg1PredictionInfo>> {
-  const leg1PredByKey = new Map<string, Leg1PredictionInfo>()
-  const CHUNK_SIZE = 90 // Safe limit under 100 for D1 IN clauses
-
-  for (let i = 0; i < leg1Ids.length; i += CHUNK_SIZE) {
-    const chunkIds = leg1Ids.slice(i, i + CHUNK_SIZE)
-    const placeholders = chunkIds.map(() => '?').join(',')
-    const preds = await db
-      .prepare(
-        `SELECT match_id, group_id, user_id, predicted_home_score, predicted_away_score
-         FROM predictions
-         WHERE match_id IN (${placeholders})`,
-      )
-      .bind(...chunkIds)
-      .all<Leg1PredictionInfo>()
-
-    for (const p1 of preds.results) {
-      leg1PredByKey.set(`${p1.match_id}:${p1.group_id}:${p1.user_id}`, p1)
-    }
-  }
-
-  return leg1PredByKey
+/**
+ * Palpites dos jogos informados, só de grupos não excluídos. Um jogo de volta
+ * traz junto os palpites da ida, que decidem o classificado.
+ */
+async function fetchPredictions(db: D1Database, matchIds: string[]): Promise<ScoredPredictionRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT p.id, p.match_id, p.group_id, p.user_id,
+              p.predicted_home_score, p.predicted_away_score, p.predicted_penalty_winner,
+              g.points_exact, g.points_winner, g.points_penalty, g.points_classified
+       FROM predictions p
+       JOIN groups g ON g.id = p.group_id AND ${ACTIVE_GROUP_SQL}
+       WHERE p.match_id IN (SELECT value FROM json_each(?))`,
+    )
+    .bind(JSON.stringify(matchIds))
+    .all<ScoredPredictionRow>()
+  return results
 }
 
 /**
@@ -280,11 +230,11 @@ async function fetchLeg1Predictions(
  * Repontuar é idempotente: os pontos são gravados com SET e o ranking é a soma.
  */
 function findLeg2ToRescore(
-  unscored: UnscoredMatchRow[],
+  unscored: PlannedMatch[],
   ties: Map<string, TieInfo<TieMatchRow>>,
-): UnscoredMatchRow[] {
+): PlannedMatch[] {
   const unscoredIds = new Set(unscored.map((m) => m.id))
-  const extra: UnscoredMatchRow[] = []
+  const extra: PlannedMatch[] = []
   for (const m of unscored) {
     const tie = ties.get(m.id)
     const leg2 = tie?.partner
@@ -297,6 +247,8 @@ function findLeg2ToRescore(
       home_score: leg2.home_score,
       away_score: leg2.away_score,
       penalty_phases: m.penalty_phases,
+      // Ida e volta têm os mesmos grupos: a contagem da ida serve de estimativa.
+      prediction_count: m.prediction_count,
     })
   }
   return extra
@@ -389,91 +341,115 @@ function evaluateClassifiedPointsForPrediction(
 }
 
 /**
- * Finds finished matches with no scored_at in the given competition and scores them.
- * Safe to call multiple times — matches already scored are skipped. Concurrent runs,
- * a retry after a failed batch and a score correction mid-run end with the points
- * and ranking of a single run over the latest result.
+ * Tamanho de uma gravação. Jogos com poucos palpites dividem a mesma gravação até
+ * somar `PREDICTIONS_PER_WRITE` palpites ou `MATCHES_PER_WRITE` jogos. Um jogo com
+ * mais palpites que isso vai inteiro numa gravação só dele, com os pontos em
+ * instruções de até `PREDICTIONS_PER_STATEMENT` palpites. Cada bind do D1 aceita
+ * 2 MB, e os pontos de 1000 palpites ocupam cerca de 50 KB.
  */
-export async function scoreUnprocessedMatches(
-  competitionId: string,
-  db: D1Database,
-): Promise<void> {
-  // 1. Fetch all unscored matches along with penalty context and scores
-  const unscored = await db
-    .prepare(
-      `SELECT m.id, m.competition_id, m.home_team_id, m.away_team_id, m.start_time,
-              m.home_score, m.away_score, m.penalty_winner, m.phase, m.leg, c.penalty_phases
-       FROM matches m
-       JOIN competitions c ON c.id = m.competition_id
-       WHERE m.competition_id = ?
-         AND m.status = 'finished'
-         AND m.scored_at IS NULL
-         AND m.home_score IS NOT NULL
-         AND m.away_score IS NOT NULL`,
-    )
-    .bind(competitionId)
-    .all<UnscoredMatchRow>()
+const PREDICTIONS_PER_WRITE = 250
+const MATCHES_PER_WRITE = 25
+const PREDICTIONS_PER_STATEMENT = 1000
 
-  if (unscored.results.length === 0) return
+/**
+ * Chamadas ao D1 do planejamento (jogos sem pontuação e confrontos de mata-mata)
+ * e de cada gravação (leitura dos palpites e o `batch`).
+ */
+const PLAN_CALLS = 2
+const WRITE_CALLS = 2
 
-  // 2. Knockout ties: pair each match with the other leg and pull back the
-  // already-scored leg 2 of any leg 1 whose score was corrected. A decisive match
-  // tied without the shootout winner waits, with no scored_at, for the provider.
-  const tieMatches = await fetchTieMatches<TieMatchRow>(
-    db,
-    competitionId,
-    unscored.results.map((m) => m.phase),
-    TIE_MATCH_COLUMNS,
-  )
-  const ties = indexTies(tieMatches)
-  const matchesToScore = [
-    ...unscored.results,
-    ...findLeg2ToRescore(unscored.results, ties),
-  ].filter((m) => !awaitsPenaltyWinner(m, ties.get(m.id)))
+/** Chamadas abaixo das quais `scoreUnprocessedMatches` não começa: planejar e gravar uma vez. */
+export const MIN_SCORING_CALLS = PLAN_CALLS + WRITE_CALLS
 
-  // 3. Fetch predictions for all matches to score in chunks (D1 bind limit ~100),
-  // plus the leg 1 predictions that the leg 2 classified bonus depends on.
-  const matchIds = matchesToScore.map((m) => m.id)
-  const leg1Ids = Array.from(
-    new Set(
-      matchesToScore.flatMap((m) => {
-        const tie = ties.get(m.id)
-        return tie?.role === 'leg2' && tie.partner ? [tie.partner.id] : []
-      }),
-    ),
-  )
-  const [allPredictions, leg1PredByKey] = await Promise.all([
-    fetchPredictionsInChunks(db, matchIds),
-    fetchLeg1Predictions(db, leg1Ids),
-  ])
+export type ScoringOutcome = {
+  /** Jogos cuja gravação rodou. Ela não altera nada se o resultado mudou depois da leitura. */
+  scored: number
+  /** `false` quando a execução parou por falta de chamadas, com ou sem jogo pendente. */
+  complete: boolean
+}
 
-  // 4. Process matches and map them by id for quick lookup
-  const matchMap = new Map<string, UnscoredMatchRow>()
-  for (const m of matchesToScore) {
-    matchMap.set(m.id, m)
-  }
+/** Jogos gravados juntos: um jogo, ou a ida e a volta de um confronto. */
+type ScoringUnit = { matches: PlannedMatch[]; predictions: number }
 
-  const eligibleCache = new Map<string, boolean>() // match_id -> eligible
+/** Pontos de um palpite: id, pontos do placar, de pênaltis e de classificado (0 ou 1). */
+type ScoredPoints = [id: string, points: number, penalty: number, classified: number]
 
-  const now = new Date().toISOString()
-  const statements: ReturnType<D1Database['prepare']>[] = []
-  const affectedGroups = new Set<string>()
-
-  const updatePredictionStmt = db.prepare(
-    `UPDATE predictions SET points_awarded = ?, penalty_points = ?, classified_points = ? * (SELECT points_classified FROM groups WHERE id = predictions.group_id) WHERE id = ? AND ${UNCHANGED_RESULT_SQL}
-       AND EXISTS (SELECT 1 FROM groups g WHERE g.id = predictions.group_id AND ${ACTIVE_GROUP_SQL})`,
-  )
-
-  // 5. Evaluate all predictions
-  for (const p of allPredictions) {
-    const matchCtx = matchMap.get(p.match_id)!
-
-    // Cache eligibility check per match
-    let eligible = eligibleCache.get(p.match_id)
-    if (eligible === undefined) {
-      eligible = matchGoesToPenalties(parsePenaltyPhases(matchCtx.penalty_phases), matchCtx.phase)
-      eligibleCache.set(p.match_id, eligible)
+/**
+ * Agrupa os jogos em unidades de gravação. Ida e volta do mesmo confronto ficam
+ * na mesma unidade: gravada sozinha, a ida corrigida sairia dos pendentes e a
+ * execução seguinte não repontuaria a volta.
+ */
+function buildUnits(
+  matches: PlannedMatch[],
+  ties: Map<string, TieInfo<TieMatchRow>>,
+): ScoringUnit[] {
+  const units: ScoringUnit[] = []
+  const unitByMatch = new Map<string, ScoringUnit>()
+  for (const m of matches) {
+    const partnerId = ties.get(m.id)?.partner?.id
+    let unit = partnerId ? unitByMatch.get(partnerId) : undefined
+    if (!unit) {
+      unit = { matches: [], predictions: 0 }
+      units.push(unit)
     }
+    unit.matches.push(m)
+    unit.predictions += m.prediction_count
+    unitByMatch.set(m.id, unit)
+  }
+  return units
+}
+
+/** Junta as unidades em gravações, na ordem, sem dividir nenhuma. */
+function packWrites(units: ScoringUnit[]): ScoringUnit[] {
+  const writes: ScoringUnit[] = []
+  let current: ScoringUnit | undefined
+  for (const unit of units) {
+    if (
+      !current ||
+      current.predictions + unit.predictions > PREDICTIONS_PER_WRITE ||
+      current.matches.length + unit.matches.length > MATCHES_PER_WRITE
+    ) {
+      current = { matches: [], predictions: 0 }
+      writes.push(current)
+    }
+    current.matches.push(...unit.matches)
+    current.predictions += unit.predictions
+  }
+  return writes
+}
+
+/**
+ * Pontua os jogos de uma gravação. Lê os palpites, calcula os pontos e grava num
+ * `batch` só, que é uma transação: os pontos, o `scored_at` de cada jogo e o
+ * ranking dos grupos com palpite neles. O jogo fica marcado como pontuado junto
+ * com os pontos e o ranking, ou nada muda.
+ */
+async function scoreWrite(
+  db: D1Database,
+  matches: UnscoredMatchRow[],
+  ties: Map<string, TieInfo<TieMatchRow>>,
+): Promise<void> {
+  const toScore = new Map(matches.map((m) => [m.id, m]))
+  const penaltyPhase = new Map(
+    matches.map((m) => [m.id, matchGoesToPenalties(parsePenaltyPhases(m.penalty_phases), m.phase)]),
+  )
+  const leg1Ids = matches.flatMap((m) => {
+    const tie = ties.get(m.id)
+    return tie?.role === 'leg2' && tie.partner ? [tie.partner.id] : []
+  })
+  const predictions = await fetchPredictions(
+    db,
+    Array.from(new Set([...toScore.keys(), ...leg1Ids])),
+  )
+  const leg1PredByKey = new Map(
+    predictions.map((p) => [`${p.match_id}:${p.group_id}:${p.user_id}`, p]),
+  )
+
+  const pointsByMatch = new Map<string, ScoredPoints[]>()
+  const affectedGroups = new Set<string>()
+  for (const p of predictions) {
+    const matchCtx = toScore.get(p.match_id)
+    if (!matchCtx) continue // palpite da ida, lido só para o classificado da volta
 
     const points = calculatePoints({
       actualHome: matchCtx.home_score,
@@ -489,50 +465,124 @@ export async function scoreUnprocessedMatches(
       tie?.role === 'leg2' && tie.partner
         ? leg1PredByKey.get(`${tie.partner.id}:${p.group_id}:${p.user_id}`)
         : undefined
-    const penaltyEligible = tie?.role === 'leg2' ? Boolean(p1) : eligible && tie?.role !== 'leg1'
+    const penaltyEligible =
+      tie?.role === 'leg2' ? Boolean(p1) : penaltyPhase.get(p.match_id) && tie?.role !== 'leg1'
     const penaltyPoints = calculatePenaltyBonus(
       p.predicted_home_score + (p1?.predicted_away_score ?? 0),
       p.predicted_away_score + (p1?.predicted_home_score ?? 0),
       p.predicted_penalty_winner,
       matchCtx.penalty_winner,
       p.points_penalty,
-      penaltyEligible,
+      Boolean(penaltyEligible),
     )
 
+    // 0 ou 1. A gravação multiplica pelo valor do grupo naquele momento.
     const classifiedPoints = evaluateClassifiedPointsForPrediction(
       matchCtx,
       { ...p, points_classified: 1 },
-      ties.get(p.match_id),
+      tie,
       leg1PredByKey,
     )
 
-    statements.push(
-      updatePredictionStmt.bind(
-        points,
-        penaltyPoints,
-        classifiedPoints,
-        p.id,
-        ...unchangedResultBinds(matchCtx, tie),
-      ),
-    )
+    const scored = pointsByMatch.get(p.match_id) ?? []
+    scored.push([p.id, points, penaltyPoints, classifiedPoints])
+    pointsByMatch.set(p.match_id, scored)
     affectedGroups.add(p.group_id)
   }
 
-  // 6. Pontos primeiro: se um lote falhar, nenhum jogo recebe scored_at e a
-  // próxima execução refaz todos os palpites.
-  await runStatementBatches(db, statements)
-
-  // 7. scored_at e ranking na mesma transação: o jogo só fica marcado como
-  // pontuado junto com o ranking recalculado.
-  const updateMatchStmt = db.prepare(
+  const updatePointsStmt = db.prepare(
+    `UPDATE predictions SET points_awarded = json_extract(scored.value, '$[1]'),
+       penalty_points = json_extract(scored.value, '$[2]'),
+       classified_points = json_extract(scored.value, '$[3]')
+         * (SELECT points_classified FROM groups WHERE id = predictions.group_id)
+     FROM json_each(?) AS scored
+     WHERE predictions.id = json_extract(scored.value, '$[0]') AND ${UNCHANGED_RESULT_SQL}
+       AND EXISTS (SELECT 1 FROM groups g WHERE g.id = predictions.group_id AND ${ACTIVE_GROUP_SQL})`,
+  )
+  const markScoredStmt = db.prepare(
     `UPDATE matches SET scored_at = ? WHERE id = ? AND ${UNCHANGED_RESULT_SQL}`,
   )
-  const markScored = matchesToScore.map((m) =>
-    updateMatchStmt.bind(now, m.id, ...unchangedResultBinds(m, ties.get(m.id))),
+  const now = new Date().toISOString()
+  const statements: ReturnType<D1Database['prepare']>[] = []
+  for (const m of matches) {
+    const unchanged = unchangedResultBinds(m, ties.get(m.id))
+    const scored = pointsByMatch.get(m.id) ?? []
+    for (let i = 0; i < scored.length; i += PREDICTIONS_PER_STATEMENT) {
+      const chunk = scored.slice(i, i + PREDICTIONS_PER_STATEMENT)
+      statements.push(updatePointsStmt.bind(JSON.stringify(chunk), ...unchanged))
+    }
+    statements.push(markScoredStmt.bind(now, m.id, ...unchanged))
+  }
+  if (affectedGroups.size > 0) {
+    statements.push(leaderboardRefreshStatement(db, Array.from(affectedGroups)))
+  }
+  await db.batch(statements)
+}
+
+/**
+ * Pontua os jogos encerrados sem `scored_at` da competição, do mais antigo para o
+ * mais novo. O progresso é por jogo. Cada gravação fecha os jogos dela, e jogo
+ * com `scored_at` não é refeito. Chamar de novo é seguro. Execuções simultâneas,
+ * nova tentativa depois de uma gravação que falhou e correção de placar no meio
+ * terminam com os pontos e o ranking de uma execução só sobre o resultado mais
+ * recente.
+ *
+ * `maxCalls` limita as chamadas ao D1 desta execução. Quando a próxima gravação
+ * não cabe, a função para com `complete: false` e os jogos que faltam ficam para
+ * a execução seguinte. Sem `maxCalls` não há limite.
+ */
+export async function scoreUnprocessedMatches(
+  competitionId: string,
+  db: D1Database,
+  maxCalls = Infinity,
+): Promise<ScoringOutcome> {
+  if (maxCalls < MIN_SCORING_CALLS) return { scored: 0, complete: false }
+
+  // 1. Jogos sem pontuação, com o contexto de pênaltis e quantos palpites cada um tem.
+  const unscored = await db
+    .prepare(
+      `SELECT m.id, m.competition_id, m.home_team_id, m.away_team_id, m.start_time,
+              m.home_score, m.away_score, m.penalty_winner, m.phase, m.leg, c.penalty_phases,
+              (SELECT COUNT(*) FROM predictions p WHERE p.match_id = m.id) AS prediction_count
+       FROM matches m
+       JOIN competitions c ON c.id = m.competition_id
+       WHERE m.competition_id = ?
+         AND m.status = 'finished'
+         AND m.scored_at IS NULL
+         AND m.home_score IS NOT NULL
+         AND m.away_score IS NOT NULL
+       ORDER BY m.start_time, m.id`,
+    )
+    .bind(competitionId)
+    .all<PlannedMatch>()
+
+  if (unscored.results.length === 0) return { scored: 0, complete: true }
+
+  // 2. Confrontos de mata-mata: cada jogo com o outro jogo do par, e a volta já
+  // pontuada de uma ida que teve o placar corrigido. Jogo decisivo empatado sem o
+  // vencedor dos pênaltis espera o provedor, sem scored_at.
+  const tieMatches = await fetchTieMatches<TieMatchRow>(
+    db,
+    competitionId,
+    unscored.results.map((m) => m.phase),
+    TIE_MATCH_COLUMNS,
   )
-  const groupIds = Array.from(affectedGroups)
-  const ranking = groupIds.length > 0 ? [leaderboardRefreshStatement(db, groupIds)] : []
-  await runStatementBatches(db, markScored, ranking)
+  const ties = indexTies(tieMatches)
+  const matchesToScore = [
+    ...unscored.results,
+    ...findLeg2ToRescore(unscored.results, ties),
+  ].filter((m) => !awaitsPenaltyWinner(m, ties.get(m.id)))
+
+  // 3. Uma gravação por vez, enquanto houver chamadas.
+  let calls = PLAN_CALLS
+  let scored = 0
+  for (const write of packWrites(buildUnits(matchesToScore, ties))) {
+    if (calls + WRITE_CALLS > maxCalls) return { scored, complete: false }
+    await scoreWrite(db, write.matches, ties)
+    calls += WRITE_CALLS
+    scored += write.matches.length
+  }
+  return { scored, complete: true }
 }
 
 /** Statements for an atomic group-rule change; other groups and scoring flags stay untouched. */

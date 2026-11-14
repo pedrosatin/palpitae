@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
 vi.mock('./scoring', () => ({
-  scoreUnprocessedMatches: vi.fn(async () => undefined),
+  scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
 }))
 vi.mock('./competitionLifecycle', () => ({
   reconcileCompetitionStatus: vi.fn(async () => 'ongoing'),
@@ -68,7 +68,7 @@ describe('discoverFixtures', () => {
     scoreMock.mockReset()
     reconcileMock.mockClear()
     syncFixturesMock.mockResolvedValue(undefined as never)
-    scoreMock.mockResolvedValue(undefined)
+    scoreMock.mockResolvedValue({ scored: 0, complete: true })
   })
 
   it('does nothing when no active competitions are found', async () => {
