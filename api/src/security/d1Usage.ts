@@ -9,9 +9,9 @@ export type D1RowUsage = { rowsRead: number; rowsWritten: number }
  * informa no `meta` de cada consulta (ADR-022).
  *
  * - `run`, `all` e cada instrução de um `batch` trazem `meta` e entram na soma.
- * - `first` não traz `meta`. O medidor troca a chamada por `all`, que custa o mesmo
- *   no D1 (o `first` também executa a consulta inteira), e devolve a primeira linha
- *   ou a coluna pedida, como o `first`.
+ * - `first` não traz `meta`. O medidor troca a chamada por `all` e devolve a
+ *   primeira linha ou a coluna pedida. O custo no D1 é o mesmo porque o `first`
+ *   também executa a consulta inteira.
  * - `raw` e `exec` também não trazem `meta` e passam sem medir. O código da API não
  *   usa nenhum dos dois.
  * - Consulta que falha não entra na soma.
@@ -47,6 +47,6 @@ function firstRow(rows: Record<string, unknown>[] | undefined, column: unknown):
   const row = rows?.[0]
   if (!row) return null
   if (typeof column !== 'string') return row
-  if (!(column in row)) throw new Error(`D1_COLUMN_NOTFOUND: Column not found (${column})`)
+  if (!Object.hasOwn(row, column)) throw new Error(`D1_COLUMN_NOTFOUND: Column not found (${column})`)
   return row[column]
 }

@@ -260,8 +260,14 @@ respondem 503. As duas situações registram `security_storage_error`.
 
 Cada usuário com sessão válida também tem um orçamento diário de linhas do D1, de
 250 mil lidas e 5 mil escritas, que vira à 00:00 UTC (ADR-022). O limitador soma o
-`rows_read` e o `rows_written` que o D1 informa em cada consulta da requisição e
-guarda o total em `request_limits`. Com o orçamento esgotado, a API responde 429
+`rows_read` e o `rows_written` que o D1 informa nas consultas da sessão e do
+handler e guarda o total em `request_limits`. As consultas do próprio limitador
+ficam fora da conta, e a linha de escrita só é gravada quando a requisição
+escreveu. Uma requisição só de leitura grava 4 linhas no D1, 2 do contador por
+minuto e 2 do balde de leitura, sem gastar o orçamento de escrita. A cota de 100
+mil escritas do Workers Free comporta 25 mil dessas requisições por dia. Uma
+requisição que escreve `w` linhas cobra `w + 4` do orçamento de escrita. Com o
+orçamento esgotado, a API responde 429
 com `Retry-After` até a virada, antes do balde por minuto. Logout e logout-all
 ficam fora dessa recusa. `D1_DAILY_ROWS_READ_PER_USER` e
 `D1_DAILY_ROWS_WRITTEN_PER_USER` substituem os padrões. A decisão de ficar no

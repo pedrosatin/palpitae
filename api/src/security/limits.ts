@@ -44,10 +44,10 @@ const DAY_SECONDS = 86_400
 // D1_DAILY_ROWS_WRITTEN_PER_USER substituem os padrões.
 export const DAILY_D1_ROWS = { read: 250_000, written: 5_000 }
 
-// Linhas que a gravação do balde diário escreve em cada requisição, somando as duas
-// linhas do balde e as entradas delas no índice de expiração. Valor fixo, porque a
-// própria gravação não tem como se medir.
-export const DAILY_BUCKET_ROWS_WRITTEN = 4
+// Linhas que a gravação do balde diário escreve para cada linha do balde, com a linha
+// e a entrada dela no índice de expiração. A própria gravação não tem como se medir.
+// O valor só entra na linha de escrita, quando a requisição escreveu algo.
+export const DAILY_BUCKET_ROWS_WRITTEN_PER_ROW = 2
 
 // Rotas que nunca recusam por orçamento diário. Sair da conta tem de funcionar
 // mesmo depois que um token roubado gastou o dia inteiro.
@@ -112,7 +112,8 @@ export function dailyD1Limits(env: {
 function rowLimit(name: string, raw: string | undefined, fallback: number): number {
   const value = raw?.trim()
   if (!value) return fallback
-  if (/^\d+$/.test(value) && Number(value) > 0) return Number(value)
+  const limit = /^\d+$/.test(value) ? Number(value) : NaN
+  if (Number.isSafeInteger(limit) && limit > 0) return limit
   console.error(`[limits] ${name} inválido (${JSON.stringify(raw)}): usando ${fallback}.`)
   return fallback
 }
@@ -142,7 +143,13 @@ export async function dailyBudgetExhausted(
 
 /**
  * Soma ao balde do dia as linhas da requisição. Um balde de outro dia recomeça do
- * valor desta requisição. A gravação escreve as duas linhas numa só consulta.
+ * valor desta requisição. Só grava a linha com uso positivo, numa só consulta, e
+ * nada quando a requisição não leu nem escreveu. A linha de escrita leva também o
+ * custo da própria gravação, de cada linha gravada nesta consulta.
+ *
+ * O `usage` só tem o que passou pelo `DB` medido até aqui. Uma consulta feita com ele
+ * depois da resposta, como dentro de `ctx.waitUntil`, e as feitas por
+ * `db.withSession()` ficam fora do balde. Hoje nenhuma rota faz isso.
  */
 export async function chargeDailyBudget(
   db: D1Database,
@@ -150,28 +157,29 @@ export async function chargeDailyBudget(
   usage: D1RowUsage,
   now = Math.floor(Date.now() / 1000),
 ): Promise<void> {
+  const charges: [key: string, hits: number][] = []
+  if (usage.rowsRead > 0) charges.push([keys.read, usage.rowsRead])
+  if (usage.rowsWritten > 0) {
+    const bucketRows = charges.length + 1
+    charges.push([
+      keys.written,
+      usage.rowsWritten + bucketRows * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW,
+    ])
+  }
+  if (charges.length === 0) return
   const start = dayStart(now)
   const end = start + DAY_SECONDS
   await db
     .prepare(
       `INSERT INTO request_limits (bucket_key, window_start, hits, expires_at)
-      VALUES (?, ?, ?, ?), (?, ?, ?, ?)
+      VALUES ${charges.map(() => '(?, ?, ?, ?)').join(', ')}
       ON CONFLICT (bucket_key) DO UPDATE SET
         hits = CASE WHEN request_limits.window_start >= excluded.window_start
           THEN request_limits.hits + excluded.hits ELSE excluded.hits END,
         window_start = MAX(request_limits.window_start, excluded.window_start),
         expires_at = MAX(request_limits.expires_at, excluded.expires_at)`,
     )
-    .bind(
-      keys.read,
-      start,
-      usage.rowsRead,
-      end,
-      keys.written,
-      start,
-      usage.rowsWritten + DAILY_BUCKET_ROWS_WRITTEN,
-      end,
-    )
+    .bind(...charges.flatMap(([key, hits]) => [key, start, hits, end]))
     .run()
 }
 
@@ -328,8 +336,9 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
         ? 'read'
         : 'write'
 
-  // Daqui em diante toda consulta da requisição passa pelo medidor, inclusive as do
-  // próprio limitador. O env é copiado, porque o objeto original serve a outras requisições.
+  // Daqui em diante as consultas da sessão e do handler passam pelo medidor. As do
+  // próprio limitador usam `db`, sem medidor, e ficam fora do orçamento. O env é
+  // copiado, porque o objeto original serve a outras requisições.
   const db = c.env.DB
   const usage: D1RowUsage = { rowsRead: 0, rowsWritten: 0 }
   c.env = { ...c.env, DB: meterD1Rows(db, usage) }
@@ -349,6 +358,8 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
     if (anonymous.shared) limit = SHARED_PROXY_LIMITS[category]
   }
 
+  // Um só instante para a checagem e o Retry-After, que não podem cair em dias diferentes.
+  const now = Math.floor(Date.now() / 1000)
   try {
     if (userId) {
       const [read, written] = await Promise.all([
@@ -360,9 +371,8 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
       // só lê.
       if (
         !DAILY_BUDGET_EXEMPT.has(c.req.path) &&
-        (await dailyBudgetExhausted(c.env.DB, daily, dailyD1Limits(c.env)))
+        (await dailyBudgetExhausted(db, daily, dailyD1Limits(c.env), now))
       ) {
-        const now = Math.floor(Date.now() / 1000)
         c.header('Retry-After', String(dayStart(now) + DAY_SECONDS - now))
         return c.json(
           {
@@ -374,11 +384,8 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
       }
     }
     const key = await bucketKey(c.env.JWT_SECRET, `${category}:${identity}`)
-    if (!(await consumeLimit(c.env.DB, key, limit))) {
-      c.header(
-        'Retry-After',
-        String(WINDOW_SECONDS - (Math.floor(Date.now() / 1000) % WINDOW_SECONDS)),
-      )
+    if (!(await consumeLimit(db, key, limit, now))) {
+      c.header('Retry-After', String(WINDOW_SECONDS - (now % WINDOW_SECONDS)))
       return c.json({ error: 'Muitas requisições. Tente novamente em instantes.' }, 429)
     }
   } catch (error) {

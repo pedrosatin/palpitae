@@ -279,8 +279,8 @@ describe('erros em JSON', () => {
   it('exceção não tratada em rota responde 500 com { error }', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const token = await signJwt({ sub: 'user-1', email: 'a@example.com' }, env.JWT_SECRET, 3600)
-    // O D1 falha depois da sessão e do limitador (orçamento diário e balde por
-    // minuto): o handler da rota não trata a exceção.
+    // O D1 falha depois da sessão, do orçamento diário e do balde por minuto. O
+    // handler da rota não trata a exceção.
     let calls = 0
     const query = async () => {
       if (++calls > 3) throw new Error('D1_ERROR: no such table')

@@ -1,14 +1,20 @@
 /// <reference types="node" />
 import type { DatabaseSync } from 'node:sqlite'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { reportD1Rows } from '../testing/d1RowsReported'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { chargeDailyBudget, DAILY_BUCKET_ROWS_WRITTEN, dailyBudgetExhausted } from './limits'
+import {
+  chargeDailyBudget,
+  DAILY_BUCKET_ROWS_WRITTEN_PER_ROW,
+  dailyBudgetExhausted,
+  dailyD1Limits,
+} from './limits'
 import { meterD1Rows, type D1RowUsage } from './d1Usage'
 
 const handles: DatabaseSync[] = []
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
+  vi.restoreAllMocks()
 })
 
 // Cada consulta informa 3 linhas lidas, e cada escrita 2 linhas escritas.
@@ -46,8 +52,9 @@ describe('meterD1Rows', () => {
     expect(await select.bind(7, 8).first('m')).toBe(8)
     expect(await metered.prepare('SELECT 1 AS n WHERE 0').first()).toBeNull()
     await expect(select.bind(7, 8).first('x')).rejects.toThrow('D1_COLUMN_NOTFOUND')
+    await expect(select.bind(7, 8).first('toString')).rejects.toThrow('D1_COLUMN_NOTFOUND')
 
-    expect(usage.rowsRead).toBe(12)
+    expect(usage.rowsRead).toBe(15)
   })
 })
 
@@ -69,13 +76,52 @@ describe('balde diário do D1', () => {
     expect(await dailyBudgetExhausted(db, keys, limits, day + 86_401)).toBe(false)
   })
 
-  it('cobra das linhas escritas o custo fixo da própria gravação', async () => {
+  const hits = (sqlite: DatabaseSync, key: string) =>
+    sqlite.prepare('SELECT hits FROM request_limits WHERE bucket_key = ?').get(key)
+
+  it('não grava nada quando a requisição não leu nem escreveu', async () => {
     const { sqlite, db } = setup()
 
     await chargeDailyBudget(db, keys, { rowsRead: 0, rowsWritten: 0 }, day)
 
-    expect(
-      sqlite.prepare('SELECT hits FROM request_limits WHERE bucket_key = ?').get(keys.written),
-    ).toEqual({ hits: DAILY_BUCKET_ROWS_WRITTEN })
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM request_limits').get()).toEqual({ n: 0 })
+  })
+
+  it('só de leitura grava só a linha de leitura, sem custo de escrita', async () => {
+    const { sqlite, db } = setup()
+
+    await chargeDailyBudget(db, keys, { rowsRead: 7, rowsWritten: 0 }, day)
+
+    expect(hits(sqlite, keys.read)).toEqual({ hits: 7 })
+    expect(hits(sqlite, keys.written)).toBeUndefined()
+  })
+
+  it('cobra das linhas escritas o custo de cada linha do balde gravada', async () => {
+    const { sqlite, db } = setup()
+
+    await chargeDailyBudget(db, keys, { rowsRead: 0, rowsWritten: 1 }, day)
+    expect(hits(sqlite, keys.read)).toBeUndefined()
+    expect(hits(sqlite, keys.written)).toEqual({ hits: 1 + DAILY_BUCKET_ROWS_WRITTEN_PER_ROW })
+
+    await chargeDailyBudget(db, keys, { rowsRead: 3, rowsWritten: 1 }, day + 1)
+    expect(hits(sqlite, keys.read)).toEqual({ hits: 3 })
+    expect(hits(sqlite, keys.written)).toEqual({
+      hits: 2 + 3 * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW,
+    })
+  })
+})
+
+describe('dailyD1Limits', () => {
+  it('aceita inteiro positivo e volta ao padrão com valor fora do inteiro seguro', () => {
+    expect(dailyD1Limits({ D1_DAILY_ROWS_READ_PER_USER: ' 1000 ' })).toEqual({
+      read: 1000,
+      written: 5_000,
+    })
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    for (const value of ['0', '1e9', '9007199254740993', '9'.repeat(400)]) {
+      expect(dailyD1Limits({ D1_DAILY_ROWS_WRITTEN_PER_USER: value }).written).toBe(5_000)
+    }
+    expect(error).toHaveBeenCalledTimes(4)
   })
 })
