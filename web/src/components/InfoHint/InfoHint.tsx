@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { TOOLTIP_TIMEOUT_MS, useAutoClose } from '../../hooks/useAutoClose'
+import { useOutsideClick } from '../../hooks/useOutsideClick'
 import styles from './InfoHint.module.css'
-
-export const TOOLTIP_TIMEOUT_MS = 4000
 
 interface InfoHintProps {
   label: string
@@ -41,22 +41,8 @@ export default function InfoHint({
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLSpanElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const t = setTimeout(() => setOpen(false), TOOLTIP_TIMEOUT_MS)
-    return () => clearTimeout(t)
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    function onClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [open])
+  useAutoClose(open, () => setOpen(false), TOOLTIP_TIMEOUT_MS)
+  useOutsideClick(containerRef, open, () => setOpen(false))
 
   function toggle() {
     if (!open) onOpen?.()
