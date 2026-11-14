@@ -10,6 +10,15 @@ import { ESPN_PRIMARY_COMPETITIONS } from './espnSync'
 import { discoverFixtures } from './fixtureDiscovery'
 
 const handles: DatabaseSync[] = []
+
+/** Todas as colunas de `competitions`, menos o contador do cache, que sobe a cada gravação de jogo. */
+function competitionRows(sqlite: DatabaseSync, where = '') {
+  return sqlite
+    .prepare(`SELECT * FROM competitions ${where} ORDER BY id`)
+    .all()
+    .map(({ matches_version: _version, ...row }) => row)
+}
+
 const codes = Object.keys(ESPN_PRIMARY_COMPETITIONS)
 const JWT_SECRET = 'season-2027-test-secret'
 
@@ -114,7 +123,7 @@ describe('preparação das temporadas ESPN 2027', () => {
     '%s exige ano explícito do evento antes de cadastrar temporada, time ou jogo',
     async (code) => {
       const { sqlite, request } = await fixture()
-      const before = sqlite.prepare('SELECT * FROM competitions ORDER BY id').all()
+      const before = competitionRows(sqlite)
       const withoutYear = event(code)
       delete withoutYear.season?.year
       const wrongYear = event(code, 2026)
@@ -136,7 +145,7 @@ describe('preparação das temporadas ESPN 2027', () => {
         expect(await res.json()).toMatchObject({
           synced: { competitionId: '', matches: 0, teams: 0 },
         })
-        expect(sqlite.prepare('SELECT * FROM competitions ORDER BY id').all()).toEqual(before)
+        expect(competitionRows(sqlite)).toEqual(before)
         expect(sqlite.prepare('SELECT COUNT(*) AS n FROM teams').get()).toEqual({ n: 0 })
         expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 0 })
       }
@@ -145,9 +154,7 @@ describe('preparação das temporadas ESPN 2027', () => {
 
   it('sincroniza 2027 sem duplicar, preserva 2026 e promove apenas a competição escolhida pelo admin', async () => {
     const { sqlite, db, request } = await fixture()
-    const before2026 = sqlite
-      .prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id")
-      .all()
+    const before2026 = competitionRows(sqlite, "WHERE season = '2026'")
     const fetchMock = stubBoard((code) => ({ events: [event(code, 2026), event(code)] }))
     expect(
       (await request('/matches/sync', 'ordinary', { competition: codes[0], season: 2027 })).status,
@@ -171,9 +178,9 @@ describe('preparação das temporadas ESPN 2027', () => {
       )
       .all()
     expect(seasons).toHaveLength(4)
-    expect(
-      seasons.every((row) => row.status === 'upcoming' && row.visibility === 'pilot'),
-    ).toBe(true)
+    expect(seasons.every((row) => row.status === 'upcoming' && row.visibility === 'pilot')).toBe(
+      true,
+    )
     const bySlug = Object.fromEntries(seasons.map((row) => [String(row.slug), row]))
     expect(bySlug['brasileirao-serie-b-2027']?.type).toBe('league')
     expect(bySlug['conmebol-libertadores-2027']?.type).toBe('cup')
@@ -181,15 +188,11 @@ describe('preparação das temporadas ESPN 2027', () => {
     expect(bySlug['copa-do-brasil-2027']?.type).toBe('cup')
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM teams').get()).toEqual({ n: 2 })
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 4 })
-    expect(
-      sqlite.prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id").all(),
-    ).toEqual(before2026)
+    expect(competitionRows(sqlite, "WHERE season = '2026'")).toEqual(before2026)
 
     await discoverFixtures(db, '')
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 8 })
-    expect(
-      sqlite.prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id").all(),
-    ).toEqual(before2026)
+    expect(competitionRows(sqlite, "WHERE season = '2026'")).toEqual(before2026)
 
     const list = async (user: 'ordinary' | 'pilot') => {
       const res = await request('/competitions', user)
