@@ -84,7 +84,7 @@ function lineWeight(value: unknown): number | null {
 
 /**
  * Soma uma linha do NDJSON ao dia. Conta como malformada a linha que não é
- * objeto JSON, cujo `blob1` não é texto (ausente vira `unknown`) ou cujo
+ * objeto JSON, cujo `blob1` não é texto (ausente ou null vira `unknown`) ou cujo
  * `_sample_interval` é inválido.
  */
 function countLine(line: string, tally: DayTally): void {
@@ -222,7 +222,7 @@ export interface ArchiveQueryResult {
   byDay: { day: string; count: number }[]
   /** Dias cujo arquivo entrou no resultado, em ordem. */
   daysRead: string[]
-  /** true quando o orçamento de bytes parou a leitura antes do último dia. */
+  /** true quando o orçamento de bytes impediu a inclusão de todos os arquivos encontrados. */
   truncated: boolean
   malformedLines: number
   /** Bytes recebidos do R2, inclusive os do dia interrompido pelo orçamento. */

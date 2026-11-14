@@ -1279,7 +1279,11 @@ function ArchiveQuerySection({
             </p>
           )}
           {result.byType.length === 0 ? (
-            <p className={styles.hint}>Nenhum evento arquivado nesse mês.</p>
+            <p className={styles.hint}>
+              {result.truncated
+                ? 'Nenhum evento nos dias incluídos no resultado.'
+                : 'Nenhum evento arquivado nesse mês.'}
+            </p>
           ) : (
             <table className={styles.table}>
               <tbody>

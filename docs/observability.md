@@ -735,9 +735,11 @@ tamanho declarado de cada arquivo é conferido antes de consumir o corpo, e os b
 somados a cada pedaço do stream: o corpo é cancelado ao chegar o pedaço que passa do orçamento.
 Nesse caso a leitura para ali e a resposta sai com `truncated: true`; `daysRead` lista os dias que
 entraram no resultado e os agregados do dia interrompido ficam de fora. Linha que não é objeto
-JSON, com `blob1` que não é texto, com `_sample_interval` inválido (fora de número ou texto
-numérico não negativo) ou com mais de 64 KiB em UTF-8 é pulada e somada em `malformedLines`, sem
-derrubar a consulta, qualquer que seja o fatiamento do stream. `bytesRead` soma os bytes recebidos
+JSON, com `blob1` que não é texto, com `_sample_interval` inválido ou com mais de 64 KiB em UTF-8
+é pulada e somada em `malformedLines`, sem
+derrubar a consulta, qualquer que seja o fatiamento do stream. `blob1` ausente ou null vira
+`unknown`. `_sample_interval` ausente ou null vale 1; outro valor precisa ser número ou texto
+numérico, finito e não negativo. `bytesRead` soma os bytes recebidos
 do R2, inclusive os do dia interrompido. Erro do R2 no meio da leitura derruba a consulta com 500,
 como antes do streaming, e o corpo em leitura é cancelado. Os campos antigos
 (`from`, `to`, `filesRead`, `totalEvents`, `byType`, `byDay`) seguem iguais, e a página avisa
