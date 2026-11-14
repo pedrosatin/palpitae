@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { runInBatches } from '../d1Batch'
 import { tryLogEvent } from '../observability/events'
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
@@ -10,6 +11,20 @@ import {
   readFootballDataQuota,
   waitForFootballDataQuota,
 } from './footballDataQuota'
+import {
+  countTbdDiscards,
+  isoSeconds,
+  loadTeamIds,
+  type MatchResultFields,
+  type MatchUpsertRow,
+  NO_RESULT,
+  reportDiscards,
+  resolveStartTime,
+  slugify,
+  type SyncDiscard,
+  type SyncResult,
+  writeMatchUpserts,
+} from './matchUpsert'
 import { indexTies } from './ties'
 
 const PROVIDER = 'football-data'
@@ -141,69 +156,52 @@ export type SyncOptions = {
 /** Saldo de `match_missing_from_feed` que ainda cabe na execução. */
 export type MissingEventBudget = { remaining: number }
 
-export type SyncResult = {
-  competition: string
-  competitionId: string
-  matches: number
-  teams: number
-  /** Eventos do provedor que o sync não importou (motivos em `sync_event_discarded`). */
-  discarded: number
-  /**
-   * Dos descartados, os jogos com time ainda indefinido (`missing_competitor`/`tbd`):
-   * o calendário tem jogo que ainda não pode ser gravado.
-   */
-  discardedTbd: number
-  /** Jogos pendentes que o calendário completo não trouxe (`match_missing_from_feed`). */
-  missing: number
-}
-
 /**
- * Por que o sync não importou um evento do provedor. `unknown_stage`: fase fora
- * do mapa da ESPN; `season_mismatch`: evento de outra edição; `missing_competitor`:
- * time ausente ou ainda indefinido; `invalid_event`: id, data ou confronto inválidos.
+ * Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
+ * SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data às vezes INCLUI os
+ * gols de pênalti, e outras vezes não (além de regularTime e extraTime ocasionalmente
+ * virem nulos).
+ *
+ * Estratégia (prioridade decrescente):
+ * 1. Se regularTime está disponível (não-null): canonicalScore = regularTime + extraTime.
+ *    Esses campos NUNCA incluem gols de pênalti e são a fonte mais confiável.
+ * 2. Se regularTime é null (provider omitiu) e fullTime é diferente: subtrai os gols
+ *    de pênalti de fullTime. Essa heurística assume que o provider embutiu os pênaltis
+ *    em fullTime — o que só acontece quando os valores são desiguais.
+ * 3. fullTime igual: já é o placar do empate, não faz nada.
  */
-export type SyncDiscard = {
-  reason: 'unknown_stage' | 'season_mismatch' | 'missing_competitor' | 'invalid_event'
-  /** Slug da fase, ano da edição recebida, `tbd` ou o campo inválido; vazio se não há. */
-  detail: string
-}
-
 export function resolveCanonicalScore(score: ApiMatch['score']): {
   canonicalHome: number | null
   canonicalAway: number | null
 } {
-  const isShootout = score.duration === 'PENALTY_SHOOTOUT'
-  let canonicalHome = score.fullTime.home ?? null
-  let canonicalAway = score.fullTime.away ?? null
-
-  if (isShootout) {
-    const rtHome = score.regularTime?.home
-    const rtAway = score.regularTime?.away
-    if (rtHome !== null && rtHome !== undefined && rtAway !== null && rtAway !== undefined) {
-      // Fonte canônica: regularTime + extraTime (nunca contaminados por pênaltis).
-      canonicalHome = rtHome + (score.extraTime?.home ?? 0)
-      canonicalAway = rtAway + (score.extraTime?.away ?? 0)
-    } else if (
-      canonicalHome !== null &&
-      canonicalAway !== null &&
-      canonicalHome !== canonicalAway
-    ) {
-      // Fallback: fullTime diferente → provider embutiu pênaltis → subtrai.
-      canonicalHome -= score.penalties?.home ?? 0
-      canonicalAway -= score.penalties?.away ?? 0
-
-      // Sanity check: shootout implies a draw. If subtraction yields a non-draw or negative score,
-      // fallback to the most reasonable non-negative draw score.
-      if (canonicalHome < 0 || canonicalAway < 0 || canonicalHome !== canonicalAway) {
-        const drawScore = Math.max(0, Math.min(canonicalHome, canonicalAway))
-        canonicalHome = drawScore
-        canonicalAway = drawScore
-      }
-    }
-    // else: fullTime já é o placar do empate.
+  const fullHome = score.fullTime.home ?? null
+  const fullAway = score.fullTime.away ?? null
+  if (score.duration !== 'PENALTY_SHOOTOUT') {
+    return { canonicalHome: fullHome, canonicalAway: fullAway }
   }
 
-  return { canonicalHome, canonicalAway }
+  const rtHome = score.regularTime?.home
+  const rtAway = score.regularTime?.away
+  if (typeof rtHome === 'number' && typeof rtAway === 'number') {
+    return {
+      canonicalHome: rtHome + (score.extraTime?.home ?? 0),
+      canonicalAway: rtAway + (score.extraTime?.away ?? 0),
+    }
+  }
+
+  if (fullHome === null || fullAway === null || fullHome === fullAway) {
+    return { canonicalHome: fullHome, canonicalAway: fullAway }
+  }
+
+  const home = fullHome - (score.penalties?.home ?? 0)
+  const away = fullAway - (score.penalties?.away ?? 0)
+  // Disputa de pênaltis implica empate. Se a subtração der placar desigual ou
+  // negativo, usa o empate não negativo mais plausível.
+  if (home < 0 || away < 0 || home !== away) {
+    const drawScore = Math.max(0, Math.min(home, away))
+    return { canonicalHome: drawScore, canonicalAway: drawScore }
+  }
+  return { canonicalHome: home, canonicalAway: away }
 }
 
 /** Status da football-data.org que encerram o jogo. */
@@ -250,41 +248,6 @@ const STARTED_STATUSES = new Set([
 export function resolveLockedAt(providerStatus: string, now: string): string | null {
   return STARTED_STATUSES.has(providerStatus) ? now : null
 }
-
-/** ISO 8601 sem milissegundos, no mesmo formato de `start_time`. */
-export function isoSeconds(date: Date): string {
-  return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
-}
-
-/**
- * Horário do provedor no formato que `matches.start_time` aceita
- * (`YYYY-MM-DDTHH:MM:SSZ`, migration 0043), ou null se a data não é válida.
- * Milissegundos e fuso são normalizados; o sync descarta a data inválida em vez
- * de deixar o gatilho derrubar o lote inteiro.
- */
-export function resolveStartTime(rawDate: unknown): string | null {
-  if (typeof rawDate !== 'string') return null
-  const parsed = Date.parse(rawDate)
-  if (!Number.isFinite(parsed)) return null
-  return isoSeconds(new Date(parsed))
-}
-
-export function slugify(str: string): string {
-  return str
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-}
-
-/**
- * Syncs fixtures from football-data.org into D1.
- * Upserts: competition, teams, and matches.
- *
- * Copa do Mundo 2026: competitionCode="WC", season=2026
- * First matchday only: matchday=1
- */
 
 async function fetchMatchesFromApi(
   competitionCode: string,
@@ -411,67 +374,6 @@ async function upsertCompetition(
   return created
 }
 
-/** Competição pela chave do provedor, ou vazio. Falha de leitura também vira vazio. */
-async function findCompetitionId(
-  db: D1Database,
-  provider: string,
-  externalId: string,
-  season: number,
-): Promise<string> {
-  try {
-    const row = await db
-      .prepare(`SELECT id FROM competitions WHERE provider = ? AND external_id = ? AND season = ?`)
-      .bind(provider, externalId, String(season))
-      .first<{ id: string }>()
-    return row?.id ?? ''
-  } catch {
-    return ''
-  }
-}
-
-/**
- * Registra os eventos que o sync não importou, um `sync_event_discarded` por
- * motivo e detalhe com a quantidade, e devolve o total. Sem `competitionId` (o
- * sync não chegou a gravar jogo), procura a competição pela chave do provedor.
- * Nada aqui interrompe o sync: os jogos válidos já foram gravados.
- */
-export async function reportDiscards(
-  db: D1Database,
-  discards: SyncDiscard[],
-  scope: {
-    ae?: AnalyticsEngineDataset
-    provider: string
-    competitionCode: string
-    season: number
-    competitionId?: string
-  },
-): Promise<number> {
-  if (discards.length === 0) return 0
-  const competitionId =
-    scope.competitionId ??
-    (await findCompetitionId(db, scope.provider, scope.competitionCode, scope.season))
-
-  const counts = new Map<string, { discard: SyncDiscard; count: number }>()
-  for (const discard of discards) {
-    const key = `${discard.reason}\u0000${discard.detail}`
-    const entry = counts.get(key) ?? { discard, count: 0 }
-    entry.count += 1
-    counts.set(key, entry)
-  }
-  for (const { discard, count } of counts.values()) {
-    tryLogEvent(scope.ae, 'sync_event_discarded', {
-      blobs: [scope.provider, competitionId, discard.reason, discard.detail, scope.competitionCode],
-      doubles: [count],
-    })
-  }
-  return discards.length
-}
-
-/** Descartes de jogo com time ainda indefinido (`missing_competitor`/`tbd`). */
-export function countTbdDiscards(discards: SyncDiscard[]): number {
-  return discards.filter((d) => d.reason === 'missing_competitor' && d.detail === 'tbd').length
-}
-
 /** Teto de `match_missing_from_feed` por competição; o total vai no retorno. */
 export const MISSING_EVENTS_PER_COMPETITION = 10
 
@@ -514,21 +416,10 @@ async function reportMissingFromFeed(
   }
 }
 
-export async function batchStatements(
-  db: D1Database,
-  statements: D1PreparedStatement[],
-): Promise<void> {
-  const batches = []
-  for (let i = 0; i < statements.length; i += 100) {
-    batches.push(db.batch(statements.slice(i, i + 100)))
-  }
-  await Promise.all(batches)
-}
-
 async function upsertTeams(
   db: D1Database,
   matches: ApiMatch[],
-): Promise<{ teamMap: Map<number, ApiTeam>; teamIds: Map<number, string> }> {
+): Promise<{ teamMap: Map<number, ApiTeam>; teamIds: Map<string, string> }> {
   const teamMap = new Map<number, ApiTeam>()
   for (const m of matches) {
     if (m.homeTeam?.id) teamMap.set(m.homeTeam.id, m.homeTeam)
@@ -570,47 +461,10 @@ async function upsertTeams(
     )
   }
 
-  if (teamStatements.length > 0) {
-    await batchStatements(db, teamStatements)
-  }
+  await runInBatches(db, teamStatements)
 
-  const teamIds = new Map<number, string>()
-  const extIds = Array.from(teamMap.keys())
-
-  if (extIds.length > 0) {
-    const { results } = await db
-      .prepare(
-        `SELECT external_id, id FROM teams WHERE external_id IN (SELECT value FROM json_each(?)) AND provider = ?`,
-      )
-      .bind(JSON.stringify(extIds.map(String)), PROVIDER)
-      .all<{ external_id: string; id: string }>()
-
-    for (const row of results) {
-      teamIds.set(Number(row.external_id), row.id)
-    }
-  }
-
+  const teamIds = await loadTeamIds(db, PROVIDER, Array.from(teamMap.keys(), String))
   return { teamMap, teamIds }
-}
-
-export type MatchUpsertRow = {
-  externalId: string
-  homeTeamId: string
-  awayTeamId: string
-  startTime: string
-  status: 'scheduled' | 'finished'
-  homeScore: number | null
-  awayScore: number | null
-  phase: string | null
-  round: string
-  groupName: string | null
-  leg: 1 | 2 | null
-  duration: ApiMatch['score']['duration']
-  penaltyWinner: 'home' | 'away' | null
-  homePenaltyGoals: number | null
-  awayPenaltyGoals: number | null
-  postponed: 0 | 1
-  lockedAt: string | null
 }
 
 /**
@@ -659,27 +513,13 @@ function mapRound(matchday: number | null, stage: string | null): string | null 
   return `${stage}_${matchday}`
 }
 
-/**
- * Placar canônico = o que o palpite compara (tempo regulamentar + prorrogação,
- * SEM pênaltis). Em PENALTY_SHOOTOUT o fullTime da football-data às vezes INCLUI os
- * gols de pênalti, e outras vezes não (além de regularTime e extraTime ocasionalmente
- * virem nulos).
- *
- * Estratégia (prioridade decrescente):
- * 1. Se regularTime está disponível (não-null): canonicalScore = regularTime + extraTime.
- *    Esses campos NUNCA incluem gols de pênalti e são a fonte mais confiável.
- * 2. Se regularTime é null (provider omitiu) e fullTime é diferente: subtrai os gols
- *    de pênalti de fullTime. Essa heurística assume que o provider embutiu os pênaltis
- *    em fullTime — o que só acontece quando os valores são desiguais.
- * 3. fullTime igual: já é o placar do empate, não faz nada.
- */
 function mapMatchUpsertRow(
   m: ApiMatch,
-  teamIds: Map<number, string>,
+  teamIds: Map<string, string>,
   now: string,
 ): MatchUpsertRow | SyncDiscard {
-  const homeTeamId = teamIds.get(m.homeTeam?.id)
-  const awayTeamId = teamIds.get(m.awayTeam?.id)
+  const homeTeamId = teamIds.get(String(m.homeTeam?.id))
+  const awayTeamId = teamIds.get(String(m.awayTeam?.id))
   if (!homeTeamId || !awayTeamId) {
     // Sem id de time é confronto ainda indefinido (mata-mata antes do sorteio).
     const tbd = !m.homeTeam?.id || !m.awayTeam?.id
@@ -709,28 +549,6 @@ function mapMatchUpsertRow(
   }
 }
 
-type MatchResultFields = Pick<
-  MatchUpsertRow,
-  | 'status'
-  | 'homeScore'
-  | 'awayScore'
-  | 'duration'
-  | 'penaltyWinner'
-  | 'homePenaltyGoals'
-  | 'awayPenaltyGoals'
->
-
-/** Jogo sem resultado final: sem placar, duração nem pênaltis. */
-export const NO_RESULT: MatchResultFields = {
-  status: 'scheduled',
-  homeScore: null,
-  awayScore: null,
-  duration: null,
-  penaltyWinner: null,
-  homePenaltyGoals: null,
-  awayPenaltyGoals: null,
-}
-
 /**
  * Resultado só com status final e placar completo, como na ESPN. A football-data
  * manda placar em jogo em andamento (parcial) e em adiado ou cancelado (0-0), e
@@ -755,203 +573,24 @@ function resolveFootballDataResult(m: ApiMatch): MatchResultFields {
   }
 }
 
-export const MATCH_UPSERT_SQL = `INSERT INTO matches (
-       id, competition_id, external_id, provider, home_team_id, away_team_id,
-       start_time, status, home_score, away_score, phase, round, group_name,
-       duration, penalty_winner, home_penalty_goals, away_penalty_goals, postponed,
-       locked_at, leg
-     )
-     VALUES (
-       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-     )
-     ON CONFLICT (external_id, provider) DO UPDATE SET
-       -- Travamento permanente: uma vez preenchido, locked_at não volta a NULL. É
-       -- preenchido quando o provedor informa início ou a linha anterior já
-       -- estava travada por status ou horário. No DO UPDATE, matches.* são os
-       -- valores antigos. O parâmetro 21 é o instante do sync, comum aos provedores.
-       locked_at          = COALESCE(
-                              matches.locked_at,
-                              CASE WHEN matches.status IN ('live', 'finished')
-                                     OR (matches.postponed = 0 AND matches.start_time <= strftime('%Y-%m-%dT%H:%M:%SZ', ?21))
-                                   THEN ?21 END,
-                              excluded.locked_at
-                            ),
-       status             = excluded.status,
-       postponed          = excluded.postponed,
-       home_score         = excluded.home_score,
-       away_score         = excluded.away_score,
-       -- Enquanto o jogo está adiado o provider zera o horário para um placeholder
-       -- de meia-noite (ex: "2026-07-29T00:00:00Z" nos 4 jogos adiados da rodada 21
-       -- do Brasileirão). Gravar isso puxaria o kickoff para ANTES do original e
-       -- bagunçaria ordenação e default_round. Preserva-se o horário conhecido até
-       -- o provider tirar o POSTPONED com uma data real — aí o UPDATE volta a valer.
-       -- Sem heurística de "parece placeholder": 00:00Z é kickoff legítimo no
-       -- Brasileirão (21h BRT), então detectar pelo horário daria falso positivo.
-       start_time         = CASE WHEN excluded.postponed = 1
-                                 THEN matches.start_time ELSE excluded.start_time END,
-       -- O provedor também corrige times, fase e rodada de um jogo já gravado. Com
-       -- o mando invertido, o gatilho matches_swap_predictions (migration 0039)
-       -- inverte os palpites do jogo na mesma instrução.
-       home_team_id       = excluded.home_team_id,
-       away_team_id       = excluded.away_team_id,
-       phase              = excluded.phase,
-       round              = excluded.round,
-       group_name         = excluded.group_name,
-       leg                = excluded.leg,
-       duration           = excluded.duration,
-       penalty_winner     = excluded.penalty_winner,
-       home_penalty_goals = excluded.home_penalty_goals,
-       away_penalty_goals = excluded.away_penalty_goals,
-       -- If a provider score-correction lands after the match was already
-       -- scored, clear scored_at so scoreUnprocessedMatches re-runs and the
-       -- points/leaderboard recompute against the final score. Without this,
-       -- the displayed score updates but points stay frozen on the stale one
-       -- (e.g. exact 4-0 predictors stuck at 1pt after a 3-0→4-0 correction).
-       -- penalty_winner também dispara o re-score: o provider pode corrigir só
-       -- o vencedor dos pênaltis sem mexer no placar canônico.
-       -- Quando o jogo corrigido é a ida de um confronto já encerrado, scoring.ts
-       -- repontua a volta junto, porque o classificado depende do agregado.
-       -- Times e fase também mudam os pontos: o palpite é lido pela posição dos
-       -- times, e a fase decide classificado e pênaltis. Perna e horário podem
-       -- mudar qual jogo decide o confronto.
-       scored_at  = CASE
-         WHEN matches.home_score IS NOT excluded.home_score
-           OR matches.away_score IS NOT excluded.away_score
-           OR matches.penalty_winner IS NOT excluded.penalty_winner
-           OR matches.home_team_id IS NOT excluded.home_team_id
-           OR matches.away_team_id IS NOT excluded.away_team_id
-           OR matches.phase IS NOT excluded.phase
-           OR matches.leg IS NOT excluded.leg
-           OR (excluded.postponed IS NOT 1 AND matches.start_time IS NOT excluded.start_time)
-         THEN NULL ELSE matches.scored_at END
-     -- Uma resposta atrasada do provedor não pode desfazer um resultado final
-     -- (inclusive obtido pelo fallback). Correções finais continuam aceitas.
-     WHERE (matches.status != 'finished' OR excluded.status = 'finished')
-       -- Só grava quando algum campo do SET muda. O sync reenvia a rodada inteira
-       -- a cada tick e quase sempre nada mudou; sem este filtro cada jogo custava
-       -- uma gravação da linha e dos índices (~75% das gravações do D1). Cada
-       -- linha espelha um campo do SET acima (scored_at só muda junto com placar,
-       -- penalty_winner ou contexto): ao acrescentar um campo no SET, acrescente aqui.
-       AND (
-         (matches.locked_at IS NULL
-           AND (matches.status IN ('live', 'finished') OR excluded.locked_at IS NOT NULL
-             OR (matches.postponed = 0 AND matches.start_time <= strftime('%Y-%m-%dT%H:%M:%SZ', ?21))))
-         OR matches.home_team_id       IS NOT excluded.home_team_id
-         OR matches.away_team_id       IS NOT excluded.away_team_id
-         OR matches.phase              IS NOT excluded.phase
-         OR matches.round              IS NOT excluded.round
-         OR matches.status             IS NOT excluded.status
-         OR matches.postponed          IS NOT excluded.postponed
-         OR matches.home_score         IS NOT excluded.home_score
-         OR matches.away_score         IS NOT excluded.away_score
-         OR (excluded.postponed IS NOT 1 AND matches.start_time IS NOT excluded.start_time)
-         OR matches.group_name         IS NOT excluded.group_name
-         OR matches.leg                IS NOT excluded.leg
-         OR matches.duration           IS NOT excluded.duration
-         OR matches.penalty_winner     IS NOT excluded.penalty_winner
-         OR matches.home_penalty_goals IS NOT excluded.home_penalty_goals
-         OR matches.away_penalty_goals IS NOT excluded.away_penalty_goals
-       )`
-
-type TeamChange = { externalId: string; kind: 'swap' | 'replace' }
-
-/**
- * Jogos já gravados que o provedor traz com outros times: `swap` quando só o
- * mando inverteu, `replace` quando um time mudou. Precisa ser lido antes do
- * upsert, que grava os times novos.
- */
-async function findTeamChanges(
-  db: D1Database,
-  provider: string,
-  rows: MatchUpsertRow[],
-): Promise<TeamChange[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT external_id, home_team_id, away_team_id FROM matches
-       WHERE provider = ? AND external_id IN (SELECT value FROM json_each(?))`,
-    )
-    .bind(provider, JSON.stringify(rows.map((row) => row.externalId)))
-    .all<{ external_id: string; home_team_id: string; away_team_id: string }>()
-  const stored = new Map(results.map((match) => [match.external_id, match]))
-  return rows.flatMap((row) => {
-    const old = stored.get(row.externalId)
-    if (!old || (old.home_team_id === row.homeTeamId && old.away_team_id === row.awayTeamId)) {
-      return []
-    }
-    const swap = old.home_team_id === row.awayTeamId && old.away_team_id === row.homeTeamId
-    return [{ externalId: row.externalId, kind: swap ? 'swap' : 'replace' }]
-  })
-}
-
-/**
- * Grava as linhas com MATCH_UPSERT_SQL e registra `match_teams_changed` para cada
- * jogo que o provedor trouxe com outros times.
- */
-export async function writeMatchUpserts(
-  db: D1Database,
-  statements: D1PreparedStatement[],
-  rows: MatchUpsertRow[],
-  scope: { ae?: AnalyticsEngineDataset; provider: string; competitionId: string },
-): Promise<void> {
-  if (statements.length === 0) return
-  const changes = await findTeamChanges(db, scope.provider, rows)
-  await batchStatements(db, statements)
-  for (const change of changes) {
-    tryLogEvent(scope.ae, 'match_teams_changed', {
-      blobs: [scope.provider, scope.competitionId, change.externalId, change.kind],
-    })
-  }
-}
-
 async function upsertMatches(
   db: D1Database,
   competitionId: string,
   matches: ApiMatch[],
-  teamIds: Map<number, string>,
+  teamIds: Map<string, string>,
   now: string,
   ae: AnalyticsEngineDataset | undefined,
 ): Promise<{ rows: MatchUpsertRow[]; discards: SyncDiscard[] }> {
-  const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
   const rows: MatchUpsertRow[] = []
   const discards: SyncDiscard[] = []
-  const matchStatements = []
 
   for (const m of matches) {
     const row = mapMatchUpsertRow(m, teamIds, now)
-    if ('reason' in row) {
-      discards.push(row)
-      continue
-    }
-
-    rows.push(row)
-    matchStatements.push(
-      matchInsertStmt.bind(
-        crypto.randomUUID(),
-        competitionId,
-        row.externalId,
-        PROVIDER,
-        row.homeTeamId,
-        row.awayTeamId,
-        row.startTime,
-        row.status,
-        row.homeScore,
-        row.awayScore,
-        row.phase,
-        row.round,
-        row.groupName,
-        row.duration,
-        row.penaltyWinner,
-        row.homePenaltyGoals,
-        row.awayPenaltyGoals,
-        row.postponed,
-        row.lockedAt,
-        row.leg,
-        now,
-      ),
-    )
+    if ('reason' in row) discards.push(row)
+    else rows.push(row)
   }
 
-  await writeMatchUpserts(db, matchStatements, rows, { ae, provider: PROVIDER, competitionId })
+  await writeMatchUpserts(db, rows, { provider: PROVIDER, competitionId, now, ae })
 
   return { rows, discards }
 }
@@ -997,6 +636,13 @@ async function reopenLeg1ScoredAsSingle(
     .run()
 }
 
+/**
+ * Syncs fixtures from football-data.org into D1.
+ * Upserts: competition, teams, and matches.
+ *
+ * Copa do Mundo 2026: competitionCode="WC", season=2026
+ * First matchday only: matchday=1
+ */
 export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
   if (isEspnPrimaryCompetition(opts.competitionCode)) {
     return syncEspnFixtures({
