@@ -164,5 +164,11 @@ describe('rounds', () => {
       expect(previousLeftoverRound(rounds, 3, new Map(), rescheduled)).toBeUndefined()
       expect(previousLeftoverRound([], -1, postponed, rescheduled)).toBeUndefined()
     })
+
+    it('considera a rodada anterior que só tem jogo remarcado', () => {
+      expect(previousLeftoverRound(['9', '21', '35'], 2, new Map(), new Map([['21', 1]]))).toBe(
+        '21',
+      )
+    })
   })
 })

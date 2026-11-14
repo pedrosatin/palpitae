@@ -104,9 +104,9 @@ export function leftoverMatchesMarker(postponed: number, rescheduled: number): s
  * Rodada com jogo adiado ou remarcado mais próxima antes da exibida.
  * Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em rodadas que
  * ficaram para trás (ADR-019). Mostra só a mais próxima porque campeonatos longos
- * acumulam adiados distantes e avisar do mais antigo faria o usuário pular muitas
- * rodadas para trás antes de ver a seguinte. Estando numa dessas rodadas, devolve
- * `undefined` para não encadear atalhos.
+ * acumulam adiados distantes e avisar do mais antigo levaria o usuário a pular
+ * muitas rodadas para trás antes de chegar à mais próxima. Se a rodada exibida já
+ * tem adiado ou remarcado, devolve `undefined` para não encadear atalhos.
  */
 export function previousLeftoverRound(
   roundKeys: readonly string[],

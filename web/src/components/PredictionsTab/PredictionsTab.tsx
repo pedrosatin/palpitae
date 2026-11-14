@@ -136,7 +136,7 @@ export default function PredictionsTab({
     pointsExact,
   )
   // Avisa sobre UMA rodada com palpite aberto fora de hora: a mais próxima ANTES
-  // da aberta (ADR-013 e ADR-019). Estando numa dessas rodadas, não há aviso.
+  // da aberta (ADR-013 e ADR-019). Se a rodada exibida é uma delas, não há aviso.
   const leftoverRound = previousLeftoverRound(
     roundKeys,
     safeIndex,
@@ -251,18 +251,16 @@ export default function PredictionsTab({
       />
 
       <SaveAllBar
-        {...{
-          showSaveBar,
-          replicating,
-          replicateFeedback,
-          canRetryReplicate,
-          retryReplicate,
-          bulkError,
-          savedAll,
-          handleSaveAll,
-          pendingCount,
-          savingAll,
-        }}
+        showSaveBar={showSaveBar}
+        replicating={replicating}
+        replicateFeedback={replicateFeedback}
+        canRetryReplicate={canRetryReplicate}
+        retryReplicate={retryReplicate}
+        bulkError={bulkError}
+        savedAll={savedAll}
+        handleSaveAll={handleSaveAll}
+        pendingCount={pendingCount}
+        savingAll={savingAll}
       />
 
       {hasSavedPredictions && <PredictionsFeedback />}
