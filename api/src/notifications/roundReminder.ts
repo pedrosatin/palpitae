@@ -27,9 +27,11 @@ const MAX_SEND_ATTEMPTS = 3
 // capacidade-coordenacao-provedores.md), então vale o pior caso: Free, com 50
 // subrequests por invocação. O D1 conta junto com o `fetch`. A invocação gasta 4
 // consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de
-// segurança do `scheduled`) e deixa 1 de folga. Sobram 45 subrequests para os `fetch`
-// ao Resend, contando cada reenvio, e para as revalidações de descadastro. É o padrão
-// do teto; `REMINDER_FETCH_BUDGET` o substitui (`reminderFetchBudget`).
+// segurança do `scheduled`) e deixa 1 de folga, que cobre a nova tentativa da
+// liberação quando a primeira falha. Sobram 45 subrequests para os `fetch` ao Resend,
+// contando cada reenvio, e para as revalidações de descadastro, contando a nova
+// tentativa de cada uma. É o padrão do teto; `REMINDER_FETCH_BUDGET` o substitui
+// (`reminderFetchBudget`).
 const SUBREQUEST_LIMIT = 50
 const D1_SUBREQUESTS = 4
 const SUBREQUEST_MARGIN = 1
@@ -59,6 +61,30 @@ export function reminderFetchBudget(raw: string | undefined): number {
 // de cada envio custaria um subrequest por destinatário e cortaria pela metade quem
 // cabe no teto.
 const UNSUB_RECHECK_MS = 5_000
+
+// Espera antes de repetir uma leitura ou gravação do D1 que falhou. O cron roda uma
+// vez por dia, e uma falha passageira não deve encerrar a fila nem prender reservas.
+const D1_RETRY_MS = 250
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Roda a operação do D1 e, se ela falhar, repete uma vez depois de `D1_RETRY_MS`.
+ * `canRetry` é consultado depois da falha e pode impedir a nova tentativa. Lança o
+ * erro da última tentativa.
+ */
+async function withD1Retry<T>(
+  operation: () => Promise<T>,
+  canRetry: () => boolean = () => true,
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (err) {
+    if (!canRetry()) throw err
+    await sleep(D1_RETRY_MS)
+    return operation()
+  }
+}
 
 /** Contador dos subrequests desta execução que não são as consultas fixas. */
 type FetchBudget = { used: number; max: number }
@@ -91,7 +117,7 @@ class UnsubCheckError extends Error {
  * Confere o descadastro de quem ainda vai receber. A leitura vale por
  * `UNSUB_RECHECK_MS`. Vencido o prazo, uma consulta só relê todos os pendentes e
  * desconta um subrequest do saldo. Ela só roda se sobrar saldo para a consulta e um
- * envio.
+ * envio. Se a consulta falhar, ela é repetida uma vez nas mesmas condições de saldo.
  */
 class UnsubGuard {
   private readonly subscribed: Set<string>
@@ -101,10 +127,12 @@ class UnsubGuard {
     private readonly db: D1Database,
     userIds: string[],
     private readonly budget: FetchBudget,
+    readAt: number,
   ) {
-    // A reserva acabou de ler a preferência de todos.
+    // A reserva leu a preferência de todos. `readAt` é o início dela, o instante mais
+    // antigo em que a leitura pode ter acontecido.
     this.subscribed = new Set(userIds)
-    this.checkedAt = Date.now()
+    this.checkedAt = readAt
   }
 
   /** Lança `UnsubscribedError` se o usuário saiu da lista depois da última leitura. */
@@ -119,19 +147,20 @@ class UnsubGuard {
   }
 
   private async recheck(): Promise<void> {
-    if (this.budget.max - this.budget.used < 2) throw new SubrequestBudgetError()
-    this.budget.used++
+    if (!this.canRead()) throw new SubrequestBudgetError()
+    let startedAt = 0
     let rows: { id: string }[]
-    const startedAt = Date.now()
     try {
-      const result = await this.db
-        .prepare(
-          `SELECT id FROM users
-           WHERE id IN (SELECT value FROM json_each(?)) AND email_unsubscribed_at IS NULL`,
-        )
-        .bind(JSON.stringify([...this.subscribed]))
-        .all<{ id: string }>()
-      rows = result.results
+      // A nova tentativa desconta do saldo como a primeira. Sem saldo para ela e um
+      // envio, a falha encerra a fila.
+      rows = await withD1Retry(
+        () => {
+          this.budget.used++
+          startedAt = Date.now()
+          return this.readSubscribed()
+        },
+        () => this.canRead(),
+      )
     } catch (err) {
       throw new UnsubCheckError(err)
     }
@@ -139,9 +168,23 @@ class UnsubGuard {
     for (const id of this.subscribed) if (!still.has(id)) this.subscribed.delete(id)
     this.checkedAt = startedAt
   }
-}
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+  /** Sobra saldo para uma consulta e um envio. */
+  private canRead(): boolean {
+    return this.budget.max - this.budget.used >= 2
+  }
+
+  private async readSubscribed(): Promise<{ id: string }[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id FROM users
+         WHERE id IN (SELECT value FROM json_each(?)) AND email_unsubscribed_at IS NULL`,
+      )
+      .bind(JSON.stringify([...this.subscribed]))
+      .all<{ id: string }>()
+    return results
+  }
+}
 
 /**
  * Envia um e-mail, repetindo em 429 de limite por segundo e em 5xx ou erro de rede,
@@ -522,20 +565,28 @@ async function claimRecipients(
 
 /**
  * Devolve a reserva de quem não recebeu, para que uma nova execução no mesmo dia
- * possa enviar. Uma falha aqui só vai para o log, porque o envio do dia já terminou.
+ * possa enviar. Uma falha tem uma nova tentativa, que usa a vaga de folga do teto de
+ * subrequests. Se a falha persistir, ela só vai para o log e a execução segue até o
+ * evento final, porque o envio do dia já terminou.
  */
 async function releaseClaims(db: D1Database, userIds: string[], day: ReminderDay): Promise<void> {
   if (userIds.length === 0) return
   try {
-    await db
-      .prepare(
-        `DELETE FROM email_reminder_sends
-         WHERE reminder_date = ? AND user_id IN (SELECT value FROM json_each(?))`,
-      )
-      .bind(day.date, JSON.stringify(userIds))
-      .run()
+    await withD1Retry(() =>
+      db
+        .prepare(
+          `DELETE FROM email_reminder_sends
+           WHERE reminder_date = ? AND user_id IN (SELECT value FROM json_each(?))`,
+        )
+        .bind(day.date, JSON.stringify(userIds))
+        .run(),
+    )
   } catch (err) {
-    console.error('[roundReminder] Falha ao liberar envios não concluídos:', err)
+    // Só a contagem: os ids identificariam quem ficou sem lembrete.
+    console.error(
+      `[roundReminder] Falha ao liberar ${userIds.length} reserva(s) depois de 2 tentativas. Uma nova execução hoje não envia para essas pessoas:`,
+      err,
+    )
   }
 }
 
@@ -569,6 +620,8 @@ type DispatchOptions = {
   /** Saldo de `fetch` ao Resend e revalidações. Os testes reduzem para exercitar o teto. */
   fetchBudget?: number
   pendingClaims: Set<string>
+  /** Início da gravação da reserva, que leu o descadastro de todos. */
+  claimStartedAt: number
 }
 
 type DispatchResult = {
@@ -597,14 +650,16 @@ async function dispatchDigests(
     day,
     fetchBudget = RESEND_FETCH_BUDGET,
     pendingClaims,
+    claimStartedAt,
   }: DispatchOptions,
 ): Promise<DispatchResult> {
-  // Criado logo depois da reserva, que leu o descadastro de todos.
+  // A leitura de descadastro da reserva vale a partir do início da gravação.
   const budget: FetchBudget = { used: 0, max: fetchBudget }
   const guard = new UnsubGuard(
     db,
     digests.map((digest) => digest.userId),
     budget,
+    claimStartedAt,
   )
 
   // Hash e token saem em paralelo antes dos envios. O try/catch por usuário impede
@@ -749,6 +804,8 @@ export async function sendRoundReminders(
     return
   }
 
+  // Antes do batch: a latência da gravação conta no prazo da leitura de descadastro.
+  const claimStartedAt = Date.now()
   const claimed = await claimRecipients(
     db,
     digests.map((digest) => digest.userId),
@@ -771,6 +828,7 @@ export async function sendRoundReminders(
       day,
       fetchBudget,
       pendingClaims: claimed,
+      claimStartedAt,
     })
   } finally {
     await releaseClaims(db, [...claimed], day)
