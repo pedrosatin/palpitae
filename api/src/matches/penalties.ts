@@ -1,3 +1,5 @@
+import type { TieRole } from './ties'
+
 /**
  * Penalty-shootout eligibility gate — data-driven by (competition, phase).
  *
@@ -8,10 +10,26 @@
  * `decides_on_penalties` flag the frontend uses to show the pick).
  *
  * Fail-closed: a phase not listed — or an empty list — never goes to penalties.
- * Two-legged ties (aggregate) are simply left out and thus never offer the pick.
+ * Os confrontos de ida e volta seguem `decidesOnPenalties`.
  */
 export function matchGoesToPenalties(penaltyPhases: string[], matchPhase: string | null): boolean {
   return penaltyPhases.includes(matchPhase ?? '')
+}
+
+/**
+ * Se o jogo pode ir aos pênaltis. A volta de um confronto sempre pode, e o empate
+ * que leva aos pênaltis é o do agregado. A ida nunca vai aos pênaltis, e o jogo
+ * único segue `penalty_phases`.
+ * Sem papel no confronto (fora do mata-mata), vale a regra do jogo único.
+ */
+export function decidesOnPenalties(
+  tieRole: TieRole | undefined,
+  penaltyPhases: string[],
+  phase: string | null,
+): boolean {
+  if (tieRole === 'leg2') return true
+  if (tieRole === 'leg1') return false
+  return matchGoesToPenalties(penaltyPhases, phase)
 }
 
 /**
