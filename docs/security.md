@@ -209,10 +209,18 @@ até 100 palpites por requisição. As quotas usam uma janela fixa de 60 segundo
 | Início e callback de OAuth | 30 | 300 |
 | Leituras | 300 | 3000 |
 | Escritas | 60 | 600 |
+| Revogação com sessão válida | 10 por token | Não se aplica |
 
 A identidade de cada requisição é uma só:
 
-- Sessão válida: o contador do usuário (`user:<id>`). O IP não entra.
+- Sessão válida nas demais rotas usa o contador do usuário `user:<id>`.
+- `POST /auth/logout` e `POST /auth/logout-all` com sessão válida compartilham
+  a categoria `revocation`, com 10 tentativas por minuto por hash SHA-256 do
+  token apresentado. A chave do contador passa pelo HMAC como as demais.
+  O token cru fica fora das chaves e dos logs. O saldo de revogação independe
+  das escritas da conta e dos outros tokens dela. A comparação de caminho é
+  exata, com distinção de maiúsculas e sem barra final. Sem sessão válida,
+  essas rotas usam o balde anônimo de escrita descrito abaixo.
 - Sem sessão, vinda do proxy do Pages (ou da Function de preview de convite) com o
   segredo correto: o IP do visitante repassado em `X-Palpitae-Client-IP`.
 - Sem sessão, vinda de um Worker sem o segredo correto (header `CF-Worker` ou
