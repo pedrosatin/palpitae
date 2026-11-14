@@ -1,14 +1,18 @@
+import { openRoundsSql, roundRuleBinds } from '../matches/defaultRound'
 import { roundAgreement, roundLabel, type RoundAgreement } from '../matches/rounds'
 import { competitionStatusSql } from './competitionStatus'
-import { pendingSummaryBinds, pendingSummarySql } from './pendingPredictions'
+import { pendingSummaryCteBinds, pendingSummarySql } from './pendingPredictions'
 import { notBannedSql, userPositionSql } from './ranking'
 
 /**
  * Consulta de `GET /groups`. Traz os grupos do usuário com os números do card e
- * o resumo dos jogos abertos para o painel, que `pendingSummarySql` calcula numa
- * subquery por grupo. Os jogos ao vivo vêm de outra consulta, em
- * `liveMatches.ts`, que roda em paralelo. O teste de plano em
- * `groupsList.queryPlan.test.ts` protege as leituras de jogos das duas.
+ * o resumo dos jogos abertos para o painel. Uma CTE separa as competições
+ * distintas do usuário para calcular o status da competição e as rodadas
+ * abertas uma vez por competição, em vez de repetir por grupo. As colunas por
+ * grupo seguem calculadas na consulta principal sobre a CTE `competition_info`.
+ * Os jogos ao vivo vêm de outra consulta em `liveMatches.ts`, que roda em
+ * paralelo. O teste de plano em `groupsList.queryPlan.test.ts` protege as
+ * leituras de jogos das duas.
  *
  * Sem acesso a pilotos, os grupos de competição piloto ficam de fora. Banido com
  * linha residual em `group_members` não vê o grupo nem entra em `member_count`.
@@ -16,16 +20,58 @@ import { notBannedSql, userPositionSql } from './ranking'
 export function groupsListSql(canSeePilot: boolean): string {
   const pilotFilter = canSeePilot ? '' : "AND (c.visibility IS NULL OR c.visibility != 'pilot')"
   return `
+        WITH user_groups AS MATERIALIZED (
+          SELECT
+            g.id,
+            g.name,
+            g.competition_id,
+            c.name AS competition_name,
+            c.type AS competition_type,
+            c.external_id AS competition_code,
+            c.penalty_phases,
+            c.status AS raw_competition_status,
+            c.provider AS competition_provider,
+            g.owner_user_id AS admin_id,
+            g.points_exact,
+            g.invite_code,
+            g.created_at,
+            gm.user_id,
+            COALESCE(l.total_points, 0) AS user_points
+          FROM groups g
+          INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
+          LEFT JOIN competitions c ON g.competition_id = c.id
+          LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
+          WHERE g.deleted_at IS NULL AND ${notBannedSql('gm')}
+            ${pilotFilter}
+        ),
+        user_competitions AS (
+          SELECT DISTINCT
+            competition_id,
+            competition_type AS type,
+            competition_provider AS provider,
+            raw_competition_status AS status
+          FROM user_groups
+        ),
+        competition_info AS MATERIALIZED (
+          SELECT
+            uc.competition_id,
+            ${competitionStatusSql('uc', 'uc', 'uc.competition_id')} AS competition_status,
+            (
+              SELECT json_group_array(json_object('round', orr.round, 'position', orr.position))
+              FROM (${openRoundsSql('uc.competition_id', 'mr')}) orr
+            ) AS open_rounds_json
+          FROM user_competitions uc
+        )
         SELECT
           g.id,
           g.name,
           g.competition_id,
-          c.name AS competition_name,
-          c.type AS competition_type,
-          c.external_id AS competition_code,
-          c.penalty_phases,
-          ${competitionStatusSql('g', 'c')} AS competition_status,
-          g.owner_user_id AS admin_id,
+          g.competition_name,
+          g.competition_type,
+          g.competition_code,
+          g.penalty_phases,
+          ci.competition_status,
+          g.admin_id,
           g.points_exact,
           g.invite_code,
           g.created_at,
@@ -34,23 +80,23 @@ export function groupsListSql(canSeePilot: boolean): string {
             FROM group_members gm2
             WHERE gm2.group_id = g.id AND ${notBannedSql('gm2')}
           ) AS member_count,
-          COALESCE(l.total_points, 0) AS user_points,
-          ${userPositionSql('g.id', 'gm.user_id')} AS user_position,
-          ${pendingSummarySql('g', 'c')} AS pending_summary
-        FROM groups g
-        INNER JOIN group_members gm ON g.id = gm.group_id AND gm.user_id = ?
-        LEFT JOIN competitions c ON g.competition_id = c.id
-        LEFT JOIN leaderboard l ON g.id = l.group_id AND l.user_id = ?
-        WHERE g.deleted_at IS NULL AND ${notBannedSql('gm')}
-          ${pilotFilter}
-        GROUP BY g.id
+          g.user_points,
+          ${userPositionSql('g.id', 'g.user_id')} AS user_position,
+          ${pendingSummarySql('g', 'g', 'ci.open_rounds_json')} AS pending_summary
+        FROM user_groups g
+        LEFT JOIN competition_info ci ON ci.competition_id = g.competition_id
         ORDER BY g.created_at DESC
         `
 }
 
 /** Binds na ordem exigida por `groupsListSql`. */
 export function groupsListBinds(nowIso: string, userId: string): string[] {
-  return [...pendingSummaryBinds(nowIso, userId), userId, userId]
+  return [
+    userId,
+    userId,
+    ...roundRuleBinds(nowIso),
+    ...pendingSummaryCteBinds(nowIso, userId),
+  ]
 }
 
 /** Jogo sem palpite que fecha primeiro no grupo, como o painel mostra. */

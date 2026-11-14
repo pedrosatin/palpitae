@@ -59,11 +59,26 @@ const DEADLINE_KEY_SQL = `CASE WHEN m.postponed = 0 AND m.start_time > ?
  *
  * Fragmento correlacionado ao alias do grupo (padrão `g`) e ao da competição
  * do grupo (padrão `c`), de onde vem `penalty_phases`, sem ler `competitions` de
- * novo a cada jogo. Binds na ordem de `pendingSummaryBinds`.
+ * novo a cada jogo. Quando `openRoundsJsonExpr` é informado, lê as rodadas
+ * abertas já serializadas na CTE de competições e consome os binds de
+ * `pendingSummaryCteBinds`; sem esse argumento, calcula inline com
+ * `pendingSummaryBinds`.
  */
-export function pendingSummarySql(groupAlias = 'g', competitionAlias = 'c'): string {
+export function pendingSummarySql(
+  groupAlias = 'g',
+  competitionAlias = 'c',
+  openRoundsJsonExpr?: string,
+): string {
   const competition = `${groupAlias}.competition_id`
   const penaltyPhases = `${competitionAlias}.penalty_phases`
+  const roundsSource = openRoundsJsonExpr
+    ? `(
+              SELECT
+                json_extract(je.value, '$.round') AS round,
+                json_extract(je.value, '$.position') AS position
+              FROM json_each(COALESCE(${openRoundsJsonExpr}, '[]')) je
+            ) r`
+    : `(${openRoundsSql(competition, 'mr')}) r`
   return `(
             SELECT json_object(
               'pending', COUNT(*) - COUNT(p.match_id),
@@ -85,7 +100,7 @@ export function pendingSummarySql(groupAlias = 'g', competitionAlias = 'c'): str
               'round', MIN(CASE WHEN r.position = 1 THEN r.round END),
               'round_ends_at', MAX(CASE WHEN r.position = 1 THEN m.start_time END)
             )
-            FROM (${openRoundsSql(competition, 'mr')}) r
+            FROM ${roundsSource}
             CROSS JOIN matches m
               ON m.competition_id = ${competition}
              AND m.round = r.round
@@ -98,9 +113,14 @@ export function pendingSummarySql(groupAlias = 'g', competitionAlias = 'c'): str
           )`
 }
 
-/** Binds na ordem exigida por `pendingSummarySql`. */
+/** Binds na ordem exigida por `pendingSummarySql` sem CTE. */
 export function pendingSummaryBinds(nowIso: string, userId: string): string[] {
   return [nowIso, nowIso, nowIso, ...roundRuleBinds(nowIso), userId, nowIso, nowIso]
+}
+
+/** Binds na ordem exigida por `pendingSummarySql` com `openRoundsJsonExpr`. */
+export function pendingSummaryCteBinds(nowIso: string, userId: string): string[] {
+  return [nowIso, nowIso, nowIso, userId, nowIso, nowIso]
 }
 
 /** Jogo palpitado que pode pedir o pênalti, a conferir em `missingPenalties`. */
