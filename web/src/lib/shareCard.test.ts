@@ -1,11 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import {
-  buildShareCardData,
-  drawShareCard,
-  SHARE_CARD_WIDTH,
-  SHARE_CARD_HEIGHT,
-  type ShareCardData,
-} from './shareCard'
+import { buildShareCardData, drawShareCard, type ShareCardData } from './shareCard'
+import { SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT } from './shareCardParts'
 import type { RankedGroup } from './groupPosition'
 
 const base: RankedGroup = {
