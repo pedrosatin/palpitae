@@ -9,6 +9,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
 import { signJwt } from '../auth/jwt'
+import { limitD1Binds } from '../testing/d1BindLimit'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 
@@ -553,5 +554,94 @@ describe('contrato byte a byte de GET /groups com múltiplos grupos e competiç�
     const body = (await res.json()) as { groups: Array<{ id: string; created_at: string }> }
     expect(body.groups.slice(0, 2).map((g) => g.id)).toEqual(['g-empate-2', 'g-empate-1'])
     expect(body.groups.slice(2).map((g) => g.id)).toEqual(EXPECTED_ORDINARY.groups.map((g) => g.id))
+  })
+})
+
+describe('GET /groups com mais de 100 grupos encerrados', () => {
+  it('devolve 200 e todos os pódios com 120 grupos encerrados sob o limite de 100 binds', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(NOW))
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+
+    const total = 120
+    const groupsSql: string[] = []
+    const membersSql: string[] = []
+    const leaderboardSql: string[] = []
+
+    for (let i = 1; i <= total; i++) {
+      const pad = String(i).padStart(3, '0')
+      const groupId = `g-fim-${pad}`
+      const inviteCode = `FIM0-${pad}`
+      const createdAt = `2026-01-${String(1 + (i % 28)).padStart(2, '0')}T10:00:${String(i % 60).padStart(2, '0')}Z`
+      groupsSql.push(
+        `('${groupId}', 'Grupo Fim ${pad}', 'comp-fim', 'alice', '${inviteCode}', 3, '${createdAt}')`,
+      )
+      membersSql.push(
+        `('gm-a-${pad}', '${groupId}', 'alice', 'owner', '2026-01-01T10:00:00Z')`,
+        `('gm-b-${pad}', '${groupId}', 'bob', 'member', '2026-01-01T11:00:00Z')`,
+        `('gm-c-${pad}', '${groupId}', 'carol', 'member', '2026-01-01T12:00:00Z')`,
+      )
+      leaderboardSql.push(
+        `('${groupId}', 'bob', ${200 + i}, 2, '2026-05-01T00:00:00Z')`,
+        `('${groupId}', 'alice', ${100 + i}, 1, '2026-05-01T00:00:00Z')`,
+        `('${groupId}', 'carol', ${i}, 0, '2026-05-01T00:00:00Z')`,
+      )
+    }
+
+    sqlite.exec(`
+      INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
+        ('alice', 'alice@example.com', 'google', 'g-alice', 'Alice'),
+        ('bob', 'bob@example.com', 'google', 'g-bob', 'Bob'),
+        ('carol', 'carol@example.com', 'google', 'g-carol', 'Carol'),
+        ('banned', 'banned@example.com', 'google', 'g-banned', 'Banido');
+
+      INSERT INTO profiles (user_id, nickname) VALUES
+        ('alice', 'Alice'),
+        ('bob', 'Beto'),
+        ('carol', 'Carol'),
+        ('banned', 'Banido');
+
+      DELETE FROM competitions;
+
+      INSERT INTO competitions (
+        id, name, slug, external_id, provider, season, status, type, penalty_phases, visibility
+      ) VALUES
+        ('comp-fim', 'Liga Encerrada', 'liga-encerrada-2026', 'PL', 'football-data', '2026', 'finished', 'league', '[]', 'public');
+
+      INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, created_at)
+      VALUES ${groupsSql.join(',\n')};
+
+      INSERT INTO group_members (id, group_id, user_id, role, joined_at)
+      VALUES ${membersSql.join(',\n')},
+             ('gm-ban-001', 'g-fim-001', 'banned', 'member', '2026-01-01T13:00:00Z');
+
+      INSERT INTO group_bans (group_id, user_id) VALUES ('g-fim-001', 'banned');
+
+      INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
+      VALUES ${leaderboardSql.join(',\n')},
+             ('g-fim-001', 'banned', 999, 9, '2026-05-01T00:00:00Z');
+    `)
+
+    const res = await fetchGroups(limitD1Binds(db))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      groups: Array<{
+        id: string
+        competition_status: string | null
+        podium: Array<{ position: number; display: string; points: number; is_you: boolean }> | null
+      }>
+    }
+
+    expect(body.groups).toHaveLength(total)
+    for (const group of body.groups) {
+      const n = Number(group.id.slice('g-fim-'.length))
+      expect(group.competition_status).toBe('finished')
+      expect(group.podium).toEqual([
+        { position: 1, display: 'Beto', points: 200 + n, is_you: false },
+        { position: 2, display: 'Alice', points: 100 + n, is_you: true },
+        { position: 3, display: 'Carol', points: n, is_you: false },
+      ])
+    }
   })
 })
