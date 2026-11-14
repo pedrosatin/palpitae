@@ -173,6 +173,23 @@ export const EXACT_HIT_SQL =
  */
 const ACTIVE_GROUP_SQL = 'g.deleted_at IS NULL'
 
+/**
+ * Ranking refeito do zero a partir dos palpites, para quando pontos saem do banco
+ * (remoção de jogo). O upsert de `leaderboardRefreshStatement` só alcança quem ainda
+ * tem palpite; sem zerar antes, quem palpitou só no jogo removido manteria os pontos.
+ * Grupo excluído fica como está, como na pontuação.
+ */
+export function leaderboardRebuildStatements(db: D1Database, groupIds: string[]) {
+  return [
+    db
+      .prepare(`UPDATE leaderboard SET total_points = 0, exact_hits = 0, last_updated = ?
+      WHERE group_id IN (SELECT g.id FROM groups g WHERE g.id IN (SELECT value FROM json_each(?)) AND ${ACTIVE_GROUP_SQL})
+        AND (total_points <> 0 OR exact_hits <> 0)`)
+      .bind(new Date().toISOString(), JSON.stringify(groupIds)),
+    leaderboardRefreshStatement(db, groupIds),
+  ]
+}
+
 function leaderboardRefreshStatement(db: D1Database, groupIds: string[]) {
   return db
     .prepare(`INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)

@@ -266,6 +266,7 @@ A private competition created by a user for a specific competition.
 
 - `payment_status`: reservado, sem efeito. Nenhum código lê ou grava a coluna; todo grupo fica com o default `pending`, que não bloqueia nenhum fluxo.
 - `max_members`: só `POST /groups/join` lê o valor, no `INSERT` da entrada, e recusa quem passaria do limite. Nenhuma rota altera a coluna, então todo grupo usa o default 50.
+- `owner_user_id`: sem cascata para `users`. A exclusão de conta pelo operador (`DELETE /admin/users/:id`, ADR-026) passa o grupo ao membro ativo de `joined_at` mais antigo, sem contar banidos nem a própria conta, com desempate pelo menor `user_id`. Grupo sem outro membro ativo é apagado. Vale também para grupo com `deleted_at`.
 - `deleted_at`: `DELETE /groups/:id` grava a data. O grupo some das rotas e para de receber pontuação e ranking; pontos e ranking ficam como estavam no momento da exclusão.
 - Tetos por usuário: 20 grupos ativos criados e 50 participações ativas (`api/src/groups/groupCaps.ts`). `POST /groups` e `POST /groups/join` contam as linhas de `group_members` do usuário em grupos sem `deleted_at`, dentro do `INSERT`, e recusam com 409 quem passaria do teto.
 
@@ -294,10 +295,12 @@ Users in a group.
 | `id`        | TEXT PK | UUID                   |
 | `group_id`  | TEXT FK | References `groups.id` |
 | `user_id`   | TEXT FK | References `users.id`  |
-| `role`      | TEXT    | `owner` \| `member`    |
+| `role`      | TEXT    | `owner` \| `member`, derivado de `groups.owner_user_id` (migration 0045) |
 | `joined_at` | TEXT    | ISO 8601 UTC           |
 
 Unique constraint: `(group_id, user_id)`
+
+`role` vale `owner` só para a linha de `groups.owner_user_id`. Os gatilhos da migration 0045 mantêm isso: `groups_owner_role_sync` acompanha a troca do dono, e `group_members_role_insert` e `group_members_role_update` regravam o valor derivado no lugar de um papel incoerente, sem recusar a escrita (ADR-026). A autorização das ações de dono continua lendo `groups.owner_user_id`.
 
 ---
 
@@ -324,6 +327,8 @@ Unique constraint: `(user_id, group_id, match_id)` — one prediction per user p
 ### `leaderboard`
 
 Materialized ranking per group. Updated when matches finish or scores change.
+
+Apagar um jogo direto no banco leva os palpites dele em cascata, mas deixa os pontos no ranking de quem não tem outro palpite no grupo. A remoção pelo operador (`DELETE /admin/matches/:id`, ADR-026) refaz o ranking de todos os grupos não excluídos da competição na mesma transação.
 
 | Column         | Type       | Notes                                      |
 | -------------- | ---------- | ------------------------------------------ |
@@ -540,3 +545,5 @@ CREATE INDEX IF NOT EXISTS idx_payments_group ON payments(group_id);
 ### Conclusão da importação de palpites
 
 `group_members.predictions_import_completed` registra se o membro já importou ao menos um palpite para aquele grupo. O marcador é gravado no mesmo batch dos palpites e aparece como `import_completed` somente na listagem autenticada dos próprios palpites. A interface recolhe o seletor e permite reabri-lo com "Importar de novo". Importações anteriores à migração 0024 não podem ser identificadas pelos palpites existentes e não recebem preenchimento retroativo.
+
+A marca sai junto com a linha de `group_members`. Quem sai do grupo e volta mantém os palpites, mas a marca volta a 0 e o seletor de importação aparece aberto de novo. Comportamento aceito (ADR-026).
