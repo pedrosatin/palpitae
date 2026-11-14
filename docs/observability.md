@@ -724,6 +724,21 @@ integridade dos últimos 14 dias (contagem + tamanho por dia; dia sem arquivo
 marcado como **faltando**). Backlog de ideias:
 [`docs/dashboard-native.md`](dashboard-native.md).
 
+A análise do arquivo por mês usa `GET /metrics/archive/query?from=YYYY-MM-DD&to=YYYY-MM-DD`
+(UTC, inclusivo), que agrega o corpo dos NDJSON por tipo (`blob1`) e por dia, com peso
+`_sample_interval`. O intervalo vai até 92 dias. Data inexistente (`2026-02-31`), `from` depois
+de `to` ou intervalo maior recebem 400, conferidos antes de montar a lista de dias. Um dia cheio
+tem cerca de 18 MiB (30 mil linhas de ~615 bytes) e o Worker tem 128 MiB, então a rota lê um
+arquivo por vez, em streaming, linha a linha, e solta cada corpo antes de pedir o próximo
+(`api/src/observability/archiveQuery.ts`). Cada consulta lê no máximo 64 MiB do R2: o tamanho
+declarado de cada arquivo é conferido antes da leitura e os bytes recebidos durante. Ao passar
+do teto, a leitura para ali e a resposta sai com `truncated: true`; `daysRead` lista os dias
+que entraram no resultado e o dia interrompido fica de fora. Linha que não é objeto JSON
+válido, com `_sample_interval` inválido (não numérico ou negativo) ou com mais de 64 KiB é pulada e somada em
+`malformedLines`, sem derrubar a consulta. `bytesRead` traz os bytes lidos. Os campos antigos
+(`from`, `to`, `filesRead`, `totalEvents`, `byType`, `byDay`) seguem iguais, e a página avisa
+quando o resultado é parcial ou quando houve linhas malformadas.
+
 Alternativa avaliada e **não adotada**: Grafana Cloud (Infinity → SQL API).
 Guia mantido em [`docs/dashboard-grafana.md`](dashboard-grafana.md) caso um dia
 precisemos de alertas (o único diferencial real). Contras: não enxerga R2 e

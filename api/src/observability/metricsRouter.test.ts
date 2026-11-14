@@ -1484,6 +1484,68 @@ describe('GET /metrics/archive/query', () => {
     return `${rows.map((r) => JSON.stringify(r)).join('\n')}\n`
   }
 
+  const MiB = 1024 * 1024
+
+  /**
+   * R2 falso que entrega cada corpo em pedaços de `chunkSize` bytes (uma linha
+   * pode ficar partida entre dois pedaços) e conta os corpos abertos: um corpo
+   * conta de `get()` até ser lido inteiro ou cancelado. `text()` existe para a
+   * implementação antiga, que lia o corpo inteiro de uma vez.
+   */
+  function fakeBucket(
+    files: Record<string, string>,
+    opts: { chunkSize?: number; size?: Record<string, number> } = {},
+  ) {
+    const stats = { open: 0, maxOpen: 0, cancelled: [] as string[] }
+    const get = vi.fn(async (key: string) => {
+      const text = files[key]
+      if (text === undefined) return null
+      const bytes = new TextEncoder().encode(text)
+      const chunkSize = opts.chunkSize ?? 97
+      let offset = 0
+      let open = true
+      const release = () => {
+        if (!open) return
+        open = false
+        stats.open--
+      }
+      stats.open++
+      stats.maxOpen = Math.max(stats.maxOpen, stats.open)
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (offset >= bytes.byteLength) {
+            controller.close()
+            release()
+            return
+          }
+          controller.enqueue(bytes.slice(offset, offset + chunkSize))
+          offset += chunkSize
+        },
+        cancel() {
+          stats.cancelled.push(key)
+          release()
+        },
+      })
+      return {
+        size: opts.size?.[key] ?? bytes.byteLength,
+        body,
+        text: () => new Response(body).text(),
+      }
+    })
+    return { bucket: { get } as unknown as R2Bucket, get, stats }
+  }
+
+  interface QueryBody {
+    filesRead: number
+    totalEvents: number
+    byType: { event_type: string; count: number }[]
+    byDay: { day: string; count: number }[]
+    daysRead?: string[]
+    truncated?: boolean
+    malformedLines?: number
+    bytesRead?: number
+  }
+
   it('agrega o corpo dos NDJSON por tipo e por dia, ponderando pelo sampling', async () => {
     const files: Record<string, string> = {
       'events/2026/05/01.ndjson': ndjson(
@@ -1492,20 +1554,15 @@ describe('GET /metrics/archive/query', () => {
       ),
       'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
     }
-    const get = vi.fn(async (key: string) => (files[key] ? { text: async () => files[key] } : null))
+    const { bucket } = fakeBucket(files)
     const res = await makeApp().request(
       '/metrics/archive/query?from=2026-05-01&to=2026-05-02',
       { headers: await authHeaders(ADMIN) },
-      makeEnv({ EVENTS: { get } as unknown as R2Bucket }),
+      makeEnv({ EVENTS: bucket }),
     )
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as {
-      filesRead: number
-      totalEvents: number
-      byType: { event_type: string; count: number }[]
-      byDay: { day: string; count: number }[]
-    }
+    const body = (await res.json()) as QueryBody
     expect(body.filesRead).toBe(2)
     expect(body.totalEvents).toBe(5) // 1 + 3 + 1
     // Ordenado por contagem desc: prediction_saved (3) antes de login_success (2).
@@ -1517,6 +1574,161 @@ describe('GET /metrics/archive/query', () => {
       { day: '2026-05-01', count: 4 },
       { day: '2026-05-02', count: 1 },
     ])
+  })
+
+  it('num mês de 31 dias lê um arquivo por vez e solta cada corpo antes do próximo', async () => {
+    // Acento no meio da linha: com pedaços de 97 bytes, linhas e caracteres de
+    // dois bytes ficam partidos entre pedaços do stream.
+    const day = ndjson(
+      ...Array.from({ length: 200 }, (_, i) => ({
+        blob1: i % 2 ? 'login_success' : 'prediction_saved',
+        blob2: 'competição',
+        _sample_interval: 1,
+      })),
+    )
+    const files = Object.fromEntries(
+      Array.from({ length: 31 }, (_, i) => [
+        `events/2026/05/${String(i + 1).padStart(2, '0')}.ndjson`,
+        day,
+      ]),
+    )
+    const { bucket, get, stats } = fakeBucket(files)
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-31',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(get).toHaveBeenCalledTimes(31)
+    expect(stats.maxOpen).toBe(1)
+    expect(stats.open).toBe(0)
+    expect(body.filesRead).toBe(31)
+    expect(body.totalEvents).toBe(31 * 200)
+    expect(body.byType).toEqual([
+      { event_type: 'prediction_saved', count: 31 * 100 },
+      { event_type: 'login_success', count: 31 * 100 },
+    ])
+    expect(body.daysRead).toHaveLength(31)
+    expect(body.truncated).toBe(false)
+    expect(body.malformedLines).toBe(0)
+    expect(body.bytesRead).toBe(31 * new TextEncoder().encode(day).byteLength)
+  })
+
+  it('linha malformada é contada e pulada sem derrubar a consulta', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': [
+        JSON.stringify({ blob1: 'login_success', _sample_interval: 1 }),
+        '{quebrado',
+        '42',
+        'null',
+        JSON.stringify({ blob1: 'login_success', _sample_interval: 'abc' }),
+        '',
+        'x'.repeat(70 * 1024), // acima do limite de linha: descartada sem acumular
+        // Última linha sem quebra no fim também conta.
+        JSON.stringify({ blob1: 'prediction_saved', _sample_interval: 2 }),
+      ].join('\n'),
+      'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    const { bucket } = fakeBucket(files)
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-02',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(body.malformedLines).toBe(5)
+    expect(body.filesRead).toBe(2)
+    expect(body.byDay).toEqual([
+      { day: '2026-05-01', count: 3 },
+      { day: '2026-05-02', count: 1 },
+    ])
+    expect(body.byType).toEqual([
+      { event_type: 'login_success', count: 2 },
+      { event_type: 'prediction_saved', count: 2 },
+    ])
+  })
+
+  it('arquivo que não cabe no teto de 64 MiB encerra a leitura com resultado parcial', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+      'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+      'events/2026/05/03.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    // O R2 declara 65 MiB no dia 2: o corpo nem chega a ser lido.
+    const { bucket, get, stats } = fakeBucket(files, {
+      size: { 'events/2026/05/02.ndjson': 65 * MiB },
+    })
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-03',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(body.truncated).toBe(true)
+    expect(body.daysRead).toEqual(['2026-05-01'])
+    expect(body.filesRead).toBe(1)
+    expect(body.totalEvents).toBe(1)
+    expect(stats.cancelled).toEqual(['events/2026/05/02.ndjson'])
+    expect(stats.open).toBe(0)
+    expect(get).toHaveBeenCalledTimes(2) // o dia 3 nem é pedido
+  })
+
+  it('corpo que passa do teto durante a leitura é cancelado e fica de fora', async () => {
+    const files: Record<string, string> = {
+      'events/2026/05/01.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+      'events/2026/05/03.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
+    }
+    const { bucket, get } = fakeBucket(files)
+    const fromFiles = get.getMockImplementation()!
+    // Tamanho declarado pequeno e 65 pedaços de 1 MiB (o mesmo buffer) no stream.
+    const chunk = new Uint8Array(MiB).fill(0x20)
+    let sent = 0
+    let cancelled = false
+    get.mockImplementation(async (key: string) => {
+      if (key !== 'events/2026/05/02.ndjson') return fromFiles(key)
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent++ < 65) controller.enqueue(chunk)
+          else controller.close()
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+      return { size: 100, body, text: () => new Response(body).text() }
+    })
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2026-05-01&to=2026-05-03',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ EVENTS: bucket }),
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as QueryBody
+    expect(body.truncated).toBe(true)
+    expect(body.daysRead).toEqual(['2026-05-01'])
+    expect(cancelled).toBe(true)
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('intervalo absurdo recebe 400 sem montar a lista de dias', async () => {
+    const headers = await authHeaders(ADMIN)
+    // Montar a lista formata cada dia com toISOString (27 anos = 9862 dias).
+    const toISOString = vi.spyOn(Date.prototype, 'toISOString')
+    const res = await makeApp().request(
+      '/metrics/archive/query?from=2000-01-01&to=2026-12-31',
+      { headers },
+      makeEnv({ EVENTS: {} as unknown as R2Bucket }),
+    )
+
+    expect(res.status).toBe(400)
+    expect(toISOString.mock.calls.length).toBeLessThan(92)
   })
 
   it('400 para from/to inválidos ou invertidos', async () => {
@@ -1532,6 +1744,14 @@ describe('GET /metrics/archive/query', () => {
 
     res = await makeApp().request(
       '/metrics/archive/query?from=2026-05-05&to=2026-05-01',
+      { headers },
+      env,
+    )
+    expect(res.status).toBe(400)
+
+    // Data que não existe no calendário.
+    res = await makeApp().request(
+      '/metrics/archive/query?from=2026-02-01&to=2026-02-31',
       { headers },
       env,
     )

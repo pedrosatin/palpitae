@@ -126,6 +126,11 @@ interface ArchiveQueryResponse {
   totalEvents: number
   byType: { event_type: string; count: number }[]
   byDay: { day: string; count: number }[]
+  // Ausentes em API anterior ao teto de leitura. `truncated`: o teto de bytes
+  // parou a leitura e só os dias de `daysRead` entraram.
+  truncated?: boolean
+  daysRead?: string[]
+  malformedLines?: number
 }
 
 // Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
@@ -1262,6 +1267,17 @@ function ArchiveQuerySection({
             {result.from} a {result.to} · {result.filesRead} arquivo(s) ·{' '}
             <strong>{result.totalEvents}</strong> eventos
           </p>
+          {result.truncated && (
+            <p className={styles.hint}>
+              Resultado parcial: a leitura parou no teto de bytes
+              {result.daysRead?.length ? ` depois de ${result.daysRead.at(-1)}` : ''}.
+            </p>
+          )}
+          {(result.malformedLines ?? 0) > 0 && (
+            <p className={styles.hint}>
+              {result.malformedLines} linha(s) malformada(s) ignorada(s).
+            </p>
+          )}
           {result.byType.length === 0 ? (
             <p className={styles.hint}>Nenhum evento arquivado nesse mês.</p>
           ) : (

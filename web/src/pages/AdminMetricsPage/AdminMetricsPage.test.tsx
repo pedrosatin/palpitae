@@ -1436,4 +1436,42 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
     expect(await screen.findByText(/2026-06-01 a 2026-06-30/)).toBeInTheDocument()
     expect(screen.queryByText('Lendo arquivos…')).not.toBeInTheDocument()
   })
+
+  it('a análise do arquivo avisa quando o resultado é parcial e quando há linhas malformadas', async () => {
+    const parcial = Promise.resolve({
+      ...monthQuery('2026-06', '30'),
+      truncated: true,
+      daysRead: ['2026-06-01', '2026-06-02'],
+      malformedLines: 3,
+    })
+    vi.stubGlobal('fetch', archiveQueryFetch({ '2026-06': parcial }))
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+    await screen.findByText('Análise do arquivo (além da janela do AE)')
+
+    await user.click(screen.getByRole('button', { name: '2026-06' }))
+
+    expect(
+      await screen.findByText(
+        'Resultado parcial: a leitura parou no teto de bytes depois de 2026-06-02.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText('3 linha(s) malformada(s) ignorada(s).')).toBeInTheDocument()
+  })
+
+  it('a análise do arquivo sem os campos novos não mostra aviso de resultado parcial', async () => {
+    vi.stubGlobal(
+      'fetch',
+      archiveQueryFetch({ '2026-06': Promise.resolve(monthQuery('2026-06', '30')) }),
+    )
+    const user = userEvent.setup()
+    render(<AdminMetricsPage />)
+    await screen.findByText('Análise do arquivo (além da janela do AE)')
+
+    await user.click(screen.getByRole('button', { name: '2026-06' }))
+
+    expect(await screen.findByText(/2026-06-01 a 2026-06-30/)).toBeInTheDocument()
+    expect(screen.queryByText(/Resultado parcial/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/malformada/)).not.toBeInTheDocument()
+  })
 })
