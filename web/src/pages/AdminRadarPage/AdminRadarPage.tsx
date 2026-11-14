@@ -334,9 +334,7 @@ function RadarFilters({
           setSort(key === 'upcoming' ? 'start' : 'interest')
         }}
         className={styles.statusFilters}
-        role="group"
         ariaLabel="Filtrar por status"
-        ariaPressed
       />
       <label className={styles.toggle}>
         <input

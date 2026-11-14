@@ -1,4 +1,5 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TOOLTIP_TIMEOUT_MS } from '../../hooks/useAutoClose'
 import PenaltyBadge, { BallIcon } from './PenaltyBadge'
@@ -33,26 +34,54 @@ describe('PenaltyBadge', () => {
     expect(screen.getByText('⚽')).toBeInTheDocument()
   })
 
-  it('shows tooltip on hover and hides on unhover', () => {
+  it('não abre o tooltip no hover nem no foco', () => {
     render(<PenaltyBadge team="BRA" tooltip="Brazil won" />)
+    const button = screen.getByRole('button')
 
+    fireEvent.mouseEnter(button)
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
 
-    fireEvent.mouseEnter(screen.getByRole('button'))
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Brazil won')
-
-    fireEvent.mouseLeave(screen.getByRole('button'))
+    fireEvent.focus(button)
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
 
-  it('shows tooltip on focus and hides on blur', () => {
+  it('abre com Enter e Espaço no botão focado', async () => {
+    // userEvent trava com timers falsos; este teste não depende do fechamento automático.
+    vi.useRealTimers()
+    const user = userEvent.setup()
     render(<PenaltyBadge team="BRA" tooltip="Brazil won" />)
 
-    fireEvent.focus(screen.getByRole('button'))
+    await user.tab()
+    expect(screen.getByRole('button')).toHaveFocus()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Brazil won')
+
+    await user.keyboard(' ')
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('fecha o tooltip com Escape', () => {
+    render(<PenaltyBadge team="BRA" tooltip="Brazil won" />)
+
+    fireEvent.click(screen.getByRole('button'))
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 
-    fireEvent.blur(screen.getByRole('button')) // blur
+    fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('liga o botão ao tooltip com aria-expanded e aria-controls', () => {
+    render(<PenaltyBadge team="BRA" tooltip="Brazil won" />)
+    const button = screen.getByRole('button')
+
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(button).not.toHaveAttribute('aria-controls')
+
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    expect(button).toHaveAttribute('aria-controls', screen.getByRole('tooltip').id)
   })
 
   it('toggles tooltip on click', () => {
@@ -107,6 +136,15 @@ describe('PenaltyBadge', () => {
 
     fireEvent.click(screen.getByRole('button'))
     expect(onActivate).toHaveBeenCalledOnce()
+  })
+
+  it('com onActivate, não abre tooltip nem expõe aria-expanded', () => {
+    render(<PenaltyBadge team="BRA" tooltip="Brazil won" onActivate={vi.fn()} />)
+    const button = screen.getByRole('button')
+
+    fireEvent.click(button)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(button).not.toHaveAttribute('aria-expanded')
   })
 
   it('is disabled when disabled prop is true', () => {

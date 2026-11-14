@@ -105,4 +105,38 @@ describe('InfoHint', () => {
     await user.click(screen.getByText('Help'))
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   })
+
+  it('liga o botão do ícone ao tooltip com aria-expanded e aria-controls', async () => {
+    const user = userEvent.setup()
+    render(<InfoHint label="Help" text="This is a tooltip" />)
+    const icon = screen.getByRole('button', { name: 'Help', expanded: false })
+
+    expect(icon).not.toHaveAttribute('aria-controls')
+
+    await user.click(icon)
+    expect(icon).toHaveAttribute('aria-expanded', 'true')
+    expect(icon).toHaveAttribute('aria-controls', screen.getByRole('tooltip').id)
+  })
+
+  it('abre com Enter no botão focado e fecha com Escape', async () => {
+    const user = userEvent.setup()
+    render(<InfoHint label="Help" text="This is a tooltip" />)
+
+    await user.tab()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    await user.keyboard('{Enter}')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('This is a tooltip')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('não abre o tooltip no hover', async () => {
+    const user = userEvent.setup()
+    render(<InfoHint label="Help" text="This is a tooltip" />)
+
+    await user.hover(screen.getByRole('button', { name: 'Help', expanded: false }))
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
 })
