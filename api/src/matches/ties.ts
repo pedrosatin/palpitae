@@ -102,3 +102,32 @@ export async function fetchTieMatches<T extends TieMatch = TieMatch>(
     .all<T>()
   return results
 }
+
+/**
+ * Confrontos de mata-mata de jogos de várias competições, indexados pelo id do
+ * jogo. As fases são agrupadas por competição, com uma consulta por competição em
+ * paralelo. Pares fora do mata-mata são ignorados.
+ */
+export async function fetchTiesByCompetition(
+  db: D1Database,
+  pairs: Iterable<{ competitionId: string; phase: string | null }>,
+): Promise<Map<string, TieInfo<TieMatch>>> {
+  const phasesByCompetition = new Map<string, Set<string>>()
+  for (const { competitionId, phase } of pairs) {
+    if (!isKnockoutPhase(phase)) continue
+    const phases = phasesByCompetition.get(competitionId) ?? new Set<string>()
+    phases.add(phase as string)
+    phasesByCompetition.set(competitionId, phases)
+  }
+
+  const results = await Promise.all(
+    Array.from(phasesByCompetition, ([competitionId, phases]) =>
+      fetchTieMatches(db, competitionId, phases),
+    ),
+  )
+  const ties = new Map<string, TieInfo<TieMatch>>()
+  for (const tieMatches of results) {
+    for (const [matchId, tie] of indexTies(tieMatches)) ties.set(matchId, tie)
+  }
+  return ties
+}
