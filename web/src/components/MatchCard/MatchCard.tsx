@@ -1,49 +1,23 @@
 import { formatMatchDate } from '../../lib/matchTime'
+import { pickPoints, pointsLabel } from '../../lib/roundSummary'
 import TieInfo from './TieInfo'
 import CheckIcon from '../CheckIcon'
 import InfoHint from '../InfoHint/InfoHint'
 import PenaltyBadge, { BallIcon } from '../PenaltyBadge'
 import styles from './MatchCard.module.css'
 import { PREDICTION_STATUS_LABEL, type PredictionStatus } from './predictionStatus'
-import { useMatchCard } from './useMatchCard'
-import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
+import { useMatchCard, type UseMatchCardProps } from './useMatchCard'
+import { teamShortName, type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 
 // Re-exported for backwards compatibility with consumers importing from './MatchCard'.
 export { OUTCOMES }
 export type { Match, Prediction }
 
-interface MatchCardProps {
-  match: Match
-  prediction: Prediction | undefined
-  leg1Prediction?: Prediction
+interface MatchCardProps extends UseMatchCardProps {
   /** Jogo de ida do confronto, para mostrar o placar real e o agregado na volta. */
   leg1Match?: Match
   /** Jogo de volta, para o card da ida dizer quando ele acontece. */
   leg2Match?: Match
-  leg1Pending?: boolean
-  groupId: string
-  /**
-   * When true the group scores only the winner/draw (points_exact = 0), so the
-   * card shows 3 outcome buttons (Casa / Empate / Fora) instead of score inputs.
-   * The picks are still stored as scores: casa=(1,0), empate=(0,0), fora=(0,1).
-   */
-  outcomeOnly?: boolean
-  onSaved: (
-    matchId: string,
-    home: number,
-    away: number,
-    penaltyWinner: 'home' | 'away' | null,
-  ) => void
-  /** Reports the current input draft up so a parent can offer "Salvar todos". */
-  onDraftChange?: (matchId: string, home: string, away: string) => void
-  /** Reports the current penalty-winner draft so "Salvar todos" can include it. */
-  onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
-  /** Rascunho não salvo que o card mostra ao montar, no lugar do palpite salvo. */
-  draft?: { home: string; away: string }
-  /** Pênalti não salvo; `undefined` = sem rascunho, vale o palpite salvo. */
-  penaltyDraft?: 'home' | 'away' | null
-  /** Hora que trava o card, a mesma do cabeçalho da rodada. Sem ela, vale `Date.now()`. */
-  now?: number
 }
 
 // "falta pênalti" usa o contorno amarelo de "sem palpite". Os dois pedem uma escolha.
@@ -52,6 +26,26 @@ const STATUS_CLASS: Record<PredictionStatus, string> = {
   saved: styles.statusSaved,
   dirty: styles.statusDirty,
   penalty: styles.statusEmpty,
+}
+
+function stateLabel(locked: boolean, isFinished: boolean, status: PredictionStatus) {
+  if (!locked) return PREDICTION_STATUS_LABEL[status]
+  if (isFinished) return 'encerrado'
+  return 'bloqueado'
+}
+
+function saveButtonLabel(saving: boolean, saveDone: boolean, hasPrediction: boolean) {
+  if (saving) return '...'
+  if (saveDone) {
+    return (
+      <>
+        <CheckIcon />
+        Salvo
+      </>
+    )
+  }
+  if (hasPrediction) return 'Atualizar'
+  return 'Salvar'
 }
 
 export default function MatchCard(props: MatchCardProps) {
@@ -83,61 +77,23 @@ export default function MatchCard(props: MatchCardProps) {
     handleScoreInput,
   } = useMatchCard(props)
 
-  // Penalty winner pick — folded inline into the active control row, right
-  // aligned beside the save button, so a draw-marked card stays the same height
-  // as a locked/finished one. Once a winner is chosen the two team buttons
-  // collapse to a ball chip; clicking it re-opens the choice.
-  const winnerShortName =
-    penaltyWinner === 'home'
-      ? match.home_team_short_name
-      : penaltyWinner === 'away'
-        ? match.away_team_short_name
-        : null
-  const penaltyDecided = penaltyWinner !== null && !reopenPenalty
-
-  const penaltyInline = !showPenaltyPicker ? null : penaltyDecided ? (
-    <PenaltyBadge
-      team={winnerShortName ?? ''}
-      tooltip="Vencedor nos pênaltis. Toque para trocar"
-      variant="accent"
-      onActivate={() => setReopenPenalty(true)}
-      disabled={saving}
-      className={styles.penaltyChipSlot}
+  // Escolha de pênalti na mesma linha dos controles, para o empate não aumentar a
+  // altura do card. Depois da escolha os botões viram um chip, e o toque reabre.
+  const penaltyInline = (
+    <PenaltyPicker
+      match={match}
+      show={showPenaltyPicker}
+      penaltyWinner={penaltyWinner}
+      reopenPenalty={reopenPenalty}
+      saving={saving}
+      onReopen={() => setReopenPenalty(true)}
+      onSelect={selectPenaltyWinner}
     />
-  ) : (
-    <div className={styles.penaltyInline} role="radiogroup" aria-label="Quem vence nos pênaltis?">
-      <BallIcon className={styles.penaltyBall} />
-      <button
-        type="button"
-        role="radio"
-        className={`${styles.penaltyBtn} ${penaltyWinner === 'home' ? styles.penaltyBtnActive : ''}`}
-        onClick={() => selectPenaltyWinner('home')}
-        disabled={saving}
-        aria-checked={penaltyWinner === 'home'}
-      >
-        {match.home_team_short_name}
-      </button>
-      <button
-        type="button"
-        role="radio"
-        className={`${styles.penaltyBtn} ${penaltyWinner === 'away' ? styles.penaltyBtnActive : ''}`}
-        onClick={() => selectPenaltyWinner('away')}
-        disabled={saving}
-        aria-checked={penaltyWinner === 'away'}
-      >
-        {match.away_team_short_name}
-      </button>
-    </div>
   )
 
   // O leitor de tela ouve o jogo e o estado juntos ao entrar no card. "contra" no
   // lugar de "×", que seria lido como "vezes".
-  const stateLabel = !locked
-    ? PREDICTION_STATUS_LABEL[status]
-    : isFinished
-      ? 'encerrado'
-      : 'bloqueado'
-  const groupLabel = `${match.home_team_name} contra ${match.away_team_name}, ${stateLabel}`
+  const groupLabel = `${match.home_team_name} contra ${match.away_team_name}, ${stateLabel(locked, isFinished, status)}`
 
   return (
     <div
@@ -206,7 +162,6 @@ export default function MatchCard(props: MatchCardProps) {
             home={home}
             away={away}
             match={match}
-            locked={locked}
             saving={saving}
             canSave={canSave}
             saveDone={saveDone}
@@ -218,13 +173,12 @@ export default function MatchCard(props: MatchCardProps) {
             handleSave={handleSave}
           />
         )}
-        {!locked && prediction?.predicted_classified && (
-          <span className={styles.lockedPenalty}>
-            classificado:{' '}
-            {prediction.predicted_classified === 'home'
-              ? match.home_team_short_name
-              : match.away_team_short_name}
-          </span>
+        {!locked && (
+          <PickedTeamLine
+            label="classificado"
+            match={match}
+            side={prediction?.predicted_classified}
+          />
         )}
         {props.leg1Pending && (
           <p className={styles.lockedPenalty}>
@@ -239,6 +193,77 @@ export default function MatchCard(props: MatchCardProps) {
       </div>
     </div>
   )
+}
+
+function PickedTeamLine({
+  label,
+  match,
+  side,
+}: {
+  label: string
+  match: Match
+  side: 'home' | 'away' | null | undefined
+}) {
+  const team = teamShortName(match, side)
+  if (team === null) return null
+  return (
+    <span className={styles.lockedPenalty}>
+      {label}: {team}
+    </span>
+  )
+}
+
+function PenaltyPicker({
+  match,
+  show,
+  penaltyWinner,
+  reopenPenalty,
+  saving,
+  onReopen,
+  onSelect,
+}: {
+  match: Match
+  show: boolean
+  penaltyWinner: 'home' | 'away' | null
+  reopenPenalty: boolean
+  saving: boolean
+  onReopen: () => void
+  onSelect: (winner: 'home' | 'away') => void
+}) {
+  if (!show) return null
+
+  const winnerShortName = teamShortName(match, penaltyWinner)
+  if (winnerShortName !== null && !reopenPenalty) {
+    return (
+      <PenaltyBadge
+        team={winnerShortName}
+        tooltip="Vencedor nos pênaltis. Toque para trocar"
+        variant="accent"
+        onActivate={onReopen}
+        disabled={saving}
+        className={styles.penaltyChipSlot}
+      />
+    )
+  } else {
+    return (
+      <div className={styles.penaltyInline} role="radiogroup" aria-label="Quem vence nos pênaltis?">
+        <BallIcon className={styles.penaltyBall} />
+        {(['home', 'away'] as const).map((side) => (
+          <button
+            key={side}
+            type="button"
+            role="radio"
+            className={`${styles.penaltyBtn} ${penaltyWinner === side ? styles.penaltyBtnActive : ''}`}
+            onClick={() => onSelect(side)}
+            disabled={saving}
+            aria-checked={penaltyWinner === side}
+          >
+            {teamShortName(match, side)}
+          </button>
+        ))}
+      </div>
+    )
+  }
 }
 
 function MatchScoreRow({ match, isFinished }: { match: Match; isFinished: boolean }) {
@@ -308,11 +333,7 @@ function LockedPredictionView({
     return <p className={styles.noPrediction}>sem palpite registrado</p>
   }
 
-  // Total = base + penalty bonus; both are surfaced as one figure.
-  const total =
-    prediction.points_awarded +
-    (prediction.penalty_points ?? 0) +
-    (prediction.classified_points ?? 0)
+  const total = pickPoints(prediction)
 
   return (
     <div className={styles.lockedPrediction}>
@@ -328,25 +349,11 @@ function LockedPredictionView({
           <span className={styles.lockedScore}>{prediction.predicted_away_score}</span>
         </div>
       )}
-      {prediction.predicted_classified && (
-        <span className={styles.lockedPenalty}>
-          classificado:{' '}
-          {prediction.predicted_classified === 'home'
-            ? match.home_team_short_name
-            : match.away_team_short_name}
-        </span>
-      )}
-      {prediction.predicted_penalty_winner && (
-        <span className={styles.lockedPenalty}>
-          pênalti:{' '}
-          {prediction.predicted_penalty_winner === 'home'
-            ? match.home_team_short_name
-            : match.away_team_short_name}
-        </span>
-      )}
+      <PickedTeamLine label="classificado" match={match} side={prediction.predicted_classified} />
+      <PickedTeamLine label="pênalti" match={match} side={prediction.predicted_penalty_winner} />
       {isFinished && (
         <span className={`${styles.points} ${total > 0 ? styles.pointsGreen : styles.pointsZero}`}>
-          {total} {total === 1 ? 'ponto' : 'pontos'}
+          {pointsLabel(total)}
           {(prediction.classified_points ?? 0) > 0 && (
             <span className={styles.penaltyBonus}>
               {' '}
@@ -401,11 +408,72 @@ function OutcomePickerView({
   )
 }
 
+function ScoreStepper({
+  side,
+  matchId,
+  teamName,
+  value,
+  saving,
+  onUpdate,
+  onScoreInput,
+}: {
+  side: 'home' | 'away'
+  matchId: string
+  teamName: string
+  value: string
+  saving: boolean
+  onUpdate: (v: string) => void
+  onScoreInput: (value: string, update: (v: string) => void) => void
+}) {
+  const inputId = `${side}-score-${matchId}`
+  const step = (delta: -1 | 1) => {
+    const current = value === '' ? 0 : Number(value)
+    onUpdate(String(Math.max(0, Math.min(99, current + delta))))
+  }
+
+  return (
+    <div className={styles.stepper}>
+      <button
+        className={`${styles.stepBtn} ${styles.stepBtnDec}`}
+        onClick={() => step(-1)}
+        disabled={saving}
+        type="button"
+        tabIndex={-1}
+        aria-label={`Diminuir placar ${teamName}`}
+      >
+        −
+      </button>
+      <input
+        className={styles.scoreInput}
+        type="number"
+        id={inputId}
+        name={inputId}
+        min={0}
+        max={99}
+        placeholder="–"
+        value={value}
+        readOnly={saving}
+        onChange={(e) => onScoreInput(e.target.value, onUpdate)}
+        aria-label={`Placar ${teamName}`}
+      />
+      <button
+        className={`${styles.stepBtn} ${styles.stepBtnInc}`}
+        onClick={() => step(1)}
+        disabled={saving}
+        type="button"
+        tabIndex={-1}
+        aria-label={`Aumentar placar ${teamName}`}
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
 function ScoreInputView({
   home,
   away,
   match,
-  locked,
   saving,
   canSave,
   saveDone,
@@ -419,7 +487,6 @@ function ScoreInputView({
   home: string
   away: string
   match: Match
-  locked: boolean
   saving: boolean
   canSave: boolean
   saveDone: boolean
@@ -434,77 +501,25 @@ function ScoreInputView({
   // pênalti. Uma mudança no meio do envio seria trocada pelo placar da resposta.
   return (
     <div className={styles.inputRow}>
-      <div className={styles.stepper}>
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnDec}`}
-          onClick={() => updateHome(String(Math.max(0, (home === '' ? 0 : Number(home)) - 1)))}
-          disabled={locked || saving}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Diminuir placar ${match.home_team_name}`}
-        >
-          −
-        </button>
-        <input
-          className={styles.scoreInput}
-          type="number"
-          id={`home-score-${match.id}`}
-          name={`home-score-${match.id}`}
-          min={0}
-          max={99}
-          placeholder="–"
-          value={home}
-          readOnly={saving}
-          onChange={(e) => handleScoreInput(e.target.value, updateHome)}
-          aria-label={`Placar ${match.home_team_name}`}
-        />
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnInc}`}
-          onClick={() => updateHome(String(Math.min(99, (home === '' ? 0 : Number(home)) + 1)))}
-          disabled={locked || saving}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Aumentar placar ${match.home_team_name}`}
-        >
-          +
-        </button>
-      </div>
+      <ScoreStepper
+        side="home"
+        matchId={match.id}
+        teamName={match.home_team_name}
+        value={home}
+        saving={saving}
+        onUpdate={updateHome}
+        onScoreInput={handleScoreInput}
+      />
       <span className={styles.inputSep}>×</span>
-      <div className={styles.stepper}>
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnDec}`}
-          onClick={() => updateAway(String(Math.max(0, (away === '' ? 0 : Number(away)) - 1)))}
-          disabled={locked || saving}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Diminuir placar ${match.away_team_name}`}
-        >
-          −
-        </button>
-        <input
-          className={styles.scoreInput}
-          type="number"
-          id={`away-score-${match.id}`}
-          name={`away-score-${match.id}`}
-          min={0}
-          max={99}
-          placeholder="–"
-          value={away}
-          readOnly={saving}
-          onChange={(e) => handleScoreInput(e.target.value, updateAway)}
-          aria-label={`Placar ${match.away_team_name}`}
-        />
-        <button
-          className={`${styles.stepBtn} ${styles.stepBtnInc}`}
-          onClick={() => updateAway(String(Math.min(99, (away === '' ? 0 : Number(away)) + 1)))}
-          disabled={locked || saving}
-          type="button"
-          tabIndex={-1}
-          aria-label={`Aumentar placar ${match.away_team_name}`}
-        >
-          +
-        </button>
-      </div>
+      <ScoreStepper
+        side="away"
+        matchId={match.id}
+        teamName={match.away_team_name}
+        value={away}
+        saving={saving}
+        onUpdate={updateAway}
+        onScoreInput={handleScoreInput}
+      />
       {penaltyInline}
       {/* Palpite salvo e sem mudança mostra "Salvo", sem opacidade reduzida. O botão
           continua o mesmo elemento do clique ao "Salvo". Durante o envio e no "Salvo"
@@ -517,18 +532,7 @@ function ScoreInputView({
         disabled={!canSave && !saveDone && !saving}
         aria-disabled={saveDone || saving || undefined}
       >
-        {saving ? (
-          '...'
-        ) : saveDone ? (
-          <>
-            <CheckIcon />
-            Salvo
-          </>
-        ) : hasPrediction ? (
-          'Atualizar'
-        ) : (
-          'Salvar'
-        )}
+        {saveButtonLabel(saving, saveDone, hasPrediction)}
       </button>
     </div>
   )

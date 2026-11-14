@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
 import MatchCard, { type Match, type Prediction, OUTCOMES } from './MatchCard'
+import { teamShortName } from './types'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
@@ -790,6 +791,45 @@ describe('OUTCOMES', () => {
       draw: { home: 0, away: 0, label: 'Empate' },
       away: { home: 0, away: 1, label: 'Fora' },
     })
+  })
+})
+
+describe('teamShortName', () => {
+  it('devolve a sigla do mandante ou visitante e null sem lado escolhido', () => {
+    const match = makeMatch()
+    expect(teamShortName(match, 'home')).toBe('BRA')
+    expect(teamShortName(match, 'away')).toBe('ARG')
+    expect(teamShortName(match, null)).toBeNull()
+    expect(teamShortName(match, undefined)).toBeNull()
+  })
+
+  it('mostra classificado no card aberto e pênalti no card bloqueado', () => {
+    const { rerender } = render(
+      <MatchCard
+        match={makeMatch({ tie_role: 'leg2', decides_on_penalties: true })}
+        prediction={makePrediction({ predicted_classified: 'home' })}
+        groupId="g"
+        onSaved={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('classificado: BRA')).toBeInTheDocument()
+
+    rerender(
+      <MatchCard
+        match={makeMatch({ tie_role: 'leg2', decides_on_penalties: true })}
+        prediction={makePrediction({
+          locked: 1,
+          predicted_home_score: 1,
+          predicted_away_score: 1,
+          predicted_classified: 'away',
+          predicted_penalty_winner: 'home',
+        })}
+        groupId="g"
+        onSaved={vi.fn()}
+      />,
+    )
+    expect(screen.getByText('classificado: ARG')).toBeInTheDocument()
+    expect(screen.getByText('pênalti: BRA')).toBeInTheDocument()
   })
 })
 
