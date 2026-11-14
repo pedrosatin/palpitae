@@ -99,3 +99,27 @@ export function leftoverMatchesMarker(postponed: number, rescheduled: number): s
   if (rescheduled > 0) parts.push(`${rescheduled} remarcado${s(rescheduled)}`)
   return parts.join(', ')
 }
+
+/**
+ * Rodada com jogo adiado ou remarcado mais próxima antes da exibida.
+ * Entram jogos adiados (ADR-013) e jogos remarcados para o futuro em rodadas que
+ * ficaram para trás (ADR-019). Mostra só a mais próxima porque campeonatos longos
+ * acumulam adiados distantes e avisar do mais antigo faria o usuário pular muitas
+ * rodadas para trás antes de ver a seguinte. Estando numa dessas rodadas, devolve
+ * `undefined` para não encadear atalhos.
+ */
+export function previousLeftoverRound(
+  roundKeys: readonly string[],
+  safeIndex: number,
+  postponedByRound: ReadonlyMap<string, number>,
+  rescheduledByRound: ReadonlyMap<string, number>,
+): string | undefined {
+  const hasLeftover = (round: string) =>
+    postponedByRound.has(round) || rescheduledByRound.has(round)
+  const selectedRound = roundKeys[safeIndex]
+  if (selectedRound !== undefined && hasLeftover(selectedRound)) return undefined
+  for (let i = Math.min(safeIndex, roundKeys.length) - 1; i >= 0; i--) {
+    if (hasLeftover(roundKeys[i])) return roundKeys[i]
+  }
+  return undefined
+}
