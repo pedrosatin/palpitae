@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { runInBatches } from '../d1Batch'
 import realHeaders from './__fixtures__/football-data-headers-200.json'
 import {
   clearFootballDataPause,
@@ -8,15 +9,8 @@ import {
   FootballDataQuotaError,
   footballDataPausedUntil,
 } from './footballDataQuota'
-import {
-  MATCH_UPSERT_SQL,
-  batchStatements,
-  isoSeconds,
-  resolveCanonicalScore,
-  resolveLockedAt,
-  slugify,
-  syncFixtures,
-} from './sync'
+import { isoSeconds, MATCH_UPSERT_SQL, slugify } from './matchUpsert'
+import { resolveCanonicalScore, resolveLockedAt, syncFixtures } from './sync'
 
 // ---------------------------------------------------------------------------
 // Fake D1 that records the bind() args of every INSERT and serves the two
@@ -979,7 +973,7 @@ describe('isoSeconds', () => {
   })
 })
 
-describe('batchStatements', () => {
+describe('runInBatches', () => {
   it('splits statements into chunks of 100 and calls db.batch in parallel', async () => {
     const batchMock = vi.fn().mockResolvedValue(undefined)
     const db = { batch: batchMock } as any
@@ -987,7 +981,7 @@ describe('batchStatements', () => {
     // Create 250 dummy statements
     const statements = Array.from({ length: 250 }).map((_, i) => ({ id: i })) as any[]
 
-    await batchStatements(db, statements)
+    await runInBatches(db, statements)
 
     expect(batchMock).toHaveBeenCalledTimes(3)
     expect(batchMock).toHaveBeenNthCalledWith(1, statements.slice(0, 100))
@@ -999,7 +993,7 @@ describe('batchStatements', () => {
     const batchMock = vi.fn().mockResolvedValue(undefined)
     const db = { batch: batchMock } as any
 
-    await batchStatements(db, [])
+    await runInBatches(db, [])
 
     expect(batchMock).not.toHaveBeenCalled()
   })
