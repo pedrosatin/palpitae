@@ -10,8 +10,8 @@
  *
  * `locked_at` também registra a trava por horário da linha anterior no sync.
  * Depois da revelação, adiamento, cancelamento e remarcação preservam a trava
- * permanente, conforme o ADR-023. Um adiamento recebido antes do kickoff mantém
- * a edição aberta até a nova data. Enquanto adiado, o jogo conserva o último
+ * permanente, conforme o ADR-023. Um adiamento que o sync vê antes do kickoff
+ * mantém a edição aberta até a nova data. Enquanto adiado, o jogo conserva o último
  * horário conhecido e `postponed = 1` impede a trava por esse horário antigo.
  */
 

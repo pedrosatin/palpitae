@@ -579,7 +579,7 @@ async function upsertEspnMatches(
         row.postponed,
         row.lockedAt,
         row.leg,
-        // Parâmetro 21 do SQL compartilhado, usado também na trava por horário anterior.
+        // Parâmetro 21 do SQL compartilhado, usado também na trava por horário da linha anterior.
         now,
       ),
     )

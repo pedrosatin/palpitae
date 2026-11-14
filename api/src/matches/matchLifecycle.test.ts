@@ -18,7 +18,7 @@ import { syncFixtures } from './sync'
 
 const KICKOFF = '2026-11-08T15:30:00Z'
 const NEW_KICKOFF = '2026-12-02T20:15:00Z'
-/** Os cenários de adiamento prévio são sincronizados antes do kickoff. */
+/** Instante de todos os syncs do ciclo, uma hora antes do kickoff, para que adiado e cancelado sejam vistos antes do horário. */
 const SYNC_NOW = '2026-11-08T14:30:00Z'
 
 type Score = [number, number] | null

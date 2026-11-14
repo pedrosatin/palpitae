@@ -210,14 +210,14 @@ A game between two teams within a competition.
 | `phase`          | TEXT    | `group` \| `round_of_16` \| `quarter_final` etc. |
 | `round`          | TEXT    | e.g., `'5'`, `'LAST_16'`; never null (migration 0043 trigger) |
 | `postponed`      | INTEGER | `1` while the provider reports the match as postponed, suspended or cancelled (migration 0013) |
-| `locked_at`      | TEXT    | `NULL` até o sync observar início ou uma trava por horário na linha anterior. Nunca é apagado. Guarda o instante do sync, conforme o ADR-023 |
+| `locked_at`      | TEXT    | `NULL` until the sync sees the match started or the stored row already locked by time. Never cleared. Holds the sync time (ADR-023) |
 | `created_at`     | TEXT    | ISO 8601 UTC                                     |
 
 Unique constraint: `(external_id, provider)`
 
 Triggers `matches_format_insert` and `matches_format_update` (migration 0043, no table rebuild, ADR-013) reject a `start_time` outside `YYYY-MM-DDTHH:MM:SSZ`, `status = 'finished'` without both `home_score` and `away_score`, and a null `round`. On update each rule only applies to the column being changed, so an older row outside the format still accepts writes that do not touch it.
 
-> O palpite trava quando `matches.locked_at` está preenchido, o status é `live` ou `finished`, ou o horário passou com `postponed = 0`. O SQL compara horários em segundos, como o formato de `start_time`. No upsert, os dois provedores preenchem `locked_at` se a linha anterior já estava travada por horário, se o status local indica início ou se o provedor informa início. Adiamento, cancelamento e horário mais tarde preservam essa trava. Um adiamento recebido antes do kickoff mantém a edição aberta. A trava continua fora de `predictions`, conforme os ADR-004 e ADR-023.
+> O palpite trava quando `matches.locked_at` está preenchido, o status é `live` ou `finished`, ou o horário passou com `postponed = 0`. O SQL compara horários em segundos, como o formato de `start_time`. No upsert, os dois provedores preenchem `locked_at` se a linha anterior já estava travada por horário, se o status local indica início ou se o provedor informa início. Adiamento, cancelamento e horário mais tarde preservam essa trava. Um adiamento que o sync vê antes do kickoff mantém a edição aberta, e um adiamento anunciado depois desse sync deixa o jogo travado. A trava continua fora de `predictions`, conforme os ADR-004 e ADR-023.
 
 #### Ciclo da partida
 
@@ -227,7 +227,8 @@ Os dois provedores usam `MATCH_UPSERT_SQL`, definido em `api/src/matches/sync.ts
 | --- | --- | --- | --- | --- | --- |
 | Agendado | `scheduled` | 0 | nulo | nulo | nulo |
 | Em andamento, ou encerrado sem placar no provedor | `scheduled` | 0 | preenchido quando o sync viu o início; senão o horário trava | nulo | nulo |
-| Adiado ou cancelado antes do início | `scheduled` | 1 | nulo | nulo | nulo |
+| Adiado ou cancelado visto antes do horário | `scheduled` | 1 | nulo | nulo | nulo |
+| Adiado ou cancelado visto depois do horário | `scheduled` | 1 | preenchido | nulo | nulo |
 | Suspenso ou abandonado depois do início | `scheduled` | 1 | preenchido | nulo | nulo |
 | Encerrado | `finished` | 0 | preenchido (depois do fallback da ESPN, no sync seguinte) | completo | nulo até a pontuação |
 

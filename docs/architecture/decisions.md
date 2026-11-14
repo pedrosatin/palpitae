@@ -902,8 +902,8 @@ O gatilho para migrar ao Workers Paid é a primeira queda por cota, ou o uso di�
 
 ## ADR-023: Palpite revelado fica travado para sempre
 
-**Status** Accepted
-**Date** 2026-11-14
+**Status:** Accepted
+**Date:** 2026-11-14
 
 ### Contexto
 
@@ -913,14 +913,13 @@ O ponto 3 do ADR-013 exige que a revelação dos palpites de grupos ocultos impe
 
 O upsert dos dois provedores persiste em `locked_at` o instante do sync quando a linha anterior tem `postponed = 0` e `start_time` menor ou igual ao instante do sync. A comparação usa segundos UTC, no formato imposto pela migration 0043. Continuam valendo as travas por status iniciado do provedor e por status local `live` ou `finished`. `COALESCE` preserva a primeira trava gravada.
 
-O filtro de escrita condicional do upsert considera essa mesma condição. A primeira sincronização após o kickoff grava a trava, mesmo sem mudança de payload; repetições seguintes continuam sem gravação. A comparação usa os campos anteriores à atualização, para que a nova data ou o novo adiamento jamais apaguem a trava anterior.
+O filtro de escrita condicional do upsert considera essa mesma condição. A primeira sincronização após o kickoff grava a trava, mesmo sem mudança de payload; repetições seguintes continuam sem gravação. A comparação usa os campos anteriores à atualização, Assim, a nova data ou o novo adiamento não apagam a trava.
 
 ### Consequências
 
-- Adiamento recebido antes do kickoff mantém a edição aberta até a nova data. Depois do kickoff conhecido, a trava é definitiva mesmo quando o jogo ainda não começou de fato.
+- Um adiamento que o sync vê antes do kickoff mantém a edição aberta até a nova data. Antes do kickoff, o jogo só é sincronizado pela descoberta diária às 06:15 UTC, pelo sync manual do admin ou pelo poller de um jogo anterior da mesma rodada ou do mesmo dia. Um adiamento anunciado depois desse sync deixa o jogo travado, inclusive depois da remarcação, porque a leitura já revelou os palpites no horário gravado. Não existe caminho para reabrir. Um sync manual antes do kickoff, quando o operador sabe do adiamento, evita a trava.
 - A regra vale para todos os grupos que usam o jogo. A trava pertence a `matches` e independe de alguém ter consultado a revelação.
-- Pontuação, descoberta diária e orçamento do poller mantêm suas regras. O sync continua sem gravar placar parcial ou placar de jogo adiado.
-- A correção protege as próximas sincronizações. Jogos já reabertos exigem investigação histórica antes de qualquer reparo. A [consulta de investigação](../trava-monotonica.sql) só lê dados e documenta os limites de `updated_at` e da ausência do horário original no banco.
+- Jogos reabertos antes do deploy ficam como estão. Jogos já reabertos exigem investigação histórica antes de qualquer reparo. A [consulta de investigação](../trava-monotonica.sql) só lê dados e documenta os limites de `updated_at` e da ausência do horário original no banco.
 
 ---
 
