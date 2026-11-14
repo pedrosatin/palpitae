@@ -155,6 +155,65 @@ async function requireGroupMembership(c: Context<AppContext, '/:id'>): Promise<
   return { userId, groupId, db, membership }
 }
 
+// Colunas de `groups` que as ações de dono leem. `findVisibleGroup` só aceita estas
+// chaves, então a lista que vai para o SELECT nunca vem de entrada do usuário.
+type VisibleGroupColumns = {
+  owner_user_id: string
+  competition_id: string
+  points_classified: number
+}
+
+/**
+ * Lê as `columns` do grupo `:id` que existe, não foi excluído e não está fechado
+ * por piloto para o usuário. Grupo fora disso vira o 404 de sempre. A checagem de
+ * dono fica no handler, porque cada ação responde um 403 próprio.
+ *
+ * Mesmo formato de `requireGroupMembership`: `if ('error' in found) return found.error`.
+ */
+async function findVisibleGroup<K extends keyof VisibleGroupColumns>(
+  c: Context<AppContext>,
+  db: D1Database,
+  groupId: string,
+  columns: readonly K[],
+): Promise<{ group: Pick<VisibleGroupColumns, K> } | { error: Response }> {
+  const group = await db
+    .prepare(`SELECT ${columns.join(', ')} FROM groups WHERE id = ? AND deleted_at IS NULL`)
+    .bind(groupId)
+    .first<Pick<VisibleGroupColumns, K>>()
+
+  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
+    return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
+  }
+  return { group }
+}
+
+/** Pontuação de regra do grupo: inteiro de 0 a 10. */
+function isPointValue(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10
+}
+
+/**
+ * Motivo pelo qual o usuário não pode entrar no grupo agora: banido (403) ou já
+ * membro (409), nessa ordem. `null` quando nenhum dos dois se aplica.
+ */
+async function joinConflict(
+  db: D1Database,
+  groupId: string,
+  userId: string,
+): Promise<{ error: string; status: 403 | 409 } | null> {
+  const banned = await db
+    .prepare('SELECT user_id FROM group_bans WHERE group_id = ? AND user_id = ?')
+    .bind(groupId, userId)
+    .first()
+  if (banned) return { error: 'Acesso revogado pelo administrador', status: 403 }
+  const member = await db
+    .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
+    .bind(groupId, userId)
+    .first()
+  if (member) return { error: 'Você já é membro deste grupo', status: 409 }
+  return null
+}
+
 async function fetchGroupsPodiums(
   db: D1Database,
   finishedGroupIds: string[],
@@ -451,20 +510,7 @@ router.post('/', requireAuth, async (c) => {
   const points_classified = body.points_classified ?? 0
   const predictions_visibility = body.predictions_visibility ?? 'hidden'
 
-  if (
-    !Number.isInteger(points_exact) ||
-    points_exact < 0 ||
-    points_exact > 10 ||
-    !Number.isInteger(points_winner) ||
-    points_winner < 0 ||
-    points_winner > 10 ||
-    !Number.isInteger(points_penalty) ||
-    points_penalty < 0 ||
-    points_penalty > 10 ||
-    !Number.isInteger(points_classified) ||
-    points_classified < 0 ||
-    points_classified > 10
-  ) {
+  if (![points_exact, points_winner, points_penalty, points_classified].every(isPointValue)) {
     return c.json({ error: 'Pontuação deve ser inteiro entre 0 e 10' }, 400)
   }
   // points_exact === 0 enables the "só vencedor" (1X2) mode and is always allowed.
@@ -615,21 +661,8 @@ router.post('/join', requireAuth, async (c) => {
     return c.json({ error: 'Código de convite inválido' }, 404)
   }
 
-  const banned = await db
-    .prepare('SELECT user_id FROM group_bans WHERE group_id = ? AND user_id = ?')
-    .bind(group.id, userId)
-    .first()
-  if (banned) return c.json({ error: 'Acesso revogado pelo administrador' }, 403)
-
-  // Already a member?
-  const existing = await db
-    .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
-    .bind(group.id, userId)
-    .first()
-
-  if (existing) {
-    return c.json({ error: 'Você já é membro deste grupo' }, 409)
-  }
+  const conflict = await joinConflict(db, group.id, userId)
+  if (conflict) return c.json({ error: conflict.error }, conflict.status)
 
   // Limite de membros checado no próprio INSERT: um SELECT COUNT separado deixaria
   // duas entradas simultâneas passarem do limite. O D1 serializa as escritas, então
@@ -668,16 +701,8 @@ router.post('/join', requireAuth, async (c) => {
       .bind(group.id, invite_code)
       .first()
     if (!currentGroup) return c.json({ error: 'Código de convite inválido' }, 404)
-    const currentBan = await db
-      .prepare('SELECT user_id FROM group_bans WHERE group_id = ? AND user_id = ?')
-      .bind(group.id, userId)
-      .first()
-    if (currentBan) return c.json({ error: 'Acesso revogado pelo administrador' }, 403)
-    const again = await db
-      .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
-      .bind(group.id, userId)
-      .first()
-    if (again) return c.json({ error: 'Você já é membro deste grupo' }, 409)
+    const raceConflict = await joinConflict(db, group.id, userId)
+    if (raceConflict) return c.json({ error: raceConflict.error }, raceConflict.status)
     const memberships = await db
       .prepare(`SELECT ${ACTIVE_MEMBERSHIPS_COUNT_SQL} AS n`)
       .bind(userId)
@@ -803,10 +828,7 @@ router.patch('/:id', requireAuth, async (c) => {
   const body = await readJsonObject<{ name?: string; points_classified?: number }>(c)
   if (!body) return c.json({ error: INVALID_BODY }, 400)
   const pointsClassified = body.points_classified
-  if (
-    pointsClassified !== undefined &&
-    (!Number.isInteger(pointsClassified) || pointsClassified < 0 || pointsClassified > 10)
-  ) {
+  if (pointsClassified !== undefined && !isPointValue(pointsClassified)) {
     return c.json({ error: 'Pontos de classificado devem ser um inteiro entre 0 e 10' }, 400)
   }
 
@@ -818,16 +840,13 @@ router.patch('/:id', requireAuth, async (c) => {
   if (parsedName && 'error' in parsedName) return c.json({ error: parsedName.error }, 400)
   const name = parsedName?.name
 
-  const group = await db
-    .prepare(
-      'SELECT owner_user_id, competition_id, points_classified FROM groups WHERE id = ? AND deleted_at IS NULL',
-    )
-    .bind(groupId)
-    .first<{ owner_user_id: string; competition_id: string; points_classified: number }>()
-
-  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
+  const found = await findVisibleGroup(c, db, groupId, [
+    'owner_user_id',
+    'competition_id',
+    'points_classified',
+  ])
+  if ('error' in found) return found.error
+  const { group } = found
 
   if (group.owner_user_id !== userId) {
     return c.json({ error: 'Apenas o administrador pode editar o grupo' }, 403)
@@ -894,14 +913,9 @@ router.post('/:id/invite/rotate', requireAuth, async (c) => {
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const group = await db
-    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
-    .bind(groupId)
-    .first<{ owner_user_id: string }>()
-
-  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
+  const found = await findVisibleGroup(c, db, groupId, ['owner_user_id'])
+  if ('error' in found) return found.error
+  const { group } = found
 
   if (group.owner_user_id !== userId) {
     return c.json({ error: 'Apenas o administrador pode trocar o convite' }, 403)
@@ -933,14 +947,9 @@ router.delete('/:id', requireAuth, async (c) => {
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const group = await db
-    .prepare('SELECT owner_user_id, competition_id FROM groups WHERE id = ? AND deleted_at IS NULL')
-    .bind(groupId)
-    .first<{ owner_user_id: string; competition_id: string }>()
-
-  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
+  const found = await findVisibleGroup(c, db, groupId, ['owner_user_id', 'competition_id'])
+  if ('error' in found) return found.error
+  const { group } = found
 
   if (group.owner_user_id !== userId) {
     return c.json({ error: 'Apenas o administrador pode excluir o grupo' }, 403)
@@ -1034,14 +1043,9 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
   const targetUserId = c.req.param('memberId')
   const db = c.env.DB
 
-  const group = await db
-    .prepare('SELECT owner_user_id FROM groups WHERE id = ? AND deleted_at IS NULL')
-    .bind(groupId)
-    .first<{ owner_user_id: string }>()
-
-  if (!group || (await isPilotGroupBlocked(c, db, groupId))) {
-    return c.json({ error: 'Grupo não encontrado' }, 404)
-  }
+  const found = await findVisibleGroup(c, db, groupId, ['owner_user_id'])
+  if ('error' in found) return found.error
+  const { group } = found
 
   if (targetUserId === userId) {
     if (group.owner_user_id === userId) {
