@@ -18,7 +18,7 @@ const router = new Hono<AppContext>()
 
 /**
  * Cache-Control da cópia guardada no cache de borda, pelo conteúdo da lista:
- *   - todos os jogos encerrados → 24h (a chave muda quando um placar é repontuado)
+ *   - todos os jogos encerrados → 24h (a versão da competição muda a cada alteração exibida)
  *   - senão                     → 60s
  * A lista vazia também fica com o TTL curto para repovoar logo.
  */

@@ -9,6 +9,15 @@ import { ESPN_PRIMARY_COMPETITIONS, isEspnPrimaryCompetition, syncEspnFixtures }
 
 const handles: DatabaseSync[] = []
 
+/** Todas as colunas de `competitions`, menos o contador do cache, que sobe a cada gravação de jogo. */
+function competitionRows(sqlite: DatabaseSync, where = '') {
+  return sqlite
+    .prepare(`SELECT * FROM competitions ${where} ORDER BY id`)
+    .all()
+    .map(({ matches_version: _version, ...row }) => row)
+}
+
+
 describe('isEspnPrimaryCompetition', () => {
   it('returns true for known competitions in ESPN_PRIMARY_COMPETITIONS', () => {
     expect(isEspnPrimaryCompetition('conmebol.sudamericana')).toBe(true)
@@ -161,11 +170,7 @@ describe('sync ESPN com participantes indefinidos', () => {
   it('preserva jogos reais do scoreboard e aceita os mesmos eventos após definir os times', async () => {
     const { sqlite, db } = database()
     const options = { db, competitionCode: 'conmebol.sudamericana', season: 2026 }
-    const competitionsBefore = sqlite
-      .prepare(
-        'SELECT id,name,slug,external_id,provider,season,status,type,penalty_phases,visibility,created_at FROM competitions ORDER BY id',
-      )
-      .all()
+    const competitionsBefore = competitionRows(sqlite)
     const real = realEvent()
     const pending = [finalEvent('401913961'), finalEvent('401913106')]
     scoreboard([pending[0], real, pending[1]])
@@ -203,13 +208,7 @@ describe('sync ESPN com participantes indefinidos', () => {
       { external_id: real.id },
     ])
     expect(sqlite.prepare('SELECT COUNT(*) AS total FROM teams').get()).toEqual({ total: 2 })
-    expect(
-      sqlite
-        .prepare(
-          'SELECT id,name,slug,external_id,provider,season,status,type,penalty_phases,visibility,created_at FROM competitions ORDER BY id',
-        )
-        .all(),
-    ).toEqual(competitionsBefore)
+    expect(competitionRows(sqlite)).toEqual(competitionsBefore)
   })
 
   it.each(['TBD United', 'Sport TBD Home', 'Tbdale FC', 'Away Wanderers'])(

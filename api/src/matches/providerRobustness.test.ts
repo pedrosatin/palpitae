@@ -2,6 +2,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
+import { readFileSync } from 'node:fs'
+import { isKnockoutPhase, KNOCKOUT_PHASES, LABELED_ROUNDS } from './rounds'
 import { syncFixtures } from './sync'
 import { scoreUnprocessedMatches } from './scoring'
 
@@ -108,7 +110,7 @@ describe('correções do provedor', () => {
   })
 })
 
-it('banco recusa confronto inválido antes de inverter os palpites', async () => {
+it('banco recusa mandante igual ao visitante na inserção e na atualização', async () => {
   const { sqlite, sync } = setup()
   await sync('FINISHED', DURING)
   const original = sqlite.prepare('SELECT * FROM matches').get()
@@ -150,4 +152,122 @@ it('mudança de ordem repontua os dois jogos do confronto', async () => {
   expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches WHERE scored_at IS NULL').get()!.n).toBe(
     0,
   )
+})
+
+describe('versão da lista de jogos', () => {
+  async function versioned() {
+    const { sync, sqlite } = setup()
+    await sync('TIMED', BEFORE)
+    const version = () =>
+      Number(
+        sqlite
+          .prepare('SELECT matches_version FROM competitions WHERE external_id = ?')
+          .get('2013')!.matches_version,
+      )
+    return { sqlite, version, sync }
+  }
+
+  it('sobe com jogo inserido e com jogo excluído', async () => {
+    const { sqlite, version } = await versioned()
+    const start = version()
+    sqlite.exec(`INSERT INTO matches
+      (id,external_id,provider,competition_id,home_team_id,away_team_id,start_time,status,round)
+      SELECT 'novo','novo','football-data',competition_id,away_team_id,home_team_id,
+             '2026-08-10T19:00:00Z','scheduled','22' FROM matches WHERE id != 'novo'`)
+    expect(version()).toBe(start + 1)
+    sqlite.exec("DELETE FROM matches WHERE id = 'novo'")
+    expect(version()).toBe(start + 2)
+  })
+
+  it.each([
+    ['name', 'Outro nome'],
+    ['short_name', 'Outro'],
+    ['logo_url', 'https://x/novo.png'],
+  ])('sobe com a mudança de %s de um time do jogo', async (column, value) => {
+    const { sqlite, version } = await versioned()
+    const start = version()
+    sqlite.prepare(`UPDATE teams SET ${column} = ? WHERE external_id = '1'`).run(value)
+    expect(version()).toBe(start + 1)
+  })
+
+  it('sobe com a mudança de penalty_phases', async () => {
+    const { sqlite, version } = await versioned()
+    const start = version()
+    sqlite.exec("UPDATE competitions SET penalty_phases = '[\"FINAL\"]'")
+    expect(version()).toBe(start + 1)
+  })
+
+  it('não sobe quando só scored_at muda nem quando o sync não muda nada', async () => {
+    const { sqlite, version, sync } = await versioned()
+    const start = version()
+    sqlite.exec("UPDATE matches SET scored_at = '2026-08-01T22:00:00Z'")
+    sqlite.exec('UPDATE matches SET scored_at = NULL')
+    expect(version()).toBe(start)
+    await sync('TIMED', BEFORE)
+    expect(version()).toBe(start)
+  })
+})
+
+describe('repontuação por contexto do confronto', () => {
+  const DONE = '2026-08-10T22:00:00Z'
+
+  function pairs(phases: readonly string[]) {
+    const { sqlite } = createSqliteD1()
+    handles.push(sqlite)
+    sqlite.exec("INSERT INTO teams (id,name,slug) VALUES ('a','A','a'),('b','B','b')")
+    for (const [index, phase] of phases.entries()) {
+      sqlite.exec(`INSERT INTO competitions (id,name,slug,status) VALUES ('c${index}','C','c${index}','ongoing')`)
+      sqlite.exec(`INSERT INTO matches
+        (id,external_id,provider,competition_id,home_team_id,away_team_id,start_time,status,
+         home_score,away_score,round,phase,scored_at)
+        VALUES ('first${index}','first${index}','football-data','c${index}','a','b','2026-08-01T19:00:00Z',
+                'finished',1,0,'${phase}','${phase}','${DONE}'),
+               ('second${index}','second${index}','football-data','c${index}','b','a','2026-08-08T19:00:00Z',
+                'finished',0,0,'${phase}','${phase}','${DONE}')`)
+    }
+    return sqlite
+  }
+
+  it('mudar o horário da volta zera o scored_at da ida só em fase eliminatória', () => {
+    const phases = [...LABELED_ROUNDS]
+    const sqlite = pairs(phases)
+    sqlite.exec("UPDATE matches SET start_time = '2026-08-09T19:00:00Z' WHERE id LIKE 'second%'")
+    for (const [index, phase] of phases.entries()) {
+      const scoredAt = (id: string) =>
+        sqlite.prepare('SELECT scored_at FROM matches WHERE id = ?').get(id)!.scored_at
+      expect(scoredAt(`second${index}`), `volta ${phase}`).toBeNull()
+      expect(scoredAt(`first${index}`), `ida ${phase}`).toBe(isKnockoutPhase(phase) ? null : DONE)
+    }
+  })
+
+  it('mudar o horário do returno de uma liga mantém o scored_at do turno', () => {
+    const sqlite = pairs(['REGULAR_SEASON'])
+    sqlite.exec("UPDATE matches SET start_time = '2026-08-09T19:00:00Z' WHERE id = 'second0'")
+    expect(sqlite.prepare('SELECT id, scored_at FROM matches ORDER BY id').all()).toEqual([
+      { id: 'first0', scored_at: DONE },
+      { id: 'second0', scored_at: null },
+    ])
+  })
+
+  it('mudar o horário da volta de um mata-mata zera o scored_at da ida', () => {
+    const sqlite = pairs(['LAST_16'])
+    sqlite.exec("UPDATE matches SET start_time = '2026-08-09T19:00:00Z' WHERE id = 'second0'")
+    expect(sqlite.prepare('SELECT id, scored_at FROM matches ORDER BY id').all()).toEqual([
+      { id: 'first0', scored_at: null },
+      { id: 'second0', scored_at: null },
+    ])
+  })
+
+  it('a lista de fases do gatilho é a de KNOCKOUT_PHASES', () => {
+    const sql = readFileSync(
+      new URL('../../migrations/0044_matches_version.sql', import.meta.url),
+      'utf8',
+    )
+    const trigger = sql.slice(sql.indexOf('CREATE TRIGGER IF NOT EXISTS matches_rescore_context'))
+    const lists = [...trigger.matchAll(/phase IN \(([^)]*)\)/g)].map((match) =>
+      [...match[1].matchAll(/'([A-Z0-9_]+)'/g)].map((phase) => phase[1]),
+    )
+    expect(lists).toHaveLength(2)
+    for (const list of lists) expect([...list].sort()).toEqual([...KNOCKOUT_PHASES].sort())
+  })
 })
