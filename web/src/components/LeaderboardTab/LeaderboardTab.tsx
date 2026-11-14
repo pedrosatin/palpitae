@@ -4,6 +4,7 @@ import { useGroupMembers } from '../../hooks/useGroupMembers'
 import { useRoundStandings, type RoundStanding } from '../../hooks/useRoundStandings'
 import Avatar from '../Avatar'
 import ErrorState from '../ErrorState'
+import MemberBadge from '../MemberBadge'
 import PredictionsModal from './PredictionsModal'
 import styles from './LeaderboardTab.module.css'
 import type { Member } from './types'
@@ -44,8 +45,8 @@ function MemberBadges({
   const streakLabel = `${streak} rodadas seguidas com todos os jogos palpitados`
   return (
     <span className={styles.badges}>
-      {isOwner && <span className={styles.ownerBadge}>admin</span>}
-      {isSelf && <span className={styles.youBadge}>você</span>}
+      {isOwner && <MemberBadge variant="owner" className={styles.memberBadge} />}
+      {isSelf && <MemberBadge variant="self" className={styles.memberBadge} />}
       {isKing && <span className={styles.kingBadge}>rei da rodada</span>}
       {showStreak && (
         <span className={styles.streakBadge} title={streakLabel}>

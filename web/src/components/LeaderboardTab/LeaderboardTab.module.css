@@ -136,24 +136,12 @@
   font-weight: var(--font-weight-medium);
 }
 
-.ownerBadge,
-.youBadge,
 .kingBadge,
 .streakBadge {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
   padding: 1px var(--space-2);
-}
-
-.ownerBadge {
-  background-color: color-mix(in srgb, var(--color-primary) 15%, transparent);
-  color: var(--color-primary);
-}
-
-.youBadge {
-  background-color: var(--color-surface-elevated);
-  color: var(--color-text-muted);
 }
 
 .kingBadge {
@@ -236,8 +224,8 @@
     max-width: 100%;
   }
 
-  .ownerBadge,
-  .youBadge,
+  /* Dois seletores de classe: o selo vem de outro módulo CSS e não pode depender da ordem. */
+  .badges .memberBadge,
   .kingBadge,
   .streakBadge {
     font-size: 0.625rem;

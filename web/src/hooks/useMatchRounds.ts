@@ -1,12 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { trackEvent } from '../analytics/ga'
 import type { Match } from '../components/MatchCard'
 import { rescheduledOpenByRound } from '../lib/rounds'
-
-export interface MatchRoundEvents {
-  prev: string
-  next: string
-}
+import { useRoundNav, type RoundNavEvents } from './useRoundNav'
 
 /**
  * Groups matches by round and exposes navigation helpers shared by
@@ -25,7 +20,7 @@ export function useMatchRounds(
   matches: Match[],
   roundIndex: number,
   setRoundIndex: Dispatch<SetStateAction<number>>,
-  events: MatchRoundEvents,
+  events: RoundNavEvents,
   defaultRound?: string | null,
 ) {
   // A ordem vem da API; a lista não deve ser reordenada no front.
@@ -55,19 +50,7 @@ export function useMatchRounds(
   const selectedRound = roundKeys[safeIndex]
   const roundMatches = rounds.get(selectedRound) ?? []
 
-  function prev() {
-    trackEvent(events.prev, {
-      round: roundKeys[Math.max(0, safeIndex - 1)],
-    })
-    setRoundIndex((i) => Math.max(0, i - 1))
-  }
-
-  function next() {
-    trackEvent(events.next, {
-      round: roundKeys[Math.min(roundKeys.length - 1, safeIndex + 1)],
-    })
-    setRoundIndex((i) => Math.min(roundKeys.length - 1, i + 1))
-  }
+  const { prev, next } = useRoundNav(roundKeys, safeIndex, setRoundIndex, events)
 
   return {
     roundKeys,
