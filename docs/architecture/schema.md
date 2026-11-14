@@ -169,9 +169,12 @@ A real-world tournament (Brasileirão, Copa 2026, etc.).
 | `provider`    | TEXT        | e.g., `'api-football'`                |
 | `season`      | TEXT        | e.g., `'2026'`                        |
 | `status`      | TEXT        | `upcoming` \| `ongoing` \| `finished` |
+| `matches_version` | INTEGER | Contador monotônico do cache de jogos, padrão 0. Migration 0044, ADR-025 |
 | `created_at`  | TEXT        | ISO 8601 UTC                          |
 
 ---
+
+A migration 0044 incrementa a versão por gatilhos nas mudanças visíveis de jogos, times e regras de pênaltis. Alterações de contexto também devolvem o jogo e seus pares à fila de pontuação. Os gatilhos de formato da migration 0043 e os índices existentes continuam ativos.
 
 ### `teams`
 

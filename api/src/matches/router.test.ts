@@ -72,7 +72,7 @@ function createMatchesDbMock(
             async first() {
               if (sql.includes('FROM revoked_sessions')) return null
               if (sql.includes('FROM competitions c')) {
-                return { visibility: 'public', last_scored_at: null }
+                return { visibility: 'public', matches_version: 0 }
               }
               if (sql.includes('FROM competitions WHERE id = ?')) {
                 return {

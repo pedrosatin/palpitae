@@ -114,7 +114,11 @@ describe('preparação das temporadas ESPN 2027', () => {
     '%s exige ano explícito do evento antes de cadastrar temporada, time ou jogo',
     async (code) => {
       const { sqlite, request } = await fixture()
-      const before = sqlite.prepare('SELECT * FROM competitions ORDER BY id').all()
+      const before = sqlite
+        .prepare(
+          'SELECT id,name,slug,external_id,provider,season,status,type,penalty_phases,visibility,created_at FROM competitions ORDER BY id',
+        )
+        .all()
       const withoutYear = event(code)
       delete withoutYear.season?.year
       const wrongYear = event(code, 2026)
@@ -136,7 +140,13 @@ describe('preparação das temporadas ESPN 2027', () => {
         expect(await res.json()).toMatchObject({
           synced: { competitionId: '', matches: 0, teams: 0 },
         })
-        expect(sqlite.prepare('SELECT * FROM competitions ORDER BY id').all()).toEqual(before)
+        expect(
+          sqlite
+            .prepare(
+              'SELECT id,name,slug,external_id,provider,season,status,type,penalty_phases,visibility,created_at FROM competitions ORDER BY id',
+            )
+            .all(),
+        ).toEqual(before)
         expect(sqlite.prepare('SELECT COUNT(*) AS n FROM teams').get()).toEqual({ n: 0 })
         expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 0 })
       }
@@ -146,7 +156,9 @@ describe('preparação das temporadas ESPN 2027', () => {
   it('sincroniza 2027 sem duplicar, preserva 2026 e promove apenas a competição escolhida pelo admin', async () => {
     const { sqlite, db, request } = await fixture()
     const before2026 = sqlite
-      .prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id")
+      .prepare(
+        "SELECT id,name,slug,external_id,provider,season,status,type,penalty_phases,visibility,created_at FROM competitions WHERE season = '2026' ORDER BY id",
+      )
       .all()
     const fetchMock = stubBoard((code) => ({ events: [event(code, 2026), event(code)] }))
     expect(
@@ -171,9 +183,9 @@ describe('preparação das temporadas ESPN 2027', () => {
       )
       .all()
     expect(seasons).toHaveLength(4)
-    expect(
-      seasons.every((row) => row.status === 'upcoming' && row.visibility === 'pilot'),
-    ).toBe(true)
+    expect(seasons.every((row) => row.status === 'upcoming' && row.visibility === 'pilot')).toBe(
+      true,
+    )
     const bySlug = Object.fromEntries(seasons.map((row) => [String(row.slug), row]))
     expect(bySlug['brasileirao-serie-b-2027']?.type).toBe('league')
     expect(bySlug['conmebol-libertadores-2027']?.type).toBe('cup')
@@ -182,13 +194,21 @@ describe('preparação das temporadas ESPN 2027', () => {
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM teams').get()).toEqual({ n: 2 })
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 4 })
     expect(
-      sqlite.prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id").all(),
+      sqlite
+        .prepare(
+          "SELECT id,name,slug,external_id,provider,season,status,type,penalty_phases,visibility,created_at FROM competitions WHERE season = '2026' ORDER BY id",
+        )
+        .all(),
     ).toEqual(before2026)
 
     await discoverFixtures(db, '')
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM matches').get()).toEqual({ n: 8 })
     expect(
-      sqlite.prepare("SELECT * FROM competitions WHERE season = '2026' ORDER BY id").all(),
+      sqlite
+        .prepare(
+          "SELECT id,name,slug,external_id,provider,season,status,type,penalty_phases,visibility,created_at FROM competitions WHERE season = '2026' ORDER BY id",
+        )
+        .all(),
     ).toEqual(before2026)
 
     const list = async (user: 'ordinary' | 'pilot') => {

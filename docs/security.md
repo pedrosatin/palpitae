@@ -318,7 +318,8 @@ da Cloudflare, guarda dado de conta. As exceções são `GET /matches`, que resp
 cada rota. O proxy do Pages devolve o cabeçalho da API sem alterar.
 
 `GET /matches` consulta somente dados locais e usa chave de cache composta por
-competição, rodada e status. Parâmetros desconhecidos não criam novas entradas.
+competição, versão monotônica dos jogos, rodada e status, conforme ADR-025.
+Parâmetros desconhecidos não criam novas entradas.
 Atualizações externas dependem dos crons e do sync manual autenticado como admin.
 O poller busca resultados na janela ativa (115 a 200 minutos após o início) e, como
 resgate, de jogos iniciados há até 24 horas que ainda não estão finalizados ou que

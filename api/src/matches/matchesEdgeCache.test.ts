@@ -151,3 +151,19 @@ describe('GET /matches com cache de borda', () => {
     expect(hit.headers.get('Cache-Control')).toBe('private, max-age=60')
   })
 })
+
+it('correção sem repontuação nunca recupera uma entrada antiga do cache', async () => {
+  stubEdgeCache()
+  const { sqlite, getMatches } = await fixture()
+  await getMatches()
+  sqlite.exec("UPDATE matches SET home_score = 3, scored_at = NULL WHERE id = 'm2'")
+  let body = (await (await getMatches()).json()) as MatchesBody
+  expect(body.matches.find((m) => m.id === 'm2')?.home_score).toBe(3)
+  sqlite.exec(
+    "UPDATE matches SET home_score = 4, scored_at = '2026-05-02T00:00:00Z' WHERE id = 'm2'",
+  )
+  await getMatches()
+  sqlite.exec("UPDATE matches SET home_score = 5, scored_at = NULL WHERE id = 'm2'")
+  body = (await (await getMatches()).json()) as MatchesBody
+  expect(body.matches.find((m) => m.id === 'm2')?.home_score).toBe(5)
+})

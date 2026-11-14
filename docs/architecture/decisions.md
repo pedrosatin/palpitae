@@ -259,8 +259,8 @@ But that response is a **mixed list** (scheduled + live + finished). When a live
 
 A lista toda encerrada muda depois que fica em cache: a sincronização corrige um placar e a pontuação repontua o jogo, ou o operador devolve a competição a piloto. Com a chave só pela URL e o hit respondendo antes de ler o D1, a borda servia o placar antigo por até 24h e continuava entregando a competição rebaixada a quem não tem acesso ao piloto.
 
-- Antes do cache, a rota faz uma consulta: a visibilidade da competição e o `MAX(scored_at)` dos jogos dela. Quem não tem acesso ao piloto recebe 404 antes de qualquer leitura do cache, e piloto nunca entra no cache compartilhado.
-- O `MAX(scored_at)` entra na chave (`scored=`). Repontuar um jogo grava um `scored_at` novo, a chave muda e a requisição seguinte lê o D1. Correção ainda não repontuada continua no cache até a pontuação rodar, o que no poller acontece no mesmo tick. Quando o sync zera o `scored_at` do jogo mais recente, o MAX pode voltar a um valor anterior e servir uma entrada antiga com essa chave até a pontuação seguinte.
+- Antes do cache, a rota lê a visibilidade e `matches_version` da competição. Quem não tem acesso ao piloto recebe 404 antes de qualquer leitura do cache. Piloto nunca entra no cache compartilhado.
+- A chave usa a versão monotônica da competição, conforme ADR-025. Toda alteração visível muda a versão na mesma transação.
 - O índice `idx_matches_comp_scored (competition_id, scored_at)`, da migration 0042, faz o MAX ler uma entrada. O hit passa de 0 para 2 linhas lidas. Sem o índice seriam ~381 numa liga de 380 jogos. O miss continua acima de 2,2 mil linhas.
 - O TTL de 24h vale só para a cópia guardada na borda. O navegador recebe sempre `private, max-age=60`, porque o cache dele não muda de chave quando o placar é corrigido. A revalidação cai no cache de borda.
 
@@ -969,3 +969,28 @@ A descoberta diária e o sync manual chamam `scoreUnprocessedMatches` sem teto d
 - O orçamento conta chamadas. O limite de 10 ms de CPU do Cron Trigger no plano Free fica fora da conta.
 - A descoberta diária segue sem orçamento. Ela pontua cada competição logo depois do sync dela, em paralelo com as outras.
 - O D1 de teste em memória não tem o limite de 50 chamadas. `api/src/testing/d1CallLimit.ts` impõe o limite nos testes, com contagem própria, separada da de produção, que soma as chamadas ao D1 e o `fetch` stubado dos provedores.
+
+
+## ADR-025: Versão monotônica do cache de jogos e correções de contexto
+
+**Status:** Aceito
+
+### Contexto
+
+O cache de `/matches` usava `MAX(scored_at)`. Uma correção que apagava o marcador podia recuperar uma chave anterior ainda presente na borda. O fallback da ESPN e a descoberta também escrevem jogos. Invalidar só no upsert deixaria caminhos sem cobertura.
+
+### Decisão
+
+A migration 0044 acrescenta `competitions.matches_version`, com valor inicial zero. Gatilhos de inserção, alteração de campos visíveis e exclusão de jogos incrementam o contador na mesma transação. A chave usa `matches_version` junto da competição e dos filtros. O nome novo do parâmetro separa as entradas do contrato anterior. Mudanças de nome, sigla ou escudo de time e de `penalty_phases` também incrementam a versão das competições afetadas.
+
+O gatilho de atualização compara valores antigos e novos. O upsert mantém seu filtro de mudanças, portanto um ciclo sem correção preserva a versão. Atualizar somente `scored_at` dispensa incremento porque esse campo não aparece na resposta. A consulta anterior ao cache lê uma linha de `competitions` pela chave primária. Os índices existentes ficam preservados.
+
+O mapeamento da football-data descarta `same_team` como `invalid_event` e registra `sync_event_discarded`, conforme a ESPN. Gatilhos novos recusam a inserção ou atualização de times iguais antes de qualquer inversão de palpite. Essa proteção também cobre bancos que já aplicaram a migration 0039 e dispensa substituir o gatilho existente. Linhas antigas inválidas continuam aceitando atualizações que não escrevem os times.
+
+A guarda de pontuação compara times, fase, perna e horário do jogo e da ida usada no cálculo. Uma correção concorrente impede a gravação do snapshot antigo. Mudanças de contexto limpam `scored_at` do jogo e dos pares antigo e novo. O próximo ciclo refaz os pontos e o classificado conforme a ordem corrigida. O upsert também limpa o marcador ao alterar perna ou horário efetivo.
+
+### Consequências
+
+Cada jogo inserido ou alterado em campo visível custa uma atualização adicional da linha da competição. O gatilho executa dentro da escrita existente e não acrescenta chamadas ao poller do ADR-024. Alterações de contexto podem escrever os marcadores dos pares que já estavam pontuados. Alterações de times consultam os jogos para localizar as competições afetadas. Esses custos ocorrem quando o dado muda.
+
+O navegador mantém seu TTL de 60 segundos. Uma requisição que já leu a versão antes de um sync concorrente pode terminar com o snapshot anterior, porém as requisições seguintes usam a versão nova. As entradas antigas expiram pelo TTL da borda.
