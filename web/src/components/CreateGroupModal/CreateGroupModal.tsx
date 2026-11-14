@@ -71,7 +71,7 @@ export default function CreateGroupModal({
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Criar grupo">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Criar grupo" analyticsId="criar_grupo">
       {created ? (
         <CreateGroupSuccessView created={created} onClose={handleClose} />
       ) : (

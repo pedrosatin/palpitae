@@ -249,7 +249,9 @@ Modal genérico (componente `Modal`):
 
 | Evento | Disparo | Params |
 |---|---|---|
-| `click_modal_fechar` | clique no botão ✕ de qualquer modal (backdrop/ESC seguem não rastreados) | `{ modal }` (título do modal) |
+| `click_modal_fechar` | clique no botão ✕ de qualquer modal; backdrop e ESC seguem sem rastreamento | `{ modal }` |
+
+O parâmetro `modal` recebe o identificador fixo da prop `analyticsId` do componente `Modal`, em vez do título visível. Os valores usados hoje são `palpites_membro`, `criar_grupo`, `entrar_grupo`, `regras_grupo`, `compartilhar_resultado`, `configurar_grupo`, `lembretes_palpite`, `jogos_grupo` e `confirmacao`.
 
 Compartilhar resultado de campeonato encerrado (GroupCard + ShareGroupModal):
 
@@ -265,3 +267,50 @@ Rodada com jogo adiado ou remarcado (PredictionsTab — ver ADR-013 e ADR-019):
 | Evento | Disparo | Params |
 |---|---|---|
 | `click_predictions_rodada_adiada` | clique em "Ver rodada" no aviso de rodada com jogo adiado ou remarcado (pula para a rodada onde o palpite segue aberto) | `{ round }` |
+
+## Allow-list de parâmetros por evento
+
+`trackEvent` em `web/src/analytics/ga.ts` filtra os parâmetros antes de chamar `gtag`. Apenas as chaves declaradas para cada evento em `EVENT_ALLOWED_PARAMS` seguem para o GA4. Chaves fora da lista e parâmetros enviados para eventos sem entrada na tabela são descartados. Quando nenhuma chave permitida sobra após o filtro, o evento sai sem objeto de parâmetros.
+
+Para aceitar um parâmetro novo em produção, adicione a chave correspondente em `EVENT_ALLOWED_PARAMS` e atualize a tabela abaixo.
+
+| Evento | Parâmetros permitidos |
+|---|---|
+| `click_modal_fechar` | `modal` |
+| `entrar_origem` | `origem` |
+| `login` | `method`, `origem` |
+| `share_invite` | `method`, `context` |
+| `join_group` | `entry_method` |
+| `submit_criar_grupo` | `origem` |
+| `click_create_group_preset_selecionado` | `preset` |
+| `click_create_group_ajuda_pontuacao` | `campo` |
+| `click_group_picks_ver_quem_palpitou` | `open` |
+| `change_group_picks_rodada` | `round` |
+| `click_group_picks_rodada_anterior` | `round` |
+| `click_group_picks_proxima_rodada` | `round` |
+| `click_leaderboard_rodada_anterior` | `round` |
+| `click_leaderboard_proxima_rodada` | `round` |
+| `change_leaderboard_rodada` | `round` |
+| `click_matchcard_salvar` | `match_id` |
+| `click_matchcard_resultado` | `match_id`, `outcome` |
+| `click_prediction_penalty_winner` | `match_id`, `winner` |
+| `change_predictions_rodada` | `round` |
+| `click_predictions_rodada_adiada` | `round` |
+| `click_predictions_rodada_anterior` | `round` |
+| `click_predictions_proxima_rodada` | `round` |
+| `click_predictions_salvar_todos` | `count`, `round` |
+| `change_predictions_aplicar_outros_grupos` | `enabled` |
+| `click_predictions_aplicar_outros_grupos` | `groups` |
+| `click_standings_ver_grupo` | `group` |
+| `click_admin_metrics_filtro_campeonato` | `filter`, `value` |
+| `click_admin_metrics_arquivo_mes` | `month` |
+| `click_admin_metrics_periodo` | `days` |
+| `click_admin_radar_periodo` | `days` |
+| `click_admin_radar_ordenar` | `sort` |
+| `click_admin_radar_filtrar_status` | `status` |
+| `click_dashboard_encerrados_toggle` | `open` |
+| `click_group_detail_abrir_convite` | `open` |
+| `click_group_detail_tab` | `tab` |
+| `click_landing_guia` | `guia` |
+| `click_settings_toggle_lembretes` | `enabled` |
+| `click_settings_confirmar_lembretes` | `enabled` |

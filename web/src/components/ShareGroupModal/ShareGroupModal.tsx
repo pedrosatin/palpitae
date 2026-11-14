@@ -93,7 +93,12 @@ export default function ShareGroupModal({ isOpen, onClose, group }: ShareGroupMo
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Compartilhar resultado">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Compartilhar resultado"
+      analyticsId="compartilhar_resultado"
+    >
       <div className={styles.preview}>
         {previewUrl ? (
           <img

@@ -1,10 +1,11 @@
 import Button from '../Button'
-import Modal from '../Modal'
+import Modal, { type ModalAnalyticsId } from '../Modal'
 import styles from './ConfirmModal.module.css'
 
 interface ConfirmModalProps {
   isOpen: boolean
   title?: string
+  analyticsId?: ModalAnalyticsId
   message: string
   confirmLabel?: string
   cancelLabel?: string
@@ -17,6 +18,7 @@ interface ConfirmModalProps {
 export default function ConfirmModal({
   isOpen,
   title = 'Confirmar',
+  analyticsId = 'confirmacao',
   message,
   confirmLabel = 'Confirmar',
   cancelLabel = 'Cancelar',
@@ -26,7 +28,7 @@ export default function ConfirmModal({
   onCancel,
 }: ConfirmModalProps) {
   return (
-    <Modal isOpen={isOpen} onClose={onCancel} title={title}>
+    <Modal isOpen={isOpen} onClose={onCancel} title={title} analyticsId={analyticsId}>
       <p className={styles.message}>{message}</p>
       <div className={styles.actions}>
         <Button variant="secondary" onClick={onCancel} disabled={loading}>

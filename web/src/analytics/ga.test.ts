@@ -52,7 +52,6 @@ describe('ga', () => {
       expect(getStoredConsent()).toBeNull()
     })
 
-
     it('returns "denied" when localStorage has a recent denied timestamp', () => {
       vi.useFakeTimers()
       const now = Date.now()
@@ -231,12 +230,40 @@ describe('ga', () => {
       delete window.gtag
     })
 
-    it('should call gtag with the correct arguments when params are provided', () => {
-      trackEvent('test_event', { custom_param: 'value', count: 1 })
+    it('should forward only allow-listed params for known events and drop extra params', () => {
+      trackEvent('click_predictions_salvar_todos', {
+        count: 3,
+        round: 'r1',
+        member_name: 'Fulana Teste',
+        extra: 'livre',
+      })
 
-      expect(window.gtag).toHaveBeenCalledWith('event', 'test_event', {
-        custom_param: 'value',
-        count: 1,
+      expect(window.gtag).toHaveBeenCalledWith('event', 'click_predictions_salvar_todos', {
+        count: 3,
+        round: 'r1',
+      })
+    })
+
+    it('should drop all params for events without allow-listed params', () => {
+      trackEvent('click_header_logout', { member_name: 'Fulana Teste', count: 1 })
+
+      expect(window.gtag).toHaveBeenCalledWith('event', 'click_header_logout', undefined)
+    })
+
+    it('should pass undefined when allow-listed event receives only disallowed params', () => {
+      trackEvent('click_modal_fechar', { title: 'Palpites de Fulana Teste' })
+
+      expect(window.gtag).toHaveBeenCalledWith('event', 'click_modal_fechar', undefined)
+    })
+
+    it('should keep only modal param in click_modal_fechar and discard extra keys', () => {
+      trackEvent('click_modal_fechar', {
+        modal: 'palpites_membro',
+        title: 'Palpites de Fulana Teste',
+      })
+
+      expect(window.gtag).toHaveBeenCalledWith('event', 'click_modal_fechar', {
+        modal: 'palpites_membro',
       })
     })
 
