@@ -7,6 +7,7 @@ import { useConfirm } from '../../components/ConfirmModal'
 import { trackEvent } from '../../analytics/ga'
 import { isStandingsTabEligible } from '../../components/StandingsTab'
 import { UNEXPECTED_RESPONSE } from '../../lib/responseShape'
+import { withoutParam } from '../../lib/searchParams'
 import {
   type Tab,
   type GroupDetail,
@@ -15,6 +16,16 @@ import {
   parseGroupDetail,
   parseTab,
 } from './types'
+
+function paramsForTab(params: URLSearchParams, tab: Tab): URLSearchParams {
+  const next = withoutParam(params, 'rodada')
+  if (tab === DEFAULT_TAB) {
+    next.delete('tab')
+  } else {
+    next.set('tab', tab)
+  }
+  return next
+}
 
 export function useGroupDetail(groupId: string | undefined) {
   const [group, setGroup] = useState<GroupDetail | null>(null)
@@ -56,41 +67,15 @@ export function useGroupTabs(group: GroupDetail | null) {
 
   function setActiveTab(tab: Tab) {
     trackEvent('click_group_detail_tab', { tab })
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('rodada')
-        if (tab === DEFAULT_TAB) {
-          next.delete('tab')
-        } else {
-          next.set('tab', tab)
-        }
-        return next
-      },
-      { replace: true },
-    )
+    setSearchParams((prev) => paramsForTab(prev, tab), { replace: true })
   }
 
   function clearRequestedRound() {
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('rodada')
-        return next
-      },
-      { replace: true },
-    )
+    setSearchParams((prev) => withoutParam(prev, 'rodada'), { replace: true })
   }
 
   function tabHref(tab: Tab): string {
-    const params = new URLSearchParams(searchParams)
-    params.delete('rodada')
-    if (tab === DEFAULT_TAB) {
-      params.delete('tab')
-    } else {
-      params.set('tab', tab)
-    }
-    const qs = params.toString()
+    const qs = paramsForTab(searchParams, tab).toString()
     if (tab === DEFAULT_TAB) return qs ? `${pathname}?${qs}` : pathname
     return `?${qs}`
   }
@@ -158,9 +143,14 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setLeaving(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(user.id)}`), {
-        method: 'DELETE',
-      })
+      const res = await apiFetch(
+        buildApiUrl(
+          `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(user.id)}`,
+        ),
+        {
+          method: 'DELETE',
+        },
+      )
 
       if (!res.ok) {
         window.alert(await readApiError(res, 'Erro ao sair do grupo'))
@@ -227,9 +217,12 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     setRotatingInvite(true)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}/invite/rotate`), {
-        method: 'POST',
-      })
+      const res = await apiFetch(
+        buildApiUrl(`/groups/${encodeURIComponent(groupId)}/invite/rotate`),
+        {
+          method: 'POST',
+        },
+      )
       if (!res.ok) {
         window.alert(await readApiError(res, 'Erro ao trocar o código de convite'))
         return
