@@ -163,7 +163,7 @@ async function fetchGroupsPodiums(
   const podiumByGroup = new Map<string, PodiumEntry[]>()
   if (finishedGroupIds.length === 0) return podiumByGroup
 
-  const placeholders = finishedGroupIds.map(() => '?').join(', ')
+  // Usa json_each em um único bind para não estourar o limite de 100 parâmetros do D1.
   const podiumRows = await db
     .prepare(
       `
@@ -185,13 +185,13 @@ async function fetchGroupsPodiums(
         JOIN users u ON u.id = gm.user_id
         LEFT JOIN leaderboard l ON l.group_id = gm.group_id AND l.user_id = gm.user_id
         LEFT JOIN profiles p ON p.user_id = gm.user_id
-        WHERE gm.group_id IN (${placeholders}) AND ${notBannedSql('gm')}
+        WHERE gm.group_id IN (SELECT value FROM json_each(?)) AND ${notBannedSql('gm')}
       )
       WHERE rank <= 3 AND scored_user_id IS NOT NULL
       ORDER BY group_id, rank
       `,
     )
-    .bind(...finishedGroupIds)
+    .bind(JSON.stringify(finishedGroupIds))
     .all<{
       group_id: string
       user_id: string
