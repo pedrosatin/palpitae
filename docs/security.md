@@ -455,6 +455,37 @@ Para rotacionar o `JWT_SECRET`:
 4. Resultado esperado: as sessões caem. Numa rotação planejada, os links de
    descadastro assinados com o `UNSUBSCRIBE_SECRET` continuam funcionando.
 
+## Tokens da Cloudflare no CI
+
+Hoje os workflows `deploy-api`, `deploy-web` e `radar-sync` leem o mesmo secret
+`CLOUDFLARE_API_TOKEN`. Quem consegue alterar um desses workflows em qualquer
+branch alcança todos os recursos que o token cobre. As actions de terceiros ficam
+pinadas por SHA completo, e `scripts/workflows-check.test.mjs` falha se uma
+referência voltar a usar tag. Esta proposta reduz o alcance do token e depende de
+configuração do operador na Cloudflare e nas configurações do repositório.
+
+Passos propostos:
+
+1. No painel da Cloudflare, em My Profile > API Tokens, crie três tokens com o
+   mínimo de permissão.
+   - `radar-sync`, escopo na conta: D1 Edit.
+   - `deploy-web`, escopo na conta: Cloudflare Pages Edit.
+   - `deploy-api`, escopo na conta: Workers Scripts Edit e D1 Edit.
+2. No repositório, em Settings > Environments, crie os environments `deploy-api`,
+   `deploy-web` e `radar-sync`. Em cada um, restrinja Deployment branches and tags
+   a `main`.
+3. Grave cada token como secret do environment correspondente, com o nome
+   `CLOUDFLARE_API_TOKEN`, e mantenha `CLOUDFLARE_ACCOUNT_ID` no mesmo lugar.
+4. Nos workflows, adicione `environment: <nome>` ao job que usa o token. Essa
+   mudança de YAML vai em PR à parte, depois que os secrets existirem.
+5. Depois do primeiro deploy e da primeira execução do `radar-sync` com os
+   tokens novos, apague o `CLOUDFLARE_API_TOKEN` antigo dos secrets do repositório
+   e revogue-o no painel.
+
+O job de deploy da API aplica a migration e publica o Worker em sequência, por
+isso o token dele leva Worker e D1. Se a conta tiver mais de um banco,
+restrinja a permissão de D1 ao banco `palpitae` quando o painel oferecer essa opção.
+
 ## Migrações
 
 Toda migration segue a regra de expand/contract de
