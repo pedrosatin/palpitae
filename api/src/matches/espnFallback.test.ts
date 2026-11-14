@@ -587,6 +587,29 @@ describe('scoreWindowFromEspn', () => {
       }
     })
 
+    it('consulta o dia do jogo antes do anterior e registra o erro do dia do jogo', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.99)
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL) =>
+          String(input).includes('dates=20261005')
+            ? new Response('Unauthorized', { status: 401 })
+            : new Response('Forbidden', { status: 403 }),
+        ),
+      )
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const { db } = buildFakeDb([row()])
+      const ae = buildFakeAe()
+
+      await scoreWindowFromEspn(db, ae, ['comp-a'], { now: NOW })
+
+      expect(attemptsOf(ae).map((a) => a.blobs?.[3])).toEqual(['401', '403'])
+      const errors = ae.writeDataPoint.mock.calls
+        .map((c) => c[0])
+        .filter((p) => p.blobs?.[0] === 'match_results_fallback')
+      expect(errors[0].blobs?.[2]).toContain('401')
+    })
+
     it('sucesso só vira evento quando cai na amostra, com peso 10', async () => {
       mockFetch({})
       const { db } = buildFakeDb([row()])

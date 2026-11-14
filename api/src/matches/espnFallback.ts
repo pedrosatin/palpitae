@@ -4,13 +4,16 @@ import {
   createProviderHttpObserver,
   type ProviderHttpObserver,
 } from '../observability/providerHttp'
+import { runInBatches } from '../d1Batch'
+import { normalizeName } from '../normalizeName'
 import {
-  fetchEspnScoreboard as fetchScoreboard,
+  fetchEspnScoreboard,
   isEspnFinal,
   parseNonNegativeInt,
+  type EspnCompetitor,
   type EspnScoreboardEvent,
 } from '../providers/espn'
-import { ACTIVE_RESULT_WINDOW_MS, EARLIEST_RESULT_MS, RESCUE_WINDOW_MS } from './matchPollingWindow'
+import { espnDatesAround, resultWindowBounds, type ResultWindowBounds } from './matchPollingWindow'
 
 /**
  * Fallback de RESULTADOS via ESPN (ADR-016). Quando o sync da football-data.org
@@ -72,14 +75,6 @@ export const FOOTBALL_DATA_TO_ESPN: Record<string, string> = {
  */
 const KICKOFF_TOLERANCE_MS = 150 * 60 * 1000
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-type EspnCompetitor = {
-  homeAway?: string
-  team?: { displayName?: string }
-  score?: string
-}
-
 type EspnEvent = EspnScoreboardEvent
 
 type WindowMatch = {
@@ -101,20 +96,6 @@ export type EspnFallbackOptions = {
 }
 
 /**
- * Normalização de nome — mesmo padrão do `matchKey` de radar/articles.ts:
- * NFD, sem diacritics, lowercase, sem pontuação. 'São Paulo' e 'Sao Paulo'
- * viram a mesma chave.
- */
-function normalizeName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-}
-
-/**
  * Casamento por conter/contido nos DOIS sentidos: football-data usa nomes
  * completos ('Liverpool FC', 'SSC Napoli') e a ESPN os encurta ('Liverpool',
  * 'Napoli'). O sync grava os clubes do Brasileirão com o nome popular
@@ -124,15 +105,6 @@ function normalizeName(name: string): string {
 function namesRelated(a: string, b: string): boolean {
   if (!a || !b) return false
   return a.includes(b) || b.includes(a)
-}
-
-async function fetchEspnScoreboard(
-  slug: string,
-  yyyymmdd: string,
-  onAttempt?: ProviderHttpObserver,
-): Promise<EspnEvent[]> {
-  const data = await fetchScoreboard(slug, yyyymmdd, onAttempt)
-  return data.events ?? []
 }
 
 function espnCompetitors(ev: EspnEvent): {
@@ -192,24 +164,13 @@ export async function scoreWindowFromEspn(
   if (compIds.length === 0) return updatedByComp
 
   // Mesmos limites do poller, incluindo o resgate de até 24 h e a exclusão de
-  // adiados fora da janela ativa. ISO com T/Z mantém a comparação TEXT correta.
-  const now = opts.now ?? Date.now()
-  const earliestOver = new Date(now - EARLIEST_RESULT_MS).toISOString()
-  const stillRelevant = new Date(now - ACTIVE_RESULT_WINDOW_MS).toISOString()
-  const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString()
+  // adiados fora da janela ativa.
+  const bounds = resultWindowBounds(opts.now ?? Date.now())
 
   await Promise.all(
     compIds.map(async (compId) => {
       try {
-        const updated = await scoreCompetitionWindow(
-          db,
-          ae,
-          compId,
-          earliestOver,
-          rescueFloor,
-          stillRelevant,
-          opts.onHttpAttempt,
-        )
+        const updated = await scoreCompetitionWindow(db, ae, compId, bounds, opts.onHttpAttempt)
         updatedByComp.set(compId, updated)
       } catch (err) {
         // Erro de fetch/parsing isola a competição — as demais continuam. Devolve
@@ -229,9 +190,7 @@ async function scoreCompetitionWindow(
   db: D1Database,
   ae: AnalyticsEngineDataset | undefined,
   compId: string,
-  earliestOver: string,
-  rescueFloor: string,
-  stillRelevant: string,
+  { earliestOver, rescueFloor, stillRelevant }: ResultWindowBounds,
   onHttpAttempt: ProviderHttpObserver | undefined,
 ): Promise<number> {
   const { results } = await db
@@ -272,14 +231,10 @@ async function scoreCompetitionWindow(
   // dois dias cobrem todos os eventos cujo kickoff cai na data UTC do jogo.
   const dates = new Set<string>()
   for (const m of results) {
-    const day = m.start_time.slice(0, 10)
-    dates.add(day.replaceAll('-', ''))
-    dates.add(
-      new Date(Date.parse(`${day}T00:00:00Z`) - DAY_MS)
-        .toISOString()
-        .slice(0, 10)
-        .replaceAll('-', ''),
-    )
+    const utcDay = Date.parse(`${m.start_time.slice(0, 10)}T00:00:00Z`)
+    // Dia do jogo antes do anterior: a ordem decide a fila de requisições, a
+    // sequência da telemetria e qual erro chega primeiro ao log.
+    for (const date of espnDatesAround(utcDay, -1, 2).reverse()) dates.add(date)
   }
 
   const telemetry = createProviderHttpObserver(ae, { context: 'fallback', competitionId: compId })
@@ -287,10 +242,10 @@ async function scoreCompetitionWindow(
     onHttpAttempt?.(attempt)
     telemetry?.(attempt)
   }
-  const eventsArrays = await Promise.all(
+  const scoreboards = await Promise.all(
     Array.from(dates).map((date) => fetchEspnScoreboard(slug, date, onAttempt)),
   )
-  const events = eventsArrays.flat()
+  const events = scoreboards.flatMap((scoreboard) => scoreboard.events ?? [])
 
   let updated = 0
   let skipped = 0
@@ -328,11 +283,7 @@ async function scoreCompetitionWindow(
     updated++
   }
 
-  const batches = []
-  for (let i = 0; i < statements.length; i += 100) {
-    batches.push(db.batch(statements.slice(i, i + 100)))
-  }
-  await Promise.all(batches)
+  await runInBatches(db, statements)
 
   logEvent(ae, 'match_results_fallback', {
     blobs: [compId],
