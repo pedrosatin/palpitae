@@ -1,24 +1,32 @@
 import type { Context } from 'hono'
 import { createMiddleware } from 'hono/factory'
+import { getCookie } from 'hono/cookie'
 import type { AppContext } from '../types'
 import { HMAC_SHA256, importHmacKey } from '../auth/crypto'
 import { resolveSession } from '../auth/middleware'
+import { sessionHash } from '../auth/session'
 import { logError } from '../observability/events'
 import { meterD1Rows, type D1RowUsage } from './d1Usage'
 
 const WINDOW_SECONDS = 60
 
-type Category = 'read' | 'write' | 'oauth'
+type AnonymousCategory = 'read' | 'write' | 'oauth'
+type Category = AnonymousCategory | 'revocation'
 
-// Limites por minuto de cada identidade (um usuário logado ou um IP).
-export const LIMITS: Record<Category, number> = { read: 300, write: 60, oauth: 30 }
+// Limites por minuto por usuário, IP ou hash de sessão, conforme a categoria.
+export const LIMITS: Record<Category, number> = {
+  read: 300,
+  write: 60,
+  oauth: 30,
+  revocation: 10,
+}
 
 // Teto do balde anônimo compartilhado: tráfego que chega por um Worker sem o
 // segredo válido, quando não há como saber o IP do visitante. Há um balde para o
 // próprio front e outro para os demais Workers, para que um Worker de terceiros não
 // esgote a quota de quem usa o site. O front é o CF-Worker igual ao host do
 // FRONTEND_URL, a um domínio pai dele ou ao FRONTEND_WORKER_ZONE.
-export const SHARED_PROXY_LIMITS: Record<Category, number> = {
+export const SHARED_PROXY_LIMITS: Record<AnonymousCategory, number> = {
   read: 3000,
   write: 600,
   oauth: 300,
@@ -412,7 +420,7 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   if (!isRead && origin && origin !== c.env.FRONTEND_URL && origin !== safeOrigin(c.env.BASE_URL)) {
     return c.json({ error: 'Origem não autorizada' }, 403)
   }
-  const category: Category =
+  let category: Category =
     c.req.path.startsWith('/auth/google') || c.req.path.startsWith('/auth/callback')
       ? 'oauth'
       : isRead
@@ -427,15 +435,21 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   c.env = { ...c.env, DB: meterD1Rows(db, usage) }
   c.set('limiterDb', db)
 
-  // Sessão válida: só o balde do usuário. O IP não entra, porque pelo proxy do
-  // Pages ele não identifica o visitante.
+  // Sessão válida usa o usuário, exceto na revogação, que usa o hash do token.
+  // O IP do proxy do Pages não identifica o visitante.
   const session = await resolveSession(c)
   const userId = session && 'payload' in session ? session.payload.sub : null
   let identity: string
   let limit = LIMITS[category]
   let daily: DailyKeys | null = null
   if (userId) {
-    identity = `user:${userId}`
+    if (c.req.method === 'POST' && DAILY_BUDGET_EXEMPT.has(c.req.path)) {
+      category = 'revocation'
+      identity = `session:${await sessionHash(getCookie(c, 'session')!)}`
+      limit = LIMITS[category]
+    } else {
+      identity = `user:${userId}`
+    }
   } else {
     const anonymous = await anonymousIdentity(c)
     identity = anonymous.identity
