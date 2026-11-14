@@ -159,7 +159,7 @@ describe('wrangler api config', () => {
   })
 
   it('desliga o workers.dev e as previews, para a API ter um único host público', () => {
-    // As duas chaves valem só no nível raiz. Um [env.*] precisaria repetir as duas.
+    // Impede que um [env.*] futuro sobrescreva workers_dev ou preview_urls.
     expect(wranglerToml).not.toMatch(/^\[env\./m)
     expect(wranglerToml).toMatch(/^workers_dev = false$/m)
     expect(wranglerToml).toMatch(/^preview_urls = false$/m)

@@ -382,19 +382,19 @@ Leitura de 13/11/2026, feita no painel e na API da Cloudflare sem alterar nada.
   e um teste em `api/src/wrangler-config.test.ts` confere as duas chaves. O
   `deploy-api.yml` aplica o valor no deploy seguinte. O arquivo não declara `routes`
   nem `custom_domain`, e o deploy do wrangler só publica domínios e rotas que a
-  configuração lista. No wrangler do lockfile (4.136.3) o vínculo do painel fica
+  configuração lista. No wrangler 4.136.3 do lockfile, o vínculo do painel fica
   como está, e o `workers_dev` ausente valia como ligado justamente por faltar
   `routes`. Declarar o domínio no arquivo fica como decisão separada, a conferir
-  contra a conta antes do primeiro deploy.
+  contra a conta antes do primeiro deploy que incluir essa chave.
 - Nada no repositório usa o endereço `workers.dev`. O front e as Functions chamam
-  `api.palpitae.com.br` (`web/functions/api/[[path]].ts`, `web/.env.production`,
-  `web/functions/convite/[code].ts`), e o `BASE_URL` e o `FRONTEND_URL` do
-  `wrangler.toml` apontam para os hosts próprios.
+  `api.palpitae.com.br` em `web/functions/api/[[path]].ts`, `web/.env.production`
+  e `web/functions/convite/[code].ts`. No `wrangler.toml`, `BASE_URL` e
+  `FRONTEND_URL` apontam para os hosts próprios.
 
 ### Risco aceito do host da API
 
-Com o `workers.dev` fechado, a API tem um único host público, mas esse host segue
-sem regra de borda. O limitador do código, descrito em
+Com o `workers.dev` fechado, a API responde por um único host público. Esse host
+continua sem regra de borda. O limitador do código, descrito em
 [Consumo de recursos](#consumo-de-recursos), é a única barreira de quem chama
 `api.palpitae.com.br` direto. Um flood anônimo vindo de muitos IPs passa pela
 regra da zona, porque ela não casa com esse host. Cada requisição conta nas 100 mil
