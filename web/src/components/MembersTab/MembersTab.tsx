@@ -7,6 +7,7 @@ import { useConfirm } from '../ConfirmModal'
 import Avatar from '../Avatar'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
+import MemberBadge from '../MemberBadge'
 import styles from './MembersTab.module.css'
 
 interface MembersTabProps {
@@ -67,8 +68,10 @@ function MemberItem({ member, currentUserId, removing, onRemove }: MemberItemPro
         <Avatar name={member.display_name} src={member.avatar_url} />
         <div className={styles.info}>
           <span className={styles.name}>{member.display_name}</span>
-          {member.role === 'owner' && <span className={styles.badge}>admin</span>}
-          {member.user_id === currentUserId && <span className={styles.badgeYou}>você</span>}
+          {member.role === 'owner' && <MemberBadge variant="owner" className={styles.badge} />}
+          {member.user_id === currentUserId && (
+            <MemberBadge variant="self" className={styles.badge} />
+          )}
         </div>
       </div>
 

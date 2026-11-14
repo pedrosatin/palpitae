@@ -1,4 +1,5 @@
 import { trackEvent } from '../../analytics/ga'
+import { useRoundNav } from '../../hooks/useRoundNav'
 import { groupConsecutiveBy } from '../../lib/groupConsecutiveBy'
 import Modal from '../Modal'
 import RoundHeader from '../RoundHeader/RoundHeader'
@@ -32,6 +33,10 @@ export default function PredictionsModal({ member, groupId, onClose }: Predictio
   const selectedModalRound = modalRoundKeys[safeModalIndex]
 
   const labelFor = (r: string) => modalByRound.get(r)?.[0]?.round_label ?? r
+  const { prev, next } = useRoundNav(modalRoundKeys, safeModalIndex, setModalRoundIndex, {
+    prev: 'click_leaderboard_rodada_anterior',
+    next: 'click_leaderboard_proxima_rodada',
+  })
 
   return (
     <Modal
@@ -55,18 +60,8 @@ export default function PredictionsModal({ member, groupId, onClose }: Predictio
             selectedRound={selectedModalRound}
             labelFor={labelFor}
             knockoutRounds={knockoutRounds}
-            onPrev={() => {
-              trackEvent('click_leaderboard_rodada_anterior', {
-                round: modalRoundKeys[Math.max(0, safeModalIndex - 1)],
-              })
-              setModalRoundIndex((i) => Math.max(0, i - 1))
-            }}
-            onNext={() => {
-              trackEvent('click_leaderboard_proxima_rodada', {
-                round: modalRoundKeys[Math.min(modalRoundKeys.length - 1, safeModalIndex + 1)],
-              })
-              setModalRoundIndex((i) => Math.min(modalRoundKeys.length - 1, i + 1))
-            }}
+            onPrev={prev}
+            onNext={next}
             onSelect={(round) => {
               trackEvent('change_leaderboard_rodada', { round })
               setModalRoundIndex(modalRoundKeys.indexOf(round))
