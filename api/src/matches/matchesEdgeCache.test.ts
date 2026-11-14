@@ -146,8 +146,8 @@ describe('GET /matches com cache de borda', () => {
     const { getMatches } = await fixture()
 
     const miss = await getMatches()
-    expect(miss.headers.get('Cache-Control')).toBe('public, max-age=60')
+    expect(miss.headers.get('Cache-Control')).toBe('private, max-age=60')
     const hit = await getMatches()
-    expect(hit.headers.get('Cache-Control')).toBe('public, max-age=60')
+    expect(hit.headers.get('Cache-Control')).toBe('private, max-age=60')
   })
 })

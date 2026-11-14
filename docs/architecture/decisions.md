@@ -261,7 +261,7 @@ A lista toda encerrada muda depois que fica em cache: a sincronização corrige 
 - Antes do cache, a rota faz uma consulta: a visibilidade da competição e o `MAX(scored_at)` dos jogos dela. Quem não tem acesso ao piloto recebe 404 antes de qualquer leitura do cache, e piloto nunca entra no cache compartilhado.
 - O `MAX(scored_at)` entra na chave (`scored=`). Repontuar um jogo grava um `scored_at` novo, a chave muda e a requisição seguinte lê o D1. Correção ainda não repontuada continua no cache até a pontuação rodar, o que no poller acontece no mesmo tick. Quando o sync zera o `scored_at` do jogo mais recente, o MAX pode voltar a um valor anterior e servir uma entrada antiga com essa chave até a pontuação seguinte.
 - O índice `idx_matches_comp_scored (competition_id, scored_at)`, da migration 0042, faz o MAX ler uma entrada. O hit passa de 0 para 2 linhas lidas. Sem o índice seriam ~381 numa liga de 380 jogos. O miss continua acima de 2,2 mil linhas.
-- O TTL de 24h vale só para a cópia guardada na borda. O navegador recebe sempre `public, max-age=60`, porque o cache dele não muda de chave quando o placar é corrigido. A revalidação cai no cache de borda.
+- O TTL de 24h vale só para a cópia guardada na borda. O navegador recebe sempre `private, max-age=60`, porque o cache dele não muda de chave quando o placar é corrigido. A revalidação cai no cache de borda.
 
 ---
 

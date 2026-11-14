@@ -287,6 +287,15 @@ origem da API. Previews do Pages (`*.pages.dev`) recebem 403 em mutações. Clie
 de servidor sem Origin continuam permitidos conforme autenticação da rota. O link
 de unsubscribe exige seu token HMAC próprio.
 
+Toda resposta da API sai com `Cache-Control: private, no-store`, salvo quando a
+rota define o próprio cabeçalho. O middleware `defaultCacheControl`,
+em `api/src/security/cacheControl.ts`, roda por fora dos demais e só preenche o
+cabeçalho ausente, cobrindo também 401, 404, 413, 429 e 500 emitidos pelos
+middlewares anteriores ou pelos handlers de erro. Nenhum cache, do navegador ou de uma regra futura
+da Cloudflare, guarda dado de conta. As exceções são `GET /matches`, que responde
+`private, max-age=60` ao navegador, e `/public/*`, que mantém o cache público de
+cada rota. O proxy do Pages devolve o cabeçalho da API sem alterar.
+
 `GET /matches` consulta somente dados locais e usa chave de cache composta por
 competição, rodada e status. Parâmetros desconhecidos não criam novas entradas.
 Atualizações externas dependem dos crons e do sync manual autenticado como admin.

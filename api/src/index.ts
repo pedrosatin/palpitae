@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
+import { defaultCacheControl } from './security/cacheControl'
 import { requestLimits, clearExpiredSecurityRecords } from './security/limits'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
@@ -47,6 +48,8 @@ function reportMissingConfig(env: Env): void {
 
 const app = new Hono<AppContext>()
 
+// Primeiro da fila, para cobrir também o que os middlewares seguintes respondem sozinhos.
+app.use('*', defaultCacheControl)
 app.use('*', secureHeaders())
 
 app.use(

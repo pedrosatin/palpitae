@@ -281,20 +281,20 @@ describe('matches router – GET /', () => {
 
     it('caches an all-finished list for 24h at the edge and 60s in the browser', async () => {
       expect(await cacheHeadersFor([{ status: 'finished' }, { status: 'finished' }])).toEqual({
-        browser: 'public, max-age=60',
+        browser: 'private, max-age=60',
         edge: 'public, max-age=86400',
       })
     })
 
     it('uses a short TTL for a list with not-yet-finished scheduled matches', async () => {
       expect(await cacheHeadersFor([{ status: 'finished' }, { status: 'scheduled' }])).toEqual({
-        browser: 'public, max-age=60',
+        browser: 'private, max-age=60',
         edge: 'public, max-age=60',
       })
     })
 
     it('uses a short TTL for an empty list and keeps it out of the edge cache', async () => {
-      expect(await cacheHeadersFor([])).toEqual({ browser: 'public, max-age=60', edge: null })
+      expect(await cacheHeadersFor([])).toEqual({ browser: 'private, max-age=60', edge: null })
     })
   })
 
