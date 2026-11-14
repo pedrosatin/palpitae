@@ -32,8 +32,10 @@ const METRIC_LABELS: Record<QuotaMetric, string> = {
 }
 
 function isQuotaUsage(data: QuotaUsageResponse | null): data is QuotaUsageResponse {
-  if (!data || !('latest' in data)) return false
-  return data.latest === null || Array.isArray(data.latest.metrics)
+  if (typeof data !== 'object' || data === null || !('latest' in data)) return false
+  const { latest } = data
+  if (latest === null) return true
+  return typeof latest === 'object' && latest !== undefined && Array.isArray(latest.metrics)
 }
 
 function formatDay(day: string): string {
@@ -97,7 +99,7 @@ export default function QuotaUsageSection({ data }: { data: QuotaUsageResponse |
                 <td className={styles.num}>{formatCount(m.limit)}</td>
                 <td className={`${styles.num} ${percentClass(m.threshold) ?? ''}`.trim()}>
                   {formatPercent(m.percent)}
-                  {m.threshold !== null && ` · acima de ${m.threshold}%`}
+                  {m.threshold !== null && ` · a partir de ${m.threshold}%`}
                 </td>
               </tr>
             ))}

@@ -204,7 +204,7 @@ describe('AdminMetricsPage: cotas do plano Free', () => {
     render(<AdminMetricsPage />)
 
     const table = await screen.findByRole('table', { name: 'Uso das cotas do plano Free' })
-    expect(within(table).getByText('85% · acima de 80%')).toBeInTheDocument()
+    expect(within(table).getByText('85% · a partir de 80%')).toBeInTheDocument()
     expect(fetchFake.mock.calls.map(([url]) => url).some((u) => u.includes('/metrics/quota'))).toBe(
       true,
     )

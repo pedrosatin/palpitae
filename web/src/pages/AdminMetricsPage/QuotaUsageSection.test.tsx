@@ -29,13 +29,13 @@ describe('QuotaUsageSection', () => {
       'linhas lidas do D1',
       '4.250.000',
       '5.000.000',
-      '85% · acima de 80%',
+      '85% · a partir de 80%',
     ])
     expect(row('linhas escritas do D1')).toEqual([
       'linhas escritas do D1',
       '60.000',
       '100.000',
-      '60% · acima de 50%',
+      '60% · a partir de 50%',
     ])
     expect(row('requisições dos Workers')).toEqual([
       'requisições dos Workers',
@@ -49,8 +49,8 @@ describe('QuotaUsageSection', () => {
   it('destaca a faixa de alerta de cada métrica', () => {
     render(<QuotaUsageSection data={measured} />)
 
-    expect(screen.getByText('85% · acima de 80%').className).toContain('statusError')
-    expect(screen.getByText('60% · acima de 50%').className).toContain('statusWarn')
+    expect(screen.getByText('85% · a partir de 80%').className).toContain('statusError')
+    expect(screen.getByText('60% · a partir de 50%').className).toContain('statusWarn')
     expect(screen.getByText('12,3%').className).not.toMatch(/status/)
   })
 

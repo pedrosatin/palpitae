@@ -265,6 +265,39 @@ describe('checkQuotaUsage', () => {
     ])
   })
 
+  it('valor negativo ou não numérico no GraphQL vira falha registrada, sem medição', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const body = usageAt({ read: 0.1 })
+    body.data.viewer.accounts[0].d1AnalyticsAdaptiveGroups[0].sum.rowsRead = -1
+    stubGraphql(body)
+    const env = makeEnv()
+
+    await expect(checkQuotaUsage(env, NOW)).resolves.toBe('error')
+    expect(events(env).map((e) => e.blobs?.[0])).toEqual(['cloudflare_usage_error'])
+
+    const nan = usageAt({ read: 0.1 }) as {
+      data: {
+        viewer: { accounts: { workersInvocationsAdaptive: { sum: { requests: unknown } }[] }[] }
+      }
+    }
+    nan.data.viewer.accounts[0].workersInvocationsAdaptive[0].sum.requests = 'NaN'
+    stubGraphql(nan)
+    const env2 = makeEnv()
+    await expect(checkQuotaUsage(env2, NOW)).resolves.toBe('error')
+    expect(events(env2).map((e) => e.blobs?.[0])).toEqual(['cloudflare_usage_error'])
+  })
+
+  it('falha ao gravar o evento de erro não faz o passo lançar', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    stubGraphql({}, 500)
+    const env = makeEnv()
+    vi.mocked((env.AE as AnalyticsEngineDataset).writeDataPoint).mockImplementation(() => {
+      throw new Error('AE indisponível')
+    })
+
+    await expect(checkQuotaUsage(env, NOW)).resolves.toBe('error')
+  })
+
   it('falha de rede registra a falha sem lançar', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.stubGlobal(

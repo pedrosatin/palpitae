@@ -176,15 +176,19 @@ export async function checkQuotaUsage(env: Env, now: Date): Promise<QuotaCheckRe
   try {
     usage = await fetchDailyUsage(env, day)
   } catch (error) {
-    logError(
-      env.AE,
-      'cloudflare_usage_error',
-      `[cota] Falha ao consultar o uso de ${day}:`,
-      error,
-      {
-        blobs: [day],
-      },
-    )
+    try {
+      logError(
+        env.AE,
+        'cloudflare_usage_error',
+        `[cota] Falha ao consultar o uso de ${day}:`,
+        error,
+        {
+          blobs: [day],
+        },
+      )
+    } catch {
+      // Falha ao gravar o evento não quebra o cron: o erro da consulta já foi para o log.
+    }
     return 'error'
   }
 
@@ -200,7 +204,7 @@ export async function checkQuotaUsage(env: Env, now: Date): Promise<QuotaCheckRe
     if (threshold === null) continue
     const percent = quotaPercent(used, limit)
     console.warn(
-      `[cota] ${metric} em ${day}: ${used} de ${limit} (${percent}%), acima de ${threshold}%.`,
+      `[cota] ${metric} em ${day}: ${used} de ${limit} (${percent}%), a partir de ${threshold}%.`,
     )
     tryLogEvent(env.AE, 'cloudflare_quota_alert', {
       blobs: [metric, String(threshold), day],
