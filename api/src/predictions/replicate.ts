@@ -1,6 +1,8 @@
 import type { Context } from 'hono'
 import { hasPilotAccess } from '../auth/permissions'
+import { runInBatches } from '../d1Batch'
 import { competitionStatusSql } from '../groups/competitionStatus'
+import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
 import { isMatchLocked } from '../matches/locking'
 import { resolveTwoLegClassified } from '../matches/scoring'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
@@ -15,7 +17,6 @@ import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
 const MAX_TARGET_GROUPS = 10
 const MAX_MATCHES = 100
 export const MAX_BATCH_STATEMENTS = MAX_TARGET_GROUPS * MAX_MATCHES
-const BATCH_SIZE = 100
 
 /** O que a cópia de palpites precisa saber de um grupo. */
 export type CopyGroup = {
@@ -194,6 +195,41 @@ function derivedClassified(
   )
 }
 
+/**
+ * Palpite da ida para a volta: o que este grupo vai ter depois do lote ou, sem a
+ * ida na cópia, o que ele já tem. Fora da volta devolve null.
+ */
+function leg1ScoreFor(
+  group: CopyGroup,
+  tie: TieInfo<TieMatch> | undefined,
+  sourceByMatch: Map<string, SourceRow>,
+  existing: Map<string, ExistingRow>,
+): Leg1ScorePair | null {
+  if (tie?.role !== 'leg2' || !tie.partner) return null
+  const leg1Source = sourceByMatch.get(tie.partner.id)
+  if (leg1Source) {
+    const leg1 = scoreFor(group, leg1Source)
+    return { homeScore: leg1.home, awayScore: leg1.away }
+  }
+  const stored = existing.get(`${group.id}:${tie.partner.id}`)
+  if (!stored) return null
+  return { homeScore: stored.predicted_home_score, awayScore: stored.predicted_away_score }
+}
+
+/**
+ * O destino já tem o palpite que a cópia gravaria. Num destino "só vencedor" vale
+ * o resultado, não o placar gravado.
+ */
+function isSamePrediction(
+  group: CopyGroup,
+  current: ExistingRow | undefined,
+  pick: { home: number; away: number; penaltyWinner: 'home' | 'away' | null },
+): boolean {
+  if (!current || current.predicted_penalty_winner !== pick.penaltyWinner) return false
+  if (group.points_exact === 0) return sameOutcome(current, pick.home, pick.away)
+  return current.predicted_home_score === pick.home && current.predicted_away_score === pick.away
+}
+
 type Plan = {
   statements: D1PreparedStatement[]
   /** Jogo de cada instrução de `statements`, na mesma ordem. */
@@ -232,23 +268,7 @@ function planWrites(input: {
       const { home, away } = scoreFor(group, source)
       const tie = ties.get(source.match_id)
       const role = tie?.role ?? 'single'
-      // A ida vem do que este grupo vai ter depois do lote, ou do palpite que ele já tem.
-      let leg1Score: Leg1ScorePair | null = null
-      if (role === 'leg2' && tie?.partner) {
-        const leg1Source = sourceByMatch.get(tie.partner.id)
-        if (leg1Source) {
-          const leg1 = scoreFor(group, leg1Source)
-          leg1Score = { homeScore: leg1.home, awayScore: leg1.away }
-        } else {
-          const stored = existing.get(`${group.id}:${tie.partner.id}`)
-          if (stored) {
-            leg1Score = {
-              homeScore: stored.predicted_home_score,
-              awayScore: stored.predicted_away_score,
-            }
-          }
-        }
-      }
+      const leg1Score = leg1ScoreFor(group, tie, sourceByMatch, existing)
       const current = existing.get(`${group.id}:${source.match_id}`)
       let rawPenaltyWinner = source.predicted_penalty_winner
       const tiedHere =
@@ -270,15 +290,8 @@ function planWrites(input: {
       })
       if (!penalty.ok) continue
 
-      // Num destino "só vencedor" vale o resultado, não o placar gravado.
-      const sameScore =
-        current !== undefined &&
-        (group.points_exact === 0
-          ? sameOutcome(current, home, away)
-          : current.predicted_home_score === home && current.predicted_away_score === away)
-      const same = sameScore && current?.predicted_penalty_winner === penalty.value
       result.saved += 1
-      if (same) continue
+      if (isSamePrediction(group, current, { home, away, penaltyWinner: penalty.value })) continue
       if (current) result.replaced += 1
       statements.push(
         insert.bind(
@@ -362,47 +375,16 @@ export async function planCopy(
   return { ...plan, lockedMatches, missingMatches }
 }
 
-/**
- * POST /predictions/replicate
- *
- * Aplica os palpites que o usuário já salvou num grupo aos outros grupos do mesmo
- * campeonato. O front chama depois de salvar, com a opção "Aplicar também em"
- * marcada. O placar vem do palpite gravado em `source_group_id`. O corpo traz só os ids.
- *
- * Regras:
- *   - o usuário precisa ser membro (sem banimento) da origem e de cada destino;
- *   - destino de outro campeonato ou de campeonato encerrado fica de fora;
- *   - origem "só vencedor" não grava em destino que pontua placar exato, que fica de fora;
- *   - jogo travado nunca é gravado (`isMatchLocked`) e vem em `locked_matches`;
- *   - um destino "só vencedor" (`points_exact = 0`) recebe o resultado do placar;
- *   - o palpite que o destino já tinha é substituído e contado em `replaced`;
- *   - o número de SELECTs não cresce com o número de grupos, e as escritas saem em
- *     lotes de `BATCH_SIZE`.
- *
- * Body: { source_group_id, target_group_ids: string[], match_ids: string[] }
- *
- * Response: {
- *   ok, groups: [{ group_id, saved, replaced }], skipped_groups: string[],
- *   locked_matches: string[], missing_matches: string[]
- * }
- *
- * Errors:
- *   400 corpo inválido; 403 usuário fora da origem ou de algum destino; 404 grupo piloto;
- *   429 orçamento diário de escrita excedido.
- */
-export async function handleReplicatePost(c: Context<AppContext>) {
-  const userId = c.get('userId')
+type ReplicateRequest = {
+  sourceGroupId: string
+  targetGroupIds: string[]
+  matchIds: string[]
+}
 
-  let body: Record<string, unknown>
-  try {
-    const parsed = await c.req.json<unknown>()
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return c.json({ error: 'Body JSON inválido' }, 400)
-    }
-    body = parsed as Record<string, unknown>
-  } catch {
-    return c.json({ error: 'Body JSON inválido' }, 400)
-  }
+/** Lê e valida o corpo de `POST /predictions/replicate`. Corpo inválido vira resposta 400. */
+async function readReplicateBody(c: Context<AppContext>): Promise<ReplicateRequest | Response> {
+  const body = await readJsonObject<Record<string, unknown>>(c)
+  if (!body) return c.json({ error: INVALID_BODY }, 400)
 
   const sourceGroupId = body.source_group_id
   const targetIds = stringList(body.target_group_ids, MAX_TARGET_GROUPS)
@@ -419,6 +401,66 @@ export async function handleReplicatePost(c: Context<AppContext>) {
   if (targetGroupIds.length === 0) {
     return c.json({ error: 'target_group_ids deve ter ao menos um grupo diferente da origem' }, 400)
   }
+  return { sourceGroupId, targetGroupIds, matchIds }
+}
+
+/**
+ * Separa os destinos que recebem a cópia dos que ficam de fora: outro campeonato,
+ * campeonato encerrado ou destino de placar exato com origem "só vencedor".
+ */
+function partitionTargets(
+  sourceGroup: GroupRow,
+  targetGroupIds: string[],
+  groups: Map<string, GroupRow>,
+): { eligible: GroupRow[]; skippedGroups: string[] } {
+  const eligible: GroupRow[] = []
+  const skippedGroups: string[] = []
+  for (const id of targetGroupIds) {
+    const group = groups.get(id) as GroupRow
+    const usable =
+      group.competition_id === sourceGroup.competition_id &&
+      group.competition_status !== 'finished' &&
+      acceptsFrom(sourceGroup, group)
+    if (usable) eligible.push(group)
+    else skippedGroups.push(id)
+  }
+  return { eligible, skippedGroups }
+}
+
+/**
+ * POST /predictions/replicate
+ *
+ * Aplica os palpites que o usuário já salvou num grupo aos outros grupos do mesmo
+ * campeonato. O front chama depois de salvar, com a opção "Aplicar também em"
+ * marcada. O placar vem do palpite gravado em `source_group_id`. O corpo traz só os ids.
+ *
+ * Regras:
+ *   - o usuário precisa ser membro (sem banimento) da origem e de cada destino;
+ *   - destino de outro campeonato ou de campeonato encerrado fica de fora;
+ *   - origem "só vencedor" não grava em destino que pontua placar exato, que fica de fora;
+ *   - jogo travado nunca é gravado (`isMatchLocked`) e vem em `locked_matches`;
+ *   - um destino "só vencedor" (`points_exact = 0`) recebe o resultado do placar;
+ *   - o palpite que o destino já tinha é substituído e contado em `replaced`;
+ *   - o número de SELECTs não cresce com o número de grupos, e as escritas saem em
+ *     lotes de 100 (`runInBatches`).
+ *
+ * Body: { source_group_id, target_group_ids: string[], match_ids: string[] }
+ *
+ * Response: {
+ *   ok, groups: [{ group_id, saved, replaced }], skipped_groups: string[],
+ *   locked_matches: string[], missing_matches: string[]
+ * }
+ *
+ * Errors:
+ *   400 corpo inválido; 403 usuário fora da origem ou de algum destino; 404 grupo piloto;
+ *   429 orçamento diário de escrita excedido.
+ */
+export async function handleReplicatePost(c: Context<AppContext>) {
+  const userId = c.get('userId')
+
+  const request = await readReplicateBody(c)
+  if (request instanceof Response) return request
+  const { sourceGroupId, targetGroupIds, matchIds } = request
 
   const db = c.env.DB
   const groups = await fetchMemberGroups(db, userId, [sourceGroupId, ...targetGroupIds])
@@ -431,17 +473,7 @@ export async function handleReplicatePost(c: Context<AppContext>) {
     return c.json({ error: 'Acesso negado ao grupo de destino' }, 403)
   }
 
-  const eligible: GroupRow[] = []
-  const skippedGroups: string[] = []
-  for (const id of targetGroupIds) {
-    const group = groups.get(id) as GroupRow
-    const usable =
-      group.competition_id === sourceGroup.competition_id &&
-      group.competition_status !== 'finished' &&
-      acceptsFrom(sourceGroup, group)
-    if (usable) eligible.push(group)
-    else skippedGroups.push(id)
-  }
+  const { eligible, skippedGroups } = partitionTargets(sourceGroup, targetGroupIds, groups)
 
   const now = new Date().toISOString()
   const plan = await planCopy(db, {
@@ -456,11 +488,7 @@ export async function handleReplicatePost(c: Context<AppContext>) {
   if (plan.statements.length > 0) {
     const budgetError = await enforceDailyWriteBudget(c, plan.statements.length)
     if (budgetError) return budgetError
-    const chunks: D1PreparedStatement[][] = []
-    for (let i = 0; i < plan.statements.length; i += BATCH_SIZE) {
-      chunks.push(plan.statements.slice(i, i + BATCH_SIZE))
-    }
-    await Promise.all(chunks.map((chunk) => db.batch(chunk)))
+    await runInBatches(db, plan.statements)
     logEvent(c.env.AE, 'prediction_saved', {
       blobs: [sourceGroupId, '', await hashUserId(userId), 'replicate', sourceGroup.competition_id],
       doubles: [plan.statements.length],
