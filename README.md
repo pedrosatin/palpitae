@@ -40,7 +40,7 @@ docs/   Architecture decisions, schema, observability and analytics conventions
 - A Cloudflare account (`npx wrangler login`)
 
 > Inside `api/`, always pass `--config ./wrangler.toml` to Wrangler.
-> Wrangler looks for `wrangler.json` and `wrangler.jsonc` in every parent directory before it accepts a `wrangler.toml`, so the root `wrangler.jsonc` (the Pages project) wins over `api/wrangler.toml`. Without the flag, `secret put` sends the secret to the `palpitae-web` Worker and `d1` commands find no migrations. The npm scripts (`dev`, `dev:cron`, `deploy`) already pass the flag.
+> Wrangler looks for `wrangler.json` and `wrangler.jsonc` in every parent directory before it accepts a `wrangler.toml`. Until November 2026 a root `wrangler.jsonc` won over `api/wrangler.toml` and sent secrets to a stray `palpitae-web` Worker. That file is gone, but the flag stays so a config file recreated above `api/` cannot redirect commands again. The npm scripts (`dev`, `dev:cron`, `deploy`) already pass the flag.
 
 ### First-time setup
 
