@@ -11,20 +11,12 @@ import { consumeAcceptedInvite } from '../../lib/invite'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
 import { deadlineBanner, sortByUrgency } from '../../lib/dashboardStatus'
+import { withoutParam } from '../../lib/searchParams'
+import type { User } from '../../types'
 import { useDashboardGroups } from './hooks/useDashboardGroups'
 import { useStatusClock } from './hooks/useStatusClock'
 import NextDeadlineBanner from './NextDeadlineBanner'
 import styles from './DashboardPage.module.css'
-
-interface User {
-  id: string
-  email: string
-  nickname?: string
-  avatar_url?: string
-  feature_flags?: {
-    create_group?: boolean
-  }
-}
 
 interface DashboardPageProps {
   user: User
@@ -176,6 +168,65 @@ function GroupsList({ groups, nowMs }: { groups: GroupWithStats[]; nowMs: number
   )
 }
 
+function DashboardContent({
+  loading,
+  error,
+  groups,
+  nowMs,
+  canCreateGroup,
+  onRetry,
+  onCreateGroup,
+  onJoinGroup,
+}: {
+  loading: boolean
+  error: string | null
+  groups: GroupWithStats[]
+  nowMs: number
+  canCreateGroup: boolean
+  onRetry: () => void
+  onCreateGroup: () => void
+  onJoinGroup: () => void
+}) {
+  if (loading) {
+    return (
+      <div className={styles.loadingContainer}>
+        <p>Carregando...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className={styles.content}>
+        <ErrorState className={styles.loadError}>
+          <p>{error}</p>
+          <Button variant="secondary" size="sm" onClick={onRetry}>
+            Tentar novamente
+          </Button>
+        </ErrorState>
+      </div>
+    )
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className={styles.content}>
+        <EmptyState
+          canCreateGroup={canCreateGroup}
+          onCreateGroup={onCreateGroup}
+          onJoinGroup={onJoinGroup}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className={styles.content}>
+      <GroupsList groups={groups} nowMs={nowMs} />
+    </div>
+  )
+}
+
 export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   useDocumentTitle('Meus grupos')
   const navigate = useNavigate()
@@ -218,14 +269,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   // reabrir o modal. A volta até `/entrar` fica a cargo do redirect do App.
   useEffect(() => {
     if (!competitionFromLink || !searchParams.has('competicao')) return
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('competicao')
-        return next
-      },
-      { replace: true },
-    )
+    setSearchParams((prev) => withoutParam(prev, 'competicao'), { replace: true })
   }, [competitionFromLink, searchParams, setSearchParams])
 
   // Só quem tocou em "Entrar com Google e participar" nesta aba entra sem
@@ -255,14 +299,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
     setJoinOpen(false)
     setAutoJoin(false)
     if (!searchParams.has('convite')) return
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('convite')
-        return next
-      },
-      { replace: true },
-    )
+    setSearchParams((prev) => withoutParam(prev, 'convite'), { replace: true })
   }
 
   function handleGroupJoined(group: { id: string; name: string }) {
@@ -286,30 +323,16 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
       />
 
       <main className={styles.root}>
-        {loading || matchedInviteGroupId ? (
-          <div className={styles.loadingContainer}>
-            <p>Carregando...</p>
-          </div>
-        ) : (
-          <div className={styles.content}>
-            {error ? (
-              <ErrorState className={styles.loadError}>
-                <p>{error}</p>
-                <Button variant="secondary" size="sm" onClick={() => fetchGroups(true)}>
-                  Tentar novamente
-                </Button>
-              </ErrorState>
-            ) : groups.length === 0 ? (
-              <EmptyState
-                canCreateGroup={canCreateGroup}
-                onCreateGroup={() => setCreateOpen(true)}
-                onJoinGroup={() => setJoinOpen(true)}
-              />
-            ) : (
-              <GroupsList groups={groups} nowMs={nowMs} />
-            )}
-          </div>
-        )}
+        <DashboardContent
+          loading={loading || Boolean(matchedInviteGroupId)}
+          error={error}
+          groups={groups}
+          nowMs={nowMs}
+          canCreateGroup={canCreateGroup}
+          onRetry={() => fetchGroups(true)}
+          onCreateGroup={() => setCreateOpen(true)}
+          onJoinGroup={() => setJoinOpen(true)}
+        />
       </main>
 
       <CreateGroupModal

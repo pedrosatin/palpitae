@@ -3,19 +3,11 @@ import { Link } from 'react-router-dom'
 import Avatar from '../Avatar'
 import Button from '../Button'
 import { trackEvent } from '../../analytics/ga'
+import type { User } from '../../types'
 import styles from './Header.module.css'
 
-interface User {
-  nickname?: string
-  avatar_url?: string
-  email: string
-  feature_flags?: {
-    create_group?: boolean
-  }
-}
-
 interface HeaderProps {
-  user: User
+  user: Omit<User, 'id'>
   onCreateGroup: () => void
   onJoinGroup: () => void
   onLogout: () => void

@@ -1,15 +1,7 @@
 import { type CompetitionType } from '../../components/StandingsTab'
 import { hasShape, isRecord } from '../../lib/responseShape'
 
-export interface User {
-  id: string
-  email: string
-  nickname?: string
-  avatar_url?: string
-  feature_flags?: {
-    create_group?: boolean
-  }
-}
+export type { User } from '../../types'
 
 export interface GroupDetail {
   id: string

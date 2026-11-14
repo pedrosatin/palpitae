@@ -40,12 +40,7 @@ function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProp
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
 
-  function handleGroupCreated(nextGroup: { id: string }) {
-    invalidateApiCache('groups:')
-    navigate(`/grupos/${nextGroup.id}`)
-  }
-
-  function handleGroupJoined(nextGroup: { id: string }) {
+  function openGroup(nextGroup: { id: string }) {
     invalidateApiCache('groups:')
     navigate(`/grupos/${nextGroup.id}`)
   }
@@ -62,13 +57,9 @@ function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProp
       <CreateGroupModal
         isOpen={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={handleGroupCreated}
+        onCreated={openGroup}
       />
-      <JoinGroupModal
-        isOpen={joinOpen}
-        onClose={() => setJoinOpen(false)}
-        onJoined={handleGroupJoined}
-      />
+      <JoinGroupModal isOpen={joinOpen} onClose={() => setJoinOpen(false)} onJoined={openGroup} />
       {modals}
     </>
   )
@@ -116,14 +107,8 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
   const location = useLocation()
 
   const { group, setGroup, loading, error } = useGroupDetail(groupId)
-  const {
-    activeTab,
-    showStandings,
-    tabHref,
-    handleTabClick,
-    requestedRound,
-    clearRequestedRound,
-  } = useGroupTabs(group)
+  const { activeTab, showStandings, tabHref, handleTabClick, requestedRound, clearRequestedRound } =
+    useGroupTabs(group)
   const tabsOffset = useTabsOffset()
   const {
     leaveGroup,
@@ -170,14 +155,6 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
     setSettingsVersion((value) => value + 1)
   }
 
-  function openRules() {
-    setRulesOpen(true)
-  }
-
-  function closeRules() {
-    setRulesOpen(false)
-  }
-
   function handleGroupRenamed(name: string) {
     setGroup((prev) => (prev ? { ...prev, name } : prev))
   }
@@ -199,7 +176,9 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
         onPointsClassifiedChanged={handlePointsClassifiedChanged}
         onRenamed={handleGroupRenamed}
       />
-      {group && <GroupRulesModal isOpen={rulesOpen} onClose={closeRules} group={group} />}
+      {group && (
+        <GroupRulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} group={group} />
+      )}
       {confirmDialog}
     </>
   )
@@ -225,12 +204,11 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
           </p>
         )}
 
-        {/* Group header */}
         <GroupHeader
           group={group}
           isAdmin={isAdmin}
           onOpenRename={openRename}
-          onOpenRules={openRules}
+          onOpenRules={() => setRulesOpen(true)}
           onDeleteGroup={deleteGroup}
           deleting={deleting}
           onLeaveGroup={leaveGroup}
@@ -248,7 +226,6 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
           />
         )}
 
-        {/* Tabs */}
         <GroupTabs
           activeTab={activeTab}
           showStandings={showStandings}
@@ -271,7 +248,7 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
             showStandings={showStandings}
             isAdmin={isAdmin}
             userId={user.id}
-            onOpenRules={openRules}
+            onOpenRules={() => setRulesOpen(true)}
             requestedRound={requestedRound}
             onRequestedRoundApplied={clearRequestedRound}
           />
