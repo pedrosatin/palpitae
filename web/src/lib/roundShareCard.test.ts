@@ -7,7 +7,7 @@ import {
   roundShareText,
 } from './roundShareCard'
 import type { RoundStanding } from './roundSummary'
-import { LIME, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './shareCard'
+import { LIME, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './shareCardParts'
 
 function standing(display: string, points: number, position: number, isYou = false): RoundStanding {
   return { user_id: display, display, points, position, isYou, exact: 1, correct: 2, missed: 0 }
