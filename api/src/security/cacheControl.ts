@@ -7,11 +7,11 @@ export const DEFAULT_CACHE_CONTROL = 'private, no-store'
 /**
  * Dá `private, no-store` a toda resposta que sair sem `Cache-Control` próprio. A
  * API devolve dado de conta quase em toda rota, e um cache que guardasse uma
- * dessas respostas a serviria a outro usuário. As rotas que podem ser guardadas
- * (`/matches` e `/public/*`) definem o cabeçalho delas e passam intactas.
+ * dessas respostas a serviria a outro usuário. As rotas cacheáveis, `/matches` e
+ * `/public/*`, definem o cabeçalho delas e passam intactas.
  *
- * Roda por fora de todos os outros middlewares, então também cobre o que eles
- * respondem sem chegar à rota (CORS, limite de corpo, quota) e o 404 e o 500 dos
+ * Roda por fora de todos os outros middlewares, então também cobre o que CORS,
+ * limite de corpo e quota respondem sem chegar à rota, além do 404 e do 500 dos
  * handlers de erro.
  */
 export const defaultCacheControl: MiddlewareHandler<AppContext> = async (c, next) => {

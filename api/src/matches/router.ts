@@ -33,7 +33,7 @@ function matchesCacheControl(matches: { status: string }[]): string {
  * Cache-Control da resposta ao navegador. O cache do navegador não muda de chave
  * quando um placar é corrigido nem quando a competição volta a ser piloto, então
  * ele fica sempre no TTL curto. A revalidação cai no cache de borda. `private`
- * deixa a resposta só no navegador: a cópia da borda é a única compartilhada.
+ * deixa a resposta só no navegador. A cópia da borda é a única compartilhada.
  */
 const BROWSER_CACHE_CONTROL = 'private, max-age=60'
 

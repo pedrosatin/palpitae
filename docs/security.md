@@ -288,10 +288,10 @@ de servidor sem Origin continuam permitidos conforme autenticação da rota. O l
 de unsubscribe exige seu token HMAC próprio.
 
 Toda resposta da API sai com `Cache-Control: private, no-store`, salvo quando a
-rota define o próprio cabeçalho. O middleware `defaultCacheControl`
-(`api/src/security/cacheControl.ts`) roda por fora dos demais e só preenche o que
-falta, então cobre também 401, 404, 413, 429 e 500, que são respondidos antes da
-rota ou pelos handlers de erro. Nenhum cache, do navegador ou de uma regra futura
+rota define o próprio cabeçalho. O middleware `defaultCacheControl`,
+em `api/src/security/cacheControl.ts`, roda por fora dos demais e só preenche o
+cabeçalho ausente, cobrindo também 401, 404, 413, 429 e 500 emitidos pelos
+middlewares anteriores ou pelos handlers de erro. Nenhum cache, do navegador ou de uma regra futura
 da Cloudflare, guarda dado de conta. As exceções são `GET /matches`, que responde
 `private, max-age=60` ao navegador, e `/public/*`, que mantém o cache público de
 cada rota. O proxy do Pages devolve o cabeçalho da API sem alterar.

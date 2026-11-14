@@ -98,7 +98,7 @@ describe('Cache-Control da API', () => {
     expect(missing.headers.get('Cache-Control')).toBe('public, max-age=60')
   })
 
-  it('respostas geradas antes das rotas também saem com private, no-store', async () => {
+  it('respostas de middlewares e de erro também saem com private, no-store', async () => {
     const { call, exhaust } = await fixture()
 
     const unauthenticated = await call('/groups', {}, false)
