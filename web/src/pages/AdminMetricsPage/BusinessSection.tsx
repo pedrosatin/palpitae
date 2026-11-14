@@ -99,9 +99,7 @@ function FilterPills({
         value={value}
         onChange={onChange}
         className={`${shared.periods} ${styles.filterPills}`}
-        role="group"
         ariaLabel={label}
-        ariaPressed
       />
     </div>
   )

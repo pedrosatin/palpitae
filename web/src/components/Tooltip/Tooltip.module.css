@@ -1,0 +1,22 @@
+/* Visual único dos tooltips. O posicionamento fica com cada componente. */
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  max-width: min(240px, calc(100vw - 2 * var(--space-4)));
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background-color: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  line-height: 1.5;
+  text-align: left;
+  /* Evita uma palavra sozinha na última linha. */
+  text-wrap: pretty;
+  color: var(--color-text-secondary);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  pointer-events: none;
+}

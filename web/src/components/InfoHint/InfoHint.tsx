@@ -1,6 +1,5 @@
-import { useRef, useState } from 'react'
-import { TOOLTIP_TIMEOUT_MS, useAutoClose } from '../../hooks/useAutoClose'
-import { useOutsideClick } from '../../hooks/useOutsideClick'
+import Tooltip from '../Tooltip/Tooltip'
+import { useTooltip } from '../Tooltip/useTooltip'
 import styles from './InfoHint.module.css'
 
 interface InfoHintProps {
@@ -38,16 +37,7 @@ export default function InfoHint({
   htmlFor,
   onOpen,
 }: InfoHintProps) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLSpanElement>(null)
-
-  useAutoClose(open, () => setOpen(false), TOOLTIP_TIMEOUT_MS)
-  useOutsideClick(containerRef, open, () => setOpen(false))
-
-  function toggle() {
-    if (!open) onOpen?.()
-    setOpen((v) => !v)
-  }
+  const { open, toggle, containerRef, tooltipId, triggerProps } = useTooltip(onOpen)
 
   const LabelEl = htmlFor ? 'label' : 'button'
   const labelProps = htmlFor
@@ -68,15 +58,15 @@ export default function InfoHint({
         className={`${styles.iconBtn} ${open ? styles.iconBtnOpen : ''}`}
         onClick={toggle}
         aria-label={label}
-        aria-expanded={open}
+        {...triggerProps}
       >
         <InfoSvg />
       </button>
       {labelSide === 'right' && labelNode}
       {open && (
-        <span role="tooltip" className={styles.tooltip}>
+        <Tooltip id={tooltipId} className={styles.tooltip}>
           {text}
-        </span>
+        </Tooltip>
       )}
     </span>
   )

@@ -303,9 +303,7 @@ function HeatmapBody({
           value={measure.value}
           onChange={onMeasureChange}
           className={`${shared.periods} ${styles.filterPills}`}
-          role="group"
           ariaLabel="Série"
-          ariaPressed
         />
       </div>
       {estimated && (
