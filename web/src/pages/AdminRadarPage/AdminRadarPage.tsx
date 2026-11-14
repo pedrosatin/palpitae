@@ -3,6 +3,7 @@ import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { apiFetch } from '../../lib/api'
+import { DAY_MS, formatNumber, parseSqlUtc } from '../AdminMetricsPage/format'
 import AdminPageShell, { AdminLoadError } from '../AdminPageShell'
 import { useAdminLoad, type AdminLoad } from '../useAdminLoad'
 import shared from '../admin-shared.module.css'
@@ -68,10 +69,6 @@ type StatusFilter = (typeof STATUS_FILTERS)[number]['key']
 /** Snapshot mais velho que isso = cron do radar provavelmente parado. */
 const STALE_AFTER_HOURS = 30
 
-function formatNumber(n: number): string {
-  return n.toLocaleString('pt-BR')
-}
-
 /** "YYYY-MM-DD" → "dd/mm/aaaa"; null vira travessão. */
 function formatDay(day: string | null): string {
   if (!day) return '—'
@@ -92,7 +89,7 @@ function countdown(startsOn: string | null): string | null {
   if (!startsOn) return null
   const target = new Date(`${startsOn}T00:00:00Z`).getTime()
   if (Number.isNaN(target)) return null
-  const days = Math.ceil((target - Date.now()) / 86_400_000)
+  const days = Math.ceil((target - Date.now()) / DAY_MS)
   if (days <= 0) return null
   if (days === 1) return 'estreia amanhã'
   if (days < 60) return `estreia em ${days} dias`
@@ -161,9 +158,9 @@ function visibleItems(items: RadarItem[], filter: RadarFilter, sort: SortKey): R
 
 function isSyncStale(lastSync: string | null | undefined): boolean {
   if (!lastSync) return false
-  const at = new Date(`${lastSync.replace(' ', 'T')}Z`)
-  if (Number.isNaN(at.getTime())) return false
-  return Date.now() - at.getTime() > STALE_AFTER_HOURS * 3_600_000
+  const at = parseSqlUtc(lastSync)
+  if (Number.isNaN(at)) return false
+  return Date.now() - at > STALE_AFTER_HOURS * 3_600_000
 }
 
 /** GET /metrics/radar do período. Não lança: rede, status ou corpo inválido viram `failed`. */

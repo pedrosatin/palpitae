@@ -1,4 +1,6 @@
+import { formatNumber, formatSince, isNewerThanPeriod } from './format'
 import {
+  competitionLabel,
   discardDetailLabel,
   discardReasonLabel,
   httpContextLabel,
@@ -85,12 +87,6 @@ interface OpsHttpRow {
 /** Nome e temporada por id de competição (vem do snapshot de /metrics/business). */
 export type CompetitionNames = Map<string, { name: string; season: string | null }>
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('pt-BR')
-}
-
 function formatPercent(part: number, total: number): string {
   if (total <= 0) return '—'
   return `${((part / total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
@@ -99,14 +95,6 @@ function formatPercent(part: number, total: number): string {
 function formatMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`
   return `${(ms / 1000).toFixed(1)} s`
-}
-
-/** "YYYY-MM-DD hh:mm:ss" (UTC da SQL API) → "dd/mm hh:mm UTC". */
-export function formatSince(ts: string): string {
-  const [date, time] = ts.split(' ')
-  if (!date || !time) return ts
-  const [, m, d] = date.split('-')
-  return `${d}/${m} ${time.slice(0, 5)} UTC`
 }
 
 /** Sem resposta (status 0) e 4xx/5xx são falhas; 2xx/3xx são sucesso amostrado. */
@@ -182,10 +170,29 @@ function Attempts({ totals }: { totals: HttpTotals }) {
   )
 }
 
+/** Colunas de falhas: contagem, % de falha e status das falhas. */
+function FailureCells({ totals }: { totals: HttpTotals }) {
+  return (
+    <>
+      <td className={`${styles.num} ${totals.failures > 0 ? styles.statusError : ''}`}>
+        {formatNumber(Math.round(totals.failures))}
+      </td>
+      <td className={styles.num}>{formatPercent(totals.failures, totals.attempts)}</td>
+      <td className={styles.detail}>{failureBreakdown(totals)}</td>
+    </>
+  )
+}
+
+/** Mais falhas primeiro; empate decidido pelo total de tentativas. */
+function byFailuresThenAttempts(a: [string, HttpTotals], b: [string, HttpTotals]): number {
+  return b[1].failures - a[1].failures || b[1].attempts - a[1].attempts
+}
+
 function competitionName(id: string, names: CompetitionNames): { text: string; title?: string } {
   if (!id) return { text: 'sem liga', title: 'Evento sem competição associada' }
   const found = names.get(id)
-  if (!found) return { text: `Campeonato ${id.slice(0, 8)}`, title: id }
+  if (!found) return { text: competitionLabel(id, undefined, undefined), title: id }
+  // Competição conhecida com nome vazio mostra o texto vazio, como antes da extração.
   return { text: found.season ? `${found.name} ${found.season}` : found.name, title: id }
 }
 
@@ -199,8 +206,7 @@ function CollectionNotice({ ops }: { ops: OpsResponse }) {
       </p>
     )
   }
-  const first = new Date(`${ops.httpFirstSeenAt.replace(' ', 'T')}Z`).getTime()
-  if (Number.isFinite(first) && first > Date.now() - ops.days * DAY_MS) {
+  if (isNewerThanPeriod(ops.httpFirstSeenAt, ops.days)) {
     return (
       <p className={styles.samplingWarning}>
         A coleta de tentativas HTTP começou em {formatSince(ops.httpFirstSeenAt)}; antes disso não
@@ -216,9 +222,7 @@ function HttpByProcess({ ops }: { ops: OpsResponse }) {
   if (totals.size === 0) {
     return <p className={styles.hint}>Nenhuma tentativa HTTP registrada no período.</p>
   }
-  const rows = [...totals.entries()].sort(
-    (a, b) => b[1].failures - a[1].failures || b[1].attempts - a[1].attempts,
-  )
+  const rows = [...totals.entries()].sort(byFailuresThenAttempts)
   return (
     <div className={styles.tableScroll}>
       <table className={styles.table} aria-label="Tentativas HTTP por provedor e processo">
@@ -245,11 +249,7 @@ function HttpByProcess({ ops }: { ops: OpsResponse }) {
                 <td className={styles.num}>
                   <Attempts totals={t} />
                 </td>
-                <td className={`${styles.num} ${t.failures > 0 ? styles.statusError : ''}`}>
-                  {formatNumber(Math.round(t.failures))}
-                </td>
-                <td className={styles.num}>{formatPercent(t.failures, t.attempts)}</td>
-                <td className={styles.detail}>{failureBreakdown(t)}</td>
+                <FailureCells totals={t} />
                 <td className={styles.num}>
                   {t.attempts > 0 ? formatMs(t.weightedMs / t.attempts) : '—'}
                 </td>
@@ -268,9 +268,7 @@ function HttpByCompetition({ ops, names }: { ops: OpsResponse; names: Competitio
     (r) => `${r.competition_id}\u0000${r.provider}`,
   )
   if (totals.size === 0) return null
-  const rows = [...totals.entries()].sort(
-    (a, b) => b[1].failures - a[1].failures || b[1].attempts - a[1].attempts,
-  )
+  const rows = [...totals.entries()].sort(byFailuresThenAttempts)
   return (
     <>
       <h3 className={styles.subTitle}>Tentativas HTTP por campeonato</h3>
@@ -301,11 +299,7 @@ function HttpByCompetition({ ops, names }: { ops: OpsResponse; names: Competitio
                   <td className={styles.num}>
                     <Attempts totals={t} />
                   </td>
-                  <td className={`${styles.num} ${t.failures > 0 ? styles.statusError : ''}`}>
-                    {formatNumber(Math.round(t.failures))}
-                  </td>
-                  <td className={styles.num}>{formatPercent(t.failures, t.attempts)}</td>
-                  <td className={styles.detail}>{failureBreakdown(t)}</td>
+                  <FailureCells totals={t} />
                 </tr>
               )
             })}

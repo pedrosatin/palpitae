@@ -1,4 +1,5 @@
-import { CollectionNotice, formatCount } from './InviteFunnelSection'
+import { CollectionNotice } from './CollectionNotice'
+import { formatCount } from './format'
 import styles from './AdminMetricsPage.module.css'
 
 /**

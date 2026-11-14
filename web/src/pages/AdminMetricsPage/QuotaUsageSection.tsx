@@ -1,5 +1,4 @@
-import { formatCount } from './InviteFunnelSection'
-import { formatSince } from './ProviderOpsSection'
+import { formatCount, formatSince } from './format'
 import styles from './AdminMetricsPage.module.css'
 
 /**

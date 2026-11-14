@@ -9,6 +9,7 @@ import shared from '../admin-shared.module.css'
 import styles from './AdminMetricsPage.module.css'
 import { BarChart, OTHER_COLOR, SERIES_COLORS, StackedBarChart } from './charts'
 import { lastDays } from './dates'
+import { formatNumber, parseSqlUtc } from './format'
 import { eventLabel } from './labels'
 import { evaluateLoginFailureAlert } from './loginFailureAlert'
 import CompetitionActivitySection, {
@@ -183,31 +184,17 @@ function buildStackedSeries(
   return { series, legend }
 }
 
-function buildApiCallsSeries(
-  apiCallsDaily: OverviewResponse['apiCallsDaily'],
+/** Valor por dia alinhado à janela do período; dia sem linha entra zerado. */
+function dailyTotals<T extends { day: string }>(
+  rows: T[],
+  valueOf: (row: T) => number,
   days: number,
 ): { label: string; total: number }[] {
-  const byDay = new Map(apiCallsDaily.map((r) => [r.day.slice(0, 10), Number(r.api_calls)]))
+  const byDay = new Map(rows.map((r) => [r.day.slice(0, 10), valueOf(r)]))
   return lastDays(days).map((label) => ({
     label,
     total: byDay.get(label) ?? 0,
   }))
-}
-
-/** DAU: usuários distintos palpitando por dia, alinhado à janela do período. */
-function buildDauSeries(
-  predictionsDaily: OverviewResponse['predictionsDaily'],
-  days: number,
-): { label: string; total: number }[] {
-  const byDay = new Map(predictionsDaily.map((r) => [r.day.slice(0, 10), Number(r.users)]))
-  return lastDays(days).map((label) => ({
-    label,
-    total: byDay.get(label) ?? 0,
-  }))
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString('pt-BR')
 }
 
 function formatBytes(size: number): string {
@@ -234,9 +221,9 @@ function formatDuration(ms: number): string {
 
 /** "há X min/h/dias" a partir de um timestamp UTC da SQL API. */
 function formatAgo(ts: string): string {
-  const date = new Date(`${ts.replace(' ', 'T')}Z`)
-  if (Number.isNaN(date.getTime())) return ts
-  const mins = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000))
+  const time = parseSqlUtc(ts)
+  if (Number.isNaN(time)) return ts
+  const mins = Math.max(0, Math.round((Date.now() - time) / 60_000))
   if (mins < 60) return `há ${mins} min`
   if (mins < 48 * 60) return `há ${Math.round(mins / 60)} h`
   return `há ${Math.round(mins / (24 * 60))} dias`
@@ -262,32 +249,15 @@ const CRON_INFO: Record<string, { label: string; staleAfterMin: number }> = {
 }
 
 function isStale(ts: string, staleAfterMin: number): boolean {
-  const date = new Date(`${ts.replace(' ', 'T')}Z`)
-  if (Number.isNaN(date.getTime())) return false
-  return Date.now() - date.getTime() > staleAfterMin * 60_000
+  const time = parseSqlUtc(ts)
+  if (Number.isNaN(time)) return false
+  return Date.now() - time > staleAfterMin * 60_000
 }
 
-function KpiCard({
-  label,
-  value,
-  hint,
-  status,
-}: {
-  label: string
-  value: string
-  hint?: string
-  /** Cor do valor conforme severidade — 'ok' (default) é o verde de marca. */
-  status?: 'ok' | 'warn' | 'danger'
-}) {
-  const valueClass =
-    status === 'danger'
-      ? `${styles.kpiValue} ${styles.kpiValueDanger}`
-      : status === 'warn'
-        ? `${styles.kpiValue} ${styles.kpiValueWarn}`
-        : styles.kpiValue
+function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className={styles.kpi}>
-      <span className={valueClass}>{value}</span>
+      <span className={styles.kpiValue}>{value}</span>
       <span className={styles.kpiLabel}>{label}</span>
       {hint && <span className={styles.kpiHint}>{hint}</span>}
     </div>
@@ -296,24 +266,26 @@ function KpiCard({
 
 type MetricsAlert = { key: string; label: string; level: 'warn' | 'danger' }
 
+function totalOf(overview: OverviewResponse, type: string): number {
+  return Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
+}
+
 function buildKpis(overview: OverviewResponse) {
-  const totalOf = (type: string) =>
-    Number(overview.totals.find((t) => t.event_type === type)?.count ?? 0)
   const hits = Number(overview.cache.find((c) => c.result === 'hit')?.count ?? 0)
   const misses = Number(overview.cache.find((c) => c.result === 'miss')?.count ?? 0)
   const cacheTotal = hits + misses
-  const groupsCreated = totalOf('group_created')
-  const groupsJoined = totalOf('group_joined')
+  const groupsCreated = totalOf(overview, 'group_created')
+  const groupsJoined = totalOf(overview, 'group_joined')
   return {
     activeUsers: Number(overview.predictions.active_users ?? 0),
     predictions: Number(overview.predictions.total ?? 0),
     groupsCreated,
     // Conversão de convite: entradas por grupo criado no período.
     joinRate: groupsCreated > 0 ? (groupsJoined / groupsCreated).toFixed(1) : '—',
-    logins: totalOf('login_success'),
+    logins: totalOf(overview, 'login_success'),
     cacheHitRate: cacheTotal > 0 ? `${Math.round((hits / cacheTotal) * 100)}%` : '—',
-    emailUnsubs: totalOf('email_unsubscribed'),
-    emailResubs: totalOf('email_resubscribed'),
+    emailUnsubs: totalOf(overview, 'email_unsubscribed'),
+    emailResubs: totalOf(overview, 'email_resubscribed'),
   }
 }
 
@@ -377,9 +349,7 @@ function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): Metri
   }
   // totals só lista event_types presentes no período (GROUP BY); ausência de
   // login_success é zero legítimo, não "dado faltando".
-  const loginSuccess = Number(
-    overview.totals.find((t) => t.event_type === 'login_success')?.count ?? 0,
-  )
+  const loginSuccess = totalOf(overview, 'login_success')
   const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
   const loginAlert = evaluateLoginFailureAlert({
     loginSuccess,
@@ -394,9 +364,14 @@ function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): Metri
 
 type ArchiveFile = ArchiveResponse['files'][number]
 
+/** Chave do arquivo no R2 (`events/YYYY/MM/DD.ndjson`) → `YYYY/MM/DD`. */
+function archiveDay(key: string): string {
+  return key.replace('events/', '').replace('.ndjson', '')
+}
+
 // Verifica a integridade do export nos últimos 14 dias.
 function buildArchiveDays(files: ArchiveFile[]) {
-  const byDay = new Map(files.map((f) => [f.key.replace('events/', '').replace('.ndjson', ''), f]))
+  const byDay = new Map(files.map((f) => [archiveDay(f.key), f]))
   const oldest = [...byDay.keys()].sort()[0].replaceAll('/', '-')
   return lastDays(14, 1)
     .reverse()
@@ -413,9 +388,7 @@ function buildArchiveStats(files: ArchiveFile[]) {
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
   const totalEvents = files.reduce((sum, f) => sum + (f.events ?? 0), 0)
   const missingMeta = files.filter((f) => f.events === null).length
-  const oldestDay = files
-    .map((f) => f.key.replace('events/', '').replace('.ndjson', '').replaceAll('/', '-'))
-    .sort()[0]
+  const oldestDay = files.map((f) => archiveDay(f.key).replaceAll('/', '-')).sort()[0]
 
   const byMonth = new Map<string, number>()
   for (const f of files) {
@@ -450,12 +423,17 @@ function useMetricsData(
   )
 
   const apiCallsSeries = useMemo(
-    () => (overview ? buildApiCallsSeries(overview.apiCallsDaily, overview.days) : []),
+    () =>
+      overview
+        ? dailyTotals(overview.apiCallsDaily, (r) => Number(r.api_calls), overview.days)
+        : [],
     [overview],
   )
 
+  // DAU: usuários distintos palpitando por dia.
   const dauSeries = useMemo(
-    () => (overview ? buildDauSeries(overview.predictionsDaily, overview.days) : []),
+    () =>
+      overview ? dailyTotals(overview.predictionsDaily, (r) => Number(r.users), overview.days) : [],
     [overview],
   )
 
@@ -1131,6 +1109,36 @@ function RecentErrorsSection({ overview }: { overview: OverviewResponse }) {
   )
 }
 
+/** Células de eventos e tamanho de um dia do export; sem arquivo, "—" antes do primeiro export e "faltando" depois. */
+function ArchiveDayCells({
+  file,
+  beforeFirstExport,
+}: {
+  file: ArchiveFile | null
+  beforeFirstExport: boolean
+}) {
+  if (file) {
+    return (
+      <>
+        <td className={styles.num}>{file.events ?? '—'}</td>
+        <td className={styles.num}>{formatBytes(file.size)}</td>
+      </>
+    )
+  }
+  if (beforeFirstExport) {
+    return (
+      <td className={styles.num} colSpan={2}>
+        —
+      </td>
+    )
+  }
+  return (
+    <td className={`${styles.num} ${styles.statusError}`} colSpan={2}>
+      faltando
+    </td>
+  )
+}
+
 function ArchiveSection({
   archiveStats,
   archiveDays,
@@ -1187,20 +1195,7 @@ function ArchiveSection({
               {archiveDays.map(({ day, file, beforeFirstExport }) => (
                 <tr key={day}>
                   <td>{day}</td>
-                  {file ? (
-                    <>
-                      <td className={styles.num}>{file.events ?? '—'}</td>
-                      <td className={styles.num}>{formatBytes(file.size)}</td>
-                    </>
-                  ) : beforeFirstExport ? (
-                    <td className={styles.num} colSpan={2}>
-                      —
-                    </td>
-                  ) : (
-                    <td className={`${styles.num} ${styles.statusError}`} colSpan={2}>
-                      faltando
-                    </td>
-                  )}
+                  <ArchiveDayCells file={file} beforeFirstExport={beforeFirstExport} />
                 </tr>
               ))}
             </tbody>
