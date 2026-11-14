@@ -1014,3 +1014,32 @@ O gatilho roda dentro da escrita existente e não acrescenta chamadas ao poller 
 O índice `idx_matches_comp_scored` (0042) ficou sem consumidor no código. Uma migration futura pode removê-lo.
 
 O navegador mantém o TTL de 60 segundos. Uma requisição que leu a versão antes de um sync concorrente responde com a lista daquele instante. A requisição seguinte lê a versão nova. As entradas antigas expiram pelo TTL da borda.
+
+## ADR-026: Exclusão de conta transfere o grupo e o papel de dono segue `groups.owner_user_id`
+
+**Status:** Accepted
+**Date:** 2026-11-14
+
+### Context
+
+A exclusão de conta é feita pelo operador, a pedido do titular por e-mail, e a página `/privacidade` promete apagar os dados em até 30 dias. `groups.owner_user_id` referencia `users(id)` sem cascata, então `DELETE FROM users` de uma conta dona de grupo falha na chave estrangeira. O papel de dono também vivia em dois lugares sem ligação: a autorização das ações de dono lê `groups.owner_user_id`, e a lista de membros mostra o selo e o botão de remover a partir de `group_members.role`. Trocar o dono à mão deixava a interface mostrando o dono antigo.
+
+Apagar um jogo duplicado direto no banco leva os palpites dele em cascata, mas o `leaderboard` é materializado e o upsert da pontuação só alcança quem ainda tem palpite. Quem palpitou só no jogo apagado mantinha os pontos dele no ranking.
+
+### Decision
+
+Decisão do operador de 14/11/2026: na exclusão da conta de um dono, o grupo passa ao membro ativo mais antigo. Ativo é quem tem linha em `group_members` e não está em `group_bans`, sem contar a própria conta. Mais antigo é o menor `joined_at`; no empate, vence o menor `user_id`, o mesmo desempate do ranking (`rankingOrderSql`). Grupo sem outro membro ativo é apagado, com palpites, ranking e banimentos em cascata. A regra vale também para grupo já excluído pelo dono (`deleted_at`), que continua excluído com o novo dono.
+
+`DELETE /admin/users/:id`, só para o admin, faz tudo numa transação do D1: transfere os grupos, apaga os que ficaram sem membro, apaga as linhas de `payments` da conta (tabela sem uso e sem cascata) e apaga a conta. A cascata leva perfil, participações, palpites, ranking, banimentos, palpites de chave e reservas de lembrete. A sessão deixa de valer na requisição seguinte, porque `verifySession` exige a conta no banco. O admin não exclui a própria conta pela rota.
+
+`DELETE /admin/matches/:id`, também só para o admin, apaga o jogo e, na mesma transação, refaz o ranking de todos os grupos não excluídos da competição: zera as linhas e soma de novo os palpites que sobraram. Se o jogo é de fase eliminatória, o outro jogo do confronto (mesma fase, mando invertido) volta à fila de pontuação, como no gatilho `matches_rescore_context` da 0044.
+
+A migration 0045 deriva `group_members.role` do dono do grupo: um backfill corrige as linhas atuais, um gatilho em `groups` acompanha a troca de `owner_user_id`, e gatilhos de inserção e de atualização em `group_members` regravam o valor derivado no lugar de um papel incoerente. Os gatilhos corrigem em vez de recusar, então o Worker anterior segue funcionando (expand).
+
+### Consequences
+
+- O novo dono pode passar do teto de 20 grupos criados ativos (`groupCaps.ts`). O teto só é checado na criação; ele fica sem poder criar grupos até sair de algum.
+- Um grupo excluído transferido continua invisível e sem pontuação; a transferência só libera a chave estrangeira.
+- A contagem de entradas por convite do painel (`role = 'member'`) passa a contar o dono antigo de um grupo transferido à mão, e deixa de contar o novo dono. A diferença já aceita entre essa contagem e os eventos registrados cobre esse caso.
+- A marca `predictions_import_completed` fica na linha de `group_members` e sai com o membro. Quem sai e volta ao grupo mantém os palpites e vê o seletor de importação aberto de novo. Comportamento aceito.
+- O roteiro do operador está em `docs/operations/exclusao-conta-jogo.md`.

@@ -4,6 +4,7 @@ import { defaultCacheControl } from './security/cacheControl'
 import { requestLimits, clearExpiredSecurityRecords } from './security/limits'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
+import { adminRouter } from './admin/router'
 import { authRouter } from './auth/router'
 import { competitionsRouter } from './competitions/router'
 import {
@@ -84,6 +85,7 @@ app.route('/matches', matchesRouter)
 app.route('/predictions', predictionsRouter)
 app.route('/notifications', notificationsRouter)
 app.route('/metrics', metricsRouter)
+app.route('/admin', adminRouter)
 // Rotas sem autenticação. Devolvem só o que quem tem o link já vê (ver public/router.ts).
 app.route('/public', publicRouter)
 
