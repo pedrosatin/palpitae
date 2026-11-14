@@ -39,7 +39,7 @@ export async function getGroupMembershipTimed(
 
 /**
  * Grupo de competição piloto fechado para quem não tem acesso piloto. Grupo
- * inexistente ou apagado não bloqueia: quem responde 404 é o chamador.
+ * inexistente ou apagado devolve false, e o chamador decide o status da resposta.
  */
 export async function isPilotGroupBlocked(
   c: Context<AppContext>,
