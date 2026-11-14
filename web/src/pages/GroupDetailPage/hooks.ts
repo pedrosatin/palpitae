@@ -5,7 +5,7 @@ import { buildApiUrl } from '../../config'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { useConfirm } from '../../components/ConfirmModal'
 import { trackEvent } from '../../analytics/ga'
-import { isStandingsTabEligible } from '../../components/StandingsTab'
+import { isStandingsTabEligible } from '../../lib/standings'
 import { UNEXPECTED_RESPONSE } from '../../lib/responseShape'
 import { withoutParam } from '../../lib/searchParams'
 import {
