@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { MATCH_UPSERT_SQL } from './sync'
+import { MATCH_UPSERT_SQL } from './matchUpsert'
 
 // O sync reenvia a rodada inteira a cada tick. O upsert só pode gravar quando
 // algum campo muda, sem perder nenhuma das regras do DO UPDATE.
