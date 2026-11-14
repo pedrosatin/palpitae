@@ -81,6 +81,18 @@ describe('Header', () => {
     expect(onLogout).toHaveBeenCalledOnce()
   })
 
+  it('closes the user menu on a click outside and keeps it open on a click inside', async () => {
+    renderHeader()
+    await userEvent.click(screen.getByText('TestUser'))
+    expect(screen.getByRole('button', { name: 'Sair' })).toBeInTheDocument()
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Sair' }))
+    expect(screen.getByRole('button', { name: 'Sair' })).toBeInTheDocument()
+
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('button', { name: 'Sair' })).not.toBeInTheDocument()
+  })
+
   it('keeps the action labels as accessible names next to decorative icons', () => {
     renderHeader()
     for (const name of ['Entrar em grupo', 'Criar grupo']) {
