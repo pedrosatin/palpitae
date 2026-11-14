@@ -8,7 +8,7 @@ import {
   isAdminUser,
 } from './permissions'
 
-/** Identidade sem `sub` do Google, como a de quem entra por e-mail apenas. */
+/** Identidade sem `sub` do Google, como a de conta de outro provedor. */
 const semSub = (email: string | undefined) => ({ email, googleSub: undefined })
 
 describe('permissions', () => {
@@ -137,6 +137,17 @@ describe('permissions', () => {
       expect(hasPilotAccess(semSub(undefined), env)).toBe(false)
       expect(hasPilotAccess(semSub('   '), env)).toBe(false)
       expect(hasPilotAccess(semSub('convidado1@example.com'), {})).toBe(false)
+    })
+
+    it('with ADMIN_GOOGLE_SUB set, the admin email with another sub loses access and guests keep it', () => {
+      const comSub = { ...env, ADMIN_GOOGLE_SUB: 'sub-admin' }
+      expect(
+        hasPilotAccess({ email: 'admin@palpitae.com.br', googleSub: 'sub-outro' }, comSub),
+      ).toBe(false)
+      expect(
+        hasPilotAccess({ email: 'admin@palpitae.com.br', googleSub: 'sub-admin' }, comSub),
+      ).toBe(true)
+      expect(hasPilotAccess(semSub('convidado1@example.com'), comSub)).toBe(true)
     })
   })
 })

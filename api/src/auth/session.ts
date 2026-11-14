@@ -17,7 +17,7 @@ export async function sessionHash(token: string): Promise<string> {
  * existe mais também. O e-mail devolvido é o gravado na conta, não o do token:
  * admin e acesso ao piloto seguem o e-mail atual da conta Google. O `sub` do Google
  * também vem da conta (`provider_id` quando `provider = 'google'`), para o
- * `ADMIN_GOOGLE_SUB` amarrar o admin à identidade e não só ao e-mail.
+ * `ADMIN_GOOGLE_SUB` amarrar o admin também à identidade da conta.
  */
 export async function verifySession(
   token: string,

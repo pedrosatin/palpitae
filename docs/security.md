@@ -150,8 +150,8 @@ aponte para serviço desativado (CNAME órfão) tem o mesmo efeito.
 
 `ADMIN_EMAIL` define quem é admin: métricas, radar, sync manual de partidas,
 promoção de competição e acesso do admin a competições em piloto, inclusive no
-e-mail de lembrete. Só o e-mail identifica a conta, então um e-mail reciclado que
-passe a ser de outra pessoa herdaria o papel.
+e-mail de lembrete. Sem `ADMIN_GOOGLE_SUB`, só o e-mail identifica a conta, então um
+e-mail reciclado que passe a ser de outra pessoa herdaria o papel.
 
 `ADMIN_GOOGLE_SUB` fecha essa brecha. Com a variável definida, a conta só é admin
 se o e-mail for o `ADMIN_EMAIL` e o `users.provider_id` dela for esse valor, com
@@ -159,19 +159,20 @@ se o e-mail for o `ADMIN_EMAIL` e o `users.provider_id` dela for esse valor, com
 do Google. Quem tem o e-mail certo e outro `sub` recebe 403 nas rotas de admin e
 perde o acesso do admin ao piloto. Sem a variável, ou com ela vazia, vale só o
 e-mail, como antes. O e-mail continua sem diferenciar caixa, e espaços ou quebra de
-linha nas pontas dos dois valores são ignorados. Todos os pontos usam a mesma
-função (`isAdminUser`, e `hasPilotAccess` para o piloto), que lê o `sub` da conta na
-mesma consulta que valida a sessão.
+linha nas pontas do `ADMIN_EMAIL` e do `ADMIN_GOOGLE_SUB` são ignorados. As rotas
+usam `isAdminUser` e `hasPilotAccess` sobre a identidade que `verifySession` lê na
+mesma consulta que valida a sessão. O lembrete diário, que não passa por sessão, usa
+`hasPilotAccess` com `provider` e `provider_id` trazidos na consulta de jogos pendentes.
 
-O `sub` é um identificador estável da conta Google, não um segredo de autenticação,
-mas ele identifica o admin e fica fora de arquivos versionados. Para descobrir o
+O `sub` é um identificador estável da conta Google. Ele não autentica ninguém, porém
+identifica o admin e por isso fica fora de arquivos versionados. Para descobrir o
 valor sem expô-lo, rode no D1 remoto uma consulta de leitura e copie o resultado
 direto para o prompt do segredo:
 
 ```bash
 cd api
 npx wrangler d1 execute palpitae --remote --config ./wrangler.toml \
-  --command "SELECT provider_id FROM users WHERE email = '<ADMIN_EMAIL>' AND provider = 'google'"
+  --command "SELECT provider_id FROM users WHERE lower(email) = lower('<ADMIN_EMAIL>') AND provider = 'google'"
 npx wrangler secret put ADMIN_GOOGLE_SUB --config ./wrangler.toml
 ```
 
