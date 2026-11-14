@@ -38,6 +38,7 @@ dataset = "palpitae_events"
 #    Jogos sem resultado ou sem pontuação seguem na consulta por até 24 h (resgate).
 #  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
 #    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
+#    No mesmo cron, mede o uso das cotas do plano Free no dia anterior (ADR-022).
 #  - "0 10 * * *"   → lembrete: e-mail para quem tem jogo de hoje sem palpite.
 #    1x/dia às 10h UTC (07h BRT). Máximo de um e-mail por usuário por dia (ADR-020).
 #  - "15 6 * * *"   → fixture discovery: busca jogos novos (mata-mata, remarcações)
@@ -82,6 +83,7 @@ FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
 #   npx wrangler secret put FOOTBALL_API_KEY --config ./wrangler.toml
 #   npx wrangler secret put CF_ACCOUNT_ID --config ./wrangler.toml    # cold path: conta da SQL API do Analytics Engine
 #   npx wrangler secret put AE_SQL_TOKEN --config ./wrangler.toml     # cold path: token Account Analytics:Read
+#   npx wrangler secret put CF_ANALYTICS_TOKEN --config ./wrangler.toml # uso das cotas: outro token Account Analytics:Read
 #   npx wrangler secret put RESEND_API_KEY --config ./wrangler.toml   # round reminder: API key do Resend
 #   npx wrangler secret put ADMIN_EMAIL --config ./wrangler.toml      # dashboard /metrics: e-mail do admin (403 sem ele)
 #   npx wrangler secret put ADMIN_GOOGLE_SUB --config ./wrangler.toml # opcional: amarra o admin ao sub do Google; ver docs/security.md

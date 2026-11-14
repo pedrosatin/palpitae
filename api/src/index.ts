@@ -23,6 +23,7 @@ import { unsubSigningSecret } from './notifications/unsubscribeToken'
 import { logError, tryLogEvent } from './observability/events'
 import { exportRecentDays } from './observability/export'
 import { metricsRouter } from './observability/metricsRouter'
+import { checkQuotaUsage } from './observability/quotaUsage'
 import { predictionsRouter } from './predictions/router'
 import { publicRouter } from './public/router'
 import type { AppContext, Env } from './types'
@@ -35,6 +36,7 @@ const OPTIONAL_CONFIG = [
   'BASE_URL',
   'CF_ACCOUNT_ID',
   'AE_SQL_TOKEN',
+  'CF_ANALYTICS_TOKEN',
 ] as const
 
 /** Registra, uma vez por execução agendada, cada configuração opcional ausente. */
@@ -112,6 +114,8 @@ export default {
     if (controller.cron === DAILY_EXPORT_CRON) {
       // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))
+      // Uso das cotas do plano Free no dia anterior. Não lança: falha não afeta o export.
+      ctx.waitUntil(checkQuotaUsage(env, new Date(controller.scheduledTime)))
       return
     }
 

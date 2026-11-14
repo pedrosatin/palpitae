@@ -28,6 +28,12 @@ describe('labels', () => {
       expect(eventLabel('match_results_fallback')).toBe('Fallback de resultados (ESPN)')
     })
 
+    it('traduz os eventos de uso das cotas do plano Free', () => {
+      expect(eventLabel('cloudflare_usage')).toBe('Medição das cotas')
+      expect(eventLabel('cloudflare_quota_alert')).toBe('Alerta de cota')
+      expect(eventLabel('cloudflare_usage_error')).toBe('Falha na medição das cotas')
+    })
+
     it('não rotula football_api_error como exclusivo de um provedor', () => {
       expect(eventLabel('football_api_error')).toBe('Erro de sync de provedor')
       expect(eventLabel('football_api_error')).not.toMatch(/Football/)

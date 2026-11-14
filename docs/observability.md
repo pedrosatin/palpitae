@@ -166,6 +166,9 @@ arquivada no R2 sem mudança no call site). Layout posicional do data point:
   trazer na descoberta; a linha e os palpites ficam no banco),
   `scheduled_unknown_cron` (o `wrangler.toml` disparou um cron sem ramo no handler `scheduled`),
   `scheduled_config_missing` (configuração opcional ausente numa execução agendada),
+  `cloudflare_usage` (uso diário das cotas do plano Free no dia UTC anterior),
+  `cloudflare_quota_alert` (uma métrica passou de 50% ou de 80% da cota no dia),
+  `cloudflare_usage_error` (a consulta do uso à API GraphQL da Cloudflare falhou),
   `radar_sync_run` (ok/partial/error/misconfig + competitions, mapped, pageview_rows, duration_ms)
   e `radar_sync_error` — emitidos só quando a coleta do radar roda com um Analytics
   Engine ligado; no GitHub Actions (caso normal, ver ADR-014) o binding não existe,
@@ -189,7 +192,10 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `radar_sync_run` | `status` (`ok`/`partial`/`error`; `partial` quando algum slug da ESPN ou artigo da Wikipédia falhou) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
 | `scheduled_unknown_cron` | `cron` (expressão recebida em `controller.cron`) | — | — | — |
-| `scheduled_config_missing` | `name` (`AE`/`EVENTS`/`PROXY_SHARED_SECRET`/`BASE_URL`/`CF_ACCOUNT_ID`/`AE_SQL_TOKEN`); um evento por nome ausente em cada execução agendada. Sem `AE` só há a linha `[scheduled] Configuração ausente` no log | — | — | — |
+| `scheduled_config_missing` | `name` (`AE`/`EVENTS`/`PROXY_SHARED_SECRET`/`BASE_URL`/`CF_ACCOUNT_ID`/`AE_SQL_TOKEN`/`CF_ANALYTICS_TOKEN`); um evento por nome ausente em cada execução agendada. Sem `AE` só há a linha `[scheduled] Configuração ausente` no log | — | — | — |
+| `cloudflare_usage` | `day` (dia UTC medido, `YYYY-MM-DD`) | — | — | `double1`=linhas lidas do D1, `double2`=linhas escritas do D1, `double3`=requisições dos Workers; soma da conta inteira no dia. Um evento por dia, gravado pelo cron das 00:05 UTC |
+| `cloudflare_quota_alert` | `metric` (`d1_rows_read`/`d1_rows_written`/`worker_requests`) | `threshold` (`50`/`80`, a maior faixa alcançada) | `day` (dia UTC medido) | `double1`=uso no dia, `double2`=cota diária do plano Free, `double3`=% da cota com uma casa decimal. No máximo um por métrica e dia |
+| `cloudflare_usage_error` | `day` (dia UTC que o cron tentou medir) | `error_message` (erro de rede ou timeout, ou status HTTP ou erro GraphQL com o corpo recortado em 200 caracteres; sem o token) | — | — |
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha ou cota zerada, 10 em sucesso amostrado); só football-data: `double3`=requests restantes na janela e `double4`=segundos até o reset, os dois `-1` sem cabeçalho válido |
@@ -451,6 +457,68 @@ Por que a soma pode ficar abaixo do D1:
 e-mail, IP, User-Agent, `user_id` nem `user_hash`, então não há como ligar a origem a uma pessoa ou
 acompanhar alguém entre sessões. O painel só devolve categorias e slugs da lista.
 
+### Uso das cotas do plano Free (`cloudflare_usage`)
+
+A API roda no plano Workers Free (ADR-022). Quando uma cota diária acaba, o D1 ou o Worker
+param até 00:00 UTC. O cron das 00:05 UTC (`5 0 * * *`, o mesmo do cold path) consulta a
+[API GraphQL de analytics](https://developers.cloudflare.com/analytics/graphql-api/) da
+Cloudflare e mede o dia UTC anterior. O código está em `api/src/observability/quotaUsage.ts`.
+
+| Métrica | Conjunto GraphQL | Campo | Cota diária do Free |
+|---|---|---|---|
+| `d1_rows_read` | `d1AnalyticsAdaptiveGroups` | `sum.rowsRead` | 5.000.000 |
+| `d1_rows_written` | `d1AnalyticsAdaptiveGroups` | `sum.rowsWritten` | 100.000 |
+| `worker_requests` | `workersInvocationsAdaptive` | `sum.requests` | 100.000 |
+
+As cotas estão em `FREE_DAILY_QUOTAS`, conferidas em 14/11/2026 nos
+[preços do D1](https://developers.cloudflare.com/d1/platform/pricing/) e nos
+[limites dos Workers](https://developers.cloudflare.com/workers/platform/limits/). As cotas são
+da conta, então a consulta soma todos os bancos D1 e todos os scripts da conta, sem filtro de
+banco ou de script. A Cloudflare conta as requisições às Functions do Pages, como o proxy do
+site, na mesma cota de requisições. A consulta lê só `workersInvocationsAdaptive`. Na primeira
+medição, compare `worker_requests` com o total de Workers & Pages no painel da Cloudflare; se o
+painel mostrar mais, o número do Palpitae fica abaixo do uso real da cota.
+
+Cada medição grava um `cloudflare_usage`. Uma métrica com uso a partir de 50% da cota grava
+também um `cloudflare_quota_alert`, só com a maior faixa alcançada: 60% grava o de 50% e 85%
+grava só o de 80%. Um alerta por métrica e dia basta para a pergunta "passou de qual faixa", e
+o de 80% já diz que o uso passou de 50%. O cron não guarda estado entre dias, então o alerta se
+repete enquanto o uso ficar acima da faixa. É isso que mostra os "3 dias seguidos acima de 50%"
+do gatilho de migração do ADR-022.
+
+Sem `CF_ACCOUNT_ID` ou `CF_ANALYTICS_TOKEN`, o passo só escreve
+`[cota] Configuração ausente` no log e não consulta nada. O nome que falta já entra em
+`scheduled_config_missing` em toda execução agendada. Resposta não 200, erro GraphQL, conta
+ausente na resposta ou timeout (15 s) gravam `cloudflare_usage_error` e não gravam medição. O
+passo nunca lança, e o export do mesmo cron segue.
+
+O painel lê a última medição em `GET /metrics/quota`, com o uso, a cota, o percentual e a faixa
+de cada métrica. A medição fica no próprio evento do Analytics Engine porque o painel já lê o AE
+pela SQL API, uma linha por dia não sofre sampling, e gravar no D1 gastaria justamente a cota
+de escrita que a medição vigia.
+
+#### Token de analytics (passos do operador)
+
+O token é separado do `AE_SQL_TOKEN` para que cada um possa ser revogado sem parar o outro.
+
+1. No painel da Cloudflare, em My Profile > API Tokens > Create Token > Custom token, crie um
+   token com uma única permissão: Account > Account Analytics > Read. Em Account Resources,
+   escolha só a conta do Palpitae. Nenhuma permissão de edição.
+2. Grave o token como secret do Worker da API, pelo prompt interativo:
+
+   ```bash
+   cd api && npx wrangler secret put CF_ANALYTICS_TOKEN --config ./wrangler.toml
+   ```
+
+3. O id da conta é o `CF_ACCOUNT_ID`, que o cold path já usa. Se ele não estiver cadastrado,
+   copie o Account ID da página inicial da conta no painel e grave com
+   `cd api && npx wrangler secret put CF_ACCOUNT_ID --config ./wrangler.toml`. A consulta não
+   precisa do id do banco nem do nome do script, porque soma a conta inteira.
+4. Confira os nomes com `cd api && npx wrangler secret list --config ./wrangler.toml`.
+5. Resultado esperado: depois do cron das 00:05 UTC seguinte, a seção "Cotas do plano Free" de
+   `/admin/metricas` mostra o dia anterior. Se continuar sem medição, procure
+   `cloudflare_usage_error` nos eventos ou `[cota]` nos Workers Logs.
+
 ### Regra de instrumentação (obrigatória)
 
 **Ao criar ou modificar um endpoint que executa uma mutação de negócio** (cria/edita/remove
@@ -498,7 +566,8 @@ traduzidos pra linguagem de negócio (`EVENT_LABELS` em
 `web/src/pages/AdminMetricsPage/labels.ts` — o nome cru fica no tooltip, já que
 é a chave do esquema posicional acima). Há ainda um vigia de sampling: se
 `AVG(_sample_interval)` do período passar de 1, um aviso alerta que os números
-viraram estimativa.
+viraram estimativa. A seção "Cotas do plano Free" mostra a última medição do uso das cotas
+diárias (`GET /metrics/quota`, ver "Uso das cotas do plano Free").
 
 ### Alerta proporcional de falhas de login
 

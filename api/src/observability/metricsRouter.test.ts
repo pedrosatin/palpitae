@@ -2456,3 +2456,114 @@ describe('GET /metrics/signup-origins', () => {
     expect(res.status).toBe(502)
   })
 })
+
+describe('GET /metrics/quota', () => {
+  it('403 para usuário que não é o admin', async () => {
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders('outra@pessoa.com') },
+      makeEnv(),
+    )
+    expect(res.status).toBe(403)
+  })
+
+  it('503 sem credenciais da SQL API', async () => {
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ CF_ACCOUNT_ID: undefined }),
+    )
+    expect(res.status).toBe(503)
+  })
+
+  it('devolve a última medição com percentual e faixa de cada métrica', async () => {
+    const fetchFake = fetchOk([
+      {
+        timestamp: '2026-11-14 00:05:03',
+        day: '2026-11-13',
+        d1_rows_read: 4_250_000,
+        d1_rows_written: 60_000,
+        worker_requests: 12_345,
+      },
+    ])
+    vi.stubGlobal('fetch', fetchFake)
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      latest: {
+        day: '2026-11-13',
+        measuredAt: '2026-11-14 00:05:03',
+        metrics: [
+          { metric: 'd1_rows_read', used: 4_250_000, limit: 5_000_000, percent: 85, threshold: 80 },
+          { metric: 'd1_rows_written', used: 60_000, limit: 100_000, percent: 60, threshold: 50 },
+          { metric: 'worker_requests', used: 12_345, limit: 100_000, percent: 12.3, threshold: null },
+        ],
+      },
+    })
+    const sql = (fetchFake.mock.calls[0] as unknown as [string, { body: string }])[1].body
+    expect(sql).toContain("blob1 = 'cloudflare_usage'")
+    expect(sql).toContain('ORDER BY timestamp DESC LIMIT 1')
+  })
+
+  it('sem medição devolve latest null', async () => {
+    vi.stubGlobal('fetch', fetchOk([]))
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ latest: null })
+  })
+
+  it('valor inválido no AE vira zero e dia fora do formato vira null', async () => {
+    vi.stubGlobal(
+      'fetch',
+      fetchOk([
+        {
+          timestamp: '2026-11-14 00:05:03',
+          day: '<script>',
+          d1_rows_read: 'abc',
+          d1_rows_written: -5,
+          worker_requests: 1000,
+        },
+      ]),
+    )
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+
+    const body = (await res.json()) as {
+      latest: { day: string | null; metrics: { used: number }[] }
+    }
+    expect(body.latest.day).toBeNull()
+    expect(body.latest.metrics.map((m) => m.used)).toEqual([0, 0, 1000])
+  })
+
+  it('502 quando a SQL API falha', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500, text: async () => 'boom' })),
+    )
+
+    const res = await makeApp().request(
+      '/metrics/quota',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv(),
+    )
+
+    expect(res.status).toBe(502)
+  })
+})
