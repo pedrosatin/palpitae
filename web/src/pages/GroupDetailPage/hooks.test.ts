@@ -693,3 +693,44 @@ describe('useGroupActions com resposta de erro que não é JSON', () => {
     expect(alert).toHaveBeenCalledWith('Erro de conexão. Tente novamente.')
   })
 })
+
+describe('id do grupo nas URLs da API', () => {
+  const RAW_ID = 'a/b?c#d'
+  const ENCODED_ID = 'a%2Fb%3Fc%23d'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(useNavigate).mockReturnValue(vi.fn() as unknown as NavigateFunction)
+    vi.mocked(useConfirm).mockReturnValue({
+      confirm: vi.fn().mockResolvedValue(true) as unknown as ReturnType<
+        typeof useConfirm
+      >['confirm'],
+      confirmDialog: null as any,
+    })
+  })
+
+  it('useGroupDetail codifica o id ao buscar o grupo', async () => {
+    mockApiFetch.mockResolvedValueOnce(mockResponse({ group: mockGroup }))
+
+    renderHook(() => useGroupDetail(RAW_ID))
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalled())
+    const url = mockApiFetch.mock.calls[0][0] as string
+    expect(url).toMatch(new RegExp(`/groups/${ENCODED_ID}$`))
+  })
+
+  it('useGroupActions codifica o id ao sair do grupo', async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      ok: true,
+      json: vi.fn(),
+    } as unknown as Response)
+    const { result } = renderHook(() => useGroupActions(RAW_ID, mockUser))
+
+    await act(async () => {
+      await result.current.leaveGroup()
+    })
+
+    const url = vi.mocked(apiFetch).mock.calls[0][0] as string
+    expect(url).toContain(`/groups/${ENCODED_ID}/members/u1`)
+  })
+})

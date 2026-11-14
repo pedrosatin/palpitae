@@ -57,7 +57,7 @@ export function RenameGroupModal({
     setRenameError(null)
 
     try {
-      const res = await apiFetch(buildApiUrl(`/groups/${groupId}`), {
+      const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

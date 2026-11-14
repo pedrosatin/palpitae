@@ -33,7 +33,7 @@ export function useGroupMembers(groupId: string) {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    apiFetch(buildApiUrl(`/groups/${groupId}/members`))
+    apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}/members`))
       .then((r) => {
         if (!r.ok) throw new Error('Erro ao carregar membros')
         return r.json() as Promise<unknown>

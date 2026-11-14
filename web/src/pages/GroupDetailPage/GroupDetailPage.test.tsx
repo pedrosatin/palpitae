@@ -105,7 +105,7 @@ const baseUser = {
 }
 
 const baseGroup = {
-  id: 'abc',
+  id: '00000000-0000-4000-8000-000000000001',
   name: 'Grupo Teste',
   competition_id: 'comp-1',
   competition_name: 'Copa do Mundo',
@@ -154,7 +154,7 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname + location.search}</output>
 }
 
-function renderPage(path = '/groups/abc', routePattern = '/groups/:groupId') {
+function renderPage(path = '/groups/00000000-0000-4000-8000-000000000001', routePattern = '/groups/:groupId') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <LocationProbe />
@@ -183,7 +183,7 @@ describe('GroupDetailPage, confirmação de entrada', () => {
 
   function renderJoined(state: unknown) {
     return render(
-      <MemoryRouter initialEntries={[{ pathname: '/groups/abc', state }]}>
+      <MemoryRouter initialEntries={[{ pathname: '/groups/00000000-0000-4000-8000-000000000001', state }]}>
         <Routes>
           <Route
             path="/groups/:groupId"
@@ -243,11 +243,11 @@ describe('GroupDetailPage – routing & fetch', () => {
     const spy = vi.spyOn(globalThis, 'fetch')
     mockGroupFetch()
 
-    renderPage('/groups/abc')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001')
 
     await waitFor(() => {
       expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining('/groups/abc'),
+        expect.stringContaining('/groups/00000000-0000-4000-8000-000000000001'),
         expect.objectContaining({ credentials: 'include' }),
       )
     })
@@ -277,11 +277,11 @@ describe('GroupDetailPage – rodada do painel', () => {
 
   it('passa a rodada do link à aba Palpitar e a tira da URL depois de aplicada', async () => {
     mockGroupFetch()
-    renderPage('/groups/abc?rodada=21&x=1')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001?rodada=21&x=1')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Aplicar rodada 21' }))
 
-    expect(screen.getByTestId('location')).toHaveTextContent('/groups/abc?x=1')
+    expect(screen.getByTestId('location')).toHaveTextContent('/groups/00000000-0000-4000-8000-000000000001?x=1')
     expect(screen.queryByRole('button', { name: /Aplicar rodada/ })).not.toBeInTheDocument()
   })
 })
@@ -497,7 +497,7 @@ describe('GroupDetailPage – group not found', () => {
   })
 
   it('mostra erro com saída quando o grupo chega fora do formato', async () => {
-    mockGroupFetch({ id: 'abc', name: 42 } as unknown as typeof baseGroup)
+    mockGroupFetch({ id: '00000000-0000-4000-8000-000000000001', name: 42 } as unknown as typeof baseGroup)
 
     renderPage()
 
@@ -726,7 +726,7 @@ describe('GroupDetailPage – standings tab gate (competition_type)', () => {
       competition_type: 'cup',
       competition_code: 'bra.camp.carioca',
     })
-    renderPage('/groups/abc?tab=standings')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001?tab=standings')
     expect(await screen.findByTestId('standings-tab')).toHaveTextContent('StandingsTab:comp-1')
     expect(screen.getByRole('link', { name: /Tabela/i })).toHaveClass(/tabActive/i)
   })
@@ -744,7 +744,7 @@ describe('GroupDetailPage – standings tab gate (competition_type)', () => {
 
   it('falls back to the default tab when ?tab=standings is forced on an ordinary cup', async () => {
     mockGroupFetch({ ...baseGroup, competition_type: 'cup', competition_code: null })
-    renderPage('/groups/abc?tab=standings')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001?tab=standings')
     await screen.findByRole('link', { name: /Ranking/i })
     expect(screen.queryByTestId('standings-tab')).not.toBeInTheDocument()
     // painel default (Palpitar) ativo no lugar de um painel vazio
@@ -760,7 +760,7 @@ describe('GroupDetailPage, regras do grupo', () => {
   it('abre as regras pelo menu do cabeçalho para um membro não admin e devolve o foco ao fechar com Esc', async () => {
     const user = userEvent.setup()
     mockGroupFetch()
-    renderPage('/groups/abc')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001')
 
     const kebab = await screen.findByRole('button', { name: 'Opções do grupo' })
     await user.click(kebab)
@@ -787,7 +787,7 @@ describe('GroupDetailPage, regras do grupo', () => {
       points_classified: 2,
       predictions_visibility: 'public',
     })
-    renderPage('/groups/abc')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001')
 
     await user.click(await screen.findByRole('button', { name: 'Opções do grupo' }))
     await user.click(screen.getByRole('menuitem', { name: 'Regras do grupo' }))
@@ -801,7 +801,7 @@ describe('GroupDetailPage, regras do grupo', () => {
   it('abre as regras pelo link do ranking e devolve o foco ao link', async () => {
     const user = userEvent.setup()
     mockGroupFetch()
-    renderPage('/groups/abc')
+    renderPage('/groups/00000000-0000-4000-8000-000000000001')
 
     await user.click(await screen.findByRole('link', { name: /Ranking/i }))
     expect(
