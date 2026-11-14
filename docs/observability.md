@@ -730,12 +730,16 @@ A análise do arquivo por mês usa `GET /metrics/archive/query?from=YYYY-MM-DD&t
 de `to` ou intervalo maior recebem 400, conferidos antes de montar a lista de dias. Um dia cheio
 tem cerca de 18 MiB (30 mil linhas de ~615 bytes) e o Worker tem 128 MiB, então a rota lê um
 arquivo por vez, em streaming, linha a linha, e solta cada corpo antes de pedir o próximo
-(`api/src/observability/archiveQuery.ts`). Cada consulta lê no máximo 64 MiB do R2: o tamanho
-declarado de cada arquivo é conferido antes da leitura e os bytes recebidos durante. Ao passar
-do teto, a leitura para ali e a resposta sai com `truncated: true`; `daysRead` lista os dias
-que entraram no resultado e o dia interrompido fica de fora. Linha que não é objeto JSON
-válido, com `_sample_interval` inválido (não numérico ou negativo) ou com mais de 64 KiB é pulada e somada em
-`malformedLines`, sem derrubar a consulta. `bytesRead` traz os bytes lidos. Os campos antigos
+(`api/src/observability/archiveQuery.ts`). Cada consulta tem orçamento de 64 MiB do R2. O
+tamanho declarado de cada arquivo é conferido antes de consumir o corpo, e os bytes recebidos são
+somados a cada pedaço do stream: o corpo é cancelado ao chegar o pedaço que passa do orçamento.
+Nesse caso a leitura para ali e a resposta sai com `truncated: true`; `daysRead` lista os dias que
+entraram no resultado e os agregados do dia interrompido ficam de fora. Linha que não é objeto
+JSON, com `blob1` que não é texto, com `_sample_interval` inválido (fora de número ou texto
+numérico não negativo) ou com mais de 64 KiB em UTF-8 é pulada e somada em `malformedLines`, sem
+derrubar a consulta, qualquer que seja o fatiamento do stream. `bytesRead` soma os bytes recebidos
+do R2, inclusive os do dia interrompido. Erro do R2 no meio da leitura derruba a consulta com 500,
+como antes do streaming, e o corpo em leitura é cancelado. Os campos antigos
 (`from`, `to`, `filesRead`, `totalEvents`, `byType`, `byDay`) seguem iguais, e a página avisa
 quando o resultado é parcial ou quando houve linhas malformadas.
 

@@ -5,21 +5,29 @@
  * Um dia cheio tem até 30 mil linhas de ~615 bytes (~18 MiB). Ler os corpos de um
  * mês inteiro de uma vez passa dos 128 MiB do Worker, então cada arquivo é lido
  * sozinho, em streaming, linha a linha, e o corpo é solto antes do próximo. A
- * memória fica no tamanho de um pedaço do stream mais os contadores por tipo.
+ * memória fica em um pedaço do stream, um trecho de linha de até 64 KiB e os
+ * contadores por tipo.
  */
 
-/** Teto de bytes lidos do R2 por consulta. Passou dele, o resultado sai parcial. */
+/**
+ * Orçamento de bytes do R2 por consulta. A leitura confere os bytes a cada
+ * pedaço recebido e cancela o corpo no pedaço que passa do orçamento; aí o
+ * resultado sai parcial.
+ */
 export const ARCHIVE_QUERY_MAX_BYTES = 64 * 1024 * 1024
 
 /** Maior intervalo aceito pela consulta, em dias. */
 export const MAX_QUERY_SPAN_DAYS = 92
 
 /**
- * Linha maior que isso conta como malformada e é descartada sem acumular o
- * resto. Uma linha real tem ~615 bytes; sem o limite, um arquivo sem quebra de
- * linha juntaria o corpo inteiro numa string só.
+ * Linha com mais bytes UTF-8 que isso (sem contar a quebra) conta como
+ * malformada e é descartada sem acumular o resto. Uma linha real tem ~615
+ * bytes; sem o limite, um arquivo sem quebra de linha juntaria o corpo inteiro
+ * na memória.
  */
-const MAX_LINE_CHARS = 64 * 1024
+const MAX_LINE_BYTES = 64 * 1024
+
+const NEWLINE = 0x0a
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -58,10 +66,27 @@ interface DayTally {
   byType: Map<string, number>
   total: number
   malformed: number
-  bytes: number
 }
 
-/** Soma uma linha do NDJSON ao dia. Linha que não é objeto JSON válido conta como malformada. */
+/**
+ * Peso da linha: `_sample_interval` ausente vale 1. Número ou texto numérico
+ * finito e não negativo vale ele mesmo; qualquer outro valor devolve null.
+ * Nenhum caminho converte objeto, então nada aqui lança exceção.
+ */
+function lineWeight(value: unknown): number | null {
+  if (value === undefined || value === null) return 1
+  let weight: number
+  if (typeof value === 'number') weight = value
+  else if (typeof value === 'string' && value.trim() !== '') weight = Number(value)
+  else return null
+  return Number.isFinite(weight) && weight >= 0 ? weight : null
+}
+
+/**
+ * Soma uma linha do NDJSON ao dia. Conta como malformada a linha que não é
+ * objeto JSON, cujo `blob1` não é texto (ausente vira `unknown`) ou cujo
+ * `_sample_interval` é inválido.
+ */
 function countLine(line: string, tally: DayTally): void {
   if (line.trim() === '') return
   let row: unknown
@@ -76,66 +101,116 @@ function countLine(line: string, tally: DayTally): void {
     return
   }
   const fields = row as Record<string, unknown>
-  const weight = Number(fields._sample_interval ?? 1)
-  if (!Number.isFinite(weight) || weight < 0) {
+  const weight = lineWeight(fields._sample_interval)
+  const blob1 = fields.blob1
+  const type = blob1 === undefined || blob1 === null ? 'unknown' : blob1
+  if (weight === null || typeof type !== 'string') {
     tally.malformed++
     return
   }
-  const type = String(fields.blob1 ?? 'unknown')
   tally.byType.set(type, (tally.byType.get(type) ?? 0) + weight)
   tally.total += weight
 }
 
 /**
- * Lê um corpo NDJSON em streaming e agrega linha a linha. Uma linha pode chegar
- * partida entre dois pedaços do stream: o trecho sem quebra de linha fica em
- * `pending` até o próximo pedaço. Devolve null quando o corpo passa de
- * `budget` bytes; nesse caso o stream é cancelado e o dia fica de fora.
+ * Separa um corpo NDJSON em linhas pelos bytes, sem depender de como o stream
+ * fatia o corpo. A quebra de linha (0x0A) nunca aparece dentro de um caractere
+ * UTF-8 de vários bytes, então cortar nela não parte caractere. O trecho de
+ * linha ainda sem quebra fica em `parts` até o próximo pedaço, limitado a
+ * MAX_LINE_BYTES: uma linha maior conta como malformada uma vez, o trecho é
+ * solto e o resto até a próxima quebra é ignorado.
  */
-async function tallyBody(
-  body: ReadableStream<Uint8Array>,
-  budget: number,
-): Promise<DayTally | null> {
-  const tally: DayTally = { byType: new Map(), total: 0, malformed: 0, bytes: 0 }
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let pending = ''
-  // Descartando o resto de uma linha acima de MAX_LINE_CHARS, já contada.
-  let skipping = false
+class LineSplitter {
+  private parts: Uint8Array[] = []
+  private pendingBytes = 0
+  private skipping = false
+  private readonly decoder = new TextDecoder()
 
-  const consume = (text: string) => {
-    pending += text
+  constructor(private readonly tally: DayTally) {}
+
+  push(chunk: Uint8Array): void {
     let start = 0
-    let nl = pending.indexOf('\n')
+    let nl = chunk.indexOf(NEWLINE)
     while (nl !== -1) {
-      if (skipping) skipping = false
-      else countLine(pending.slice(start, nl), tally)
+      this.endLine(chunk.subarray(start, nl))
       start = nl + 1
-      nl = pending.indexOf('\n', start)
+      nl = chunk.indexOf(NEWLINE, start)
     }
-    pending = pending.slice(start)
-    if (pending.length > MAX_LINE_CHARS) {
-      if (!skipping) tally.malformed++
-      skipping = true
-      pending = ''
+    const rest = chunk.subarray(start)
+    if (this.skipping || rest.byteLength === 0) return
+    if (this.pendingBytes + rest.byteLength > MAX_LINE_BYTES) {
+      this.tally.malformed++
+      this.skipping = true
+      this.parts = []
+      this.pendingBytes = 0
+      return
     }
+    // Cópia: guardar a fatia reteria o pedaço inteiro do stream.
+    this.parts.push(rest.slice())
+    this.pendingBytes += rest.byteLength
   }
 
+  /** Fecha a última linha, que pode vir sem quebra no fim. */
+  finish(): void {
+    if (!this.skipping && this.pendingBytes > 0) this.endLine(new Uint8Array(0))
+  }
+
+  private endLine(tail: Uint8Array): void {
+    const size = this.pendingBytes + tail.byteLength
+    if (this.skipping) this.skipping = false
+    else if (size > MAX_LINE_BYTES) this.tally.malformed++
+    else {
+      let line = tail
+      if (this.parts.length > 0) {
+        line = new Uint8Array(size)
+        let offset = 0
+        for (const part of this.parts) {
+          line.set(part, offset)
+          offset += part.byteLength
+        }
+        line.set(tail, offset)
+      }
+      countLine(this.decoder.decode(line), this.tally)
+    }
+    this.parts = []
+    this.pendingBytes = 0
+  }
+}
+
+interface BodyRead {
+  /** Bytes recebidos do corpo, inclusive quando a leitura parou no orçamento. */
+  bytes: number
+  /** Agregados do dia; null quando o corpo passou do orçamento e foi cancelado. */
+  tally: DayTally | null
+}
+
+/**
+ * Lê um corpo NDJSON em streaming e agrega linha a linha. Quando os bytes
+ * recebidos passam de `budget`, cancela o stream e devolve `tally: null`, com
+ * os bytes recebidos até ali. Se a leitura ou o processamento lançar exceção,
+ * o stream é cancelado antes de a exceção seguir.
+ */
+async function tallyBody(body: ReadableStream<Uint8Array>, budget: number): Promise<BodyRead> {
+  const tally: DayTally = { byType: new Map(), total: 0, malformed: 0 }
+  const splitter = new LineSplitter(tally)
+  const reader = body.getReader()
+  let bytes = 0
+  let completed = false
   try {
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
-      tally.bytes += value.byteLength
-      if (tally.bytes > budget) {
-        await reader.cancel()
-        return null
-      }
-      consume(decoder.decode(value, { stream: true }))
+      bytes += value.byteLength
+      if (bytes > budget) return { bytes, tally: null }
+      splitter.push(value)
     }
-    consume(decoder.decode())
-    if (!skipping) countLine(pending, tally)
-    return tally
+    splitter.finish()
+    completed = true
+    return { bytes, tally }
   } finally {
+    // Um stream que já falhou rejeita o cancel com o próprio erro; o erro
+    // original é o que segue.
+    if (!completed) await reader.cancel().catch(() => {})
     reader.releaseLock()
   }
 }
@@ -147,17 +222,22 @@ export interface ArchiveQueryResult {
   byDay: { day: string; count: number }[]
   /** Dias cujo arquivo entrou no resultado, em ordem. */
   daysRead: string[]
-  /** true quando o teto de bytes parou a leitura antes do último dia. */
+  /** true quando o orçamento de bytes parou a leitura antes do último dia. */
   truncated: boolean
   malformedLines: number
+  /** Bytes recebidos do R2, inclusive os do dia interrompido pelo orçamento. */
   bytesRead: number
 }
 
 /**
- * Agrega os NDJSON dos `days`, um arquivo por vez. Antes de abrir cada corpo
- * confere o tamanho declarado pelo R2 contra o que sobra do teto; durante a
- * leitura conta os bytes de fato recebidos. Passou do teto, para ali e devolve
- * os dias já lidos com `truncated: true`. Dia lido pela metade não entra.
+ * Agrega os NDJSON dos `days`, um arquivo por vez. Antes de consumir cada corpo
+ * confere o tamanho declarado pelo R2 contra o que sobra do orçamento; durante
+ * a leitura conta os bytes de fato recebidos. Passou do orçamento, para ali e
+ * devolve os dias já lidos com `truncated: true`. Os agregados do dia
+ * interrompido ficam de fora, e os bytes recebidos dele entram em `bytesRead`.
+ *
+ * Erro do R2 (no `get` ou no meio do stream) derruba a consulta, como antes do
+ * streaming: a rota responde 500 e o corpo em leitura é cancelado.
  */
 export async function queryArchive(
   bucket: R2Bucket,
@@ -178,12 +258,13 @@ export async function queryArchive(
       truncated = true
       break
     }
-    const tally = await tallyBody(obj.body, maxBytes - bytesRead)
+    const read = await tallyBody(obj.body, maxBytes - bytesRead)
+    bytesRead += read.bytes
+    const tally = read.tally
     if (!tally) {
       truncated = true
       break
     }
-    bytesRead += tally.bytes
     malformedLines += tally.malformed
     for (const [type, count] of tally.byType) {
       byType.set(type, (byType.get(type) ?? 0) + count)
