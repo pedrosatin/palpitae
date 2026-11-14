@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import Button from '../Button'
 import Select from '../Select'
 import type { usePredictionsTab } from './usePredictionsTab'
@@ -24,6 +25,87 @@ function optionLabel({ name, missing }: { name: string; missing: number }) {
   return `${name} (${missing} ${missing === 1 ? 'palpite novo' : 'palpites novos'})`
 }
 
+function ImportSelector({
+  importCompleted,
+  importExpanded,
+  importSourceId,
+  setImportSourceId,
+  importOptions,
+  importing,
+  handleImport,
+}: Pick<
+  ImportProps,
+  | 'importCompleted'
+  | 'importExpanded'
+  | 'importSourceId'
+  | 'setImportSourceId'
+  | 'importOptions'
+  | 'importing'
+  | 'handleImport'
+>) {
+  return (
+    <>
+      <span className={styles.importLabel}>
+        {importCompleted && !importExpanded
+          ? 'Novos palpites para importar de:'
+          : 'Importar palpites de:'}
+      </span>
+      <Select
+        className={styles.importSelect}
+        value={importSourceId}
+        onChange={(e) => setImportSourceId(e.target.value)}
+      >
+        {importOptions.map((g) => (
+          <option key={g.id} value={g.id}>
+            {optionLabel(g)}
+          </option>
+        ))}
+      </Select>
+      <Button
+        size="sm"
+        className={styles.importBtn}
+        onClick={handleImport}
+        disabled={importing || !importSourceId}
+      >
+        {importing ? 'Importando...' : 'Importar'}
+      </Button>
+    </>
+  )
+}
+
+function ImportLink({ onExpand }: { onExpand: () => void }) {
+  return (
+    <button type="button" className={styles.postponedHintLink} onClick={onExpand}>
+      Importar de outro grupo
+    </button>
+  )
+}
+
+function ImportedInfo({
+  importedFromName,
+  canRepeat,
+  onExpand,
+}: {
+  importedFromName: string | null
+  canRepeat: boolean
+  onExpand: () => void
+}) {
+  return (
+    <>
+      <span className={styles.importInfo}>
+        {importedFromName
+          ? `Palpites importados de ${importedFromName}.`
+          : 'Você já importou palpites de outro grupo.'}
+      </span>
+      {canRepeat && (
+        <button type="button" className={styles.importInfoLink} onClick={onExpand}>
+          Importar de novo
+        </button>
+      )}
+    </>
+  )
+}
+
 export default function PredictionsImportBar({
   otherGroups,
   importOptions,
@@ -42,76 +124,45 @@ export default function PredictionsImportBar({
   // Nada faltando e nenhuma importação anterior: o link recolhido mantém a opção
   // de copiar outro grupo por cima dos palpites daqui.
   const showLinkOnly = !showSelector && !importCompleted && otherGroups.length > 0
+  if (!showSelector && !showLinkOnly && !importCompleted && !importFeedback) return null
+
+  let content: ReactNode = null
+  if (showSelector) {
+    content = (
+      <ImportSelector
+        importCompleted={importCompleted}
+        importExpanded={importExpanded}
+        importSourceId={importSourceId}
+        setImportSourceId={setImportSourceId}
+        importOptions={importOptions}
+        importing={importing}
+        handleImport={handleImport}
+      />
+    )
+  } else if (showLinkOnly) {
+    content = <ImportLink onExpand={() => setImportExpanded(true)} />
+  } else if (importCompleted) {
+    content = (
+      <ImportedInfo
+        importedFromName={importedFromName}
+        canRepeat={otherGroups.length > 0}
+        onExpand={() => setImportExpanded(true)}
+      />
+    )
+  }
+
   return (
-    <>
-      {(showSelector || showLinkOnly || importCompleted || importFeedback) && (
-        <div
-          className={`${styles.importBar} ${
-            !showSelector && !showLinkOnly ? styles.importBarInfo : ''
-          }`}
-        >
-          {showSelector ? (
-            <>
-              <span className={styles.importLabel}>
-                {importCompleted && !importExpanded
-                  ? 'Novos palpites para importar de:'
-                  : 'Importar palpites de:'}
-              </span>
-              <Select
-                className={styles.importSelect}
-                value={importSourceId}
-                onChange={(e) => setImportSourceId(e.target.value)}
-              >
-                {importOptions.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {optionLabel(g)}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                size="sm"
-                className={styles.importBtn}
-                onClick={handleImport}
-                disabled={importing || !importSourceId}
-              >
-                {importing ? 'Importando...' : 'Importar'}
-              </Button>
-            </>
-          ) : showLinkOnly ? (
-            <button
-              type="button"
-              className={styles.postponedHintLink}
-              onClick={() => setImportExpanded(true)}
-            >
-              Importar de outro grupo
-            </button>
-          ) : (
-            importCompleted && (
-              <>
-                <span className={styles.importInfo}>
-                  {importedFromName
-                    ? `Palpites importados de ${importedFromName}.`
-                    : 'Você já importou palpites de outro grupo.'}
-                </span>
-                {otherGroups.length > 0 && (
-                  <button
-                    type="button"
-                    className={styles.importInfoLink}
-                    onClick={() => setImportExpanded(true)}
-                  >
-                    Importar de novo
-                  </button>
-                )}
-              </>
-            )
-          )}
-          {importFeedback && (
-            <span className={importFeedback.ok ? styles.importSuccess : styles.importError}>
-              {importFeedback.message}
-            </span>
-          )}
-        </div>
+    <div
+      className={`${styles.importBar} ${
+        !showSelector && !showLinkOnly ? styles.importBarInfo : ''
+      }`}
+    >
+      {content}
+      {importFeedback && (
+        <span className={importFeedback.ok ? styles.importSuccess : styles.importError}>
+          {importFeedback.message}
+        </span>
       )}
-    </>
+    </div>
   )
 }
