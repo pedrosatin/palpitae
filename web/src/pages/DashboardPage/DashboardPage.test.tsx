@@ -807,7 +807,7 @@ describe('DashboardPage com a competição pedida pelo guia', () => {
     })
   })
 
-  it('fechar descarta a competição: reabrir pela tela vazia volta ao padrão sem aviso', async () => {
+  it('fechar descarta a competição e reabrir pela tela vazia volta ao padrão sem aviso', async () => {
     mockApi([serieA2026])
     renderDashboard(`/?competicao=${slug2027}`)
 
