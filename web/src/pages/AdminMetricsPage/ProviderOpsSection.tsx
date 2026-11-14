@@ -191,7 +191,9 @@ function byFailuresThenAttempts(a: [string, HttpTotals], b: [string, HttpTotals]
 function competitionName(id: string, names: CompetitionNames): { text: string; title?: string } {
   if (!id) return { text: 'sem liga', title: 'Evento sem competição associada' }
   const found = names.get(id)
-  return { text: competitionLabel(id, found?.name, found?.season), title: id }
+  if (!found) return { text: competitionLabel(id, undefined, undefined), title: id }
+  // Competição conhecida com nome vazio mostra o texto vazio, como antes da extração.
+  return { text: found.season ? `${found.name} ${found.season}` : found.name, title: id }
 }
 
 /** Aviso sobre o que a ausência de linhas significa neste período. */
