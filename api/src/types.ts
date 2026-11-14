@@ -1,4 +1,5 @@
 import type { JwtPayload } from './auth/jwt'
+import type { DailyKeys } from './security/limits'
 
 export type Env = {
   DB: D1Database
@@ -41,6 +42,8 @@ export type Variables = {
   userId: string
   userEmail: string
   session?: SessionState
+  limiterDb?: D1Database
+  dailyKeys?: DailyKeys
 }
 
 export type AppContext = {
