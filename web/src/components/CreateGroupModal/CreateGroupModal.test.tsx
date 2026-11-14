@@ -221,7 +221,7 @@ describe('CreateGroupModal', () => {
   })
 })
 
-describe('CreateGroupModal – competição pedida pelo link', () => {
+describe('CreateGroupModal com a competição pedida pelo link', () => {
   const serieA2026 = {
     id: 'bsa-2026',
     name: 'Campeonato Brasileiro Série A',
@@ -251,7 +251,7 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
     } as Response)
   }
 
-  /** Imita o painel: a competição do link vale até o modal fechar. */
+  /** Imita o painel. A competição do link vale até o modal fechar. */
   function Host({ initialSlug }: { initialSlug?: string }) {
     const [open, setOpen] = useState(true)
     const [slug, setSlug] = useState(initialSlug)
@@ -290,10 +290,44 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
     const select = await screen.findByLabelText('Competição')
     expect(select).toHaveValue('bsa-2026')
     expect(screen.getByText(warning)).toBeInTheDocument()
-    expect(select).toHaveAccessibleDescription(warning)
+    // A Série A 2026 já começou, então o aviso de campeonato em andamento também descreve o select.
+    expect(select).toHaveAccessibleDescription(expect.stringContaining(warning))
+    expect(select).toHaveAccessibleDescription(expect.stringContaining('Esse campeonato já começou'))
   })
 
-  it('não mostra aviso sem competição pedida', async () => {
+  it('descreve o select só pelo aviso de campeonato em andamento quando não há competição pedida', async () => {
+    mockList([serieA2026])
+    render(<CreateGroupModal {...defaultProps} />)
+
+    const select = await screen.findByLabelText('Competição')
+    expect(select).toHaveAttribute('aria-describedby', 'group-competition-ongoing')
+    expect(select).toHaveAccessibleDescription(expect.stringContaining('Esse campeonato já começou'))
+  })
+
+  it('tira o aviso de campeonato em andamento da descrição ao trocar para uma competição em breve', async () => {
+    const premier2027 = {
+      id: 'pl-2027',
+      name: 'Premier League',
+      slug: 'premier-league-2027',
+      season: '2027',
+      status: 'upcoming',
+    }
+    mockList([serieA2026, premier2027])
+    render(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
+
+    const select = await screen.findByLabelText('Competição')
+    expect(select).toHaveAttribute(
+      'aria-describedby',
+      'group-competition-unavailable group-competition-ongoing',
+    )
+
+    await userEvent.selectOptions(select, 'pl-2027')
+
+    expect(select).toHaveAttribute('aria-describedby', 'group-competition-unavailable')
+    expect(screen.queryByText(/Esse campeonato já começou/)).not.toBeInTheDocument()
+  })
+
+  it('não mostra o aviso de competição indisponível sem competição pedida', async () => {
     mockList([serieA2026])
     render(<CreateGroupModal {...defaultProps} />)
 
