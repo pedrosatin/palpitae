@@ -35,7 +35,7 @@ type SiblingGroup = {
 }
 
 /** Palpites do usuário no grupo por jogo, com o marcador e as origens da importação. */
-async function fetchGroupPredictions(groupId: string): Promise<{
+async function fetchOwnPredictions(groupId: string): Promise<{
   predictions: PredictionMap
   importCompleted: boolean
   importSources: ImportSources
@@ -132,7 +132,7 @@ function usePredictionsFetch(
     setLoading(true)
     setError(null)
 
-    Promise.all([fetchCompetitionMatches(competitionId), fetchGroupPredictions(groupId)])
+    Promise.all([fetchCompetitionMatches(competitionId), fetchOwnPredictions(groupId)])
       .then(([matchesData, predictionsData]) => {
         if (!active) return
         setImportCompleted(predictionsData.importCompleted)
@@ -254,19 +254,33 @@ function useSiblingGroups(
   return siblings
 }
 
-function usePredictionsImport(
-  groupId: string,
-  competitionId: string,
-  userId: string | undefined,
-  matches: Match[],
-  predictions: PredictionMap,
-  setPredictions: Dispatch<SetStateAction<PredictionMap>>,
-  importCompleted: boolean,
-  setImportCompleted: Dispatch<SetStateAction<boolean>>,
-  importSources: ImportSources,
-  setImportSources: Dispatch<SetStateAction<ImportSources>>,
-  pointsExact: number,
-) {
+type ImportInput = {
+  groupId: string
+  competitionId: string
+  userId: string | undefined
+  matches: Match[]
+  predictions: PredictionMap
+  setPredictions: Dispatch<SetStateAction<PredictionMap>>
+  importCompleted: boolean
+  setImportCompleted: Dispatch<SetStateAction<boolean>>
+  importSources: ImportSources
+  setImportSources: Dispatch<SetStateAction<ImportSources>>
+  pointsExact: number
+}
+
+function usePredictionsImport({
+  groupId,
+  competitionId,
+  userId,
+  matches,
+  predictions,
+  setPredictions,
+  importCompleted,
+  setImportCompleted,
+  importSources,
+  setImportSources,
+  pointsExact,
+}: ImportInput) {
   const scope = useRef({ active: true })
   const siblings = useSiblingGroups(groupId, competitionId, userId)
   // Grupo "só vencedor" não é origem para grupo de placar exato: a API recusa, porque
@@ -337,7 +351,7 @@ function usePredictionsImport(
       const savedSince = new Set<string>()
       savedDuringRefresh.current = savedSince
       try {
-        const refreshed = await fetchGroupPredictions(groupId)
+        const refreshed = await fetchOwnPredictions(groupId)
         if (current.active) {
           // O importado muda o palpite salvo, e `usePredictionDrafts` descarta o
           // rascunho digitado sobre o valor anterior. O palpite salvo enquanto a
@@ -432,7 +446,7 @@ export function usePredictionsTab(
     importedFromName,
     handleImport,
     noteSaved,
-  } = usePredictionsImport(
+  } = usePredictionsImport({
     groupId,
     competitionId,
     userId,
@@ -444,7 +458,7 @@ export function usePredictionsTab(
     importSources,
     setImportSources,
     pointsExact,
-  )
+  })
 
   const {
     roundKeys,
@@ -496,19 +510,19 @@ export function usePredictionsTab(
     pendingCount,
     handleSaveAll,
     handleSaved,
-  } = usePredictionsBulkSave(
+  } = usePredictionsBulkSave({
     groupId,
     roundMatches,
     predictions,
     setPredictions,
     selectedRound,
-    matches,
+    allMatches: matches,
     unsavedDrafts,
-    (matchIds) => {
+    onBulkSaved: (matchIds) => {
       noteSaved(matchIds)
       replicateSaved(matchIds)
     },
-  )
+  })
 
   // Com a opção marcada, o palpite salvo no card vai também para os outros grupos.
   function handleSavedAndReplicate(

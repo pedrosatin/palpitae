@@ -5,6 +5,7 @@ import { apiFetch } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { predictedClassified } from '../../lib/predictedTie'
 import { collectRoundDrafts, type UnsavedDrafts } from '../../lib/predictionDrafts'
+import { plural } from '../../lib/replicateToGroups'
 import type { Match, Prediction } from '../MatchCard'
 
 type PredictionMap = Map<string, Prediction>
@@ -60,10 +61,6 @@ function applyPredictionUpdate(
 
 type BulkSaveResponse = { saved: string[]; locked?: string[]; not_found?: string[] }
 
-function count(n: number, one: string, many: string): string {
-  return n === 1 ? `1 ${one}` : `${n} ${many}`
-}
-
 /**
  * Aviso de um "Salvar todos" em que algum jogo enviado não voltou entre os salvos:
  * quantos foram salvos, o motivo de cada recusa e o que fazer. Jogo travado ou
@@ -79,16 +76,16 @@ function bulkRejectionMessage(sent: string[], data: BulkSaveResponse): string | 
   const other = rejected.length - locked - notFound
   const accepted = sent.length - rejected.length
   return [
-    accepted > 0 && count(accepted, 'palpite salvo.', 'palpites salvos.'),
+    accepted > 0 && plural(accepted, 'palpite salvo.', 'palpites salvos.'),
     locked > 0 &&
-      count(locked, 'jogo já bloqueado ficou de fora.', 'jogos já bloqueados ficaram de fora.'),
+      plural(locked, 'jogo já bloqueado ficou de fora.', 'jogos já bloqueados ficaram de fora.'),
     notFound > 0 &&
-      count(
+      plural(
         notFound,
         'jogo não foi encontrado neste campeonato.',
         'jogos não foram encontrados neste campeonato.',
       ),
-    other > 0 && count(other, 'palpite não foi salvo.', 'palpites não foram salvos.'),
+    other > 0 && plural(other, 'palpite não foi salvo.', 'palpites não foram salvos.'),
     locked + notFound > 0 ? 'Recarregue a página para atualizar os jogos.' : 'Tente novamente.',
   ]
     .filter(Boolean)
@@ -148,17 +145,28 @@ function useBulkSaveStatus(selectedRound: string | undefined) {
   }
 }
 
-export function usePredictionsBulkSave(
-  groupId: string,
-  roundMatches: Match[],
-  predictions: PredictionMap,
-  setPredictions: Dispatch<SetStateAction<PredictionMap>>,
-  selectedRound: string | undefined,
-  allMatches: Match[],
-  { drafts, penaltyDrafts }: UnsavedDrafts,
+type BulkSaveInput = {
+  groupId: string
+  roundMatches: Match[]
+  predictions: PredictionMap
+  setPredictions: Dispatch<SetStateAction<PredictionMap>>
+  selectedRound: string | undefined
+  allMatches: Match[]
+  unsavedDrafts: UnsavedDrafts
   /** Chamado com os jogos gravados depois de um "Salvar todos". */
-  onBulkSaved?: (matchIds: string[]) => void,
-) {
+  onBulkSaved?: (matchIds: string[]) => void
+}
+
+export function usePredictionsBulkSave({
+  groupId,
+  roundMatches,
+  predictions,
+  setPredictions,
+  selectedRound,
+  allMatches,
+  unsavedDrafts: { drafts, penaltyDrafts },
+  onBulkSaved,
+}: BulkSaveInput) {
   const {
     savingAll,
     setSavingAll,
