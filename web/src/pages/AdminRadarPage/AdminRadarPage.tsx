@@ -5,8 +5,8 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { apiFetch } from '../../lib/api'
 import { DAY_MS, formatNumber, parseSqlUtc } from '../AdminMetricsPage/format'
 import AdminPageShell, { AdminLoadError } from '../AdminPageShell'
+import AdminPills from '../AdminPills'
 import { useAdminLoad, type AdminLoad } from '../useAdminLoad'
-import shared from '../admin-shared.module.css'
 import styles from './AdminRadarPage.module.css'
 import { Sparkline } from './Sparkline'
 
@@ -66,6 +66,8 @@ const STATUS_FILTERS = [
 
 type StatusFilter = (typeof STATUS_FILTERS)[number]['key']
 
+const STATUS_OPTIONS = STATUS_FILTERS.map((f) => ({ value: f.key, label: f.label }))
+
 /** Snapshot mais velho que isso = cron do radar provavelmente parado. */
 const STALE_AFTER_HOURS = 30
 
@@ -79,6 +81,12 @@ function formatDay(day: string | null): string {
 function formatTrend(trend: number | null): string {
   if (trend === null) return '—'
   return `${trend > 0 ? '+' : ''}${trend}%`
+}
+
+function trendClass(trend: number | null): string {
+  if (trend !== null && trend > 0) return styles.trendUp
+  if (trend !== null && trend < 0) return styles.trendDown
+  return styles.muted
 }
 
 /**
@@ -317,23 +325,19 @@ function RadarFilters({
         onChange={(e) => setSearch(e.target.value)}
         aria-label="Buscar competição"
       />
-      <div className={styles.statusFilters} role="group" aria-label="Filtrar por status">
-        {STATUS_FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            className={f.key === statusFilter ? shared.periodActive : shared.period}
-            aria-pressed={f.key === statusFilter}
-            onClick={() => {
-              trackEvent('click_admin_radar_filtrar_status', { status: f.key })
-              setStatusFilter(f.key)
-              setSort(f.key === 'upcoming' ? 'start' : 'interest')
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <AdminPills
+        options={STATUS_OPTIONS}
+        value={statusFilter}
+        onChange={(key) => {
+          trackEvent('click_admin_radar_filtrar_status', { status: key })
+          setStatusFilter(key)
+          setSort(key === 'upcoming' ? 'start' : 'interest')
+        }}
+        className={styles.statusFilters}
+        role="group"
+        ariaLabel="Filtrar por status"
+        ariaPressed
+      />
       <label className={styles.toggle}>
         <input
           type="checkbox"
@@ -346,6 +350,26 @@ function RadarFilters({
         Só não suportadas
       </label>
     </div>
+  )
+}
+
+function VerdictCell({ item, medianInterest }: { item: RadarItem; medianInterest: number }) {
+  if (item.supported) {
+    return (
+      <td>
+        <span className={styles.supported}>✓ no Palpitae</span>
+      </td>
+    )
+  }
+  const call = verdict(item, medianInterest)
+  return (
+    <td>
+      {call ? (
+        <span className={call.level}>{call.label}</span>
+      ) : (
+        <span className={styles.muted}>—</span>
+      )}
+    </td>
   )
 }
 
@@ -392,7 +416,7 @@ function RadarTable({
         </thead>
         <tbody>
           {visible.map((item) => {
-            const call = verdict(item, medianInterest)
+            const startsIn = item.status === 'upcoming' ? countdown(item.startsOn) : null
             return (
               <tr key={item.id}>
                 <td>
@@ -406,9 +430,7 @@ function RadarTable({
                   <span className={styles[`status_${item.status}`]}>
                     {STATUS_LABEL[item.status]}
                   </span>
-                  {item.status === 'upcoming' && countdown(item.startsOn) && (
-                    <span className={styles.countdown}>{countdown(item.startsOn)}</span>
-                  )}
+                  {startsIn && <span className={styles.countdown}>{startsIn}</span>}
                 </td>
                 <td className={styles.num}>
                   {formatNumber(item.matchesInPeriod)}
@@ -426,29 +448,13 @@ function RadarTable({
                     </span>
                   )}
                 </td>
-                <td
-                  className={
-                    item.pageviewsTrend !== null && item.pageviewsTrend > 0
-                      ? styles.trendUp
-                      : item.pageviewsTrend !== null && item.pageviewsTrend < 0
-                        ? styles.trendDown
-                        : styles.muted
-                  }
-                >
+                <td className={trendClass(item.pageviewsTrend)}>
                   {formatTrend(item.pageviewsTrend)}
                 </td>
                 <td className={styles.num}>
                   {item.supported ? formatNumber(item.internalGroups) : '—'}
                 </td>
-                <td>
-                  {item.supported ? (
-                    <span className={styles.supported}>✓ no Palpitae</span>
-                  ) : call ? (
-                    <span className={call.level}>{call.label}</span>
-                  ) : (
-                    <span className={styles.muted}>—</span>
-                  )}
-                </td>
+                <VerdictCell item={item} medianInterest={medianInterest} />
               </tr>
             )
           })}

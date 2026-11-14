@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AdminPills from '../AdminPills'
 import shared from '../admin-shared.module.css'
 import { SERIES_COLORS } from './charts'
 import { DAY_MS, formatCount } from './format'
@@ -285,24 +286,27 @@ function HeatmapBody({
       </p>
       <div className={styles.filterRow}>
         <span className={styles.filterLabel}>Série</span>
-        <div className={`${shared.periods} ${styles.filterPills}`} role="group" aria-label="Série">
-          {MEASURES.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              aria-pressed={m.value === measure.value}
-              className={m.value === measure.value ? shared.periodActive : shared.period}
-              onClick={() => onMeasureChange(m.value)}
-            >
-              <span
-                className={styles.seriesDot}
-                style={{ backgroundColor: m.color }}
-                aria-hidden="true"
-              />
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <AdminPills
+          options={MEASURES.map((m) => ({
+            value: m.value,
+            label: (
+              <>
+                <span
+                  className={styles.seriesDot}
+                  style={{ backgroundColor: m.color }}
+                  aria-hidden="true"
+                />
+                {m.label}
+              </>
+            ),
+          }))}
+          value={measure.value}
+          onChange={onMeasureChange}
+          className={`${shared.periods} ${styles.filterPills}`}
+          role="group"
+          ariaLabel="Série"
+          ariaPressed
+        />
       </div>
       {estimated && (
         <p className={styles.samplingWarning}>

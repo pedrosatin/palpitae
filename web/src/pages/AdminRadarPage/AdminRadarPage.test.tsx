@@ -310,3 +310,43 @@ describe('AdminRadarPage: respostas fora de ordem', () => {
     consoleError.mockRestore()
   })
 })
+
+describe('AdminRadarPage · acessibilidade das pílulas', () => {
+  it('mantém os atributos de acessibilidade originais no período e no filtro de status', async () => {
+    vi.stubGlobal('fetch', mockFetch(defaultBody))
+    const user = userEvent.setup()
+    render(<AdminRadarPage />)
+
+    await screen.findByText('CONMEBOL Libertadores')
+
+    const period30 = screen.getByRole('button', { name: '30d' })
+    expect(period30.parentElement).not.toHaveAttribute('role')
+    expect(period30.parentElement).not.toHaveAttribute('aria-label')
+    expect(period30).not.toHaveAttribute('aria-pressed')
+    expect(screen.getByRole('button', { name: '7d' })).not.toHaveAttribute('aria-pressed')
+
+    const statusGroup = screen.getByRole('group', { name: 'Filtrar por status' })
+    expect(within(statusGroup).getByRole('button', { name: 'Em andamento' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(statusGroup).getByRole('button', { name: 'A começar' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(statusGroup).getByRole('button', { name: 'Todas' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+
+    await user.click(within(statusGroup).getByRole('button', { name: 'Todas' }))
+    expect(within(statusGroup).getByRole('button', { name: 'Todas' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(statusGroup).getByRole('button', { name: 'Em andamento' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+})

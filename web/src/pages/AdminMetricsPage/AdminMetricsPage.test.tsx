@@ -1537,3 +1537,61 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
     expect(screen.queryByText(/malformada/)).not.toBeInTheDocument()
   })
 })
+
+describe('AdminMetricsPage · acessibilidade das pílulas e legenda', () => {
+  it('mantém os atributos de acessibilidade originais em cada grupo de pílulas', async () => {
+    vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
+    render(<AdminMetricsPage />)
+
+    await screen.findByText('Grupos por campeonato')
+
+    // Seletor de período (AdminPageShell): sem role="group" nem aria-pressed.
+    const period30 = screen.getByRole('button', { name: '30d' })
+    expect(period30.parentElement).not.toHaveAttribute('role')
+    expect(period30.parentElement).not.toHaveAttribute('aria-label')
+    expect(period30).not.toHaveAttribute('aria-pressed')
+    expect(screen.getByRole('button', { name: '7d' })).not.toHaveAttribute('aria-pressed')
+    expect(screen.getByRole('button', { name: '90d' })).not.toHaveAttribute('aria-pressed')
+
+    // Filtros de Visibilidade e Status: com role="group", aria-label e aria-pressed.
+    const visibility = screen.getByRole('group', { name: 'Visibilidade' })
+    expect(within(visibility).getByRole('button', { name: 'Todas' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(visibility).getByRole('button', { name: 'Públicas' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(visibility).getByRole('button', { name: 'Piloto' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+
+    const status = screen.getByRole('group', { name: 'Status' })
+    expect(within(status).getByRole('button', { name: 'Todos' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(status).getByRole('button', { name: 'Em andamento' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+    expect(within(status).getByRole('button', { name: 'Encerrados' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+
+    // Meses do arquivo (ArchiveQuerySection): sem role="group" nem aria-pressed.
+    const monthBtn = screen.getByRole('button', { name: yesterday.slice(0, 7) })
+    expect(monthBtn.parentElement).not.toHaveAttribute('role')
+    expect(monthBtn.parentElement).not.toHaveAttribute('aria-label')
+    expect(monthBtn).not.toHaveAttribute('aria-pressed')
+
+    // Legenda de eventos por dia: título cru no title e rótulo legível no texto.
+    const eventsSection = screen
+      .getByRole('heading', { name: 'Eventos por dia · últimos 30 dias' })
+      .closest('section') as HTMLElement
+    expect(within(eventsSection).getByTitle('login_success')).toHaveTextContent('Login')
+  })
+})
