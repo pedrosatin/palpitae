@@ -17,6 +17,7 @@ import CompetitionActivitySection, {
 import HeatmapSection, { type HeatmapResponse } from './HeatmapSection'
 import InviteFunnelSection, { type InviteFunnelResponse } from './InviteFunnelSection'
 import SignupOriginsSection, { type SignupOriginsResponse } from './SignupOriginsSection'
+import QuotaUsageSection, { type QuotaUsageResponse } from './QuotaUsageSection'
 import ProviderOpsSection, {
   totalHttpFailures,
   type CompetitionNames,
@@ -1317,6 +1318,7 @@ interface MetricsSnapshot {
   heatmap: HeatmapResponse | null
   inviteFunnel: InviteFunnelResponse | null
   signupOrigins: SignupOriginsResponse | null
+  quota: QuotaUsageResponse | null
 }
 
 /** Nada carregado: período em carga, com falha ou sem acesso. */
@@ -1329,6 +1331,7 @@ const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
   heatmap: null,
   inviteFunnel: null,
   signupOrigins: null,
+  quota: null,
 }
 
 /**
@@ -1339,7 +1342,7 @@ const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
 async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
   const params = new URLSearchParams({ days: String(days) })
   try {
-    const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes] =
+    const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes, quotaRes] =
       await Promise.all([
         apiFetch(buildApiUrl('/metrics/overview', params)),
         apiFetch(buildApiUrl('/metrics/business', params)),
@@ -1350,6 +1353,8 @@ async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
         apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
         apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
         apiFetch(buildApiUrl('/metrics/signup-origins', params)).catch(() => null),
+        // Última medição das cotas, independente do período.
+        apiFetch(buildApiUrl('/metrics/quota')).catch(() => null),
       ])
     if (ovRes.status === 403) return { kind: 'forbidden' }
     if (!ovRes.ok) return { kind: 'failed' }
@@ -1365,6 +1370,7 @@ async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
         heatmap: await optionalJson<HeatmapResponse>(heatmapRes),
         inviteFunnel: await optionalJson<InviteFunnelResponse>(funnelRes),
         signupOrigins: await optionalJson<SignupOriginsResponse>(originsRes),
+        quota: await optionalJson<QuotaUsageResponse>(quotaRes),
       },
     }
   } catch {
@@ -1389,8 +1395,17 @@ export default function AdminMetricsPage() {
 
   const [days, setDays] = useState<number>(30)
   const { data, error, loading, retry } = useAdminLoad(days, loadMetrics)
-  const { overview, business, archive, ops, activity, heatmap, inviteFunnel, signupOrigins } =
-    data ?? NO_METRICS
+  const {
+    overview,
+    business,
+    archive,
+    ops,
+    activity,
+    heatmap,
+    inviteFunnel,
+    signupOrigins,
+    quota,
+  } = data ?? NO_METRICS
 
   // Análise do arquivo frio, sob demanda (um mês por vez) — independente do período.
   // Só o último mês pedido grava resultado e encerra o "Lendo arquivos…".
@@ -1471,6 +1486,8 @@ export default function AdminMetricsPage() {
                 merece atenção.
               </p>
             )}
+
+            <QuotaUsageSection data={quota} />
 
             {business && <BusinessSection business={business} />}
 

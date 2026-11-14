@@ -22,6 +22,9 @@ const EVENT_LABELS: Record<string, string> = {
   fixture_discovery_run: 'Descoberta de jogos',
   scheduled_unknown_cron: 'Cron sem rotina',
   scheduled_config_missing: 'Configuração ausente',
+  cloudflare_usage: 'Medição das cotas',
+  cloudflare_quota_alert: 'Alerta de cota',
+  cloudflare_usage_error: 'Falha na medição das cotas',
   // Poller, descoberta e sync manual cobrem football-data e ESPN.
   football_api_error: 'Erro de sync de provedor',
   match_results_fallback: 'Fallback de resultados (ESPN)',

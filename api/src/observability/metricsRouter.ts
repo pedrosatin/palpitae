@@ -6,6 +6,7 @@ import type { AppContext } from '../types'
 import { runAeSql } from './aeSql'
 import { MAX_QUERY_SPAN_DAYS, daysInRange, queryArchive } from './archiveQuery'
 import { countInviteJoinsInD1, summarizeInviteEvents } from './inviteFunnel'
+import { FREE_DAILY_QUOTAS, QUOTA_METRICS, quotaPercent, quotaThreshold } from './quotaUsage'
 import { countSignupsInD1, summarizeSignupOrigins } from './signupOrigin'
 
 /**
@@ -1012,6 +1013,59 @@ metricsRouter.get('/business', async (c) => {
     competitions: competitionRows,
     topCompetitions,
   })
+})
+
+/**
+ * Última medição do uso das cotas do plano Free (ADR-022), gravada pelo cron das
+ * 00:05 UTC como `cloudflare_usage`: blob2 = dia UTC medido, double1 = linhas lidas
+ * do D1, double2 = linhas escritas do D1, double3 = requisições dos Workers.
+ *
+ * Um evento por dia, então a linha mais recente é a medição e os doubles valem
+ * como gravados, sem peso de sampling. A busca cobre a retenção inteira do AE,
+ * para o painel mostrar a última medição mesmo com o cron parado. `latest: null`
+ * significa nenhuma medição ainda, o que inclui token não cadastrado.
+ * Percentual e faixa vêm das mesmas constantes que o cron usa.
+ */
+metricsRouter.get('/quota', async (c) => {
+  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
+    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+  }
+
+  try {
+    const rows = await runAeSql(
+      c.env,
+      `SELECT timestamp, blob2 AS day, double1 AS d1_rows_read, ` +
+        `double2 AS d1_rows_written, double3 AS worker_requests ` +
+        `FROM ${DATASET} WHERE blob1 = 'cloudflare_usage' ` +
+        `AND timestamp > NOW() - INTERVAL '${MAX_DAYS}' DAY ` +
+        `ORDER BY timestamp DESC LIMIT 1`,
+    )
+    const row = rows[0]
+    if (!row) return c.json({ latest: null })
+
+    const day = String(row.day ?? '')
+    return c.json({
+      latest: {
+        day: DAY_RE.test(day) ? day : null,
+        measuredAt: String(row.timestamp ?? ''),
+        metrics: QUOTA_METRICS.map((metric) => {
+          const raw = Number(row[metric] ?? 0)
+          const used = Number.isFinite(raw) && raw > 0 ? raw : 0
+          const limit = FREE_DAILY_QUOTAS[metric]
+          return {
+            metric,
+            used,
+            limit,
+            percent: quotaPercent(used, limit),
+            threshold: quotaThreshold(used, limit),
+          }
+        }),
+      },
+    })
+  } catch (err) {
+    console.error('[metrics] falha ao ler o uso das cotas:', err)
+    return c.json({ error: 'Falha ao consultar o uso das cotas' }, 502)
+  }
 })
 
 /**

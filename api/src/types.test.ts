@@ -9,6 +9,7 @@ describe('types', () => {
       EVENTS?: any
       CF_ACCOUNT_ID?: string
       AE_SQL_TOKEN?: string
+      CF_ANALYTICS_TOKEN?: string
       ADMIN_EMAIL?: string
       PILOT_EMAILS?: string
       JWT_SECRET: string

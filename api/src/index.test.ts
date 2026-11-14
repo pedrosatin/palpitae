@@ -22,6 +22,9 @@ vi.mock('./notifications/roundReminder', async (importOriginal) => ({
 vi.mock('./observability/export', () => ({
   exportRecentDays: vi.fn(async () => {}),
 }))
+vi.mock('./observability/quotaUsage', () => ({
+  checkQuotaUsage: vi.fn(async () => 'ok'),
+}))
 vi.mock('./matches/poller', () => ({
   pollActiveMatches: vi.fn(async () => {}),
 }))
@@ -35,6 +38,7 @@ import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { sendRoundReminders } from './notifications/roundReminder'
 import { exportRecentDays } from './observability/export'
+import { checkQuotaUsage } from './observability/quotaUsage'
 import type { Env } from './types'
 
 import { clearExpiredSecurityRecords } from './security/limits'
@@ -177,9 +181,24 @@ describe('scheduled handler routing', () => {
     await run('5 0 * * *')
 
     expect(exportRecentDays).toHaveBeenCalledTimes(1)
+    expect(checkQuotaUsage).toHaveBeenCalledTimes(1)
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(pollActiveMatches).not.toHaveBeenCalled()
     expect(discoverFixtures).not.toHaveBeenCalled()
+  })
+
+  it('o cron do export mede as cotas do dia anterior no mesmo horário', async () => {
+    await run('5 0 * * *', 1794614700000)
+
+    expect(checkQuotaUsage).toHaveBeenCalledWith(env, new Date(1794614700000))
+  })
+
+  it('só o cron do export mede as cotas', async () => {
+    await run('0,30 * * * *')
+    await run('0 10 * * *')
+    await run('15 6 * * *')
+
+    expect(checkQuotaUsage).not.toHaveBeenCalled()
   })
 
   it('routes the fixture-discovery cron to discoverFixtures only', async () => {
@@ -220,6 +239,7 @@ describe('configuração opcional ausente', () => {
     PROXY_SHARED_SECRET: 'proxy',
     CF_ACCOUNT_ID: 'account',
     AE_SQL_TOKEN: 'token',
+    CF_ANALYTICS_TOKEN: 'analytics-token',
   } as Env
 
   beforeEach(() => {
@@ -232,7 +252,14 @@ describe('configuração opcional ausente', () => {
     expect(events(complete)).toEqual([])
   })
 
-  it.each(['EVENTS', 'PROXY_SHARED_SECRET', 'BASE_URL', 'CF_ACCOUNT_ID', 'AE_SQL_TOKEN'] as const)(
+  it.each([
+    'EVENTS',
+    'PROXY_SHARED_SECRET',
+    'BASE_URL',
+    'CF_ACCOUNT_ID',
+    'AE_SQL_TOKEN',
+    'CF_ANALYTICS_TOKEN',
+  ] as const)(
     'sem %s registra um evento por execução',
     async (name) => {
       const partial = { ...complete, [name]: undefined } as Env

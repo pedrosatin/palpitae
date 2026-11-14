@@ -559,6 +559,14 @@ Para rotacionar o `JWT_SECRET`:
 4. Resultado esperado: as sessões caem. Numa rotação planejada, os links de
    descadastro assinados com o `UNSUBSCRIBE_SECRET` continuam funcionando.
 
+O `CF_ANALYTICS_TOKEN` só lê analytics da conta (Account Analytics: Read) e mede o uso
+diário das cotas do plano Free. Rotacionar não afeta sessões nem links: crie o token novo com a
+mesma permissão, grave com
+`cd api && npx wrangler secret put CF_ANALYTICS_TOKEN --config ./wrangler.toml` e revogue o
+antigo no painel. Uma medição que coincida com a troca grava `cloudflare_usage_error` e volta
+no cron do dia seguinte. Criação do token em
+[Observabilidade](observability.md#token-de-analytics-passos-do-operador).
+
 ## Tokens da Cloudflare no CI
 
 Hoje os workflows `deploy-api`, `deploy-web` e `radar-sync` leem o mesmo secret
