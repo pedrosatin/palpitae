@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
+import { runInBatches } from '../d1Batch'
 import {
   type EspnCompetitor,
   type EspnCompetitorTeam,
@@ -11,10 +12,9 @@ import {
 } from '../providers/espn'
 import type { ProviderHttpObserver } from '../observability/providerHttp'
 import {
-  batchStatements,
   countTbdDiscards,
   isoSeconds,
-  MATCH_UPSERT_SQL,
+  loadTeamIds,
   type MatchUpsertRow,
   NO_RESULT,
   reportDiscards,
@@ -23,7 +23,7 @@ import {
   type SyncDiscard,
   type SyncResult,
   writeMatchUpserts,
-} from './sync'
+} from './matchUpsert'
 
 const PROVIDER = 'espn'
 
@@ -429,25 +429,9 @@ async function upsertEspnTeams(
     ),
   )
 
-  if (statements.length > 0) {
-    await batchStatements(db, statements)
-  }
+  await runInBatches(db, statements)
 
-  const teamIds = new Map<string, string>()
-  const extIds = Array.from(teamMap.keys())
-  if (extIds.length > 0) {
-    const { results } = await db
-      .prepare(
-        `SELECT external_id, id FROM teams WHERE external_id IN (SELECT value FROM json_each(?)) AND provider = ?`,
-      )
-      .bind(JSON.stringify(extIds), PROVIDER)
-      .all<{ external_id: string; id: string }>()
-
-    for (const row of results) {
-      teamIds.set(String(row.external_id), row.id)
-    }
-  }
-
+  const teamIds = await loadTeamIds(db, PROVIDER, Array.from(teamMap.keys()))
   return { teamCount: teamMap.size, teamIds }
 }
 
@@ -544,46 +528,11 @@ async function upsertEspnMatches(
   now: string,
   ae: AnalyticsEngineDataset | undefined,
 ): Promise<number> {
-  const matchInsertStmt = db.prepare(MATCH_UPSERT_SQL)
-  const rows: MatchUpsertRow[] = []
-  const statements = []
+  const rows = events.flatMap((ev) => mapEspnEventToRow(ev, teamIds, now) ?? [])
 
-  for (const ev of events) {
-    const row = mapEspnEventToRow(ev, teamIds, now)
-    if (!row) continue
+  await writeMatchUpserts(db, rows, { provider: PROVIDER, competitionId, now, ae })
 
-    rows.push(row)
-    statements.push(
-      matchInsertStmt.bind(
-        crypto.randomUUID(),
-        competitionId,
-        row.externalId,
-        PROVIDER,
-        row.homeTeamId,
-        row.awayTeamId,
-        row.startTime,
-        row.status,
-        row.homeScore,
-        row.awayScore,
-        row.phase,
-        row.round,
-        row.groupName,
-        row.duration,
-        row.penaltyWinner,
-        row.homePenaltyGoals,
-        row.awayPenaltyGoals,
-        row.postponed,
-        row.lockedAt,
-        row.leg,
-        // Parâmetro 21 do SQL compartilhado, usado também na trava por horário da linha anterior.
-        now,
-      ),
-    )
-  }
-
-  await writeMatchUpserts(db, statements, rows, { ae, provider: PROVIDER, competitionId })
-
-  return statements.length
+  return rows.length
 }
 
 export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResult> {

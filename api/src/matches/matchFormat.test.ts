@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { MATCH_UPSERT_SQL } from './sync'
+import { MATCH_UPSERT_SQL } from './matchUpsert'
 
 /**
  * Formato de `matches` imposto pelos gatilhos da migration 0043: `start_time` em
