@@ -14,8 +14,9 @@ const REPO_ROOT = new URL('../../', import.meta.url)
 /**
  * Instruções que o operador copia e roda dentro de api/. Sem `--config`, o
  * wrangler procura wrangler.json e wrangler.jsonc em todos os diretórios acima
- * antes de aceitar um wrangler.toml, e o wrangler.jsonc da raiz (projeto do
- * Pages) vence o api/wrangler.toml.
+ * antes de aceitar um wrangler.toml. O wrangler.jsonc que ficava na raiz saiu
+ * em 14/11/2026, e a regra continua para que um arquivo recriado não desvie
+ * os comandos.
  */
 const OPERATOR_DOCS = [
   'README.md',

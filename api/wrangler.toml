@@ -1,6 +1,7 @@
 # Todo comando wrangler rodado em api/ precisa de --config ./wrangler.toml. Sem ele o
 # wrangler procura wrangler.json e wrangler.jsonc em todos os diretórios acima antes
-# de aceitar este arquivo, e o wrangler.jsonc da raiz (projeto do Pages) vence.
+# de aceitar este arquivo. Até 14/11/2026 o wrangler.jsonc da raiz vencia; ele saiu,
+# e a opção fica para que um arquivo recriado acima não volte a desviar os comandos.
 # Os scripts dev, dev:cron e deploy do package.json já passam a opção.
 name = "palpitae-api"
 main = "src/index.ts"
@@ -73,9 +74,8 @@ FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
 # 5000 escritas). Valor que não seja inteiro positivo volta ao padrão. Ver ADR-022.
 # D1_DAILY_ROWS_READ_PER_USER = "250000"
 # D1_DAILY_ROWS_WRITTEN_PER_USER = "5000"
-# Secrets — gravar de api/, sempre com --config ./wrangler.toml. Sem ele o
-# wrangler acha primeiro o wrangler.jsonc da raiz (projeto do Pages) e manda o
-# secret para o Worker palpitae-web, não para este.
+# Secrets — gravar de api/, sempre com --config ./wrangler.toml, pelo motivo do
+# topo deste arquivo.
 #   npx wrangler secret put JWT_SECRET --config ./wrangler.toml
 #   npx wrangler secret put UNSUBSCRIBE_SECRET --config ./wrangler.toml # link de descadastro; trocar só se vazar, ver docs/security.md
 #   npx wrangler secret put GOOGLE_CLIENT_ID --config ./wrangler.toml
