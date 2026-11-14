@@ -458,8 +458,9 @@ Para rotacionar o `JWT_SECRET`:
 ## Tokens da Cloudflare no CI
 
 Hoje os workflows `deploy-api`, `deploy-web` e `radar-sync` leem o mesmo secret
-`CLOUDFLARE_API_TOKEN`. Quem consegue alterar um desses workflows em qualquer
-branch alcança todos os recursos que o token cobre. As actions de terceiros ficam
+`CLOUDFLARE_API_TOKEN`. Quem consegue alterar o `radar-sync` em qualquer branch,
+por `workflow_dispatch`, ou alterar os deploys na `main`, alcança todos os
+recursos que o token cobre. As actions de terceiros ficam
 pinadas por SHA completo, e `scripts/workflows-check.test.mjs` falha se uma
 referência voltar a usar tag. Esta proposta reduz o alcance do token e depende de
 configuração do operador na Cloudflare e nas configurações do repositório.
@@ -475,7 +476,7 @@ Passos propostos:
    `deploy-web` e `radar-sync`. Em cada um, restrinja Deployment branches and tags
    a `main`.
 3. Grave cada token como secret do environment correspondente, com o nome
-   `CLOUDFLARE_API_TOKEN`, e mantenha `CLOUDFLARE_ACCOUNT_ID` no mesmo lugar.
+   `CLOUDFLARE_API_TOKEN`, e mantenha `CLOUDFLARE_ACCOUNT_ID` nos secrets do repositório.
 4. Nos workflows, adicione `environment: <nome>` ao job que usa o token. Essa
    mudança de YAML vai em PR à parte, depois que os secrets existirem.
 5. Depois do primeiro deploy e da primeira execução do `radar-sync` com os
