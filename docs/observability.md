@@ -51,9 +51,16 @@ cron que já existe — sem Queues (pago) nem Durable Object.
 `events` é a contagem REAL de eventos do dia (`SUM(_sample_interval)` das linhas, não o nº de
 linhas; ver sampling acima) e serve pro dashboard montar a série histórica além da janela do AE
 **sem ler arquivo nenhum**: o `list()` do R2 já devolve o customMetadata de cada objeto. `rows` é
-o nº de linhas do arquivo. `complete: '1'` diz que o dia foi lido inteiro **e** consultado ao
-menos 24 h depois de terminar; `'0'` é arquivo provisório ou truncado. Arquivo sem `complete`
-é de antes do manifesto.
+o nº de linhas do arquivo. Num dia com linhas fora do arquivo, `events` soma só as linhas
+arquivadas. Na coleta normal, `complete: '1'` diz que o dia foi consultado ao menos 24 h depois
+de terminar e que nenhum evento de negócio ficou fora do arquivo nem sem ler. A partir de 80
+dias, o reparo também pode fechar o arquivo que já existe, conforme a regra de reparo abaixo. Linhas dos tipos de volume
+podem faltar num dia acima do teto; nesse caso `truncatedTypes` lista os tipos que tiveram
+linhas fora do arquivo, separados por vírgula. `'0'` é arquivo provisório ou com eventos de
+negócio fora do arquivo. Arquivo sem `complete` é de antes do manifesto. Sem corte,
+`truncatedTypes` não existe. Manifesto antigo sem o campo continua compatível com o dashboard,
+que lê `events` no `list()`, e com o `/metrics/archive/query`, que agrega o corpo do NDJSON
+(`blob1` e `_sample_interval`).
 
 **Backfill e reparo.** O export não cobre só "ontem": `exportRecentDays` varre de `today-1` até
 `today-lookbackDays` (90 por padrão, dentro da janela de ~3 meses do AE) e lê o manifesto de
@@ -61,10 +68,13 @@ cada dia (`HEAD` na chave):
 
 - dia **sem** arquivo: exporta;
 - arquivo com `complete: '1'`: não consulta mais;
-- qualquer outro (provisório, truncado ou de antes do manifesto): reconsulta o AE e troca o
-  arquivo só se a coleta nova não perde linhas (mais linhas, ou completa com ao menos as mesmas).
-  Se a coleta nova, já completa, tem menos linhas (por exemplo, dia fora da retenção ou
-  amostragem na leitura), o corpo arquivado fica. A partir de 80 dias atrás, perto do fim da
+- qualquer outro (provisório, truncado ou de antes do manifesto): reconsulta o AE e compara
+  primeiro as linhas de eventos de negócio (fora da lista de volume) do arquivo e da coleta nova.
+  Com menos delas, a coleta nova é recusada. Com mais, ela substitui o arquivo, mesmo que o
+  total de linhas caia: um arquivo antigo cheio de volume pode não ter chegado aos eventos de
+  negócio. Com o mesmo número, ela substitui só se não perde linhas (mais linhas, ou completa
+  com ao menos as mesmas). Se a coleta nova, já completa, é recusada (por exemplo, dia fora da
+  retenção ou amostragem na leitura), o corpo arquivado fica. A partir de 80 dias atrás, perto do fim da
   retenção, ele ganha o manifesto contado do próprio NDJSON, com `complete: '1'`; antes disso o
   dia continua com `complete: '0'` e é reconsultado na execução seguinte.
 
@@ -85,12 +95,41 @@ execução pra não estourar tempo/CPU do cron — dias restantes pegam na próx
 **Limite de linhas da SQL API.** A SQL API do Analytics Engine corta o resultado silenciosamente
 (~10k linhas). O export lê o dia em páginas de `LIMIT 10000` ordenadas por `timestamp`: página
 cheia descarta as linhas do último segundo e a próxima começa nesse segundo, então nenhum
-segundo fica dividido entre páginas. Um único segundo com mais de 10 mil linhas, ou mais de 3
-páginas no dia, grava o que foi lido com `complete: '0'` e um `console.warn`. O teto é de 3
+segundo fica dividido entre páginas. São de 1 a 3 páginas, uma chamada ao AE cada. O teto é de 3
 páginas (30 mil linhas) porque o dia inteiro fica em memória antes do `put`, e o Worker tem
-128 MB. Um dia truncado é reconsultado em toda execução, ocupando uma vaga do teto de
-exports/run, até sair da janela de 90 dias. Em novembro de 2026, o maior dia dos 90 anteriores
-tinha cerca de 250 linhas.
+128 MB. Em novembro de 2026, o maior dia dos 90 anteriores tinha cerca de 250 linhas.
+
+**Dia acima do teto: eventos de negócio primeiro.** Tráfego barato de baixo valor não pode
+tirar do arquivo permanente os eventos de negócio e de segurança, como `account_created` e
+`security_storage_error`. A coleta tem duas fases.
+
+1. A leitura em ordem de tempo segue como antes. Se ela chega ao fim do dia, o arquivo é
+   idêntico ao de sempre.
+2. Se ela para antes, seja por esgotar as 3 páginas, seja por um único segundo com 10 mil
+   linhas ou mais (o que pode acontecer já na primeira página), o export lê só os eventos fora
+   da lista de volume dali em diante (`blob1 NOT IN`, até 2 páginas). Uma última consulta,
+   agrupada por `blob1`, diz quais tipos de volume ainda tinham linhas sem ler. A lista de
+   volume é `oauth_error`, `matches_cache`, `request_perf`, `provider_http_attempt` e
+   `poller_run`, e está em `VOLUME_EVENT_TYPES`, em `export.ts`.
+
+O arquivo nunca passa de 30 mil linhas e fica em ordem de tempo. A cada página de negócio, as
+linhas de volume mais recentes da primeira fase saem até o total caber no teto, então os
+eventos de negócio têm prioridade até as 30 mil linhas e os de volume ocupam o que sobra. As linhas guardadas em memória
+passam do teto em no máximo uma página. O manifesto lista em `truncatedTypes` os tipos de volume
+tirados do arquivo ou com linhas sem ler. Dia cortado só em tipos de volume fecha normalmente
+(`complete: '1'` depois das 24 h), porque reconsultar não traria as linhas que sobraram. Dia
+que perde eventos de negócio segue com `complete: '0'`, com `console.warn`, e é reconsultado
+em toda execução, ocupando uma vaga do teto de exports/run, até sair da janela de 90 dias. Isso
+acontece com mais de 2 páginas deles depois do corte, com um único segundo de 10 mil linhas de
+negócio ou com mais de 30 mil linhas de negócio no dia.
+
+**Chamadas ao AE por dia.** Dia lido até o fim usa de 1 a 3, uma por página (1 para qualquer
+dia abaixo de 10 mil linhas). Dia cortado usa de 3 a 6: de 1 a 3 páginas em ordem de tempo, 1
+ou 2 de negócio e a sonda de tipos. O caso comum de um dia acima do teto, com poucos eventos de
+negócio, usa 5. O teto de 10 exports/run vale nos dois casos. Como o dia cortado só em volume
+fecha e deixa de ser reconsultado, o custo recorrente dele cai de até 3 chamadas em toda execução,
+até o fim da janela, para no máximo 6 por coleta. Se o reparo aceitar a coleta definitiva no
+cron seguinte, o dia fecha depois de duas execuções.
 
 ## Esquema e convenção de eventos
 
