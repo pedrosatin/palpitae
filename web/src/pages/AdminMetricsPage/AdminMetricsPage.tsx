@@ -7,7 +7,7 @@ import { useAdminLoad, type AdminLoad } from '../useAdminLoad'
 import styles from './AdminMetricsPage.module.css'
 import ArchiveSection, { ArchiveQuerySection, loadArchiveQuery } from './ArchiveSection'
 import BusinessSection from './BusinessSection'
-import { BarChart, StackedBarChart } from './charts'
+import { BarChart, ChartLegend, StackedBarChart } from './charts'
 import { formatNumber, parseSqlUtc } from './format'
 import { KpiCard } from './KpiCard'
 import { eventLabel } from './labels'
@@ -197,14 +197,14 @@ function EventsSection({
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Eventos por dia · últimos {overview.days} dias</h2>
         <StackedBarChart days={stacked.series} ariaLabel="Eventos por dia, por tipo" />
-        <div className={styles.legend}>
-          {stacked.legend.map((l) => (
-            <span key={l.type} className={styles.legendItem} title={l.type}>
-              <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
-              {eventLabel(l.type)}
-            </span>
-          ))}
-        </div>
+        <ChartLegend
+          items={stacked.legend.map((l) => ({
+            key: l.type,
+            color: l.color,
+            label: eventLabel(l.type),
+            title: l.type,
+          }))}
+        />
       </section>
 
       <section className={styles.section}>

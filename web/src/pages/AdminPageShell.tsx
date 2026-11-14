@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
 import { trackEvent } from '../analytics/ga'
 import ErrorState from '../components/ErrorState'
+import AdminPills from './AdminPills'
 import shared from './admin-shared.module.css'
 
 const PERIODS = [7, 30, 90] as const
+const PERIOD_OPTIONS = PERIODS.map((p) => ({ value: p, label: `${p}d` }))
 
 type AdminPageShellProps = {
   /** Heading shown in the title row. */
@@ -49,21 +51,14 @@ export default function AdminPageShell({
       <div className={contentClassName}>
         <div className={shared.titleRow}>
           <h1 className={shared.title}>{title}</h1>
-          <div className={shared.periods}>
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                className={p === days ? shared.periodActive : shared.period}
-                onClick={() => {
-                  trackEvent(periodEventName, { days: p })
-                  onDaysChange(p)
-                }}
-              >
-                {p}d
-              </button>
-            ))}
-          </div>
+          <AdminPills
+            options={PERIOD_OPTIONS}
+            value={days}
+            onChange={(p) => {
+              trackEvent(periodEventName, { days: p })
+              onDaysChange(p)
+            }}
+          />
         </div>
 
         {children}

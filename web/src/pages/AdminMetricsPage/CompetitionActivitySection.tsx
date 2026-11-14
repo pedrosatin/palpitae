@@ -1,4 +1,4 @@
-import { OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
+import { ChartLegend, OTHER_COLOR, SERIES_COLORS, StackedBarChart, type StackedDay } from './charts'
 import { lastDays } from './dates'
 import { formatCount, formatSince, isNewerThanPeriod } from './format'
 import { competitionLabel } from './labels'
@@ -174,14 +174,12 @@ function GroupsDailyChart({ data }: { data: CompetitionActivityResponse }) {
         ariaLabel="Grupos criados por dia, por campeonato"
         segmentLabel={(key) => nameOf(key).text}
       />
-      <div className={styles.legend}>
-        {legend.map((l) => (
-          <span key={l.key} className={styles.legendItem} title={nameOf(l.key).title}>
-            <span className={styles.legendDot} style={{ backgroundColor: l.color }} />
-            {nameOf(l.key).text}
-          </span>
-        ))}
-      </div>
+      <ChartLegend
+        items={legend.map((l) => {
+          const { text, title } = nameOf(l.key)
+          return { key: l.key, color: l.color, label: text, title }
+        })}
+      />
       {data.groupsDailyTruncated && (
         <p className={styles.samplingWarning}>
           A consulta diária bateu no limite de linhas da API do Analytics Engine: os dias mais
