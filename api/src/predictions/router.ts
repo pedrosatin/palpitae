@@ -1395,10 +1395,9 @@ async function handleImportPost(c: Context<AppContext>) {
     return c.json({ error: `Máximo de ${MAX_BATCH_STATEMENTS} palpites por requisição` }, 400)
   }
 
-  if (plan.statements.length > 0) {
-    const budgetError = await enforceDailyWriteBudget(c, plan.statements.length)
-    if (budgetError) return budgetError
-  }
+  // O lote leva os palpites e mais a instrução do marcador de importação.
+  const budgetError = await enforceDailyWriteBudget(c, plan.statements.length + 1)
+  if (budgetError) return budgetError
 
   // Palpites e marcador no mesmo lote: se um falha, nada fica gravado. O marcador
   // entra se algum palpite já era igual ou se o lote gravou algum, o que deixa

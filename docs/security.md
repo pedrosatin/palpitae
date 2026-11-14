@@ -271,9 +271,11 @@ orçamento esgotado, a API responde 429 com `Retry-After` até a virada, antes d
 balde por minuto. Nas escritas em lote de `POST /predictions/replicate`,
 `POST /predictions/import` e `PUT /predictions/bulk`, o handler confere o número
 de instruções planejadas contra o saldo restante de escrita antes do `db.batch`
-e recusa com o mesmo 429 sem gravar nada quando o lote ultrapassa o saldo. O
-desconto final segue vindo do `rows_written` real medido após o handler. O
-`import` também aceita no máximo 1.000 instruções planejadas por requisição,
+e recusa com 429 sem gravar nada quando o lote ultrapassa o saldo. A conta é de 1
+unidade por instrução, e uma instrução que insere uma linha nova grava até 4
+linhas com os índices, então um lote aceito pode gravar até cerca de 4 vezes o
+saldo restante. O desconto final segue vindo do `rows_written` real medido após
+o handler. O `import` aceita no máximo 1.000 instruções planejadas por requisição,
 como o `replicate`, e o `bulk` segue limitado a 100 palpites. Logout e
 logout-all ficam fora dessa recusa. `D1_DAILY_ROWS_READ_PER_USER` e
 `D1_DAILY_ROWS_WRITTEN_PER_USER` substituem os padrões. A decisão de ficar no

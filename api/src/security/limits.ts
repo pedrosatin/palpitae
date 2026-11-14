@@ -129,12 +129,18 @@ export function dailyBudgetRetryAfter(now = Math.floor(Date.now() / 1000)): numb
   return dayStart(now) + DAY_SECONDS - now
 }
 
+// O lote recusado ainda pode ter saldo para um lote menor, então a mensagem não diz que
+// o limite acabou.
+export const DAILY_BATCH_BUDGET_ERROR =
+  'Este lote passa do seu limite diário de escrita. Envie menos palpites ou tente depois das 21h, horário de Brasília.'
+
 export function dailyBudgetExceededResponse(
   c: Context<AppContext>,
   now = Math.floor(Date.now() / 1000),
+  message = DAILY_BUDGET_ERROR,
 ): Response {
   c.header('Retry-After', String(dailyBudgetRetryAfter(now)))
-  return c.json({ error: DAILY_BUDGET_ERROR }, 429)
+  return c.json({ error: message }, 429)
 }
 
 function dailyWriteKey(secret: string, userId: string): Promise<string> {
@@ -206,7 +212,7 @@ export async function enforceDailyWriteBudget(
       c.get('dailyKeys')?.written ?? (await dailyWriteKey(c.env.JWT_SECRET, userId))
     const remaining = await remainingDailyWrites(db, writtenKey, dailyD1Limits(c.env).written, now)
     if (plannedStatements > remaining) {
-      return dailyBudgetExceededResponse(c, now)
+      return dailyBudgetExceededResponse(c, now, DAILY_BATCH_BUDGET_ERROR)
     }
     return null
   } catch (error) {

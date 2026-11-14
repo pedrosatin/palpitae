@@ -8,7 +8,7 @@ import { reportD1Rows, type ReportedRows } from '../testing/d1RowsReported'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 
-// Cobrança antecipada das escritas em lote pela API inteira (worker.fetch).
+// Testa pela API inteira, via worker.fetch, a cobrança das escritas em lote antes de gravar.
 
 const handles: DatabaseSync[] = []
 afterEach(() => {
@@ -169,7 +169,7 @@ async function setupBatchFixture(options: {
 }
 
 describe('cobrança antecipada do orçamento diário em escritas em lote', () => {
-  it('replicate com saldo de 500 recusa 1.000 sem gravar, aceita 400 e barra fontes alternadas', async () => {
+  it('replicate com saldo de 500 recusa 1.000 sem gravar, aceita 400 e recusa fonte alternada acima do saldo', async () => {
     freezeAt('2026-11-13T12:00:00Z')
     const targets = Array.from({ length: 10 }, (_, i) => `t${i + 1}`)
     const f = await setupBatchFixture({
@@ -236,7 +236,7 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     expect(f.countGroupPredictions(targets[4]!)).toBe(90)
   })
 
-  it('import respeita o saldo diário, barra fontes alternadas e impõe teto de 1.000 instruções', async () => {
+  it('import recusa lote acima do saldo, inclusive de fonte alternada, e acima de 1.000 instruções', async () => {
     freezeAt('2026-11-13T12:00:00Z')
     const f = await setupBatchFixture({
       matchCount: 600,
@@ -299,6 +299,25 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     })
     expect(atCap.status).toBe(200)
     expect(capFixture.countGroupPredictions('tgtCap')).toBe(1000)
+  })
+
+  it('import cobra também a instrução do marcador de importação', async () => {
+    freezeAt('2026-11-13T12:00:00Z')
+    const f = await setupBatchFixture({
+      matchCount: 400,
+      groupIds: ['src400', 'tgt'],
+      writtenLimit: 400,
+    })
+    f.seedPredictions('src400', 400, 1, 0)
+
+    // 400 palpites mais 1 marcador passam do saldo de 400.
+    const refused = await f.request('POST', '/predictions/import', {
+      source_group_id: 'src400',
+      target_group_id: 'tgt',
+    })
+    expect(refused.status).toBe(429)
+    expect(f.countGroupPredictions('tgt')).toBe(0)
+    expect(await f.dailyHits('written')).toBeUndefined()
   })
 
   it('bulk cobra as instruções planejadas antes do batch sem gravar na recusa', async () => {
