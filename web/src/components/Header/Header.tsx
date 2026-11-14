@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Avatar from '../Avatar'
 import Button from '../Button'
 import { trackEvent } from '../../analytics/ga'
+import { useOutsideClick } from '../../hooks/useOutsideClick'
 import type { User } from '../../types'
 import styles from './Header.module.css'
 
@@ -19,16 +20,7 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
   const menuRef = useRef<HTMLDivElement>(null)
   const displayName = user.nickname?.trim() || user.email
 
-  useEffect(() => {
-    if (!menuOpen) return
-    function handleOutsideClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
-  }, [menuOpen])
+  useOutsideClick(menuRef, menuOpen, () => setMenuOpen(false))
 
   return (
     <header className={styles.header}>

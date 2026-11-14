@@ -1,6 +1,7 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import PenaltyBadge, { BallIcon, TOOLTIP_TIMEOUT_MS } from './PenaltyBadge'
+import { TOOLTIP_TIMEOUT_MS } from '../../hooks/useAutoClose'
+import PenaltyBadge, { BallIcon } from './PenaltyBadge'
 
 describe('BallIcon', () => {
   it('renders the ball icon', () => {

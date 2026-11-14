@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { trackEvent } from '../../analytics/ga'
+import { useOutsideClick } from '../../hooks/useOutsideClick'
 import { positionLabel } from '../../lib/groupPosition'
 import styles from './GroupDetailPage.module.css'
 
@@ -45,26 +46,7 @@ function GroupMenu({
   const menuRef = useRef<HTMLDivElement>(null)
   const kebabRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    if (!menuOpen) return
-
-    const handlePointer = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
-    }
-
-    document.addEventListener('mousedown', handlePointer)
-    document.addEventListener('keydown', handleKey)
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointer)
-      document.removeEventListener('keydown', handleKey)
-    }
-  }, [menuOpen])
+  useOutsideClick(menuRef, menuOpen, () => setMenuOpen(false), { closeOnEscape: true })
 
   return (
     <div className={styles.menuWrap} ref={menuRef}>

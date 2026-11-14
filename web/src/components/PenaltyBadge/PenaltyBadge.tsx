@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { TOOLTIP_TIMEOUT_MS, useAutoClose } from '../../hooks/useAutoClose'
+import { useOutsideClick } from '../../hooks/useOutsideClick'
 import styles from './PenaltyBadge.module.css'
-
-export const TOOLTIP_TIMEOUT_MS = 4000
 
 /** Shared shootout ball mark — used wherever a penalty winner is shown. */
 export function BallIcon({ className }: { className?: string }) {
@@ -40,21 +40,8 @@ export default function PenaltyBadge({
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
 
-  // Auto-dismiss a tapped-open tooltip, mirroring InfoHint.
-  useEffect(() => {
-    if (!open) return
-    const t = setTimeout(() => setOpen(false), TOOLTIP_TIMEOUT_MS)
-    return () => clearTimeout(t)
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [open])
+  useAutoClose(open, () => setOpen(false), TOOLTIP_TIMEOUT_MS)
+  useOutsideClick(ref, open, () => setOpen(false))
 
   function handleClick() {
     if (onActivate) onActivate()
