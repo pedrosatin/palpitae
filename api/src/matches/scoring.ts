@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
+import { decidesOnPenalties, parsePenaltyPhases } from './penalties'
 import { isKnockoutPhase } from './rounds'
 import { fetchTieMatches, indexTies, type TieInfo, type TieMatch } from './ties'
 
@@ -154,6 +154,11 @@ type Leg1PredictionInfo = {
   predicted_away_score: number
 }
 
+/** Chave de um palpite: o mesmo usuário no mesmo grupo e no mesmo jogo. */
+function predictionKey(matchId: string, groupId: string, userId: string): string {
+  return `${matchId}:${groupId}:${userId}`
+}
+
 /** Pontos de um palpite no ranking. Exige o alias `p` para `predictions`. */
 export const PREDICTION_POINTS_SQL = 'p.points_awarded + p.penalty_points + p.classified_points'
 
@@ -274,20 +279,19 @@ function findLeg2ToRescore(
  * Jogo que decide nos pênaltis, terminou empatado (no placar do jogo único ou no
  * agregado da volta) e ainda não tem o vencedor da disputa. Fica sem pontuação até
  * o provedor informar o vencedor: pontuar antes daria zero de classificado e de
- * pênaltis a todos. Segue a regra de `decides_on_penalties` de `GET /matches`.
+ * pênaltis a todos. Usa `decidesOnPenalties`, a mesma regra de `decides_on_penalties`
+ * de `GET /matches`.
  */
 function awaitsPenaltyWinner(m: UnscoredMatchRow, tie: TieInfo<TieMatchRow> | undefined): boolean {
-  if (m.penalty_winner !== null || tie?.role === 'leg1') return false
+  if (m.penalty_winner !== null) return false
+  if (!decidesOnPenalties(tie?.role, parsePenaltyPhases(m.penalty_phases), m.phase)) return false
   if (tie?.role === 'leg2') {
     const leg1 = tie.partner
     if (leg1?.status !== 'finished' || leg1.home_score === null || leg1.away_score === null)
       return false
     return m.home_score + leg1.away_score === m.away_score + leg1.home_score
   }
-  return (
-    m.home_score === m.away_score &&
-    matchGoesToPenalties(parsePenaltyPhases(m.penalty_phases), m.phase)
-  )
+  return m.home_score === m.away_score
 }
 
 /**
@@ -316,7 +320,7 @@ function evaluateClassifiedPointsForPrediction(
     ) {
       return 0
     }
-    const p1 = leg1PredByKey.get(`${leg1.id}:${p.group_id}:${p.user_id}`)
+    const p1 = leg1PredByKey.get(predictionKey(leg1.id, p.group_id, p.user_id))
     if (!p1) return 0
 
     const actualClassified = resolveTwoLegClassified(
@@ -434,6 +438,56 @@ function packWrites(units: ScoringUnit[]): ScoringUnit[] {
   return writes
 }
 
+/** Jogo de uma gravação com o confronto e a regra de pênaltis, calculados uma vez por jogo. */
+type MatchToScore = {
+  match: UnscoredMatchRow
+  tie: TieInfo<TieMatchRow> | undefined
+  decidesOnPenalties: boolean
+}
+
+/**
+ * Pontos de um palpite: placar, bônus de pênaltis e classificado. O classificado
+ * sai como 0 ou 1, e a gravação multiplica pelo valor do grupo naquele momento.
+ */
+function scorePrediction(
+  ctx: MatchToScore,
+  p: ScoredPredictionRow,
+  leg1PredByKey: Map<string, Leg1PredictionInfo>,
+): { points: number; penaltyPoints: number; classifiedPoints: number } {
+  const { match, tie } = ctx
+  const points = calculatePoints({
+    actualHome: match.home_score,
+    actualAway: match.away_score,
+    predictedHome: p.predicted_home_score,
+    predictedAway: p.predicted_away_score,
+    pointsExact: p.points_exact,
+    pointsWinner: p.points_winner,
+  })
+
+  const p1 =
+    tie?.role === 'leg2' && tie.partner
+      ? leg1PredByKey.get(predictionKey(tie.partner.id, p.group_id, p.user_id))
+      : undefined
+  // Na volta, o bônus de pênaltis exige o palpite da ida, que entra no agregado.
+  const penaltyEligible = ctx.decidesOnPenalties && (tie?.role !== 'leg2' || Boolean(p1))
+  const penaltyPoints = calculatePenaltyBonus(
+    p.predicted_home_score + (p1?.predicted_away_score ?? 0),
+    p.predicted_away_score + (p1?.predicted_home_score ?? 0),
+    p.predicted_penalty_winner,
+    match.penalty_winner,
+    p.points_penalty,
+    penaltyEligible,
+  )
+
+  const classifiedPoints = evaluateClassifiedPointsForPrediction(
+    match,
+    { ...p, points_classified: 1 },
+    tie,
+    leg1PredByKey,
+  )
+  return { points, penaltyPoints, classifiedPoints }
+}
+
 /**
  * Pontua os jogos de uma gravação. Lê os palpites, calcula os pontos e grava num
  * `batch` só, que é uma transação: os pontos, o `scored_at` de cada jogo e o
@@ -445,61 +499,31 @@ async function scoreWrite(
   matches: UnscoredMatchRow[],
   ties: Map<string, TieInfo<TieMatchRow>>,
 ): Promise<void> {
-  const toScore = new Map(matches.map((m) => [m.id, m]))
-  const penaltyPhase = new Map(
-    matches.map((m) => [m.id, matchGoesToPenalties(parsePenaltyPhases(m.penalty_phases), m.phase)]),
+  const toScore = new Map<string, MatchToScore>(
+    matches.map((m) => {
+      const tie = ties.get(m.id)
+      const decides = decidesOnPenalties(tie?.role, parsePenaltyPhases(m.penalty_phases), m.phase)
+      return [m.id, { match: m, tie, decidesOnPenalties: decides }]
+    }),
   )
-  const leg1Ids = matches.flatMap((m) => {
-    const tie = ties.get(m.id)
-    return tie?.role === 'leg2' && tie.partner ? [tie.partner.id] : []
-  })
+  const leg1Ids = Array.from(toScore.values()).flatMap(({ tie }) =>
+    tie?.role === 'leg2' && tie.partner ? [tie.partner.id] : [],
+  )
   const predictions = await fetchPredictions(
     db,
     Array.from(new Set([...toScore.keys(), ...leg1Ids])),
   )
   const leg1PredByKey = new Map(
-    predictions.map((p) => [`${p.match_id}:${p.group_id}:${p.user_id}`, p]),
+    predictions.map((p) => [predictionKey(p.match_id, p.group_id, p.user_id), p]),
   )
 
   const pointsByMatch = new Map<string, ScoredPoints[]>()
   const affectedGroups = new Set<string>()
   for (const p of predictions) {
-    const matchCtx = toScore.get(p.match_id)
-    if (!matchCtx) continue // palpite da ida, lido só para o classificado da volta
+    const ctx = toScore.get(p.match_id)
+    if (!ctx) continue // palpite da ida, lido só para o classificado da volta
 
-    const points = calculatePoints({
-      actualHome: matchCtx.home_score,
-      actualAway: matchCtx.away_score,
-      predictedHome: p.predicted_home_score,
-      predictedAway: p.predicted_away_score,
-      pointsExact: p.points_exact,
-      pointsWinner: p.points_winner,
-    })
-
-    const tie = ties.get(p.match_id)
-    const p1 =
-      tie?.role === 'leg2' && tie.partner
-        ? leg1PredByKey.get(`${tie.partner.id}:${p.group_id}:${p.user_id}`)
-        : undefined
-    const penaltyEligible =
-      tie?.role === 'leg2' ? Boolean(p1) : penaltyPhase.get(p.match_id) && tie?.role !== 'leg1'
-    const penaltyPoints = calculatePenaltyBonus(
-      p.predicted_home_score + (p1?.predicted_away_score ?? 0),
-      p.predicted_away_score + (p1?.predicted_home_score ?? 0),
-      p.predicted_penalty_winner,
-      matchCtx.penalty_winner,
-      p.points_penalty,
-      Boolean(penaltyEligible),
-    )
-
-    // 0 ou 1. A gravação multiplica pelo valor do grupo naquele momento.
-    const classifiedPoints = evaluateClassifiedPointsForPrediction(
-      matchCtx,
-      { ...p, points_classified: 1 },
-      tie,
-      leg1PredByKey,
-    )
-
+    const { points, penaltyPoints, classifiedPoints } = scorePrediction(ctx, p, leg1PredByKey)
     const scored = pointsByMatch.get(p.match_id) ?? []
     scored.push([p.id, points, penaltyPoints, classifiedPoints])
     pointsByMatch.set(p.match_id, scored)
@@ -623,7 +647,9 @@ export async function classifiedRuleChangeStatements(
     )
     .bind(groupId)
     .all<ScoredPredictionRow>()
-  const leg1 = new Map(predictions.map((p) => [`${p.match_id}:${p.group_id}:${p.user_id}`, p]))
+  const leg1 = new Map(
+    predictions.map((p) => [predictionKey(p.match_id, p.group_id, p.user_id), p]),
+  )
   const matchMap = new Map(matches.map((m) => [m.id, m]))
   const updates: { id: string; points: number }[] = []
   for (const prediction of predictions) {

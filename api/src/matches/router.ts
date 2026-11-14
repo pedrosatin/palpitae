@@ -8,7 +8,7 @@ import { createProviderHttpObserver } from '../observability/providerHttp'
 import type { AppContext } from '../types'
 import { defaultRoundSql, roundRuleBinds } from './defaultRound'
 import { isEspnPrimaryCompetition } from './espnSync'
-import { matchGoesToPenalties, parsePenaltyPhases } from './penalties'
+import { decidesOnPenalties, parsePenaltyPhases } from './penalties'
 import { isKnockoutPhase, orderByRound, roundLabel } from './rounds'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
@@ -67,11 +67,42 @@ function matchesCacheKey(
   return new Request(cacheUrl)
 }
 
+/**
+ * Cache de borda (Cache API), compartilhado entre os usuários do mesmo colo da
+ * Cloudflare, sem custo extra. É best-effort: vale por colo e pode ser despejado.
+ * Um hit poupa as consultas da lista e as linhas lidas. Fora do runtime dos
+ * Workers (testes em node) `caches` não existe. `caches.default` é extensão da
+ * Cloudflare, por isso o cast sobre o tipo `CacheStorage` do lib.dom. Piloto nunca
+ * entra no cache compartilhado.
+ */
+function edgeCacheFor(isPilot: boolean): Cache | undefined {
+  if (typeof caches === 'undefined' || isPilot) return undefined
+  return (caches as unknown as { default: Cache }).default
+}
+
 /** Resposta do cache de borda com o Cache-Control do navegador. */
 function fromEdgeCache(cached: Response): Response {
   const response = new Response(cached.body, cached)
   response.headers.set('Cache-Control', BROWSER_CACHE_CONTROL)
   return response
+}
+
+/**
+ * Guarda uma cópia da resposta no cache de borda, com o TTL pelo conteúdo da lista
+ * (`matchesCacheControl`). O corpo de uma resposta só pode ser lido uma vez, então
+ * a borda recebe um clone e o original segue para quem chamou. Uma resposta gerada
+ * pelo Worker só chega à borda por este `put` explícito.
+ */
+function storeInEdgeCache(
+  c: Context<AppContext>,
+  cache: Cache,
+  cacheKey: Request,
+  response: Response,
+  matches: { status: string }[],
+) {
+  const edgeCopy = response.clone()
+  edgeCopy.headers.set('Cache-Control', matchesCacheControl(matches))
+  c.executionCtx.waitUntil(cache.put(cacheKey, edgeCopy))
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +143,7 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
     WHERE m.competition_id = ?
   `
 
-  const params: (string | number)[] = [competitionId]
+  const params: string[] = [competitionId]
 
   if (round) {
     query += ` AND m.round = ?`
@@ -150,7 +181,7 @@ async function fetchMatches(
   if (hasFilters) {
     const result = await db
       .prepare(query)
-      .bind(...(params as string[]))
+      .bind(...params)
       .all<{ status: string }>()
     results = result.results
   } else {
@@ -162,7 +193,7 @@ async function fetchMatches(
     // main list is ordered by group_name first — knockout matches (NULL group)
     // sort last and would otherwise hijack the fallback.
     const batchResults = await db.batch([
-      db.prepare(query).bind(...(params as string[])),
+      db.prepare(query).bind(...params),
       db.prepare(defaultRoundSql('?')).bind(...roundRuleBinds(nowIso), competitionId),
       db
         .prepare(
@@ -202,13 +233,11 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
       round_label: roundLabel((rest.round as string | null) ?? ''),
       // Classificação eliminatória derivada da fase do jogo.
       is_knockout: isKnockoutPhase(rest.phase as string | null),
-      decides_on_penalties:
-        tie?.role === 'leg2' ||
-        (tie?.role !== 'leg1' &&
-          matchGoesToPenalties(
-            parsePenaltyPhases(penalty_phases as string | null),
-            (rest.phase as string | null) ?? null,
-          )),
+      decides_on_penalties: decidesOnPenalties(
+        tie?.role,
+        parsePenaltyPhases(penalty_phases as string | null),
+        (rest.phase as string | null) ?? null,
+      ),
     }
   })
 }
@@ -216,19 +245,34 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
 /**
  * GET /matches?competition_id=xxx[&round=xxx][&status=scheduled|finished]
  *
- * Returns matches for a competition with team info.
- * Optional filters: round (e.g. "1"), status.
+ * Jogos de uma competição com os times, na ordem das rodadas. Exige sessão.
+ * Filtros opcionais: `round` (ex.: "1") e `status`.
  *
- * Response:
+ * Resposta:
  * {
  *   matches: [
  *     {
- *       id, start_time, status, home_score, away_score, phase, round,
+ *       id, start_time, status, postponed, locked_at, home_score, away_score,
+ *       phase, round, group_name, leg, duration,
+ *       penalty_winner, home_penalty_goals, away_penalty_goals,
  *       home_team_id, home_team_name, home_team_short_name, home_team_logo,
- *       away_team_id, away_team_name, away_team_short_name, away_team_logo
+ *       away_team_id, away_team_name, away_team_short_name, away_team_logo,
+ *       tie_role?,            // 'leg1' | 'leg2' | 'single', só em jogo de mata-mata
+ *       leg1_match_id,        // id da ida quando o jogo é a volta, senão null
+ *       round_label,          // rótulo da rodada em PT-BR
+ *       is_knockout,          // fase de mata-mata
+ *       decides_on_penalties, // pode ir aos pênaltis (decidesOnPenalties); na volta, pelo agregado
  *     }
- *   ]
+ *   ],
+ *   default_round?: string | null // só sem filtros: a rodada aberta ou a mais recente
  * }
+ *
+ * Erros: 400 sem `competition_id` ou com `status` inválido; 404 em competição
+ * piloto para quem não tem acesso; 500 em falha de leitura.
+ *
+ * Cache: a lista de competição pública fica no cache de borda, com a chave pelos
+ * filtros e pela `matches_version` da competição. O navegador recebe sempre
+ * `private, max-age=60`; competição piloto sai com `private, no-store`.
  */
 async function handleGetMatches(c: Context<AppContext>) {
   const startedAt = Date.now()
@@ -258,17 +302,7 @@ async function handleGetMatches(c: Context<AppContext>) {
       return c.json({ error: 'Competição não encontrada' }, 404)
     }
 
-    // Edge cache (Cache API) — shared across users within the same Cloudflare
-    // colo, at no extra cost. Best-effort: per-colo and may be evicted. A hit
-    // skips the match list queries, so it saves rows read. `caches` is undefined
-    // outside the Workers runtime (e.g. node tests), hence the guard.
-    // `caches.default` is a Cloudflare extension; cast past the lib.dom
-    // CacheStorage type, which only knows the standard open()/match() surface.
-    // Piloto nunca entra no cache compartilhado.
-    const cache =
-      typeof caches !== 'undefined' && !isPilot
-        ? (caches as unknown as { default: Cache }).default
-        : undefined
+    const cache = edgeCacheFor(isPilot)
     const cacheKey = matchesCacheKey(
       c.req.url,
       competitionId,
@@ -310,15 +344,7 @@ async function handleGetMatches(c: Context<AppContext>) {
     // inexistente sempre retorna vazio → nunca entra no edge cache → nunca vira um HIT,
     // então o blob de `matches_cache` no hit só carrega competição real (cardinalidade
     // limitada). O Cache-Control (browser) continua valendo p/ a resposta vazia.
-    if (cache && results.length > 0) {
-      // clone(): a response body can only be consumed once — the cache keeps
-      // its own copy while we still return the original to the caller. Uma
-      // resposta gerada pelo Worker só vai para a borda por este put explícito,
-      // e o TTL dela vem do conteúdo da lista (matchesCacheControl).
-      const edgeCopy = response.clone()
-      edgeCopy.headers.set('Cache-Control', matchesCacheControl(results))
-      c.executionCtx.waitUntil(cache.put(cacheKey, edgeCopy))
-    }
+    if (cache && results.length > 0) storeInEdgeCache(c, cache, cacheKey, response, results)
     response.headers.set('Cache-Control', isPilot ? 'private, no-store' : BROWSER_CACHE_CONTROL)
 
     // Cap dimension cardinality: only real competitions (response had games)
@@ -348,22 +374,6 @@ async function handleGetMatches(c: Context<AppContext>) {
 
 router.get('/', requireAuth, handleGetMatches)
 
-/**
- * POST /matches/sync
- *
- * Syncs fixtures from football-data.org into D1.
- * Upserts competition, teams, and matches — safe to call multiple times.
- *
- * Body: { competition: string, season: number, matchday?: number }
- *
- * Example for Copa do Mundo 2026 - matchday 1:
- *   { "competition": "WC", "season": 2026, "matchday": 1 }
- *
- * Example for all fixtures in a competition:
- *   { "competition": "WC", "season": 2026 }
- *
- * Requires authentication.
- */
 type SyncBody = {
   competition?: string
   season?: number
@@ -387,6 +397,24 @@ function validateSyncParams(body: SyncBody): string | null {
   return null
 }
 
+/**
+ * POST /matches/sync
+ *
+ * Ferramenta manual de seed e backfill: sincroniza os jogos de uma competição no D1
+ * e pontua os encerrados. As competições ESPN-primárias vêm da ESPN; as demais, da
+ * football-data.org, que exige `FOOTBALL_API_KEY`. Faz upsert da competição, dos
+ * times e dos jogos, então pode ser chamado mais de uma vez. Só o admin.
+ *
+ * Body: { competition: string, season: number, matchday?: number, dates?: string[] }
+ *   - `matchday`: rodada, só na football-data;
+ *   - `dates`: datas YYYYMMDD do scoreboard, só na ESPN.
+ *
+ * Exemplo para a Copa do Mundo 2026, rodada 1:
+ *   { "competition": "WC", "season": 2026, "matchday": 1 }
+ *
+ * Exemplo para todos os jogos de uma competição:
+ *   { "competition": "WC", "season": 2026 }
+ */
 router.post('/sync', requireAuth, async (c) => {
   // Ferramenta manual de seed/backfill — só o admin. A atualização normal de
   // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
