@@ -72,7 +72,7 @@ Se a publicação do deploy 2 falhar, quem fica no ar é o Worker do deploy 1, q
 
 ## Rodar migrations à mão
 
-Os comandos rodam de `api/` e sempre com `--config ./wrangler.toml`. Sem essa opção, o wrangler acha primeiro o `wrangler.jsonc` da raiz (projeto do Pages) e não encontra as migrations.
+Os comandos rodam de `api/` e sempre com `--config ./wrangler.toml`. Sem essa opção, um `wrangler.json` ou `wrangler.jsonc` num diretório acima venceria o `api/wrangler.toml`, como o da raiz fazia até 14/11/2026, e o wrangler não acharia as migrations.
 
 ```bash
 cd api
