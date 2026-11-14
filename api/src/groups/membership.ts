@@ -1,3 +1,7 @@
+import type { Context } from 'hono'
+import { hasPilotAccess } from '../auth/permissions'
+import type { AppContext } from '../types'
+
 /**
  * Group-membership lookup shared by the groups and predictions routers.
  * Returns the membership row or null when the user is not a member — the
@@ -31,4 +35,35 @@ export async function getGroupMembershipTimed(
   const startedAt = Date.now()
   const membership = await getGroupMembership(db, groupId, userId)
   return { membership, membershipMs: Date.now() - startedAt }
+}
+
+/**
+ * Grupo de competição piloto fechado para quem não tem acesso piloto. Grupo
+ * inexistente ou apagado não bloqueia: quem responde 404 é o chamador.
+ */
+export async function isPilotGroupBlocked(
+  c: Context<AppContext>,
+  db: D1Database,
+  groupId: string,
+): Promise<boolean> {
+  if (hasPilotAccess(c.get('userIdentity'), c.env)) return false
+  const row = await db
+    .prepare(
+      `SELECT c.visibility
+       FROM groups g
+       LEFT JOIN competitions c ON g.competition_id = c.id
+       WHERE g.id = ? AND g.deleted_at IS NULL`,
+    )
+    .bind(groupId)
+    .first<{ visibility?: string | null }>()
+  return row?.visibility === 'pilot'
+}
+
+/**
+ * Nome exibido do participante: apelido, nome da conta ou e-mail mascarado
+ * (2 letras + `***@domínio`). `user` e `profile` são os aliases de `users` e
+ * `profiles` na consulta de fora.
+ */
+export function memberDisplaySql(user = 'u', profile = 'p'): string {
+  return `COALESCE(${profile}.nickname, ${user}.user_name, CASE WHEN INSTR(${user}.email, '@') > 0 THEN SUBSTR(${user}.email, 1, 2) || '***@' || SUBSTR(${user}.email, INSTR(${user}.email, '@') + 1) ELSE 'Palpiteiro' END)`
 }

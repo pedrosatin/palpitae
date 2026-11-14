@@ -6,7 +6,7 @@ import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
-import { getGroupMembership } from './membership'
+import { getGroupMembership, isPilotGroupBlocked, memberDisplaySql } from './membership'
 import { parseGroupName } from './groupName'
 import {
   ACTIVE_GROUPS_OWNED_COUNT_SQL,
@@ -173,7 +173,7 @@ async function fetchGroupsPodiums(
           gm.group_id AS group_id,
           gm.user_id AS user_id,
           l.user_id AS scored_user_id,
-          COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display,
+          ${memberDisplaySql()} AS display,
           l.total_points AS points,
           ROW_NUMBER() OVER (
             PARTITION BY gm.group_id
@@ -212,24 +212,6 @@ async function fetchGroupsPodiums(
   }
 
   return podiumByGroup
-}
-
-async function isPilotGroupBlocked(
-  c: Context<AppContext>,
-  db: D1Database,
-  groupId: string,
-): Promise<boolean> {
-  if (hasPilotAccess(c.get('userIdentity'), c.env)) return false
-  const groupComp = await db
-    .prepare(
-      `SELECT c.visibility
-       FROM groups g
-       LEFT JOIN competitions c ON g.competition_id = c.id
-       WHERE g.id = ? AND g.deleted_at IS NULL`,
-    )
-    .bind(groupId)
-    .first<{ visibility?: string | null }>()
-  return groupComp?.visibility === 'pilot'
 }
 
 /**
@@ -996,7 +978,7 @@ router.get('/:id/members', requireAuth, async (c) => {
          gm.user_id,
          gm.role,
          gm.joined_at,
-         COALESCE(p.nickname, u.user_name, CASE WHEN INSTR(u.email, '@') > 0 THEN SUBSTR(u.email, 1, 2) || '***@' || SUBSTR(u.email, INSTR(u.email, '@') + 1) ELSE 'Palpiteiro' END) AS display_name,
+         ${memberDisplaySql()} AS display_name,
          p.avatar_url,
          COALESCE(l.total_points, 0) AS total_points,
          COALESCE(l.exact_hits, 0) AS exact_hits
