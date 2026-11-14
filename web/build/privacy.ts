@@ -5,8 +5,8 @@
  * Cada afirmação aponta para um campo, evento ou serviço do código. Ao mudar o
  * que o Palpitae coleta, revise esta página e o campo `updated`.
  *
- * Contato, responsável e prazos de retenção dependem do operador. Até lá o texto
- * leva marcadores com "A CONFIRMAR", que o teste em guides.test.ts detecta.
+ * Dado que dependa do operador entra como marcador "A CONFIRMAR", que o teste em
+ * guides.test.ts barra antes da publicação.
  */
 
 export interface PrivacySection {
@@ -31,9 +31,7 @@ export const PRIVACY_PATH = '/privacidade'
 /** Marcador de dado que o operador ainda precisa informar. */
 export const PENDING_MARKER = /A CONFIRMAR/
 
-const CONTATO = '[CONTATO A CONFIRMAR]'
-const RESPONSAVEL = '[RESPONSÁVEL A CONFIRMAR]'
-const PRAZO = '[PRAZO A CONFIRMAR]'
+const CONTATO = 'privacidade@palpitae.com.br'
 
 export const privacyPolicy: PrivacyPolicy = {
   title: 'Política de privacidade',
@@ -46,7 +44,7 @@ export const privacyPolicy: PrivacyPolicy = {
     {
       heading: 'Responsável e contato',
       body: [
-        `O Palpitae é mantido por ${RESPONSAVEL}, responsável pelo tratamento dos dados descritos nesta página.`,
+        'O Palpitae é o responsável pelo tratamento dos dados descritos nesta página.',
         `Para dúvidas sobre privacidade e pedidos sobre os seus dados, escreva para ${CONTATO}.`,
       ],
     },
@@ -75,7 +73,7 @@ export const privacyPolicy: PrivacyPolicy = {
         'Cloudflare Web Analytics: conta as visitas às páginas sem cookies e sem identificar quem visita.',
         'Google Analytics 4: mede as páginas visitadas e os cliques em botões do site. O Google recebe a página (endereço e título), a página de origem, os parâmetros de campanha do endereço, como utm_*, from, tab e, quando presente, o gclid, e dados do navegador e do aparelho, como tipo de aparelho e navegador, além do endereço IP da conexão. Nos guias, páginas estáticas, o endereço completo da página vai sem filtro. O Palpitae não envia ao Google Analytics o seu e-mail, o seu nome nem o identificador da sua conta.',
         'Antes da sua escolha no aviso de cookies, o Google Analytics funciona sem cookies de Analytics e sem identificador persistente do navegador. Nessa fase ele recebe pings sem cookies com os dados de navegação acima, a hora, o User-Agent do navegador e um número aleatório gerado a cada carregamento da página. Com o aceite, ele grava cookies que reconhecem o navegador entre visitas. Com a recusa, ele fica desligado e nada é enviado.',
-        'Finalidade: entender o uso do site, encontrar falhas e melhorar o Palpitae. Base legal: legítimo interesse para os eventos do servidor e o Cloudflare Web Analytics (art. 7º, IX). Para o Google Analytics, consentimento (art. 7º, I) para os cookies e [BASE LEGAL A CONFIRMAR] para os pings sem cookies enviados antes da escolha.',
+        'Finalidade: entender o uso do site, encontrar falhas e melhorar o Palpitae. Base legal: legítimo interesse para os eventos do servidor e o Cloudflare Web Analytics (art. 7º, IX). Para o Google Analytics, consentimento (art. 7º, I) para os cookies e legítimo interesse (art. 7º, IX) para os pings sem cookies enviados antes da escolha.',
       ],
     },
     {
@@ -101,13 +99,13 @@ export const privacyPolicy: PrivacyPolicy = {
     {
       heading: 'Retenção',
       body: [
-        `Dados da conta, grupos e palpites: enquanto a conta existir. Depois de um pedido de exclusão: ${PRAZO}.`,
+        'Dados da conta, grupos e palpites: enquanto a conta existir. Depois de um pedido de exclusão, são apagados em até 30 dias.',
         'Cookie de sessão: até 30 dias, ou até você sair. Cookies temporários do login: 5 minutos.',
         'Registro de envio de lembretes: 7 dias. Contagens de requisições: até um dia.',
         'Registros técnicos do servidor, usados para investigar falhas: 3 dias.',
         'Rascunhos de palpite no navegador: 7 dias, ou até você sair da conta. Ficam só no seu aparelho.',
-        `Eventos de uso no Cloudflare Analytics Engine: cerca de 3 meses. Cópia diária no Cloudflare R2: ${PRAZO}.`,
-        `Google Analytics: ${PRAZO}. Na Resend e na TBBC valem os prazos de cada serviço.`,
+        `Eventos de uso no Cloudflare Analytics Engine: cerca de 3 meses. Cópia diária no Cloudflare R2: 13 meses.`,
+        'Google Analytics: 14 meses. Na Resend e na TBBC valem os prazos de cada serviço.',
       ],
     },
     {

@@ -554,10 +554,7 @@ describe('página de privacidade', () => {
     )
   })
 
-  // Rascunho: contato, responsável, prazos de retenção e uma base legal dependem do
-  // operador e estão marcados com "A CONFIRMAR". Tire o .skip quando ele confirmar:
-  // o teste passa a barrar a publicação com algum marcador sobrando.
-  it.skip('não publica marcador "A CONFIRMAR"', () => {
+  it('não publica marcador "A CONFIRMAR"', () => {
     expect(doc.body.textContent).not.toMatch(PENDING_MARKER)
     // O <head> também publica texto: título, meta tags e dados estruturados.
     const head = [
