@@ -8,17 +8,17 @@ import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { callsLeft, countD1Calls, INVOCATION_CALL_LIMIT, type CallBudget } from './callBudget'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
-import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import {
-  ACTIVE_RESULT_WINDOW_MS,
+  DAY_MS,
   EARLIEST_RESULT_MS,
+  espnDatesAround,
   LATE_SWEEP_INTERVAL_MS,
-  LATE_SWEEP_WINDOW_MS,
   POLLER_TICK_MS,
-  RESCUE_WINDOW_MS,
+  resultWindowBounds,
 } from './matchPollingWindow'
 import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
+import { runSyncTasks } from './syncTasks'
 
 type ActiveRound = {
   comp_id: string
@@ -37,15 +37,9 @@ type SyncTask = {
   dates?: string[]
 }
 
-/**
- * Datas do scoreboard ESPN para um dia UTC. A ESPN indexa o dia local, e um jogo
- * após meia-noite UTC pode estar no dia anterior.
- */
+/** Datas do scoreboard ESPN de um dia UTC: o dia anterior e o próprio dia. */
 function espnDates(utcDay: string): string[] {
-  const day = Date.parse(`${utcDay}T00:00:00Z`)
-  return [-1, 0].map((offset) =>
-    new Date(day + offset * 86_400_000).toISOString().slice(0, 10).replaceAll('-', ''),
-  )
+  return espnDatesAround(Date.parse(`${utcDay}T00:00:00Z`), -1, 2)
 }
 
 function buildSyncTasks(rows: ActiveRound[]): {
@@ -89,8 +83,6 @@ function buildSyncTasks(rows: ActiveRound[]): {
  * sempre ocupado, `bloco % 8` nunca escolheria quem cai nele. Cada candidato é uma
  * rodada (football-data) ou um dia (ESPN, duas datas do scoreboard).
  */
-const DAY_MS = 24 * 60 * 60 * 1000
-
 function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
   if (now % LATE_SWEEP_INTERVAL_MS >= POLLER_TICK_MS) return undefined
   const candidates = new Map<string, SyncTask>()
@@ -121,14 +113,7 @@ function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
  * candidatos da varredura de atrasados (`late = 1`), numa consulta só ao D1.
  */
 async function loadPollerRows(db: D1Database, now: number): Promise<ActiveRound[]> {
-  // start_time is stored as ISO 8601 with `T`/`Z` (e.g. "2026-06-16T22:00:00Z").
-  // Compute the bounds the same way so the TEXT comparison stays lexicographic.
-  // SQLite's datetime('now', ...) would produce "2026-06-16 23:21:20" (space, no Z)
-  // and string-compare wrong against the stored format.
-  const earliestOver = new Date(now - EARLIEST_RESULT_MS).toISOString() // started ≥ 115 min ago
-  const stillRelevant = new Date(now - ACTIVE_RESULT_WINDOW_MS).toISOString() // started ≤ 200 min ago
-  const rescueFloor = new Date(now - RESCUE_WINDOW_MS).toISOString() // started ≤ 24 h ago
-  const lateFloor = new Date(now - LATE_SWEEP_WINDOW_MS).toISOString() // started ≤ 7 days ago
+  const { earliestOver, stillRelevant, rescueFloor, lateFloor } = resultWindowBounds(now)
   const today = new Date(now).toISOString().slice(0, 10)
 
   // `late = 0`: janela ativa e resgate, consultados em todo tick. `late = 1`:
@@ -343,6 +328,59 @@ async function scoreCompetitions(
   return run
 }
 
+type SyncOutcome =
+  | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
+  | { success: false; comp: ActiveRound; round: string; err: unknown }
+
+/** Totais das sincronizações do tick e as competições que seguem para fallback e pontuação. */
+type SyncTally = {
+  fixturesUpdated: number
+  eventsDiscarded: number
+  hadError: boolean
+  syncedComps: Set<string>
+  fallbackCompIds: Set<string>
+}
+
+/**
+ * Soma os resultados das sincronizações e registra `football_api_error` para cada
+ * falha, na ordem dos resultados. O fallback da ESPN cobre as competições
+ * football-data, menos na varredura de atrasados, que só roda sem jogo nas 24 h
+ * do fallback.
+ */
+function tallySyncOutcomes(
+  results: SyncOutcome[],
+  ae: AnalyticsEngineDataset | undefined,
+  lateTask: SyncTask | undefined,
+): SyncTally {
+  const tally: SyncTally = {
+    fixturesUpdated: 0,
+    eventsDiscarded: 0,
+    hadError: false,
+    syncedComps: new Set(),
+    fallbackCompIds: new Set(),
+  }
+  for (const res of results) {
+    if (res.comp.provider !== 'espn' && !lateTask) tally.fallbackCompIds.add(res.comp.comp_id)
+    if (res.success) {
+      tally.fixturesUpdated += res.matches
+      tally.eventsDiscarded += res.discarded
+      tally.syncedComps.add(res.comp.comp_id)
+    } else {
+      tally.hadError = true
+      logError(
+        ae,
+        'football_api_error',
+        `[poller] Sync falhou comp=${res.comp.comp_id} round=${res.round}:`,
+        res.err,
+        {
+          blobs: [res.comp.comp_id, res.round],
+        },
+      )
+    }
+  }
+  return tally
+}
+
 /**
  * Polls football-data.org and ESPN for results of matches currently inside
  * their active window, then scores them. Designed to run on a Cron Trigger
@@ -396,10 +434,6 @@ export async function pollActiveMatches(
 
   const { lateTask, tasks, compCount, roundDays } = planTasks(await loadPollerRows(db, now), now)
 
-  type SyncOutcome =
-    | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
-    | { success: false; comp: ActiveRound; round: string; err: unknown }
-
   const runSyncTask = async ({ comp, round, dates }: SyncTask): Promise<SyncOutcome> => {
     const matchday = parseInt(round, 10)
     const matchdayParam = comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
@@ -429,43 +463,12 @@ export async function pollActiveMatches(
     }
   }
 
-  // football-data compartilha 10 req/min; ESPN tem teto próprio + pacing HTTP.
-  const fdTasks = tasks.filter((task) => task.comp.provider === 'football-data')
-  const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
-  const [fdResults, espnResults] = await Promise.all([
-    runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runSyncTask),
-    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runSyncTask),
-  ])
-  const syncResults = [...fdResults, ...espnResults]
+  const syncResults = await runSyncTasks(tasks, (task) => task.comp.provider, runSyncTask)
 
   // Requests primárias planejadas, sem retries nem chamadas do fallback.
   const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)
-  let fixturesUpdated = 0
-  let eventsDiscarded = 0
-  let hadError = false
-  const syncedComps = new Set<string>()
-  const fallbackCompIds = new Set<string>()
-
-  for (const res of syncResults) {
-    // A varredura não chama o fallback: ela só roda sem jogo nas 24 h do fallback.
-    if (res.comp.provider !== 'espn' && !lateTask) fallbackCompIds.add(res.comp.comp_id)
-    if (res.success) {
-      fixturesUpdated += res.matches
-      eventsDiscarded += res.discarded
-      syncedComps.add(res.comp.comp_id)
-    } else {
-      hadError = true
-      logError(
-        ae,
-        'football_api_error',
-        `[poller] Sync falhou comp=${res.comp.comp_id} round=${res.round}:`,
-        res.err,
-        {
-          blobs: [res.comp.comp_id, res.round],
-        },
-      )
-    }
-  }
+  const { fixturesUpdated, eventsDiscarded, hadError, syncedComps, fallbackCompIds } =
+    tallySyncOutcomes(syncResults, ae, lateTask)
 
   // HTTP 200 pode trazer status atrasado: o fallback consulta o D1 após os upserts
   // e só chama a ESPN quando ainda há partidas elegíveis sem resultado final.
