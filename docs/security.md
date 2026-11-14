@@ -139,10 +139,16 @@ aponte para serviço desativado (CNAME órfão) tem o mesmo efeito.
 
 ## Content-Security-Policy do site
 
-O `web/public/_headers` envia `Content-Security-Policy` em todas as páginas do
-Pages, inclusive no HTML devolvido pela Function de convite. O navegador bloqueia o
-que a política não libera e registra a violação no console. A política não tem
-endpoint de relatório.
+O `web/public/_headers` envia `Content-Security-Policy` e os demais cabeçalhos de
+segurança em todos os assets do Pages. A Function de convite
+(`web/functions/convite/[code].ts`) reescreve o HTML que `ASSETS.fetch` devolve, e
+esse shell já traz os cabeçalhos do `_headers`. Para não depender disso, a Function
+fixa os mesmos valores a partir de `web/functions/_securityHeaders.ts` em toda
+resposta, inclusive 404, redirect e erro do asset. O teste
+`web/tests/functions/conviteHeaders.test.ts` lê a regra `/*` do `_headers` e exige
+cada valor nessas respostas. Mudar a política pede atualizar os dois arquivos. O
+navegador bloqueia o que a política não libera e registra a violação no console. A
+política não tem endpoint de relatório.
 
 A política passou de Report-Only para enforcing depois de uma navegação logada sem
 nenhuma violação: home, três grupos (abas Palpitar, Tabela, Ranking e rodada),

@@ -27,9 +27,13 @@
  * `isInviteOpen`), registrada pela API em segundo plano. Esse aviso não leva o
  * código nem dado de quem abriu, e sem o segredo do proxy a abertura não é contada.
  *
+ * A resposta sempre leva os cabeçalhos de segurança da regra `/*` do `_headers`
+ * (ver `_securityHeaders.ts`), para não depender dos cabeçalhos que o asset traz.
+ *
  * A imagem é compartilhada entre os convites; o nome do grupo aparece no título.
  */
 
+import { withSecurityHeaders } from '../_securityHeaders'
 import { CLIENT_IP_HEADER, INVITE_OPEN_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
 
 // Tipos mínimos do runtime de Pages/Workers. A pasta functions/ não entra no
@@ -413,6 +417,12 @@ export function planInviteRewrite(
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
+  // Para não depender dos cabeçalhos que o asset traz, toda saída, inclusive a do
+  // asset com erro ou redirect, leva os cabeçalhos de segurança.
+  return withSecurityHeaders(await respond(context))
+}
+
+async function respond(context: PagesContext): Promise<Response> {
   const { request, env, params } = context
   // URL pura, sem os headers do visitante: um If-None-Match repassado poderia
   // voltar 304 sem corpo, e o HTML reescrito sairia vazio.
