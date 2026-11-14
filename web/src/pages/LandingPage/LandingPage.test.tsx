@@ -129,3 +129,14 @@ describe('LandingPage – links para os guias', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('click_landing_guia', { guia: first.slug })
   })
 })
+
+describe('LandingPage – rodapé', () => {
+  it('liga para a política de privacidade', () => {
+    renderPage()
+    const footer = screen.getByRole('contentinfo')
+    expect(within(footer).getByRole('link', { name: 'Política de privacidade' })).toHaveAttribute(
+      'href',
+      '/privacidade',
+    )
+  })
+})

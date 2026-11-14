@@ -5,7 +5,15 @@ import { join } from 'node:path'
 import { captureGuideOrigin } from '../src/analytics/guideOrigin'
 import { LANDING_GUIDE_LINKS } from '../src/pages/LandingPage/guideLinks'
 import { normalizeGaId } from './analytics'
-import { guides, renderGuide, renderIndex, renderLlmsTxt } from './guides'
+import {
+  guides,
+  renderGuide,
+  renderIndex,
+  renderLlmsTxt,
+  renderPrivacy,
+  sitemapUrls,
+} from './guides'
+import { PENDING_MARKER, privacyPolicy } from './privacy'
 import { extractLocs, HOST, KEY, KEY_LOCATION } from '../scripts/indexnow.mjs'
 
 const GA_ID = 'G-TEST123'
@@ -469,5 +477,91 @@ describe('guide analytics (Consent Mode v2)', () => {
       get.mockRestore()
       set.mockRestore()
     }
+  })
+})
+
+describe('página de privacidade', () => {
+  const html = renderPrivacy()
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+
+  it('sai com canonical, título, descrição e indexável', () => {
+    expect(doc.querySelector('link[rel="canonical"]')!.getAttribute('href')).toBe(
+      'https://palpitae.com.br/privacidade',
+    )
+    expect(doc.querySelector('h1')!.textContent).toBe('Política de privacidade')
+    expect(doc.title).toBe('Política de privacidade — Palpitae')
+    expect(doc.querySelector('meta[name="robots"]')!.getAttribute('content')).toBe('index, follow')
+    const description = doc.querySelector('meta[name="description"]')!.getAttribute('content')!
+    expect(description.length).toBeGreaterThanOrEqual(120)
+    expect(description.length).toBeLessThanOrEqual(175)
+  })
+
+  it('traz as seções previstas', () => {
+    const headings = [...doc.querySelectorAll('h2')].map((h) => h.textContent)
+    expect(headings).toEqual(
+      expect.arrayContaining([
+        'Responsável e contato',
+        'Dados da conta',
+        'Dados de uso e medição',
+        'Lembretes por e-mail e descadastro',
+        'Compartilhamento com terceiros',
+        'Retenção',
+        'Cookies e escolhas de medição',
+        'Seus direitos e como exercê-los',
+      ]),
+    )
+  })
+
+  it('entra no sitemap com a data do texto', () => {
+    expect(sitemapUrls()).toContainEqual(
+      expect.objectContaining({
+        loc: 'https://palpitae.com.br/privacidade',
+        lastmod: privacyPolicy.updated,
+      }),
+    )
+  })
+
+  it('usa o mesmo <style> dos guias, já liberado por hash na CSP', () => {
+    const style = (page: string) => page.match(/<style>([\s\S]*?)<\/style>/)![1]
+    expect(style(html)).toBe(style(renderGuide(guides[0])))
+  })
+
+  it('aparece no rodapé dos guias, do índice e da própria página', () => {
+    for (const page of [renderGuide(guides[0]), renderIndex(), html]) {
+      const footer = new DOMParser()
+        .parseFromString(page, 'text/html')
+        .querySelector('footer.site')!
+      const link = [...footer.querySelectorAll('a')].find(
+        (a) => a.textContent === 'Política de privacidade',
+      )
+      expect(link?.getAttribute('href')).toBe('/privacidade')
+    }
+  })
+
+  it('aparece no aviso de cookies dos guias sem mudar os botões', () => {
+    const page = new DOMParser().parseFromString(renderGuide(guides[0], GA_ID), 'text/html')
+    const banner = page.getElementById('cookie-consent')!
+    expect(banner.querySelector('a')!.getAttribute('href')).toBe('/privacidade')
+    expect([...banner.querySelectorAll('button')].map((b) => b.textContent)).toEqual([
+      'Recusar',
+      'Aceitar',
+    ])
+  })
+
+  it('aparece no llms.txt', () => {
+    expect(renderLlmsTxt()).toContain(
+      '- [Política de privacidade](https://palpitae.com.br/privacidade):',
+    )
+  })
+
+  it('não publica marcador "A CONFIRMAR"', () => {
+    expect(doc.body.textContent).not.toMatch(PENDING_MARKER)
+    // O <head> também publica texto: título, meta tags e dados estruturados.
+    const head = [
+      doc.title,
+      ...[...doc.querySelectorAll('meta[content]')].map((m) => m.getAttribute('content')),
+      ...[...doc.querySelectorAll('script[type="application/ld+json"]')].map((s) => s.textContent),
+    ].join('\n')
+    expect(head).not.toMatch(PENDING_MARKER)
   })
 })

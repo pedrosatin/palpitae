@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import CookieConsent from './CookieConsent'
@@ -73,6 +73,16 @@ describe('CookieConsent', () => {
     mockGetStoredConsent.mockReturnValue(null)
     render(<CookieConsent />)
     expect(screen.getByRole('dialog', { name: 'Aviso de cookies' })).toBeInTheDocument()
+  })
+
+  it('liga para a política de privacidade dentro do aviso', () => {
+    mockGetStoredConsent.mockReturnValue(null)
+    render(<CookieConsent />)
+    const banner = screen.getByRole('dialog', { name: 'Aviso de cookies' })
+    expect(within(banner).getByRole('link', { name: 'política de privacidade' })).toHaveAttribute(
+      'href',
+      '/privacidade',
+    )
   })
 
   it('stays hidden once a choice was already stored', () => {

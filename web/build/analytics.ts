@@ -21,6 +21,8 @@
  * hash there; `npm run csp:verify` after the build prints it.
  */
 
+import { PRIVACY_PATH } from './privacy'
+
 const CONSENT_KEY = 'palpitae:analytics-consent'
 const DENIED_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -105,5 +107,5 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 /** Preferences button and banner markup; the banner opens with no stored choice or on the button click. */
 export function consentBanner(gaId: string): string {
   if (!validId(gaId)) return ''
-  return `<div class="cookie-preferences"><button id="cookie-preferences" type="button" aria-expanded="false">Preferências de cookies</button></div><div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
+  return `<div class="cookie-preferences"><button id="cookie-preferences" type="button" aria-expanded="false">Preferências de cookies</button></div><div id="cookie-consent" class="consent" role="dialog" aria-label="Aviso de cookies" aria-live="polite" hidden><p>Cookies do Google Analytics medem o uso para melhorar o Palpitae. Você decide. Detalhes na <a href="${PRIVACY_PATH}">política de privacidade</a>.</p><div class="actions"><button type="button" class="reject">Recusar</button><button type="button" class="accept">Aceitar</button></div></div>`
 }
