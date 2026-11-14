@@ -41,6 +41,8 @@ export type Variables = {
   userId: string
   userEmail: string
   session?: SessionState
+  limiterDb?: D1Database
+  dailyKeys?: { read: string; written: string }
 }
 
 export type AppContext = {

@@ -267,9 +267,15 @@ escreveu. Uma requisição só de leitura grava 4 linhas no D1, 2 do contador po
 minuto e 2 do balde de leitura, sem gastar o orçamento de escrita. A cota de 100
 mil escritas do Workers Free comporta 25 mil dessas requisições por dia. Uma
 requisição que escreve `w` linhas cobra `w + 4` do orçamento de escrita. Com o
-orçamento esgotado, a API responde 429
-com `Retry-After` até a virada, antes do balde por minuto. Logout e logout-all
-ficam fora dessa recusa. `D1_DAILY_ROWS_READ_PER_USER` e
+orçamento esgotado, a API responde 429 com `Retry-After` até a virada, antes do
+balde por minuto. Nas escritas em lote de `POST /predictions/replicate`,
+`POST /predictions/import` e `PUT /predictions/bulk`, o handler confere o número
+de instruções planejadas contra o saldo restante de escrita antes do `db.batch`
+e recusa com o mesmo 429 sem gravar nada quando o lote ultrapassa o saldo. O
+desconto final segue vindo do `rows_written` real medido após o handler. O
+`import` também aceita no máximo 1.000 instruções planejadas por requisição,
+como o `replicate`, e o `bulk` segue limitado a 100 palpites. Logout e
+logout-all ficam fora dessa recusa. `D1_DAILY_ROWS_READ_PER_USER` e
 `D1_DAILY_ROWS_WRITTEN_PER_USER` substituem os padrões. A decisão de ficar no
 Workers Free, o risco aceito e o gatilho para migrar ao Paid estão no
 [ADR-022](architecture/decisions.md).

@@ -878,7 +878,7 @@ Limites da medição:
 - Consulta que falha não entra na conta.
 - O balde recebe só o que passou pelo `DB` medido até o fim do handler. Uma consulta feita com ele depois da resposta, como dentro de `ctx.waitUntil`, e as feitas por `db.withSession()` ficam fora. Hoje nenhuma rota faz isso.
 - Requisições sem sessão válida não têm orçamento diário. Elas continuam só no limitador por minuto, por IP.
-- Uma requisição que começa com saldo termina mesmo que passe do orçamento, e requisições simultâneas do mesmo usuário passam pela checagem antes de alguma gravar. O limitador por minuto limita esse excesso. As escritas em lote (`replicate`, `import` e `bulk`) ainda gravam até centenas de linhas numa requisição.
+- Uma requisição que começa com saldo termina mesmo que passe do orçamento, e requisições simultâneas do mesmo usuário passam pela checagem antes de alguma gravar. O limitador por minuto limita esse excesso. Nas rotas em lote `POST /predictions/replicate`, `POST /predictions/import` e `PUT /predictions/bulk`, o handler consulta `request_limits` fora da medição antes do `db.batch`. Se as instruções planejadas passarem do saldo restante de escrita do usuário, ele devolve 429 com `Retry-After` e não grava nenhuma linha. O `import` também passa a aceitar no máximo 1.000 instruções planejadas por requisição, o mesmo teto do `replicate`. A checagem prévia conta 1 unidade do saldo por instrução planejada de escrita em `predictions`, já que antes da execução não se sabe se cada instrução vai inserir linha nova com até 4 linhas gravadas, atualizar uma existente ou ser recusada pela trava do jogo. O desconto real depois do handler segue vindo do `rows_written` informado pelo D1, sem cobrança dupla.
 
 O flood anônimo distribuído contra as 100 mil requisições por dia do Worker é risco aceito. O limitador por IP e a regra de rate limit da borda, descrita em [Controle de acesso e limites da API](../security.md), cortam um cliente sozinho. Muitos IPs juntos ainda esgotam a cota de requisições.
 
@@ -886,11 +886,11 @@ O gatilho para migrar ao Workers Paid é a primeira queda por cota, ou o uso di�
 
 ### Consequences
 
-- Cada requisição autenticada faz 2 chamadas a mais ao D1, a leitura do orçamento e a gravação, dentro das 50 por invocação.
+- Cada requisição autenticada faz 2 chamadas a mais ao D1, a leitura do orçamento e a gravação, dentro das 50 por invocação. As rotas em lote fazem também 1 leitura do saldo restante antes do `db.batch`.
 - Contando 2 linhas escritas por linha de contador, com a entrada no índice de expiração, uma requisição autenticada só de leitura grava 4 linhas no D1. São 2 do contador por minuto e 2 da linha de leitura do balde diário. A cota de 100 mil escritas comporta 25 mil dessas requisições por dia. Uma requisição que escreve `w` linhas grava `w + 6` no D1, e a cota comporta `100.000 / (w + 6)` delas.
 - Nenhuma dessas linhas do limitador entra no orçamento de escrita de uma requisição só de leitura, e um usuário que só lê é cortado apenas pelas 250 mil linhas lidas. Uma requisição que escreve `w` linhas cobra `w + 4` do orçamento, e o corte vem depois de `5.000 / (w + 4)` delas no dia. Um palpite que grave 4 linhas com os índices de `predictions` corta em 625 palpites. Se o uso normal chegar perto disso, suba `D1_DAILY_ROWS_WRITTEN_PER_USER`.
 - Vinte contas no teto de escrita, ou vinte no de leitura, somam a cota do dia. O orçamento impede que uma conta sozinha derrube o app. Um ataque com muitas contas fica no risco aceito.
-- `api/src/security/dailyD1Budget.test.ts` roda a API inteira sobre o D1 em memória embrulhado por `api/src/testing/d1RowsReported.ts`, que informa linhas lidas e escritas por consulta. O SQLite em memória sozinho não informa.
+- `api/src/security/dailyD1Budget.test.ts` e `api/src/predictions/batchBudget.test.ts` rodam a API inteira sobre o D1 em memória embrulhado por `api/src/testing/d1RowsReported.ts`, que informa linhas lidas e escritas por consulta. O SQLite em memória sozinho não informa.
 
 ### Alternatives Considered
 
