@@ -840,8 +840,9 @@ describe('withMissingPenalties', () => {
 })
 
 describe('pendingSummarySql unit tests', () => {
-  it('returns correctly formatted sql string with default alias', () => {
-    const sql = pendingSummarySql()
+  it('returns correctly formatted sql string with CTE JSON source', () => {
+    const sql = pendingSummarySql('g', 'c', 'ci.open_rounds_json')
+    expect(sql).toContain("FROM json_each(COALESCE(ci.open_rounds_json, '[]')) je")
     expect(sql.trim().replace(/\s+/g, ' ')).toContain(
       `ON m.competition_id = g.competition_id AND m.round = r.round`
     )
@@ -854,7 +855,8 @@ describe('pendingSummarySql unit tests', () => {
   })
 
   it('returns correctly formatted sql string with custom alias', () => {
-    const sql = pendingSummarySql('customAlias', 'customComp')
+    const sql = pendingSummarySql('customAlias', 'customComp', 'customCte.open_rounds_json')
+    expect(sql).toContain("FROM json_each(COALESCE(customCte.open_rounds_json, '[]')) je")
     expect(sql.trim().replace(/\s+/g, ' ')).toContain(
       `ON m.competition_id = customAlias.competition_id AND m.round = r.round`
     )

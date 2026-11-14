@@ -2,6 +2,11 @@
 /**
  * Mede `meta.rows_read` de `groupsListSql` no D1 local do workerd via Miniflare.
  * O shim `node:sqlite` (`createSqliteD1`) não expõe `rows_read`.
+ *
+ * O pacote `miniflare` entra como dependência transitiva do `wrangler`, que fixa
+ * a versão instalada. Este teste usa `convertV4MiniflareOptions`, uma API dessa
+ * versão do Miniflare. Uma atualização do `wrangler` pode exigir ajuste nesta
+ * chamada.
  */
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -163,7 +168,9 @@ describe('custo de leitura de GET /groups no D1 (Miniflare)', () => {
     const perAddedGroup = (g50c3.rowsRead - g10c3.rowsRead) / 40
     const perAddedCompetition = (g50c6.rowsRead - g50c1.rowsRead) / 5
 
-    expect(perAddedGroup).toBeLessThan(30)
+    // Folga sobre as ~28 linhas medidas por grupo adicional evita quebra por
+    // variação de plano e segue distante das ~522 linhas da regressão por grupo.
+    expect(perAddedGroup).toBeLessThan(60)
     expect(perAddedCompetition).toBeGreaterThan(300)
     expect(perAddedCompetition).toBeGreaterThan(perAddedGroup * 10)
   })

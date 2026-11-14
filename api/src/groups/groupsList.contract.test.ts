@@ -1,8 +1,9 @@
 /// <reference types="node" />
 /**
  * Contrato byte a byte de `GET /groups` com vários grupos divididos entre
- * múltiplas competições, cobrindo ligas, copas, pênaltis, rodadas que ficaram
- * para trás, placares ao vivo, pódio, banidos, excluídos e competições piloto.
+ * múltiplas competições. Os casos cobrem ligas, copas, pênaltis, rodadas que
+ * ficaram para trás, placares ao vivo, pódio, banidos, excluídos e competições
+ * piloto.
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -470,7 +471,7 @@ async function fetchGroups(db: D1Database, query = '', pilotEmail?: string) {
 }
 
 describe('contrato byte a byte de GET /groups com múltiplos grupos e competições', () => {
-  it('mantém exatamente o mesmo JSON para usuário comum com vários grupos por competição', async () => {
+  it('devolve o JSON esperado para usuário comum com vários grupos por competição', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(NOW))
     const { db } = seedContractFixture()
@@ -528,5 +529,29 @@ describe('contrato byte a byte de GET /groups com múltiplos grupos e competiç�
       matched_invite_group_id: 'g-piloto',
     }
     expect(raw).toBe(JSON.stringify(expectedPilot))
+  })
+
+  it('desempata grupos com o mesmo created_at por id decrescente', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(NOW))
+    const { sqlite, db } = seedContractFixture()
+
+    sqlite.exec(`
+      INSERT INTO groups (
+        id, name, competition_id, owner_user_id, invite_code, points_exact, created_at, deleted_at
+      ) VALUES
+        ('g-empate-1', 'Empate Um', 'comp-vazia', 'alice', 'EMPA-0001', 3, '2026-06-13T10:00:00Z', NULL),
+        ('g-empate-2', 'Empate Dois', 'comp-vazia', 'alice', 'EMPA-0002', 3, '2026-06-13T10:00:00Z', NULL);
+
+      INSERT INTO group_members (id, group_id, user_id, role, joined_at) VALUES
+        ('gm-e1-a', 'g-empate-1', 'alice', 'owner', '2026-06-13T10:00:00Z'),
+        ('gm-e2-a', 'g-empate-2', 'alice', 'owner', '2026-06-13T10:00:00Z');
+    `)
+
+    const res = await fetchGroups(db)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { groups: Array<{ id: string; created_at: string }> }
+    expect(body.groups.slice(0, 2).map((g) => g.id)).toEqual(['g-empate-2', 'g-empate-1'])
+    expect(body.groups.slice(2).map((g) => g.id)).toEqual(EXPECTED_ORDINARY.groups.map((g) => g.id))
   })
 })

@@ -9,7 +9,7 @@ import { LIVE_MATCHES_SQL } from './liveMatches'
 // grupo lê apenas os jogos das rodadas abertas já resolvidas, além do prazo, do
 // próximo jogo e do fim da rodada no mesmo resumo. Este teste falha se a CTE
 // deixar de ser materializada, se um campo novo trouxer outra varredura dos
-// jogos ou se o agrupamento de rodadas voltar a criar B-tree temporária.
+// jogos ou se o agrupamento de rodadas criar B-tree temporária.
 
 type PlanRow = { id: number; parent: number; detail: string }
 

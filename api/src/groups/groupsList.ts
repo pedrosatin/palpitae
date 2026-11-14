@@ -1,15 +1,16 @@
 import { openRoundsSql, roundRuleBinds } from '../matches/defaultRound'
 import { roundAgreement, roundLabel, type RoundAgreement } from '../matches/rounds'
 import { competitionStatusSql } from './competitionStatus'
-import { pendingSummaryCteBinds, pendingSummarySql } from './pendingPredictions'
+import { pendingSummaryBinds, pendingSummarySql } from './pendingPredictions'
 import { notBannedSql, userPositionSql } from './ranking'
 
 /**
  * Consulta de `GET /groups`. Traz os grupos do usuário com os números do card e
  * o resumo dos jogos abertos para o painel. Uma CTE separa as competições
  * distintas do usuário para calcular o status da competição e as rodadas
- * abertas uma vez por competição, em vez de repetir por grupo. As colunas por
- * grupo seguem calculadas na consulta principal sobre a CTE `competition_info`.
+ * abertas uma vez por competição, em vez de repetir por grupo. A consulta
+ * principal lê `user_groups` e junta `competition_info` pela competição.
+ * Membros, posição e pendências continuam calculados por grupo.
  * Os jogos ao vivo vêm de outra consulta em `liveMatches.ts`, que roda em
  * paralelo. O teste de plano em `groupsList.queryPlan.test.ts` protege as
  * leituras de jogos das duas.
@@ -85,7 +86,7 @@ export function groupsListSql(canSeePilot: boolean): string {
           ${pendingSummarySql('g', 'g', 'ci.open_rounds_json')} AS pending_summary
         FROM user_groups g
         LEFT JOIN competition_info ci ON ci.competition_id = g.competition_id
-        ORDER BY g.created_at DESC
+        ORDER BY g.created_at DESC, g.id DESC
         `
 }
 
@@ -95,7 +96,7 @@ export function groupsListBinds(nowIso: string, userId: string): string[] {
     userId,
     userId,
     ...roundRuleBinds(nowIso),
-    ...pendingSummaryCteBinds(nowIso, userId),
+    ...pendingSummaryBinds(nowIso, userId),
   ]
 }
 
