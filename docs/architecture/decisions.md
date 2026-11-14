@@ -781,7 +781,9 @@ O e-mail de lembrete saía às 07h do primeiro dia da rodada, só para quem não
 
 O cron das 07h BRT agora envia, a cada usuário, um e-mail com os jogos de hoje ainda abertos e sem palpite, agrupados por grupo e rodada. Jogo adiado (`postponed = 1`) não entra, porque não tem data. Jogo remarcado (`postponed = 0` e horário novo) entra no dia novo, mesmo em rodada que ficou para trás (ADR-019), e o link usa a rodada dele. O link leva `?rodada=` e abre a aba Palpitar nessa rodada.
 
-O limite de um e-mail por usuário por dia fica no banco, na tabela `email_reminder_sends` (`PRIMARY KEY (user_id, reminder_date)`, migration 0036). O cron reserva todos os destinatários em uma gravação antes do primeiro envio e só envia para quem a reserva devolveu. Falha de envio devolve a reserva. Reenvio dentro de `sendWithRetry` e reexecução no mesmo dia usam o mesmo `Idempotency-Key` do Resend.
+O digest mostra até 10 grupos na ordem do primeiro jogo sem palpite. O link "e mais N grupos" abre o painel, que lista os demais. HTML e texto puro usam o mesmo corte. O agrupamento usa mapas por usuário, grupo e rodada para evitar busca linear a cada linha. O teste com 500 grupos e 8 jogos exige corpo JSON abaixo de 128 KiB. Esse teto comporta os 80 blocos de jogo dos 10 grupos, o template e a versão em texto. É um teto de regressão desse cenário, pois o tamanho também depende dos nomes e da quantidade de jogos de cada grupo.
+
+O limite de um e-mail por usuário por dia fica no banco, na tabela `email_reminder_sends` (`PRIMARY KEY (user_id, reminder_date)`, migration 0036). O cron reserva todos os destinatários em uma gravação antes do primeiro envio e só envia para quem a reserva devolveu. Um `finally` devolve as reservas sem aceite do provedor, inclusive se a preparação ou o envio abortar por exceção. Cada aceite retira o usuário do conjunto pendente antes das operações seguintes. A liberação é uma das 4 consultas fixas de `D1_SUBREQUESTS`. Reenvio dentro de `sendWithRetry` e reexecução no mesmo dia usam o mesmo `Idempotency-Key` do Resend.
 
 A reserva é uma gravação só por execução porque cada consulta ao D1 conta no limite de subrequests do Worker junto com os envios ao Resend.
 
@@ -799,7 +801,7 @@ O ponto sem volta é o início do `fetch` ao Resend. Descadastro depois disso n�
 
 ### Consequences
 
-- Risco aceito: uma invocação interrompida entre a reserva e o envio deixa os restantes sem e-mail naquele dia. Perder um aviso é preferível a repetir o e-mail.
+- O `finally` libera as reservas quando a execução termina por retorno ou exceção. Um encerramento forçado do runtime que impeça o `finally`, ou uma falha do próprio D1 na liberação, ainda pode deixar reservas até o fim do dia. A falha de liberação vai para o log.
 - Quem nunca palpita recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
 - Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. A fila por último envio reveza o excedente entre os dias. Se o excedente passar do teto, alguém fica de fora dois dias seguidos, sempre quem recebeu mais recentemente.
 - O revezamento olha os 7 dias guardados em `email_reminder_sends`. Quem não recebeu nesse período é tratado como quem nunca recebeu.

@@ -1,0 +1,229 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`sendRoundReminders > digest limitado e devolução após interrupção > corta em 10 grupos o e-mail de quem tem 500 e mantém igual o de quem tem poucos 1`] = `
+{
+  "from": "Palpitae <lembretes@palpitae.com.br>",
+  "html": "<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>8 jogos sem palpite hoje. O primeiro fecha às 11:00</title>
+</head>
+<body style="margin: 0; padding: 0; background: #f3f4f6;">
+  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+    <div style="padding: 8px 0 16px;">
+      <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
+    </div>
+    <h2 style="margin: 0 0 4px;">8 jogos sem palpite hoje. O primeiro fecha às 11:00</h2>
+    <p style="color: #6b7280; margin-top: 0;">Cada palpite fecha no horário do jogo.</p>
+    <h3 style="margin: 24px 0 0; font-size: 16px;">Realidade do BR</h3>
+    <p style="margin: 2px 0 0; color: #6b7280;">Brasileirão Série A</p>
+    <p style="margin: 8px 0 0; color: #6b7280;">Rodada 35</p>
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin: 8px 0;">
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 11:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 12:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 13:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 14:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 15:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 16:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 17:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 18:00</td>
+      </tr></table>
+    <p style="margin: 4px 0 0;"><a href="https://painel.example.test/grupos/g1?rodada=35" style="color: #16a34a; font-weight: bold;">Fazer meus palpites &rarr;</a></p>
+    <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
+      Você está recebendo este e-mail porque participa de um grupo no Palpitae.
+    </p>
+  </div>
+</body>
+</html>",
+  "subject": "8 jogos sem palpite hoje. O primeiro fecha às 11:00",
+  "text": "8 jogos sem palpite hoje. O primeiro fecha às 11:00
+Cada palpite fecha no horário do jogo.
+
+Realidade do BR
+Brasileirão Série A
+Rodada 35
+Flamengo vs Palmeiras, fecha 11:00
+Flamengo vs Palmeiras, fecha 12:00
+Flamengo vs Palmeiras, fecha 13:00
+Flamengo vs Palmeiras, fecha 14:00
+Flamengo vs Palmeiras, fecha 15:00
+Flamengo vs Palmeiras, fecha 16:00
+Flamengo vs Palmeiras, fecha 17:00
+Flamengo vs Palmeiras, fecha 18:00
+Fazer meus palpites: https://painel.example.test/grupos/g1?rodada=35
+
+Você está recebendo este e-mail porque participa de um grupo no Palpitae.",
+  "to": "ana@example.test",
+}
+`;
+
+exports[`sendRoundReminders > digest limitado e devolução após interrupção > limita 500 grupos com 8 jogos e preserva o e-mail do usuário com poucos grupos 1`] = `
+{
+  "from": "Palpitae <lembretes@palpitae.com.br>",
+  "html": "<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>8 jogos sem palpite hoje. O primeiro fecha às 11:00</title>
+</head>
+<body style="margin: 0; padding: 0; background: #f3f4f6;">
+  <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+    <div style="padding: 8px 0 16px;">
+      <span style="font-size: 20px; font-weight: 700; color: #111827; letter-spacing: -0.5px;">Palpitae</span>
+    </div>
+    <h2 style="margin: 0 0 4px;">8 jogos sem palpite hoje. O primeiro fecha às 11:00</h2>
+    <p style="color: #6b7280; margin-top: 0;">Cada palpite fecha no horário do jogo.</p>
+    <h3 style="margin: 24px 0 0; font-size: 16px;">Realidade do BR</h3>
+    <p style="margin: 2px 0 0; color: #6b7280;">Brasileirão Série A</p>
+    <p style="margin: 8px 0 0; color: #6b7280;">Rodada 35</p>
+    <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin: 8px 0;">
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 11:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 12:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 13:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 14:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 15:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 16:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 17:00</td>
+      </tr>
+      <tr>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: right; font-weight: bold;"><span style="white-space: nowrap;">Flamengo&nbsp;<img src="https://crests.example/fla.png" alt="Flamengo" width="20" height="20" style="vertical-align: middle; border: 0;"></span></td>
+        <td style="width: 10%; padding: 8px 4px 0; text-align: center; color: #6b7280;">x</td>
+        <td style="width: 45%; padding: 8px 4px 0; text-align: left; font-weight: bold;"><span style="white-space: nowrap;">&nbsp;Palmeiras</span></td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding: 2px 4px 8px; text-align: center; color: #6b7280; font-size: 13px;">fecha 18:00</td>
+      </tr></table>
+    <p style="margin: 4px 0 0;"><a href="https://painel.example.test/grupos/g1?rodada=35" style="color: #16a34a; font-weight: bold;">Fazer meus palpites &rarr;</a></p>
+    <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
+      Você está recebendo este e-mail porque participa de um grupo no Palpitae.
+    </p>
+  </div>
+</body>
+</html>",
+  "subject": "8 jogos sem palpite hoje. O primeiro fecha às 11:00",
+  "text": "8 jogos sem palpite hoje. O primeiro fecha às 11:00
+Cada palpite fecha no horário do jogo.
+
+Realidade do BR
+Brasileirão Série A
+Rodada 35
+Flamengo vs Palmeiras, fecha 11:00
+Flamengo vs Palmeiras, fecha 12:00
+Flamengo vs Palmeiras, fecha 13:00
+Flamengo vs Palmeiras, fecha 14:00
+Flamengo vs Palmeiras, fecha 15:00
+Flamengo vs Palmeiras, fecha 16:00
+Flamengo vs Palmeiras, fecha 17:00
+Flamengo vs Palmeiras, fecha 18:00
+Fazer meus palpites: https://painel.example.test/grupos/g1?rodada=35
+
+Você está recebendo este e-mail porque participa de um grupo no Palpitae.",
+  "to": "ana@example.test",
+}
+`;
