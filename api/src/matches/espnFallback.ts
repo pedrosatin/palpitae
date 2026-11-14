@@ -232,7 +232,9 @@ async function scoreCompetitionWindow(
   const dates = new Set<string>()
   for (const m of results) {
     const utcDay = Date.parse(`${m.start_time.slice(0, 10)}T00:00:00Z`)
-    for (const date of espnDatesAround(utcDay, -1, 2)) dates.add(date)
+    // Dia do jogo antes do anterior: a ordem decide a fila de requisições, a
+    // sequência da telemetria e qual erro chega primeiro ao log.
+    for (const date of espnDatesAround(utcDay, -1, 2).reverse()) dates.add(date)
   }
 
   const telemetry = createProviderHttpObserver(ae, { context: 'fallback', competitionId: compId })
