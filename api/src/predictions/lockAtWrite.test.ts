@@ -111,19 +111,29 @@ function setup() {
   return { put, bulk, stored, sqlite, hooks }
 }
 
-/** Jeitos de o jogo travar depois que o handler já o leu como aberto. */
-const LOCKS = {
-  'o sync marca o jogo como ao vivo': (sqlite: ReturnType<typeof setup>['sqlite']) => {
-    sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
+type Sqlite = ReturnType<typeof setup>['sqlite']
+
+/**
+ * Condições que travam o jogo depois que o handler o leu como aberto. `before` prepara o
+ * cenário antes da requisição; `during` roda entre a leitura e a escrita.
+ */
+const LOCKS: Record<string, { before?: (sqlite: Sqlite) => void; during?: (sqlite: Sqlite) => void }> = {
+  'o sync marca o jogo como ao vivo': {
+    during: (sqlite) => {
+      sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
+    },
   },
-  'o relógio do banco passa o kickoff': (sqlite: ReturnType<typeof setup>['sqlite']) => {
-    // O relógio do handler fica 10 s atrás do relógio do banco. `status` e `locked_at` não mudam.
-    const real = Date.now()
-    sqlite
-      .prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`)
-      .run(new Date(real - 5_000).toISOString().replace(/\.\d{3}Z$/, 'Z'))
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(real - 10_000)
+  'o relógio do banco passa o kickoff': {
+    before: (sqlite) => {
+      // O `Date` do handler fica 10 s atrás do relógio do banco e o kickoff cai entre os dois:
+      // aberto para o TypeScript, travado para o SQL. `status` e `locked_at` não mudam.
+      const real = Date.now()
+      sqlite
+        .prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`)
+        .run(new Date(real - 5_000).toISOString().replace(/\.\d{3}Z$/, 'Z'))
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(real - 10_000)
+    },
   },
 }
 
@@ -139,7 +149,8 @@ describe('trava conferida no comando que grava', () => {
   describe.each(Object.entries(LOCKS))('quando %s entre a leitura e a escrita', (_, lock) => {
     it('PUT recusa a gravação com 422 e não deixa palpite', async () => {
       const { put, stored, sqlite, hooks } = setup()
-      hooks.beforeWrite = () => lock(sqlite)
+      lock.before?.(sqlite)
+      hooks.beforeWrite = () => lock.during?.(sqlite)
       const response = await put('m1', 2, 1)
       expect(response.status).toBe(422)
       expect(await response.json()).toEqual({ error: 'Palpite bloqueado — o jogo já começou' })
@@ -152,14 +163,16 @@ describe('trava conferida no comando que grava', () => {
         INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
         VALUES ('p1','a','g','m1',0,0)
       `)
-      hooks.beforeWrite = () => lock(sqlite)
+      lock.before?.(sqlite)
+      hooks.beforeWrite = () => lock.during?.(sqlite)
       expect((await put('m1', 2, 1)).status).toBe(422)
       expect(stored('m1')).toEqual({ h: 0, a: 0 })
     })
 
     it('bulk devolve o jogo em locked, grava os outros e não deixa palpite no travado', async () => {
       const { bulk, stored, sqlite, hooks } = setup()
-      hooks.beforeWrite = () => lock(sqlite)
+      lock.before?.(sqlite)
+      hooks.beforeWrite = () => lock.during?.(sqlite)
       const { status, body } = await bulk([
         ['m1', 2, 1],
         ['m2', 1, 0],
@@ -172,7 +185,8 @@ describe('trava conferida no comando que grava', () => {
 
     it('bulk com um único jogo travado não grava nada e responde ok', async () => {
       const { bulk, stored, sqlite, hooks } = setup()
-      hooks.beforeWrite = () => lock(sqlite)
+      lock.before?.(sqlite)
+      hooks.beforeWrite = () => lock.during?.(sqlite)
       const { status, body } = await bulk([['m1', 2, 1]])
       expect(status).toBe(200)
       expect(body).toEqual({ ok: true, saved: [], locked: ['m1'], not_found: [] })

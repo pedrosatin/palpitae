@@ -72,9 +72,9 @@ ocultos para os outros membros. O placar de um palpite vai de 0 a 99.
 A escrita do palpite confere a trava no mesmo comando que grava. `PUT /predictions`,
 `PUT /predictions/bulk`, `POST /predictions/import` e `POST /predictions/replicate`
 usam `INSERT … SELECT … WHERE NOT lockedSql(…)` com o relógio do banco, então um
-palpite não entra se o kickoff passou entre a leitura do handler e a gravação. Zero
-linhas alteradas vale como jogo travado: 422 no `PUT` único e o jogo em `locked` no
-`bulk`.
+palpite não entra se o kickoff passou entre a leitura do handler e a gravação. Quando
+a gravação altera zero linhas, o `PUT` único responde 422 e o `bulk` inclui o jogo em
+`locked`.
 
 ## Sessões
 
