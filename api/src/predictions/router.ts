@@ -41,7 +41,7 @@ async function isPilotGroupBlocked(
   db: D1Database,
   groupId: string,
 ): Promise<boolean> {
-  if (hasPilotAccess(c.get('userEmail'), c.env)) return false
+  if (hasPilotAccess(c.get('userIdentity'), c.env)) return false
   const row = await db
     .prepare(
       `SELECT c.visibility

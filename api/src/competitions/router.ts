@@ -16,7 +16,7 @@ const router = new Hono<AppContext>()
  */
 router.get('/', requireAuth, async (c) => {
   const db = c.env.DB
-  const canSeePilot = hasPilotAccess(c.get('userEmail'), c.env)
+  const canSeePilot = hasPilotAccess(c.get('userIdentity'), c.env)
 
   try {
     // `competitions.status` só vira 'finished' na descoberta diária, 7 dias depois
@@ -65,10 +65,10 @@ router.get('/', requireAuth, async (c) => {
  * POST /competitions/:id/promote
  *
  * Promove manualmente uma competição para visibilidade pública.
- * Restrito ao administrador configurado em ADMIN_EMAIL.
+ * Restrito ao administrador configurado em ADMIN_EMAIL (e ADMIN_GOOGLE_SUB, se definido).
  */
 router.post('/:id/promote', requireAuth, async (c) => {
-  if (!isAdminUser(c.get('userEmail'), c.env)) {
+  if (!isAdminUser(c.get('userIdentity'), c.env)) {
     return c.json({ error: 'Apenas o administrador pode promover competições' }, 403)
   }
 

@@ -1,5 +1,5 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
-import { hasPilotAccess } from '../auth/permissions'
+import { googleSubOf, hasPilotAccess } from '../auth/permissions'
 import { notBannedSql } from '../groups/ranking'
 import { lockedSql } from '../matches/locking'
 import { roundLabel } from '../matches/rounds'
@@ -191,6 +191,9 @@ type UnsubConfig = {
 type PendingRow = {
   user_id: string
   email: string
+  /** Provedor e id da conta, para o `sub` do Google que o `ADMIN_GOOGLE_SUB` confere. */
+  provider: string | null
+  provider_id: string | null
   group_id: string
   group_name: string
   competition_id: string
@@ -261,6 +264,8 @@ type Digest = {
 export const PENDING_MATCHES_SQL = `SELECT
          u.id         AS user_id,
          u.email      AS email,
+         u.provider   AS provider,
+         u.provider_id AS provider_id,
          g.id         AS group_id,
          g.name       AS group_name,
          c.id         AS competition_id,
@@ -459,7 +464,10 @@ function withPilotAccess(rows: PendingRow[], access: PilotAccess): PendingRow[] 
     if (row.competition_visibility !== 'pilot') return true
     let ok = allowed.get(row.user_id)
     if (ok === undefined) {
-      ok = hasPilotAccess(row.email, access)
+      ok = hasPilotAccess(
+        { email: row.email, googleSub: googleSubOf(row.provider, row.provider_id) },
+        access,
+      )
       allowed.set(row.user_id, ok)
     }
     return ok
@@ -692,7 +700,7 @@ async function dispatchDigests(
   return { sent, matchesListed, failedUserIds, unsubscribedUserIds }
 }
 
-type PilotAccess = Pick<Env, 'ADMIN_EMAIL' | 'PILOT_EMAILS'>
+type PilotAccess = Pick<Env, 'ADMIN_EMAIL' | 'ADMIN_GOOGLE_SUB' | 'PILOT_EMAILS'>
 
 export type ReminderOptions = {
   /** Teto de `fetch` da execução. Padrão `RESEND_FETCH_BUDGET`. */
