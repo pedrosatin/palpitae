@@ -18,8 +18,8 @@ import { syncFixtures } from './sync'
 
 const KICKOFF = '2026-11-08T15:30:00Z'
 const NEW_KICKOFF = '2026-12-02T20:15:00Z'
-/** Instante do sync. É o `locked_at` gravado quando o provedor diz que o jogo começou. */
-const SYNC_NOW = '2026-11-08T17:30:00Z'
+/** Instante de todos os syncs do ciclo, uma hora antes do kickoff, para que adiado e cancelado sejam vistos antes do horário. */
+const SYNC_NOW = '2026-11-08T14:30:00Z'
 
 type Score = [number, number] | null
 
@@ -329,7 +329,7 @@ describe('ciclo da partida: payloads reais', () => {
       start_time: '2026-10-10T12:00:00Z',
       status: 'scheduled',
       postponed: 1,
-      locked: false,
+      locked: true,
       home_score: null,
       away_score: null,
     })

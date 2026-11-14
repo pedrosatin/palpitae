@@ -102,6 +102,15 @@ describe('MATCH_UPSERT_SQL sem mudança não grava', () => {
     expect(upsert(base)).toBe(0)
   })
 
+  it('horário vencido grava a trava uma vez mesmo sem mudança do provedor', () => {
+    const match = { ...base, startTime: NOW }
+    expect(upsert(match)).toBe(1)
+    expect(stored().locked_at).toBeNull()
+    expect(upsert(match)).toBe(1)
+    expect(stored().locked_at).toBe(NOW)
+    expect(upsert(match)).toBe(0)
+  })
+
   it('reenviar o mesmo jogo encerrado e já travado não grava', () => {
     const finished = { ...base, status: 'finished' as const, homeScore: 2, awayScore: 1, lockedAt: NOW }
     upsert(finished)
