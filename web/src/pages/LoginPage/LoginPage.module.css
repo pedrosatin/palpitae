@@ -64,3 +64,15 @@
   color: var(--color-primary);
   text-decoration: none;
 }
+
+.privacyLink {
+  margin-top: calc(-1 * var(--space-4));
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.privacyLink:hover {
+  color: var(--color-primary);
+}

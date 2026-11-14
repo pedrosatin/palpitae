@@ -59,6 +59,11 @@ export default function LoginPage() {
         >
           ← Conheça o Palpitae
         </Link>
+
+        {/* /privacidade é HTML estático gerado no build: link nativo, fora do router. */}
+        <a href="/privacidade" className={styles.privacyLink}>
+          Política de privacidade
+        </a>
       </Card>
     </main>
   )

@@ -21,6 +21,18 @@ describe('LoginPage – analytics', () => {
     await userEvent.click(screen.getByRole('link', { name: /Conheça o Palpitae/i }))
     expect(mockTrackEvent).toHaveBeenCalledWith('click_login_conheca')
   })
+
+  it('liga para a política de privacidade', () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: 'Política de privacidade' })).toHaveAttribute(
+      'href',
+      '/privacidade',
+    )
+  })
 })
 
 describe('LoginPage – avisos', () => {

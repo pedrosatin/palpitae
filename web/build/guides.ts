@@ -6,7 +6,8 @@
  * no auth gate. Crawlers don't execute JS (see context-seo.md / ADR-006), so
  * the only way a content page reliably indexes is as a real .html file. Each
  * guide is emitted at /guias/<slug>/index.html, plus an index at /guias/, and
- * every URL is added to sitemap.xml and to /llms.txt.
+ * every URL is added to sitemap.xml and to /llms.txt. A página de privacidade
+ * (texto em build/privacy.ts) sai do mesmo jeito, em /privacidade.
  *
  * On Cloudflare Pages static assets are served before the SPA fallback in
  * _redirects (`/* /index.html 200`), so these files win over the React app.
@@ -14,6 +15,7 @@
 import { execSync } from 'node:child_process'
 import type { Connect, Plugin } from 'vite'
 import { analyticsHead, consentBanner, CONSENT_CSS, normalizeGaId } from './analytics'
+import { PRIVACY_PATH, privacyPolicy } from './privacy'
 
 const SITE_URL = 'https://palpitae.com.br'
 /** Shared 1200x630 social image: og:image and the Article `image`. */
@@ -761,7 +763,7 @@ function head(
 function siteHeader(from: string, competitionSlug?: string): string {
   return `<header class="site"><a class="brand" href="/" aria-label="Ir para a página inicial"><img src="/logo-text.svg" alt="Palpitae" width="94" height="24" /></a><a class="navcta" href="${escapeHtml(loginHref(from, competitionSlug))}">Criar bolão</a></header>`
 }
-const SITE_FOOTER = `<footer class="site">Palpitae — bolões de futebol online e gratuitos. <a href="/">Voltar ao início</a></footer>`
+const SITE_FOOTER = `<footer class="site">Palpitae — bolões de futebol online e gratuitos. <a href="/">Voltar ao início</a> · <a href="${PRIVACY_PATH}">Política de privacidade</a></footer>`
 
 const breadcrumb = (path: string, name: string) => ({
   '@context': 'https://schema.org',
@@ -917,6 +919,61 @@ ${head(path, 'Guias de bolão de futebol', 'Guias para organizar bolão de futeb
 `
 }
 
+/** Data ISO (YYYY-MM-DD) por extenso, como "14 de novembro de 2026". */
+function longDate(iso: string): string {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('pt-BR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/**
+ * Página /privacidade. Usa o mesmo <style> e o mesmo script dos guias, então a
+ * CSP de public/_headers não precisa de hash novo.
+ */
+export function renderPrivacy(gaId = ''): string {
+  const p = privacyPolicy
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/` },
+        { '@type': 'ListItem', position: 2, name: p.title, item: `${SITE_URL}${PRIVACY_PATH}` },
+      ],
+    },
+  ]
+  const sections = p.sections
+    .map(
+      (s) =>
+        `<h2>${escapeHtml(s.heading)}</h2>\n${s.body.map((b) => `<p>${escapeHtml(b)}</p>`).join('\n')}`,
+    )
+    .join('\n')
+  return `<!doctype html>
+<html lang="pt-BR">
+  <head>
+${head(PRIVACY_PATH, p.title, p.description, jsonLd, gaId, 'website')}
+  </head>
+  <body>
+    <div class="wrap">
+      ${siteHeader('privacidade_header')}
+      <nav class="crumbs"><a href="/">Início</a> › ${escapeHtml(p.title)}</nav>
+      <article>
+        <h1>${escapeHtml(p.title)}</h1>
+        <p class="intro">${escapeHtml(p.intro)}</p>
+        <p>Última atualização: ${longDate(p.updated)}.</p>
+        ${sections}
+      </article>
+      ${SITE_FOOTER}
+    </div>
+    ${consentBanner(gaId)}
+  </body>
+</html>
+`
+}
+
 /**
  * Render /llms.txt (https://llmstxt.org): a Markdown summary of the site for
  * answer engines. The guide list comes from the catalog above, so a new guide
@@ -962,12 +1019,13 @@ ${guideLines}
 
 - [Site oficial](${SITE_URL}/): página inicial com apresentação e perguntas frequentes.
 - [Guias de bolão](${SITE_URL}/guias/): índice de todos os guias.
+- [Política de privacidade](${SITE_URL}${PRIVACY_PATH}): dados tratados, terceiros, retenção, cookies e direitos pela LGPD.
 - [Sitemap](${SITE_URL}/sitemap.xml): URLs públicas indexáveis.
 - [robots.txt](${SITE_URL}/robots.txt): regras de rastreamento.
 
 ## Observações
 
-- Páginas públicas indexáveis: \`/\` (página inicial) e \`/guias/*\` (guias de bolão).
+- Páginas públicas indexáveis: \`/\` (página inicial), \`/guias/*\` (guias de bolão) e \`/privacidade\` (política de privacidade).
 - As telas de grupos, palpites e painel exigem login e não são indexáveis.
 - Idioma: português do Brasil (pt-BR).
 `
@@ -1007,10 +1065,11 @@ function render404(): string {
 `
 }
 
-/** Resolve a request path to a guide page's HTML, or null if it's not a guide. */
+/** Resolve a request path to a guide page's HTML (or /privacidade), or null otherwise. */
 function guideHtmlFor(reqUrl: string, gaId: string): string | null {
   const path = (reqUrl.split('?')[0] || '').replace(/\/+$/, '') // strip query + trailing /
   if (path === '/guias') return renderIndex(gaId)
+  if (path === PRIVACY_PATH) return renderPrivacy(gaId)
   const g = guides.find((g) => `/guias/${g.slug}` === path)
   return g ? renderGuide(g, gaId) : null
 }
@@ -1065,6 +1124,12 @@ export function guidesPlugin(): Plugin {
           source: renderGuide(g, gaId),
         })
       }
+      // privacidade.html: o Cloudflare Pages serve em /privacidade, sem barra final.
+      this.emitFile({
+        type: 'asset',
+        fileName: `${PRIVACY_PATH.slice(1)}.html`,
+        source: renderPrivacy(gaId),
+      })
       // /llms.txt lists every guide, so it is generated from the same catalog.
       this.emitFile({
         type: 'asset',
@@ -1105,7 +1170,7 @@ function gitLastModified(paths: string[], fallback: string): string {
 }
 
 /** All indexable public URLs, with lastmod, for the sitemap. */
-function sitemapUrls(): { loc: string; lastmod: string; priority: string }[] {
+export function sitemapUrls(): { loc: string; lastmod: string; priority: string }[] {
   const fallback = new Date().toISOString().slice(0, 10)
   return [
     {
@@ -1127,10 +1192,16 @@ function sitemapUrls(): { loc: string; lastmod: string; priority: string }[] {
       lastmod: g.updated,
       priority: '0.7',
     })),
+    // Data manual, como a dos guias: mude `updated` em build/privacy.ts junto com o texto.
+    {
+      loc: `${SITE_URL}${PRIVACY_PATH}`,
+      lastmod: privacyPolicy.updated,
+      priority: '0.3',
+    },
   ]
 }
 
-/** Vite plugin: emit sitemap.xml covering the landing + every guide. */
+/** Vite plugin: emit sitemap.xml covering the landing, every guide and /privacidade. */
 export function sitemapPlugin(): Plugin {
   return {
     name: 'palpitae-sitemap',

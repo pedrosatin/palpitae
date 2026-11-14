@@ -326,6 +326,9 @@ function Footer() {
       >
         Guias de bolão
       </a>
+      <a href="/privacidade" className={styles.footerLink}>
+        Política de privacidade
+      </a>
       <span className={styles.footerNote}>
         Criado por{' '}
         <a
