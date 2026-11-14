@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { isAdminUser } from '../auth/permissions'
 import { radarRouter } from '../radar/router'
@@ -35,6 +35,40 @@ function parseDays(raw: string | undefined): number {
   return Math.min(n, MAX_DAYS)
 }
 
+/**
+ * 503 quando a SQL API do Analytics Engine não está configurada (secrets
+ * CF_ACCOUNT_ID e AE_SQL_TOKEN); `null` quando dá para consultar.
+ */
+function aeUnavailable(c: Context<AppContext>): Response | null {
+  if (c.env.CF_ACCOUNT_ID && c.env.AE_SQL_TOKEN) return null
+  return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
+}
+
+/**
+ * Entrada das rotas que consultam o AE por janela: devolve a resposta 503 se a
+ * SQL API não estiver configurada; senão `days` (da query string, saneado) e a
+ * cláusula `since` das consultas.
+ */
+function aeWindow(c: Context<AppContext>): Response | { days: number; since: string } {
+  const unavailable = aeUnavailable(c)
+  if (unavailable) return unavailable
+  const days = parseDays(c.req.query('days'))
+  return { days, since: `timestamp > NOW() - INTERVAL '${days}' DAY` }
+}
+
+type AeRow = Record<string, unknown>
+
+/** `first_at` da primeira linha (consulta com MIN(timestamp)), ou null sem linhas. */
+function firstAt(rows: AeRow[]): string | null {
+  return (rows[0]?.first_at as string | null | undefined) ?? null
+}
+
+/** `avg_sample_interval` da primeira linha; ausente ou inválido (< 1) vale 1. */
+function sampleInterval(rows: AeRow[]): number {
+  const avg = Number(rows[0]?.avg_sample_interval ?? 1)
+  return Number.isFinite(avg) && avg >= 1 ? avg : 1
+}
+
 export const metricsRouter = new Hono<AppContext>()
 
 metricsRouter.use('*', requireAuth)
@@ -66,12 +100,9 @@ metricsRouter.route('/radar', radarRouter)
  *   login_failure    → blob2 = reason
  */
 metricsRouter.get('/overview', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [
@@ -225,8 +256,6 @@ metricsRouter.get('/overview', async (c) => {
   }
 })
 
-type AeRow = Record<string, unknown>
-
 /** Dia UTC `YYYY-MM-DD` (também valida o `from`/`to` do arquivo frio). */
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -302,12 +331,9 @@ function footballApiErrorOrigin(
  * `cycles` conta os ciclos que registraram a pendência.
  */
 metricsRouter.get('/ops', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
   const httpWeight = '(_sample_interval * double2)'
   const httpMeasures =
     `SUM(${httpWeight}) AS attempts, SUM(_sample_interval) AS events, ` +
@@ -443,7 +469,7 @@ metricsRouter.get('/ops', async (c) => {
 
     return c.json({
       days,
-      httpFirstSeenAt: (httpFirstSeen[0]?.first_at as string | null | undefined) ?? null,
+      httpFirstSeenAt: firstAt(httpFirstSeen),
       httpByProvider: httpByProvider.map((r) => ({
         ...mapHttp(r),
         context: String(r.context ?? ''),
@@ -515,12 +541,9 @@ metricsRouter.get('/ops', async (c) => {
  * validado), dia e contagem; nome e temporada saem de `competitions`.
  */
 metricsRouter.get('/competition-activity', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [groupsCreated, predictionsSaved, dimensionSince, groupsDailyRows] = await Promise.all([
@@ -633,7 +656,7 @@ metricsRouter.get('/competition-activity', async (c) => {
 
     return c.json({
       days,
-      predictionsDimensionSince: (dimensionSince[0]?.first_at as string | null | undefined) ?? null,
+      predictionsDimensionSince: firstAt(dimensionSince),
       competitions,
       groupsDaily,
       groupsDailyTruncated: groupsDailyRows.length >= GROUP_DAILY_LIMIT,
@@ -685,12 +708,9 @@ function normalizeHour(raw: unknown): string {
  * identificador algum: só hora e contagens.
  */
 metricsRouter.get('/heatmap', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [hourlyRows, firstSeenRows, samplingRows] = await Promise.all([
@@ -736,11 +756,10 @@ metricsRouter.get('/heatmap', async (c) => {
     const firstSeen = (type: string) =>
       (firstSeenRows.find((r) => r.event_type === type)?.first_at as string | null | undefined) ??
       null
-    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
 
     return c.json({
       days,
-      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+      avgSampleInterval: sampleInterval(samplingRows),
       firstSeenAt: {
         prediction_saved: firstSeen('prediction_saved'),
         login_success: firstSeen('login_success'),
@@ -771,18 +790,15 @@ const INVITE_FUNNEL_EVENTS = `('invite_opened', 'group_joined')`
  * O payload não leva código, nome de grupo, user_hash nem texto livre de blob.
  */
 metricsRouter.get('/invite-funnel', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
   const firstEvent = (where: string) =>
     runAeSql(
       c.env,
       `SELECT blob1 AS event_type, MIN(timestamp) AS first_at ` +
         `FROM ${DATASET} WHERE ${where} GROUP BY event_type`,
-    ).then((rows) => (rows[0]?.first_at as string | null | undefined) ?? null)
+    ).then(firstAt)
 
   try {
     const [eventRows, opensSince, joinDimensionSince, samplingRows, d1] = await Promise.all([
@@ -803,14 +819,13 @@ metricsRouter.get('/invite-funnel', async (c) => {
       countInviteJoinsInD1(c.env.DB, days),
     ])
 
-    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
     return c.json({
       days,
       ...summarizeInviteEvents(eventRows),
       d1,
       opensSince,
       joinDimensionSince,
-      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+      avgSampleInterval: sampleInterval(samplingRows),
     })
   } catch (err) {
     console.error('[metrics] falha ao montar o funil de convite:', err)
@@ -829,12 +844,9 @@ metricsRouter.get('/invite-funnel', async (c) => {
  * de "ainda não coletado". O payload só leva categorias e slugs de guia validados.
  */
 metricsRouter.get('/signup-origins', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
-
-  const days = parseDays(c.req.query('days'))
-  const since = `timestamp > NOW() - INTERVAL '${days}' DAY`
+  const ae = aeWindow(c)
+  if (ae instanceof Response) return ae
+  const { days, since } = ae
 
   try {
     const [originRows, firstEventRows, samplingRows, d1Signups] = await Promise.all([
@@ -858,13 +870,12 @@ metricsRouter.get('/signup-origins', async (c) => {
       countSignupsInD1(c.env.DB, days),
     ])
 
-    const avgSample = Number(samplingRows[0]?.avg_sample_interval ?? 1)
     return c.json({
       days,
       ...summarizeSignupOrigins(originRows),
       d1: { signups: d1Signups },
-      originsSince: (firstEventRows[0]?.first_at as string | null | undefined) ?? null,
-      avgSampleInterval: Number.isFinite(avgSample) && avgSample >= 1 ? avgSample : 1,
+      originsSince: firstAt(firstEventRows),
+      avgSampleInterval: sampleInterval(samplingRows),
     })
   } catch (err) {
     console.error('[metrics] falha ao montar a origem dos cadastros:', err)
@@ -1027,9 +1038,8 @@ metricsRouter.get('/business', async (c) => {
  * Percentual e faixa vêm das mesmas constantes que o cron usa.
  */
 metricsRouter.get('/quota', async (c) => {
-  if (!c.env.CF_ACCOUNT_ID || !c.env.AE_SQL_TOKEN) {
-    return c.json({ error: 'SQL API do Analytics Engine não configurada' }, 503)
-  }
+  const unavailable = aeUnavailable(c)
+  if (unavailable) return unavailable
 
   try {
     const rows = await runAeSql(
