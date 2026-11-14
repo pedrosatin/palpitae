@@ -61,3 +61,13 @@ export const OUTCOMES = {
   away: { home: 0, away: 1, label: 'Fora' },
 } as const
 export type Outcome = keyof typeof OUTCOMES
+
+/** Sigla do time de um dos lados do jogo, ou `null` sem lado escolhido. */
+export function teamShortName(
+  match: Match,
+  side: 'home' | 'away' | null | undefined,
+): string | null {
+  if (side === 'home') return match.home_team_short_name
+  if (side === 'away') return match.away_team_short_name
+  return null
+}

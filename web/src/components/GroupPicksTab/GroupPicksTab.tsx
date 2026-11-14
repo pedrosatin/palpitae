@@ -8,8 +8,9 @@ import { roundReminder, type GroupMember, type OpenPickers } from '../../lib/gro
 import { formatMatchDate } from '../../lib/matchTime'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
+import { pickPoints } from '../../lib/roundSummary'
 import ErrorState from '../ErrorState'
-import type { Match } from '../MatchCard'
+import { teamShortName, type Match } from '../MatchCard/types'
 import PenaltyBadge from '../PenaltyBadge'
 import RoundHeader from '../RoundHeader/RoundHeader'
 import { MatchPickers, RoundReminderSummary } from './GroupPicksPresence'
@@ -199,9 +200,7 @@ function MatchPicksCard({
         <ul className={styles.pickList}>
           {rows.map(({ user_id, user_display, pick: p }) => {
             const isSelf = user_id === selfUserId
-            const total = p
-              ? p.points_awarded + (p.penalty_points ?? 0) + (p.classified_points ?? 0)
-              : 0
+            const total = p ? pickPoints(p) : 0
             return (
               <li key={user_id} className={`${styles.pickRow} ${isSelf ? styles.pickRowSelf : ''}`}>
                 <span className={styles.pickName}>
@@ -238,21 +237,13 @@ function MatchPicksCard({
 function PickScore({ match, pick: p }: { match: Match; pick: MemberPrediction }) {
   // A draw pick is ambiguous on score alone in a knockout: the
   // penalty winner is what tells two equal scores apart.
-  const showPenaltyPick = Boolean(match.decides_on_penalties) && p.predicted_penalty_winner != null
-  const penaltyTeam =
-    p.predicted_penalty_winner === 'home' ? match.home_team_short_name : match.away_team_short_name
+  const penaltyTeam = teamShortName(match, p.predicted_penalty_winner)
+  const classifiedTeam = teamShortName(match, p.predicted_classified)
+  const showPenaltyPick = Boolean(match.decides_on_penalties) && penaltyTeam !== null
   return (
     <span className={styles.pickScore}>
       {p.predicted_home_score} × {p.predicted_away_score}
-      {p.predicted_classified && (
-        <span>
-          {' '}
-          classificado:{' '}
-          {p.predicted_classified === 'home'
-            ? match.home_team_short_name
-            : match.away_team_short_name}
-        </span>
-      )}
+      {classifiedTeam !== null && <span> classificado: {classifiedTeam}</span>}
       {showPenaltyPick && (
         <PenaltyBadge team={penaltyTeam} tooltip="Vencedor previsto nos pênaltis" />
       )}
