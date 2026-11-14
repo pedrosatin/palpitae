@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { trackShareInvite } from '../../../analytics/funnel'
+import { trackShareInvite, type ShareInviteMethod } from '../../../analytics/funnel'
 import { trackEvent } from '../../../analytics/ga'
 import { buildInviteLink, buildInviteMessage } from '../../../lib/invite'
 import Button from '../../Button'
@@ -20,19 +20,12 @@ interface CreateGroupSuccessViewProps {
 
 export default function CreateGroupSuccessView({ created, onClose }: CreateGroupSuccessViewProps) {
   const [copied, setCopied] = useState(false)
+  const inviteLink = buildInviteLink(created.invite_code)
 
-  async function handleCopyCode(invite_code: string) {
-    await navigator.clipboard.writeText(invite_code)
-    trackEvent('click_create_group_copiar_codigo')
-    trackShareInvite('copy_code', 'create_group')
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function handleCopyLink(invite_code: string) {
-    await navigator.clipboard.writeText(buildInviteLink(invite_code))
-    trackEvent('click_create_group_copiar_link')
-    trackShareInvite('copy_link', 'create_group')
+  async function copy(text: string, event: string, method: ShareInviteMethod) {
+    await navigator.clipboard.writeText(text)
+    trackEvent(event)
+    trackShareInvite(method, 'create_group')
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -51,7 +44,7 @@ export default function CreateGroupSuccessView({ created, onClose }: CreateGroup
       <WhatsAppShareButton
         label="Chamar a galera no WhatsApp"
         eventContext="create_group"
-        shareLink={buildInviteLink(created.invite_code)}
+        shareLink={inviteLink}
         message={buildInviteMessage(created.name)}
         prominent
         onShared={(method) => trackShareInvite(method, 'create_group')}
@@ -61,20 +54,28 @@ export default function CreateGroupSuccessView({ created, onClose }: CreateGroup
 
       <div className={styles.codeBox}>
         <span className={styles.code}>{created.invite_code}</span>
-        <Button variant="outline" size="sm" onClick={() => handleCopyCode(created.invite_code)}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => copy(created.invite_code, 'click_create_group_copiar_codigo', 'copy_code')}
+        >
           {copied ? 'Copiado!' : 'Copiar'}
         </Button>
       </div>
 
       <div className={styles.linkRow}>
-        <span className={shared.linkText}>{buildInviteLink(created.invite_code)}</span>
-        <Button variant="outline" size="sm" onClick={() => handleCopyLink(created.invite_code)}>
+        <span className={shared.linkText}>{inviteLink}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => copy(inviteLink, 'click_create_group_copiar_link', 'copy_link')}
+        >
           {copied ? 'Copiado!' : 'Copiar link'}
         </Button>
       </div>
 
       <ShareButtons
-        shareLink={buildInviteLink(created.invite_code)}
+        shareLink={inviteLink}
         eventContext="create_group"
         message={buildInviteMessage(created.name)}
         secondary

@@ -12,6 +12,21 @@ export const PRESET_VALUES: Record<
   winner_only: { exact: 0, winner: 1, penalty: 1 },
 }
 
+interface ScoringDefaults {
+  preset: ScoringPreset
+  exact: number
+  winner: number
+  penalty: number
+  classified: number
+}
+
+// Valores do formulário aberto ou reiniciado: preset clássico, sem bônus de classificado.
+export const DEFAULT_SCORING: ScoringDefaults = {
+  preset: 'classic',
+  ...PRESET_VALUES.classic,
+  classified: 0,
+}
+
 export const SCORING_HELP_TEXT: Record<'exact' | 'winner', string> = {
   exact: 'Placar exato: pontos para quem crava o placar da partida (ex.: 2 a 1).',
   winner:
