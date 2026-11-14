@@ -1,9 +1,9 @@
 /**
  * Observabilidade server-side — dual-write de eventos de negócio e de saúde.
  *
- * Hoje só escreve no Analytics Engine (hot path, retenção ~3 meses, grátis). O cold
- * path (R2, retenção ilimitada) virá de um cron diário que exporta este dataset —
- * não muda nada aqui. Ver `docs/observability.md` para a arquitetura completa.
+ * Escreve só no Analytics Engine (hot path, retenção ~3 meses, grátis). O cold path é
+ * o cron diário de `export.ts`, que copia o dataset para o R2, onde os arquivos ficam
+ * 13 meses. Ver `docs/observability.md` para a arquitetura completa.
  *
  * Modelo fixo do Analytics Engine: até 20 `blobs` (strings/dimensões), até 20
  * `doubles` (números/medidas), 1 `index` (chave de sampling). Convenção do projeto:

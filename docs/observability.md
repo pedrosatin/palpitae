@@ -105,7 +105,7 @@ páginas (30 mil linhas) porque o dia inteiro fica em memória antes do `put`, e
 128 MB. Em novembro de 2026, o maior dia dos 90 anteriores tinha cerca de 250 linhas.
 
 **Dia acima do teto: eventos de negócio primeiro.** Tráfego barato de baixo valor não pode
-tirar do arquivo permanente os eventos de negócio e de segurança, como `account_created` e
+tirar do arquivo no R2 os eventos de negócio e de segurança, como `account_created` e
 `security_storage_error`. A coleta tem duas fases.
 
 1. A leitura em ordem de tempo segue como antes. Se ela chega ao fim do dia, o arquivo é
