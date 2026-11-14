@@ -19,6 +19,7 @@ import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
 import { getGroupMembership, getGroupMembershipTimed } from '../groups/membership'
+import { guardedUpsertParams, prepareGuardedUpsert } from './guardedUpsert'
 import { fetchOpenPickers, indexOpenPickers } from './openPickers'
 import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
 import {
@@ -32,6 +33,8 @@ import {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+const LOCKED_ERROR = { error: 'Palpite bloqueado — o jogo já começou' }
 
 async function isPilotGroupBlocked(
   c: Context<AppContext>,
@@ -761,6 +764,9 @@ router.get('/group', requireAuth, async (c) => {
  *   - If a match is rescheduled before it starts, the lock follows the new start_time
  *   - Jogo adiado (`postponed = 1`) que não começou NÃO trava, mesmo com start_time no passado
  *   - Jogo que o sync viu iniciado (`locked_at`) fica travado para sempre
+ *   - A escrita confere a trava de novo no próprio comando, com o relógio do banco
+ *     (`prepareGuardedUpsert`). Se o jogo travou depois da leitura, nada é gravado e a
+ *     resposta é 422
  *
  * Body: { group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner? }
  *
@@ -860,7 +866,7 @@ router.put('/', requireAuth, async (c) => {
   // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
   const now = new Date().toISOString()
   if (isMatchLocked(match, now)) {
-    return c.json({ error: 'Palpite bloqueado — o jogo já começou' }, 422)
+    return c.json(LOCKED_ERROR, 422)
   }
 
   // Penalty pick: required only for a draw in an eligible (competition, phase),
@@ -887,28 +893,22 @@ router.put('/', requireAuth, async (c) => {
   }
   const penaltyWinner = penalty.value
 
-  await db
-    .prepare(
-      `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-         predicted_home_score     = excluded.predicted_home_score,
-         predicted_away_score     = excluded.predicted_away_score,
-         predicted_penalty_winner = excluded.predicted_penalty_winner,
-         updated_at               = excluded.updated_at`,
-    )
+  // A conferência acima é a resposta rápida. A escrita relê a trava com o relógio do
+  // banco, e zero linhas alteradas significa que o jogo travou depois da leitura.
+  const written = await prepareGuardedUpsert(db)
     .bind(
-      crypto.randomUUID(),
-      userId,
-      group_id,
-      match_id,
-      predicted_home_score,
-      predicted_away_score,
-      penaltyWinner,
-      now,
-      now,
+      ...guardedUpsertParams({
+        userId,
+        groupId: group_id,
+        matchId: match_id,
+        home: predicted_home_score,
+        away: predicted_away_score,
+        penaltyWinner,
+        now,
+      }),
     )
     .run()
+  if (written.meta.changes === 0) return c.json(LOCKED_ERROR, 422)
 
   logEvent(c.env.AE, 'prediction_saved', {
     blobs: [group_id, match.round, await hashUserId(userId), 'single', match.competition_id],
@@ -933,6 +933,8 @@ router.put('/', requireAuth, async (c) => {
  *     database otherwise (including when the payload's leg 1 is locked).
  * Matches that fail a check are skipped (not the whole request) and reported back
  * so the frontend can keep the rest. Valid upserts run in a single D1 batch.
+ * Cada upsert confere a trava de novo no próprio comando, com o relógio do banco. O jogo
+ * que travou depois da leitura altera zero linhas e passa de `saved` para `locked`.
  *
  * Body: { group_id, predictions: [{ match_id, predicted_home_score, predicted_away_score }] }
  *
@@ -1089,15 +1091,7 @@ function buildBulkPutStatements(
   // Cache to avoid re-parsing the penalty_phases JSON string on every prediction loop iteration.
   const penaltyPhasesCache = new Map<string, string[]>()
 
-  const insertStmt = db.prepare(
-    `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (user_id, group_id, match_id) DO UPDATE SET
-       predicted_home_score     = excluded.predicted_home_score,
-       predicted_away_score     = excluded.predicted_away_score,
-       predicted_penalty_winner = excluded.predicted_penalty_winner,
-       updated_at               = excluded.updated_at`,
-  )
+  const insertStmt = prepareGuardedUpsert(db)
 
   for (const [matchId, matchData] of byMatch.entries()) {
     const info = matchInfo.get(matchId)
@@ -1138,15 +1132,15 @@ function buildBulkPutStatements(
 
     statements.push(
       insertStmt.bind(
-        crypto.randomUUID(),
-        userId,
-        groupId,
-        matchId,
-        home,
-        away,
-        penaltyWinner,
-        now,
-        now,
+        ...guardedUpsertParams({
+          userId,
+          groupId,
+          matchId,
+          home,
+          away,
+          penaltyWinner,
+          now,
+        }),
       ),
     )
     saved.push(matchId)
@@ -1218,7 +1212,7 @@ async function handleBulkPut(c: Context<AppContext>) {
     now,
   )
 
-  const { saved, locked, notFound, invalidPenalty, statements } = buildBulkPutStatements(
+  const { saved: planned, locked, notFound, invalidPenalty, statements } = buildBulkPutStatements(
     db,
     userId,
     group_id as string,
@@ -1241,6 +1235,7 @@ async function handleBulkPut(c: Context<AppContext>) {
     )
   }
 
+  let saved = planned
   if (statements.length > 0) {
     const budgetError = await enforceDailyWriteBudget(c, statements.length)
     if (budgetError) return budgetError
@@ -1248,18 +1243,24 @@ async function handleBulkPut(c: Context<AppContext>) {
     for (let i = 0; i < statements.length; i += 100) {
       batches.push(db.batch(statements.slice(i, i + 100)))
     }
-    await Promise.all(batches)
-    logEvent(c.env.AE, 'prediction_saved', {
-      // round vazio: múltiplas rodadas. Todo jogo salvo é da competição do grupo.
-      blobs: [
-        group_id!,
-        '',
-        await hashUserId(userId),
-        'bulk',
-        matchInfo.get(saved[0])?.competition_id,
-      ],
-      doubles: [saved.length],
-    })
+    // `planned[i]` é o jogo de `statements[i]`. A escrita relê a trava com o relógio do
+    // banco, e zero linhas alteradas significa que o jogo travou depois da leitura.
+    const written = (await Promise.all(batches)).flat()
+    saved = planned.filter((_, i) => written[i].meta.changes !== 0)
+    locked.push(...planned.filter((_, i) => written[i].meta.changes === 0))
+    if (saved.length > 0) {
+      logEvent(c.env.AE, 'prediction_saved', {
+        // round vazio: múltiplas rodadas. Todo jogo salvo é da competição do grupo.
+        blobs: [
+          group_id!,
+          '',
+          await hashUserId(userId),
+          'bulk',
+          matchInfo.get(saved[0])?.competition_id,
+        ],
+        doubles: [saved.length],
+      })
+    }
   }
 
   return c.json({ ok: true, saved, locked, not_found: notFound })

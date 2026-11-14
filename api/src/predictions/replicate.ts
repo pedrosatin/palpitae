@@ -1,13 +1,14 @@
 import type { Context } from 'hono'
 import { hasPilotAccess } from '../auth/permissions'
 import { competitionStatusSql } from '../groups/competitionStatus'
-import { isMatchLocked, lockedSql, SQL_NOW } from '../matches/locking'
+import { isMatchLocked } from '../matches/locking'
 import { resolveTwoLegClassified } from '../matches/scoring'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
 import { fetchTieMatches, indexTies, type TieInfo, type TieMatch } from '../matches/ties'
 import { hashUserId, logEvent } from '../observability'
 import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
+import { guardedUpsertParams, prepareGuardedUpsert } from './guardedUpsert'
 import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
 
 /** Grupos de destino e jogos por requisição. O lote de escrita cresce com o produto dos dois. */
@@ -214,22 +215,7 @@ function planWrites(input: {
   const { db, userId, sourceGroupId, now, targets, ties, existing, onlyMissing } = input
   // O jogo é relido na própria escrita, com o relógio do banco. Se ele travou ou
   // começou depois das consultas, nada é gravado.
-  // Com `onlyMissing`, o palpite salvo no destino depois das consultas também fica.
-  const insert = db.prepare(
-    `INSERT INTO predictions (id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, predicted_penalty_winner, created_at, updated_at)
-     SELECT ?, ?, ?, m.id, ?, ?, ?, ?, ?
-     FROM matches m
-     WHERE m.id = ? AND NOT ${lockedSql('m', SQL_NOW)}
-     ON CONFLICT (user_id, group_id, match_id) DO ${
-       onlyMissing
-         ? 'NOTHING'
-         : `UPDATE SET
-       predicted_home_score     = excluded.predicted_home_score,
-       predicted_away_score     = excluded.predicted_away_score,
-       predicted_penalty_winner = excluded.predicted_penalty_winner,
-       updated_at               = excluded.updated_at`
-     }`,
-  )
+  const insert = prepareGuardedUpsert(db, { onlyMissing })
   const allSourceByMatch = new Map(input.open.map((r) => [r.match_id, r]))
   const statements: D1PreparedStatement[] = []
   const statementMatches: string[] = []
@@ -296,15 +282,15 @@ function planWrites(input: {
       if (current) result.replaced += 1
       statements.push(
         insert.bind(
-          crypto.randomUUID(),
-          userId,
-          group.id,
-          home,
-          away,
-          penalty.value,
-          now,
-          now,
-          source.match_id,
+          ...guardedUpsertParams({
+            userId,
+            groupId: group.id,
+            matchId: source.match_id,
+            home,
+            away,
+            penaltyWinner: penalty.value,
+            now,
+          }),
         ),
       )
       statementMatches.push(source.match_id)

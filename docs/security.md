@@ -69,6 +69,13 @@ que não começou, mesmo depois do horário original, o palpite reabre até o no
 horário. Os palpites revelados entre o horário original e esse sync voltam a ficar
 ocultos para os outros membros. O placar de um palpite vai de 0 a 99.
 
+A escrita do palpite confere a trava no mesmo comando que grava. `PUT /predictions`,
+`PUT /predictions/bulk`, `POST /predictions/import` e `POST /predictions/replicate`
+usam `INSERT … SELECT … WHERE NOT lockedSql(…)` com o relógio do banco, então um
+palpite não entra se o kickoff passou entre a leitura do handler e a gravação. Quando
+a gravação altera zero linhas, o `PUT` único responde 422 e o `bulk` inclui o jogo em
+`locked`.
+
 ## Sessões
 
 O logout registra o hash SHA-256 da sessão em `revoked_sessions` até seu vencimento.
