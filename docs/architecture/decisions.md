@@ -900,6 +900,30 @@ O gatilho para migrar ao Workers Paid é a primeira queda por cota, ou o uso di�
 - Contra, o isolado é efêmero. A Cloudflare descarta isolados sem aviso, e o saldo ainda não gravado se perde. Cada isolado vivo do mesmo usuário guarda até um limiar sem gravar, então o excesso possível cresce com o número de isolados. A checagem lê um balde atrasado em até um limiar por isolado.
 - Não adotado agora. Com as consultas do limitador fora da medição e sem gravar a linha sem uso, uma requisição só de leitura grava 4 linhas e não gasta o orçamento de escrita. Fica como follow-up se a cota de escritas virar o gargalo antes do gatilho de migração ao Paid. A imprecisão continuaria limitada ao limiar vezes o número de isolados.
 
+## ADR-023: Palpite revelado fica travado para sempre
+
+**Status** Accepted
+**Date** 2026-11-14
+
+### Contexto
+
+O ponto 3 do ADR-013 exige que a revelação dos palpites de grupos ocultos impeça novas edições. A leitura revela o palpite quando o kickoff passa com `postponed = 0`. Antes desta correção, um sync posterior de adiamento, cancelamento ou horário mais tarde podia reabrir a escrita sem apagar o que os outros participantes já tinham visto.
+
+### Decisão
+
+O upsert dos dois provedores persiste em `locked_at` o instante do sync quando a linha anterior tem `postponed = 0` e `start_time` menor ou igual ao instante do sync. A comparação usa segundos UTC, no formato imposto pela migration 0043. Continuam valendo as travas por status iniciado do provedor e por status local `live` ou `finished`. `COALESCE` preserva a primeira trava gravada.
+
+O filtro de escrita condicional do upsert considera essa mesma condição. A primeira sincronização após o kickoff grava a trava, mesmo sem mudança de payload; repetições seguintes continuam sem gravação. A comparação usa os campos anteriores à atualização, para que a nova data ou o novo adiamento jamais apaguem a trava anterior.
+
+### Consequências
+
+- Adiamento recebido antes do kickoff mantém a edição aberta até a nova data. Depois do kickoff conhecido, a trava é definitiva mesmo quando o jogo ainda não começou de fato.
+- A regra vale para todos os grupos que usam o jogo. A trava pertence a `matches` e independe de alguém ter consultado a revelação.
+- Pontuação, descoberta diária e orçamento do poller mantêm suas regras. O sync continua sem gravar placar parcial ou placar de jogo adiado.
+- A correção protege as próximas sincronizações. Jogos já reabertos exigem investigação histórica antes de qualquer reparo. A [consulta de investigação](../trava-monotonica.sql) só lê dados e documenta os limites de `updated_at` e da ausência do horário original no banco.
+
+---
+
 ## ADR-024: Pontuação por jogo com orçamento de chamadas por invocação
 
 **Status:** Accepted

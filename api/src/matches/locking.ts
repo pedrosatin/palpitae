@@ -5,20 +5,14 @@
  * validação de escrita. Divergir entre eles abre brecha: se a leitura revela o
  * palpite dos outros mas a escrita ainda aceita edição, dá pra copiar.
  *
- * Travado = o sync já viu o jogo iniciado (`locked_at` preenchido), OU está ao vivo /
+ * Travado = o sync já persistiu a trava em `locked_at`, OU está ao vivo /
  * encerrado, OU o horário passou e o jogo não está adiado.
  *
- * `locked_at` (migration 0016) é o instante em que o sync viu o jogo iniciado pela
- * primeira vez (status de início do provider ou status local live/finished) e nunca
- * é apagado. Sem ele, um jogo suspenso ou adiado DEPOIS do início (provider manda
- * SUSPENDED/POSTPONED, o status volta para 'scheduled' e `postponed` vira 1) reabria
- * palpites já revelados aos outros membros. Horário vencido sozinho não grava
- * `locked_at`: um adiamento de jogo que não começou continua reabrindo o palpite.
- *
- * O `postponed = 0` existe porque um jogo adiado mantém o `start_time` original
- * (ver o upsert em sync.ts) — já passou, mas o jogo não aconteceu. Sem essa
- * cláusula o palpite ficaria congelado para sempre e o jogo seria disputado
- * semanas depois com todo mundo preso ao palpite antigo.
+ * `locked_at` também registra a trava por horário da linha anterior no sync.
+ * Depois da revelação, adiamento, cancelamento e remarcação preservam a trava
+ * permanente, conforme o ADR-023. Um adiamento recebido antes do kickoff mantém
+ * a edição aberta até a nova data. Enquanto adiado, o jogo conserva o último
+ * horário conhecido e `postponed = 1` impede a trava por esse horário antigo.
  */
 
 /**

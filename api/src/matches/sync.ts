@@ -765,12 +765,14 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
      )
      ON CONFLICT (external_id, provider) DO UPDATE SET
        -- Travamento permanente: uma vez preenchido, locked_at não volta a NULL. É
-       -- preenchido na primeira vez que o sync vê o jogo iniciado: status local
-       -- anterior 'live'/'finished' ou status de início vindo do provider. No
-       -- DO UPDATE, matches.* são os valores antigos da linha.
+       -- preenchido quando o provedor informa início ou a linha anterior já
+       -- estava travada por status ou horário. No DO UPDATE, matches.* são os
+       -- valores antigos. O parâmetro 21 é o instante do sync, comum aos provedores.
        locked_at          = COALESCE(
                               matches.locked_at,
-                              CASE WHEN matches.status IN ('live', 'finished') THEN ? END,
+                              CASE WHEN matches.status IN ('live', 'finished')
+                                     OR (matches.postponed = 0 AND matches.start_time <= strftime('%Y-%m-%dT%H:%M:%SZ', ?21))
+                                   THEN ?21 END,
                               excluded.locked_at
                             ),
        status             = excluded.status,
@@ -828,7 +830,8 @@ export const MATCH_UPSERT_SQL = `INSERT INTO matches (
        -- penalty_winner, times ou fase): ao acrescentar um campo no SET, acrescente aqui.
        AND (
          (matches.locked_at IS NULL
-           AND (matches.status IN ('live', 'finished') OR excluded.locked_at IS NOT NULL))
+           AND (matches.status IN ('live', 'finished') OR excluded.locked_at IS NOT NULL
+             OR (matches.postponed = 0 AND matches.start_time <= strftime('%Y-%m-%dT%H:%M:%SZ', ?21))))
          OR matches.home_team_id       IS NOT excluded.home_team_id
          OR matches.away_team_id       IS NOT excluded.away_team_id
          OR matches.phase              IS NOT excluded.phase

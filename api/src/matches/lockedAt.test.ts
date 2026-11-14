@@ -111,18 +111,18 @@ describe('locked_at: trava permanente quando o sync vê o jogo iniciado', () => 
     expect(lockedInSql(LATER)).toBe(true)
   })
 
-  it('adiamento visto depois do horário original, sem o jogo ter começado, reabre o palpite', async () => {
+  it('adiamento visto depois da revelação mantém o palpite travado', async () => {
     const { sync, row, lockedInSql } = setup()
     await sync('TIMED', BEFORE)
     // Até o sync ver o adiamento, a trava por horário vale normalmente.
     expect(lockedInSql(DURING)).toBe(true)
     await sync('POSTPONED', DURING, PLACEHOLDER)
-    expect(row()).toMatchObject({ postponed: 1, locked_at: null })
-    expect(lockedInSql(DURING)).toBe(false)
-    // Nova data: segue aberto até o novo kickoff.
+    expect(row()).toMatchObject({ postponed: 1, locked_at: DURING })
+    expect(lockedInSql(DURING)).toBe(true)
+    // A data nova preserva a trava dos palpites já revelados.
     await sync('TIMED', LATER, NEW_DATE)
-    expect(row()).toMatchObject({ postponed: 0, locked_at: null, start_time: NEW_DATE })
-    expect(lockedInSql(LATER)).toBe(false)
+    expect(row()).toMatchObject({ postponed: 0, locked_at: DURING, start_time: NEW_DATE })
+    expect(lockedInSql(LATER)).toBe(true)
     expect(lockedInSql(NEW_DATE)).toBe(true)
   })
 

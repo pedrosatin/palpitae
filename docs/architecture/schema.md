@@ -210,18 +210,18 @@ A game between two teams within a competition.
 | `phase`          | TEXT    | `group` \| `round_of_16` \| `quarter_final` etc. |
 | `round`          | TEXT    | e.g., `'5'`, `'LAST_16'`; never null (migration 0043 trigger) |
 | `postponed`      | INTEGER | `1` while the provider reports the match as postponed, suspended or cancelled (migration 0013) |
-| `locked_at`      | TEXT    | `NULL` until the sync first sees the match started (migration 0016); never cleared. It is the sync time, not the actual kickoff |
+| `locked_at`      | TEXT    | `NULL` até o sync observar início ou uma trava por horário na linha anterior. Nunca é apagado. Guarda o instante do sync, conforme o ADR-023 |
 | `created_at`     | TEXT    | ISO 8601 UTC                                     |
 
 Unique constraint: `(external_id, provider)`
 
 Triggers `matches_format_insert` and `matches_format_update` (migration 0043, no table rebuild, ADR-013) reject a `start_time` outside `YYYY-MM-DDTHH:MM:SSZ`, `status = 'finished'` without both `home_score` and `away_score`, and a null `round`. On update each rule only applies to the column being changed, so an older row outside the format still accepts writes that do not touch it.
 
-> **Prediction lock rule:** A prediction for this match is locked when `matches.locked_at` is set, when `status` is `live` or `finished`, or when `now() >= start_time` and `postponed = 0` (`api/src/matches/locking.ts`; in SQL `now` is truncated to whole seconds, so the SQL and TS checks lock at the same millisecond). `matches.locked_at` is written only when the sync sees the match started (football-data `IN_PLAY`, `PAUSED`, `EXTRA_TIME`, `PENALTY_SHOOTOUT`, `LIVE`, `SUSPENDED`, `FINISHED`, `AWARDED`; ESPN state `in` or `post` outside postponed/cancelled, or `STATUS_SUSPENDED`; or local status `live`/`finished`), so a match suspended after starting stays locked, while a match postponed before starting reopens. No lock column is stored on `predictions` (ADR-004).
+> O palpite trava quando `matches.locked_at` está preenchido, o status é `live` ou `finished`, ou o horário passou com `postponed = 0`. O SQL compara horários em segundos, como o formato de `start_time`. No upsert, os dois provedores preenchem `locked_at` se a linha anterior já estava travada por horário, se o status local indica início ou se o provedor informa início. Adiamento, cancelamento e horário mais tarde preservam essa trava. Um adiamento recebido antes do kickoff mantém a edição aberta. A trava continua fora de `predictions`, conforme os ADR-004 e ADR-023.
 
 #### Ciclo da partida
 
-Os dois provedores gravam a mesma combinação de colunas para o mesmo estado do jogo (`api/src/matches/sync.ts` e `espnSync.ts`; regressão em `matchLifecycle.test.ts`), com uma exceção conhecida: num jogo suspenso depois do início, o `CANCELLED` da football-data não grava `locked_at`, e o `STATUS_SUSPENDED` da ESPN grava. O status da football-data não diz se o jogo chegou a começar, então pela football-data esse jogo fica aberto para palpite até a retomada. O sync nunca grava `live`: o valor fica no CHECK e os leitores o aceitam, mas o jogo em andamento é `scheduled` com `locked_at` ou com o horário vencido.
+Os dois provedores usam `MATCH_UPSERT_SQL`, definido em `api/src/matches/sync.ts` e importado por `espnSync.ts`. Um `CANCELLED` depois do kickoff preserva a trava por horário da linha anterior, mesmo sem confirmação de início. O sync grava jogos em andamento como `scheduled` com `locked_at`; os leitores também aceitam o status legado `live`.
 
 | Estado | `status` | `postponed` | `locked_at` | Placar | `scored_at` |
 | --- | --- | --- | --- | --- | --- |
@@ -237,10 +237,10 @@ Transições:
 - Adiado, cancelado ou suspenso → agendado: o provedor tira o status com a data nova, `postponed` volta a 0 e `start_time` passa a valer. Enquanto `postponed = 1`, `start_time` guarda o último horário conhecido (ADR-013).
 - Encerrado → encerrado com outro placar, pênaltis, times ou fase: correção; `scored_at` volta a nulo e a pontuação refaz os pontos.
 - Encerrado → qualquer estado não final: recusado pelo upsert. Uma resposta atrasada, inclusive um final sem placar, não desfaz o resultado.
-- `locked_at` nunca volta a nulo.
+- `locked_at` nunca volta a nulo. O primeiro sync após o horário vencido grava a trava da linha anterior, mesmo se o provedor repetir o mesmo estado. Os próximos syncs sem mudança continuam sem gravar.
 - O fallback da ESPN (ADR-016) leva um jogo da football-data ao encerrado com `postponed = 0`, mesmo que a football-data ainda o mostre adiado ou suspenso.
 
-Cancelado não tem estado próprio. A football-data já mandou como `CANCELLED`, com placar 0-0 e data nova, o Rayo Vallecano × Athletic de 10/10/2026, que a ESPN mostra como suspenso aos 33 minutos, com retomada marcada para 09/12. Como o cancelamento dos provedores pode voltar ao calendário, o jogo cancelado segue como adiado: não ganha placar nem pontuação, não trava o palpite e sai das consultas de resultado pendente que excluem adiados (resgate do poller depois da janela ativa, jogos ao vivo do painel, `overdue_no_score` das métricas, pendências da rodada). O poller volta a consultá-lo na varredura de atrasados no máximo a cada 3 horas, até 7 dias depois do último horário conhecido, para ver a remarcação que a descoberta diária ainda não trouxe. Ele continua impedindo o encerramento da competição.
+Cancelado segue como adiado, sem placar nem pontuação. Se a linha anterior já estava travada por horário, o cancelamento preserva a trava. O jogo sai das consultas de resultado pendente que excluem adiados, como o resgate do poller após a janela ativa, os jogos ao vivo do painel, `overdue_no_score` e as pendências da rodada. O poller ainda o consulta na varredura de atrasados a cada 3 horas, até 7 dias depois do último horário conhecido. Essa consulta pode detectar a remarcação antes da descoberta diária. O jogo continua impedindo o encerramento da competição.
 
 ---
 
