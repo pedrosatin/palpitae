@@ -1,5 +1,6 @@
 import type { AnalyticsEngineDataset, D1Database } from '@cloudflare/workers-types'
 import { hasPilotAccess } from '../auth/permissions'
+import { notBannedSql } from '../groups/ranking'
 import { lockedSql } from '../matches/locking'
 import { roundLabel } from '../matches/rounds'
 import { isoSeconds } from '../matches/sync'
@@ -247,6 +248,9 @@ type Digest = {
  * remarcado tem `postponed = 0` e entra no dia novo, mesmo em rodada que ficou para
  * trás (ADR-019).
  *
+ * Quem tem registro em `group_bans` do grupo fica de fora, pelo mesmo filtro das
+ * outras leituras (`notBannedSql`), mesmo que sobre uma linha em `group_members`.
+ *
  * Os `CROSS JOIN` fixam a ordem. A consulta parte dos jogos do dia pelo índice de
  * `start_time`, e cada junção seguinte é uma busca por chave. Binds em
  * `pendingMatchesBinds`.
@@ -283,6 +287,7 @@ export const PENDING_MATCHES_SQL = `SELECT
          AND m.postponed = 0
          AND NOT ${lockedSql('m')}
          AND u.email_unsubscribed_at IS NULL
+         AND ${notBannedSql('gm')}
          AND NOT EXISTS (
            SELECT 1 FROM predictions p
            WHERE p.user_id = u.id AND p.group_id = g.id AND p.match_id = m.id

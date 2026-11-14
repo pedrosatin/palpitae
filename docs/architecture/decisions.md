@@ -794,6 +794,8 @@ Quando o teto não cobre todos, a fila de envio começa por quem recebeu o lembr
 
 O dia do lembrete e a meia-noite que fecha a lista saem do fuso `America/Sao_Paulo` pela base do `Intl`. Antes vinham de um deslocamento fixo de 3 horas. Se o horário de verão voltar, o jogo de 00:30 do dia seguinte continua fora da lista.
 
+A consulta dos pendentes exclui o grupo de quem tem registro em `group_bans`, pelo `notBannedSql` das outras leituras. O filtro vale mesmo que sobre uma linha em `group_members` para a pessoa banida. É uma busca pela chave primária de `group_bans`, sem leitura a mais por grupo.
+
 Grupo de competição em piloto só entra no e-mail de quem tem acesso ao piloto (`ADMIN_EMAIL` ou `PILOT_EMAILS`), o mesmo critério da lista de grupos.
 
 O descadastro é conferido de novo durante o envio. A gravação da reserva só reserva quem ainda está inscrito, então quem saiu entre a consulta dos pendentes e a reserva fica de fora. Essa leitura vale por 5 segundos (`UNSUB_RECHECK_MS`). Uma tentativa de envio, inclusive um reenvio, que comece depois desse prazo relê numa consulta só a preferência de todos os destinatários que faltam, e a consulta desconta um subrequest do mesmo saldo de 45. Um lote cheio dura mais de 5 segundos, porque os envios saem um por vez, e gasta de 1 a 3 vagas do teto nessas consultas. Ler antes de cada envio cortaria pela metade quem cabe no teto. Quem descadastrou não recebe, não conta como falha e tem a reserva devolvida. Se a consulta falhar, a fila encerra e os restantes registram `email_reminder_failed` com `reason = unsub_check_failed`.
