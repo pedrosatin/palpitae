@@ -20,16 +20,13 @@ import {
 import { useGaPageView } from './analytics/useGaPageView'
 import { RouteErrorBoundary } from './components/ErrorBoundary'
 import { buildApiUrl } from './config'
-import {
-  clearSessionExpired,
-  notifyLogoutUnconfirmed,
-  SESSION_EXPIRED_EVENT,
-} from './lib/api'
+import { clearSessionExpired, notifyLogoutUnconfirmed, SESSION_EXPIRED_EVENT } from './lib/api'
 import { invalidateApiCache } from './lib/api-cache'
 import { INVITE_PATH_PREFIX } from './lib/invite'
 import { loggedInLoginTarget, pageLoadedFromHistory } from './lib/loginRedirect'
 import { clearStoredDrafts } from './lib/predictionDraftStorage'
 import LandingPage from './pages/LandingPage'
+import type { User } from './types'
 
 /**
  * The authenticated pages pull in the heavy app surface (modals, tabs).
@@ -82,20 +79,6 @@ function VisitorHome({ authResolved }: { authResolved: boolean }) {
     return <Navigate to={`${INVITE_PATH_PREFIX}${encodeURIComponent(convite)}`} replace />
   }
   return <LandingPage />
-}
-
-/**
- * Represents an authenticated user's basic profile.
- * Shape mirrors the GET /auth/me response from the API.
- */
-interface User {
-  id: string
-  email: string
-  nickname?: string
-  avatar_url?: string
-  feature_flags?: {
-    create_group?: boolean
-  }
 }
 
 // `unavailable`: o `/auth/me` respondeu 5xx. Não sabemos se há sessão, então ninguém é
@@ -227,18 +210,32 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
     checkSession()
   }
 
+  const endSession = useCallback(
+    ({
+      clearDrafts = false,
+      beforeLeave,
+    }: { clearDrafts?: boolean; beforeLeave?: () => void } = {}) => {
+      if (clearDrafts) {
+        // Junto com a troca de tela, para a aba Palpitar aberta não regravar antes de desmontar.
+        clearStoredDrafts()
+        clearSessionExpired()
+      }
+      invalidateApiCache()
+      beforeLeave?.()
+      setUser(null)
+      setStatus('unauthenticated')
+    },
+    [],
+  )
+
   // Any apiFetch call that hits a 401 broadcasts this event. Drop auth state so the
   // router swaps to the login screen instead of leaving tabs stuck on their own
   // "erro ao carregar" with no data. LoginPage reads the flag to explain why.
   useEffect(() => {
-    const onExpired = () => {
-      invalidateApiCache()
-      setUser(null)
-      setStatus('unauthenticated')
-    }
+    const onExpired = () => endSession()
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
-  }, [])
+  }, [endSession])
 
   // Logout explícito apaga os rascunhos de palpite deste navegador. A sessão
   // expirada mantém, porque a pessoa volta a entrar e recupera o que digitou.
@@ -260,27 +257,22 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
         () => false,
       )
       .then((confirmed) => {
-        // Junto com a troca de tela, para a aba Palpitar aberta não regravar antes de desmontar.
-        clearStoredDrafts()
-        invalidateApiCache()
-        clearSessionExpired()
-        if (!confirmed) {
-          notifyLogoutUnconfirmed()
-          navigate('/entrar', { replace: true })
-        }
-        setUser(null)
-        setStatus('unauthenticated')
+        endSession({
+          clearDrafts: true,
+          beforeLeave: confirmed
+            ? undefined
+            : () => {
+                notifyLogoutUnconfirmed()
+                navigate('/entrar', { replace: true })
+              },
+        })
       })
   }
 
   // "Sair de todos os dispositivos" já apagou o cookie e as sessões no servidor.
   function handleLoggedOutEverywhere() {
     clearSignupAttribution()
-    clearSessionExpired()
-    clearStoredDrafts()
-    invalidateApiCache()
-    setUser(null)
-    setStatus('unauthenticated')
+    endSession({ clearDrafts: true })
   }
 
   // Enquanto o auth resolve, a landing continua na tela para quem chegou com
@@ -288,11 +280,11 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
   // `GET /auth/me` para pintá-la era parte do que atrasava o LCP no mobile. As
   // demais rotas continuam esperando, porque dependem de saber quem é o usuário.
   const paintLandingEarly = status === 'loading' && landingPrerenderizada
+  const isInviteRoute = matchPath('/convite/:code', location.pathname) !== null
 
   // O convite também não espera o auth, porque o visitante decide nessa tela se entra.
   // Quem tem sessão conhecida já saiu de `/convite/` no script do index.html.
-  const paintInviteEarly =
-    status === 'loading' && matchPath('/convite/:code', location.pathname) !== null
+  const paintInviteEarly = status === 'loading' && isInviteRoute
 
   // Sem pintura antecipada, seguimos com a tela escura pintada inline no
   // index.html até a rota aparecer — nada de flash branco.
@@ -302,8 +294,7 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
   // teve sessão neste dispositivo. As rotas privadas e quem tem a marca de sessão
   // veem o aviso. A URL fica como está: com a API de volta, "Tentar novamente"
   // abre a mesma rota.
-  const publicRoute =
-    location.pathname === '/' || matchPath('/convite/:code', location.pathname) !== null
+  const publicRoute = location.pathname === '/' || isInviteRoute
   if (status === 'unavailable' && (!publicRoute || hasKnownSession()))
     return (
       <Suspense fallback={null}>

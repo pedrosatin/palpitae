@@ -21,14 +21,15 @@ interface GroupHeaderProps {
   leaving: boolean
 }
 
-interface GroupMenuProps {
-  isAdmin: boolean
-  onOpenRename: () => void
-  onOpenRules?: () => void
-  onDeleteGroup: () => void
-  deleting: boolean
-  onLeaveGroup: () => void
-  leaving: boolean
+type GroupMenuProps = Omit<GroupHeaderProps, 'group'>
+
+function StatItem({ value, label }: { value: string | number; label: string }) {
+  return (
+    <div className={styles.statItem}>
+      <span className={styles.statValue}>{value}</span>
+      <span className={styles.statLabel}>{label}</span>
+    </div>
+  )
 }
 
 function GroupMenu({
@@ -137,47 +138,21 @@ function GroupMenu({
   )
 }
 
-export function GroupHeader({
-  group,
-  isAdmin,
-  onOpenRename,
-  onOpenRules,
-  onDeleteGroup,
-  deleting,
-  onLeaveGroup,
-  leaving,
-}: GroupHeaderProps) {
+export function GroupHeader({ group, ...menuProps }: GroupHeaderProps) {
   return (
     <div className={styles.groupHeader}>
       <div className={styles.groupMeta}>
         <span className={styles.competition}>{group.competition_name ?? group.competition_id}</span>
         <div className={styles.groupNameRow}>
           <h1 className={styles.groupName}>{group.name}</h1>
-          <GroupMenu
-            isAdmin={isAdmin}
-            onOpenRename={onOpenRename}
-            onOpenRules={onOpenRules}
-            onDeleteGroup={onDeleteGroup}
-            deleting={deleting}
-            onLeaveGroup={onLeaveGroup}
-            leaving={leaving}
-          />
+          <GroupMenu {...menuProps} />
         </div>
       </div>
       <div className={styles.groupActions}>
         <div className={styles.stats}>
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{group.member_count}</span>
-            <span className={styles.statLabel}>membros</span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{positionLabel(group.user_position)}</span>
-            <span className={styles.statLabel}>sua posição</span>
-          </div>
-          <div className={styles.statItem}>
-            <span className={styles.statValue}>{group.user_points}</span>
-            <span className={styles.statLabel}>pontos</span>
-          </div>
+          <StatItem value={group.member_count} label="membros" />
+          <StatItem value={positionLabel(group.user_position)} label="sua posição" />
+          <StatItem value={group.user_points} label="pontos" />
         </div>
       </div>
     </div>
