@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import Modal from './Modal'
 
 function renderModal(props?: Partial<Parameters<typeof Modal>[0]>) {
@@ -9,12 +9,17 @@ function renderModal(props?: Partial<Parameters<typeof Modal>[0]>) {
     isOpen: true,
     onClose: vi.fn(),
     title: 'Test Modal',
+    analyticsId: 'criar_grupo' as const,
     children: <p>Modal body</p>,
   }
   return render(<Modal {...defaults} {...props} />)
 }
 
 describe('Modal', () => {
+  afterEach(() => {
+    delete (window as Partial<Window>).gtag
+  })
+
   it('leva o foco para dentro do diálogo ao abrir', () => {
     renderModal()
     expect(screen.getByRole('dialog').firstElementChild).toHaveFocus()
@@ -26,7 +31,12 @@ describe('Modal', () => {
       return (
         <>
           <button onClick={() => setOpen(true)}>Abrir</button>
-          <Modal isOpen={open} onClose={() => setOpen(false)} title="Teste">
+          <Modal
+            isOpen={open}
+            onClose={() => setOpen(false)}
+            title="Teste"
+            analyticsId="criar_grupo"
+          >
             {withInput ? <input aria-label="Campo" autoFocus /> : <p>Corpo</p>}
           </Modal>
         </>
@@ -60,11 +70,15 @@ describe('Modal', () => {
     expect(screen.getByText('Modal body')).toBeInTheDocument()
   })
 
-  it('calls onClose when close button is clicked', async () => {
+  it('calls onClose when close button is clicked and sends fixed analyticsId instead of title', async () => {
+    const gtag = vi.fn()
+    window.gtag = gtag
     const onClose = vi.fn()
-    renderModal({ onClose })
+    renderModal({ onClose, title: 'Título Livre Privado', analyticsId: 'palpites_membro' })
     await userEvent.click(screen.getByRole('button', { name: 'Fechar' }))
     expect(onClose).toHaveBeenCalledOnce()
+    expect(gtag).toHaveBeenCalledWith('event', 'click_modal_fechar', { modal: 'palpites_membro' })
+    expect(JSON.stringify(gtag.mock.calls)).not.toContain('Título Livre Privado')
   })
 
   it('calls onClose when overlay is clicked', async () => {

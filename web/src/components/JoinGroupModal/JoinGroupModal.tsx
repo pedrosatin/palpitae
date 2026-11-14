@@ -102,7 +102,7 @@ export default function JoinGroupModal({
   }, [isOpen, autoSubmit])
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Entrar em grupo">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Entrar em grupo" analyticsId="entrar_grupo">
       {joined ? (
         <SuccessView joined={joined} onClose={handleClose} />
       ) : (

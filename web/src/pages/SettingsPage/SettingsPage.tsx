@@ -247,6 +247,7 @@ export default function SettingsPage({ user, onLogout, onLogoutAll }: SettingsPa
         isOpen={pending !== null}
         onClose={handleCancel}
         title={pending ? 'Ativar lembretes de palpite' : 'Desativar lembretes de palpite'}
+        analyticsId="lembretes_palpite"
       >
         <p className={styles.modalText}>
           {pending ? REMINDER_RULE : 'Você não receberá mais e-mails de lembrete de palpite.'}
