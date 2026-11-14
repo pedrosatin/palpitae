@@ -128,8 +128,10 @@ cookie:
   todo pedido repassado pelo proxy.
 
 Hosts fora de `palpitae.com.br` não recebem o cookie: as previews
-`*.palpitae-web.pages.dev` e o endereço `workers.dev` da API ficam em outro domínio
-registrável. Em 12/11/2026, dos nomes consultados, só `palpitae.com.br` e
+`*.palpitae-web.pages.dev` ficam em outro domínio registrável. O endereço
+`workers.dev` da API estava no mesmo caso, e o `wrangler.toml` agora o mantém
+desligado, como descreve a seção
+[Proteção de borda](#proteção-de-borda-cloudflare-rate-limiting). Em 12/11/2026, dos nomes consultados, só `palpitae.com.br` e
 `api.palpitae.com.br` resolviam no DNS, e não há registro wildcard; `www`, `staging` e `app` não existiam. A visão de produto prevê um app por
 competição em subdomínio (`brasileirao.palpitae.com.br`), e esses hosts também
 receberiam o cookie.
@@ -360,6 +362,72 @@ A expressão só casa com o proxy do front (`palpitae.com.br/api/*`), onde o IP
 contado é o do visitante. As rotas do host `api.palpitae.com.br` não começam com
 `/api/`, porque o proxy remove o prefixo, então os subrequests do proxy, que chegam
 à API com o IP de saída da Cloudflare, não entram na mesma contagem.
+
+A regra não pode ir para `api.palpitae.com.br/*`. O proxy do Pages chama esse host
+com o IP de saída dos Workers, igual para todos os visitantes, e uma contagem por IP
+ali limitaria o site inteiro em bloco, como um único cliente. Por isso a regra mira
+o caminho `/api/*` do host do front, onde a Cloudflare ainda enxerga o IP de cada
+visitante.
+
+### Estado da borda
+
+Leitura de 13/11/2026, feita no painel e na API da Cloudflare sem alterar nada.
+
+- A zona `palpitae.com.br` está no plano Free, com 0 de 5 regras custom e 0 de 1
+  regra de rate limit. A regra descrita acima ainda não existe, e a criação
+  depende do operador, nos [Passos do operador](#passos-do-operador).
+- O Worker `palpitae-api` tinha o `workers.dev` e as previews por versão ligados, e
+  o domínio personalizado `api.palpitae.com.br` ligado ao Worker pelo painel. O
+  `api/wrangler.toml` declara agora `workers_dev = false` e `preview_urls = false`,
+  e um teste em `api/src/wrangler-config.test.ts` confere as duas chaves. O
+  `deploy-api.yml` aplica o valor no deploy seguinte. O arquivo não declara `routes`
+  nem `custom_domain`, e o deploy do wrangler só publica domínios e rotas que a
+  configuração lista. No wrangler 4.136.3 do lockfile, o vínculo do painel fica
+  como está, e o `workers_dev` ausente valia como ligado justamente por faltar
+  `routes`. Declarar o domínio no arquivo fica como decisão separada, a conferir
+  contra a conta antes do primeiro deploy que incluir essa chave.
+- Nada no repositório usa o endereço `workers.dev`. O front e as Functions chamam
+  `api.palpitae.com.br` em `web/functions/api/[[path]].ts`, `web/.env.production`
+  e `web/functions/convite/[code].ts`. No `wrangler.toml`, `BASE_URL` e
+  `FRONTEND_URL` apontam para os hosts próprios.
+
+### Risco aceito do host da API
+
+Com o `workers.dev` fechado, a API responde por um único host público. Esse host
+continua sem regra de borda. O limitador do código, descrito em
+[Consumo de recursos](#consumo-de-recursos), é a única barreira de quem chama
+`api.palpitae.com.br` direto. Um flood anônimo vindo de muitos IPs passa pela
+regra da zona, porque ela não casa com esse host. Cada requisição conta nas 100 mil
+diárias do Workers Free, inclusive as que o limitador recusa com 429. O plano Free
+não separa o proxy do Pages de um atacante nesse host, pelo motivo exposto antes.
+O operador aceitou esse risco em 13/11/2026, com o gatilho para migrar ao Workers
+Paid registrado no [ADR-022](architecture/decisions.md).
+
+### Passos do operador
+
+1. Criar a regra de rate limit da zona pelos passos acima, com a expressão
+   `starts_with(http.request.uri.path, "/api/")`, contagem por IP e nenhuma
+   condição sobre o host da API. Esta é a única regra gratuita da zona.
+2. Fazer o merge em `main` e esperar o `deploy-api.yml` terminar.
+3. Ler o subdomínio do Worker. O resultado esperado traz `enabled` e
+   `previews_enabled` em `false`.
+
+   ```bash
+   curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+     "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/palpitae-api/subdomain"
+   ```
+
+   O painel mostra o mesmo em **Workers & Pages > palpitae-api > Settings > Domains &
+   Routes**, com o `workers.dev` desativado.
+4. Conferir que `https://api.palpitae.com.br/health` responde 200 e que o domínio
+   personalizado continua listado em **Domains & Routes**.
+5. Conferir em **Security > Security rules** da zona que o contador de regras de
+   rate limit marca 1 de 1.
+6. Acompanhar **Security > Events** por alguns dias. Bloqueio de tráfego legítimo
+   pede um teto maior na regra.
+
+Se o `workers.dev` seguir ligado depois do deploy, olhe a execução do
+`deploy-api.yml` antes de desligar à mão no painel.
 
 Para barrar subrequests de Workers de outras contas, uma regra de WAF Custom com
 `(cf.worker.upstream_zone ne "" and cf.worker.upstream_zone ne "palpitae-web.pages.dev")`

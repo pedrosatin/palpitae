@@ -6,6 +6,14 @@ name = "palpitae-api"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+# A API responde só por api.palpitae.com.br, domínio ligado ao Worker no painel.
+# O arquivo não declara `routes` nem `custom_domain`, então o deploy não mexe nesse
+# vínculo. Pelo mesmo motivo o wrangler trata `workers_dev` ausente como ligado,
+# e estas duas chaves precisam ficar aqui para o deploy não religar o workers.dev
+# nem as previews por versão. Ver docs/security.md.
+workers_dev = false
+preview_urls = false
+
 [[d1_databases]]
 binding = "DB"
 database_name = "palpitae"
