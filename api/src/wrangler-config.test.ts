@@ -158,6 +158,13 @@ describe('wrangler api config', () => {
     )
   })
 
+  it('desliga o workers.dev e as previews, para a API ter um único host público', () => {
+    // As duas chaves valem só no nível raiz. Um [env.*] precisaria repetir as duas.
+    expect(wranglerToml).not.toMatch(/^\[env\./m)
+    expect(wranglerToml).toMatch(/^workers_dev = false$/m)
+    expect(wranglerToml).toMatch(/^preview_urls = false$/m)
+  })
+
   it('roda a descoberta diária num minuto diferente dos ticks do poller', () => {
     const minutes = (cron: string) => cron.split(' ')[0].split(',')
 
