@@ -2,6 +2,7 @@ import { type Context, Hono } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess } from '../auth/permissions'
+import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
 import { defaultRoundSql, roundRuleBinds } from '../matches/defaultRound'
 import { isMatchLocked, lockedSql, SQL_NOW } from '../matches/locking'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
@@ -24,21 +25,6 @@ import { acceptsFrom, type CopyGroup, handleReplicatePost, planCopy } from './re
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Parses the request JSON body. Returns `{ ok: true, body }` on success or
- * `{ ok: false, response }` when parsing fails so the caller can return early.
- */
-async function parseJsonBody<T>(
-  c: Context<AppContext>,
-): Promise<{ ok: true; body: T } | { ok: false; response: Response }> {
-  try {
-    const body = await c.req.json<T>()
-    return { ok: true, body }
-  } catch {
-    return { ok: false, response: c.json({ error: 'Body JSON inválido' }, 400) }
-  }
-}
 
 async function isPilotGroupBlocked(
   c: Context<AppContext>,
@@ -790,9 +776,8 @@ router.put('/', requireAuth, async (c) => {
     predicted_away_score?: number
     predicted_penalty_winner?: 'home' | 'away' | null
   }
-  const parsed = await parseJsonBody<PutBody>(c)
-  if (!parsed.ok) return parsed.response
-  const body = parsed.body
+  const body = await readJsonObject<PutBody>(c)
+  if (!body) return c.json({ error: INVALID_BODY }, 400)
 
   const {
     group_id,
@@ -1166,9 +1151,8 @@ function buildBulkPutStatements(
 async function handleBulkPut(c: Context<AppContext>) {
   const userId = c.get('userId')
 
-  const parsed = await parseJsonBody<BulkBody>(c)
-  if (!parsed.ok) return parsed.response
-  const body = parsed.body
+  const body = await readJsonObject<BulkBody>(c)
+  if (!body) return c.json({ error: INVALID_BODY }, 400)
 
   const validationError = validateBulkPutPayload(body)
   if (validationError) {
@@ -1353,9 +1337,8 @@ async function handleImportPost(c: Context<AppContext>) {
   const userId = c.get('userId')
 
   type ImportBody = { source_group_id?: string; target_group_id?: string; only_missing?: boolean }
-  const parsed = await parseJsonBody<ImportBody>(c)
-  if (!parsed.ok) return parsed.response
-  const body = parsed.body
+  const body = await readJsonObject<ImportBody>(c)
+  if (!body) return c.json({ error: INVALID_BODY }, 400)
 
   const { source_group_id, target_group_id } = body
   const onlyMissing = body.only_missing === true
