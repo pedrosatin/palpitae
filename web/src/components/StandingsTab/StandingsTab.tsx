@@ -322,7 +322,12 @@ function GroupMatchesModal({
           .sort((a, b) => (a.start_time < b.start_time ? -1 : 1))
 
   return (
-    <Modal isOpen={selectedGroup !== null} onClose={onClose} title={`Grupo ${selectedGroup}`}>
+    <Modal
+      isOpen={selectedGroup !== null}
+      onClose={onClose}
+      title={`Grupo ${selectedGroup}`}
+      analyticsId="jogos_grupo"
+    >
       <ul className={styles.matchList}>
         {selectedMatches.map((m) => (
           <li key={m.id} className={styles.matchItem}>

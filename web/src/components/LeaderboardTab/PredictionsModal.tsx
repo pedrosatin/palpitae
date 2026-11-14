@@ -52,7 +52,12 @@ export default function PredictionsModal({ member, groupId, onClose }: Predictio
   const labelFor = (r: string) => modalByRound.get(r)?.[0]?.round_label ?? r
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={`Palpites de ${member.display_name}`}>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Palpites de ${member.display_name}`}
+      analyticsId="palpites_membro"
+    >
       {modalLoading && <p className={styles.modalLoading}>Carregando palpites...</p>}
       {modalError && <p className={styles.modalError}>{modalError}</p>}
       {!modalLoading && !modalError && modalPredictions.length === 0 && (

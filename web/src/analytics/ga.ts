@@ -182,8 +182,74 @@ export function trackPageView(page: GaPage, referrer: string): void {
   window.gtag?.('event', 'page_view', params)
 }
 
+export type EventParamValue = string | number | boolean
+export type EventParams = Record<string, EventParamValue>
+
+/**
+ * Parâmetros permitidos por evento no GA4.
+ * Chaves fora desta lista e parâmetros enviados para eventos sem entrada na
+ * tabela são descartados antes de chamar `gtag`, para evitar envio acidental de
+ * texto livre ou dado pessoal.
+ */
+export const EVENT_ALLOWED_PARAMS: Record<string, readonly string[]> = {
+  click_modal_fechar: ['modal'],
+  entrar_origem: ['origem'],
+  login: ['method', 'origem'],
+  share_invite: ['method', 'context'],
+  join_group: ['entry_method'],
+  submit_criar_grupo: ['origem'],
+  click_create_group_preset_selecionado: ['preset'],
+  click_create_group_ajuda_pontuacao: ['campo'],
+  click_group_picks_ver_quem_palpitou: ['open'],
+  change_group_picks_rodada: ['round'],
+  click_group_picks_rodada_anterior: ['round'],
+  click_group_picks_proxima_rodada: ['round'],
+  click_leaderboard_rodada_anterior: ['round'],
+  click_leaderboard_proxima_rodada: ['round'],
+  change_leaderboard_rodada: ['round'],
+  click_matchcard_salvar: ['match_id'],
+  click_matchcard_resultado: ['match_id', 'outcome'],
+  click_prediction_penalty_winner: ['match_id', 'winner'],
+  change_predictions_rodada: ['round'],
+  click_predictions_rodada_adiada: ['round'],
+  click_predictions_rodada_anterior: ['round'],
+  click_predictions_proxima_rodada: ['round'],
+  click_predictions_salvar_todos: ['count', 'round'],
+  change_predictions_aplicar_outros_grupos: ['enabled'],
+  click_predictions_aplicar_outros_grupos: ['groups'],
+  click_standings_ver_grupo: ['group'],
+  click_admin_metrics_filtro_campeonato: ['filter', 'value'],
+  click_admin_metrics_arquivo_mes: ['month'],
+  click_admin_metrics_periodo: ['days'],
+  click_admin_radar_periodo: ['days'],
+  click_admin_radar_ordenar: ['sort'],
+  click_admin_radar_filtrar_status: ['status'],
+  click_dashboard_encerrados_toggle: ['open'],
+  click_group_detail_abrir_convite: ['open'],
+  click_group_detail_tab: ['tab'],
+  click_landing_guia: ['guia'],
+  click_settings_toggle_lembretes: ['enabled'],
+  click_settings_confirmar_lembretes: ['enabled'],
+}
+
+function filterEventParams(name: string, params?: EventParams): EventParams | undefined {
+  if (!params || !Object.hasOwn(EVENT_ALLOWED_PARAMS, name)) return undefined
+  const allowed = EVENT_ALLOWED_PARAMS[name]
+  if (allowed.length === 0) return undefined
+
+  const filtered: EventParams = {}
+  let hasKeys = false
+  for (const key of allowed) {
+    if (Object.hasOwn(params, key) && params[key] !== undefined) {
+      filtered[key] = params[key]
+      hasKeys = true
+    }
+  }
+  return hasKeys ? filtered : undefined
+}
+
 /** Dispara um evento customizado para o GA4. No-op sem GA ou com consentimento negado. */
-export function trackEvent(name: string, params?: Record<string, string | number | boolean>): void {
+export function trackEvent(name: string, params?: EventParams): void {
   if ((currentConsent ?? getStoredConsent()) === 'denied') return
-  window.gtag?.('event', name, params)
+  window.gtag?.('event', name, filterEventParams(name, params))
 }

@@ -92,6 +92,7 @@ export function RenameGroupModal({
       isOpen={isOpen}
       onClose={onClose}
       title={currentPointsClassified === undefined ? 'Editar nome do grupo' : 'Configurar grupo'}
+      analyticsId="configurar_grupo"
     >
       <form onSubmit={submitRename} className={styles.renameForm}>
         <input
