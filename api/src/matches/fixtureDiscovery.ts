@@ -4,9 +4,10 @@ import { createProviderHttpObserver } from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { reconcileCompetitionStatus } from './competitionLifecycle'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
-import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
+import { espnDatesAround } from './matchPollingWindow'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
+import { runSyncTasks } from './syncTasks'
 
 /**
  * Teto de `match_missing_from_feed` por execução, somando as competições (cada
@@ -98,9 +99,7 @@ export async function discoverFixtures(
   }
 
   const utcDay = new Date(now).setUTCHours(0, 0, 0, 0)
-  const espnDates = Array.from({ length: 9 }, (_, i) =>
-    new Date(utcDay + (i - 1) * 86_400_000).toISOString().slice(0, 10).replaceAll('-', ''),
-  )
+  const espnDates = espnDatesAround(utcDay, -1, 9)
   // Requests primárias planejadas, excluindo retries do provedor.
   let plannedApiRequests = 0
   let fixturesUpdated = 0
@@ -147,13 +146,7 @@ export async function discoverFixtures(
     if (!(await advanceCompetitionStatus(db, ae, comp.id, now, tbdDiscarded))) hadError = true
   }
 
-  // football-data compartilha 10 req/min; ESPN tem teto próprio + pacing HTTP.
-  const fdComps = rows.results.filter((comp) => comp.provider === 'football-data')
-  const espnComps = rows.results.filter((comp) => comp.provider === 'espn')
-  await Promise.all([
-    runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdComps, syncCompetition),
-    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnComps, syncCompetition),
-  ])
+  await runSyncTasks(rows.results, (comp) => comp.provider, syncCompetition)
 
   logEvent(ae, 'fixture_discovery_run', {
     blobs: [hadError ? 'error' : 'ok'],

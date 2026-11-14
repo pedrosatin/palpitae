@@ -20,6 +20,8 @@
  * manutenção anual e vários artigos de edição sequer existem a tempo.
  */
 
+import { normalizeName } from '../normalizeName'
+
 /** Competição observada pelo radar: como reconhecê-la e como medi-la. */
 export type RadarEntry = {
   /** País como o provider reporta ('Brazil', 'World', 'England'...). */
@@ -234,14 +236,7 @@ export const RADAR_COUNTRIES = new Set([
  * mismatch aqui só custaria o sinal de interesse daquela competição.
  */
 function matchKey(country: string, name: string): string {
-  const norm = (s: string) =>
-    s
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim()
-  return `${norm(country)}|${norm(name)}`
+  return `${normalizeName(country)}|${normalizeName(name)}`
 }
 
 /** Índice (país|nome) → entrada, já expandido com os aliases. */
