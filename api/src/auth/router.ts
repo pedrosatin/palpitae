@@ -59,7 +59,7 @@ function cookieOptions(baseUrl: string, maxAge?: number) {
   }
 }
 
-function tempCookieClearOptions(baseUrl: string) {
+function clearCookieOptions(baseUrl: string) {
   const domain = cookieDomain(baseUrl)
   return { path: '/', ...(domain && { domain }) }
 }
@@ -94,9 +94,17 @@ function takeOAuthContext(c: Context<AppContext>) {
     // O cookie vem do navegador: ausente ou fora da lista vira "desconhecida".
     signupOrigin: parseSignupOrigin(getCookie(c, ORIGIN_COOKIE)),
   }
-  const clearOpts = tempCookieClearOptions(c.env.BASE_URL)
+  const clearOpts = clearCookieOptions(c.env.BASE_URL)
   for (const name of OAUTH_COOKIES) deleteCookie(c, name, clearOpts)
   return context
+}
+
+type LoginFailure = 'session_expired' | 'state_mismatch' | 'email_conflict' | 'exchange_failed'
+
+/** Registra a falha do login e devolve o usuário ao frontend com o motivo. */
+function failLogin(c: Context<AppContext>, reason: LoginFailure) {
+  logEvent(c.env.AE, 'login_failure', { blobs: [reason] })
+  return c.redirect(`${c.env.FRONTEND_URL}?auth_error=${reason}`)
 }
 
 export const authRouter = new Hono<AppContext>()
@@ -152,13 +160,11 @@ authRouter.get('/callback', async (c) => {
   const { state: storedState, nonce: storedNonce, verifier: codeVerifier, signupOrigin } = oauth
 
   if (!storedState || !storedNonce || !codeVerifier) {
-    logEvent(c.env.AE, 'login_failure', { blobs: ['session_expired'] })
-    return c.redirect(`${c.env.FRONTEND_URL}?auth_error=session_expired`)
+    return failLogin(c, 'session_expired')
   }
 
   if (state !== storedState) {
-    logEvent(c.env.AE, 'login_failure', { blobs: ['state_mismatch'] })
-    return c.redirect(`${c.env.FRONTEND_URL}?auth_error=state_mismatch`)
+    return failLogin(c, 'state_mismatch')
   }
 
   try {
@@ -206,21 +212,18 @@ authRouter.get('/callback', async (c) => {
   } catch (err) {
     // E-mail de outra conta: motivo próprio, sem sessão e sem mexer nas contas.
     if (err instanceof EmailConflictError) {
-      logEvent(c.env.AE, 'login_failure', { blobs: ['email_conflict'] })
-      return c.redirect(`${c.env.FRONTEND_URL}?auth_error=email_conflict`)
+      return failLogin(c, 'email_conflict')
     }
     console.error('OAuth callback failed:', err)
-    logEvent(c.env.AE, 'login_failure', { blobs: ['exchange_failed'] })
-    return c.redirect(`${c.env.FRONTEND_URL}?auth_error=exchange_failed`)
+    return failLogin(c, 'exchange_failed')
   }
 })
 
 // POST /auth/logout
 authRouter.post('/logout', async (c) => {
   const token = getCookie(c, SESSION_COOKIE)
-  const domain = cookieDomain(c.env.BASE_URL)
   // O cookie sai do navegador mesmo se a revogação no D1 falhar.
-  deleteCookie(c, SESSION_COOKIE, { path: '/', ...(domain && { domain }) })
+  deleteCookie(c, SESSION_COOKIE, clearCookieOptions(c.env.BASE_URL))
   if (token) {
     try {
       await revokeSession(token, c.env.JWT_SECRET, c.env.DB)
@@ -255,8 +258,7 @@ authRouter.post('/logout-all', requireAuth, async (c) => {
     )
     return c.json({ error: 'Não foi possível encerrar as sessões no servidor' }, 503)
   }
-  const domain = cookieDomain(c.env.BASE_URL)
-  deleteCookie(c, SESSION_COOKIE, { path: '/', ...(domain && { domain }) })
+  deleteCookie(c, SESSION_COOKIE, clearCookieOptions(c.env.BASE_URL))
   logEvent(c.env.AE, 'logout_all', { blobs: [await hashUserId(userId)] })
   return c.json({ ok: true })
 })

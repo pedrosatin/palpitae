@@ -12,6 +12,11 @@ export function base64UrlEncode(buf: ArrayBuffer): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
 
+/** Bytes em hexadecimal minúsculo, dois dígitos por byte. */
+export function hexEncode(bytes: ArrayBuffer | Uint8Array): string {
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 export function base64UrlDecode(str: string): ArrayBuffer {
   const base64 = str.replace(/-/g, '+').replace(/_/g, '/')
   const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=')
