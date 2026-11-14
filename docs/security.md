@@ -258,6 +258,16 @@ Ao exceder a quota, a API responde 429 com `Retry-After`. Se o contador falhar
 (D1 indisponível), leituras GET/HEAD seguem sem contagem e escritas e OAuth
 respondem 503. As duas situações registram `security_storage_error`.
 
+Cada usuário com sessão válida também tem um orçamento diário de linhas do D1, de
+250 mil lidas e 5 mil escritas, que vira à 00:00 UTC (ADR-022). O limitador soma o
+`rows_read` e o `rows_written` que o D1 informa em cada consulta da requisição e
+guarda o total em `request_limits`. Com o orçamento esgotado, a API responde 429
+com `Retry-After` até a virada, antes do balde por minuto. Logout e logout-all
+ficam fora dessa recusa. `D1_DAILY_ROWS_READ_PER_USER` e
+`D1_DAILY_ROWS_WRITTEN_PER_USER` substituem os padrões. A decisão de ficar no
+Workers Free, o risco aceito e o gatilho para migrar ao Paid estão no
+[ADR-022](architecture/decisions.md).
+
 Mutações com cabeçalho Origin aceitam somente o frontend (`FRONTEND_URL`) e a
 origem da API. Previews do Pages (`*.pages.dev`) recebem 403 em mutações. Clientes
 de servidor sem Origin continuam permitidos conforme autenticação da rota. O link

@@ -844,6 +844,52 @@ A API devolve `streak` em cada linha, com as rodadas encerradas seguidas em que 
 - Caso aceito: uma fase preliminar eliminatória adiada que termine depois do início da rodada de referência tira a coluna até uma rodada posterior fechar.
 - Risco aceito: uma leitura entre a gravação dos pontos e a atualização do `leaderboard` pode mostrar variação errada por alguns segundos. A próxima abertura da aba corrige.
 
+## ADR-022: Workers Free com orçamento diário de linhas do D1 por usuário
+
+**Status:** Accepted
+**Date:** 2026-11-13
+
+### Context
+
+A API roda no plano Workers Free. Nesse plano o D1 lê até 5 milhões de linhas e escreve até 100 mil por dia. Quando uma das duas cotas acaba, toda consulta falha até 00:00 UTC, e com elas o login, os palpites, o ranking e os crons ([preços do D1](https://developers.cloudflare.com/d1/platform/pricing/)). O plano também aceita até 100 mil requisições por dia ao Worker.
+
+O limitador por minuto do ADR-017 conta requisições e não o trabalho que cada uma gera no D1. A auditoria de segurança de 13/11/2026 mostrou que uma só conta gratuita esgota as cotas do dia. Cerca de 200 `GET /groups` de uma conta com centenas de grupos passam de 5 milhões de linhas lidas, e umas 100 chamadas a `POST /predictions/replicate` passam de 100 mil linhas escritas.
+
+O plano Workers Paid cobra o excedente em vez de cortar o D1 e tem assinatura mensal.
+
+### Decision
+
+O operador decidiu em 13/11/2026 ficar no Workers Free e impor no código os limites que o plano não impõe. Os tetos de grupos criados e de participações por usuário estão em `api/src/groups/groupCaps.ts`. Esta ADR acrescenta o orçamento diário de linhas do D1.
+
+Cada usuário com sessão válida tem por dia 250 mil linhas lidas e 5 mil escritas, 5% de cada cota. O dia vira à 00:00 UTC, junto com as cotas. As variáveis `D1_DAILY_ROWS_READ_PER_USER` e `D1_DAILY_ROWS_WRITTEN_PER_USER` substituem os padrões. Um valor que não seja inteiro positivo volta ao padrão e registra erro no log.
+
+O limitador `requestLimits`, em `api/src/security/limits.ts`, troca o `DB` do contexto da requisição por um medidor antes de validar a sessão. O medidor `meterD1Rows`, em `api/src/security/d1Usage.ts`, embrulha o D1 num `Proxy` e soma o `rows_read` e o `rows_written` que o D1 informa no `meta` de cada consulta. Nenhuma rota muda o jeito de consultar, e as consultas do próprio limitador entram na conta. O embrulho reaproveita `interceptD1` (`api/src/d1Intercept.ts`), o mesmo que `countD1Calls` usa no orçamento de chamadas do ADR-024.
+
+Antes do handler, o limitador lê as duas linhas do usuário em `request_limits`, uma de linhas lidas e outra de escritas, com a janela no início do dia UTC. Se uma delas chegou ao limite, a resposta é 429 com `Retry-After` até a virada e uma mensagem em português que o front mostra como os outros erros da API. A recusa só lê e vem antes do balde por minuto, que gravaria uma linha. `/auth/logout` e `/auth/logout-all` nunca são recusados pelo orçamento, porque quem tem um token roubado poderia gastar o dia e impedir a vítima de sair.
+
+Depois do handler, uma só consulta soma o total da requisição às duas linhas. A própria gravação não tem como se medir e cobra um valor fixo de 4 linhas escritas, que cobre as duas linhas do balde e as entradas delas no índice de expiração. A limpeza dos crons apaga as linhas do dia anterior, como os demais contadores.
+
+Se a leitura do balde falhar, vale a política do ADR-017. Leituras passam e escritas e OAuth respondem 503. Se a gravação depois do handler falhar, a resposta já está montada e a falha só registra `security_storage_error`.
+
+Limites da medição:
+
+- O `first()` do D1 não devolve `meta`. O medidor troca a chamada por `all()`, que executa a mesma consulta, e devolve a primeira linha ou a coluna pedida. Um fake de D1 em teste que passa pela API inteira precisa implementar `all`.
+- `raw()` e `exec()` também não devolvem `meta` e passam sem medir. O código da API não usa nenhum dos dois.
+- Consulta que falha não entra na conta.
+- Requisições sem sessão válida não têm orçamento diário. Elas continuam só no limitador por minuto, por IP.
+- Uma requisição que começa com saldo termina mesmo que passe do orçamento, e requisições simultâneas do mesmo usuário passam pela checagem antes de alguma gravar. O limitador por minuto limita esse excesso. As escritas em lote (`replicate`, `import` e `bulk`) ainda gravam até centenas de linhas numa requisição.
+
+O flood anônimo distribuído contra as 100 mil requisições por dia do Worker é risco aceito. O limitador por IP e a regra de rate limit da borda, descrita em [Controle de acesso e limites da API](../security.md), cortam um cliente sozinho. Muitos IPs juntos ainda esgotam a cota de requisições.
+
+O gatilho para migrar ao Workers Paid é a primeira queda por cota, ou o uso diário acima de 50% de uma cota do D1 ou de requisições por 3 dias seguidos.
+
+### Consequences
+
+- Cada requisição autenticada faz 2 chamadas a mais ao D1, a leitura do orçamento e a gravação, dentro das 50 por invocação.
+- Cada requisição autenticada grava o contador por minuto e o balde diário, perto de 6 linhas com os índices. O orçamento de escrita corta um usuário depois de umas 800 requisições no dia, mesmo só de leitura. Se o uso normal chegar perto disso, suba `D1_DAILY_ROWS_WRITTEN_PER_USER`.
+- Vinte contas no teto de escrita, ou vinte no de leitura, somam a cota do dia. O orçamento impede que uma conta sozinha derrube o app. Um ataque com muitas contas fica no risco aceito.
+- `api/src/security/dailyD1Budget.test.ts` roda a API inteira sobre o D1 em memória embrulhado por `api/src/testing/d1RowsReported.ts`, que informa linhas lidas e escritas por consulta. O SQLite em memória sozinho não informa.
+
 ## ADR-024: Pontuação por jogo com orçamento de chamadas por invocação
 
 **Status:** Accepted

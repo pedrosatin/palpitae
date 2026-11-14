@@ -24,6 +24,10 @@ export type Env = {
   RESEND_API_KEY: string
   // Teto de chamadas ao Resend por execução do lembrete diário. Padrão 45 (plano Free).
   REMINDER_FETCH_BUDGET?: string
+  // Orçamento diário de linhas do D1 por usuário (ADR-022). Padrões 250000 lidas e
+  // 5000 escritas. Valor que não seja inteiro positivo volta ao padrão.
+  D1_DAILY_ROWS_READ_PER_USER?: string
+  D1_DAILY_ROWS_WRITTEN_PER_USER?: string
   // Segredo compartilhado com o proxy do Pages para confiar no IP repassado.
   PROXY_SHARED_SECRET?: string
   // CF-Worker que a Cloudflare preenche no proxy do Pages, no formato `<projeto>.pages.dev`.

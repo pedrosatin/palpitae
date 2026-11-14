@@ -4,6 +4,7 @@ import type { AppContext } from '../types'
 import { HMAC_SHA256, importHmacKey } from '../auth/crypto'
 import { resolveSession } from '../auth/middleware'
 import { logError } from '../observability/events'
+import { meterD1Rows, type D1RowUsage } from './d1Usage'
 
 const WINDOW_SECONDS = 60
 
@@ -36,6 +37,22 @@ const WORKER_EGRESS_IP = '2a06:98c0:3600::103'
 
 const IP_PATTERN = /^[0-9a-fA-F:.]{2,45}$/
 
+const DAY_SECONDS = 86_400
+
+// Orçamento diário de linhas do D1 por usuário (ADR-022). O dia vira à 00:00 UTC,
+// junto com as cotas do D1 Free. As variáveis D1_DAILY_ROWS_READ_PER_USER e
+// D1_DAILY_ROWS_WRITTEN_PER_USER substituem os padrões.
+export const DAILY_D1_ROWS = { read: 250_000, written: 5_000 }
+
+// Linhas que a gravação do balde diário escreve em cada requisição, somando as duas
+// linhas do balde e as entradas delas no índice de expiração. Valor fixo, porque a
+// própria gravação não tem como se medir.
+export const DAILY_BUCKET_ROWS_WRITTEN = 4
+
+// Rotas que nunca recusam por orçamento diário. Sair da conta tem de funcionar
+// mesmo depois que um token roubado gastou o dia inteiro.
+const DAILY_BUDGET_EXEMPT = new Set(['/auth/logout', '/auth/logout-all'])
+
 // D1 serializes the upsert, including requests from different Worker instances.
 // `key` should already be an opaque hash (see bucketKey).
 //
@@ -64,6 +81,98 @@ export async function consumeLimit(
     .bind(key, windowStart, windowStart + WINDOW_SECONDS, limit)
     .first<{ hits: number }>()
   return result !== null && result.hits <= limit
+}
+
+type DailyKeys = { read: string; written: string }
+type DailyLimits = { read: number; written: number }
+
+/**
+ * Limites diários a partir das variáveis de ambiente. Vazio ou ausente vale o
+ * padrão. Um valor que não seja inteiro positivo também volta ao padrão, com erro no
+ * log, para que um erro de digitação não tire o limite nem bloqueie todo mundo.
+ */
+export function dailyD1Limits(env: {
+  D1_DAILY_ROWS_READ_PER_USER?: string
+  D1_DAILY_ROWS_WRITTEN_PER_USER?: string
+}): DailyLimits {
+  return {
+    read: rowLimit(
+      'D1_DAILY_ROWS_READ_PER_USER',
+      env.D1_DAILY_ROWS_READ_PER_USER,
+      DAILY_D1_ROWS.read,
+    ),
+    written: rowLimit(
+      'D1_DAILY_ROWS_WRITTEN_PER_USER',
+      env.D1_DAILY_ROWS_WRITTEN_PER_USER,
+      DAILY_D1_ROWS.written,
+    ),
+  }
+}
+
+function rowLimit(name: string, raw: string | undefined, fallback: number): number {
+  const value = raw?.trim()
+  if (!value) return fallback
+  if (/^\d+$/.test(value) && Number(value) > 0) return Number(value)
+  console.error(`[limits] ${name} inválido (${JSON.stringify(raw)}): usando ${fallback}.`)
+  return fallback
+}
+
+function dayStart(now: number): number {
+  return Math.floor(now / DAY_SECONDS) * DAY_SECONDS
+}
+
+/** Se o usuário já gastou no dia de hoje as linhas lidas ou escritas do orçamento. */
+export async function dailyBudgetExhausted(
+  db: D1Database,
+  keys: DailyKeys,
+  limits: DailyLimits,
+  now = Math.floor(Date.now() / 1000),
+): Promise<boolean> {
+  const { results } = await db
+    .prepare(
+      `SELECT bucket_key, hits FROM request_limits
+      WHERE bucket_key IN (?, ?) AND window_start >= ?`,
+    )
+    .bind(keys.read, keys.written, dayStart(now))
+    .all<{ bucket_key: string; hits: number }>()
+  return results.some((row) =>
+    row.bucket_key === keys.read ? row.hits >= limits.read : row.hits >= limits.written,
+  )
+}
+
+/**
+ * Soma ao balde do dia as linhas da requisição. Um balde de outro dia recomeça do
+ * valor desta requisição. A gravação escreve as duas linhas numa só consulta.
+ */
+export async function chargeDailyBudget(
+  db: D1Database,
+  keys: DailyKeys,
+  usage: D1RowUsage,
+  now = Math.floor(Date.now() / 1000),
+): Promise<void> {
+  const start = dayStart(now)
+  const end = start + DAY_SECONDS
+  await db
+    .prepare(
+      `INSERT INTO request_limits (bucket_key, window_start, hits, expires_at)
+      VALUES (?, ?, ?, ?), (?, ?, ?, ?)
+      ON CONFLICT (bucket_key) DO UPDATE SET
+        hits = CASE WHEN request_limits.window_start >= excluded.window_start
+          THEN request_limits.hits + excluded.hits ELSE excluded.hits END,
+        window_start = MAX(request_limits.window_start, excluded.window_start),
+        expires_at = MAX(request_limits.expires_at, excluded.expires_at)`,
+    )
+    .bind(
+      keys.read,
+      start,
+      usage.rowsRead,
+      end,
+      keys.written,
+      start,
+      usage.rowsWritten + DAILY_BUCKET_ROWS_WRITTEN,
+      end,
+    )
+    .run()
 }
 
 /**
@@ -219,13 +328,21 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
         ? 'read'
         : 'write'
 
+  // Daqui em diante toda consulta da requisição passa pelo medidor, inclusive as do
+  // próprio limitador. O env é copiado, porque o objeto original serve a outras requisições.
+  const db = c.env.DB
+  const usage: D1RowUsage = { rowsRead: 0, rowsWritten: 0 }
+  c.env = { ...c.env, DB: meterD1Rows(db, usage) }
+
   // Sessão válida: só o balde do usuário. O IP não entra, porque pelo proxy do
   // Pages ele não identifica o visitante.
   const session = await resolveSession(c)
+  const userId = session && 'payload' in session ? session.payload.sub : null
   let identity: string
   let limit = LIMITS[category]
-  if (session && 'payload' in session) {
-    identity = `user:${session.payload.sub}`
+  let daily: DailyKeys | null = null
+  if (userId) {
+    identity = `user:${userId}`
   } else {
     const anonymous = await anonymousIdentity(c)
     identity = anonymous.identity
@@ -233,6 +350,29 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
   }
 
   try {
+    if (userId) {
+      const [read, written] = await Promise.all([
+        bucketKey(c.env.JWT_SECRET, `d1_read:${identity}`),
+        bucketKey(c.env.JWT_SECRET, `d1_written:${identity}`),
+      ])
+      daily = { read, written }
+      // Vem antes do balde por minuto, que gravaria uma linha. A recusa por orçamento
+      // só lê.
+      if (
+        !DAILY_BUDGET_EXEMPT.has(c.req.path) &&
+        (await dailyBudgetExhausted(c.env.DB, daily, dailyD1Limits(c.env)))
+      ) {
+        const now = Math.floor(Date.now() / 1000)
+        c.header('Retry-After', String(dayStart(now) + DAY_SECONDS - now))
+        return c.json(
+          {
+            error:
+              'Você atingiu o limite diário de uso. Tente de novo depois das 21h, horário de Brasília.',
+          },
+          429,
+        )
+      }
+    }
     const key = await bucketKey(c.env.JWT_SECRET, `${category}:${identity}`)
     if (!(await consumeLimit(c.env.DB, key, limit))) {
       c.header(
@@ -252,7 +392,22 @@ export const requestLimits = createMiddleware<AppContext>(async (c, next) => {
     // Leitura passa sem contador; escrita e OAuth ficam bloqueadas.
     if (category !== 'read') return c.json({ error: 'Controle de requisições indisponível' }, 503)
   }
-  return next()
+
+  await next()
+
+  if (!daily) return
+  // A resposta já foi montada, e uma falha aqui só fica no log.
+  try {
+    await chargeDailyBudget(db, daily, usage)
+  } catch (error) {
+    logError(
+      c.env.AE,
+      'security_storage_error',
+      '[limits] Orçamento diário do D1 indisponível:',
+      error,
+      { blobs: ['request_limits', 'daily_d1'] },
+    )
+  }
 })
 
 function safeOrigin(url: string | undefined): string | null {
