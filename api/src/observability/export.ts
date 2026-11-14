@@ -3,7 +3,7 @@ import { runAeSqlStrict } from './aeSql'
 
 /**
  * Cold path — arquiva um dia de eventos do Analytics Engine no R2 como NDJSON,
- * com retenção ILIMITADA (o AE só guarda ~3 meses). Roda num cron diário (00:05 UTC)
+ * com retenção de 13 meses pela regra de ciclo de vida do bucket (o AE só guarda ~3 meses). Roda num cron diário (00:05 UTC)
  * e exporta o dia ANTERIOR. Ver `docs/observability.md`.
  *
  * Desenho: o AE é o staging (escrita barata, sem latência); este export "congela"

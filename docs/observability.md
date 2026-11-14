@@ -40,12 +40,17 @@ agregar a partir das linhas (somar contagens, contar eventos), **multiplique cad
 seu `_sample_interval`** — ex.: `SUM(_sample_interval)` em vez de `COUNT(*)`,
 `SUM(double1 * _sample_interval)` em vez de `SUM(double1)`. Ignorar isso subestima os números.
 
-### R2 — cold path (retenção ILIMITADA)
+### R2 — cold path (retenção de 13 meses)
 Um **cron diário** consulta a SQL API pelos eventos do dia anterior (UTC) e grava **um**
 NDJSON em `events/YYYY/MM/DD.ndjson`. R2 é grátis (10 GB, egress zero, free tier não expira)
 e S3-compatible. Um arquivo/dia ⇒ ~365 escritas/ano, irrisório. O Analytics Engine é o
-**staging** (query rápida, ~3 meses); o cron "congela" tudo em R2 pra sempre. Reaproveita o
+**staging** (query rápida, ~3 meses); o cron "congela" tudo em R2. Reaproveita o
 cron que já existe — sem Queues (pago) nem Durable Object.
+
+**Retenção.** Uma regra de ciclo de vida do bucket `palpitae-events` apaga os objetos de
+`events/` 395 dias (~13 meses) depois da gravação, o prazo que a página `/privacidade`
+publica. Conferir com `npx wrangler r2 bucket lifecycle list palpitae-events --config ./wrangler.toml`
+(em `api/`). Mudar o prazo exige mudar a página junto.
 
 **Manifesto em customMetadata.** Cada NDJSON leva `customMetadata: { events, rows, complete }`.
 `events` é a contagem REAL de eventos do dia (`SUM(_sample_interval)` das linhas, não o nº de
