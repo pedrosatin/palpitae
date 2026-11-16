@@ -394,6 +394,16 @@ describe('guide analytics (Consent Mode v2)', () => {
     expect(css).toContain('.consent p a:focus-visible{outline:2px solid #49f21b')
   })
 
+  it('sublinha o link da política de privacidade no CSS do aviso do app', () => {
+    // O vitest stuba CSS (mesmo com ?raw), então a regra do banner do app
+    // é guardada aqui, onde ler o arquivo é permitido pelo type-check.
+    const css = readFileSync(
+      join(process.cwd(), 'src/components/CookieConsent/CookieConsent.module.css'),
+      'utf8',
+    )
+    expect(css).toMatch(/\.text a\s*\{[^}]*text-decoration:\s*underline/)
+  })
+
   it('registers the denied consent default before js/config, then shows the banner', () => {
     loadPage(renderGuide(guides[0], GA_ID))
     const calls = window.dataLayer.map((a) => Array.from(a as ArrayLike<unknown>))
