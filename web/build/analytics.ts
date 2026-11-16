@@ -49,7 +49,9 @@ function validId(gaId: string): boolean {
   return GA_ID_RE.test(gaId)
 }
 
-/** Banner styles, mirroring components/CookieConsent with the app's tokens. */
+/** Banner styles, mirroring components/CookieConsent with the app's tokens.
+ *  O link da política de privacidade fica sublinhado para não depender da cor
+ *  (auditoria `link-in-text-block` do Lighthouse). */
 export const CONSENT_CSS = `
 html{scroll-padding-bottom:var(--consent-banner-height,0px)}
 body{padding-bottom:var(--consent-banner-height,0px)}
@@ -58,6 +60,8 @@ body{padding-bottom:var(--consent-banner-height,0px)}
 #cookie-preferences{background:transparent;border:0;color:#a3a3a3;font:inherit;font-size:.875rem;text-decoration:underline;min-height:44px;cursor:pointer}
 .consent[hidden]{display:none}
 .consent p{margin:0;color:#a3a3a3;font-size:.875rem;line-height:1.5}
+.consent p a{text-decoration:underline;text-underline-offset:3px}
+.consent p a:focus-visible{outline:2px solid #49f21b;outline-offset:2px}
 .consent .actions{display:flex;flex-shrink:0;gap:8px}
 .consent button{min-height:44px;padding:8px 16px;border-radius:9999px;font:inherit;font-size:.875rem;font-weight:600;cursor:pointer}
 .consent .reject{background:transparent;border:1px solid #2a2a2a;color:#a3a3a3}

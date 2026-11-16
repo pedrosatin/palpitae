@@ -24,6 +24,13 @@
   line-height: var(--line-height-normal);
 }
 
+/* Sublinhado no link da política de privacidade: o verde da marca contra o
+   cinza do texto não basta para distingui-lo (Lighthouse `link-in-text-block`). */
+.text a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .actions {
   display: flex;
   flex-shrink: 0;
