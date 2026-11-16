@@ -385,6 +385,15 @@ describe('guide analytics (Consent Mode v2)', () => {
     expect(warn).toHaveBeenCalledOnce()
   })
 
+  it('sublinha o link da política de privacidade no aviso de cookies', () => {
+    loadPage(renderGuide(guides[0], GA_ID))
+    const css = [...document.querySelectorAll('style')]
+      .map((s) => s.textContent)
+      .join('\n')
+    expect(css).toContain('.consent p a{text-decoration:underline')
+    expect(css).toContain('.consent p a:focus-visible{outline:2px solid #49f21b')
+  })
+
   it('registers the denied consent default before js/config, then shows the banner', () => {
     loadPage(renderGuide(guides[0], GA_ID))
     const calls = window.dataLayer.map((a) => Array.from(a as ArrayLike<unknown>))

@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import CookieConsent from './CookieConsent'
 import * as ga from '../../analytics/ga'
@@ -83,6 +85,16 @@ describe('CookieConsent', () => {
       'href',
       '/privacidade',
     )
+  })
+
+  it('sublinha o link da política de privacidade no CSS do aviso', () => {
+    // Import direto do CSS module é esvaziado nos testes (só variables.css
+    // escapa em vite.config), então o conteúdo vem do arquivo no disco.
+    const css = readFileSync(
+      join(process.cwd(), 'src/components/CookieConsent/CookieConsent.module.css'),
+      'utf8',
+    )
+    expect(css).toMatch(/\.text a\s*\{[^}]*text-decoration:\s*underline/)
   })
 
   it('stays hidden once a choice was already stored', () => {
