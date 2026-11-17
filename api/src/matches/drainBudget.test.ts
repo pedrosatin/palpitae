@@ -10,6 +10,8 @@ import {
   DRAIN_RESERVED_CALLS,
   DrainBudget,
   SETTLE_CALLS,
+  SETTLE_RECOVERY_CALLS,
+  STATE_RESERVE_CALLS,
 } from './drainBudget'
 
 const handles: DatabaseSync[] = []
@@ -31,7 +33,10 @@ describe('orçamento de subrequests do dreno', () => {
     expect(DRAIN_RESERVED_CALLS).toBe(5)
     expect(DRAIN_CALL_BUDGET).toBe(INVOCATION_CALL_LIMIT - 5)
     expect(DRAIN_CALL_BUDGET).toBe(45)
-    expect(CYCLE_FIXED_CALLS).toBe(2)
+    // A reclamação e a reserva do estado: gravar (1), repetir (1) e a liberação mínima (1).
+    expect(SETTLE_CALLS + SETTLE_RECOVERY_CALLS).toBe(STATE_RESERVE_CALLS)
+    expect(STATE_RESERVE_CALLS).toBe(3)
+    expect(CYCLE_FIXED_CALLS).toBe(4)
   })
 
   it('o D1 do ciclo conta cada consulta e cada batch como uma chamada', async () => {
@@ -59,9 +64,9 @@ describe('orçamento de subrequests do dreno', () => {
     const first = budget.open(10)!
     const second = budget.open(10)!
 
-    // 30 − 1 (estado) − 20 reservados = 9 livres: não cabem 10.
+    // 30 − 3 (estado) − 20 reservados = 7 livres: não cabem 10.
     expect(budget.open(10)).toBeNull()
-    expect(budget.open(9)).not.toBeNull()
+    expect(budget.open(7)).not.toBeNull()
 
     // O primeiro gasta 3 e a reserva dele cai para 7, mas o que gastou sai do saldo.
     await first.db.prepare('SELECT 1').first()
@@ -77,7 +82,7 @@ describe('orçamento de subrequests do dreno', () => {
   })
 
   it('devolve a sobra da reserva quando o item termina e acorda quem esperava', async () => {
-    const { budget } = setup(14)
+    const { budget } = setup(16)
     const first = budget.open(10)!
     expect(budget.open(10)).toBeNull()
     expect(budget.hasInFlight()).toBe(true)
@@ -97,11 +102,11 @@ describe('orçamento de subrequests do dreno', () => {
     expect(budget.open(10)).not.toBeNull()
   })
 
-  it('o D1 do item recusa, sem chamar, o que invadiria a gravação do estado', async () => {
-    const { budget, reached } = setup(6)
+  it('o D1 do item recusa, sem chamar, o que invadiria a reserva do estado', async () => {
+    const { budget, reached } = setup(8)
     const item = budget.open(1)!
 
-    // 6 − 1 (estado) = 5 chamadas de trabalho.
+    // 8 − 3 (reserva do estado) = 5 chamadas de trabalho.
     for (let i = 0; i < 5; i++) await item.db.prepare('SELECT 1').first()
     expect(budget.used).toBe(5)
 
@@ -115,10 +120,11 @@ describe('orçamento de subrequests do dreno', () => {
     expect(reached()).toBe(5)
     expect(budget.used).toBe(5)
 
-    // A gravação do estado, pelo D1 do ciclo, ainda cabe.
-    await budget.db.batch([budget.db.prepare('SELECT 1')])
-    expect(budget.used).toBe(6)
-    expect(SETTLE_CALLS).toBe(1)
+    // A gravação do estado e a recuperação dela, pelo D1 do ciclo, ainda cabem.
+    for (let i = 0; i < STATE_RESERVE_CALLS; i++) {
+      await budget.db.batch([budget.db.prepare('SELECT 1')])
+    }
+    expect(budget.used).toBe(8)
   })
 
   it('cada fetch cobrado soma no mesmo saldo das consultas ao D1', async () => {
@@ -138,7 +144,7 @@ describe('orçamento de subrequests do dreno', () => {
     const first = budget.open(10)!
     budget.open(12)
 
-    // 40 − 1 (estado) − 12 (reserva do outro) = 27, com a reserva dele incluída.
-    expect(first.callsLeft()).toBe(27)
+    // 40 − 3 (estado) − 12 (reserva do outro) = 25, com a reserva dele incluída.
+    expect(first.callsLeft()).toBe(25)
   })
 })

@@ -53,8 +53,8 @@ type Simulated = ProviderDrain & { shares: number[] }
 
 /**
  * Dreno que quer gastar `demand` chamadas de trabalho e gasta o que a fatia
- * deixa, pelo D1 dela, e depois grava o estado (1 chamada, a reservada). Para
- * por saldo quando a demanda não coube.
+ * deixa, pelo D1 dela, e depois grava o estado (1 chamada; as 2 de recuperação
+ * da reserva ficam sem uso). Para por saldo quando a demanda não coube.
  */
 function simulated(
   provider: string,
@@ -109,8 +109,9 @@ describe('coordenador dos drenos', () => {
 
     expect(DRAIN_CALL_BUDGET).toBe(45)
     expect(fd.shares[0]).toBe(45)
-    expect(used).toBe(45)
-    expect(limited.calls()).toBe(45)
+    // 45 − 3 de reserva do estado = 42 de trabalho, mais a gravação do estado.
+    expect(used).toBe(43)
+    expect(limited.calls()).toBe(43)
   })
 
   it('dois drenos famintos dividem o saldo e juntos nunca passam de 45', async () => {
@@ -123,7 +124,7 @@ describe('coordenador dos drenos', () => {
     expect(fd.shares[0] + espn.shares[0]).toBe(45)
     expect(fd.shares[0]).toBe(23)
     expect(espn.shares[0]).toBe(22)
-    expect(used).toBe(45)
+    expect(used).toBe(41)
     // A plataforma recusa a chamada 51, e o total do dreno nem chega perto de 46.
     expect(limited.calls()).toBeLessThanOrEqual(45)
   })
@@ -135,11 +136,11 @@ describe('coordenador dos drenos', () => {
 
     const used = await runProviderDrains(limited.db, [fd, espn])
 
-    // 1ª rodada: fd gasta as 23 e para por saldo; espn gasta 5 e grava o estado (6).
-    // 2ª rodada: só o fd roda de novo, com o que sobrou (45 − 23 − 6 = 16).
-    expect(fd.shares).toEqual([23, 16])
+    // 1ª rodada: fd gasta 21 das 23 (20 de trabalho e o estado) e para por saldo; espn
+    // gasta 5 e grava o estado (6). 2ª rodada: só o fd, com o que sobrou (45 − 21 − 6 = 18).
+    expect(fd.shares).toEqual([23, 18])
     expect(espn.shares).toEqual([22])
-    expect(used).toBe(45)
+    expect(used).toBe(21 + 6 + 16)
     expect(limited.calls()).toBeLessThanOrEqual(45)
   })
 
@@ -150,9 +151,9 @@ describe('coordenador dos drenos', () => {
 
     const used = await runProviderDrains(limited.db, [fd, espn])
 
-    // Sobram 16 depois da 1ª rodada, menos que as 30 que o fd precisa: ele não roda de novo.
+    // Sobram 18 depois da 1ª rodada, menos que as 30 que o fd precisa: ele não roda de novo.
     expect(fd.shares).toEqual([23])
-    expect(used).toBe(29)
+    expect(used).toBe(21 + 6)
   })
 
   it('dreno que encerrou por falta de vaga do provedor não pede nova rodada', async () => {
@@ -216,6 +217,32 @@ describe('coordenador dos drenos', () => {
     )
   })
 
+  it('telemetria que falha não derruba o coordenador: o outro dreno é consolidado e a sobra reaproveitada', async () => {
+    const { limited } = setup()
+    // O Analytics Engine lança em toda escrita, inclusive na do erro do dreno que falhou.
+    const ae = {
+      writeDataPoint: vi.fn(() => {
+        throw new Error('AE indisponível')
+      }),
+    } as unknown as AnalyticsEngineDataset
+    const broken: ProviderDrain = {
+      provider: 'espn',
+      run: async () => {
+        throw new Error('D1 fora do ar')
+      },
+    }
+    const fd = simulated('football-data', 100)
+
+    const used = await runProviderDrains(limited.db, [broken, fd], { ae })
+
+    // O gasto do fd entra na conta e, parando por saldo, ele ainda ganha a rodada extra.
+    expect(fd.shares).toHaveLength(2)
+    expect(fd.shares[1]).toBeGreaterThan(0)
+    expect(used).toBeGreaterThan(fd.shares[0])
+    expect(limited.calls()).toBeLessThanOrEqual(45)
+    expect(ae.writeDataPoint).toHaveBeenCalled()
+  })
+
   it('o orçamento é parâmetro: um limite menor reparte o que há', async () => {
     const { limited } = setup()
     const fd = simulated('football-data', 100)
@@ -223,6 +250,6 @@ describe('coordenador dos drenos', () => {
     const used = await runProviderDrains(limited.db, [fd], { limit: 12 })
 
     expect(fd.shares[0]).toBe(12)
-    expect(used).toBe(12)
+    expect(used).toBe(10)
   })
 })

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POLLER_AND_DRAIN_CRON } from '../crons'
 import worker from '../index'
 import { D1_CALLS_PER_INVOCATION, limitD1Calls, type LimitedD1 } from '../testing/d1CallLimit'
+import { flakyD1, isStateBatch } from '../testing/flakyD1'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import { runProviderDrains, type ProviderDrain } from './drainCoordinator'
@@ -76,7 +77,10 @@ function calendar(matches: number, matchday: number, status = 'FINISHED') {
   }
 }
 
-/** Banco de teste e provedor simulado, que responde `respond(url)` a cada request. */
+/**
+ * Banco de teste e provedor simulado, que responde `respond(url)` a cada request:
+ * o corpo de um calendário ou uma `Response` pronta (429, por exemplo).
+ */
 function createWorld(respond: (url: URL) => unknown) {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -88,7 +92,8 @@ function createWorld(respond: (url: URL) => unknown) {
       const url = new URL(String(input))
       if (url.hostname !== 'api.football-data.org') return Response.json({ events: [] })
       state.fetches += 1
-      return Response.json(respond(url))
+      const answer = respond(url)
+      return answer instanceof Response ? answer : Response.json(answer)
     }),
   )
   return { sqlite, db, state }
@@ -100,8 +105,8 @@ type World = ReturnType<typeof createWorld>
  * Passa a valer o limite da plataforma: as chamadas ao D1 e os `fetch` somam na
  * mesma conta, e o que veio antes (a semente do banco) fica fora dela.
  */
-function armLimit({ db, state }: World) {
-  const limited = limitD1Calls(db)
+function armLimit({ db, state }: World, wrap: (db: D1Database) => D1Database = (raw) => raw) {
+  const limited = limitD1Calls(wrap(db))
   state.onFetch = limited.chargeFetch
   const writeDataPoint = vi.fn()
   const env = {
@@ -115,9 +120,19 @@ function armLimit({ db, state }: World) {
   return { limited, env, writeDataPoint }
 }
 
+type SetupOptions = {
+  /** Envolve o D1 do Worker (depois da semente) com uma falha simulada. */
+  wrap?: (db: D1Database) => D1Database
+}
+
 /** Competição criada e 16 itens `result` na fila, um por rodada. */
-async function setupResultItems() {
-  const world = createWorld((url) => calendar(10, Number(url.searchParams.get('matchday') ?? '1')))
+async function setupResultItems({ wrap }: SetupOptions = {}) {
+  // Resposta do provedor, trocável depois da semente: `null` é o calendário normal.
+  const provider = { override: null as null | ((url: URL) => unknown) }
+  const world = createWorld(
+    (url) =>
+      provider.override?.(url) ?? calendar(10, Number(url.searchParams.get('matchday') ?? '1')),
+  )
   const { sqlite, db } = world
   await syncFixtures({ competitionCode: 'PPL', season: 2026, matchday: 1, db, apiKey: 'test' })
   const { id } = sqlite.prepare(`SELECT id FROM competitions WHERE external_id = '2017'`).get() as {
@@ -135,7 +150,7 @@ async function setupResultItems() {
     DRAIN_MINUTE,
   )
   world.state.fetches = 0
-  return { ...world, ...armLimit(world) }
+  return { ...world, ...armLimit(world, wrap), provider }
 }
 
 /** Um tick de dreno do cron fundido, no minuto dado. Devolve as falhas das rotinas. */
@@ -317,6 +332,134 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
     // A fatia de 23 (22 de trabalho) comporta 2 itens de 8; os outros 14 seguem pendentes.
     expect(count(h.sqlite, `status = 'done'`)).toBe(2)
     expect(count(h.sqlite, `status = 'pending'`)).toBe(ITEMS - 2)
+  })
+})
+
+describe('falha do D1 na gravação do estado, dentro do saldo de 50', () => {
+  it('falha transitória só no batch de estado: a nova tentativa cabe na reserva e nenhum item fica running', async () => {
+    let failures = 1
+    const h = await setupResultItems({
+      wrap: (db) => flakyD1(db, { failBatch: (sqls) => isStateBatch(sqls) && failures-- > 0 }),
+    })
+
+    expect(await runDrainTick(h, DRAIN_MINUTE)).toEqual([])
+
+    expectWithinBudget(h.limited)
+    expect(count(h.sqlite, `status = 'running'`)).toBe(0)
+    expect(count(h.sqlite, `status = 'done'`)).toBe(5)
+    expect(count(h.sqlite, `attempts > 0`)).toBe(0)
+    // Os 38 do tick normal mais a nova tentativa do batch.
+    expect(h.limited.calls()).toBe(39)
+  })
+
+  it('batch de estado que falha sempre: os itens voltam a pending sem tentativa e o tick seguinte os refaz', async () => {
+    let broken = true
+    const h = await setupResultItems({
+      wrap: (db) => flakyD1(db, { failBatch: (sqls) => broken && isStateBatch(sqls) }),
+    })
+
+    expect(await runDrainTick(h, DRAIN_MINUTE)).toEqual([])
+
+    expectWithinBudget(h.limited)
+    // Tentativa, nova tentativa e liberação cabem na reserva: 38 + 1 + 1.
+    expect(h.limited.calls()).toBe(40)
+    expect(count(h.sqlite, `status = 'running'`)).toBe(0)
+    expect(count(h.sqlite, `status = 'pending' AND attempts = 0`)).toBe(ITEMS)
+    const runs = h.writeDataPoint.mock.calls
+      .map(([point]) => point as { blobs: string[] })
+      .filter((point) => point.blobs[0] === 'provider_work_run')
+    expect(runs.at(-1)?.blobs[1]).toBe('error')
+
+    // O D1 volta, e a fila termina nos ticks seguintes.
+    broken = false
+    for (let tick = 1; tick <= 6 && count(h.sqlite, `status = 'done'`) < ITEMS; tick++) {
+      expect(await runDrainTick(h, DRAIN_MINUTE + tick * TICK_MS)).toEqual([])
+      expectWithinBudget(h.limited)
+    }
+    expect(count(h.sqlite, `status = 'done'`)).toBe(ITEMS)
+    expect(count(h.sqlite, `attempts > 0`)).toBe(0)
+  })
+})
+
+describe('429 da football-data dentro do dreno', () => {
+  const limited = (resetSeconds: number) =>
+    Response.json(
+      { message: 'limite' },
+      { status: 429, headers: { 'X-RequestCounter-Reset': String(resetSeconds) } },
+    )
+
+  /** A espera do 429 roda no relógio simulado, que avança junto com os timers. */
+  function useClockWithTimers() {
+    vi.useRealTimers()
+    vi.useFakeTimers({ now: DRAIN_MINUTE, toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+  }
+
+  it('429 com reset curto: a espera, o novo request e o bloqueio cabem no saldo e valem para os demais', async () => {
+    useClockWithTimers()
+    const h = await setupResultItems()
+    let first = true
+    h.provider.override = (url) => {
+      if (!first) return null
+      first = false
+      void url
+      return limited(2)
+    }
+
+    const tick = runDrainTick(h, DRAIN_MINUTE)
+    await vi.advanceTimersByTimeAsync(7_000)
+
+    expect(await tick).toEqual([])
+    expectWithinBudget(h.limited)
+    // O bloqueio gravado pelo 429 vale para o item que ainda não tinha reservado vaga.
+    expect(
+      (
+        h.sqlite.prepare(`SELECT blocked_until FROM provider_rate_state`).get() as {
+          blocked_until: number
+        }
+      ).blocked_until,
+    ).toBeGreaterThan(DRAIN_MINUTE)
+    expect(count(h.sqlite, `status = 'running'`)).toBe(0)
+    expect(count(h.sqlite, `attempts > 0`)).toBe(0)
+    // O item do 429 refez o request depois da pausa e concluiu: 1 fetch a mais que os concluídos.
+    const doneItems = count(h.sqlite, `status = 'done'`)
+    expect(doneItems).toBeGreaterThanOrEqual(3)
+    expect(h.state.fetches).toBe(doneItems + 1)
+  })
+
+  it('429 com reset longo: o item volta sem tentativa e o dreno encerra, sem gastar o saldo à toa', async () => {
+    useClockWithTimers()
+    const h = await setupResultItems()
+    let first = true
+    h.provider.override = () => {
+      if (!first) return null
+      first = false
+      return limited(3600)
+    }
+
+    expect(await runDrainTick(h, DRAIN_MINUTE)).toEqual([])
+    expectWithinBudget(h.limited)
+    expect(count(h.sqlite, `status = 'running'`)).toBe(0)
+    expect(count(h.sqlite, `attempts > 0`)).toBe(0)
+    // O item do 429 espera o reset (1 h); os demais ficam prontos para o tick seguinte.
+    expect(count(h.sqlite, `not_before >= ${DRAIN_MINUTE + 3_000_000}`)).toBe(1)
+
+    // Outro isolate, 5 min depois: o bloqueio no D1 recusa a primeira vaga e o dreno encerra.
+    clearFootballDataPause()
+    const fetchesBefore = h.state.fetches
+    expect(await runDrainTick(h, DRAIN_MINUTE + TICK_MS)).toEqual([])
+    expectWithinBudget(h.limited)
+    expect(h.state.fetches).toBe(fetchesBefore)
+    expect(h.limited.calls() - CLEANUP_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
+
+    // Passado o reset, a fila termina por inteiro, sem tentativa gasta.
+    clearFootballDataPause()
+    const after = DRAIN_MINUTE + 61 * 60_000
+    for (let tick = 0; tick < 8 && count(h.sqlite, `status = 'done'`) < ITEMS; tick++) {
+      expect(await runDrainTick(h, after + tick * TICK_MS)).toEqual([])
+      expectWithinBudget(h.limited)
+    }
+    expect(count(h.sqlite, `status = 'done'`)).toBe(ITEMS)
+    expect(count(h.sqlite, `attempts > 0`)).toBe(0)
   })
 })
 
