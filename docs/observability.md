@@ -385,8 +385,12 @@ ticket 03), com o que a ESPN faz de diferente:
   lista do coordenador (`runProviderDrains`) e roda na fatia que ele entrega dos 45 subrequests do ramo
   drenador. Cada tentativa paga a vaga, o `fetch` e o registro da resposta dessa fatia (ADR-027, adendos
   "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto.
-- **429:** pausa até o `Retry-After` (segundos ou data; 60 s sem cabeçalho válido; no máximo 1 h) para
-  todos os isolates, sem retry imediato e sem mexer na sequência de 403.
+- **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,
+  sem retry imediato e sem mexer na sequência de 403. O prazo não é encurtado: o bloqueio é o maior
+  entre o `Retry-After` válido e a pausa mínima conservadora de 60 s (que também vale sem cabeçalho ou
+  com cabeçalho inválido). Só um `Retry-After` absurdo, acima de 24 h, suspende a coleta
+  (`suspended_reason = 'http_429_retry_after'`) e alerta (`provider_access_blocked`, status `429`,
+  estado `suspended`), como o 401 e o 451: o operador analisa e retoma.
 - **403:** limita e espaça. O 1º 403 bloqueia o provedor por 15 min, o 2º por 1 h e o 3º por 6 h; o 4º
   seguido **suspende** a coleta. Cada passo emite `provider_access_blocked` e uma resposta de sucesso zera
   a sequência. 401 e 451 suspendem na hora. Dois 403 simultâneos contam um passo só.

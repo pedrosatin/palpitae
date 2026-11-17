@@ -18,8 +18,10 @@ import { reserveProviderSlot } from './providerBudget'
  * e trata a resposta assim:
  *
  * - 2xx: o acesso funciona; a sequência de 403 zera.
- * - 429: pausa até `Retry-After` (ou a espera conservadora), sem mexer na
- *   sequência de 403. Nada repete na hora.
+ * - 429: pausa até o `Retry-After` que o fornecedor impôs, no mínimo a espera
+ *   conservadora (e essa espera quando o cabeçalho falta ou é inválido), sem
+ *   mexer na sequência de 403. Nada repete na hora. Um `Retry-After` absurdo
+ *   (acima de 24 h) suspende a coleta para análise, como o 401 e o 451.
  * - 403: limita e espaça as tentativas. Cada 403 seguido sobe a sequência e
  *   adia a próxima tentativa (`ESPN_FORBIDDEN_BACKOFF_MS`); o quarto
  *   suspende a coleta. Um alerta (`provider_access_blocked`) sai a cada passo.
@@ -43,11 +45,17 @@ export const ESPN_FORBIDDEN_BACKOFF_MS = [15 * 60_000, 60 * 60_000, 6 * 60 * 60_
 /** 403 seguidos que suspendem a coleta (o 4º). */
 export const ESPN_FORBIDDEN_SUSPEND_AFTER = ESPN_FORBIDDEN_BACKOFF_MS.length + 1
 
-/** Pausa de um 429 sem `Retry-After` válido. */
+/**
+ * Pausa mínima de um 429, e a espera quando o `Retry-After` falta ou é inválido.
+ * Um `Retry-After` válido maior que isso vale inteiro: o prazo é do fornecedor.
+ */
 export const ESPN_RATE_LIMIT_PAUSE_MS = 60_000
 
-/** Teto de uma pausa de 429, mesmo que o cabeçalho peça mais. */
-export const ESPN_RATE_LIMIT_MAX_PAUSE_MS = 60 * 60_000
+/**
+ * Um `Retry-After` acima disto não é um prazo razoável: a coleta é suspensa para
+ * análise (alerta) em vez de esperar dias em silêncio.
+ */
+export const ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS = 24 * 60 * 60_000
 
 /**
  * Chamadas de uma tentativa à ESPN, quando o dreno as paga do saldo de
@@ -63,6 +71,11 @@ function retryAfterMs(headers: Headers, now: number): number | null {
   if (/^\d+$/.test(raw)) return Number(raw) * 1000
   const at = Date.parse(raw)
   return Number.isNaN(at) ? null : Math.max(0, at - now)
+}
+
+/** `Retry-After` que pede mais que o razoável: suspende em vez de esperar. */
+function isAbsurdRetryAfter(retryAfter: number | null): boolean {
+  return retryAfter !== null && retryAfter > ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS
 }
 
 type Forbidden403Row = {
@@ -112,11 +125,15 @@ async function noteForbidden(db: D1Database, now: number): Promise<BlockOutcome>
   }
 }
 
-/** 401 e 451: a resposta proíbe o acesso, a coleta é suspensa na hora. */
+/**
+ * A resposta proíbe o acesso (401 e 451) ou pede uma espera que não é razoável
+ * (429 com `Retry-After` absurdo): a coleta é suspensa na hora, com o motivo.
+ */
 async function suspendProhibited(
   db: D1Database,
   status: number,
   now: number,
+  reason: string,
 ): Promise<BlockOutcome> {
   const { results } = await db
     .prepare(
@@ -127,7 +144,7 @@ async function suspendProhibited(
         WHERE provider = 'espn'
         RETURNING forbidden_streak, blocked_until`,
     )
-    .bind(now, `http_${status}`)
+    .bind(now, reason)
     .all<{ forbidden_streak: number; blocked_until: number }>()
   const row = results[0]
   return {
@@ -138,12 +155,16 @@ async function suspendProhibited(
   }
 }
 
+/**
+ * Bloqueio de um 429: o maior entre o `Retry-After` válido e a pausa mínima
+ * conservadora, sem teto (só o absurdo suspende, antes de chegar aqui).
+ */
 async function pauseRateLimited(
   db: D1Database,
-  pauseMs: number,
+  retryAfterMs: number | null,
   now: number,
 ): Promise<BlockOutcome> {
-  const until = now + Math.min(ESPN_RATE_LIMIT_MAX_PAUSE_MS, Math.max(pauseMs, 1))
+  const until = now + Math.max(retryAfterMs ?? 0, ESPN_RATE_LIMIT_PAUSE_MS)
   const { results } = await db
     .prepare(
       `UPDATE provider_rate_state
@@ -186,17 +207,27 @@ async function noteEspnResponse(
     return null
   }
   if (status === 429) {
-    return pauseRateLimited(db, retryAfterMs(headers, now) ?? ESPN_RATE_LIMIT_PAUSE_MS, now)
+    const retryAfter = retryAfterMs(headers, now)
+    return isAbsurdRetryAfter(retryAfter)
+      ? suspendProhibited(db, status, now, 'http_429_retry_after')
+      : pauseRateLimited(db, retryAfter, now)
   }
   if (status === 403) return noteForbidden(db, now)
-  if (status === 401 || status === 451) return suspendProhibited(db, status, now)
+  if (status === 401 || status === 451) return suspendProhibited(db, status, now, `http_${status}`)
   return null
 }
 
 /** Estimativa quando o D1 não gravou: o bloqueio mais curto da regra do status. */
-function localEstimate(status: number, now: number): BlockOutcome | null {
+function localEstimate(status: number, headers: Headers, now: number): BlockOutcome | null {
   if (status === 429) {
-    return { status, streak: 0, reason: 'blocked', retryAt: now + ESPN_RATE_LIMIT_PAUSE_MS }
+    const retryAfter = retryAfterMs(headers, now)
+    if (isAbsurdRetryAfter(retryAfter)) return { status, streak: 0, reason: 'suspended', retryAt: now }
+    return {
+      status,
+      streak: 0,
+      reason: 'blocked',
+      retryAt: now + Math.max(retryAfter ?? 0, ESPN_RATE_LIMIT_PAUSE_MS),
+    }
   }
   if (status === 403) {
     return { status, streak: 1, reason: 'blocked', retryAt: now + ESPN_FORBIDDEN_BACKOFF_MS[0] }
@@ -243,9 +274,12 @@ export function createEspnGate(
         outcome = await noteEspnResponse(db, slot, status, headers, now)
       } catch (err) {
         console.error('[espn] Falha ao gravar o estado de acesso da ESPN:', err)
-        outcome = localEstimate(status, now)
+        outcome = localEstimate(status, headers, now)
       }
-      if (outcome && outcome.status !== 429) alertAccessBlocked(ae, outcome, now)
+      // O 429 comum já tem `provider_http_attempt`; a suspensão por Retry-After absurdo alerta.
+      if (outcome && (outcome.status !== 429 || outcome.reason === 'suspended')) {
+        alertAccessBlocked(ae, outcome, now)
+      }
       return outcome && { reason: outcome.reason, retryAt: outcome.retryAt }
     },
   }
@@ -259,7 +293,9 @@ function alertAccessBlocked(
 ): void {
   const suspended = outcome.reason === 'suspended'
   const message = suspended
-    ? `[espn] Acesso proibido (HTTP ${outcome.status}): coleta SUSPENSA até o operador conferir os termos e retomar.`
+    ? outcome.status === 429
+      ? `[espn] Retry-After acima de ${ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS / 3_600_000} h (HTTP 429): coleta SUSPENSA até o operador analisar e retomar.`
+      : `[espn] Acesso proibido (HTTP ${outcome.status}): coleta SUSPENSA até o operador conferir os termos e retomar.`
     : `[espn] Acesso bloqueado (HTTP ${outcome.status}, ${outcome.streak}º seguido): nova tentativa a partir de ${new Date(outcome.retryAt).toISOString()}.`
   logError(ae, 'provider_access_blocked', message, new Error(`HTTP ${outcome.status}`), {
     // provider, status, estado

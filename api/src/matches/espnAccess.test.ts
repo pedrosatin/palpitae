@@ -6,7 +6,7 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import {
   ESPN_FORBIDDEN_BACKOFF_MS,
   ESPN_FORBIDDEN_SUSPEND_AFTER,
-  ESPN_RATE_LIMIT_MAX_PAUSE_MS,
+  ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS,
   ESPN_RATE_LIMIT_PAUSE_MS,
   createEspnGate,
   isEspnRefusal,
@@ -160,12 +160,21 @@ describe('controle de acesso da ESPN: 401 e 451', () => {
 })
 
 describe('controle de acesso da ESPN: 429', () => {
+  const HOUR = 60 * MIN
+
   it.each([
     ['segundos', { 'retry-after': '120' }, 120_000],
     ['data HTTP', { 'retry-after': new Date(T0 + 5 * MIN).toUTCString() }, 5 * MIN],
+    // O prazo que o fornecedor impôs vale inteiro: antes, 7200 s virava 1 h.
+    ['2 h em segundos', { 'retry-after': '7200' }, 2 * HOUR],
+    ['3 h em data HTTP', { 'retry-after': new Date(T0 + 3 * HOUR).toUTCString() }, 3 * HOUR],
+    ['24 h exatas, o limite do que é razoável', { 'retry-after': '86400' }, 24 * HOUR],
+    // Menor que o mínimo conservador, o mínimo vale.
+    ['5 s, abaixo do mínimo', { 'retry-after': '5' }, ESPN_RATE_LIMIT_PAUSE_MS],
+    ['zero', { 'retry-after': '0' }, ESPN_RATE_LIMIT_PAUSE_MS],
+    ['data HTTP no passado', { 'retry-after': new Date(T0 - HOUR).toUTCString() }, 60_000],
     ['sem cabeçalho', {}, ESPN_RATE_LIMIT_PAUSE_MS],
     ['cabeçalho inválido', { 'retry-after': 'logo' }, ESPN_RATE_LIMIT_PAUSE_MS],
-    ['acima do teto', { 'retry-after': '999999' }, ESPN_RATE_LIMIT_MAX_PAUSE_MS],
   ])('pausa pelo Retry-After (%s) sem mexer na sequência de 403', async (_name, headers, ms) => {
     const { db, gate, alerts } = setup()
 
@@ -177,6 +186,33 @@ describe('controle de acesso da ESPN: 429', () => {
     })
     // Rate limit já tem `provider_http_attempt`: não gera o alerta de acesso.
     expect(alerts()).toHaveLength(0)
+  })
+
+  it.each([
+    ['em segundos, 1 s acima de 24 h', { 'retry-after': '86401' }],
+    ['em segundos, absurdo', { 'retry-after': '999999999' }],
+    ['em data HTTP, uma semana', { 'retry-after': new Date(T0 + 7 * 24 * HOUR).toUTCString() }],
+    ['com mais dígitos que um número aguenta', { 'retry-after': '9'.repeat(400) }],
+  ])('Retry-After absurdo (%s) suspende a coleta para análise e alerta', async (_name, headers) => {
+    const { db, gate, at, alerts } = setup()
+
+    const outcome = await attempt(gate, 429, headers)
+
+    expect(outcome?.reason).toBe('suspended')
+    expect(await readProviderState(db, 'espn')).toMatchObject({
+      suspendedReason: 'http_429_retry_after',
+      forbiddenStreak: 0,
+    })
+    // Como o 401 e o 451: nenhuma chamada sai até o operador retomar.
+    at(48 * HOUR)
+    await expect(gate.reserve()).rejects.toMatchObject({ reason: 'suspended' })
+    // O 429 comum não alerta (tem `provider_http_attempt`); a suspensão alerta.
+    expect(alerts()).toHaveLength(1)
+    expect(alerts()[0].blobs.slice(1, 4)).toEqual(['espn', '429', 'suspended'])
+  })
+
+  it('o limite do que é razoável é 24 h', () => {
+    expect(ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS).toBe(24 * HOUR)
   })
 
   it('a pausa nunca encurta um bloqueio maior em curso', async () => {
