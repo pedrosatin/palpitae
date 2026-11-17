@@ -10,8 +10,8 @@ import { competitionsRouter } from './competitions/router'
 import {
   DAILY_EXPORT_CRON,
   FIXTURE_DISCOVERY_CRON,
-  PROVIDER_WORK_DRAIN_CRON,
-  RESULT_POLLER_CRON,
+  isResultPollerTick,
+  POLLER_AND_DRAIN_CRON,
   ROUND_REMINDER_CRON,
 } from './crons'
 import { jsonError, jsonNotFound } from './errorHandlers'
@@ -131,13 +131,6 @@ export default {
       return
     }
 
-    if (controller.cron === PROVIDER_WORK_DRAIN_CRON) {
-      // Drenador da fila durável (ADR-027): retoma o trabalho pendente da
-      // football-data entre os ticks.
-      ctx.waitUntil(drainFootballDataWork(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
-      return
-    }
-
     if (controller.cron === ROUND_REMINDER_CRON) {
       // E-mail do dia para quem tem jogo de hoje sem palpite (1x/dia).
       ctx.waitUntil(
@@ -154,11 +147,18 @@ export default {
       return
     }
 
-    if (controller.cron === RESULT_POLLER_CRON) {
-      // Result poller — resultados da janela ativa + pontuação (ADR-007).
-      ctx.waitUntil(
-        pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
-      )
+    if (controller.cron === POLLER_AND_DRAIN_CRON) {
+      if (isResultPollerTick(controller.scheduledTime)) {
+        // Minutos 0 e 30: só o poller — resultados da janela ativa + pontuação
+        // (ADR-007). O drenador não compete com ele; retoma no minuto 5/35.
+        ctx.waitUntil(
+          pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+        )
+      } else {
+        // Demais minutos do trigger fundido: drenador da fila durável (ADR-027),
+        // que retoma o trabalho pendente da football-data entre os ticks.
+        ctx.waitUntil(drainFootballDataWork(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
+      }
       return
     }
 

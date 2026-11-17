@@ -7,7 +7,18 @@ import deployWorkflow from '../../.github/workflows/deploy-api.yml?raw'
 import deployWebWorkflow from '../../.github/workflows/deploy-web.yml?raw'
 import packageJsonFile from '../package.json'
 import wranglerToml from '../wrangler.toml?raw'
-import { FIXTURE_DISCOVERY_CRON, PROVIDER_WORK_DRAIN_CRON, RESULT_POLLER_CRON, SCHEDULED_CRONS } from './crons'
+import {
+  CLOUDFLARE_FREE_CRON_LIMIT,
+  CRONS_USED_BY_OTHER_WORKERS,
+  DAILY_EXPORT_CRON,
+  FIXTURE_DISCOVERY_CRON,
+  MAX_API_CRON_TRIGGERS,
+  POLLER_AND_DRAIN_CRON,
+  PROVIDER_WORK_DRAIN_MINUTES,
+  RESULT_POLLER_MINUTES,
+  ROUND_REMINDER_CRON,
+  SCHEDULED_CRONS,
+} from './crons'
 
 const REPO_ROOT = new URL('../../', import.meta.url)
 
@@ -166,22 +177,74 @@ describe('wrangler api config', () => {
     expect(wranglerToml).toMatch(/^preview_urls = false$/m)
   })
 
-  it('roda a descoberta diária num minuto diferente dos ticks do poller', () => {
-    const minutes = (cron: string) => cron.split(' ')[0].split(',')
+  const declaredCrons = () => {
+    const declared = wranglerToml.match(/^crons = (\[.*\])$/m)?.[1]
+    expect(declared).toBeDefined()
+    return JSON.parse(declared!) as string[]
+  }
+  const minutes = (cron: string) => cron.split(' ')[0].split(',').map(Number)
 
-    expect(minutes(RESULT_POLLER_CRON)).toEqual(['0', '30'])
-    expect(minutes(RESULT_POLLER_CRON)).not.toContain(minutes(FIXTURE_DISCOVERY_CRON)[0])
+  it('declara exatamente os 4 crons esperados, sem nenhum desconhecido', () => {
+    expect([...declaredCrons()].sort()).toEqual(
+      [
+        POLLER_AND_DRAIN_CRON,
+        DAILY_EXPORT_CRON,
+        ROUND_REMINDER_CRON,
+        FIXTURE_DISCOVERY_CRON,
+      ].sort(),
+    )
+    expect(POLLER_AND_DRAIN_CRON).toBe('0,5,10,20,25,30,35,40,50,55 * * * *')
+    expect(DAILY_EXPORT_CRON).toBe('5 0 * * *')
+    expect(ROUND_REMINDER_CRON).toBe('0 10 * * *')
+    expect(FIXTURE_DISCOVERY_CRON).toBe('15 6 * * *')
   })
 
-  it('o drenador da fila não compartilha minuto com o poller nem com a descoberta', () => {
-    const pollerMinutes = new Set(RESULT_POLLER_CRON.split(' ')[0].split(','))
-    const discoveryMinute = FIXTURE_DISCOVERY_CRON.split(' ')[0]
-    const drainMinutes = PROVIDER_WORK_DRAIN_CRON.split(' ')[0].split(',')
+  it('não passa do limite de cron triggers do plano Free da Cloudflare (erro 10072)', () => {
+    // O plano Free permite 5 triggers por CONTA e a conta já usa 1 em outro Worker:
+    // sobram 4 para esta API. Com 5 o Deploy API falha com
+    // "This account has reached the Workers Free limit of 5 cron triggers per
+    // account [code: 10072]" (PR #769, run 44009052934). Para agendar algo novo,
+    // use um minuto novo do trigger fundido em vez de um cron novo.
+    expect(CLOUDFLARE_FREE_CRON_LIMIT).toBe(5)
+    expect(CRONS_USED_BY_OTHER_WORKERS).toBe(1)
+    expect(MAX_API_CRON_TRIGGERS).toBe(4)
+    expect(declaredCrons()).toHaveLength(4)
+    expect(declaredCrons().length + CRONS_USED_BY_OTHER_WORKERS).toBeLessThanOrEqual(
+      CLOUDFLARE_FREE_CRON_LIMIT,
+    )
+    expect(SCHEDULED_CRONS).toHaveLength(MAX_API_CRON_TRIGGERS)
+    expect(new Set(declaredCrons()).size).toBe(declaredCrons().length)
+  })
 
-    expect(drainMinutes.length).toBeGreaterThan(0)
-    for (const minute of drainMinutes) {
-      expect(pollerMinutes).not.toContain(minute)
-      expect(minute).not.toBe(discoveryMinute)
+  it('o trigger fundido é a união ordenada dos minutos do poller e do dreno', () => {
+    const union = [...RESULT_POLLER_MINUTES, ...PROVIDER_WORK_DRAIN_MINUTES].sort((a, b) => a - b)
+
+    expect(minutes(POLLER_AND_DRAIN_CRON)).toEqual(union)
+    expect(POLLER_AND_DRAIN_CRON.split(' ').slice(1)).toEqual(['*', '*', '*', '*'])
+  })
+
+  it('o poller roda nos minutos 0 e 30 e o dreno nunca nesses minutos', () => {
+    expect([...RESULT_POLLER_MINUTES]).toEqual([0, 30])
+    for (const minute of PROVIDER_WORK_DRAIN_MINUTES) {
+      expect(RESULT_POLLER_MINUTES).not.toContain(minute)
     }
+  })
+
+  it('o dreno roda a cada 5 a 10 min e não ocupa o minuto 15 da descoberta', () => {
+    const fused = minutes(POLLER_AND_DRAIN_CRON)
+    const gaps = fused.map((minute, i) => (fused[(i + 1) % fused.length] - minute + 60) % 60)
+
+    expect(Math.max(...gaps)).toBeLessThanOrEqual(10)
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(5)
+    expect(minutes(POLLER_AND_DRAIN_CRON)).not.toContain(minutes(FIXTURE_DISCOVERY_CRON)[0])
+  })
+
+  it('o crons.ts não guarda mais o cron separado do dreno', async () => {
+    const crons = (await import('./crons')) as Record<string, unknown>
+
+    expect(crons.PROVIDER_WORK_DRAIN_CRON).toBeUndefined()
+    expect(crons.RESULT_POLLER_CRON).toBeUndefined()
+    expect(wranglerToml).not.toContain('5,10,20,25,35,40,50,55 * * * *')
+    expect(wranglerToml).not.toContain('"0,30 * * * *"')
   })
 })
