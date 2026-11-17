@@ -226,7 +226,7 @@ export async function enqueueProviderWork(
  * 429 ou 403, coleta suspensa), o prazo de retomada é esse; os demais usam a
  * espera conservadora de uma janela.
  */
-function retryAtOf(error: unknown, now: number): number {
+export function retryAtOf(error: unknown, now: number): number {
   const retryAt = (error as { retryAt?: unknown } | null)?.retryAt
   return typeof retryAt === 'number' ? retryAt : now + WORK_BUSY_RETRY_MS
 }

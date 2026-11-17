@@ -6,7 +6,9 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 /** Tentativas HTTP que cada sync gasta do orçamento do tick. */
 const sync = vi.hoisted(() => ({ attempts: 0 }))
 
-vi.mock('./sync', () => ({
+vi.mock('./sync', async (importOriginal) => ({
+  // `syncWriteCalls` é a estimativa de custo da gravação (o poller reserva o saldo da football-data).
+  ...(await importOriginal<typeof import('./sync')>()),
   syncFixtures: vi.fn(async (options: { onHttpAttempt?: (attempt: unknown) => void }) => {
     for (let i = 0; i < sync.attempts; i++) {
       options.onHttpAttempt?.({ provider: 'football-data', status: 200, durationMs: 1 })
