@@ -15,8 +15,10 @@ import {
   ESPN_FORBIDDEN_SUSPEND_AFTER,
   ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS,
   ESPN_RATE_LIMIT_PAUSE_MS,
+  createEspnDiscoveryGate,
   createEspnGate,
   isEspnRefusal,
+  readEspnAccessPause,
   resetEspnAccessForTests,
 } from './espnAccess'
 import {
@@ -566,5 +568,84 @@ describe('retomada pelo operador', () => {
       suspendedReason: null,
     })
     await expect(gate.reserve()).resolves.toBeUndefined()
+  })
+})
+
+describe('gate da descoberta e leitura do estado de acesso', () => {
+  it('readEspnAccessPause: livre, bloqueada até blocked_until e suspensa', async () => {
+    const { db, sqlite } = setup()
+
+    expect(await readEspnAccessPause(db, T0)).toBeNull()
+
+    sqlite.exec(
+      `UPDATE provider_rate_state SET blocked_until = ${T0 + 5 * MIN} WHERE provider = 'espn'`,
+    )
+    expect(await readEspnAccessPause(db, T0)).toEqual({ reason: 'blocked', retryAt: T0 + 5 * MIN })
+    // O bloqueio vencido não pausa.
+    expect(await readEspnAccessPause(db, T0 + 5 * MIN)).toBeNull()
+
+    sqlite.exec(
+      `UPDATE provider_rate_state SET suspended_at = ${T0}, suspended_reason = 'http_401'`,
+    )
+    expect(await readEspnAccessPause(db, T0 + 10 * MIN)).toMatchObject({ reason: 'suspended' })
+  })
+
+  it('o sucesso não escreve no D1 e a reserva não consome vaga: a descoberta segue a 1 chamada por request', async () => {
+    const { db, sqlite } = setup()
+    const gate = createEspnDiscoveryGate(db)
+    const before = sqlite.prepare('SELECT window_calls, updated_at FROM provider_rate_state').all()
+
+    await gate.reserve()
+    expect(await gate.note(200, new Headers())).toBeNull()
+    expect(await gate.note(500, new Headers())).toBeNull()
+
+    expect(
+      sqlite.prepare('SELECT window_calls, updated_at FROM provider_rate_state').all(),
+    ).toEqual(before)
+  })
+
+  it('a resposta que proíbe é registrada como no gate completo e para os requests seguintes do gate', async () => {
+    const { db, alerts } = setup()
+    const writeDataPoint = vi.fn()
+    const gate = createEspnDiscoveryGate(db, {
+      writeDataPoint,
+    } as unknown as AnalyticsEngineDataset)
+    await gate.reserve()
+
+    expect(await gate.note(403, new Headers())).toEqual({
+      reason: 'blocked',
+      retryAt: T0 + 15 * MIN,
+    })
+
+    expect(await readProviderState(db, 'espn')).toMatchObject({
+      forbiddenStreak: 1,
+      blockedUntil: T0 + 15 * MIN,
+    })
+    expect(writeDataPoint).toHaveBeenCalledTimes(1)
+    // Sem consultar o D1: o bloqueio ficou na memória do gate.
+    await expect(gate.reserve()).rejects.toMatchObject({
+      reason: 'blocked',
+      retryAt: T0 + 15 * MIN,
+    })
+    void alerts
+  })
+
+  it('a proibição que o D1 não grava segue valendo no isolate, também para o gate da descoberta', async () => {
+    const { db } = setup()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const failing = flakyD1(db, {
+      failStatement: (sql) =>
+        sql.includes('UPDATE provider_rate_state') && !sql.includes('window_calls'),
+    })
+    const gate = createEspnDiscoveryGate(failing)
+    await gate.reserve()
+
+    expect((await gate.note(401, new Headers()))?.reason).toBe('suspended')
+
+    // Outro gate do mesmo isolate (outra execução da descoberta ou o gate completo) não passa.
+    await expect(createEspnDiscoveryGate(failing).reserve()).rejects.toMatchObject({
+      reason: 'suspended',
+    })
+    await expect(createEspnGate(failing).reserve()).rejects.toMatchObject({ reason: 'suspended' })
   })
 })
