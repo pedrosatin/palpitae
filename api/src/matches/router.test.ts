@@ -6,6 +6,7 @@ import type { AppContext } from '../types'
 import { signJwt } from '../auth/jwt'
 import { withSessionAccounts } from '../testing/session'
 import * as observability from '../observability'
+import { FootballDataQuotaError } from './footballDataQuota'
 import { FootballDataSlotBusyError } from './providerBudget'
 
 const { syncFixturesSpy, scoreUnprocessedMatchesSpy } = vi.hoisted(() => ({
@@ -525,6 +526,40 @@ describe('matches router – GET /', () => {
       expect(syncFixturesSpy).toHaveBeenCalledWith(
         expect.objectContaining({ coordinate: true, competitionCode: 'WC', season: 2022 }),
       )
+    })
+
+    it('com a cota da football-data esgotada, o sync administrativo fica pendente com o prazo da cota', async () => {
+      const retryAt = Date.now() + 5 * 60_000
+      syncFixturesSpy.mockRejectedValue(new FootballDataQuotaError(retryAt))
+      const batch = vi.fn(async () => [])
+      const bind = vi.fn()
+      const db = {
+        ...createMatchesDbMock([]),
+        batch,
+        prepare: vi.fn(() => ({ bind: bind.mockReturnThis() })),
+      }
+
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+      const response = await app.fetch(
+        new Request('http://localhost/matches/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: 'session=' + adminToken },
+          body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+        }),
+        {
+          ...fakeEnv(db as unknown as D1Database),
+          ADMIN_EMAIL: 'admin@palpitae.test',
+          FOOTBALL_API_KEY: 'fake-api-key',
+        },
+        { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as unknown as ExecutionContext,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toMatchObject({ ok: true, pending: true })
+      expect(batch).toHaveBeenCalledTimes(1)
+      // O item manual volta no instante que a cota informou, não na próxima janela.
+      expect(bind.mock.calls.some((args) => args.includes(retryAt))).toBe(true)
     })
 
     it('returns 500 and logs error when syncFixtures fails', async () => {

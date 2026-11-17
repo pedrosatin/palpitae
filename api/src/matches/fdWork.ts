@@ -191,6 +191,9 @@ export async function drainFootballDataWork(
   now = Date.now(),
 ): Promise<void> {
   const startedAt = Date.now()
+  // Um saldo de `match_missing_from_feed` por execução do dreno, dividido entre
+  // as descobertas; os demais itens não registram (só a descoberta registra).
+  const missingEvents = { remaining: MISSING_EVENTS_PER_DISCOVERY }
   let run: DrainRun
   try {
     run = await drainProviderWork(db, {
@@ -201,7 +204,7 @@ export async function drainFootballDataWork(
         apiKey,
         ae,
         now,
-        extraSyncOptions: () => ({ missingEvents: { remaining: MISSING_EVENTS_PER_DISCOVERY } }),
+        extraSyncOptions: (item) => (item.kind === 'discovery' ? { missingEvents } : undefined),
       }),
       onSynced: footballDataSyncedHandler({ db, ae, now }),
     })
@@ -215,8 +218,23 @@ export async function drainFootballDataWork(
     )
     return
   }
+  // Falha do pós-sync não repete o item (ele já terminou), mas não pode sumir:
+  // a execução sai como erro e a falha sem evento próprio vai para o log.
+  const postFailures = run.outcomes.filter(
+    (outcome) => outcome.status === 'done' && outcome.postError,
+  )
+  for (const outcome of postFailures) {
+    if (outcome.status !== 'done' || outcome.postSilent) continue
+    logError(
+      ae,
+      'football_api_error',
+      `[drain] Pós-sync falhou item=${outcome.item.kind}/${outcome.item.competitionCode}:`,
+      outcome.postError,
+      { blobs: ['drain_post_sync'] },
+    )
+  }
   tryLogEvent(ae, 'provider_work_run', {
-    blobs: [run.failed > 0 ? 'error' : 'ok'],
+    blobs: [run.failed > 0 || postFailures.length > 0 ? 'error' : 'ok'],
     // claimed, done, requeued, failed, duration_ms
     doubles: [run.claimed, run.done, run.requeued, run.failed, Date.now() - startedAt],
   })
