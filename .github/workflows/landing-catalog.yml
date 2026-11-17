@@ -5,17 +5,13 @@ name: Landing Catalog
 # competição termina ou volta a piloto), então este workflow fica fora do
 # deploy-web.yml: nunca trava o deploy, nem um hotfix.
 #
-# Só reprova no PR que altera o próprio catálogo. Nos outros PRs, no push e na
-# execução diária, a divergência vira aviso no resumo da execução.
+# Só reprova no PR que altera o próprio catálogo. Nos outros PRs e na execução
+# diária, a divergência vira aviso no resumo da execução. Não roda no push da
+# main: o PR já conferiu a mesma mudança e o cron diário pega a divergência que
+# surgir depois.
 
 on:
   pull_request:
-    paths:
-      - 'web/**'
-      - '.github/workflows/landing-catalog.yml'
-  push:
-    branches:
-      - main
     paths:
       - 'web/**'
       - '.github/workflows/landing-catalog.yml'

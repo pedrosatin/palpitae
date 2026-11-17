@@ -70,6 +70,12 @@ const pathsDe = (text, evento) => {
     .map((l) => l.replace(/^\s*-\s*/, '').trim().replace(/^['"]|['"]$/g, ''))
 }
 
+// Eventos do bloco `on:` (chaves com dois espaços), sem os comentários.
+const eventosDe = (text) => {
+  const on = semComentarios(text).match(/^on:\s*\n((?:[ ].*\n|\n)+)/m)?.[1] ?? ''
+  return [...on.matchAll(/^ {2}([\w-]+):/gm)].map(([, evento]) => evento)
+}
+
 describe('workflows do GitHub Actions', () => {
   it('encontra os workflows', () => {
     assert.ok(workflows.length > 0)
@@ -193,6 +199,26 @@ describe('workflows do GitHub Actions', () => {
     // Um gatilho fora de web/ precisa existir: arquivo renomeado deixa de valer em silêncio.
     for (const path of triggers.filter((p) => p.startsWith('../'))) {
       assert.ok(existsSync(join(ROOT, 'web', path)), `gatilho ${path} não existe`)
+    }
+  })
+
+  it('landing-catalog.yml não roda no push; fica no PR da web e no cron', () => {
+    const text = workflows.find((w) => w.name === 'landing-catalog.yml')?.text ?? ''
+    const eventos = eventosDe(text)
+    assert.ok(!eventos.includes('push'), 'landing-catalog.yml voltou a disparar no push')
+    for (const evento of ['pull_request', 'schedule']) {
+      assert.ok(eventos.includes(evento), `landing-catalog.yml sem o gatilho ${evento}`)
+    }
+    assert.ok(pathsDe(text, 'pull_request').includes('web/**'), 'o PR não filtra mais por web/**')
+  })
+
+  it('radar-sync.yml tem teto de tempo em todo job', () => {
+    const text = workflows.find((w) => w.name === 'radar-sync.yml')?.text ?? ''
+    const jobs = jobsDe(text)
+    assert.ok(jobs.size > 0, 'nenhum job encontrado em radar-sync.yml')
+    for (const [nome, bloco] of jobs) {
+      const minutos = Number(bloco.match(/^ {4}timeout-minutes:\s*(\d+)\s*$/m)?.[1])
+      assert.ok(minutos > 0 && minutos <= 30, `job ${nome} sem timeout-minutes razoável`)
     }
   })
 })
