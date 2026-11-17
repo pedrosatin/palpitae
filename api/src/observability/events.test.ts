@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { hashUserId, logError, logEvent, tryLogEvent } from './events'
+import { hashUserId, logError, logEvent, tryLogError, tryLogEvent } from './events'
 
 type Point = {
   indexes?: string[]
@@ -38,6 +38,44 @@ describe('tryLogEvent', () => {
 
     expect(() => tryLogEvent(ae, 'account_created')).not.toThrow()
     expect(consoleError).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('tryLogError', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('escreve o mesmo contrato do logError', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { ae, calls } = fakeAe()
+
+    tryLogError(ae, 'provider_work_run', '[drain] falhou:', new Error('D1 fora'), {
+      blobs: ['error'],
+    })
+
+    expect(calls).toEqual([
+      {
+        indexes: ['provider_work_run'],
+        blobs: ['provider_work_run', 'error', 'D1 fora'],
+        doubles: [],
+      },
+    ])
+  })
+
+  it('não lança quando a escrita do evento falha, e o erro original fica no console', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ae = {
+      writeDataPoint: () => {
+        throw new Error('AE fora do ar')
+      },
+    } as unknown as AnalyticsEngineDataset
+
+    expect(() =>
+      tryLogError(ae, 'provider_work_run', '[drain] falhou:', new Error('D1 fora')),
+    ).not.toThrow()
+    expect(consoleError).toHaveBeenCalledWith('[drain] falhou:', expect.any(Error))
+    expect(consoleError).toHaveBeenCalledTimes(2)
   })
 })
 

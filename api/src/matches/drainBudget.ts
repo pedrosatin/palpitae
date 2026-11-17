@@ -27,13 +27,27 @@ export const CLAIM_CALLS = 1
 
 /**
  * Gravar o estado dos itens do ciclo (concluído, devolvido ou liberado): um único
- * `db.batch()`, qualquer que seja o número de itens. Fica reservada desde o início
- * do ciclo, então nenhum item é abandonado `running` por falta de chamada.
+ * `db.batch()`, qualquer que seja o número de itens.
  */
 export const SETTLE_CALLS = 1
 
-/** Custo fixo de um ciclo do dreno, antes de qualquer item. */
-export const CYCLE_FIXED_CALLS = CLAIM_CALLS + SETTLE_CALLS
+/**
+ * Recuperação da gravação do estado quando o próprio D1 falha: uma nova tentativa
+ * do batch (1) e, se ela falhar também, uma liberação mínima (1), um único
+ * `UPDATE` que devolve a `pending` os itens do ciclo, sem tentativa e sem lease.
+ */
+export const SETTLE_RECOVERY_CALLS = 2
+
+/**
+ * O que fica reservado, desde o início do ciclo, para gravar o estado e recuperar
+ * essa gravação. O trabalho dos itens nunca toca nesta reserva, então nenhum item
+ * é abandonado `running` por falta de chamada. Só a indisponibilidade persistente
+ * do D1, que recusa até a liberação, deixa itens `running` até o lease de 5 min.
+ */
+export const STATE_RESERVE_CALLS = SETTLE_CALLS + SETTLE_RECOVERY_CALLS
+
+/** Custo fixo de um ciclo do dreno, antes de qualquer item: a reclamação e a reserva do estado. */
+export const CYCLE_FIXED_CALLS = CLAIM_CALLS + STATE_RESERVE_CALLS
 
 /**
  * Fatia do saldo de um dreno. O coordenador (`drainCoordinator.ts`) cria uma por
@@ -42,7 +56,7 @@ export const CYCLE_FIXED_CALLS = CLAIM_CALLS + SETTLE_CALLS
  *
  * `db` serve ao ciclo do dreno (reclamar e gravar o estado): só conta. O trabalho
  * de cada item passa por `open`, que reserva a estimativa dele antes de começar e
- * entrega um D1 e um `fetch` que recusam, sem chamar, o que invadiria a gravação
+ * entrega um D1 e um `fetch` que recusam, sem chamar, o que invadiria a reserva
  * do estado.
  */
 export class DrainBudget {
@@ -74,9 +88,9 @@ export class DrainBudget {
     return callsLeft(this.budget)
   }
 
-  /** Livre para itens novos: sem a gravação do estado e sem o que os itens em voo ainda vão gastar. */
+  /** Livre para itens novos: sem a reserva do estado e sem o que os itens em voo ainda vão gastar. */
   private free(except?: ItemBudget): number {
-    let reserved = SETTLE_CALLS
+    let reserved = STATE_RESERVE_CALLS
     for (const item of this.inFlight) {
       if (item !== except) reserved += item.pending()
     }
@@ -122,9 +136,9 @@ export class DrainBudget {
     for (const resolve of waiting) resolve()
   }
 
-  /** Gasta uma chamada da fatia, ou falha se isso invadisse a gravação do estado. */
+  /** Gasta uma chamada da fatia, ou falha se isso invadisse a reserva do estado. */
   private spend(): void {
-    if (this.budget.used + 1 > this.budget.limit - SETTLE_CALLS) {
+    if (this.budget.used + 1 > this.budget.limit - STATE_RESERVE_CALLS) {
       throw new CallBudgetExhaustedError()
     }
     this.budget.used += 1
@@ -141,7 +155,7 @@ type ItemLedger = { spend(): void; freeFor(): number; release(): void }
  */
 export class ItemBudget implements CallGate {
   private spent = 0
-  /** D1 do item: soma cada chamada na fatia e recusa a que invadiria a gravação do estado. */
+  /** D1 do item: soma cada chamada na fatia e recusa a que invadiria a reserva do estado. */
   readonly db: D1Database
 
   constructor(

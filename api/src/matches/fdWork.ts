@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logError, tryLogEvent } from '../observability/events'
+import { logError, tryLogError, tryLogEvent } from '../observability/events'
 import {
   createProviderHttpObserver,
   type ProviderHttpContext,
@@ -54,9 +54,9 @@ function matchdayOf(round: string): number | undefined {
 /**
  * Custo estimado de um item da football-data, em chamadas (D1 e `fetch`), que o
  * dreno confere contra o saldo antes de começar o item. As estimativas são
- * conservadoras e valem para o primeiro item de cada classe do dreno: depois dele
- * vale o custo real (`DrainOptions.costClass`). `fdWork.test.ts` mede cada
- * classe e falha se o custo real passar da estimativa.
+ * conservadoras e são o piso: o maior custo real visto numa classe do dreno
+ * (`DrainOptions.costClass`) só as sobe nos itens seguintes. `fdWork.test.ts`
+ * mede cada classe e falha se o custo real passar da estimativa.
  *
  * - requisição: reserva de vaga + `fetch` (2); um 429 com retry soma 3 (gravar o
  *   bloqueio, reservar de novo e novo `fetch`) e fica fora: se o saldo não
@@ -181,6 +181,8 @@ export function runFootballDataWorkItem(
  * Avança o status da competição depois de um sync bem-sucedido da descoberta.
  * Falha do D1 aqui vira `competition_status_error`, separada dos erros de
  * provedor; o status fica como estava e a próxima descoberta tenta de novo.
+ * Falta de saldo de subrequests (`CallBudgetExhaustedError`) não vira evento:
+ * sobe, e o dreno devolve o item sem tentativa para retomar.
  */
 export async function advanceCompetitionStatus(
   db: D1Database,
@@ -196,6 +198,8 @@ export async function advanceCompetitionStatus(
     }
     return true
   } catch (err) {
+    // Falta de saldo não é falha do status: o item volta à fila sem tentativa e retoma.
+    if (err instanceof CallBudgetExhaustedError) throw err
     logError(
       ae,
       'competition_status_error',
@@ -274,7 +278,8 @@ function logPostSyncFailures(ae: AnalyticsEngineDataset | undefined, run: DrainR
   const failures = run.outcomes.filter((outcome) => outcome.status === 'done' && outcome.postError)
   for (const outcome of failures) {
     if (outcome.status !== 'done' || outcome.postSilent) continue
-    logError(
+    // A telemetria que falha não derruba o dreno depois do trabalho feito.
+    tryLogError(
       ae,
       'football_api_error',
       `[drain] Pós-sync falhou item=${outcome.item.kind}/${outcome.item.competitionCode}:`,
@@ -328,8 +333,10 @@ async function drainFootballDataWork(
     minItemCost: footballDataMinItemCalls(),
   })
   const postFailures = logPostSyncFailures(ae, run)
+  // A gravação do estado que falhou (`settleError`) também marca a execução com erro.
+  const failed = run.failed > 0 || postFailures > 0 || run.settleError !== undefined
   tryLogEvent(ae, 'provider_work_run', {
-    blobs: [run.failed > 0 || postFailures > 0 ? 'error' : 'ok'],
+    blobs: [failed ? 'error' : 'ok'],
     // claimed, done, requeued, failed, duration_ms, released, calls_used
     doubles: [
       run.claimed,

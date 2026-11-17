@@ -3,8 +3,9 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { CallBudgetExhaustedError } from './callBudget'
-import { CYCLE_FIXED_CALLS, DrainBudget } from './drainBudget'
+import { CLAIM_CALLS, DrainBudget, SETTLE_CALLS } from './drainBudget'
 import {
+  advanceCompetitionStatus,
   footballDataMinItemCalls,
   footballDataDrain,
   footballDataItemCost,
@@ -36,6 +37,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   vi.useRealTimers()
   clearFootballDataPause()
   setFootballDataRateLimitForTests(1000)
@@ -105,7 +107,7 @@ async function measuredCost(
   const run = await footballDataDrain({ apiKey: 'test', now: NOW }).run(budget)
   expect(run).toMatchObject({ claimed: 1, done: 1 })
   expect(sqlite.prepare(`SELECT status FROM provider_work`).get()).toEqual({ status: 'done' })
-  return budget.used - CYCLE_FIXED_CALLS
+  return budget.used - CLAIM_CALLS - SETTLE_CALLS
 }
 
 describe('custo de um item da football-data', () => {
@@ -168,8 +170,8 @@ describe('executor do item sem saldo', () => {
     const { db, sqlite } = await setup({ matches: 10, status: 'FINISHED' })
     const fetchCalls = vi.mocked(fetch).mock.calls.length
     const windowBefore = sqlite.prepare(`SELECT window_calls FROM provider_rate_state`).get()
-    // Fatia de 2: 1 fica reservada para gravar o estado, sobra 1.
-    const span = new DrainBudget(db, 2).open(0)!
+    // Fatia de 4: 3 ficam reservadas para o estado, sobra 1.
+    const span = new DrainBudget(db, 4).open(0)!
 
     await expect(runFootballDataWorkItem({ apiKey: 'test' })(item(), span)).rejects.toBeInstanceOf(
       CallBudgetExhaustedError,
@@ -231,8 +233,8 @@ describe('pós-sync sem saldo', () => {
     const handler = footballDataSyncedHandler({ now: NOW })
     const manual = item({ kind: 'manual', competitionId })
 
-    // Fatia de 4: 1 do estado e 3 de trabalho, abaixo das 4 que planejar e gravar exigem.
-    const tight = new DrainBudget(db, 4).open(0)!
+    // Fatia de 6: 3 do estado e 3 de trabalho, abaixo das 4 que planejar e gravar exigem.
+    const tight = new DrainBudget(db, 6).open(0)!
     expect(await handler(manual, undefined, tight)).toEqual({ incomplete: true })
     expect(
       sqlite.prepare(`SELECT COUNT(*) AS n FROM matches WHERE scored_at IS NULL`).get(),
@@ -251,13 +253,13 @@ describe('pós-sync sem saldo', () => {
     const handler = footballDataSyncedHandler({ now: NOW })
     const discovery = item({ kind: 'discovery', round: '', competitionId })
 
-    // Fatia de 5: 1 do estado e 4 de trabalho; a descoberta reserva 1, sobram 3 para pontuar.
-    const tight = new DrainBudget(db, 5).open(0)!
+    // Fatia de 7: 3 do estado e 4 de trabalho; a descoberta reserva 1, sobram 3 para pontuar.
+    const tight = new DrainBudget(db, 7).open(0)!
     expect(await handler(discovery, undefined, tight)).toEqual({ incomplete: true })
     expect(tight.used()).toBe(0)
 
-    // Fatia de 6: 4 para pontuar (a liga gasta 3), e o avanço do status roda depois dela.
-    const fit = new DrainBudget(db, 6).open(0)!
+    // Fatia de 8: 5 de trabalho, 4 para pontuar (a liga gasta 3) e 1 para o avanço do status.
+    const fit = new DrainBudget(db, 8).open(0)!
     expect(await handler(discovery, undefined, fit)).toBeUndefined()
     expect(fit.used()).toBe(4)
     // Todos os jogos (08/11) passaram da confirmação de 7 dias: o status avançou.
@@ -275,5 +277,43 @@ describe('pós-sync sem saldo', () => {
     await handler(item({ kind: 'late', competitionId }), undefined, span)
 
     expect(span.used()).toBe(0)
+  })
+
+  it('descoberta sem saldo de trabalho para avançar o status relança o erro de orçamento, em vez de engolir', async () => {
+    const { db } = await setup({ matches: 10, status: 'FINISHED' })
+    const handler = footballDataSyncedHandler({ now: NOW })
+    // Sem competição, a pontuação é pulada e a primeira chamada é a do avanço do status.
+    const discovery = item({ kind: 'discovery', round: '', competitionId: '' })
+    const noWork = new DrainBudget(db, 1).open(0)!
+
+    await expect(handler(discovery, undefined, noWork)).rejects.toBeInstanceOf(
+      CallBudgetExhaustedError,
+    )
+    expect(noWork.used()).toBe(0)
+  })
+})
+
+describe('advanceCompetitionStatus', () => {
+  const failing = (error: Error) =>
+    ({
+      prepare: () => ({ bind: () => ({ first: () => Promise.reject(error) }) }),
+    }) as unknown as D1Database
+
+  it('devolve false e registra a falha quando o D1 erra, como antes', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      advanceCompetitionStatus(failing(new Error('D1 fora do ar')), undefined, 'c1', NOW, 0),
+    ).resolves.toBe(false)
+    expect(consoleError).toHaveBeenCalled()
+  })
+
+  it('relança o erro de orçamento, que devolve o item sem tentativa', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      advanceCompetitionStatus(failing(new CallBudgetExhaustedError()), undefined, 'c1', NOW, 0),
+    ).rejects.toBeInstanceOf(CallBudgetExhaustedError)
+    expect(consoleError).not.toHaveBeenCalled()
   })
 })

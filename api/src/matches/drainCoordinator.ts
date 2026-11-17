@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { logError } from '../observability/events'
+import { tryLogError } from '../observability/events'
 import { DRAIN_CALL_BUDGET, DrainBudget, CYCLE_FIXED_CALLS } from './drainBudget'
 import type { DrainRun } from './providerWork'
 
@@ -71,10 +71,27 @@ async function runOne(
     const run = await drain.run(budget)
     return { used: budget.used, stoppedByBudget: run.stoppedBy === 'budget' }
   } catch (err) {
-    logError(ae, 'provider_work_run', `[drain] Falha ao drenar a fila de ${drain.provider}:`, err, {
-      blobs: ['error'],
-    })
+    // A telemetria que falha não pode derrubar o isolamento de falhas: o gasto do
+    // dreno já está contado e os outros seguem para a consolidação.
+    tryLogError(
+      ae,
+      'provider_work_run',
+      `[drain] Falha ao drenar a fila de ${drain.provider}:`,
+      err,
+      {
+        blobs: ['error'],
+      },
+    )
     return { used: budget.used, stoppedByBudget: false }
+  }
+}
+
+/** Linha `[perf]` da invocação; o log nunca derruba o coordenador. */
+function logPerf(line: Record<string, unknown>): void {
+  try {
+    console.info('[perf]', JSON.stringify(line))
+  } catch (err) {
+    console.error('[drain] Falha ao registrar a linha [perf]:', err)
   }
 }
 
@@ -107,16 +124,13 @@ export async function runProviderDrains(
     pending = running.filter((_, i) => results[i].stoppedByBudget)
     if (spent === 0) break
   }
-  console.info(
-    '[perf]',
-    JSON.stringify({
-      route: 'cron drainProviderWork',
-      drains: drains.map((drain) => drain.provider),
-      calls_used: limit - left,
-      calls_budget: limit,
-      unfinished: pending.map((drain) => drain.provider),
-      total_ms: Date.now() - startedAt,
-    }),
-  )
+  logPerf({
+    route: 'cron drainProviderWork',
+    drains: drains.map((drain) => drain.provider),
+    calls_used: limit - left,
+    calls_budget: limit,
+    unfinished: pending.map((drain) => drain.provider),
+    total_ms: Date.now() - startedAt,
+  })
   return limit - left
 }

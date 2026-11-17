@@ -108,6 +108,25 @@ export function logError(
 }
 
 /**
+ * `logError` que nunca lança: a rotina que registra a própria falha não pode ser
+ * derrubada por uma escrita que falhou no Analytics Engine. O erro original
+ * continua no console, e a falha da escrita também.
+ */
+export function tryLogError(
+  ae: AnalyticsEngineDataset | undefined,
+  type: EventType,
+  consoleMessage: string,
+  error: unknown,
+  dims: EventDims = {},
+): void {
+  try {
+    logError(ae, type, consoleMessage, error, dims)
+  } catch (writeError) {
+    console.error(`[observability] Falha ao registrar ${type}:`, writeError)
+  }
+}
+
+/**
  * Escreve um evento no Analytics Engine. Escrita assíncrona — não adiciona latência
  * ao request. Sem binding (dev local / testes) vira no-op, então é seguro chamar de
  * qualquer lugar sem guardar o binding.

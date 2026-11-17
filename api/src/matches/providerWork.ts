@@ -126,6 +126,12 @@ export type DrainRun = {
   released: number
   /** Só `budget` pede mais saldo: com o provedor sem vaga, chamadas a mais não ajudam. */
   stoppedBy?: DrainStop
+  /**
+   * A gravação do estado falhou duas vezes e só a liberação mínima funcionou: os
+   * itens do ciclo voltaram a `pending` sem tentativa (o que tinham concluído
+   * roda de novo, idempotente), e o dreno parou. Traz a mensagem da falha.
+   */
+  settleError?: string
   outcomes: WorkOutcome[]
 }
 
@@ -229,6 +235,10 @@ type ClaimedRow = {
   season: string
   round: string
   attempts: number
+  priority: number
+  created_at: number
+  /** Posição na fila: desempata a ordem de chegada. */
+  seq: number
 }
 
 /**
@@ -237,6 +247,12 @@ type ClaimedRow = {
  * `RETURNING`: o D1 serializa escritas, então dois drenos nunca executam o
  * mesmo item — quem chega depois o vê `running` com lease fresco. `rowid`
  * desempata pela ordem em que o trabalho entrou na fila.
+ *
+ * O `ORDER BY` do subselect só escolhe quais itens reclamar: a ordem das linhas
+ * do `RETURNING` não é garantida. Os itens voltam ordenados por prioridade,
+ * `created_at` e `rowid`, como o subselect, porque o dreno os admite no saldo
+ * nessa ordem, e uma descoberta inserida antes de um resultado não pode passar
+ * à frente dele.
  */
 export async function claimProviderWork(
   db: D1Database,
@@ -254,7 +270,8 @@ export async function claimProviderWork(
              AND (status = 'pending' OR (status = 'running' AND lease_until < ?3))
            ORDER BY priority, created_at, rowid
            LIMIT ?5)
-       RETURNING kind, competition_code, competition_id, season, round, attempts`,
+       RETURNING kind, competition_code, competition_id, season, round, attempts,
+                 priority, created_at, rowid AS seq`,
     )
     .bind(
       now + WORK_LEASE_MS,
@@ -264,14 +281,16 @@ export async function claimProviderWork(
       opts.limit ?? DRAIN_MAX_ITEMS,
     )
     .all<ClaimedRow>()
-  return results.map((row) => ({
-    kind: row.kind,
-    competitionCode: row.competition_code,
-    competitionId: row.competition_id,
-    season: row.season,
-    round: row.round,
-    attempts: row.attempts,
-  }))
+  return results
+    .sort((a, b) => a.priority - b.priority || a.created_at - b.created_at || a.seq - b.seq)
+    .map((row) => ({
+      kind: row.kind,
+      competitionCode: row.competition_code,
+      competitionId: row.competition_id,
+      season: row.season,
+      round: row.round,
+      attempts: row.attempts,
+    }))
 }
 
 function completeStatement(
@@ -356,9 +375,10 @@ export type DrainOptions = {
   /** Estimativa conservadora do custo de um item, em chamadas (D1 e `fetch`). */
   itemCost: (item: ProviderWorkItem) => number
   /**
-   * Classe de custo do item (padrão: o tipo). O custo real do primeiro item
-   * concluído de uma classe substitui a estimativa nos seguintes da mesma classe
-   * neste dreno, e daí em diante só vale o maior custo visto.
+   * Classe de custo do item (padrão: o tipo). O maior custo real visto num item
+   * concluído da classe, neste dreno, sobe a estimativa dos seguintes da mesma
+   * classe. Nunca a baixa: a estimativa estática é o piso, porque um item barato
+   * (poucos jogos) não diz que o próximo também será.
    */
   costClass?: (item: ProviderWorkItem) => string
   /** O menor `itemCost` possível: dimensiona quantos itens reclamar de uma vez. */
@@ -372,9 +392,11 @@ type CycleResult = {
   outcomes: WorkOutcome[]
   released: ProviderWorkItem[]
   halt?: DrainStop
+  /** Falha da gravação do estado que só a liberação mínima contornou. */
+  settleError?: string
 }
 
-/** Maior custo real, por classe de custo, dos itens concluídos neste dreno. */
+/** Maior custo real, por classe de custo, dos itens concluídos neste dreno. Só sobe a estimativa. */
 type ObservedCosts = Map<string, number>
 
 type CycleContext = {
@@ -429,7 +451,8 @@ async function admit(
   costClass: string,
 ): Promise<ItemBudget | undefined> {
   while (!ctx.cycle.halt) {
-    const span = ctx.budget.open(ctx.observed.get(costClass) ?? ctx.opts.itemCost(item))
+    const estimate = Math.max(ctx.opts.itemCost(item), ctx.observed.get(costClass) ?? 0)
+    const span = ctx.budget.open(estimate)
     if (span) return span
     if (!ctx.budget.hasInFlight()) {
       ctx.cycle.halt = 'budget'
@@ -442,8 +465,8 @@ async function admit(
 
 /**
  * Executa um item dentro do saldo. Sem saldo para a estimativa dele, ou com o
- * provedor sem vaga, o item volta à fila sem começar. Custo real de item
- * concluído ajusta a estimativa dos seguintes da mesma classe.
+ * provedor sem vaga, o item volta à fila sem começar. O maior custo real de item
+ * concluído sobe a estimativa dos seguintes da mesma classe.
  */
 async function executeItem(ctx: CycleContext, item: ProviderWorkItem): Promise<void> {
   const { cycle, observed } = ctx
@@ -519,6 +542,69 @@ function tally(run: DrainRun, cycle: CycleResult): void {
   }
 }
 
+/** Espera antes de repetir a gravação do estado: dá tempo de uma falha transitória do D1 passar. */
+export const SETTLE_RETRY_MS = 250
+
+/**
+ * Liberação mínima: um único `UPDATE` que devolve a `pending`, sem lease e sem
+ * mexer em tentativas, prazo nem último erro, os itens `running` do ciclo. Não
+ * grava o que o ciclo concluiu, então o item concluído roda de novo (idempotente).
+ */
+function releaseCycleStatement(
+  db: D1Database,
+  provider: string,
+  items: ProviderWorkItem[],
+  now: number,
+): D1PreparedStatement {
+  const keys = items.map((item) => [item.kind, item.competitionCode, item.season, item.round])
+  return db
+    .prepare(
+      `UPDATE provider_work
+          SET status = 'pending', lease_until = 0, lease_owner = NULL, updated_at = ?3
+        WHERE provider = ?1 AND status = 'running'
+          AND EXISTS (SELECT 1 FROM json_each(?2) AS k
+                       WHERE json_extract(k.value, '$[0]') = kind
+                         AND json_extract(k.value, '$[1]') = competition_code
+                         AND json_extract(k.value, '$[2]') = season
+                         AND json_extract(k.value, '$[3]') = round)`,
+    )
+    .bind(provider, JSON.stringify(keys), now)
+}
+
+/**
+ * Grava o estado do ciclo num `db.batch()`. Se o D1 falhar, repete uma vez; se
+ * falhar de novo, tenta a liberação mínima, que devolve os itens do ciclo a
+ * `pending` sem tentativa e sem lease. As três chamadas estão reservadas na
+ * fatia (`STATE_RESERVE_CALLS`). Devolve a mensagem da falha quando só a
+ * liberação funcionou. Se nem ela funcionar, o D1 está indisponível de forma
+ * persistente e o erro sobe: os itens ficam `running` até o lease de 5 min
+ * vencer, e o dreno seguinte os reclama, sem tentativa gasta a mais.
+ */
+async function settleCycle(
+  budget: DrainBudget,
+  provider: string,
+  items: ProviderWorkItem[],
+  cycle: CycleResult,
+  now: number,
+): Promise<string | undefined> {
+  const write = () => budget.db.batch(settleStatements(budget.db, provider, cycle, now))
+  try {
+    await write()
+    return undefined
+  } catch (err) {
+    console.error('[drain] Gravação do estado dos itens falhou, repetindo:', err)
+  }
+  await new Promise((resolve) => setTimeout(resolve, SETTLE_RETRY_MS))
+  try {
+    await write()
+    return undefined
+  } catch (err) {
+    console.error('[drain] Gravação do estado falhou de novo, devolvendo os itens à fila:', err)
+    await releaseCycleStatement(budget.db, provider, items, now).run()
+    return err instanceof Error ? err.message : String(err)
+  }
+}
+
 /**
  * Executa os itens reclamados, com o teto de syncs em voo, e grava o estado de
  * todos num único `db.batch()` (reservado na fatia): concluídos, devolvidos por
@@ -534,7 +620,7 @@ async function runCycle(
   const cycle: CycleResult = { outcomes: [], released: [] }
   const ctx: CycleContext = { budget, opts, now, cycle, observed }
   await runWithConcurrency(DRAIN_CONCURRENCY, items, (item) => executeItem(ctx, item))
-  await budget.db.batch(settleStatements(budget.db, opts.provider, cycle, now))
+  cycle.settleError = await settleCycle(budget, opts.provider, items, cycle, now)
   return cycle
 }
 
@@ -544,8 +630,8 @@ async function runCycle(
  * continua quando a reclamação veio cheia (pode haver mais itens): os prazos de
  * retomada (uma janela, um reset de 429) já afastam o que ficou pendente, e um
  * ciclo a mais para reclamar nada custaria uma chamada à toa. Para quando o
- * saldo não cobre mais um item (`stoppedBy: 'budget'`) ou quando o provedor
- * está sem vaga (`'provider'`).
+ * saldo não cobre mais um item (`stoppedBy: 'budget'`), quando o provedor está
+ * sem vaga (`'provider'`) ou quando a gravação do estado falha (`settleError`).
  */
 export async function drainProviderWork(
   budget: DrainBudget,
@@ -566,6 +652,12 @@ export async function drainProviderWork(
     if (items.length === 0) break
     run.claimed += items.length
     const result = await runCycle(budget, opts, items, now, observed)
+    if (result.settleError !== undefined) {
+      // O estado não foi gravado e o D1 está instável: os itens voltaram a `pending`.
+      run.released += items.length
+      run.settleError = result.settleError
+      break
+    }
     tally(run, result)
     if (result.halt) {
       run.stoppedBy = result.halt

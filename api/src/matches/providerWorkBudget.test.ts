@@ -148,7 +148,7 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
     const { sqlite, db } = setup()
     await enqueue(db, 3, 'result')
     await enqueue(db, 3, 'discovery')
-    const budget = new DrainBudget(db, 14)
+    const budget = new DrainBudget(db, 16)
 
     const run = await drain(budget, {
       // Resultado custa 2 e descoberta 10, e cada um gasta o que estimou.
@@ -171,25 +171,6 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
       { kind: 'discovery', attempts: 0, lease_until: 0, lease_owner: null, not_before: 0 },
     ])
     expect(budget.used).toBeLessThanOrEqual(budget.limit)
-  })
-
-  it('o custo real do primeiro item da classe substitui a estimativa nos seguintes', async () => {
-    const { sqlite, db } = setup()
-    await enqueue(db, 8)
-    // Estimativa de 10 por item, custo real de 3, saldo de 24. Pela estimativa só
-    // coube 5 itens, e 2 voltariam; pela contagem real, cabem todos os 7 reclamados.
-    const budget = new DrainBudget(db, 24)
-
-    const run = await drain(budget, {
-      runItem: spending(3),
-      itemCost: () => 10,
-      minItemCost: 3,
-      maxItems: 8,
-    })
-
-    expect(run).toMatchObject({ claimed: 7, done: 7, released: 0 })
-    expect(statuses(sqlite)).toEqual({ done: 7, pending: 1 })
-    expect(budget.used).toBe(1 + 7 * 3 + 1)
   })
 
   it('estimativa abaixo do custo real: o que passa do saldo volta sem tentativa e nada fica running', async () => {
@@ -313,16 +294,17 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
     expect(budget.used).toBe(2)
   })
 
-  it('o item nunca gasta a chamada reservada para gravar o estado: nada fica running', async () => {
+  it('o item nunca gasta a reserva do estado: nada fica running', async () => {
     const { sqlite, db } = setup()
     await enqueue(db, 1)
     const budget = new DrainBudget(db, 6)
 
     const run = await drain(budget, { runItem: spending(10) })
 
-    // 6 − 1 (reclamar) − 1 (estado) = 4 consultas do item; a quinta é recusada sem chamar.
+    // 6 − 1 (reclamar) − 3 (reserva do estado) = 2 consultas do item; a terceira é
+    // recusada sem chamar. O estado se grava em 1 chamada, e as 2 de recuperação sobram.
     expect(run).toMatchObject({ released: 1, done: 0 })
-    expect(budget.used).toBe(6)
+    expect(budget.used).toBe(1 + 2 + 1)
     expect(statuses(sqlite)).toEqual({ pending: 1 })
     expect(attempts(sqlite)).toEqual([0])
   })
