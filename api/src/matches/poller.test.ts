@@ -642,6 +642,32 @@ describe('pollActiveMatches', () => {
     await done
   })
 
+  it('falha ao enfileirar as datas da ESPN fica no log e o tick sai como erro, sem derrubar o poller', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('ESPN respondeu 500'))
+    const row: ActiveRow = {
+      comp_id: 'espn-1',
+      external_id: 'conmebol.libertadores',
+      provider: 'espn',
+      season: '2026',
+      round: 'GROUP_STAGE',
+      utc_day: '2026-10-18',
+    }
+    const ae = buildFakeAe()
+    const db = buildFakeDb([row])
+    db.batch = async () => {
+      throw new Error('D1 fora do ar')
+    }
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await pollActiveMatches(db as unknown as D1Database, 'key', ae)
+
+    // A falha do sync e a do enfileiramento são registradas, e o tick sai como erro.
+    const errors = pointsOfType(ae, 'football_api_error').map((point) => point.blobs?.[1])
+    expect(errors).toContain('espn_defer')
+    expect(pointsOfType(ae, 'poller_run')[0].blobs).toEqual(['poller_run', 'error'])
+    error.mockRestore()
+  })
+
   it('ESPN task that does not fit the poller budget is deferred to the durable queue, never synced', async () => {
     // 8 tasks FD estimadas em 64 chamadas passam do orçamento de 45: a ESPN cede o saldo.
     const fdCodes = ['PD', 'SA', 'BL1', 'PPL'] as const
