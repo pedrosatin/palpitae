@@ -272,12 +272,15 @@ function holdLocally(prohibition: Prohibition): BlockOutcome {
  * ainda vigente. A regravação que dá certo solta o bloqueio local, e o D1 volta a
  * decidir (a reserva seguinte lê a suspensão ou o bloqueio dele). Um bloqueio por
  * prazo vencido que o D1 segue sem aceitar não prende a coleta, mas a regravação
- * continua a cada reserva.
+ * continua a cada reserva. Devolve quantas proibições a regravação gravou agora: quem não
+ * reserva vaga no D1 (a descoberta) precisa reler o estado, que acabou de mudar.
  */
-async function settleLocalBlocks(db: D1Database, now: number): Promise<void> {
+async function settleLocalBlocks(db: D1Database, now: number): Promise<number> {
+  let persisted = 0
   for (const block of localBlocks.slice()) {
     try {
       await persistProhibition(db, block.prohibition)
+      persisted += 1
       const index = localBlocks.indexOf(block)
       if (index >= 0) localBlocks.splice(index, 1)
     } catch (err) {
@@ -287,7 +290,7 @@ async function settleLocalBlocks(db: D1Database, now: number): Promise<void> {
     }
   }
   const holding = localBlocks.filter((block) => block.reason === 'suspended' || now < block.retryAt)
-  if (holding.length === 0) return
+  if (holding.length === 0) return persisted
   if (holding.some((block) => block.reason === 'suspended')) {
     throw new EspnUnavailableError('suspended', now + SUSPENDED_RECHECK_MS)
   }
@@ -412,7 +415,16 @@ export function createEspnDiscoveryGate(db: D1Database, ae?: AnalyticsEngineData
   return {
     async reserve() {
       if (stopped) throw new EspnUnavailableError(stopped.reason, stopped.retryAt)
-      await settleLocalBlocks(db, Date.now())
+      const persisted = await settleLocalBlocks(db, Date.now())
+      if (persisted > 0) {
+        // A regravação acabou de gravar uma proibição que uma execução anterior não conseguiu
+        // gravar: o estado do D1 mudou depois da leitura da descoberta, então confere de novo.
+        const pause = await readEspnAccessPause(db)
+        if (pause) {
+          stopped = pause
+          throw new EspnUnavailableError(pause.reason, pause.retryAt)
+        }
+      }
     },
     async note(status, headers) {
       if (!isProhibition(status)) return null

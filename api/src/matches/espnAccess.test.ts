@@ -648,4 +648,27 @@ describe('gate da descoberta e leitura do estado de acesso', () => {
     })
     await expect(createEspnGate(failing).reserve()).rejects.toMatchObject({ reason: 'suspended' })
   })
+
+  it('401 que o D1 não gravou e voltou: a descoberta seguinte recusa em vez de liberar o fetch', async () => {
+    const { db } = setup()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const state = { broken: true }
+    const unreliable = flakyD1(db, {
+      failStatement: (sql) =>
+        state.broken && sql.includes('UPDATE provider_rate_state') && !sql.includes('window_calls'),
+    })
+    const first = createEspnDiscoveryGate(unreliable)
+    await first.reserve()
+    expect((await first.note(401, new Headers()))?.reason).toBe('suspended')
+    expect(await readProviderState(db, 'espn')).toMatchObject({ suspendedAt: null })
+
+    // O D1 volta; a descoberta seguinte lê o estado ainda livre (nada gravado) e prossegue
+    // até a reserva, que regrava a suspensão e precisa recusar o fetch.
+    state.broken = false
+    expect(await readEspnAccessPause(db)).toBeNull()
+    await expect(createEspnDiscoveryGate(db).reserve()).rejects.toMatchObject({
+      reason: 'suspended',
+    })
+    expect(await readProviderState(db, 'espn')).toMatchObject({ suspendedReason: 'http_401' })
+  })
 })
