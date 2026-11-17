@@ -246,8 +246,11 @@ O do poller traz ainda o orçamento de chamadas do tick (ADR-024): `calls_used`
 (consultas e batches do D1 mais tentativas HTTP), `calls_budget`,
 `scoring_competitions` (competições que entraram na pontuação, sincronizadas no
 tick ou com jogo pendente no D1), `matches_scored` e `scoring_unfinished`
-(competições que ficaram para o tick seguinte por falta de chamadas), `espn_budget` e
-`espn_deferred_dates` (saldo das sincronizações da ESPN e datas que não couberam e foram para a fila).
+(competições que ficaram para o tick seguinte por falta de chamadas), `sync_budget` (saldo das
+sincronizações do tick, football-data e ESPN juntas), `fd_deferred_rounds` (rodadas da football-data
+que não couberam ou falharam e foram para a fila) e `espn_deferred_dates` (o mesmo para as datas da
+ESPN). Linha anterior ao ticket 09 da resiliência traz `espn_budget` (o saldo só da ESPN) no lugar de
+`sync_budget` e não tem `fd_deferred_rounds`.
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
@@ -273,7 +276,9 @@ Observação sobre `football_api_error`: tem **três formas** de chamada. No pol
 (`POST /matches/sync` em `matches/router.ts`) é `[context, error_message]`; na descoberta de jogos
 (`matches/fixtureDiscovery.ts`) é `[context='fixture_discovery', comp_id, error_message]`.
 Distinga pelo blob2: `sync_endpoint` ⇒ forma de endpoint;
-`fixture_discovery` ⇒ forma de descoberta (comp_id em blob3); senão ⇒ poller.
+`fixture_discovery` ⇒ forma de descoberta (comp_id em blob3); senão ⇒ poller. No poller, blob2
+`poller_defer` é a falha do enfileiramento das pendências do tick, com o número de itens em blob3
+(antes do ticket 09 da resiliência, `espn_defer`, só com as datas da ESPN).
 
 Observação sobre `match_results_fallback`: a execução normal tem `blobs: [competition_id]`
 e doubles `[atualizados, pulados]`; a falha de uma competição vem de `logError`, com
@@ -351,7 +356,9 @@ reaproveita a sobra de saldo, é outra execução e outra linha); a ESPN, só qu
 bloqueada/suspensa. `blob2` é `ok` ou `error` (error quando algum item falhou de vez no teto de
 tentativas, o pós-sync de algum item falhou — esse também sai pelo `logError` `football_api_error` com
 `blob2` = `drain_post_sync` — ou a gravação do estado dos itens do ciclo falhou duas vezes e o dreno só
-conseguiu devolvê-los à fila). Na ESPN, `blocked` e `suspended` dizem que a execução nem reclamou itens
+conseguiu devolvê-los à fila). Na football-data todo item pontua a competição no pós-sync, inclusive a
+rodada que o poller adiou por saldo (`result`/`late`), e o `calls_used` inclui essa pontuação; falha
+dela sai pelo mesmo `drain_post_sync`, e o poller seguinte repontua. Na ESPN, `blocked` e `suspended` dizem que a execução nem reclamou itens
 porque o provedor estava pausado. Os doubles são, nessa ordem, `claimed` (itens reclamados), `done`,
 `requeued` (devolvidos à fila sem tentativa nova do provedor, depois de tentar) e `failed`, depois
 `duration_ms`, `released` (reclamados e devolvidos à fila sem tentativa nova, por falta de saldo de
@@ -389,24 +396,37 @@ ticket 03), com o que a ESPN faz de diferente:
   "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto. O
   coordenador conta o trabalho pronto de cada dreno numa consulta (1 chamada dos 45), o dreno sem trabalho
   não roda e o saldo dele fica com quem tem fila. Com os dois drenos ocupados, a fatia da ESPN comporta 2
-  itens por tick e o tick gasta 38 chamadas (com a limpeza); com a ESPN sozinha, 4 itens e 40; com a
-  football-data sozinha, 5 itens e 39. A estimativa por item é 9 (data de liga) ou 13 (sync manual e
-  descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
+  itens por tick, a football-data 1, e o tick gasta 34 chamadas (com a limpeza); com a ESPN sozinha, 4
+  itens e 40; com a football-data sozinha, 3 itens e 40 (o item de rodada da football-data reserva 12,
+  com a pontuação; ADR-027, adendo do ticket 09). A estimativa por item da ESPN é 9 (data de liga) ou 13
+  (sync manual e descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
   reclamação recusa e o dreno lê o estado para dizer o motivo (2 chamadas, nenhuma escrita).
-- **Subrequests do poller:** o `POLLER_CALL_BUDGET` (45) vale para a football-data e a ESPN juntas. O saldo da
-  ESPN é fixado antes de qualquer sincronização (45 menos o que já foi gasto, menos o estimado das rodadas da
-  football-data, 8 cada, menos 5 de reserva da pontuação), e cada competição da ESPN (2 a 4 datas) é admitida
-  pelo custo completo (3 chamadas por data e 6 da gravação: 12 para 2 datas, 16 para 3). A que não cabe nem
-  começa: as datas vão para a fila por data (`provider_work`, `kind` `result` ou `late`, `not_before` = o
-  instante, `last_error` = "saldo de chamadas do tick esgotado…"), sem tentativa gasta e sem
-  `football_api_error`, e o dreno as retoma nos minutos 5 ou 35. O enfileiramento (1 `db.batch()`) está
-  reservado do saldo antes de qualquer tarefa. O log `[perf]` do poller traz `espn_budget` (o saldo
-  fixado) e `espn_deferred_dates` (datas enfileiradas no tick). Tick com 1, 2, 3 e 4 competições da ESPN com
+- **Subrequests do poller:** o `POLLER_CALL_BUDGET` (45) vale para a football-data e a ESPN juntas. O saldo das
+  sincronizações é fixado antes de qualquer uma começar (45 menos o que já foi gasto, menos 5 de reserva da
+  pontuação). As rodadas da football-data reservam o custo completo primeiro (8 cada, 11 para a temporada de
+  mata-mata; ADR-027, adendo do ticket 09), e cada competição da ESPN (2 a 4 datas) é admitida pelo custo
+  completo com o que sobra (3 chamadas por data e 6 da gravação: 12 para 2 datas, 16 para 3). A tarefa que não
+  cabe nem começa: a rodada ou as datas vão para a fila (`provider_work`, `kind` `result` ou `late`,
+  `not_before` = o instante, `last_error` = "saldo de chamadas do tick esgotado…"), sem tentativa gasta e sem
+  `football_api_error`, e ficam elegíveis para o próximo dreno. O enfileiramento (1 `db.batch()` para os dois
+  provedores) está reservado do saldo antes de qualquer tarefa. O fallback da ESPN para as competições da
+  football-data fica com o que as sincronizações deixam além da reserva da pontuação, e cada competição dele
+  reserva o custo completo antes de começar (11: a consulta, 3 datas de 3 chamadas e a gravação); a que não
+  cabe espera o tick seguinte sem consultar nada, sem erro nem fila. O log `[perf]` do poller traz `sync_budget` (o
+  saldo fixado), `fd_deferred_rounds` (rodadas enfileiradas no tick) e `espn_deferred_dates` (datas
+  enfileiradas). Ticks da football-data medidos pelo `scheduled` real, com a limpeza: 1 e 2 rodadas, 15 e 22
+  chamadas, como antes; 6 rodadas, 38, com 4 sincronizadas, 2 na fila e o fallback fora do tick (antes, 47 com
+  as 6 no tick), e o dreno do minuto 5 sincroniza e pontua as 2 em 24 chamadas, com o ranking na tela 5 min
+  depois do tick; 6 rodadas com 429 de reset de 60 s e 8 requests por minuto, 45, com 3 sincronizadas e 3 na
+  fila (antes, 52 tentadas e o tick rejeitado com `D1_ERROR`); 11 competições com 1 rodada cada e 4 respostas
+  429 de reset de 1 s, 46, com 3 sincronizadas e 8 na fila (antes, 58 tentadas e o tick rejeitado com
+  `D1_ERROR`). Tick com 1, 2, 3 e 4 competições da ESPN com
   1 jogo na janela (2 datas, com a limpeza do `scheduled`): 20, 36, 44 e 45 chamadas (antes, 20, 36, 44 e
   52, com a 51 e a 52 recusadas); com jogos de hoje e de ontem nas 4 (3 datas), 43 (antes, 55 e o tick
-  rejeitado). Competição adiada pelo saldo e pendência a mais no painel por até 10 minutos são esperados
-  nesses ticks; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
-  está consumindo o do poller.
+  rejeitado). Competições adiadas pelo saldo geram pendências, e o prazo de execução depende da fila e do
+  saldo dos próximos drenos; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
+  está consumindo o do poller, e um `fd_deferred_rounds` acima de zero em todo tick de jogo, de que houve adiamento de
+  rodadas; o motivo de cada uma fica em `last_error` na fila (saldo do tick, 429 ou outra falha).
 - **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,
   sem retry imediato e sem mexer na sequência de 403. O prazo não é encurtado: o bloqueio é o maior
   entre o `Retry-After` válido e a pausa mínima conservadora de 60 s (que também vale sem cabeçalho ou
