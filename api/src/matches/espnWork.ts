@@ -172,17 +172,6 @@ export function espnSyncedHandler(): SyncedHandler {
   }
 }
 
-/** Execução que não reclamou nada. */
-const emptyRun = (): DrainRun => ({
-  claimed: 0,
-  done: 0,
-  requeued: 0,
-  failed: 0,
-  released: 0,
-  leaseLost: 0,
-  outcomes: [],
-})
-
 /**
  * Dreno da ESPN para o coordenador (`runProviderDrains`): retoma o trabalho
  * pendente entre os ticks, na ordem de prioridade, dentro da fatia de
@@ -198,10 +187,13 @@ export function espnDrain(deps: { ae?: AnalyticsEngineDataset; now?: number }): 
 }
 
 /**
- * Com o provedor suspenso ou bloqueado o dreno nem reclama os itens: ficam
- * pendentes, sem gastar escrita no D1, até o bloqueio vencer ou o operador
- * retomar (1 chamada da fatia, a leitura do estado). Só registra
- * `provider_work_run` quando reclamou itens ou quando saiu sem tentar.
+ * Com o provedor suspenso ou bloqueado o dreno nem reclama os itens: a própria
+ * reclamação recusa (`respectProviderAccess`), então eles ficam pendentes, sem
+ * escrita no D1, até o bloqueio vencer ou o operador retomar, e a leitura do
+ * estado (1 chamada da fatia) só acontece quando a reclamação veio vazia, para
+ * dizer ao operador por que. Num tick com trabalho a ESPN não paga essa leitura.
+ * Só registra `provider_work_run` quando reclamou itens ou quando saiu
+ * bloqueada/suspensa.
  */
 async function drainEspnWork(
   budget: DrainBudget,
@@ -210,27 +202,22 @@ async function drainEspnWork(
   const { ae } = deps
   const now = deps.now ?? Date.now()
   const startedAt = Date.now()
-  const state = await readProviderState(budget.db, 'espn')
-  if (state?.suspendedAt != null || (state?.blockedUntil ?? 0) > now) {
-    const status = state?.suspendedAt != null ? 'suspended' : 'blocked'
-    console.info(`[drain] ESPN ${status}: nenhum item reclamado.`)
-    tryLogEvent(ae, 'provider_work_run', {
-      blobs: [status, 'espn'],
-      doubles: [0, 0, 0, 0, 0, 0, budget.used],
-    })
-    return emptyRun()
-  }
   const run = await drainProviderWork(budget, {
     provider: 'espn',
     now,
     concurrency: ESPN_MAX_CONCURRENT_COMPETITIONS,
+    respectProviderAccess: true,
     runItem: runEspnWorkItem({ ae }),
     onSynced: espnSyncedHandler(),
     itemCost: espnItemCost,
     minItemCost: espnMinItemCalls(),
   })
   const postFailures = logPostSyncFailures(ae, run, 'ESPN')
-  if (run.claimed === 0) return run
+  if (run.claimed === 0) {
+    // Sem saldo para um item não é fila parada: só a reclamação vazia pode ser acesso pausado.
+    if (run.stoppedBy !== 'budget') await reportPausedAccess(budget, ae, now)
+    return run
+  }
   // A gravação do estado que falhou (`settleError`) também marca a execução com erro.
   const failed = run.failed > 0 || postFailures > 0 || run.settleError !== undefined
   tryLogEvent(ae, 'provider_work_run', {
@@ -247,4 +234,29 @@ async function drainEspnWork(
     ],
   })
   return run
+}
+
+/**
+ * A reclamação veio vazia: se foi porque o provedor está bloqueado ou suspenso,
+ * registra o motivo (o sinal de que a coleta parada espera o operador ou o
+ * prazo). Fila vazia não registra nada. A leitura falha em silêncio: é só o aviso.
+ */
+async function reportPausedAccess(
+  budget: DrainBudget,
+  ae: AnalyticsEngineDataset | undefined,
+  now: number,
+): Promise<void> {
+  try {
+    const state = await readProviderState(budget.db, 'espn')
+    const suspended = state?.suspendedAt != null
+    if (!suspended && (state?.blockedUntil ?? 0) <= now) return
+    const status = suspended ? 'suspended' : 'blocked'
+    console.info(`[drain] ESPN ${status}: nenhum item reclamado.`)
+    tryLogEvent(ae, 'provider_work_run', {
+      blobs: [status, 'espn'],
+      doubles: [0, 0, 0, 0, 0, 0, budget.used],
+    })
+  } catch (err) {
+    console.error('[drain] Falha ao ler o estado de acesso da ESPN:', err)
+  }
 }

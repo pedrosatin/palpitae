@@ -353,11 +353,12 @@ describe('espnDrain', () => {
 
     const result = await espnDrain({ ae, now: NOW }).run(budget)
 
-    // Fatia de 23 (a metade de 45 com dois drenos): 1 chamada lê o estado da ESPN e
-    // a reclamação comporta (23 - 1 - 4) / 9 = 2 itens.
+    // Fatia de 23 (a metade de 45 com dois drenos): a reclamação comporta (23 - 4) / 9 = 2 itens.
     expect(result).toMatchObject({ claimed: 2, done: 2, released: 0, leaseLost: 0 })
     expect(budget.used).toBeLessThanOrEqual(23)
-    expect(sqlite.prepare("SELECT COUNT(*) AS n FROM provider_work WHERE status = 'done'").get()).toEqual({
+    expect(
+      sqlite.prepare("SELECT COUNT(*) AS n FROM provider_work WHERE status = 'done'").get(),
+    ).toEqual({
       n: 2,
     })
     expect(
@@ -380,7 +381,7 @@ describe('espnDrain', () => {
     expect(events('provider_work_run')).toEqual([])
   })
 
-  it('suspensa ou bloqueada, não reclama nada, gasta só a leitura do estado e registra o motivo', async () => {
+  it('suspensa ou bloqueada, não reclama nada, não escreve no D1 e registra o motivo', async () => {
     const { sqlite, db, ae, events } = setup()
     await enqueueProviderWork(db, espnWorkItems(base, ['20261014']), NOW)
     const fetchMock = vi.fn()
@@ -400,12 +401,11 @@ describe('espnDrain', () => {
     await espnDrain({ ae, now: NOW + 24 * 60 * 60_000 }).run(new DrainBudget(db, SLICE))
 
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(blocked.used).toBe(1)
+    // A reclamação recusada (1) e a leitura do estado para dizer o motivo (1): nenhuma escrita.
+    expect(blocked.used).toBe(2)
     expect(
-      sqlite.prepare("SELECT status FROM provider_work WHERE provider = 'espn'").get(),
-    ).toEqual({
-      status: 'pending',
-    })
+      sqlite.prepare("SELECT status, updated_at FROM provider_work WHERE provider = 'espn'").get(),
+    ).toEqual({ status: 'pending', updated_at: NOW })
     expect(events('provider_work_run').map((point) => point.blobs.slice(1, 3))).toEqual([
       ['blocked', 'espn'],
       ['suspended', 'espn'],
@@ -425,11 +425,11 @@ describe('espnDrain', () => {
     // Um só fetch: o 429 vale para o provedor inteiro, e os outros itens voltam sem tentar.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(result.stoppedBy).toBe('provider')
-    expect(sqlite.prepare("SELECT status, attempts FROM provider_work").all()).toEqual(
+    expect(sqlite.prepare('SELECT status, attempts FROM provider_work').all()).toEqual(
       Array.from({ length: 3 }, () => ({ status: 'pending', attempts: 0 })),
     )
-    // Estado (1), reclamação, a tentativa que levou o 429 (3), a vaga recusada do 2º item (2:
-    // a reserva e a leitura do estado) e a gravação do estado.
-    expect(budget.used).toBe(1 + CLAIM_CALLS + ESPN_REQUEST_CALLS + 2 + SETTLE_CALLS)
+    // Reclamação, a tentativa que levou o 429 (3), a vaga recusada do 2º item (2: a reserva e a
+    // leitura do estado) e a gravação do estado.
+    expect(budget.used).toBe(CLAIM_CALLS + ESPN_REQUEST_CALLS + 2 + SETTLE_CALLS)
   })
 })

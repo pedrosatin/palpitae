@@ -275,7 +275,7 @@ function holdLocally(prohibition: Prohibition): BlockOutcome {
  * continua a cada reserva.
  */
 async function settleLocalBlocks(db: D1Database, now: number): Promise<void> {
-  for (const block of [...localBlocks]) {
+  for (const block of localBlocks.slice()) {
     try {
       await persistProhibition(db, block.prohibition)
       const index = localBlocks.indexOf(block)

@@ -273,6 +273,9 @@ type ClaimedRow = {
  * mesmo item — quem chega depois o vê `running` com lease fresco. `rowid`
  * desempata pela ordem em que o trabalho entrou na fila.
  *
+ * `respectProviderAccess` (a ESPN) não reclama nada enquanto o provedor está
+ * bloqueado ou suspenso, na própria instrução, sem chamada a mais.
+ *
  * O `ORDER BY` do subselect só escolhe quais itens reclamar: a ordem das linhas
  * do `RETURNING` não é garantida. Os itens voltam ordenados por prioridade,
  * `created_at` e `rowid`, como o subselect, porque o dreno os admite no saldo
@@ -281,9 +284,16 @@ type ClaimedRow = {
  */
 export async function claimProviderWork(
   db: D1Database,
-  opts: { provider: string; limit?: number; now?: number },
+  opts: { provider: string; limit?: number; now?: number; respectProviderAccess?: boolean },
 ): Promise<ProviderWorkItem[]> {
   const now = opts.now ?? Date.now()
+  // Provedor bloqueado ou suspenso pelo controle de acesso (`provider_rate_state`): nada é
+  // reclamado, e o item segue `pending`, sem escrita, até o bloqueio vencer ou o operador retomar.
+  const accessGuard = opts.respectProviderAccess
+    ? `AND NOT EXISTS (SELECT 1 FROM provider_rate_state AS access
+                        WHERE access.provider = ?4
+                          AND (access.suspended_at IS NOT NULL OR access.blocked_until > ?3))`
+    : ''
   // Um dono por reclamação: o estado dos itens só é gravado por quem ainda o é.
   const leaseOwner = crypto.randomUUID()
   const { results } = await db
@@ -295,6 +305,7 @@ export async function claimProviderWork(
            WHERE provider = ?4
              AND not_before <= ?3
              AND (status = 'pending' OR (status = 'running' AND lease_until < ?3))
+             ${accessGuard}
            ORDER BY priority, created_at, rowid
            LIMIT ?5)
        RETURNING kind, competition_code, competition_id, season, round, attempts,
@@ -418,6 +429,8 @@ export type DrainOptions = {
   minItemCost: number
   /** Itens em execução ao mesmo tempo; padrão `DRAIN_CONCURRENCY`. */
   concurrency?: number
+  /** Não reclama itens enquanto o provedor está bloqueado ou suspenso (ver `claimProviderWork`). */
+  respectProviderAccess?: boolean
   maxCycles?: number
   maxItems?: number
 }
@@ -571,7 +584,10 @@ function settleStatements(
     }
   })
   for (const item of cycle.released) statements.push(releaseStatement(db, provider, item, now))
-  return { statements, items: [...cycle.outcomes.map((outcome) => outcome.item), ...cycle.released] }
+  return {
+    statements,
+    items: [...cycle.outcomes.map((outcome) => outcome.item), ...cycle.released],
+  }
 }
 
 /**
@@ -735,7 +751,12 @@ export async function drainProviderWork(
       run.stoppedBy = 'budget'
       break
     }
-    const items = await claimProviderWork(budget.db, { provider: opts.provider, now, limit })
+    const items = await claimProviderWork(budget.db, {
+      provider: opts.provider,
+      now,
+      limit,
+      respectProviderAccess: opts.respectProviderAccess,
+    })
     if (items.length === 0) break
     run.claimed += items.length
     const result = await runCycle(budget, opts, items, now, observed)

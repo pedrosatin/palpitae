@@ -122,10 +122,7 @@ describe('controle de acesso da ESPN: 403', () => {
     const { db, gate } = setup()
     await Promise.all([gate.reserve(), gate.reserve()])
 
-    const [a, b] = await Promise.all([
-      gate.note(403, new Headers()),
-      gate.note(403, new Headers()),
-    ])
+    const [a, b] = await Promise.all([gate.note(403, new Headers()), gate.note(403, new Headers())])
 
     expect(a).toEqual({ reason: 'blocked', retryAt: T0 + 15 * MIN })
     expect(b).toEqual(a)
@@ -387,7 +384,11 @@ describe('controle de acesso da ESPN: a gravação da proibição falha', () => 
     const { sqlite, db, d1 } = (() => {
       const { sqlite, db } = setup()
       const state = { broken: true }
-      return { sqlite, db: flakyD1(db, { failStatement: (sql) => state.broken && writesAccessState(sql) }), d1: state }
+      return {
+        sqlite,
+        db: flakyD1(db, { failStatement: (sql) => state.broken && writesAccessState(sql) }),
+        d1: state,
+      }
     })()
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const callGate = { callsLeft: vi.fn(() => 10), chargeFetch: vi.fn() }
@@ -399,7 +400,9 @@ describe('controle de acesso da ESPN: a gravação da proibição falha', () => 
     callGate.callsLeft.mockReturnValue(3)
     d1.broken = false
     await expect(gate.reserve()).rejects.toBeInstanceOf(CallBudgetExhaustedError)
-    expect(sqlite.prepare('SELECT suspended_at FROM provider_rate_state WHERE provider = ?').get('espn')).toEqual({
+    expect(
+      sqlite.prepare('SELECT suspended_at FROM provider_rate_state WHERE provider = ?').get('espn'),
+    ).toEqual({
       suspended_at: null,
     })
   })
