@@ -246,7 +246,8 @@ O do poller traz ainda o orçamento de chamadas do tick (ADR-024): `calls_used`
 (consultas e batches do D1 mais tentativas HTTP), `calls_budget`,
 `scoring_competitions` (competições que entraram na pontuação, sincronizadas no
 tick ou com jogo pendente no D1), `matches_scored` e `scoring_unfinished`
-(competições que ficaram para o tick seguinte por falta de chamadas).
+(competições que ficaram para o tick seguinte por falta de chamadas), `espn_budget` e
+`espn_deferred_dates` (saldo das sincronizações da ESPN e datas que não couberam e foram para a fila).
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
@@ -384,11 +385,27 @@ ticket 03), com o que a ESPN faz de diferente:
 - **Subrequests do dreno:** a ESPN não tem orçamento de invocação próprio. O `espnDrain` é uma entrada na
   lista do coordenador (`runProviderDrains`) e roda na fatia que ele entrega dos 45 subrequests do ramo
   drenador. Cada tentativa paga a vaga, o `fetch` e o registro da resposta dessa fatia (ADR-027, adendos
-  "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto. Com os dois
-  drenos ocupados, a fatia da ESPN comporta 2 itens por tick e o tick gasta 37 chamadas (com a limpeza). A
-  estimativa por item é 9 (data de liga) ou 13 (sync manual e descoberta, que pontuam), medida em teste.
-  Com a coleta bloqueada ou suspensa a reclamação recusa e o dreno só lê o estado (2 chamadas, nenhuma
-  escrita).
+  "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto. O
+  coordenador conta o trabalho pronto de cada dreno numa consulta (1 chamada dos 45), o dreno sem trabalho
+  não roda e o saldo dele fica com quem tem fila. Com os dois drenos ocupados, a fatia da ESPN comporta 2
+  itens por tick e o tick gasta 38 chamadas (com a limpeza); com a ESPN sozinha, 4 itens e 40; com a
+  football-data sozinha, 5 itens e 39. A estimativa por item é 9 (data de liga) ou 13 (sync manual e
+  descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
+  reclamação recusa e o dreno lê o estado para dizer o motivo (2 chamadas, nenhuma escrita).
+- **Subrequests do poller:** o `POLLER_CALL_BUDGET` (45) vale para a football-data e a ESPN juntas. O saldo da
+  ESPN é fixado antes de qualquer sincronização (45 menos o que já foi gasto, menos o estimado das rodadas da
+  football-data, 8 cada, menos 5 de reserva da pontuação), e cada competição da ESPN (2 a 4 datas) é admitida
+  pelo custo completo (3 chamadas por data e 6 da gravação: 12 para 2 datas, 16 para 3). A que não cabe nem
+  começa: as datas vão para a fila por data (`provider_work`, `kind` `result` ou `late`, `not_before` = o
+  instante, `last_error` = "saldo de chamadas do tick esgotado…"), sem tentativa gasta e sem
+  `football_api_error`, e o dreno as retoma nos minutos 5 ou 35. O enfileiramento (1 `db.batch()`) está
+  reservado do saldo antes de qualquer tarefa. O log `[perf]` do poller traz `espn_budget` (o saldo
+  fixado) e `espn_deferred_dates` (datas enfileiradas no tick). Tick com 1, 2, 3 e 4 competições da ESPN com
+  1 jogo na janela (2 datas, com a limpeza do `scheduled`): 20, 36, 44 e 45 chamadas (antes, 20, 36, 44 e
+  52, com a 51 e a 52 recusadas); com jogos de hoje e de ontem nas 4 (3 datas), 43 (antes, 55 e o tick
+  rejeitado). Competição adiada pelo saldo e pendência a mais no painel por até 10 minutos são esperados
+  nesses ticks; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
+  está consumindo o do poller.
 - **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,
   sem retry imediato e sem mexer na sequência de 403. O prazo não é encurtado: o bloqueio é o maior
   entre o `Retry-After` válido e a pausa mínima conservadora de 60 s (que também vale sem cabeçalho ou
