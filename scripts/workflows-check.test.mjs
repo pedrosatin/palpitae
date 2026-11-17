@@ -134,6 +134,11 @@ describe('workflows do GitHub Actions', () => {
     )
     assert.equal(passos.filter((p) => p.includes('run: npm ci')).length, 1, 'mais de uma instalação')
 
+    // O gate depende só da ordem: nenhum step pode seguir depois de uma falha.
+    const semSkip = semComentarios(bloco)
+    assert.doesNotMatch(semSkip, /continue-on-error:/, 'continue-on-error deixa testes vermelhos chegarem ao deploy')
+    assert.doesNotMatch(semSkip, /\bif:.*\b(always|failure|cancelled)\(/, 'if com always(), failure() ou cancelled() roda depois de uma falha')
+
     // Todo secret fica no env do step de migration ou de publicação, e os dois têm o par.
     passos.forEach((passo, i) => {
       const secrets = passo.match(/secrets\.\w+/g) ?? []
