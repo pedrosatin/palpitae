@@ -212,6 +212,57 @@ describe('workflows do GitHub Actions', () => {
     assert.ok(pathsDe(text, 'pull_request').includes('web/**'), 'o PR não filtra mais por web/**')
   })
 
+  it('e2e-web.yml roda no PR da web, fora do push, com o filtro de paths', () => {
+    const text = workflows.find((w) => w.name === 'e2e-web.yml')?.text ?? ''
+    const eventos = eventosDe(text)
+    assert.ok(eventos.includes('pull_request'), 'e2e-web.yml sem o gatilho pull_request')
+    assert.ok(!eventos.includes('push'), 'e2e-web.yml não deve rodar no push')
+    const paths = pathsDe(text, 'pull_request')
+    for (const path of ['web/**', 'package-lock.json', '.github/workflows/e2e-web.yml']) {
+      assert.ok(paths.includes(path), `pull_request sem o path ${path}`)
+    }
+  })
+
+  it('e2e-web.yml instala só o chromium-headless-shell e deixa o gtag real fora do PR', () => {
+    const text = workflows.find((w) => w.name === 'e2e-web.yml')?.text ?? ''
+    const jobs = jobsDe(text)
+    assert.ok(jobs.size > 0, 'nenhum job encontrado em e2e-web.yml')
+    const instalacoes = semComentarios(text).match(/^.*playwright install\b.*$/gm) ?? []
+    assert.ok(instalacoes.length > 0, 'e2e-web.yml não instala o navegador')
+    for (const linha of instalacoes) {
+      assert.match(
+        linha,
+        /--only-shell chromium\s*$/,
+        `instalação sem --only-shell: ${linha.trim()}`,
+      )
+    }
+
+    // O job que roda no PR não recebe o id do GA, então o teste do gtag real se
+    // pula sozinho; o job desse teste nunca roda no PR.
+    for (const [nome, bloco] of jobs) {
+      const condicao = bloco.match(/^ {4}if: (.+)$/m)?.[1] ?? ''
+      const rodaNoPr = !/github\.event_name != 'pull_request'/.test(condicao)
+      if (rodaNoPr) {
+        assert.doesNotMatch(bloco, /REAL_GTAG_ID/, `job ${nome} roda no PR com REAL_GTAG_ID`)
+      } else {
+        const mensagem = `job ${nome} sem pular na falta de REAL_GTAG_ID`
+        assert.match(condicao, /vars\.REAL_GTAG_ID != ''/, mensagem)
+      }
+    }
+  })
+
+  it('o check do ci.yml não depende do E2E da web', () => {
+    const ci = workflows.find((w) => w.name === 'ci.yml')?.text ?? ''
+    const e2e = workflows.find((w) => w.name === 'e2e-web.yml')?.text ?? ''
+    const jobsCi = jobsDe(ci)
+    const needs = needsDe(jobsCi.get('check') ?? '')
+    for (const nome of jobsDe(e2e).keys()) {
+      assert.ok(!needs.includes(nome), `o check do ci.yml depende do job ${nome}`)
+    }
+    // O E2E não volta para dentro do CI por outro nome de job.
+    assert.doesNotMatch(semComentarios(ci), /playwright|test:e2e/, 'ci.yml roda o E2E da web')
+  })
+
   it('radar-sync.yml tem teto de tempo em todo job', () => {
     const text = workflows.find((w) => w.name === 'radar-sync.yml')?.text ?? ''
     const jobs = jobsDe(text)
