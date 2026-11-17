@@ -231,12 +231,13 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
 
     expectWithinBudget(h.limited)
     expectNothingStuck(h)
-    // Cada dreno recebeu a fatia dele (22 e 22): 2 itens de cada, nenhum ficou sem vez.
-    expect(done(h.sqlite, 'football-data')).toBe(2)
+    // Cada dreno recebeu a fatia dele (22 e 22), e nenhum ficou sem vez: a football-data
+    // conclui 1 item (12 reservadas, com a pontuação da rodada) e a ESPN, 2.
+    expect(done(h.sqlite, 'football-data')).toBe(1)
     expect(done(h.sqlite, 'espn')).toBe(2)
-    // A limpeza (1), a sondagem (1), a football-data (reclamar, 2 itens de 7 e o estado: 16)
-    // e a ESPN (reclamar, 2 itens de 9 e o estado: 20).
-    expect(h.limited.calls()).toBe(CLEANUP_CALLS + PROBE_CALLS + 16 + 20)
+    // A limpeza (1), a sondagem (1), a football-data (reclamar, 1 item de 7 do sync e 3 da
+    // pontuação e o estado: 12) e a ESPN (reclamar, 2 itens de 9 e o estado: 20).
+    expect(h.limited.calls()).toBe(CLEANUP_CALLS + PROBE_CALLS + 12 + 20)
     // O saldo não comporta os 32: o resto espera, intacto, o tick seguinte.
     expect(count(h.sqlite, `status = 'pending'`)).toBeGreaterThan(0)
     expect(h.fetches.fd).toBe(done(h.sqlite, 'football-data'))
@@ -290,7 +291,7 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
     expect(h.limited.calls()).toBe(CLEANUP_CALLS + PROBE_CALLS + 38)
   })
 
-  it('só a football-data com trabalho: a ESPN ociosa nem roda e a football-data volta aos 5 itens por tick da #771', async () => {
+  it('só a football-data com trabalho: a ESPN ociosa nem roda e a football-data fica com os 44', async () => {
     const h = await setupWorld()
     h.sqlite.exec(`DELETE FROM provider_work WHERE provider = 'espn'`)
 
@@ -298,10 +299,12 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
 
     expectWithinBudget(h.limited)
     expectNothingStuck(h)
-    expect(done(h.sqlite, 'football-data')).toBe(5)
-    expect(h.fetches).toEqual({ fd: 5, espn: 0 })
-    // Os 38 da #771 (a limpeza, reclamar, 5 itens de 7 e o estado) e a sondagem.
-    expect(h.limited.calls()).toBe(38 + PROBE_CALLS)
+    // 3 itens de 12 reservadas cada (o sync e a pontuação da rodada), e não os 5 itens só de
+    // sync da #771: a rodada adiada sai do dreno com placar, pontos e ranking.
+    expect(done(h.sqlite, 'football-data')).toBe(3)
+    expect(h.fetches).toEqual({ fd: 3, espn: 0 })
+    // A limpeza, a sondagem, reclamar, 3 itens (36 com a pontuação) e o estado.
+    expect(h.limited.calls()).toBe(CLEANUP_CALLS + PROBE_CALLS + 1 + 36 + 1)
   })
 
   it('orçamento do minuto cheio nos dois provedores: encerra na primeira vaga recusada de cada um, sem item preso', async () => {

@@ -232,6 +232,30 @@ export function retryAtOf(error: unknown, now: number): number {
 }
 
 /**
+ * Prazo e motivo de um trabalho que o poller adia. Falta de saldo de subrequests
+ * do tick (`CallBudgetExhaustedError`) não é falha nem bloqueio do provedor: o
+ * trabalho fica elegível para o próximo dreno, sem esperar uma janela, e o item
+ * novo nasce sem tentativa. Os demais erros seguem `retryAtOf`. `what` nomeia o trabalho
+ * na mensagem gravada em `last_error` ("a data", "a rodada").
+ */
+export function deferralOf(
+  error: unknown,
+  now: number,
+  what: string,
+): { notBefore: number; lastError: string } {
+  if (error instanceof CallBudgetExhaustedError) {
+    return {
+      notBefore: now,
+      lastError: `saldo de chamadas do tick esgotado; ${what} fica elegível para o próximo dreno`,
+    }
+  }
+  return {
+    notBefore: retryAtOf(error, now),
+    lastError: error instanceof Error ? error.message : String(error),
+  }
+}
+
+/**
  * Adia um sync direto que o orçamento ou a cota recusaram: o trabalho vira item
  * pendente da fila, para o dreno retomar. Falha de cota ou bloqueio retoma no
  * prazo que o erro informa; sem vaga, depois de uma janela. Falhas de verdade

@@ -11,6 +11,12 @@ const KICKOFF = '2026-11-08T15:30:00Z'
 const NOW = Date.parse(KICKOFF) + 120 * 60_000
 /** Seis rodadas com jogo na janela: mais tarefas football-data que o teto de paralelas. */
 const MATCHDAYS = [10, 11, 12, 13, 14, 15]
+/**
+ * Rodadas que o saldo do tick admite (ADR-027, adendo do ticket 09): 45 do poller, menos a
+ * leitura dos jogos (1), a reserva da pontuação (5) e o enfileiramento (1), dá 38, ou 4
+ * rodadas de 8 chamadas. As outras 2 vão para a fila sem request.
+ */
+const ADMITTED_ROUNDS = 4
 
 function fdMatches(status: string, score: number | null) {
   return Response.json({
@@ -107,13 +113,22 @@ describe('poller: cota esgotada da football-data', () => {
     await pollActiveMatches(db, 'test', ae, NOW)
 
     // Só as requests que já estavam em voo quando o 429 chegou. Nenhuma repete, e
-    // as rodadas que esperavam vaga falham sem request.
+    // as rodadas que não couberam no saldo do tick vão para a fila sem request.
     expect(fdCalls).toHaveLength(FD_MAX_CONCURRENT_REQUESTS)
     expect(FD_MAX_CONCURRENT_REQUESTS).toBeLessThan(MATCHDAYS.length)
     expect(pollerRuns()).toEqual(['error'])
     const errors = apiErrors()
-    expect(errors).toHaveLength(MATCHDAYS.length)
-    expect(errors.filter((b) => b[3].includes('cota esgotada'))).toHaveLength(MATCHDAYS.length)
+    expect(errors).toHaveLength(ADMITTED_ROUNDS)
+    expect(errors.filter((b) => b[3].includes('cota esgotada'))).toHaveLength(ADMITTED_ROUNDS)
+    // Todas as rodadas estão na fila sem tentativa: as do 429 esperam o reset, as que não
+    // couberam, o próximo dreno (que respeita o bloqueio gravado no D1).
+    expect(
+      sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n FROM provider_work WHERE status = 'pending' AND attempts = 0`,
+        )
+        .get(),
+    ).toEqual({ n: MATCHDAYS.length })
     expect(
       sqlite.prepare(`SELECT COUNT(*) AS n FROM matches WHERE status = 'finished'`).get(),
     ).toEqual({ n: 0 })
@@ -133,7 +148,7 @@ describe('poller: cota esgotada da football-data', () => {
       vi.useRealTimers()
     }
 
-    expect(fdCalls).toHaveLength(FD_MAX_CONCURRENT_REQUESTS + MATCHDAYS.length)
+    expect(fdCalls).toHaveLength(FD_MAX_CONCURRENT_REQUESTS + ADMITTED_ROUNDS)
     expect(pollerRuns()).toEqual(['error', 'ok'])
     expect(
       sqlite.prepare(`SELECT COUNT(*) AS n FROM matches WHERE status = 'finished'`).get(),

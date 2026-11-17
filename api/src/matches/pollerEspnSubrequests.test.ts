@@ -366,6 +366,11 @@ describe('poller com a ESPN no limite de 50 subrequests', () => {
     expect(h.fetches.fd).toBe(2)
     expect(workCount(h.sqlite, `provider = 'football-data'`)).toBe(0)
     expectNoProviderError(h)
+    // 39 com a limpeza: as 2 rodadas e 1 competição ESPN (2 datas) no tick; as outras 2
+    // competições ficam na fila, uma linha por data, sem tentativa gasta.
+    expect(h.limited.calls()).toBe(39)
+    expect(h.fetches.espn).toBe(2)
+    expect(workCount(h.sqlite, `provider = 'espn' AND status = 'pending' AND attempts = 0`)).toBe(4)
 
     await drainUntilSettled(h)
     expect(snapshot(h.sqlite)).toEqual(await controlSnapshot(options))

@@ -10,9 +10,9 @@ import { espnWriteCalls } from './espnSync'
 import { httpContextOf, logPostSyncFailures, scoreWithinBudget } from './fdWork'
 import { readProviderState } from './providerBudget'
 import {
+  deferralOf,
   drainProviderWork,
   enqueueProviderWork,
-  retryAtOf,
   type DrainRun,
   type NewWorkItem,
   type ProviderWorkItem,
@@ -59,7 +59,7 @@ export function espnWorkItems(base: EspnWorkBase, dates: string[] | undefined): 
  * Itens pendentes das datas que a ESPN não entregou, com o prazo que o erro
  * informa (bloqueio, `Retry-After`) ou a espera conservadora. Falta de saldo de
  * subrequests do tick (`CallBudgetExhaustedError`) não é falha nem bloqueio do
- * provedor: a data volta no próximo dreno, sem esperar uma janela, e não gasta
+ * provedor: a data fica elegível para o próximo dreno, sem esperar uma janela, e não gasta
  * tentativa (o item novo nasce com zero).
  */
 export function espnDeferralItems(
@@ -68,14 +68,8 @@ export function espnDeferralItems(
   error: unknown,
   now = Date.now(),
 ): NewWorkItem[] {
-  const noBudget = error instanceof CallBudgetExhaustedError
-  const notBefore = noBudget ? now : retryAtOf(error, now)
-  const lastError = noBudget
-    ? 'saldo de chamadas do tick esgotado; a data volta no próximo dreno'
-    : error instanceof Error
-      ? error.message
-      : String(error)
-  return espnWorkItems(base, dates).map((item) => ({ ...item, notBefore, lastError }))
+  const deferral = deferralOf(error, now, 'a data')
+  return espnWorkItems(base, dates).map((item) => ({ ...item, ...deferral }))
 }
 
 /** Adia as datas que a ESPN não entregou: viram itens pendentes (ver `espnDeferralItems`). */
