@@ -111,6 +111,41 @@ describe('workflows do GitHub Actions', () => {
     assert.doesNotMatch(text, /cancel-in-progress:\s*true/)
   })
 
+  it('deploy-api.yml testa, migra e publica num job só, com os secrets só nos dois últimos steps', () => {
+    const text = workflows.find((w) => w.name === 'deploy-api.yml')?.text ?? ''
+    const jobs = jobsDe(text)
+    assert.equal(jobs.size, 1, `esperava um job só, achei: ${[...jobs.keys()].join(', ')}`)
+    const bloco = [...jobs.values()][0]
+
+    // Os secrets não entram no escopo do job: o npm ci e os testes rodam sem eles.
+    assert.doesNotMatch(bloco.split(/^ {4}steps:/m)[0], /secrets\.|^ {4}env:/m, 'secret ou env no nível do job')
+    assert.doesNotMatch(semComentarios(text).split(/^jobs:/m)[0], /secrets\./, 'secret fora do job')
+
+    const passos = bloco.split(/^ {4}steps:\n/m)[1].split(/\n(?= {6}- )/)
+    const indice = (comando) => passos.findIndex((p) => p.includes(comando))
+    const instala = indice('run: npm ci')
+    const tipos = indice('run: npm run typecheck')
+    const testes = indice('run: npm test')
+    const migra = indice('wrangler d1 migrations apply')
+    const publica = indice('run: npm run deploy')
+    assert.ok(
+      instala >= 0 && instala < tipos && tipos < testes && testes < migra && migra < publica,
+      `ordem esperada: npm ci, typecheck, testes, migrations, publicação (índices ${[instala, tipos, testes, migra, publica]})`,
+    )
+    assert.equal(passos.filter((p) => p.includes('run: npm ci')).length, 1, 'mais de uma instalação')
+
+    // Todo secret fica no env do step de migration ou de publicação, e os dois têm o par.
+    passos.forEach((passo, i) => {
+      const secrets = passo.match(/secrets\.\w+/g) ?? []
+      if (i === migra || i === publica) {
+        assert.deepEqual([...new Set(secrets)].sort(), ['secrets.CLOUDFLARE_ACCOUNT_ID', 'secrets.CLOUDFLARE_API_TOKEN'], `step ${i} sem os secrets da Cloudflare`)
+        assert.match(passo, /^ {8}env:\n(?: {10}\w+: .+\n?)+/m, `step ${i} sem env próprio`)
+      } else {
+        assert.deepEqual(secrets, [], `step ${i} expõe secret fora da migration e da publicação`)
+      }
+    })
+  })
+
   it('deploy-web.yml publica o dist do job de teste, só no push da main', () => {
     const text = workflows.find((w) => w.name === 'deploy-web.yml')?.text ?? ''
     const inicioDeploy = text.indexOf('\n  deploy:')
