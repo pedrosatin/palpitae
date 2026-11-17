@@ -39,6 +39,8 @@ const ESPN_ITEMS = 16
 const CLEANUP_CALLS = 1
 /** Saldo do ramo drenador: 45 das 50 chamadas. */
 const DRAIN_CALL_BUDGET = 45
+/** O coordenador conta o trabalho pronto de cada dreno antes de repartir: 1 chamada do ramo. */
+const PROBE_CALLS = 1
 const MIN = 60_000
 
 const handles: DatabaseSync[] = []
@@ -229,9 +231,12 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
 
     expectWithinBudget(h.limited)
     expectNothingStuck(h)
-    // Cada dreno recebeu a fatia dele: nenhum dos dois ficou sem vez.
-    expect(done(h.sqlite, 'football-data')).toBeGreaterThan(0)
-    expect(done(h.sqlite, 'espn')).toBeGreaterThan(0)
+    // Cada dreno recebeu a fatia dele (22 e 22): 2 itens de cada, nenhum ficou sem vez.
+    expect(done(h.sqlite, 'football-data')).toBe(2)
+    expect(done(h.sqlite, 'espn')).toBe(2)
+    // A limpeza (1), a sondagem (1), a football-data (reclamar, 2 itens de 7 e o estado: 16)
+    // e a ESPN (reclamar, 2 itens de 9 e o estado: 20).
+    expect(h.limited.calls()).toBe(CLEANUP_CALLS + PROBE_CALLS + 16 + 20)
     // O saldo não comporta os 32: o resto espera, intacto, o tick seguinte.
     expect(count(h.sqlite, `status = 'pending'`)).toBeGreaterThan(0)
     expect(h.fetches.fd).toBe(done(h.sqlite, 'football-data'))
@@ -271,7 +276,7 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
     ).toBe(ESPN_ITEMS * 10)
   })
 
-  it('só a ESPN com trabalho: o coordenador entrega a sobra da football-data ociosa, ainda dentro dos 45', async () => {
+  it('só a ESPN com trabalho: a football-data ociosa nem roda e a ESPN fica com os 44', async () => {
     const h = await setupWorld()
     h.sqlite.exec(`DELETE FROM provider_work WHERE provider = 'football-data'`)
 
@@ -279,8 +284,24 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
 
     expectWithinBudget(h.limited)
     expectNothingStuck(h)
-    // Sem a sobra seriam 2 itens (a fatia de 22); com ela, mais.
-    expect(done(h.sqlite, 'espn')).toBeGreaterThan(2)
+    // Sem a sondagem seriam 2 itens (a fatia de 22); com ela, os 4 que os 44 comportam.
+    expect(done(h.sqlite, 'espn')).toBe(4)
+    // A limpeza (1), a sondagem (1) e a ESPN: reclamar, 4 itens de 9 e o estado (38).
+    expect(h.limited.calls()).toBe(CLEANUP_CALLS + PROBE_CALLS + 38)
+  })
+
+  it('só a football-data com trabalho: a ESPN ociosa nem roda e a football-data volta aos 5 itens por tick da #771', async () => {
+    const h = await setupWorld()
+    h.sqlite.exec(`DELETE FROM provider_work WHERE provider = 'espn'`)
+
+    expect(await runDrainTick(h, FIRST_TICK)).toEqual([])
+
+    expectWithinBudget(h.limited)
+    expectNothingStuck(h)
+    expect(done(h.sqlite, 'football-data')).toBe(5)
+    expect(h.fetches).toEqual({ fd: 5, espn: 0 })
+    // Os 38 da #771 (a limpeza, reclamar, 5 itens de 7 e o estado) e a sondagem.
+    expect(h.limited.calls()).toBe(38 + PROBE_CALLS)
   })
 
   it('orçamento do minuto cheio nos dois provedores: encerra na primeira vaga recusada de cada um, sem item preso', async () => {
@@ -391,6 +412,8 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
     expect(spent('football-data')).toBeGreaterThan(0)
     expect(spent('espn')).toBeGreaterThan(0)
     expect(spent('football-data') + spent('espn')).toBeLessThanOrEqual(DRAIN_CALL_BUDGET)
-    expect(spent('football-data') + spent('espn')).toBe(h.limited.calls() - CLEANUP_CALLS)
+    expect(spent('football-data') + spent('espn')).toBe(
+      h.limited.calls() - CLEANUP_CALLS - PROBE_CALLS,
+    )
   })
 })

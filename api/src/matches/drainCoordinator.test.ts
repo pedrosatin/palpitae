@@ -2,16 +2,18 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { limitD1Calls } from '../testing/d1CallLimit'
+import { flakyD1 } from '../testing/flakyD1'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import { CallBudgetExhaustedError } from './callBudget'
 import { DRAIN_CALL_BUDGET, type DrainBudget } from './drainBudget'
 import {
   DRAIN_MAX_PASSES,
   runProviderDrains,
+  shareBudget,
   splitBudget,
   type ProviderDrain,
 } from './drainCoordinator'
-import type { DrainRun } from './providerWork'
+import { enqueueProviderWork, type DrainRun } from './providerWork'
 
 /**
  * Coordenador dos drenos: um orçamento de 45 subrequests para todas as filas
@@ -254,5 +256,185 @@ describe('coordenador dos drenos', () => {
 
     expect(fd.shares[0]).toBe(12)
     expect(used).toBe(10)
+  })
+})
+
+describe('repartição pela demanda', () => {
+  it('sem demanda conhecida é a divisão por igual de sempre', () => {
+    expect(shareBudget(45, [Infinity, Infinity])).toEqual(splitBudget(45, 2))
+    expect(shareBudget(45, [Infinity, Infinity, Infinity])).toEqual([15, 15, 15])
+  })
+
+  it('quem pede menos que a fatia justa recebe o que pede, e o resto vai a quem ainda quer mais', () => {
+    expect(shareBudget(44, [22, Infinity])).toEqual([22, 22])
+    expect(shareBudget(44, [13, Infinity])).toEqual([13, 31])
+    expect(shareBudget(44, [Infinity, 13])).toEqual([31, 13])
+    // O que um libera aumenta a fatia justa dos outros, e quem passa a caber nela também é atendido.
+    expect(shareBudget(44, [10, 12, Infinity])).toEqual([10, 12, 22])
+  })
+
+  it('se todos pedem pouco, a sobra é repartida por cima da demanda, para a estimativa não faltar', () => {
+    const shares = shareBudget(44, [10, 12])
+
+    expect(shares).toEqual([21, 23])
+    expect(shares.reduce((sum, share) => sum + share, 0)).toBe(44)
+  })
+
+  it('a soma das fatias nunca passa do total', () => {
+    for (const demands of [
+      [1, 2, 3],
+      [100, 5],
+      [Infinity, Infinity, 7],
+      [0, 0],
+    ]) {
+      const shares = shareBudget(44, demands)
+      expect(shares.reduce((sum, share) => sum + share, 0)).toBeLessThanOrEqual(44)
+    }
+  })
+})
+
+describe('coordenador dos drenos com a fila no D1', () => {
+  const NOW = Date.parse('2026-11-17T14:05:00Z')
+
+  function setupQueue() {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    return { sqlite, db }
+  }
+
+  async function seed(db: D1Database, provider: string, count: number) {
+    await enqueueProviderWork(
+      db,
+      Array.from({ length: count }, (_, i) => ({
+        provider,
+        kind: 'result' as const,
+        competitionCode: 'PPL',
+        season: '2026',
+        round: String(i + 1),
+        competitionId: 'c1',
+      })),
+      NOW,
+    )
+  }
+
+  /** Os dois drenos como o `scheduled` os monta: com a fila do provedor e a fatia mínima de cada um. */
+  function queued() {
+    const fd = {
+      ...simulated('football-data', 100),
+      minCalls: 12,
+      queue: {},
+    }
+    const espn = {
+      ...simulated('espn', 100),
+      minCalls: 13,
+      queue: { respectProviderAccess: true },
+    }
+    return { fd, espn }
+  }
+
+  it('dreno sem trabalho não é chamado e o saldo dele fica com quem tem fila: 44 (1 da sondagem)', async () => {
+    const { sqlite, db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    const limited = limitD1Calls(db)
+    const { fd, espn } = queued()
+
+    const used = await runProviderDrains(limited.db, [fd, espn], { now: NOW })
+
+    expect(espn.shares).toEqual([])
+    expect(fd.shares).toEqual([44])
+    // A sondagem (1), o trabalho da fatia (44 − 3 de reserva = 41) e a gravação do estado (1).
+    expect(used).toBeLessThanOrEqual(45)
+    expect(limited.calls()).toBe(used)
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM provider_work').get()).toEqual({ n: 16 })
+  })
+
+  it('a ESPN com uma data só pede o que usa, e a football-data fica com o resto', async () => {
+    const { db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    await seed(db, 'espn', 1)
+    const { fd, espn } = queued()
+
+    await runProviderDrains(limitD1Calls(db).db, [fd, espn], { now: NOW })
+
+    // 4 de custo fixo e 1 item de 9: 13. O resto da fatia justa vai para a football-data.
+    expect(espn.shares[0]).toBe(13)
+    expect(fd.shares[0]).toBe(31)
+  })
+
+  it('os dois com fila de sobra repartem por igual, como antes', async () => {
+    const { db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    await seed(db, 'espn', 16)
+    const { fd, espn } = queued()
+
+    await runProviderDrains(limitD1Calls(db).db, [fd, espn], { now: NOW })
+
+    expect([fd.shares[0], espn.shares[0]]).toEqual([22, 22])
+  })
+
+  it('ESPN bloqueada com fila: o dreno roda só com a fatia que comporta a reclamação, para avisar o motivo', async () => {
+    const { sqlite, db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    await seed(db, 'espn', 3)
+    sqlite.exec(
+      `UPDATE provider_rate_state SET blocked_until = ${NOW + 60_000} WHERE provider = 'espn'`,
+    )
+    const { fd, espn } = queued()
+
+    await runProviderDrains(limitD1Calls(db).db, [fd, espn], { now: NOW })
+
+    expect(espn.shares[0]).toBe(13)
+    expect(fd.shares[0]).toBe(31)
+  })
+
+  it('ESPN bloqueada sem fila e sem nada pendente: nem roda', async () => {
+    const { sqlite, db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    sqlite.exec(`UPDATE provider_rate_state SET suspended_at = ${NOW} WHERE provider = 'espn'`)
+    const { fd, espn } = queued()
+
+    await runProviderDrains(limitD1Calls(db).db, [fd, espn], { now: NOW })
+
+    expect(espn.shares).toEqual([])
+    expect(fd.shares).toEqual([44])
+  })
+
+  it('um dreno só não precisa de sondagem: recebe os 45', async () => {
+    const { db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    const limited = limitD1Calls(db)
+    const { fd } = queued()
+
+    await runProviderDrains(limited.db, [fd], { now: NOW })
+
+    expect(fd.shares).toEqual([45])
+  })
+
+  it('sondagem que falha não derruba o coordenador: divide por igual, e a chamada conta', async () => {
+    const { db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    const broken = flakyD1(db, { failStatement: (sql) => sql.includes('GROUP BY w.provider') })
+    const limited = limitD1Calls(broken)
+    const { fd, espn } = queued()
+
+    const used = await runProviderDrains(limited.db, [fd, espn], { now: NOW })
+
+    expect(console.error).toHaveBeenCalled()
+    // 44 de saldo depois da sondagem que falhou, por igual: 22 e 22.
+    expect([fd.shares[0], espn.shares[0]]).toEqual([22, 22])
+    expect(used).toBeLessThanOrEqual(45)
+  })
+
+  it('a sondagem soma no total e o teto de 45 vale com ela', async () => {
+    const { db } = setupQueue()
+    await seed(db, 'football-data', 16)
+    await seed(db, 'espn', 16)
+    const limited = limitD1Calls(db)
+    const { fd, espn } = queued()
+
+    const used = await runProviderDrains(limited.db, [fd, espn], { now: NOW })
+
+    expect(used).toBeLessThanOrEqual(DRAIN_CALL_BUDGET)
+    expect(limited.calls()).toBe(used)
   })
 })
