@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { runInBatches } from '../d1Batch'
 import { tryLogEvent } from '../observability/events'
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
+import { CallBudgetExhaustedError, type CallGate } from './callBudget'
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 import { footballDataCompetitionConfig } from './footballDataCompetitions'
@@ -142,6 +143,14 @@ export type SyncOptions = {
    * documentadas em `providerBudget.ts` (radar, script local) e os testes.
    */
   coordinate?: boolean
+  /**
+   * Porteiro de subrequests da invocação (o dreno da fila, ADR-027): cobra cada
+   * `fetch`, retry incluído, antes de iniciá-lo, e confere se o saldo cobre as
+   * gravações do calendário antes de começá-las. Sem saldo o sync lança
+   * `CallBudgetExhaustedError` sem gravar nada, e o chamador retoma depois. As
+   * consultas ao D1 são contadas pelo `db` que o chamador passa.
+   */
+  callGate?: CallGate
   /** Instante do sync (ISO 8601). Padrão: agora. Usado para gravar `locked_at`. */
   now?: string
   /** Telemetria por tentativa HTTP ao provedor (contexto e competição já embutidos). */
@@ -266,6 +275,7 @@ async function fetchMatchesFromApi(
   db: D1Database,
   coordinate: boolean,
   onAttempt?: ProviderHttpObserver,
+  gate?: CallGate,
 ): Promise<ApiMatchesResponse> {
   const url = new URL(`${API_BASE}/competitions/${competitionCode}/matches`)
   url.searchParams.set('season', String(season))
@@ -275,9 +285,14 @@ async function fetchMatchesFromApi(
     // Pausa por cota (429 ou cota zerada) vista antes neste isolate: espera ou
     // falha sem request.
     await waitForFootballDataQuota()
+    // A reserva da vaga e o `fetch` cabem juntos no saldo ou nenhum dos dois sai:
+    // sem o `fetch`, a vaga reservada ficaria gasta à toa para as outras execuções.
+    if (gate && gate.callsLeft() < (coordinate ? 2 : 1)) throw new CallBudgetExhaustedError()
     // Vaga no orçamento compartilhado entre execuções (ADR-027). Sem vaga não
     // há request: o chamador decide o que fazer com o trabalho pendente.
     if (coordinate) await reserveFootballDataSlot(db)
+    // O `fetch`, retry incluído, é cobrado do saldo da invocação antes de sair.
+    gate?.chargeFetch()
     const startedAt = Date.now()
     try {
       const res = await fetch(url.toString(), {
@@ -435,15 +450,25 @@ async function reportMissingFromFeed(
   }
 }
 
-async function upsertTeams(
-  db: D1Database,
-  matches: ApiMatch[],
-): Promise<{ teamMap: Map<number, ApiTeam>; teamIds: Map<string, string> }> {
+/** Times distintos do calendário, pelo id do provedor. */
+function collectTeams(matches: ApiMatch[]): Map<number, ApiTeam> {
   const teamMap = new Map<number, ApiTeam>()
   for (const m of matches) {
     if (m.homeTeam?.id) teamMap.set(m.homeTeam.id, m.homeTeam)
     if (m.awayTeam?.id) teamMap.set(m.awayTeam.id, m.awayTeam)
   }
+  return teamMap
+}
+
+function countTeams(matches: ApiMatch[]): number {
+  return collectTeams(matches).size
+}
+
+async function upsertTeams(
+  db: D1Database,
+  matches: ApiMatch[],
+): Promise<{ teamMap: Map<number, ApiTeam>; teamIds: Map<string, string> }> {
+  const teamMap = collectTeams(matches)
 
   const teamStatements = []
   const teamInsertStmt = db.prepare(
@@ -655,6 +680,37 @@ async function reopenLeg1ScoredAsSingle(
     .run()
 }
 
+/** Jogos ou times gravados por `db.batch()` (o limite de instruções do D1). */
+const WRITE_BATCH_SIZE = 100
+
+/**
+ * Chamadas ao D1 da gravação de um calendário, com a competição já criada: a
+ * leitura dela, os times (batches e a leitura dos ids), os jogos (a leitura das
+ * trocas de time e os batches), a reabertura da ida e, na descoberta, a conferência
+ * dos jogos ausentes. Competição nova custa mais 2, uma vez. Uma rodada de
+ * liga (cerca de 10 jogos e 20 times) fica em 6; o calendário de uma liga inteira
+ * (380 jogos), em 9.
+ */
+export function syncWriteCalls(matches: number, teams: number, checksMissing: boolean): number {
+  const batches = (rows: number) => Math.ceil(rows / WRITE_BATCH_SIZE)
+  return 4 + batches(teams) + batches(matches) + (checksMissing ? 1 : 0)
+}
+
+/**
+ * O calendário só começa a ser gravado se o saldo do porteiro cobre a gravação
+ * inteira: um sync cortado no meio repetiria a requisição e deixaria jogos sem
+ * os times deles. Sem saldo, lança antes de gravar qualquer coisa.
+ */
+function assertWriteBudget(
+  gate: CallGate | undefined,
+  matches: ApiMatch[],
+  checksMissing: boolean,
+): void {
+  if (!gate) return
+  const needed = syncWriteCalls(matches.length, countTeams(matches), checksMissing)
+  if (gate.callsLeft() < needed) throw new CallBudgetExhaustedError()
+}
+
 /**
  * Syncs fixtures from football-data.org into D1.
  * Upserts: competition, teams, and matches.
@@ -688,6 +744,7 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     db,
     opts.coordinate ?? false,
     opts.onHttpAttempt,
+    opts.callGate,
   )
   const { competition: apiComp, matches } = data
 
@@ -704,6 +761,11 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     }
   }
 
+  assertWriteBudget(
+    opts.callGate,
+    matches,
+    opts.missingEvents !== undefined && matchday === undefined,
+  )
   const competition = await upsertCompetition(db, apiComp, season, opts.ae)
   const { teamMap, teamIds } = await upsertTeams(db, matches)
   const now = opts.now ?? isoSeconds(new Date())

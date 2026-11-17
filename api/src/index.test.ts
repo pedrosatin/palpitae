@@ -32,7 +32,10 @@ vi.mock('./matches/fixtureDiscovery', () => ({
   discoverFixtures: vi.fn(async () => {}),
 }))
 vi.mock('./matches/fdWork', () => ({
-  drainFootballDataWork: vi.fn(async () => {}),
+  footballDataDrain: vi.fn((deps: unknown) => ({ provider: 'football-data', deps })),
+}))
+vi.mock('./matches/drainCoordinator', () => ({
+  runProviderDrains: vi.fn(async () => 0),
 }))
 
 import { signJwt } from './auth/jwt'
@@ -46,7 +49,8 @@ import {
   ROUND_REMINDER_CRON,
 } from './crons'
 import worker from './index'
-import { drainFootballDataWork } from './matches/fdWork'
+import { runProviderDrains } from './matches/drainCoordinator'
+import { footballDataDrain } from './matches/fdWork'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { sendRoundReminders } from './notifications/roundReminder'
@@ -235,7 +239,7 @@ describe('scheduled handler routing', () => {
 
       expect(pollActiveMatches).toHaveBeenCalledTimes(1)
       expect(pollActiveMatches).toHaveBeenCalledWith(env.DB, 'fk', env.AE, scheduledTime)
-      expect(drainFootballDataWork).not.toHaveBeenCalled()
+      expect(runProviderDrains).not.toHaveBeenCalled()
       expect(sendRoundReminders).not.toHaveBeenCalled()
       expect(exportRecentDays).not.toHaveBeenCalled()
       expect(discoverFixtures).not.toHaveBeenCalled()
@@ -247,8 +251,15 @@ describe('scheduled handler routing', () => {
     async (minute) => {
       await run(POLLER_AND_DRAIN_CRON, atMinute(minute))
 
-      expect(drainFootballDataWork).toHaveBeenCalledTimes(1)
-      expect(drainFootballDataWork).toHaveBeenCalledWith(env.DB, 'fk', env.AE)
+      // O dreno da football-data entra na lista do coordenador, que reparte o
+      // orçamento de subrequests da invocação entre todos.
+      expect(footballDataDrain).toHaveBeenCalledWith({ apiKey: 'fk', ae: env.AE })
+      expect(runProviderDrains).toHaveBeenCalledTimes(1)
+      expect(runProviderDrains).toHaveBeenCalledWith(
+        env.DB,
+        [{ provider: 'football-data', deps: { apiKey: 'fk', ae: env.AE } }],
+        { ae: env.AE },
+      )
       expect(pollActiveMatches).not.toHaveBeenCalled()
       expect(sendRoundReminders).not.toHaveBeenCalled()
       expect(exportRecentDays).not.toHaveBeenCalled()
@@ -261,7 +272,7 @@ describe('scheduled handler routing', () => {
     await run(POLLER_AND_DRAIN_CRON, Date.UTC(2026, 9, 12, 0, 30, 59))
 
     expect(pollActiveMatches).toHaveBeenCalledTimes(1)
-    expect(drainFootballDataWork).not.toHaveBeenCalled()
+    expect(runProviderDrains).not.toHaveBeenCalled()
   })
 
   it('00:05 UTC: o cron fundido drena e o export roda por conta própria, sem se atrapalhar', async () => {
@@ -270,7 +281,7 @@ describe('scheduled handler routing', () => {
     await run(POLLER_AND_DRAIN_CRON, scheduledTime)
     await run(DAILY_EXPORT_CRON, scheduledTime)
 
-    expect(drainFootballDataWork).toHaveBeenCalledTimes(1)
+    expect(runProviderDrains).toHaveBeenCalledTimes(1)
     expect(exportRecentDays).toHaveBeenCalledTimes(1)
     expect(checkQuotaUsage).toHaveBeenCalledTimes(1)
     expect(pollActiveMatches).not.toHaveBeenCalled()
@@ -285,7 +296,7 @@ describe('scheduled handler routing', () => {
     expect(sendRoundReminders).toHaveBeenCalledTimes(1)
     expect(discoverFixtures).toHaveBeenCalledTimes(1)
     expect(pollActiveMatches).not.toHaveBeenCalled()
-    expect(drainFootballDataWork).not.toHaveBeenCalled()
+    expect(runProviderDrains).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -297,7 +308,7 @@ describe('scheduled handler routing', () => {
       await run(LEGACY_RESULT_POLLER_CRON, Date.UTC(2026, 9, 12, hour, minute, 0))
 
       expect(pollActiveMatches).toHaveBeenCalledTimes(1)
-      expect(drainFootballDataWork).not.toHaveBeenCalled()
+      expect(runProviderDrains).not.toHaveBeenCalled()
       expect(events(env)).not.toContainEqual(['scheduled_unknown_cron', LEGACY_RESULT_POLLER_CRON])
     },
   )
@@ -308,7 +319,7 @@ describe('scheduled handler routing', () => {
 
     expect(events(env)).toContainEqual(['scheduled_unknown_cron', cron])
     expect(pollActiveMatches).not.toHaveBeenCalled()
-    expect(drainFootballDataWork).not.toHaveBeenCalled()
+    expect(runProviderDrains).not.toHaveBeenCalled()
   })
 
   it('cron desconhecido registra evento e não roda o poller', async () => {
@@ -319,7 +330,7 @@ describe('scheduled handler routing', () => {
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(discoverFixtures).not.toHaveBeenCalled()
-    expect(drainFootballDataWork).not.toHaveBeenCalled()
+    expect(runProviderDrains).not.toHaveBeenCalled()
   })
 })
 

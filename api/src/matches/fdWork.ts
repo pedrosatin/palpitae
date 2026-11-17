@@ -4,11 +4,14 @@ import {
   createProviderHttpObserver,
   type ProviderHttpContext,
 } from '../observability/providerHttp'
+import { CallBudgetExhaustedError } from './callBudget'
 import { reconcileCompetitionStatus } from './competitionLifecycle'
+import type { ProviderDrain } from './drainCoordinator'
+import { CYCLE_FIXED_CALLS, type DrainBudget, type ItemBudget } from './drainBudget'
 import { FootballDataQuotaError } from './footballDataQuota'
 import { FootballDataSlotBusyError } from './providerBudget'
-import { scoreUnprocessedMatches } from './scoring'
-import { syncFixtures, type SyncOptions } from './sync'
+import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
+import { syncFixtures, syncWriteCalls, type SyncOptions } from './sync'
 import {
   drainProviderWork,
   WORK_BUSY_RETRY_MS,
@@ -28,8 +31,9 @@ export const MISSING_EVENTS_PER_DISCOVERY = 30
 /**
  * Liga a fila durável de trabalho à sync da football-data (ADR-027): executa
  * itens reclamados com o orçamento compartilhado ligado, faz o pós-sync da
- * descoberta e do sync administrativo e expõe o cron drenador, que retoma
- * entre os ticks o que ficou pendente por orçamento, falha ou reinício.
+ * descoberta e do sync administrativo e expõe o dreno que o coordenador chama a
+ * cada tick (`footballDataDrain`), que retoma o que ficou pendente por
+ * orçamento, falha ou reinício, dentro da fatia de subrequests da invocação.
  */
 
 /** Quem disparou a tentativa, na telemetria por item. */
@@ -47,8 +51,59 @@ function matchdayOf(round: string): number | undefined {
   return Number.isNaN(matchday) ? undefined : matchday
 }
 
+/**
+ * Custo estimado de um item da football-data, em chamadas (D1 e `fetch`), que o
+ * dreno confere contra o saldo antes de começar o item. As estimativas são
+ * conservadoras e valem para o primeiro item de cada classe do dreno: depois dele
+ * vale o custo real (`DrainOptions.costClass`). `fdWork.test.ts` mede cada
+ * classe e falha se o custo real passar da estimativa.
+ *
+ * - requisição: reserva de vaga + `fetch` (2); um 429 com retry soma 3 (gravar o
+ *   bloqueio, reservar de novo e novo `fetch`) e fica fora: se o saldo não
+ *   cobrir, o item volta à fila sem tentativa;
+ * - gravação do calendário: `syncWriteCalls`. Rodada numérica, cerca de 10
+ *   jogos entre 20 times (6); calendário da temporada, até 380 jogos (9);
+ * - pontuação do sync manual e da descoberta: o mínimo para planejar e gravar
+ *   uma vez (`MIN_SCORING_CALLS`), o resto retoma no tick seguinte;
+ * - descoberta: mais a conferência de jogos ausentes (na gravação) e o avanço do
+ *   status da competição (1).
+ */
+const REQUEST_CALLS = 2
+const ROUND_MATCHES = 10
+const SEASON_MATCHES = 380
+const TEAMS = 20
+const RECONCILE_CALLS = 1
+
+/** Custo estimado do sync do item: uma rodada ou o calendário da temporada. */
+function syncCost(item: ProviderWorkItem): number {
+  const season = matchdayOf(item.round) === undefined
+  const matches = season ? SEASON_MATCHES : ROUND_MATCHES
+  return REQUEST_CALLS + syncWriteCalls(matches, TEAMS, item.kind === 'discovery')
+}
+
+export function footballDataItemCost(item: ProviderWorkItem): number {
+  switch (item.kind) {
+    case 'result':
+    case 'late':
+      return syncCost(item)
+    case 'manual':
+      return syncCost(item) + MIN_SCORING_CALLS
+    case 'discovery':
+      return syncCost(item) + MIN_SCORING_CALLS + RECONCILE_CALLS
+  }
+}
+
+/** Itens com o mesmo tipo e o mesmo alcance (rodada ou temporada) custam o mesmo. */
+function footballDataCostClass(item: ProviderWorkItem): string {
+  return `${item.kind}:${matchdayOf(item.round) === undefined ? 'season' : 'round'}`
+}
+
+/** O item mais barato da football-data: um `result` de rodada numérica. */
+export function footballDataMinItemCalls(): number {
+  return REQUEST_CALLS + syncWriteCalls(ROUND_MATCHES, TEAMS, false)
+}
+
 export type FdWorkDeps = {
-  db: D1Database
   apiKey: string
   ae?: AnalyticsEngineDataset
   /**
@@ -64,12 +119,14 @@ export type FdWorkDeps = {
  * compartilhado ligado. Sem vaga (`FootballDataSlotBusyError`) ou com pausa de
  * cota vigente (`FootballDataQuotaError`), o item volta à fila sem contar
  * tentativa — o provedor não foi chamado. Falha de verdade (rede, 5xx, 429 sem
- * recuperação, falha de gravação) conta tentativa, até o teto da fila.
+ * recuperação, falha de gravação) conta tentativa, até o teto da fila. Falta de
+ * saldo de subrequests (`CallBudgetExhaustedError`) não é falha: propaga, e o
+ * dreno devolve o item sem tentativa.
  */
 export function runFootballDataWorkItem(
   deps: FdWorkDeps,
-): (item: ProviderWorkItem) => Promise<WorkOutcome> {
-  return async (item) => {
+): (item: ProviderWorkItem, budget: ItemBudget) => Promise<WorkOutcome> {
+  return async (item, budget) => {
     const observer = createProviderHttpObserver(deps.ae, {
       context: httpContextOf(item.kind),
       competitionId: item.competitionId,
@@ -81,24 +138,35 @@ export function runFootballDataWorkItem(
         season: Number(item.season),
         ...(matchday !== undefined ? { matchday } : {}),
         apiKey: deps.apiKey,
-        db: deps.db,
+        db: budget.db,
         coordinate: true,
+        callGate: budget,
         onHttpAttempt: observer,
         ae: deps.ae,
         ...deps.extraSyncOptions?.(item),
       })
       return { item, status: 'done', result }
     } catch (err) {
+      // Falta de saldo não é falha do provedor: o dreno devolve o item sem tentativa.
+      if (err instanceof CallBudgetExhaustedError) throw err
+      // Sem vaga ou em pausa, o provedor inteiro recusa: o dreno não tenta os demais.
       if (err instanceof FootballDataSlotBusyError) {
         return {
           item,
           status: 'requeued',
           notBefore: (deps.now ?? Date.now()) + WORK_BUSY_RETRY_MS,
           error: err.message,
+          providerBlocked: true,
         }
       }
       if (err instanceof FootballDataQuotaError) {
-        return { item, status: 'requeued', notBefore: err.retryAt, error: err.message }
+        return {
+          item,
+          status: 'requeued',
+          notBefore: err.retryAt,
+          error: err.message,
+          providerBlocked: true,
+        }
       }
       return {
         item,
@@ -147,27 +215,26 @@ export async function advanceCompetitionStatus(
  * marca a execução com erro. Nada disso repete o sync: o item termina, e o
  * reprocesso é idempotente (upsert sem mudança não grava; `scored_at` não
  * volta).
+ *
+ * A pontuação gasta só o que sobra ao item no saldo (e, na descoberta, deixa 1
+ * para o avanço do status). Se não termina, o jogo que falta segue sem
+ * `scored_at` e o item volta à fila sem tentativa nova (`incomplete`): o próximo
+ * dreno repete o sync, barato e idempotente, e retoma a pontuação de onde parou.
  */
 export function footballDataSyncedHandler(deps: {
-  db: D1Database
   ae?: AnalyticsEngineDataset
   now?: number
 }): SyncedHandler {
-  return async (item, result) => {
+  return async (item, result, budget) => {
     if (item.kind === 'result' || item.kind === 'late') return
     const competitionId = result?.competitionId || item.competitionId
-    if (item.kind === 'discovery' || item.kind === 'manual') {
-      if (competitionId) {
-        try {
-          await scoreUnprocessedMatches(competitionId, deps.db)
-        } catch (err) {
-          return { error: err instanceof Error ? err.message : String(err) }
-        }
-      }
+    if (competitionId) {
+      const scoring = await scoreWithinBudget(competitionId, item, budget)
+      if (scoring) return scoring
     }
     if (item.kind === 'discovery') {
       const advanced = await advanceCompetitionStatus(
-        deps.db,
+        budget.db,
         deps.ae,
         competitionId,
         deps.now ?? Date.now(),
@@ -179,51 +246,33 @@ export function footballDataSyncedHandler(deps: {
 }
 
 /**
- * Cron drenador: retoma o trabalho pendente da football-data entre os ticks,
- * na ordem de prioridade (resultado, varredura e manual, depois descoberta).
- * Falha do D1 no dreno não repete em tempestade: fica no evento e o próximo
- * ciclo tenta de novo.
+ * Pontua a competição com o saldo do item. Devolve o que o pós-sync deve
+ * registrar quando a pontuação não terminou ou falhou, e `undefined` quando
+ * terminou.
  */
-export async function drainFootballDataWork(
-  db: D1Database,
-  apiKey: string,
-  ae?: AnalyticsEngineDataset,
-  now = Date.now(),
-): Promise<void> {
-  const startedAt = Date.now()
-  // Um saldo de `match_missing_from_feed` por execução do dreno, dividido entre
-  // as descobertas; os demais itens não registram (só a descoberta registra).
-  const missingEvents = { remaining: MISSING_EVENTS_PER_DISCOVERY }
-  let run: DrainRun
+async function scoreWithinBudget(
+  competitionId: string,
+  item: ProviderWorkItem,
+  budget: ItemBudget,
+): Promise<{ error?: string; incomplete?: boolean } | undefined> {
+  const reserved = item.kind === 'discovery' ? RECONCILE_CALLS : 0
   try {
-    run = await drainProviderWork(db, {
-      provider: 'football-data',
-      now,
-      runItem: runFootballDataWorkItem({
-        db,
-        apiKey,
-        ae,
-        now,
-        extraSyncOptions: (item) => (item.kind === 'discovery' ? { missingEvents } : undefined),
-      }),
-      onSynced: footballDataSyncedHandler({ db, ae, now }),
-    })
-  } catch (err) {
-    logError(
-      ae,
-      'provider_work_run',
-      '[drain] Falha ao drenar a fila da football-data:',
-      err,
-      { blobs: ['error'] },
+    const outcome = await scoreUnprocessedMatches(
+      competitionId,
+      budget.db,
+      Math.max(0, budget.callsLeft() - reserved),
     )
-    return
+    return outcome.complete ? undefined : { incomplete: true }
+  } catch (err) {
+    if (err instanceof CallBudgetExhaustedError) return { incomplete: true }
+    return { error: err instanceof Error ? err.message : String(err) }
   }
-  // Falha do pós-sync não repete o item (ele já terminou), mas não pode sumir:
-  // a execução sai como erro e a falha sem evento próprio vai para o log.
-  const postFailures = run.outcomes.filter(
-    (outcome) => outcome.status === 'done' && outcome.postError,
-  )
-  for (const outcome of postFailures) {
+}
+
+/** Registra o pós-sync que falhou. Falha do pós-sync não repete o item, mas não pode sumir. */
+function logPostSyncFailures(ae: AnalyticsEngineDataset | undefined, run: DrainRun): number {
+  const failures = run.outcomes.filter((outcome) => outcome.status === 'done' && outcome.postError)
+  for (const outcome of failures) {
     if (outcome.status !== 'done' || outcome.postSilent) continue
     logError(
       ae,
@@ -233,9 +282,64 @@ export async function drainFootballDataWork(
       { blobs: ['drain_post_sync'] },
     )
   }
-  tryLogEvent(ae, 'provider_work_run', {
-    blobs: [run.failed > 0 || postFailures.length > 0 ? 'error' : 'ok'],
-    // claimed, done, requeued, failed, duration_ms
-    doubles: [run.claimed, run.done, run.requeued, run.failed, Date.now() - startedAt],
+  return failures.length
+}
+
+/**
+ * Dreno da football-data para o coordenador (`runProviderDrains`): retoma o
+ * trabalho pendente entre os ticks, na ordem de prioridade (resultado,
+ * varredura e manual, depois descoberta), dentro da fatia de subrequests que o
+ * coordenador entrega. Cada passada registra `provider_work_run`.
+ */
+export function footballDataDrain(deps: {
+  apiKey: string
+  ae?: AnalyticsEngineDataset
+  now?: number
+}): ProviderDrain {
+  return {
+    provider: 'football-data',
+    minCalls: CYCLE_FIXED_CALLS + footballDataMinItemCalls(),
+    run: (budget) => drainFootballDataWork(budget, deps),
+  }
+}
+
+async function drainFootballDataWork(
+  budget: DrainBudget,
+  deps: { apiKey: string; ae?: AnalyticsEngineDataset; now?: number },
+): Promise<DrainRun> {
+  const { ae } = deps
+  const now = deps.now ?? Date.now()
+  const startedAt = Date.now()
+  // Um saldo de `match_missing_from_feed` por execução do dreno, dividido entre
+  // as descobertas; os demais itens não registram (só a descoberta registra).
+  const missingEvents = { remaining: MISSING_EVENTS_PER_DISCOVERY }
+  const run = await drainProviderWork(budget, {
+    provider: 'football-data',
+    now,
+    runItem: runFootballDataWorkItem({
+      apiKey: deps.apiKey,
+      ae,
+      now,
+      extraSyncOptions: (item) => (item.kind === 'discovery' ? { missingEvents } : undefined),
+    }),
+    onSynced: footballDataSyncedHandler({ ae, now }),
+    itemCost: footballDataItemCost,
+    costClass: footballDataCostClass,
+    minItemCost: footballDataMinItemCalls(),
   })
+  const postFailures = logPostSyncFailures(ae, run)
+  tryLogEvent(ae, 'provider_work_run', {
+    blobs: [run.failed > 0 || postFailures > 0 ? 'error' : 'ok'],
+    // claimed, done, requeued, failed, duration_ms, released, calls_used
+    doubles: [
+      run.claimed,
+      run.done,
+      run.requeued,
+      run.failed,
+      Date.now() - startedAt,
+      run.released,
+      budget.used,
+    ],
+  })
+  return run
 }
