@@ -182,6 +182,7 @@ export function espnDrain(deps: { ae?: AnalyticsEngineDataset; now?: number }): 
   return {
     provider: 'espn',
     minCalls: CYCLE_FIXED_CALLS + espnMinItemCalls(),
+    queue: { respectProviderAccess: true },
     run: (budget) => drainEspnWork(budget, deps),
   }
 }

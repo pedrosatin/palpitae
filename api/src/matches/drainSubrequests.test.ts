@@ -32,10 +32,11 @@ const ITEMS = 16
 /** A limpeza de registros expirados do `scheduled` é 1 chamada, por fora do dreno. */
 const CLEANUP_CALLS = 1
 /**
- * O dreno da ESPN sem trabalho gasta 2 chamadas do tick (a leitura do estado de
- * acesso e a reclamação vazia) e devolve o resto da fatia dele ao coordenador.
+ * Com a ESPN na lista do `scheduled`, o coordenador conta o trabalho pronto de cada
+ * dreno antes de repartir: 1 chamada do orçamento de 45. Em troca, a ESPN ociosa nem
+ * roda e a football-data fica com o saldo inteiro (os mesmos 5 itens por tick da #771).
  */
-const ESPN_IDLE_CALLS = 2
+const PROBE_CALLS = 1
 /** Saldo do dreno: 45 das 50 chamadas (as 5 restantes cobrem a limpeza e a folga). */
 const DRAIN_CALL_BUDGET = 45
 
@@ -203,7 +204,7 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
     expectWithinBudget(h.limited)
     // Sem a recusa em cadeia: reclamar, no máximo 4 reservas recusadas (os itens em voo) e
     // gravar o estado, em vez de 1 + 16 × 2 + 1 com a limpeza.
-    expect(h.limited.calls() - CLEANUP_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
+    expect(h.limited.calls() - CLEANUP_CALLS - PROBE_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
     expect(h.state.fetches).toBe(0)
     // Nenhum item preso em `running` até o lease vencer, e nenhuma tentativa gasta.
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
@@ -298,17 +299,12 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
     const runs = h.writeDataPoint.mock.calls
       .map(([point]) => point as { blobs: string[]; doubles: number[] })
       .filter((point) => point.blobs[0] === 'provider_work_run')
-    // O dreno da ESPN termina cedo e o coordenador entrega a sobra dele à football-data
-    // numa segunda rodada: duas linhas, uma por rodada.
-    expect(runs).toHaveLength(2)
-    const total = (index: number) => runs.reduce((sum, run) => sum + run.doubles[index], 0)
-    const [claimed, done, requeued, failed, , released, callsUsed] = [0, 1, 2, 3, 4, 5, 6].map(
-      total,
-    )
+    expect(runs).toHaveLength(1)
+    const [claimed, done, requeued, failed, , released, callsUsed] = runs[0].doubles
     expect([requeued, failed]).toEqual([0, 0])
     expect(claimed).toBe(done + released)
     expect(callsUsed).toBeLessThanOrEqual(DRAIN_CALL_BUDGET)
-    expect(callsUsed).toBe(h.limited.calls() - CLEANUP_CALLS - ESPN_IDLE_CALLS)
+    expect(callsUsed).toBe(h.limited.calls() - CLEANUP_CALLS - PROBE_CALLS)
   })
 
   it('dois drenos no mesmo tick dividem os 45: o da football-data fica com a fatia dele', async () => {
@@ -364,12 +360,10 @@ describe('falha do D1 na gravação do estado, dentro do saldo de 50', () => {
 
     expectWithinBudget(h.limited)
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
-    // 2 rodadas da football-data de 2 itens cada: a fatia de 23 comporta 2 itens de 8.
-    expect(count(h.sqlite, `status = 'done'`)).toBe(4)
+    expect(count(h.sqlite, `status = 'done'`)).toBe(5)
     expect(count(h.sqlite, `attempts > 0`)).toBe(0)
-    // Os 35 do tick normal (a limpeza, as 2 do dreno ocioso da ESPN e as 2 rodadas da
-    // football-data, de 16) mais a nova tentativa do batch.
-    expect(h.limited.calls()).toBe(36)
+    // Os 38 do tick normal, a sondagem do coordenador e a nova tentativa do batch.
+    expect(h.limited.calls()).toBe(40)
   })
 
   it('batch de estado que falha sempre: os itens voltam a pending sem tentativa e o tick seguinte os refaz', async () => {
@@ -381,10 +375,8 @@ describe('falha do D1 na gravação do estado, dentro do saldo de 50', () => {
     expect(await runDrainTick(h, DRAIN_MINUTE)).toEqual([])
 
     expectWithinBudget(h.limited)
-    // A limpeza (1), o dreno ocioso da ESPN (2) e a primeira rodada da football-data: reclamar
-    // (1), 2 itens (14) e a tentativa, a nova tentativa e a liberação, que cabem na reserva (3).
-    // O dreno para na falha do estado: a sobra não vai para uma segunda rodada.
-    expect(h.limited.calls()).toBe(21)
+    // Tentativa, nova tentativa e liberação cabem na reserva: 38 + 1 (sondagem) + 1 + 1.
+    expect(h.limited.calls()).toBe(41)
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
     expect(count(h.sqlite, `status = 'pending' AND attempts = 0`)).toBe(ITEMS)
     const runs = h.writeDataPoint.mock.calls
@@ -471,7 +463,7 @@ describe('429 da football-data dentro do dreno', () => {
     expect(await runDrainTick(h, DRAIN_MINUTE + TICK_MS)).toEqual([])
     expectWithinBudget(h.limited)
     expect(h.state.fetches).toBe(fetchesBefore)
-    expect(h.limited.calls() - CLEANUP_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
+    expect(h.limited.calls() - CLEANUP_CALLS - PROBE_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
 
     // Passado o reset, a fila termina por inteiro, sem tentativa gasta.
     clearFootballDataPause()

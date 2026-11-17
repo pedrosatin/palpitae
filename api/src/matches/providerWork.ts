@@ -326,6 +326,46 @@ export async function claimProviderWork(
     }))
 }
 
+/** Trabalho de um provedor na fila: o que o dreno reclamaria agora e o que o controle de acesso segura. */
+export type ReadyWork = { ready: number; paused: number }
+
+/**
+ * Conta, numa consulta só (1 chamada), o trabalho pronto de cada provedor: itens
+ * `pending` com o prazo vencido ou `running` com o lease vencido, os mesmos que
+ * `claimProviderWork` reclamaria. Nos provedores com `respectProviderAccess` o
+ * que o bloqueio ou a suspensão segura sai de `ready` e vai para `paused`. O
+ * coordenador dos drenos usa a contagem para repartir o saldo entre quem tem
+ * fila (ADR-027, adendo do ticket 03). Provedor sem linha não tem trabalho.
+ */
+export async function countReadyWork(
+  db: D1Database,
+  providers: { provider: string; respectProviderAccess?: boolean }[],
+  now = Date.now(),
+): Promise<Map<string, ReadyWork>> {
+  const guarded = providers.filter((p) => p.respectProviderAccess).map((p) => p.provider)
+  const { results } = await db
+    .prepare(
+      `SELECT w.provider AS provider,
+              SUM(CASE WHEN s.provider IS NOT NULL
+                        AND (s.suspended_at IS NOT NULL OR s.blocked_until > ?1)
+                       THEN 0 ELSE 1 END) AS ready,
+              SUM(CASE WHEN s.provider IS NOT NULL
+                        AND (s.suspended_at IS NOT NULL OR s.blocked_until > ?1)
+                       THEN 1 ELSE 0 END) AS paused
+         FROM provider_work AS w
+         LEFT JOIN provider_rate_state AS s
+                ON s.provider = w.provider
+               AND w.provider IN (SELECT value FROM json_each(?3))
+        WHERE w.provider IN (SELECT value FROM json_each(?2))
+          AND w.not_before <= ?1
+          AND (w.status = 'pending' OR (w.status = 'running' AND w.lease_until < ?1))
+        GROUP BY w.provider`,
+    )
+    .bind(now, JSON.stringify(providers.map((p) => p.provider)), JSON.stringify(guarded))
+    .all<{ provider: string; ready: number; paused: number }>()
+  return new Map(results.map((row) => [row.provider, { ready: row.ready, paused: row.paused }]))
+}
+
 /**
  * Fencing: o estado de um item só é gravado se ele segue `running` com o dono
  * que o reclamou. O lease de 5 min vence, e um dreno lento que volta depois de

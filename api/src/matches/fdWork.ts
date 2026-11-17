@@ -315,6 +315,7 @@ export function footballDataDrain(deps: {
   return {
     provider: 'football-data',
     minCalls: CYCLE_FIXED_CALLS + footballDataMinItemCalls(),
+    queue: {},
     run: (budget) => drainFootballDataWork(budget, deps),
   }
 }
