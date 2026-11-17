@@ -32,6 +32,9 @@ test.describe('Landing and Auth Flow', () => {
 
     // 4. Validar mudança de rota e botão do Google
     await expect(page).toHaveURL(/.*\/entrar/)
+    // A LoginPage carrega sob demanda (c755b2d7), então a landing, com dois botões
+    // do Google, fica na tela até o chunk chegar. O título marca a troca de página.
+    await expect(page.getByRole('heading', { name: 'Bem-vindo ao Palpitae' })).toBeVisible()
     const googleBtn = page.getByRole('button', { name: /Entrar com Google/i })
     await expect(googleBtn).toBeVisible()
 

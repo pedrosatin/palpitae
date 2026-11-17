@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
 
+// A página de grupo só aceita id no formato de UUID (#726).
+const GROUP_ID = '00000000-0000-4000-8000-0000000000a1'
+
 test.describe('Group Admin and Member Tools', () => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': 'http://localhost:5173',
@@ -63,12 +66,12 @@ test.describe('Group Admin and Member Tools', () => {
         await route.fulfill({ headers: corsHeaders, json: { members: [] } })
       } else if (method === 'GET' && url.endsWith('/ranking')) {
         await route.fulfill({ headers: corsHeaders, json: { ranking: [] } })
-      } else if (method === 'GET' && url.endsWith('/group-1')) {
+      } else if (method === 'GET' && url.endsWith(`/${GROUP_ID}`)) {
         await route.fulfill({
           headers: corsHeaders,
           json: {
             group: {
-              id: 'group-1',
+              id: GROUP_ID,
               name: 'Grupo Original',
               is_admin: true,
               competition_id: 'comp-1',
@@ -79,12 +82,12 @@ test.describe('Group Admin and Member Tools', () => {
             },
           },
         })
-      } else if (method === 'PATCH' && url.includes('/group-1')) {
+      } else if (method === 'PATCH' && url.includes(`/${GROUP_ID}`)) {
         patchCalled = true
         await route.fulfill({
           headers: corsHeaders,
           json: {
-            group: { id: 'group-1', name: 'Grupo Editado', is_admin: true },
+            group: { id: GROUP_ID, name: 'Grupo Editado', is_admin: true },
           },
         })
       } else {
@@ -93,23 +96,24 @@ test.describe('Group Admin and Member Tools', () => {
     })
 
     // 1. Acessar a página de um grupo
-    await page.goto('/grupos/group-1')
+    await page.goto(`/grupos/${GROUP_ID}`)
 
     // 2. Navegar nas abas secundárias
     await page.getByRole('link', { name: /Ranking/i }).click()
     await page.getByRole('link', { name: /Membros/i }).click()
 
-    // 3. Abrir o Menu Kebab
-    const editMenuText = page.getByText(/Editar nome/i)
+    // 3. Abrir o Menu Kebab. O item "Editar nome" virou "Configurações do grupo" (#517).
+    const editMenuText = page.getByRole('menuitem', { name: 'Configurações do grupo' })
     if (!(await editMenuText.isVisible())) {
       await page.getByRole('button', { name: 'Opções do grupo' }).click()
     }
 
-    // 4. Selecionar "Editar nome" e alterar no modal
+    // 4. Selecionar "Configurações do grupo" e alterar o nome no modal. O modal
+    // também tem o bônus de classificado (#517), então o campo vai pelo placeholder.
     await editMenuText.click()
     const dialog = page.getByRole('dialog')
     await expect(dialog).toBeVisible()
-    await dialog.locator('input').fill('Grupo Editado')
+    await dialog.getByPlaceholder('Nome do grupo').fill('Grupo Editado')
     await dialog.getByRole('button', { name: /Salvar/i }).click()
 
     // 5. Validar o request de PATCH e atualização otimista
@@ -136,12 +140,12 @@ test.describe('Group Admin and Member Tools', () => {
           headers: corsHeaders,
           json: { success: true },
         })
-      } else if (method === 'GET' && url.endsWith('/group-1')) {
+      } else if (method === 'GET' && url.endsWith(`/${GROUP_ID}`)) {
         await route.fulfill({
           headers: corsHeaders,
           json: {
             group: {
-              id: 'group-1',
+              id: GROUP_ID,
               name: 'Grupo Original',
               is_admin: false,
               competition_id: 'comp-1',
@@ -157,10 +161,10 @@ test.describe('Group Admin and Member Tools', () => {
       }
     })
 
-    await page.goto('/grupos/group-1')
+    await page.goto(`/grupos/${GROUP_ID}`)
 
     // Verificar que não existe edição
-    await expect(page.getByText(/Editar nome/i)).not.toBeVisible()
+    await expect(page.getByText(/Configurações do grupo/i)).not.toBeVisible()
 
     // Procurar "Sair do grupo"
     const leaveGroupBtn = page.getByText(/Sair do grupo/i)
@@ -168,7 +172,16 @@ test.describe('Group Admin and Member Tools', () => {
       await page.getByRole('button', { name: 'Opções do grupo' }).click()
     }
 
+    // Com o menu aberto, o membro comum também não vê a configuração do grupo.
+    await expect(page.getByRole('menuitem', { name: 'Configurações do grupo' })).toHaveCount(0)
+
     await leaveGroupBtn.click()
+
+    // A espera pela resposta começa antes do clique. A resposta mockada pode chegar
+    // antes de o clique terminar, e uma espera registrada depois dela não termina.
+    const leaveResponse = page.waitForResponse(
+      (response) => response.url().includes('/members/user-1') && response.status() === 200,
+    )
 
     // Confirmar saída no modal
     await page
@@ -176,12 +189,8 @@ test.describe('Group Admin and Member Tools', () => {
       .getByRole('button', { name: /Sair|Confirmar/i })
       .click()
 
-    // Validar deleção e possível redirecionamento
-    // Let's use waitForRequest or just wait a bit, but there is no navigation to wait for in this mock.
-    // Instead of expect(leaveCalled).toBe(true) immediately, we wait.
-    await page.waitForResponse(
-      (response) => response.url().includes('/members/user-1') && response.status() === 200,
-    )
+    // Validar deleção
+    await leaveResponse
     expect(leaveCalled).toBe(true)
   })
 })
