@@ -34,9 +34,16 @@ binding = "AE"
 dataset = "palpitae_events"
 
 # Crons (o handler `scheduled` distingue pelo controller.cron):
-#  - "0,30 * * * *" → result poller: resultados da janela ativa + pontuação (ADR-007).
-#    A cada 30 min; janela ativa = 85 min ⇒ no máx. 1 tick de atraso até pontuar.
-#    Jogos sem resultado ou sem pontuação seguem na consulta por até 24 h (resgate).
+#  - "0,5,10,20,25,30,35,40,50,55 * * * *" → trigger fundido de poller + drenador.
+#    O handler escolhe pelo minuto UTC de scheduledTime:
+#      · minutos 0 e 30 → result poller: resultados da janela ativa + pontuação
+#        (ADR-007). A cada 30 min; janela ativa = 85 min ⇒ no máx. 1 tick de atraso
+#        até pontuar. Jogos sem resultado ou sem pontuação seguem na consulta por
+#        até 24 h (resgate). Nesses minutos só o poller roda.
+#      · demais minutos (5,10,20,25,35,40,50,55) → drenador da fila durável de sync
+#        (ADR-027): retoma o trabalho pendente da football-data (orçamento cheio,
+#        falha ou reinício), a cada 5–10 min. Fora do minuto 15 (descoberta).
+#    Às 00:05 o minuto 5 dispara junto do export; drenar é idempotente, então é inofensivo.
 #  - "5 0 * * *"    → cold path: exporta os eventos do dia anterior (AE → R2 NDJSON).
 #    00:05 UTC, fora dos ticks 0/30 do poller. Ver docs/observability.md.
 #    No mesmo cron, mede o uso das cotas do plano Free no dia anterior (ADR-022).
@@ -45,9 +52,10 @@ dataset = "palpitae_events"
 #  - "15 6 * * *"   → fixture discovery: busca jogos novos (mata-mata, remarcações)
 #    das competições ativas. 1x/dia às 06:15 UTC (03:15 BRT), sem jogos e fora dos
 #    ticks 0/30 do poller. Ver fixtureDiscovery.ts.
-#  - "5,10,20,25,35,40,50,55 * * * *" → drenador da fila durável de sync
-#    (ADR-027): retoma entre os ticks o trabalho pendente da football-data
-#    (orçamento cheio, falha ou reinício). Fora dos minutos 0/30 e 15.
+# LIMITE: o plano Free da Cloudflare permite 5 Cron Triggers por CONTA (erro 10072
+# no deploy ao passar) e a conta já usa 1 em outro Worker. Esta API tem no máximo 4;
+# um 5º derruba o Deploy API (foi o caso da PR #769). Novo agendamento entra como
+# minuto novo do trigger fundido, não como cron novo. Um teste trava o total em 4.
 # As expressões abaixo precisam bater com api/src/crons.ts (um teste compara as duas).
 # Cron sem ramo no handler só registra `scheduled_unknown_cron`.
 # O radar de competições (/admin/oportunidades) NÃO tem cron aqui: a
@@ -55,7 +63,7 @@ dataset = "palpitae_events"
 # (429 na 1ª chamada, com a quota intacta). A coleta roda no GitHub Actions —
 # .github/workflows/radar-sync.yml. Ver ADR-014.
 [triggers]
-crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *", "5,10,20,25,35,40,50,55 * * * *"]
+crons = ["0,5,10,20,25,30,35,40,50,55 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *"]
 
 # Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
 # Criar antes do deploy (de api/):
