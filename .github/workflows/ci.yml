@@ -62,44 +62,6 @@ jobs:
         working-directory: api
         run: npm test
 
-  web:
-    name: Web (typecheck e testes)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      # No PR o checkout é o merge commit do PR com a base; com dois níveis de
-      # histórico, HEAD^1 é a ponta da base e o diff dele é o que o PR traz.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 2
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install Web dependencies
-        working-directory: web
-        run: npm ci
-
-      - name: Typecheck
-        working-directory: web
-        run: npm run type-check
-
-      # No PR roda só o que o diff alcança. Fora do PR, ou se o checkout não for
-      # um merge commit, roda a suíte inteira, como no Deploy Web.
-      - name: Test
-        working-directory: web
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT_NAME" = pull_request ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
-            bash scripts/test-changed.sh HEAD^1
-          else
-            npm test
-          fi
-
   scripts:
     name: Scripts (testes)
     runs-on: ubuntu-latest
@@ -116,13 +78,16 @@ jobs:
         run: npm run test:scripts
 
   # Mantém o nome do job único anterior para quem o procura. Falha se qualquer
-  # um dos jobs acima falhar, for cancelado ou for pulado.
+  # um dos jobs acima falhar, for cancelado ou for pulado. Typecheck, testes,
+  # build e CSP da web ficam no job Test do Deploy Web (deploy-web.yml), que
+  # roda quando o PR mexe em web/; repetir aqui gastaria o mesmo trabalho no
+  # mesmo SHA.
   check:
     name: Lint, Typecheck and Test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: ${{ always() }}
-    needs: [lint, api, web, scripts]
+    needs: [lint, api, scripts]
     steps:
       - name: Verificar o resultado dos jobs
         env:

@@ -11,18 +11,27 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/deploy-web.yml'
+  # Verificacao manual da web (typecheck, suite inteira, build e CSP), que o CI
+  # fazia antes; nao publica, porque o deploy so roda no push.
+  workflow_dispatch:
 
 # Na PR roda so o job de testes (inclui build e csp:verify); o deploy so no push.
 # No push, o job de testes envia o dist verificado como artefato e o deploy
 # publica esse mesmo dist, sem reinstalar o projeto nem refazer o build.
+# Este workflow e o unico que verifica a web (typecheck, testes, build e CSP); o
+# CI (ci.yml) fica com lint, API e scripts. A web nao importa codigo nem
+# configuracao da raiz ou da API; o package.json e o lockfile da raiz so servem
+# ao lint, que fica no CI. O build consulta o historico do git e a selecao de
+# testes considera este workflow, entao os paths acima bastam.
 # Travado no versionamento: nenhum job aqui escreve no repositorio.
 permissions:
   contents: read
 
 # Deploy so pra main: se dois pushes entrarem juntos, o mais novo cancela
-# o anterior e a producao termina no ultimo commit.
+# o anterior e a producao termina no ultimo commit. O disparo manual tem grupo
+# proprio, para nao cancelar um deploy em andamento na mesma ref.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && 'manual-' || '' }}${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -52,8 +61,19 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      # No PR o checkout é o merge commit do PR com a base: HEAD^1 é a ponta da
+      # base, e o diff dele é o que o PR traz. Roda só os testes que esse diff
+      # alcança (scripts/test-changed.sh). No push, ou se o checkout não for um
+      # merge commit, roda a suíte inteira.
       - name: Run tests
-        run: npm test
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
+            bash scripts/test-changed.sh HEAD^1
+          else
+            npm test
+          fi
 
       - name: Build
         run: npm run build
