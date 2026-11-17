@@ -14,7 +14,7 @@ import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
 import { isEspnRefusal } from './espnAccess'
 import { espnDeferralItems, espnSyncCost, type EspnWorkBase } from './espnWork'
-import { footballDataItemCost } from './fdWork'
+import { footballDataSyncCost } from './fdWork'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import {
   DAY_MS,
@@ -280,9 +280,12 @@ async function competitionsToScore(db: D1Database, synced: Set<string>): Promise
   return Array.from(new Set([...pending, ...synced]))
 }
 
-/** Custo estimado de uma tarefa da football-data do poller, o mesmo que o dreno usa para o item. */
+/**
+ * Custo estimado de uma tarefa da football-data do poller: o sync do item do dreno,
+ * sem a pontuação, que o tick faz no fim com a reserva própria.
+ */
 function footballDataTaskCost(task: SyncTask): number {
-  return footballDataItemCost({
+  return footballDataSyncCost({
     kind: 'result',
     competitionCode: task.comp.external_id,
     season: task.comp.season,
@@ -476,7 +479,7 @@ type SyncPhase = {
  * e do ticket 09). Cada tarefa é admitida pelo custo completo antes de começar, contra
  * um saldo fixado antes de qualquer sincronização, pela mesma fatia do dreno
  * (`DrainBudget`). A football-data é admitida primeiro, na ordem das tarefas, pelo
- * custo do item do dreno (`footballDataItemCost`: vaga, `fetch` e gravação da rodada);
+ * custo do sync do item do dreno (`footballDataSyncCost`: vaga, `fetch` e gravação da rodada);
  * a ESPN fica com o que resta (vaga, `fetch` e registro de cada data, mais a
  * gravação). A tarefa que não cabe nem começa: vira pendência na fila durável e fica
  * elegível para o próximo dreno. O enfileiramento (1 chamada) está reservado do saldo, e os `fetch`

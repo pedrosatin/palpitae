@@ -9,6 +9,7 @@ import {
   footballDataMinItemCalls,
   footballDataDrain,
   footballDataItemCost,
+  footballDataSyncCost,
   footballDataSyncedHandler,
   runFootballDataWorkItem,
 } from './fdWork'
@@ -112,27 +113,36 @@ async function measuredCost(
 }
 
 describe('custo de um item da football-data', () => {
-  it('rodada de resultado: 7 chamadas medidas, dentro da estimativa de 8', async () => {
+  it('rodada de resultado: sync mais a pontuação, 10 chamadas medidas, dentro da estimativa de 12', async () => {
     const { db, sqlite, competitionId } = await setup({ matches: 10, status: 'FINISHED' })
 
     const cost = await measuredCost(db, sqlite, competitionId, item())
 
-    // reserva de vaga, fetch, competição, times (batch e ids), jogos (trocas e batch).
-    expect(cost).toBe(7)
+    // 7 do sync (reserva de vaga, fetch, competição, times em batch e ids, jogos em trocas e
+    // batch) + 3 da pontuação de liga (planejar sem confrontos e gravar uma vez).
+    expect(cost).toBe(10)
     expect(cost).toBeLessThanOrEqual(footballDataItemCost(item()))
     expect(footballDataItemCost(item())).toBe(footballDataMinItemCalls())
-    expect(footballDataMinItemCalls()).toBe(8)
+    expect(footballDataMinItemCalls()).toBe(12)
+    // O poller admite a rodada só pelo sync: a pontuação do tick tem reserva própria.
+    expect(footballDataSyncCost(item())).toBe(8)
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM matches WHERE scored_at IS NULL`).get(),
+    ).toEqual({ n: 0 })
   })
 
-  it('calendário da temporada (mata-mata): 380 jogos em 4 batches, dentro da estimativa de 11', async () => {
+  it('calendário da temporada (mata-mata) já pontuado: 380 jogos em 4 batches, dentro da estimativa de 15', async () => {
     const { db, sqlite, competitionId } = await setup({ matches: 380, status: 'FINISHED' })
+    sqlite.exec(`UPDATE matches SET scored_at = '2026-11-08T18:00:00Z'`)
     const work = item({ round: 'LAST_16' })
 
     const cost = await measuredCost(db, sqlite, competitionId, work)
 
-    expect(cost).toBe(10)
+    // 10 do sync e 1 da pontuação, que não acha jogo a pontuar.
+    expect(cost).toBe(11)
     expect(cost).toBeLessThanOrEqual(footballDataItemCost(work))
-    expect(footballDataItemCost(work)).toBe(11)
+    expect(footballDataItemCost(work)).toBe(15)
+    expect(footballDataSyncCost(work)).toBe(11)
   })
 
   it('sync manual com jogos a pontuar: sync mais a pontuação, dentro da estimativa de 12', async () => {
@@ -269,15 +279,36 @@ describe('pós-sync sem saldo', () => {
     ).toEqual({ status: 'finished' })
   })
 
-  it('resultado e varredura não têm pós-sync: nenhuma chamada', async () => {
-    const { db, competitionId } = await setup({ matches: 10, status: 'FINISHED' })
+  it('resultado e varredura pontuam no pós-sync, sem avançar o status da competição', async () => {
+    const { db, sqlite, competitionId } = await setup({ matches: 10, status: 'FINISHED' })
     const handler = footballDataSyncedHandler({ now: NOW })
     const span = new DrainBudget(db, 45).open(0)!
 
-    await handler(item({ kind: 'result', competitionId }), undefined, span)
-    await handler(item({ kind: 'late', competitionId }), undefined, span)
+    expect(await handler(item({ kind: 'result', competitionId }), undefined, span)).toBeUndefined()
+    // A liga pontua com 3 chamadas: planejar sem confrontos e gravar uma vez.
+    expect(span.used()).toBe(3)
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM matches WHERE scored_at IS NULL`).get(),
+    ).toEqual({ n: 0 })
+    // A varredura repete sem nada a pontuar: só o planejamento, e o `scored_at` não volta.
+    expect(await handler(item({ kind: 'late', competitionId }), undefined, span)).toBeUndefined()
+    expect(span.used()).toBe(4)
+    expect(
+      sqlite.prepare(`SELECT status FROM competitions WHERE id = ?`).get(competitionId),
+    ).not.toEqual({ status: 'finished' })
+  })
 
-    expect(span.used()).toBe(0)
+  it('a pontuação do resultado que não cabe no saldo devolve o item para retomar', async () => {
+    const { db, sqlite, competitionId } = await setup({ matches: 10, status: 'FINISHED' })
+    const handler = footballDataSyncedHandler({ now: NOW })
+
+    // Fatia de 6: 3 do estado e 3 de trabalho, abaixo das 4 que planejar e gravar exigem.
+    const tight = new DrainBudget(db, 6).open(0)!
+    expect(await handler(item({ competitionId }), undefined, tight)).toEqual({ incomplete: true })
+    expect(tight.used()).toBe(0)
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM matches WHERE scored_at IS NULL`).get(),
+    ).toEqual({ n: 10 })
   })
 
   it('descoberta sem saldo de trabalho para avançar o status relança o erro de orçamento, em vez de engolir', async () => {

@@ -64,8 +64,10 @@ function matchdayOf(round: string): number | undefined {
  *   cobrir, o item volta à fila sem tentativa;
  * - gravação do calendário: `syncWriteCalls`. Rodada numérica, cerca de 10
  *   jogos entre 20 times (6); calendário da temporada, até 380 jogos (9);
- * - pontuação do sync manual e da descoberta: o mínimo para planejar e gravar
- *   uma vez (`MIN_SCORING_CALLS`), o resto retoma no tick seguinte;
+ * - pontuação de todo item (resultado, varredura, manual e descoberta): o mínimo
+ *   para planejar e gravar uma vez (`MIN_SCORING_CALLS`). A pontuação usa o que
+ *   estiver livre no saldo; se não terminar, o item volta à fila sem tentativa e
+ *   o próximo dreno retoma de onde parou;
  * - descoberta: mais a conferência de jogos ausentes (na gravação) e o avanço do
  *   status da competição (1).
  */
@@ -75,23 +77,21 @@ const SEASON_MATCHES = 380
 const TEAMS = 20
 const RECONCILE_CALLS = 1
 
-/** Custo estimado do sync do item: uma rodada ou o calendário da temporada. */
-function syncCost(item: ProviderWorkItem): number {
+/**
+ * Custo estimado só do sync do item (requisição e gravação de uma rodada ou do
+ * calendário da temporada), sem o pós-sync. O poller admite a rodada por ele: a
+ * pontuação do tick tem a reserva própria no fim (`SCORING_RESERVE_CALLS`).
+ */
+export function footballDataSyncCost(item: ProviderWorkItem): number {
   const season = matchdayOf(item.round) === undefined
   const matches = season ? SEASON_MATCHES : ROUND_MATCHES
   return REQUEST_CALLS + syncWriteCalls(matches, TEAMS, item.kind === 'discovery')
 }
 
+/** Custo estimado do item no dreno: o sync e o pós-sync (pontuação e, na descoberta, o status). */
 export function footballDataItemCost(item: ProviderWorkItem): number {
-  switch (item.kind) {
-    case 'result':
-    case 'late':
-      return syncCost(item)
-    case 'manual':
-      return syncCost(item) + MIN_SCORING_CALLS
-    case 'discovery':
-      return syncCost(item) + MIN_SCORING_CALLS + RECONCILE_CALLS
-  }
+  const sync = footballDataSyncCost(item) + MIN_SCORING_CALLS
+  return item.kind === 'discovery' ? sync + RECONCILE_CALLS : sync
 }
 
 /** Itens com o mesmo tipo e o mesmo alcance (rodada ou temporada) custam o mesmo. */
@@ -99,9 +99,9 @@ function footballDataCostClass(item: ProviderWorkItem): string {
   return `${item.kind}:${matchdayOf(item.round) === undefined ? 'season' : 'round'}`
 }
 
-/** O item mais barato da football-data: um `result` de rodada numérica. */
+/** O item mais barato da football-data: um `result` de rodada numérica, com a pontuação. */
 export function footballDataMinItemCalls(): number {
-  return REQUEST_CALLS + syncWriteCalls(ROUND_MATCHES, TEAMS, false)
+  return REQUEST_CALLS + syncWriteCalls(ROUND_MATCHES, TEAMS, false) + MIN_SCORING_CALLS
 }
 
 export type FdWorkDeps = {
@@ -218,15 +218,17 @@ export async function advanceCompetitionStatus(
 }
 
 /**
- * Pós-sync fora da janela de resultados: a descoberta repontua os jogos que o
- * sync deixou encerrados sem `scored_at` e avança o status da competição; o
- * sync administrativo repontua. Falha ao repontuar vira erro do sync no
- * resultado do item; falha ao avançar o status fica no evento próprio e só
- * marca a execução com erro. Nada disso repete o sync: o item termina, e o
- * reprocesso é idempotente (upsert sem mudança não grava; `scored_at` não
- * volta).
+ * Pós-sync: todo item pontua os jogos que o sync deixou encerrados sem
+ * `scored_at`, e a descoberta ainda avança o status da competição. A rodada que
+ * o poller adiou por saldo (`result`, `late`) ganha placar, pontos e ranking no
+ * mesmo dreno, sem esperar o próximo tick do poller (ADR-027, adendo do ticket
+ * 09). Falha ao pontuar vira erro do sync no resultado do item, e o poller
+ * repontua pelo D1 (`PENDING_SCORING_SQL`); falha ao avançar o status fica no
+ * evento próprio e só marca a execução com erro. Nada disso repete o sync: o
+ * item termina, e o reprocesso é idempotente (upsert sem mudança não grava;
+ * `scored_at` não volta; os pontos e o ranking são regravados, não somados).
  *
- * A pontuação gasta só o que sobra ao item no saldo (e, na descoberta, deixa 1
+ * A pontuação gasta só o que está livre no saldo (e, na descoberta, deixa 1
  * para o avanço do status). Se não termina, o jogo que falta segue sem
  * `scored_at` e o item volta à fila sem tentativa nova (`incomplete`): o próximo
  * dreno repete o sync, barato e idempotente, e retoma a pontuação de onde parou.
@@ -236,7 +238,6 @@ export function footballDataSyncedHandler(deps: {
   now?: number
 }): SyncedHandler {
   return async (item, result, budget) => {
-    if (item.kind === 'result' || item.kind === 'late') return
     const competitionId = result?.competitionId || item.competitionId
     if (competitionId) {
       const scoring = await scoreWithinBudget(

@@ -472,9 +472,9 @@ describe.each(POLLER_TICKS)(
         workCount(h.sqlite, `provider = 'football-data' AND status = 'pending' AND attempts = 0`),
       ).toBe(2)
       // Antes: 47 com a limpeza, as 6 rodadas no tick e nenhum saldo para um 429. Com as 4
-      // rodadas e o enfileiramento das outras 2, sobram 6 chamadas além da reserva da pontuação,
-      // menos que as 11 de uma competição no fallback da ESPN: ele espera o próximo tick sem
-      // consultar o D1, e o tick fica em 38.
+      // rodadas (7 chamadas cada) e o enfileiramento das outras 2, sobram 10 chamadas além da
+      // reserva da pontuação, menos que as 11 de uma competição no fallback da ESPN: ele espera o
+      // próximo tick sem consultar o D1, e o tick fica em 38.
       expect(h.limited.calls()).toBe(38)
       expect(h.fetches.espn).toBe(0)
 
@@ -509,6 +509,36 @@ describe.each(POLLER_TICKS)(
     })
   },
 )
+
+describe('poller da football-data: as rodadas adiadas pontuam no dreno', () => {
+  it('6 rodadas no minuto 0: o dreno do minuto 5 grava o placar, os pontos e o ranking das 2 adiadas, sem esperar o poller do minuto 30', async () => {
+    const tick = POLLER_TICKS[1][1]
+    const h = await setupWorld({ tick, rounds: 6 })
+
+    expect(await runTick(h, tick)).toEqual([])
+    expect(h.limited.calls()).toBeLessThanOrEqual(D1_CALLS_PER_INVOCATION)
+    // O poller sincroniza e pontua 4 rodadas; as 2 que não couberam esperam o dreno, sem placar.
+    expect(finishedMatches(h.sqlite)).toBe(40)
+    expect(workCount(h.sqlite, `status = 'pending' AND attempts = 0`)).toBe(2)
+
+    // Só o dreno do minuto 5, nenhum poller depois do tick.
+    const drain = tick + 5 * MIN
+    expect(new Date(drain).getUTCMinutes()).toBe(5)
+    expect(await runTick(h, drain)).toEqual([])
+
+    // A chamada 51, que o D1 recusaria, nunca sai.
+    expect(h.limited.calls()).toBeLessThan(D1_CALLS_PER_INVOCATION)
+    expectNoD1Error(h)
+    expect(h.events('football_api_error')).toEqual([])
+    expect(workCount(h.sqlite, `status != 'done' OR attempts > 0`)).toBe(0)
+    // Placar, `scored_at`, pontos dos palpites e ranking das 6 rodadas, como a semente define.
+    expect(snapshot(h.sqlite)).toEqual(expectedSnapshot(h.options))
+    // O dreno gasta 24: a limpeza, a sondagem do coordenador, reclamar, as 2 rodadas (7 do sync e
+    // 3 da pontuação cada) e o estado.
+    expect(h.limited.calls()).toBe(24)
+    expect(h.fetches.fd).toBe(6)
+  })
+})
 
 describe('poller da football-data: o caso comum não muda', () => {
   it.each([

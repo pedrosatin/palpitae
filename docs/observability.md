@@ -356,7 +356,9 @@ reaproveita a sobra de saldo, é outra execução e outra linha); a ESPN, só qu
 bloqueada/suspensa. `blob2` é `ok` ou `error` (error quando algum item falhou de vez no teto de
 tentativas, o pós-sync de algum item falhou — esse também sai pelo `logError` `football_api_error` com
 `blob2` = `drain_post_sync` — ou a gravação do estado dos itens do ciclo falhou duas vezes e o dreno só
-conseguiu devolvê-los à fila). Na ESPN, `blocked` e `suspended` dizem que a execução nem reclamou itens
+conseguiu devolvê-los à fila). Na football-data todo item pontua a competição no pós-sync, inclusive a
+rodada que o poller adiou por saldo (`result`/`late`), e o `calls_used` inclui essa pontuação; falha
+dela sai pelo mesmo `drain_post_sync`, e o poller seguinte repontua. Na ESPN, `blocked` e `suspended` dizem que a execução nem reclamou itens
 porque o provedor estava pausado. Os doubles são, nessa ordem, `claimed` (itens reclamados), `done`,
 `requeued` (devolvidos à fila sem tentativa nova do provedor, depois de tentar) e `failed`, depois
 `duration_ms`, `released` (reclamados e devolvidos à fila sem tentativa nova, por falta de saldo de
@@ -394,9 +396,10 @@ ticket 03), com o que a ESPN faz de diferente:
   "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto. O
   coordenador conta o trabalho pronto de cada dreno numa consulta (1 chamada dos 45), o dreno sem trabalho
   não roda e o saldo dele fica com quem tem fila. Com os dois drenos ocupados, a fatia da ESPN comporta 2
-  itens por tick e o tick gasta 38 chamadas (com a limpeza); com a ESPN sozinha, 4 itens e 40; com a
-  football-data sozinha, 5 itens e 39. A estimativa por item é 9 (data de liga) ou 13 (sync manual e
-  descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
+  itens por tick, a football-data 1, e o tick gasta 34 chamadas (com a limpeza); com a ESPN sozinha, 4
+  itens e 40; com a football-data sozinha, 3 itens e 40 (o item de rodada da football-data reserva 12,
+  com a pontuação; ADR-027, adendo do ticket 09). A estimativa por item da ESPN é 9 (data de liga) ou 13
+  (sync manual e descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
   reclamação recusa e o dreno lê o estado para dizer o motivo (2 chamadas, nenhuma escrita).
 - **Subrequests do poller:** o `POLLER_CALL_BUDGET` (45) vale para a football-data e a ESPN juntas. O saldo das
   sincronizações é fixado antes de qualquer uma começar (45 menos o que já foi gasto, menos 5 de reserva da
@@ -413,7 +416,8 @@ ticket 03), com o que a ESPN faz de diferente:
   saldo fixado), `fd_deferred_rounds` (rodadas enfileiradas no tick) e `espn_deferred_dates` (datas
   enfileiradas). Ticks da football-data medidos pelo `scheduled` real, com a limpeza: 1 e 2 rodadas, 15 e 22
   chamadas, como antes; 6 rodadas, 38, com 4 sincronizadas, 2 na fila e o fallback fora do tick (antes, 47 com
-  as 6 no tick); 6 rodadas com 429 de reset de 60 s e 8 requests por minuto, 45, com 3 sincronizadas e 3 na
+  as 6 no tick), e o dreno do minuto 5 sincroniza e pontua as 2 em 24 chamadas, com o ranking na tela 5 min
+  depois do tick; 6 rodadas com 429 de reset de 60 s e 8 requests por minuto, 45, com 3 sincronizadas e 3 na
   fila (antes, 52 tentadas e o tick rejeitado com `D1_ERROR`); 11 competições com 1 rodada cada e 4 respostas
   429 de reset de 1 s, 46, com 3 sincronizadas e 8 na fila (antes, 58 tentadas e o tick rejeitado com
   `D1_ERROR`). Tick com 1, 2, 3 e 4 competições da ESPN com

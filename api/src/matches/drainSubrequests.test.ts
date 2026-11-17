@@ -34,7 +34,7 @@ const CLEANUP_CALLS = 1
 /**
  * Com a ESPN na lista do `scheduled`, o coordenador conta o trabalho pronto de cada
  * dreno antes de repartir: 1 chamada do orçamento de 45. Em troca, a ESPN ociosa nem
- * roda e a football-data fica com o saldo inteiro (os mesmos 5 itens por tick da #771).
+ * roda e a football-data fica com o saldo inteiro (3 itens por tick, com a pontuação da rodada).
  */
 const PROBE_CALLS = 1
 /** Saldo do dreno: 45 das 50 chamadas (as 5 restantes cobrem a limpeza e a folga). */
@@ -253,7 +253,9 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
     expect(count(h.sqlite, `status = 'done'`)).toBe(ITEMS)
     // Cada item sai uma vez só: o saldo recusa antes de começar, não no meio.
     expect(h.state.fetches).toBe(ITEMS)
-    expect(ticks).toBeLessThanOrEqual(5)
+    // 3 itens por tick de dreno, cada um com o sync e a pontuação da rodada (12 reservadas): 6
+    // ticks de dreno, mais o do minuto 30, que é do poller e não drena.
+    expect(ticks).toBeLessThanOrEqual(7)
   })
 
   it('com o orçamento por minuto real (8), cada tick gasta no máximo 8 requests e a fila termina', async () => {
@@ -343,9 +345,9 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
     expect(h.limited.calls()).toBeLessThanOrEqual(DRAIN_CALL_BUDGET)
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
     expect(count(h.sqlite, `attempts > 0`)).toBe(0)
-    // A fatia de 23 (22 de trabalho) comporta 2 itens de 8; os outros 14 seguem pendentes.
-    expect(count(h.sqlite, `status = 'done'`)).toBe(2)
-    expect(count(h.sqlite, `status = 'pending'`)).toBe(ITEMS - 2)
+    // A fatia de 23 comporta 1 item de 12 (sync e pontuação); os outros 15 seguem pendentes.
+    expect(count(h.sqlite, `status = 'done'`)).toBe(1)
+    expect(count(h.sqlite, `status = 'pending'`)).toBe(ITEMS - 1)
   })
 })
 
@@ -360,10 +362,11 @@ describe('falha do D1 na gravação do estado, dentro do saldo de 50', () => {
 
     expectWithinBudget(h.limited)
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
-    expect(count(h.sqlite, `status = 'done'`)).toBe(5)
+    expect(count(h.sqlite, `status = 'done'`)).toBe(3)
     expect(count(h.sqlite, `attempts > 0`)).toBe(0)
-    // Os 38 do tick normal, a sondagem do coordenador e a nova tentativa do batch.
-    expect(h.limited.calls()).toBe(40)
+    // Os 40 do tick normal (3 itens com o sync e a pontuação, com a sondagem do coordenador) e a
+    // nova tentativa do batch.
+    expect(h.limited.calls()).toBe(41)
   })
 
   it('batch de estado que falha sempre: os itens voltam a pending sem tentativa e o tick seguinte os refaz', async () => {
@@ -375,8 +378,8 @@ describe('falha do D1 na gravação do estado, dentro do saldo de 50', () => {
     expect(await runDrainTick(h, DRAIN_MINUTE)).toEqual([])
 
     expectWithinBudget(h.limited)
-    // Tentativa, nova tentativa e liberação cabem na reserva: 38 + 1 (sondagem) + 1 + 1.
-    expect(h.limited.calls()).toBe(41)
+    // Tentativa, nova tentativa e liberação cabem na reserva: 40 (com a sondagem) + 1 + 1.
+    expect(h.limited.calls()).toBe(42)
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
     expect(count(h.sqlite, `status = 'pending' AND attempts = 0`)).toBe(ITEMS)
     const runs = h.writeDataPoint.mock.calls
