@@ -16,11 +16,28 @@ shift
 cd "$(dirname "$0")/.."
 repo="$(git rev-parse --show-toplevel)"
 
-mapfile -t changed < <(git -c core.quotePath=false diff --name-only "$base...HEAD" | sed "s|^|$repo/|")
-mapfile -t outside_graph < <(
-  git grep -lE '\?raw|import\.meta\.glob|readFileSync|readFile\(|import\.meta\.url' \
-    -- '*.test.ts' '*.test.tsx' ':!tests/e2e'
-)
+# Os resultados do git passam por arquivos, e não por `< <(...)`: assim uma
+# falha do git (base inválida, histórico curto) interrompe o script em vez de
+# virar uma lista vazia.
+diff_file="$(mktemp)"
+grep_file="$(mktemp)"
+
+# --no-renames: uma renomeação entra como exclusão e adição, e o caminho antigo
+# também chega ao Vitest (renomear `.env.production` ainda dispara a suíte).
+git -c core.quotePath=false diff --no-renames --name-only -z "$base...HEAD" >"$diff_file"
+mapfile -d '' -t changed <"$diff_file"
+changed=("${changed[@]/#/$repo/}")
+
+# git grep sai com 1 quando nada casa; acima disso é erro.
+grep_status=0
+git grep -z -lE '\?raw|import\.meta\.glob|readFileSync|readFile\(|import\.meta\.url' \
+  -- '*.test.ts' '*.test.tsx' ':!tests/e2e' >"$grep_file" || grep_status=$?
+if [ "$grep_status" -gt 1 ]; then
+  rm -f "$diff_file" "$grep_file"
+  exit "$grep_status"
+fi
+mapfile -d '' -t outside_graph <"$grep_file"
+rm -f "$diff_file" "$grep_file"
 
 echo "Arquivos alterados desde $base: ${#changed[@]}"
 echo "Testes que leem arquivos fora do grafo de imports: ${#outside_graph[@]}"

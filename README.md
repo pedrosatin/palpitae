@@ -120,7 +120,7 @@ npm test
 npm run type-check
 ```
 
-In a pull request, CI runs only the web tests that import a changed file, plus the tests that read files outside the import graph (`?raw`, `node:fs`). A change to a file listed in `forceRerunTriggers` (`web/vite.config.ts`), such as the lockfile or the test setup, runs the whole suite. The Deploy Web workflow always runs the whole suite. To run the same selection locally against `main`:
+In a pull request, CI runs only the web tests that import a changed file, plus the tests that read files outside the import graph (`?raw`, `node:fs`). A change to a file listed in `forceRerunTriggers` (`web/vite.config.ts`), such as the lockfile or the test setup, runs the whole suite; a renamed file counts under both its old and new path. The Deploy Web workflow runs the whole suite whenever its path filters match. To run the same selection locally against `main` (it compares commits up to `HEAD`, so uncommitted changes are left out):
 
 ```bash
 bash scripts/test-changed.sh origin/main
