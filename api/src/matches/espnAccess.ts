@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { logError } from '../observability/events'
 import { EspnUnavailableError, type EspnBlock, type EspnGate } from '../providers/espn'
 import { CallBudgetExhaustedError, type CallGate } from './callBudget'
-import { reserveProviderSlot } from './providerBudget'
+import { reserveProviderSlot, SUSPENDED_RECHECK_MS } from './providerBudget'
 
 /**
  * Controle de acesso da ESPN (ADR-027, adendo do ticket 03).
@@ -197,50 +197,101 @@ async function resetForbiddenStreak(db: D1Database, now: number): Promise<void> 
 }
 
 /**
- * Registra a resposta no D1 e devolve o bloqueio que ela impôs, ou `null`.
- * Se a gravação falha, o request já partiu: devolve a estimativa local do
- * bloqueio e deixa a falha no log, como o orçamento da football-data.
+ * Resposta da ESPN que impôs um bloqueio (429, 403, 401, 451), com o que é preciso
+ * para gravá-la no D1 e, se a gravação falhar, gravá-la de novo depois. O instante
+ * é o da resposta: a regravação o usa, e a sequência de 403 não conta duas vezes
+ * o que um bloqueio já vigente absorve.
  */
-async function noteEspnResponse(
-  db: D1Database,
-  status: number,
-  headers: Headers,
-  now: number,
-): Promise<BlockOutcome | null> {
-  if (status >= 200 && status < 400) {
-    await resetForbiddenStreak(db, now)
-    return null
-  }
-  if (status === 429) {
-    const retryAfter = retryAfterMs(headers, now)
-    return isAbsurdRetryAfter(retryAfter)
-      ? suspendProhibited(db, status, now, 'http_429_retry_after')
-      : pauseRateLimited(db, retryAfter, now)
-  }
-  if (status === 403) return noteForbidden(db, now)
-  if (status === 401 || status === 451) return suspendProhibited(db, status, now, `http_${status}`)
-  return null
+type Prohibition = { status: number; retryAfterMs: number | null; observedAt: number }
+
+function isProhibition(status: number): boolean {
+  return status === 429 || status === 403 || status === 401 || status === 451
 }
 
-/** Estimativa quando o D1 não gravou: o bloqueio mais curto da regra do status. */
-function localEstimate(status: number, headers: Headers, now: number): BlockOutcome | null {
-  if (status === 429) {
-    const retryAfter = retryAfterMs(headers, now)
-    if (isAbsurdRetryAfter(retryAfter)) return { status, streak: 0, reason: 'suspended', retryAt: now }
+/** Grava a proibição no D1 e devolve o bloqueio que ficou valendo. */
+function persistProhibition(db: D1Database, p: Prohibition): Promise<BlockOutcome> {
+  if (p.status === 429) {
+    return isAbsurdRetryAfter(p.retryAfterMs)
+      ? suspendProhibited(db, p.status, p.observedAt, 'http_429_retry_after')
+      : pauseRateLimited(db, p.retryAfterMs, p.observedAt)
+  }
+  if (p.status === 403) return noteForbidden(db, p.observedAt)
+  return suspendProhibited(db, p.status, p.observedAt, `http_${p.status}`)
+}
+
+/** O bloqueio mais curto da regra do status: o que vale localmente enquanto o D1 não grava. */
+function localOutcome(p: Prohibition): BlockOutcome {
+  if (p.status === 429) {
+    if (isAbsurdRetryAfter(p.retryAfterMs)) {
+      return { status: p.status, streak: 0, reason: 'suspended', retryAt: p.observedAt }
+    }
     return {
-      status,
+      status: p.status,
       streak: 0,
       reason: 'blocked',
-      retryAt: now + Math.max(retryAfter ?? 0, ESPN_RATE_LIMIT_PAUSE_MS),
+      retryAt: p.observedAt + Math.max(p.retryAfterMs ?? 0, ESPN_RATE_LIMIT_PAUSE_MS),
     }
   }
-  if (status === 403) {
-    return { status, streak: 1, reason: 'blocked', retryAt: now + ESPN_FORBIDDEN_BACKOFF_MS[0] }
+  if (p.status === 403) {
+    return {
+      status: p.status,
+      streak: 1,
+      reason: 'blocked',
+      retryAt: p.observedAt + ESPN_FORBIDDEN_BACKOFF_MS[0],
+    }
   }
-  if (status === 401 || status === 451) {
-    return { status, streak: 0, reason: 'suspended', retryAt: now }
+  return { status: p.status, streak: 0, reason: 'suspended', retryAt: p.observedAt }
+}
+
+/**
+ * Bloqueio local do isolate (em memória) para uma proibição que o D1 não gravou.
+ * Sem ele, a próxima reserva leria o D1 ainda livre e passaria: o request que a
+ * resposta proibiu se repetiria. Vale para toda reserva do isolate, inclusive as
+ * chamadas já enfileiradas no mutex do cliente, e só cai depois que a proibição é
+ * gravada (o D1 passa a ser a verdade) ou, num bloqueio por prazo (429, 403), depois
+ * que o prazo vence. Uma suspensão não vence sozinha.
+ */
+type LocalBlock = { prohibition: Prohibition; reason: BlockOutcome['reason']; retryAt: number }
+
+const localBlocks: LocalBlock[] = []
+
+/** Só para testes: solta o bloqueio local do isolate. */
+export function resetEspnAccessForTests(): void {
+  localBlocks.length = 0
+}
+
+function holdLocally(prohibition: Prohibition): BlockOutcome {
+  const outcome = localOutcome(prohibition)
+  localBlocks.push({ prohibition, reason: outcome.reason, retryAt: outcome.retryAt })
+  return outcome
+}
+
+/**
+ * Regrava, a cada reserva e até conseguir, as proibições que o D1 não aceitou, e
+ * recusa a reserva enquanto alguma segurar: uma suspensão, ou um bloqueio por prazo
+ * ainda vigente. A regravação que dá certo solta o bloqueio local, e o D1 volta a
+ * decidir (a reserva seguinte lê a suspensão ou o bloqueio dele). Um bloqueio por
+ * prazo vencido que o D1 segue sem aceitar não prende a coleta, mas a regravação
+ * continua a cada reserva.
+ */
+async function settleLocalBlocks(db: D1Database, now: number): Promise<void> {
+  for (const block of [...localBlocks]) {
+    try {
+      await persistProhibition(db, block.prohibition)
+      const index = localBlocks.indexOf(block)
+      if (index >= 0) localBlocks.splice(index, 1)
+    } catch (err) {
+      // Sem saldo de subrequests a regravação nem chega ao D1: o item volta sem tentativa.
+      if (err instanceof CallBudgetExhaustedError) throw err
+      console.error('[espn] Regravação do estado de acesso falhou, o bloqueio local segue:', err)
+    }
   }
-  return null
+  const holding = localBlocks.filter((block) => block.reason === 'suspended' || now < block.retryAt)
+  if (holding.length === 0) return
+  if (holding.some((block) => block.reason === 'suspended')) {
+    throw new EspnUnavailableError('suspended', now + SUSPENDED_RECHECK_MS)
+  }
+  throw new EspnUnavailableError('blocked', Math.max(...holding.map((block) => block.retryAt)))
 }
 
 /**
@@ -254,6 +305,10 @@ function localEstimate(status: number, headers: Headers, now: number): BlockOutc
  * juntos ou nenhum sai, e o `fetch`, retry incluído, é cobrado antes de partir.
  * O registro da resposta precisa caber porque um 403 ou 429 que só ficasse no
  * isolate deixaria as outras execuções insistirem.
+ *
+ * Se o D1 não aceita a gravação de uma proibição (401, 451, 403, 429), o gate a
+ * mantém num bloqueio local do isolate e a regrava a cada reserva: a coleta só
+ * volta depois de gravada (ver `settleLocalBlocks`).
  */
 export function createEspnGate(
   db: D1Database,
@@ -262,9 +317,11 @@ export function createEspnGate(
 ): EspnGate {
   return {
     async reserve() {
-      if (callGate && callGate.callsLeft() < ESPN_REQUEST_CALLS) {
+      // A regravação de uma proibição pendente paga a chamada dela, além da tentativa.
+      if (callGate && callGate.callsLeft() < ESPN_REQUEST_CALLS + localBlocks.length) {
         throw new CallBudgetExhaustedError()
       }
+      await settleLocalBlocks(db, Date.now())
       const reservation = await reserveProviderSlot(db, 'espn', Date.now())
       if (!reservation.granted) {
         throw new EspnUnavailableError(reservation.reason, reservation.retryAt)
@@ -273,18 +330,34 @@ export function createEspnGate(
     },
     async note(status, headers) {
       const now = Date.now()
-      let outcome: BlockOutcome | null
+      if (!isProhibition(status)) {
+        // Sucesso zera a sequência de 403; os demais status (5xx, 404...) não mexem no acesso.
+        if (status >= 200 && status < 400) {
+          await resetForbiddenStreak(db, now).catch((err) =>
+            console.error('[espn] Falha ao zerar a sequência de 403 da ESPN:', err),
+          )
+        }
+        return null
+      }
+      const prohibition: Prohibition = {
+        status,
+        retryAfterMs: retryAfterMs(headers, now),
+        observedAt: now,
+      }
+      let outcome: BlockOutcome
       try {
-        outcome = await noteEspnResponse(db, status, headers, now)
+        outcome = await persistProhibition(db, prohibition)
       } catch (err) {
+        // O request já partiu e a resposta proibiu: o bloqueio local impede o próximo
+        // enquanto o D1 não aceitar a gravação.
         console.error('[espn] Falha ao gravar o estado de acesso da ESPN:', err)
-        outcome = localEstimate(status, headers, now)
+        outcome = holdLocally(prohibition)
       }
       // O 429 comum já tem `provider_http_attempt`; a suspensão por Retry-After absurdo alerta.
-      if (outcome && (outcome.status !== 429 || outcome.reason === 'suspended')) {
+      if (outcome.status !== 429 || outcome.reason === 'suspended') {
         alertAccessBlocked(ae, outcome, now)
       }
-      return outcome && { reason: outcome.reason, retryAt: outcome.retryAt }
+      return { reason: outcome.reason, retryAt: outcome.retryAt }
     },
   }
 }
