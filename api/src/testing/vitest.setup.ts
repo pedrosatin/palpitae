@@ -1,3 +1,5 @@
+import { afterEach } from 'vitest'
+import { resetEspnAccessForTests } from '../matches/espnAccess'
 import { setProviderRateLimitForTests } from '../matches/providerBudget'
 
 /**
@@ -9,3 +11,9 @@ import { setProviderRateLimitForTests } from '../matches/providerBudget'
  */
 setProviderRateLimitForTests('football-data', 1000)
 setProviderRateLimitForTests('espn', 1000)
+
+/**
+ * O bloqueio local da ESPN (proibição que o D1 não gravou, `espnAccess.ts`) é
+ * estado do isolate: um teste que o provoca não pode deixá-lo para o seguinte.
+ */
+afterEach(() => resetEspnAccessForTests())

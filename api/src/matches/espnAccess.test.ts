@@ -1,8 +1,15 @@
 /// <reference types="node" />
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { EspnUnavailableError } from '../providers/espn'
+import {
+  EspnUnavailableError,
+  fetchEspnScoreboard,
+  resetEspnClientForTests,
+  setEspnMinIntervalForTests,
+} from '../providers/espn'
+import { flakyD1 } from '../testing/flakyD1'
 import { createSqliteD1 } from '../testing/sqliteD1'
+import { CallBudgetExhaustedError } from './callBudget'
 import {
   ESPN_FORBIDDEN_BACKOFF_MS,
   ESPN_FORBIDDEN_SUSPEND_AFTER,
@@ -10,6 +17,7 @@ import {
   ESPN_RATE_LIMIT_PAUSE_MS,
   createEspnGate,
   isEspnRefusal,
+  resetEspnAccessForTests,
 } from './espnAccess'
 import {
   readProviderState,
@@ -22,8 +30,11 @@ const handles: DatabaseSync[] = []
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
   setProviderRateLimitForTests('espn', 1000)
+  resetEspnAccessForTests()
+  resetEspnClientForTests()
 })
 
 const T0 = Date.parse('2026-11-16T12:00:00Z')
@@ -41,7 +52,7 @@ function setup() {
       .map(([point]) => point as { blobs: string[]; doubles: number[] })
       .filter((point) => point.blobs[0] === 'provider_access_blocked')
   at(0)
-  return { sqlite, db, gate, at, alerts }
+  return { sqlite, db, gate, at, alerts, ae }
 }
 
 /** Uma tentativa: reserva a vaga e registra a resposta com o status dado. */
@@ -207,6 +218,190 @@ describe('controle de acesso da ESPN: respostas entrelaçadas de gates independe
     await other.note(200, new Headers())
 
     expect(await readProviderState(db, 'espn')).toMatchObject({ forbiddenStreak: 0 })
+  })
+})
+
+describe('controle de acesso da ESPN: a gravação da proibição falha', () => {
+  /** Só a gravação do estado de acesso falha; a reserva da vaga e as leituras seguem. */
+  const writesAccessState = (sql: string) =>
+    sql.includes('UPDATE provider_rate_state') &&
+    !sql.includes('window_calls') &&
+    !sql.includes('forbidden_streak = 0')
+
+  function flaky() {
+    const { sqlite, db, alerts, ae } = setup()
+    const d1 = { broken: true }
+    const unreliable = flakyD1(db, { failStatement: (sql) => d1.broken && writesAccessState(sql) })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const gate = createEspnGate(unreliable, ae)
+    const at = (ms: number) => vi.setSystemTime(T0 + ms)
+    return { sqlite, db, gate, d1, alerts, at }
+  }
+
+  it.each([401, 451])(
+    'falha ao gravar a suspensão do %i: a reserva seguinte NÃO passa e a coleta só volta depois de gravar',
+    async (status) => {
+      const { db, gate, d1, alerts } = flaky()
+
+      // A resposta proibiu o acesso e a gravação falhou: o chamador já recebe a suspensão...
+      expect((await attempt(gate, status))?.reason).toBe('suspended')
+      // ...mas o D1 segue sem a suspensão (o que a reserva seguinte leria como liberado).
+      expect(await readProviderState(db, 'espn')).toMatchObject({ suspendedAt: null })
+      expect(alerts()).toHaveLength(1)
+
+      // O bloqueio local impede novas reservas na hora, e a gravação é tentada a cada uma.
+      await expect(gate.reserve()).rejects.toMatchObject({ reason: 'suspended' })
+      await expect(gate.reserve()).rejects.toMatchObject({ reason: 'suspended' })
+      expect(await readProviderState(db, 'espn')).toMatchObject({ suspendedAt: null })
+
+      // O D1 volta: a próxima reserva grava a suspensão e segue recusada, agora pelo D1.
+      d1.broken = false
+      await expect(gate.reserve()).rejects.toMatchObject({ reason: 'suspended' })
+      expect(await readProviderState(db, 'espn')).toMatchObject({
+        suspendedReason: `http_${status}`,
+      })
+
+      // O bloqueio local caiu depois de gravar: só o operador retoma, e o gate volta a reservar.
+      await resumeProviderAccess(db, 'espn', T0 + MIN)
+      await expect(gate.reserve()).resolves.toBeUndefined()
+    },
+  )
+
+  it('outro isolate que gravou a suspensão antes: a gravação repetida é idempotente e preserva o motivo', async () => {
+    const { db, sqlite, gate, d1 } = flaky()
+    await attempt(gate, 401)
+    sqlite.exec(
+      `UPDATE provider_rate_state SET suspended_at = ${T0 - MIN}, suspended_reason = 'http_451' WHERE provider = 'espn'`,
+    )
+
+    d1.broken = false
+    await expect(gate.reserve()).rejects.toMatchObject({ reason: 'suspended' })
+
+    expect(await readProviderState(db, 'espn')).toMatchObject({
+      suspendedAt: T0 - MIN,
+      suspendedReason: 'http_451',
+    })
+  })
+
+  it('o bloqueio vale para chamadas já enfileiradas no mutex do cliente: só a primeira sai', async () => {
+    const { db, gate, d1 } = flaky()
+    setEspnMinIntervalForTests(0)
+    const fetchMock = vi.fn(async () => new Response('{"message":"proibido"}', { status: 401 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const results = await Promise.allSettled([
+      fetchEspnScoreboard('bra.1', '20261014', undefined, gate),
+      fetchEspnScoreboard('bra.1', '20261015', undefined, gate),
+      fetchEspnScoreboard('bra.1', '20261016', undefined, gate),
+    ])
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(results.map((r) => (r as PromiseRejectedResult).reason)).toEqual(
+      Array.from({ length: 3 }, () => expect.objectContaining({ reason: 'suspended' })),
+    )
+    expect(await readProviderState(db, 'espn')).toMatchObject({ suspendedAt: null })
+
+    // D1 de volta: a gravação é feita e a fila de chamadas segue recusada pelo estado do D1.
+    d1.broken = false
+    await expect(fetchEspnScoreboard('bra.1', '20261017', undefined, gate)).rejects.toMatchObject({
+      reason: 'suspended',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(await readProviderState(db, 'espn')).toMatchObject({ suspendedReason: 'http_401' })
+  })
+
+  it('403 sem gravar: a reserva seguinte espera os 15 min e a sequência é gravada antes de liberar', async () => {
+    const { db, gate, d1, at } = flaky()
+
+    expect(await attempt(gate, 403)).toEqual({ reason: 'blocked', retryAt: T0 + 15 * MIN })
+    expect(await readProviderState(db, 'espn')).toMatchObject({ forbiddenStreak: 0 })
+
+    at(5 * MIN)
+    await expect(gate.reserve()).rejects.toMatchObject({
+      reason: 'blocked',
+      retryAt: T0 + 15 * MIN,
+    })
+
+    // Passados os 15 min, com o D1 de volta, a reserva grava o 403 (com o instante dele) e passa.
+    d1.broken = false
+    at(16 * MIN)
+    await expect(gate.reserve()).resolves.toBeUndefined()
+    expect(await readProviderState(db, 'espn')).toMatchObject({
+      forbiddenStreak: 1,
+      blockedUntil: T0 + 15 * MIN,
+    })
+  })
+
+  it('403 sem gravar e o prazo vencido com o D1 ainda fora: o bloqueio local não prende a coleta para sempre', async () => {
+    const { gate, at } = flaky()
+    await attempt(gate, 403)
+
+    at(16 * MIN)
+
+    // A reserva em si precisa do D1 e passa; o que não pode é o bloqueio local, de prazo vencido, recusar.
+    await expect(gate.reserve()).resolves.toBeUndefined()
+  })
+
+  it('429 sem gravar: o bloqueio local respeita o Retry-After de 2 h', async () => {
+    const { gate, d1, at, db } = flaky()
+
+    expect(await attempt(gate, 429, { 'retry-after': '7200' })).toEqual({
+      reason: 'blocked',
+      retryAt: T0 + 120 * MIN,
+    })
+    at(90 * MIN)
+    await expect(gate.reserve()).rejects.toMatchObject({
+      reason: 'blocked',
+      retryAt: T0 + 120 * MIN,
+    })
+
+    d1.broken = false
+    at(91 * MIN)
+    await expect(gate.reserve()).rejects.toMatchObject({ reason: 'blocked' })
+    expect(await readProviderState(db, 'espn')).toMatchObject({ blockedUntil: T0 + 120 * MIN })
+  })
+
+  it('429 com Retry-After absurdo sem gravar: suspensão local até gravar', async () => {
+    const { gate } = flaky()
+
+    expect((await attempt(gate, 429, { 'retry-after': '999999' }))?.reason).toBe('suspended')
+
+    await expect(gate.reserve()).rejects.toMatchObject({ reason: 'suspended' })
+  })
+
+  it('falha ao zerar a sequência no sucesso não bloqueia a coleta', async () => {
+    const { db, sqlite } = setup()
+    sqlite.exec(`UPDATE provider_rate_state SET forbidden_streak = 2 WHERE provider = 'espn'`)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const gate = createEspnGate(
+      flakyD1(db, { failStatement: (sql) => sql.includes('forbidden_streak = 0') }),
+    )
+
+    await gate.reserve()
+    expect(await gate.note(200, new Headers())).toBeNull()
+
+    await expect(gate.reserve()).resolves.toBeUndefined()
+  })
+
+  it('com saldo de subrequests, a regravação pendente também paga a chamada dela', async () => {
+    const { sqlite, db, d1 } = (() => {
+      const { sqlite, db } = setup()
+      const state = { broken: true }
+      return { sqlite, db: flakyD1(db, { failStatement: (sql) => state.broken && writesAccessState(sql) }), d1: state }
+    })()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const callGate = { callsLeft: vi.fn(() => 10), chargeFetch: vi.fn() }
+    const gate = createEspnGate(db, undefined, callGate)
+    await gate.reserve()
+    await gate.note(401, new Headers())
+
+    // A tentativa pede 3 (vaga, fetch e registro) e a regravação, mais 1: com 3 ela nem tenta.
+    callGate.callsLeft.mockReturnValue(3)
+    d1.broken = false
+    await expect(gate.reserve()).rejects.toBeInstanceOf(CallBudgetExhaustedError)
+    expect(sqlite.prepare('SELECT suspended_at FROM provider_rate_state WHERE provider = ?').get('espn')).toEqual({
+      suspended_at: null,
+    })
   })
 })
 

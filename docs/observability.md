@@ -398,6 +398,15 @@ ticket 03), com o que a ESPN faz de diferente:
   forbidden_streak = 0 WHERE forbidden_streak != 0`, atômico e sem depender do que a reserva viu, porque
   dois isolates reservam antes de qualquer resposta); um 403 depois de um sucesso conta 1. O sucesso zera a
   sequência, mas não levanta o bloqueio que o 403 já impôs: ele espaça a coleta e vale até o fim.
+- **Gravação que falha:** se o D1 não aceita a gravação de uma proibição (401, 451, 403, 429, ou o 429 com
+  `Retry-After` absurdo), o isolate instala um bloqueio local em memória e nenhuma reserva passa, inclusive
+  as chamadas já enfileiradas no mutex do cliente. A gravação é refeita a cada reserva, até dar certo (com o
+  instante da resposta, sem contar duas vezes um 403 que o bloqueio já absorveu); gravada, o D1 volta a ser a
+  verdade e a reserva seguinte lê dele a suspensão ou o bloqueio. Um bloqueio por prazo (429, 403) também cai
+  quando o prazo vence, mas a regravação continua. Uma suspensão não vence sozinha. Limite: o bloqueio local é
+  do isolate (cada isolate só conhece o que ele mesmo viu), e se o operador retomar o acesso antes de a
+  gravação ter dado certo em algum isolate, a regravação dele suspende de novo na próxima reserva; confira o
+  estado depois de retomar.
 - **Suspensa:** nenhuma chamada sai (nem do dreno), os itens ficam pendentes sem gastar tentativa e os
   dados já confirmados não mudam. Não volta sozinha: continuar tentando um acesso que a resposta proibiu
   seria desrespeitar a decisão do provedor.
