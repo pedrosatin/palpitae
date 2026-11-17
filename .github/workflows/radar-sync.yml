@@ -30,6 +30,12 @@ jobs:
   sync:
     name: Coletar e gravar snapshot
     runs-on: ubuntu-latest
+    # Teto pelo pior caso que ainda termina: a ESPN serializa os 40 slugs e
+    # repete 429/5xx uma vez, ate ~740 s com respostas de 9 s; a Wikipedia, com
+    # 4 em paralelo e 10 s por requisicao, ~100 s; instalacao e aplicacao no D1,
+    # ~1 min. Sao ~15 min; 20 min deixa margem e ainda derruba uma coleta
+    # pendurada em vez de segurar o runner por 6 h, o padrao do GitHub.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: api
