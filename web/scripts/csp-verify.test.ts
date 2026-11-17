@@ -140,6 +140,21 @@ describe('csp-verify', () => {
     ])
   })
 
+  // O `<style>` de um comentário HTML não roda: conferir o hash dele (e não o
+  // do bloco real) publica na CSP um hash que a página nunca usa — foi o que
+  // aconteceu com o CSS embutido da landing, que ficou fora da política.
+  it('ignores <style> and <script> inside HTML comments', () => {
+    const html = page(
+      `<!-- <style>fantasma{color:red}</style> --><style>${STYLE}</style>` +
+        '<!-- <script>fantasma()</script> --><!-- style="no comentário" -->',
+    ).content
+    const scan = scanHtml(html)
+    expect(scan.inlineStyles).toEqual([STYLE])
+    expect(scan.inlineScripts).toEqual([])
+    expect(scan.inlineAttributes).toEqual([])
+    expect(verifyPolicy(policy(), [{ path: 'index.html', content: html }])).toEqual([])
+  })
+
   it('keeps the committed policy in sync with the inline scripts of index.html', () => {
     const headers = readFileSync(new URL('../public/_headers', import.meta.url), 'utf8')
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
