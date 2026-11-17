@@ -342,4 +342,31 @@ describe('coordenação das chamadas da football-data', () => {
     // claimed, done, requeued, failed
     expect(runs[0].doubles?.slice(0, 4)).toEqual([1, 1, 0, 0])
   })
+
+  it('falha do pós-sync no dreno vira erro da execução e log, sem repetir o item', async () => {
+    const { sqlite, db, provider } = await setup()
+    const { ae, events } = fakeAe()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    provider.respond = () => fdMatches('FINISHED', 1)
+    // O repontuar do pós-sync do item manual falha ao gravar a pontuação.
+    sqlite.exec(`CREATE TRIGGER fail_scoring BEFORE UPDATE OF scored_at ON matches
+      WHEN NEW.scored_at IS NOT NULL BEGIN SELECT RAISE(ABORT, 'scoring boom'); END`)
+    await deferProviderWork(
+      db,
+      { kind: 'manual', competitionCode: 'PPL', season: '2026', round: '10', competitionId: 'c1' },
+      new Error(SEM_VAGA),
+    )
+    vi.useFakeTimers({ now: Date.now() + 61_000, toFake: ['Date'] })
+
+    await drainFootballDataWork(db, 'test', ae)
+
+    const runs = events().filter((point) => point.blobs?.[0] === 'provider_work_run')
+    expect(runs[0].blobs?.[1]).toBe('error')
+    expect(
+      events().some((point) => point.blobs?.[0] === 'football_api_error'),
+    ).toBe(true)
+    // O sync já tinha rodado: o item termina, não volta para a fila.
+    expect(workRows(sqlite).find((row) => row.kind === 'manual')?.status).toBe('done')
+    errorSpy.mockRestore()
+  })
 })

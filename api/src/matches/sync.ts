@@ -284,10 +284,13 @@ async function fetchMatchesFromApi(
         headers: { 'X-Auth-Token': apiKey },
         signal: AbortSignal.timeout(FD_TIMEOUT_MS),
       })
-      const quota = readFootballDataQuota(res.headers, Date.now())
-      noteFootballDataResponse(res.status, quota, Date.now())
+      // Um único instante para a pausa do isolate e o bloqueio no D1: dois
+      // relógios divergiriam em ms e o retry veria o D1 ainda bloqueado.
+      const responseAt = Date.now()
+      const quota = readFootballDataQuota(res.headers, responseAt)
+      noteFootballDataResponse(res.status, quota, responseAt)
       // O bloqueio imposto por esta resposta vale para os outros isolates.
-      if (coordinate) await noteFootballDataBlock(db, res.status, quota, Date.now())
+      if (coordinate) await noteFootballDataBlock(db, res.status, quota, responseAt)
       notifyHttpAttempt(onAttempt, {
         provider: 'football-data',
         status: res.status,
