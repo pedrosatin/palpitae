@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
 
+// A página de grupo só aceita id no formato de UUID (#726).
+const GROUP_ID = '00000000-0000-4000-8000-0000000000f1'
+
 // O teste intercepta a API no navegador com os três jogos do cenário Libertadores de roundOrder.test.ts.
 const matches = [
   {
@@ -86,10 +89,10 @@ test('Libertadores: ordem em Palpitar, Grupo e modal', async ({ page }) => {
         ],
       }
     else if (url.pathname.endsWith('/round-standings')) json = { round: null, standings: [] }
-    else if (url.pathname.endsWith('/groups/order-g'))
+    else if (url.pathname.endsWith(`/groups/${GROUP_ID}`))
       json = {
         group: {
-          id: 'order-g',
+          id: GROUP_ID,
           name: 'Bolão Libertadores',
           competition_id: 'order-c',
           competition_name: 'Libertadores',
@@ -109,7 +112,7 @@ test('Libertadores: ordem em Palpitar, Grupo e modal', async ({ page }) => {
       }
     await route.fulfill({ headers, json })
   })
-  await page.goto('/grupos/order-g')
+  await page.goto(`/grupos/${GROUP_ID}`)
   const select = page.locator('#predictions-round-select')
   await expect(select).toHaveValue('GROUP_STAGE')
   expect(

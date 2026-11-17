@@ -28,13 +28,13 @@ test.describe('Settings Flow', () => {
       } else if (method === 'GET') {
         await route.fulfill({
           headers: corsHeaders,
-          json: { preferences: { round_reminders: false, promotions: false } },
+          json: { round_reminders: false },
         })
       } else if (method === 'PATCH') {
         patchCalled = true
         await route.fulfill({
           headers: corsHeaders,
-          json: { preferences: { round_reminders: true, promotions: false } },
+          json: { round_reminders: true },
         })
       }
     })
@@ -42,8 +42,8 @@ test.describe('Settings Flow', () => {
     // 1. Acessar `/configuracoes` logado
     await page.goto('/configuracoes')
 
-    // 3. Alterar o checkbox de "Lembretes de rodada"
-    const reminderLabel = page.getByText(/Lembretes de rodada/i)
+    // 3. Alterar o checkbox de "Lembretes de palpite" (antes "de rodada", #643)
+    const reminderLabel = page.getByText(/Lembretes de palpite/i)
     await reminderLabel.click()
 
     // 4. Confirmar na modal de aviso
@@ -51,8 +51,9 @@ test.describe('Settings Flow', () => {
     await expect(dialog).toBeVisible()
     await dialog.getByRole('button', { name: /Confirmar|Sim|Salvar/i }).click()
 
-    // 5. Checar o request e mensagem de sucesso
-    expect(patchCalled).toBe(true)
+    // 5. Checar a mensagem de sucesso e o request. A mensagem só aparece depois
+    // da resposta do PATCH; conferir a flag antes dela corre contra o clique.
     await expect(page.getByText(/Configuração salva com sucesso|Salvo com sucesso/i)).toBeVisible()
+    expect(patchCalled).toBe(true)
   })
 })

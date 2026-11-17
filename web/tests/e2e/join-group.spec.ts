@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
 
+// A página de grupo só aceita id no formato de UUID (#726).
+const GROUP_ID = '00000000-0000-4000-8000-0000000000c2'
+
 test.describe('Join Group Flow', () => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': 'http://localhost:5173',
@@ -61,14 +64,14 @@ test.describe('Join Group Flow', () => {
         joinCalled = true
         await route.fulfill({
           headers: corsHeaders,
-          json: { group: { id: 'group-2', name: 'Grupo Novo' } },
+          json: { group: { id: GROUP_ID, name: 'Grupo Novo' } },
         })
-      } else if (url.includes('/group-2') && method === 'GET') {
+      } else if (url.includes(`/${GROUP_ID}`) && method === 'GET') {
         await route.fulfill({
           headers: corsHeaders,
           json: {
             group: {
-              id: 'group-2',
+              id: GROUP_ID,
               name: 'Grupo Novo',
               competition_id: 'comp-1',
               competition_name: 'Brasileirão',

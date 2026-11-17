@@ -1,5 +1,8 @@
 import { test, expect } from '@playwright/test'
 
+// A página de grupo só aceita id no formato de UUID (#726).
+const GROUP_ID = '00000000-0000-4000-8000-0000000000b1'
+
 test.describe('Happy Path - Palpitae', () => {
   test('Criar grupo, alterar rodada e fazer palpite em bulk', async ({ page }) => {
     page.on('console', (msg) => console.log('BROWSER CONSOLE:', msg.text()))
@@ -38,12 +41,12 @@ test.describe('Happy Path - Palpitae', () => {
         console.log('FULFILL OPTIONS GROUPS')
         await route.fulfill({ status: 200, headers: corsHeaders })
       } else if (route.request().method() === 'GET') {
-        if (url.includes('/groups/group-1')) {
+        if (url.includes(`/groups/${GROUP_ID}`)) {
           await route.fulfill({
             headers: corsHeaders,
             json: {
               group: {
-                id: 'group-1',
+                id: GROUP_ID,
                 name: 'Os Craques do Bairro',
                 competition_id: 'comp-1',
                 competition_name: 'Brasileirão',
@@ -73,7 +76,7 @@ test.describe('Happy Path - Palpitae', () => {
             json: {
               groups: [
                 {
-                  id: 'group-1',
+                  id: GROUP_ID,
                   name: 'Os Craques do Bairro',
                   competition_id: 'comp-1',
                   stats: { members: 1, my_rank: 1, my_points: 0 },
@@ -89,7 +92,7 @@ test.describe('Happy Path - Palpitae', () => {
           headers: corsHeaders,
           json: {
             group: {
-              id: 'group-1',
+              id: GROUP_ID,
               name: 'Os Craques do Bairro',
               invite_code: 'CODE123',
             },
