@@ -39,6 +39,196 @@ type ActiveCompetition = {
   provider: string
 }
 
+/** O estado de uma execução da descoberta, que as funções por competição atualizam. */
+type DiscoveryRun = {
+  apiKey: string
+  ae: AnalyticsEngineDataset | undefined
+  now: number
+  espnDates: string[]
+  missingEvents: { remaining: number }
+  /** Itens `discovery` da fila para o que as competições não entregaram. */
+  deferrals: NewWorkItem[]
+  fixturesUpdated: number
+  eventsDiscarded: number
+  matchesMissing: number
+  hadError: boolean
+}
+
+/** Custo estimado da descoberta de uma competição, em chamadas (D1 e `fetch`). */
+function discoveryCost(comp: ActiveCompetition, espnDates: number): number {
+  if (comp.provider === 'espn') return espnDiscoveryCost(espnDates)
+  return footballDataItemCost({
+    kind: 'discovery',
+    competitionCode: comp.external_id,
+    season: comp.season,
+    round: '',
+    competitionId: comp.id,
+    attempts: 0,
+    leaseOwner: '',
+  })
+}
+
+/**
+ * Itens `discovery` da fila para o que a competição não entregou, com o prazo que o
+ * erro informa: um por data na ESPN (as `dates` dadas, ou as nove), um por
+ * competição na football-data.
+ */
+function deferralItems(
+  run: DiscoveryRun,
+  comp: ActiveCompetition,
+  dates: string[] | undefined,
+  error: unknown,
+): NewWorkItem[] {
+  if (comp.provider === 'espn') {
+    const base: EspnWorkBase = {
+      kind: 'discovery',
+      competitionCode: comp.external_id,
+      season: comp.season,
+      competitionId: comp.id,
+    }
+    return espnDeferralItems(base, dates ?? run.espnDates, error)
+  }
+  return [
+    {
+      kind: 'discovery',
+      competitionCode: comp.external_id,
+      season: comp.season,
+      round: '',
+      competitionId: comp.id,
+      ...deferralOf(error, Date.now()),
+    },
+  ]
+}
+
+/** Sincroniza a competição e pontua o que o sync deixou sem `scored_at`, com o saldo dela. */
+async function syncAndScore(
+  run: DiscoveryRun,
+  comp: ActiveCompetition,
+  span: ItemBudget,
+): Promise<SyncResult | undefined> {
+  const result = await syncFixtures({
+    competitionCode: comp.external_id,
+    season: Number(comp.season),
+    dates: comp.provider === 'espn' ? run.espnDates : undefined,
+    apiKey: run.apiKey,
+    // O D1 e o `fetch` da competição saem do saldo que ela reservou: o que invadiria a
+    // reserva do enfileiramento é recusado antes de chamar.
+    db: span.db,
+    callGate: span,
+    // Toda tentativa reserva vaga no orçamento compartilhado do provedor
+    // (ADR-027); a ESPN ainda tem o teto e o pacing por isolate.
+    coordinate: true,
+    onHttpAttempt: createProviderHttpObserver(run.ae, {
+      context: 'discovery',
+      competitionId: comp.id,
+    }),
+    ae: run.ae,
+    missingEvents: run.missingEvents,
+  })
+  run.fixturesUpdated += result?.matches ?? 0
+  run.eventsDiscarded += result?.discarded ?? 0
+  run.matchesMissing += result?.missing ?? 0
+  // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após correção de placar
+  // que o upsert do sync zerou), com o saldo que sobra à competição. O que não coube segue sem
+  // `scored_at` e o poller pontua pelo índice dos jogos pendentes.
+  const scoring = await scoreWithinBudget(comp.id, span, RECONCILE_CALLS)
+  if (scoring?.error) throw new Error(scoring.error)
+  return result
+}
+
+/** A falha do sync: vira item da fila, e só a que não é falta de saldo conta como erro do provedor. */
+function deferFailedSync(run: DiscoveryRun, comp: ActiveCompetition, err: unknown): void {
+  // Qualquer falha vira trabalho pendente: o dreno retoma no mesmo dia, e o progresso da
+  // descoberta não espera a de amanhã. Sem vaga ou com cota bloqueada, o prazo segue o reset;
+  // nas demais falhas, a espera conservadora. Falta de saldo de subrequests não é falha do
+  // provedor.
+  run.deferrals.push(...deferralItems(run, comp, undefined, err))
+  if (err instanceof CallBudgetExhaustedError) {
+    console.info(`[discovery] Sem saldo de chamadas comp=${comp.id}: a fila retoma.`)
+    return
+  }
+  run.hadError = true
+  logError(run.ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
+    blobs: ['fixture_discovery', comp.id],
+  })
+}
+
+/** O sync parcial da ESPN: o que chegou foi gravado, as datas que faltaram voltam pelo dreno. */
+function deferPartialSync(
+  run: DiscoveryRun,
+  comp: ActiveCompetition,
+  pending: NonNullable<SyncResult['pending']>,
+): void {
+  run.deferrals.push(...deferralItems(run, comp, pending.dates, pending.error))
+  if (isEspnRefusal(pending.error) || pending.error instanceof CallBudgetExhaustedError) return
+  run.hadError = true
+  logError(
+    run.ae,
+    'football_api_error',
+    `[discovery] Sync parcial comp=${comp.id}:`,
+    pending.error,
+    { blobs: ['fixture_discovery', comp.id] },
+  )
+}
+
+/** Sincroniza uma competição dentro do saldo que ela reservou e avança o status se o calendário veio inteiro. */
+async function syncCompetition(
+  run: DiscoveryRun,
+  comp: ActiveCompetition,
+  span: ItemBudget,
+): Promise<void> {
+  let result: SyncResult | undefined
+  try {
+    result = await syncAndScore(run, comp, span)
+  } catch (err) {
+    deferFailedSync(run, comp, err)
+    return
+  }
+  if (result?.pending) {
+    // O status só avança com a descoberta completa.
+    deferPartialSync(run, comp, result.pending)
+    return
+  }
+  // Só depois de um sync bem-sucedido: o status avança com o calendário atualizado.
+  try {
+    const advanced = await advanceCompetitionStatus(
+      span.db,
+      run.ae,
+      comp.id,
+      run.now,
+      result?.discardedTbd ?? 0,
+    )
+    if (!advanced) run.hadError = true
+  } catch (err) {
+    // Sem saldo para o avanço (reservado na estimativa, não deveria faltar): a descoberta
+    // seguinte o avança, e o calendário já foi gravado.
+    if (!(err instanceof CallBudgetExhaustedError)) throw err
+    console.info(`[discovery] Sem saldo para avançar o status comp=${comp.id}.`)
+  }
+}
+
+/**
+ * O enfileiramento (1 chamada, reservada): se falha, a competição que ficou de fora é
+ * replanejada pela descoberta seguinte, e a perda não é silenciosa.
+ */
+async function enqueueDeferrals(run: DiscoveryRun, budget: DrainBudget): Promise<void> {
+  if (run.deferrals.length === 0) return
+  try {
+    await enqueueProviderWork(budget.db, run.deferrals, Date.now())
+  } catch (err) {
+    run.hadError = true
+    for (const competitionId of new Set(run.deferrals.map((item) => item.competitionId))) {
+      logError(
+        run.ae,
+        'competition_status_error',
+        `[discovery] Descoberta não enfileirada comp=${competitionId}:`,
+        err,
+        { blobs: [competitionId ?? ''] },
+      )
+    }
+  }
+}
+
 /**
  * Descobre jogos novos das competições ativas. Roda 1x/dia de madrugada via Cron
  * Trigger (ver wrangler.toml), num horário sem jogos pra não competir com o poller.
@@ -115,182 +305,53 @@ export async function discoverFixtures(
   }
 
   const utcDay = new Date(now).setUTCHours(0, 0, 0, 0)
-  const espnDates = espnDatesAround(utcDay, -1, 9)
+  const run: DiscoveryRun = {
+    apiKey,
+    ae,
+    now,
+    espnDates: espnDatesAround(utcDay, -1, 9),
+    missingEvents: { remaining: MISSING_EVENTS_PER_DISCOVERY },
+    deferrals: [],
+    fixturesUpdated: 0,
+    eventsDiscarded: 0,
+    matchesMissing: 0,
+    hadError: false,
+  }
   // Requests primárias planejadas, excluindo retries do provedor.
-  let plannedApiRequests = 0
-  let fixturesUpdated = 0
-  const missingEvents = { remaining: MISSING_EVENTS_PER_DISCOVERY }
-  let eventsDiscarded = 0
-  let matchesMissing = 0
-  let hadError = false
-
-  for (const comp of rows.results) {
-    plannedApiRequests += comp.provider === 'espn' ? espnDates.length : 1
-  }
-
-  const workBase = (comp: ActiveCompetition): EspnWorkBase => ({
-    kind: 'discovery',
-    competitionCode: comp.external_id,
-    season: comp.season,
-    competitionId: comp.id,
-  })
-
-  /** Itens `discovery` da fila para o que a competição não entregou, com o prazo que o erro informa. */
-  const deferrals: NewWorkItem[] = []
-  const deferralItems = (
-    comp: ActiveCompetition,
-    dates: string[] | undefined,
-    error: unknown,
-  ): NewWorkItem[] =>
-    comp.provider === 'espn'
-      ? espnDeferralItems(workBase(comp), dates ?? espnDates, error)
-      : [
-          {
-            kind: 'discovery',
-            competitionCode: comp.external_id,
-            season: comp.season,
-            round: '',
-            competitionId: comp.id,
-            ...deferralOf(error, Date.now()),
-          },
-        ]
-
-  const syncCompetition = async (comp: ActiveCompetition, span: ItemBudget): Promise<void> => {
-    let tbdDiscarded = 0
-    let pending: SyncResult['pending']
-    try {
-      const result = await syncFixtures({
-        competitionCode: comp.external_id,
-        season: Number(comp.season),
-        dates: comp.provider === 'espn' ? espnDates : undefined,
-        apiKey,
-        // O D1 e o `fetch` da competição saem do saldo que ela reservou: o que invadiria a
-        // reserva do enfileiramento é recusado antes de chamar.
-        db: span.db,
-        callGate: span,
-        // Toda tentativa reserva vaga no orçamento compartilhado do provedor
-        // (ADR-027); a ESPN ainda tem o teto e o pacing por isolate.
-        coordinate: true,
-        onHttpAttempt: createProviderHttpObserver(ae, {
-          context: 'discovery',
-          competitionId: comp.id,
-        }),
-        ae,
-        missingEvents,
-      })
-      fixturesUpdated += result?.matches ?? 0
-      eventsDiscarded += result?.discarded ?? 0
-      matchesMissing += result?.missing ?? 0
-      // Pontua jogos que ficaram 'finished' sem scored_at (ex: re-score após
-      // correção de placar que o upsert do sync zerou), com o saldo que sobra à
-      // competição. O que não coube segue sem `scored_at` e o poller pontua pelo
-      // índice dos jogos pendentes.
-      const scoring = await scoreWithinBudget(comp.id, span, RECONCILE_CALLS)
-      if (scoring?.error) throw new Error(scoring.error)
-      tbdDiscarded = result?.discardedTbd ?? 0
-      pending = result?.pending
-    } catch (err) {
-      // Qualquer falha vira trabalho pendente: o dreno retoma no mesmo dia, e
-      // o progresso da descoberta não espera a de amanhã. Sem vaga ou com cota
-      // bloqueada, o prazo segue o reset; nas demais falhas, a espera
-      // conservadora. Falta de saldo de subrequests não é falha do provedor.
-      deferrals.push(...deferralItems(comp, undefined, err))
-      if (err instanceof CallBudgetExhaustedError) {
-        console.info(`[discovery] Sem saldo de chamadas comp=${comp.id}: a fila retoma.`)
-        return
-      }
-      hadError = true
-      logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
-        blobs: ['fixture_discovery', comp.id],
-      })
-      return
-    }
-    if (pending) {
-      // ESPN: o que chegou foi gravado; as datas que faltaram voltam pelo
-      // dreno, e o status só avança com a descoberta completa.
-      deferrals.push(...deferralItems(comp, pending.dates, pending.error))
-      if (!isEspnRefusal(pending.error) && !(pending.error instanceof CallBudgetExhaustedError)) {
-        hadError = true
-        logError(
-          ae,
-          'football_api_error',
-          `[discovery] Sync parcial comp=${comp.id}:`,
-          pending.error,
-          {
-            blobs: ['fixture_discovery', comp.id],
-          },
-        )
-      }
-      return
-    }
-    // Só depois de um sync bem-sucedido: o status avança com o calendário atualizado.
-    try {
-      if (!(await advanceCompetitionStatus(span.db, ae, comp.id, now, tbdDiscarded))) {
-        hadError = true
-      }
-    } catch (err) {
-      // Sem saldo para o avanço (reservado na estimativa, não deveria faltar): a descoberta
-      // seguinte o avança, e o calendário já foi gravado.
-      if (!(err instanceof CallBudgetExhaustedError)) throw err
-      console.info(`[discovery] Sem saldo para avançar o status comp=${comp.id}.`)
-    }
-  }
+  const plannedApiRequests = rows.results.reduce(
+    (count, comp) => count + (comp.provider === 'espn' ? run.espnDates.length : 1),
+    0,
+  )
 
   // Admissão pelo custo completo, a football-data (1 request) antes da ESPN (9 datas): a
-  // reserva é feita antes de qualquer tarefa, na ordem, e o que não cabe nem começa.
-  const costOf = (comp: ActiveCompetition): number =>
-    opts.callBudget === undefined
-      ? 0
-      : comp.provider === 'espn'
-        ? espnDiscoveryCost(espnDates.length)
-        : footballDataItemCost({
-            kind: 'discovery',
-            competitionCode: comp.external_id,
-            season: comp.season,
-            round: '',
-            competitionId: comp.id,
-            attempts: 0,
-            leaseOwner: '',
-          })
+  // reserva é feita antes de qualquer tarefa, na ordem, e o que não cabe nem começa. Sem
+  // `callBudget` tudo é admitido, sem custo a conferir.
   const ordered = [...rows.results].sort(
     (a, b) => Number(a.provider === 'espn') - Number(b.provider === 'espn'),
   )
-  const plan = ordered.map((comp) => ({ comp, span: budget.open(costOf(comp)) }))
-  for (const { comp, span } of plan) {
-    if (!span) deferrals.push(...deferralItems(comp, undefined, new CallBudgetExhaustedError()))
+  const costOf = (comp: ActiveCompetition) =>
+    opts.callBudget === undefined ? 0 : discoveryCost(comp, run.espnDates.length)
+  const admitted: { comp: ActiveCompetition; span: ItemBudget }[] = []
+  for (const comp of ordered) {
+    const span = budget.open(costOf(comp))
+    if (span) admitted.push({ comp, span })
+    else run.deferrals.push(...deferralItems(run, comp, undefined, new CallBudgetExhaustedError()))
   }
-  const admitted = plan.flatMap(({ comp, span }) => (span ? [{ comp, span }] : []))
 
   await runSyncTasks(
     admitted,
     ({ comp }) => comp.provider,
     async ({ comp, span }) => {
       try {
-        await syncCompetition(comp, span)
+        await syncCompetition(run, comp, span)
       } finally {
         span.close()
       }
     },
   )
 
-  // O enfileiramento (1 chamada, reservada): se falha, a competição que ficou de fora é
-  // replanejada pela descoberta seguinte, e a perda não é silenciosa.
-  if (deferrals.length > 0) {
-    try {
-      await enqueueProviderWork(budget.db, deferrals, Date.now())
-    } catch (err) {
-      hadError = true
-      for (const competitionId of new Set(deferrals.map((item) => item.competitionId))) {
-        logError(
-          ae,
-          'competition_status_error',
-          `[discovery] Descoberta não enfileirada comp=${competitionId}:`,
-          err,
-          { blobs: [competitionId ?? ''] },
-        )
-      }
-    }
-  }
+  await enqueueDeferrals(run, budget)
+  const { fixturesUpdated, eventsDiscarded, matchesMissing, hadError, deferrals, espnDates } = run
 
   logEvent(ae, 'fixture_discovery_run', {
     blobs: [hadError ? 'error' : 'ok'],
