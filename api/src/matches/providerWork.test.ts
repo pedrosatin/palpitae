@@ -11,12 +11,23 @@ import {
   enqueueProviderWork,
   WORK_BUSY_RETRY_MS,
   WORK_RETRY_DELAY_MS,
+  type DrainOptions,
   type ProviderWorkItem,
   type WorkOutcome,
 } from './providerWork'
 import { FootballDataQuotaError } from './footballDataQuota'
+import { DrainBudget } from './drainBudget'
 
 const handles: DatabaseSync[] = []
+
+/** Dreno sem limite de saldo: estes testes olham a fila, não o orçamento de chamadas. */
+function drain(db: D1Database, opts: Omit<DrainOptions, 'itemCost' | 'minItemCost'>) {
+  return drainProviderWork(new DrainBudget(db, Infinity), {
+    itemCost: () => 1,
+    minItemCost: 1,
+    ...opts,
+  })
+}
 
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
@@ -137,7 +148,7 @@ describe('fila durável do provedor', () => {
             error: 'sem vaga',
           },
     )
-    const run = await drainProviderWork(db, { provider: 'football-data', now, runItem })
+    const run = await drain(db, { provider: 'football-data', now, runItem })
 
     expect(run).toMatchObject({ claimed: 2, done: 1, requeued: 1, failed: 0 })
     expect(runItem).toHaveBeenCalledTimes(2)
@@ -161,7 +172,7 @@ describe('fila durável do provedor', () => {
     // O dreno usa o relógio corrente, adiantado entre os drenos.
     for (let i = 1; i <= WORK_MAX_ATTEMPTS; i++) {
       vi.useFakeTimers({ now: start + i * (WORK_RETRY_DELAY_MS + 1000), toFake: ['Date'] })
-      await drainProviderWork(db, { provider: 'football-data', runItem: fail, maxCycles: 1 })
+      await drain(db, { provider: 'football-data', runItem: fail, maxCycles: 1 })
     }
     expect(rows(sqlite)[0]).toMatchObject({
       status: 'failed',
@@ -214,7 +225,7 @@ describe('fila durável do provedor', () => {
       item: work,
       status: 'done',
     }))
-    const run = await drainProviderWork(db, { provider: 'football-data', now, runItem })
+    const run = await drain(db, { provider: 'football-data', now, runItem })
 
     expect(run.claimed).toBe(DRAIN_MAX_ITEMS + 3)
     expect(run.done).toBe(DRAIN_MAX_ITEMS + 3)
@@ -231,7 +242,7 @@ describe('fila durável do provedor', () => {
       status: 'done',
     }))
     const onSynced = vi.fn(async () => ({ error: 'Scoring Error' }))
-    const run = await drainProviderWork(db, { provider: 'football-data', now, runItem, onSynced })
+    const run = await drain(db, { provider: 'football-data', now, runItem, onSynced })
 
     expect(run.done).toBe(1)
     expect(run.outcomes[0]).toMatchObject({ status: 'done', postError: 'Scoring Error' })
