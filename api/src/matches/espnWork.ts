@@ -10,8 +10,9 @@ import { espnWriteCalls } from './espnSync'
 import { httpContextOf, logPostSyncFailures, scoreWithinBudget } from './fdWork'
 import { readProviderState } from './providerBudget'
 import {
-  deferProviderWork,
   drainProviderWork,
+  enqueueProviderWork,
+  retryAtOf,
   type DrainRun,
   type NewWorkItem,
   type ProviderWorkItem,
@@ -55,9 +56,29 @@ export function espnWorkItems(base: EspnWorkBase, dates: string[] | undefined): 
 }
 
 /**
- * Adia as datas que a ESPN não entregou: viram itens pendentes, com o prazo que
- * o erro informa (bloqueio, orçamento) ou a espera conservadora.
+ * Itens pendentes das datas que a ESPN não entregou, com o prazo que o erro
+ * informa (bloqueio, `Retry-After`) ou a espera conservadora. Falta de saldo de
+ * subrequests do tick (`CallBudgetExhaustedError`) não é falha nem bloqueio do
+ * provedor: a data volta no próximo dreno, sem esperar uma janela, e não gasta
+ * tentativa (o item novo nasce com zero).
  */
+export function espnDeferralItems(
+  base: EspnWorkBase,
+  dates: string[] | undefined,
+  error: unknown,
+  now = Date.now(),
+): NewWorkItem[] {
+  const noBudget = error instanceof CallBudgetExhaustedError
+  const notBefore = noBudget ? now : retryAtOf(error, now)
+  const lastError = noBudget
+    ? 'saldo de chamadas do tick esgotado; a data volta no próximo dreno'
+    : error instanceof Error
+      ? error.message
+      : String(error)
+  return espnWorkItems(base, dates).map((item) => ({ ...item, notBefore, lastError }))
+}
+
+/** Adia as datas que a ESPN não entregou: viram itens pendentes (ver `espnDeferralItems`). */
 export async function deferEspnWork(
   db: D1Database,
   base: EspnWorkBase,
@@ -65,7 +86,7 @@ export async function deferEspnWork(
   error: unknown,
   now = Date.now(),
 ): Promise<void> {
-  await deferProviderWork(db, espnWorkItems(base, dates), error, now)
+  await enqueueProviderWork(db, espnDeferralItems(base, dates, error, now), now)
 }
 
 /**
@@ -87,14 +108,25 @@ export async function deferEspnWork(
 const DATE_EVENTS = 20
 const DATE_TEAMS = 40
 
+/**
+ * Custo estimado de um sync da ESPN de `dateCount` datas (o do dreno é de uma, o
+ * do poller, de duas a quatro): uma requisição por data (vaga, `fetch` e registro)
+ * e uma gravação do calendário, que a data sem eventos dispensa mas a estimativa
+ * conta. O poller admite a tarefa por este custo antes de começar.
+ */
+export function espnSyncCost(dateCount: number): number {
+  const dates = Math.max(1, dateCount)
+  return ESPN_REQUEST_CALLS * dates + espnWriteCalls(DATE_EVENTS * dates, DATE_TEAMS * dates)
+}
+
 export function espnItemCost(item: ProviderWorkItem): number {
-  const sync = ESPN_REQUEST_CALLS + espnWriteCalls(DATE_EVENTS, DATE_TEAMS)
+  const sync = espnSyncCost(1)
   return item.kind === 'manual' || item.kind === 'discovery' ? sync + MIN_SCORING_CALLS : sync
 }
 
 /** O item mais barato da ESPN: um `result` ou `late` de uma data. */
 export function espnMinItemCalls(): number {
-  return ESPN_REQUEST_CALLS + espnWriteCalls(DATE_EVENTS, DATE_TEAMS)
+  return espnSyncCost(1)
 }
 
 /**

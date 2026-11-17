@@ -9,9 +9,11 @@ import { CallBudgetExhaustedError } from './callBudget'
 import { CLAIM_CALLS, DrainBudget, SETTLE_CALLS } from './drainBudget'
 import { ESPN_REQUEST_CALLS } from './espnAccess'
 import {
+  espnDeferralItems,
   espnDrain,
   espnItemCost,
   espnMinItemCalls,
+  espnSyncCost,
   espnSyncedHandler,
   espnWorkItems,
   runEspnWorkItem,
@@ -108,6 +110,58 @@ describe('espnWorkItems', () => {
     ])
     expect(espnWorkItems(base, undefined)).toEqual([{ provider: 'espn', ...base, round: '' }])
     expect(espnWorkItems(base, [])).toEqual([{ provider: 'espn', ...base, round: '' }])
+  })
+})
+
+describe('espnDeferralItems', () => {
+  const at = NOW
+
+  it('falta de saldo do tick não é falha nem bloqueio: a data volta já no próximo dreno, sem tentativa', () => {
+    const items = espnDeferralItems(
+      base,
+      ['20261014', '20261015'],
+      new CallBudgetExhaustedError(),
+      at,
+    )
+
+    expect(items).toEqual(
+      ['20261014', '20261015'].map((round) => ({
+        provider: 'espn',
+        ...base,
+        round,
+        notBefore: at,
+        lastError: 'saldo de chamadas do tick esgotado; a data volta no próximo dreno',
+      })),
+    )
+  })
+
+  it('bloqueio ou suspensão voltam no prazo que o erro informa', () => {
+    const blocked = Object.assign(new Error('ESPN indisponível (blocked)'), {
+      retryAt: at + 7_200_000,
+    })
+
+    const [item] = espnDeferralItems(base, ['20261014'], blocked, at)
+
+    expect(item).toMatchObject({
+      notBefore: at + 7_200_000,
+      lastError: 'ESPN indisponível (blocked)',
+    })
+  })
+
+  it('outra falha espera a pausa conservadora de uma janela', () => {
+    const [item] = espnDeferralItems(base, ['20261014'], new Error('timeout'), at)
+
+    expect(item).toMatchObject({ notBefore: at + 60_000, lastError: 'timeout' })
+  })
+})
+
+describe('espnSyncCost', () => {
+  it('uma data custa o que o dreno estima; cada data a mais soma a requisição e, passando de 100 jogos ou times, mais um batch', () => {
+    expect(espnSyncCost(1)).toBe(9)
+    expect(espnSyncCost(2)).toBe(12)
+    expect(espnSyncCost(3)).toBe(16)
+    expect(espnSyncCost(0)).toBe(9)
+    expect(espnSyncCost(1)).toBe(espnMinItemCalls())
   })
 })
 

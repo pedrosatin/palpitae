@@ -374,7 +374,7 @@ describe('dois drenos no mesmo tick sob 50 subrequests', () => {
     expect(count(h.sqlite, `status = 'done'`)).toBe(FD_ITEMS + ESPN_ITEMS)
   })
 
-  it('ESPN suspensa: a ESPN gasta 1 chamada por tick, nenhum item dela é reclamado e a football-data usa o resto', async () => {
+  it('ESPN suspensa com itens pendentes: a ESPN gasta 2 chamadas (reclamação recusada e leitura do estado), nenhum item dela é reclamado e a football-data usa o resto', async () => {
     const h = await setupWorld()
     h.sqlite.exec(
       `UPDATE provider_rate_state SET suspended_at = ${FIRST_TICK}, suspended_reason = 'http_401' WHERE provider = 'espn'`,

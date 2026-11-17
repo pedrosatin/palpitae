@@ -5,11 +5,20 @@ import {
   type ProviderHttpObserver,
 } from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
-import { callsLeft, countD1Calls, INVOCATION_CALL_LIMIT, type CallBudget } from './callBudget'
+import {
+  callsLeft,
+  CallBudgetExhaustedError,
+  countD1Calls,
+  INVOCATION_CALL_LIMIT,
+  type CallBudget,
+  type CallGate,
+} from './callBudget'
+import { DrainBudget } from './drainBudget'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
 import { isEspnRefusal } from './espnAccess'
-import { deferEspnWork, type EspnWorkBase } from './espnWork'
+import { espnDeferralItems, espnSyncCost, type EspnWorkBase } from './espnWork'
+import { footballDataItemCost } from './fdWork'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import {
   DAY_MS,
@@ -20,7 +29,7 @@ import {
   resultWindowBounds,
 } from './matchPollingWindow'
 import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
-import { deferProviderWork } from './providerWork'
+import { deferProviderWork, enqueueProviderWork, type NewWorkItem } from './providerWork'
 import { syncFixtures } from './sync'
 
 type ActiveRound = {
@@ -175,6 +184,21 @@ const SPARE_CALLS = 3
 export const POLLER_CALL_BUDGET =
   INVOCATION_CALL_LIMIT - CLEANUP_CALLS - UNSCORED_REPORT_CALLS - SPARE_CALLS
 
+/**
+ * Fim do tick reservado à pontuação: a leitura das competições com pontuação
+ * pendente e o mínimo para pontuar uma competição (planejar e gravar uma vez). O
+ * saldo das sincronizações da ESPN e o do fallback nunca invadem essa reserva; a
+ * pontuação ainda recebe o que sobrar além dela.
+ */
+const SCORING_RESERVE_CALLS = 1 + MIN_SCORING_CALLS
+
+/**
+ * O enfileiramento das datas da ESPN que não couberam no saldo ou não vieram: 1
+ * `db.batch()` no fim das sincronizações, reservado do saldo da ESPN antes de
+ * qualquer tarefa começar, como o dreno reserva o batch de estado.
+ */
+const ESPN_DEFER_CALLS = 1
+
 /** Teto de `match_unscored` por execução: um evento por competição. */
 const UNSCORED_EVENTS_PER_RUN = 10
 
@@ -257,6 +281,31 @@ async function competitionsToScore(db: D1Database, synced: Set<string>): Promise
     console.error('[poller] Falha ao ler as competições com pontuação pendente:', err)
   }
   return Array.from(new Set([...pending, ...synced]))
+}
+
+/** Custo estimado de uma tarefa da football-data do poller, o mesmo que o dreno usa para o item. */
+function footballDataTaskCost(task: SyncTask): number {
+  return footballDataItemCost({
+    kind: 'result',
+    competitionCode: task.comp.external_id,
+    season: task.comp.season,
+    round: task.round,
+    competitionId: task.comp.comp_id,
+    attempts: 0,
+    leaseOwner: '',
+  })
+}
+
+/**
+ * Saldo das sincronizações da ESPN no tick, fixado antes de qualquer tarefa: o que
+ * sobra de `POLLER_CALL_BUDGET` depois do que já foi gasto (a leitura dos jogos), do
+ * que as tarefas da football-data ainda vão gastar (estimado, como o dreno) e da
+ * reserva da pontuação. A football-data segue como estava, gastando o que precisa;
+ * o saldo da ESPN é que cede, para o conjunto caber no orçamento do poller.
+ */
+function espnAllowance(budget: CallBudget, fdTasks: SyncTask[]): number {
+  const fd = fdTasks.reduce((sum, task) => sum + footballDataTaskCost(task), 0)
+  return Math.max(0, callsLeft(budget) - fd - SCORING_RESERVE_CALLS)
 }
 
 type PollerPlan = {
@@ -378,6 +427,11 @@ function tallySyncOutcomes(
       console.info(`[poller] ESPN indisponível comp=${comp.comp_id} round=${round}: ${err.message}`)
       return
     }
+    // Sem saldo no tick a data foi para a fila e o dreno a retoma: não é falha do provedor.
+    if (err instanceof CallBudgetExhaustedError) {
+      console.info(`[poller] Sem saldo de chamadas comp=${comp.comp_id} round=${round}: adiado.`)
+      return
+    }
     tally.hadError = true
     logError(
       ae,
@@ -443,6 +497,13 @@ function tallySyncOutcomes(
  * ticks, inclusive além das 24 h do resgate. A ESPN segue o mesmo caminho com
  * o orçamento e o controle de acesso dela: a data do scoreboard que falhar vira
  * item pendente, e o que chegou das outras datas é gravado.
+ *
+ * Subrequests (ADR-027, adendo do ticket 03): o `POLLER_CALL_BUDGET` vale para a
+ * football-data e a ESPN juntas. Cada tarefa da ESPN é admitida pelo custo completo
+ * (3 chamadas por data e a gravação) contra um saldo fixado antes das sincronizações,
+ * com o enfileiramento reservado; a que não cabe tem as datas enfileiradas e o dreno
+ * as retoma, sem erro de provedor nem tentativa gasta. O fallback só gasta o que sobra
+ * além da reserva da pontuação.
  */
 export async function pollActiveMatches(
   rawDb: D1Database,
@@ -470,6 +531,15 @@ export async function pollActiveMatches(
   // scoreboard.
   const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
   const fdTasks = tasks.filter((task) => task.comp.provider !== 'espn')
+
+  // Subrequests (ADR-027, adendo do ticket 03): cada tarefa da ESPN é admitida pelo
+  // custo completo antes de começar (vaga, `fetch` e registro de cada data, mais a
+  // gravação), contra um saldo fixado antes de qualquer sincronização. A que não
+  // cabe nem começa: as datas dela vão para a fila durável, e o dreno as retoma. O
+  // enfileiramento (1 chamada) está reservado desse saldo, e os `fetch` da ESPN são
+  // cobrados pelo porteiro, não pelo observador (sem contar duas vezes).
+  const espnBudget = new DrainBudget(rawDb, espnAllowance(budget, fdTasks), ESPN_DEFER_CALLS)
+  const espnDeferrals: NewWorkItem[] = []
 
   const runFdTask = async (task: SyncTask): Promise<SyncOutcome> => {
     const { comp, round } = task
@@ -522,22 +592,33 @@ export async function pollActiveMatches(
       season: comp.season,
       competitionId: comp.comp_id,
     }
+    const span = espnBudget.open(espnSyncCost(dates?.length ?? 1))
+    if (!span) {
+      // Não coube no saldo do tick: a data espera o dreno, sem erro do provedor nem tentativa.
+      const err = new CallBudgetExhaustedError()
+      espnDeferrals.push(...espnDeferralItems(base, dates, err))
+      return { success: false as const, comp, round, err }
+    }
     try {
       const result = await syncFixtures({
         competitionCode: comp.external_id,
         season: Number(comp.season),
         dates,
         apiKey,
-        db,
+        db: span.db,
         coordinate: true,
-        onHttpAttempt: countHttp(
-          createProviderHttpObserver(ae, { context: 'poller', competitionId: comp.comp_id }),
-        ),
+        callGate: span,
+        onHttpAttempt: createProviderHttpObserver(ae, {
+          context: 'poller',
+          competitionId: comp.comp_id,
+        }),
         ae,
       })
       // O que a ESPN não entregou (orçamento, bloqueio, timeout, resposta
-      // incompleta) vira uma pendência por data; o que chegou já foi gravado.
-      if (result.pending) await deferEspnWork(db, base, result.pending.dates, result.pending.error)
+      // incompleta, falta de saldo) vira uma pendência por data; o que chegou já foi gravado.
+      if (result.pending) {
+        espnDeferrals.push(...espnDeferralItems(base, result.pending.dates, result.pending.error))
+      }
       return {
         success: true as const,
         comp,
@@ -547,31 +628,77 @@ export async function pollActiveMatches(
         ...(result.pending ? { pendingError: result.pending.error } : {}),
       }
     } catch (err) {
-      // Falha depois do fetch (gravação): nada foi aproveitado, todas as datas voltam.
-      await deferEspnWork(db, base, dates, err)
+      // Falha depois do fetch (gravação, ou saldo que acabou antes de gravar): nada foi
+      // aproveitado, todas as datas voltam.
+      espnDeferrals.push(...espnDeferralItems(base, dates, err))
       return { success: false as const, comp, round, err }
+    } finally {
+      span.close()
     }
+  }
+
+  /**
+   * Grava de uma vez as datas da ESPN que não vieram, com o saldo reservado para isso. Se
+   * a gravação falha, o log tem o erro e o tick sai como erro (o poller replaneja pelo D1
+   * no tick seguinte, e a descoberta e o dreno cobrem o resto).
+   */
+  const flushEspnDeferrals = async (): Promise<boolean> => {
+    if (espnDeferrals.length === 0) return true
+    try {
+      await enqueueProviderWork(espnBudget.db, espnDeferrals, Date.now())
+      return true
+    } catch (err) {
+      logError(ae, 'football_api_error', '[poller] Falha ao enfileirar as datas da ESPN:', err, {
+        blobs: ['espn_defer', String(espnDeferrals.length)],
+      })
+      return false
+    }
+  }
+
+  let queueFailed = false
+  const runEspnTasks = async (): Promise<SyncOutcome[]> => {
+    const outcomes = await runWithConcurrency(
+      ESPN_MAX_CONCURRENT_COMPETITIONS,
+      espnTasks,
+      runEspnTask,
+    )
+    queueFailed = !(await flushEspnDeferrals())
+    return outcomes
   }
 
   const [fdResults, espnResults] = await Promise.all([
     runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runFdTask),
-    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runEspnTask),
+    runEspnTasks(),
   ])
+  // O que a ESPN gastou entra na conta do tick: o fallback e a pontuação enxergam o que sobra.
+  budget.used += espnBudget.used
   const syncResults = [...fdResults, ...espnResults]
 
   // Requests primárias planejadas, sem retries nem chamadas do fallback.
   const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)
-  const { fixturesUpdated, eventsDiscarded, hadError, syncedComps, fallbackCompIds } =
-    tallySyncOutcomes(syncResults, ae, lateTask)
+  const tally = tallySyncOutcomes(syncResults, ae, lateTask)
+  const { fixturesUpdated, eventsDiscarded, syncedComps, fallbackCompIds } = tally
+  const hadError = tally.hadError || queueFailed
 
   // HTTP 200 pode trazer status atrasado: o fallback consulta o D1 após os upserts
   // e só chama a ESPN quando ainda há partidas elegíveis sem resultado final.
   if (fallbackCompIds.size > 0) {
+    // O fallback é complementar (o D1 o replaneja a cada tick) e só gasta o que sobra além da
+    // reserva da pontuação: sem saldo ele espera o tick seguinte, sem fila nem erro. O porteiro
+    // cobra os `fetch`, e o observador não os conta de novo.
+    const fallbackLimit = POLLER_CALL_BUDGET - SCORING_RESERVE_CALLS
+    const fallbackGate: CallGate = {
+      callsLeft: () => callsLeft({ limit: fallbackLimit, used: budget.used }),
+      chargeFetch: () => {
+        if (budget.used + 1 > fallbackLimit) throw new CallBudgetExhaustedError()
+        budget.used += 1
+      },
+    }
     try {
       const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), {
         now,
-        onHttpAttempt: countHttp(),
         coordinate: true,
+        callGate: fallbackGate,
       })
       for (const [compId, updated] of updatedByComp) {
         if (updated > 0) syncedComps.add(compId)
@@ -632,6 +759,8 @@ export async function pollActiveMatches(
       api_requests_planned: plannedApiRequests,
       espn_max_concurrent: ESPN_MAX_CONCURRENT_COMPETITIONS,
       espn_min_interval_ms: ESPN_MIN_INTERVAL_MS,
+      espn_budget: espnBudget.limit,
+      espn_deferred_dates: espnDeferrals.length,
       calls_used: budget.used,
       calls_budget: budget.limit,
       scoring_competitions: toScore.length,
