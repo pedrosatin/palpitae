@@ -204,7 +204,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha ou cota zerada, 10 em sucesso amostrado); só football-data: `double3`=requests restantes na janela e `double4`=segundos até o reset, os dois `-1` sem cabeçalho válido |
-| `provider_work_run` | `status` (`ok`/`error`; `error` quando algum item falhou de vez no teto de tentativas ou quando a gravação do estado dos itens falhou e foi preciso devolvê-los à fila) | — | — | `double1`=claimed (itens reclamados), `double2`=done, `double3`=requeued (devolvidos à fila sem tentativa nova do provedor), `double4`=failed, `double5`=duration_ms, `double6`=released (reclamados e devolvidos à fila sem tentativa nova, por falta de saldo de subrequests ou de vaga no provedor: os que não chegaram a começar e o que o saldo cortou no meio), `double7`=calls_used (subrequests que o dreno gastou, de 45; a recuperação da gravação do estado, quando acontece, soma aqui). Uma linha por execução do drenador da fila durável de sync (ADR-027), nos minutos do trigger fundido com o poller que não são 0 nem 30; falha do D1 no dreno sai pelo `logError` com a mensagem em blob3 e sem doubles. Linha anterior ao deploy do orçamento de subrequests não tem `double6` nem `double7` |
+| `provider_work_run` | `status` (`ok`/`error`; `error` quando algum item falhou de vez no teto de tentativas, o pós-sync de algum item falhou ou a gravação do estado dos itens falhou e foi preciso devolvê-los à fila; na ESPN também `blocked`/`suspended`, execução que saiu sem reclamar nada porque o provedor estava pausado) | `provider` (`football-data`/`espn`) | — | `double1`=claimed (itens reclamados), `double2`=done, `double3`=requeued (devolvidos à fila sem tentativa nova do provedor), `double4`=failed, `double5`=duration_ms, `double6`=released (reclamados e devolvidos à fila sem tentativa nova, por falta de saldo de subrequests ou de vaga no provedor: os que não chegaram a começar e o que o saldo cortou no meio), `double7`=calls_used (subrequests que o dreno gastou, de 45; a recuperação da gravação do estado, quando acontece, soma aqui; `blocked`/`suspended` gravam `0` em todos menos `double7`, que é a leitura do estado). Uma linha por execução de cada drenador da fila durável de sync (ADR-027), nos minutos do trigger fundido com o poller que não são 0 nem 30; falha do D1 no dreno sai pelo `logError` com o provedor em blob3, a mensagem em blob4 e sem doubles. A football-data grava uma linha por execução; a ESPN só quando reclamou itens ou saiu bloqueada/suspensa. Linha anterior ao deploy do orçamento de subrequests não tem `double6` nem `double7`, e a anterior ao deploy da ESPN não tem o provedor em blob3 (o erro do D1 trazia a mensagem nesse lugar; não há leitor interno dessa posição) |
+| `provider_access_blocked` | `provider` (`espn`) | `status` (HTTP que causou o bloqueio: `403`, `401` ou `451`) | `estado`: `backoff` (nova tentativa espaçada) ou `suspended` (coleta suspensa até o operador retomar) | `error_message` em blob5; `double1`=403 seguidos, `double2`=minutos até a nova tentativa (`0` quando suspensa). Um evento por passo do controle de acesso da ESPN: cada 403 que espaça a coleta e a suspensão. O 429 não gera este evento (já está em `provider_http_attempt`) |
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
 | `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
@@ -245,7 +246,8 @@ O do poller traz ainda o orçamento de chamadas do tick (ADR-024): `calls_used`
 (consultas e batches do D1 mais tentativas HTTP), `calls_budget`,
 `scoring_competitions` (competições que entraram na pontuação, sincronizadas no
 tick ou com jogo pendente no D1), `matches_scored` e `scoring_unfinished`
-(competições que ficaram para o tick seguinte por falta de chamadas).
+(competições que ficaram para o tick seguinte por falta de chamadas), `espn_budget` e
+`espn_deferred_dates` (saldo das sincronizações da ESPN e datas que não couberam e foram para a fila).
 A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
@@ -283,7 +285,7 @@ execução sem liga e não entram no recorte por competição.
 ### Tentativas HTTP aos provedores (`provider_http_attempt`)
 
 Cada `fetch` ao football-data.org ou à ESPN gera no máximo um evento, inclusive o segundo
-`fetch` do retry. A ESPN retenta respostas 429 e 5xx; o football-data.org retenta 429 uma vez,
+`fetch` do retry. A ESPN retenta respostas 5xx (o 429 e o 403 pausam o provedor, ver "Acesso da ESPN" abaixo); o football-data.org retenta 429 uma vez,
 depois do reset que a resposta informou (ver "Cota da football-data" abaixo).
 A medição fica nos clientes (`providers/espn.ts` e
 `fetchMatchesFromApi` em `matches/sync.ts`) e não adiciona nenhuma chamada externa. O processo
@@ -341,26 +343,134 @@ recorte, "sem registro ainda" quando nunca houve evento, e a data de início da 
 
 #### Fila durável de sync (`provider_work_run`)
 
-Uma linha por execução do drenador (`footballDataDrain`, chamado por `runProviderDrains`), que roda nos minutos 5, 10, 20, 25, 35, 40, 50 e 55 do trigger fundido com o poller (nos minutos 0 e 30 só o poller roda): `blob2` é `ok` ou `error`
-(error quando algum item falhou de vez no teto de tentativas ou quando a gravação do estado dos
-itens do ciclo falhou duas vezes e o dreno só conseguiu devolvê-los à fila), e os doubles são, nessa ordem,
-`claimed` (itens reclamados), `done`, `requeued` (devolvidos à fila sem tentativa nova do
-provedor, depois de tentar) e `failed`, depois `duration_ms`, `released` (reclamados e devolvidos
-à fila sem tentativa nova, por falta de saldo de subrequests ou de vaga no provedor: os que não
-chegaram a começar e o que o saldo cortou no meio; o pós-sync que não terminou por saldo conta
-em `requeued`) e `calls_used` (subrequests gastos pelo
-dreno, entre D1 e `fetch`, no máximo 45 por invocação). Falha do D1 no dreno sai pelo `logError`
-com a mensagem em blob3 e sem doubles; é também assim que sobe a indisponibilidade persistente do
-D1, em que nem a liberação mínima dos itens grava: eles ficam `running` até o lease de 5 min
-vencer e o dreno seguinte os retoma, sem tentativa gasta a mais. Uma nova tentativa da gravação do
-estado que dá certo só deixa uma linha de `console.error` (`[drain] Gravação do estado dos itens
-falhou, repetindo`), sem evento. `released` acima de zero com `calls_used` perto de 45 é o
-dreno encerrado por saldo: o que sobrou volta no tick seguinte, e o painel de trabalho pendente
-o mostra até lá. O coordenador também escreve no log uma linha `[perf]` por invocação, com o total
-gasto, o orçamento e os drenos que pararam por saldo. O que o painel mostra como trabalho pendente por competição
-vem desta fila; idade das pendências é `now - created_at` dos itens `pending`.
+Uma linha por execução de cada dreno da fila (`footballDataDrain` e `espnDrain`, chamados por
+`runProviderDrains`). Os dois rodam na mesma invocação, nos minutos 5, 10, 20, 25, 35, 40, 50 e 55 do
+trigger fundido com o poller (nos minutos 0 e 30 só o poller roda), e `blob3` diz de qual provedor é a
+linha. A football-data grava uma linha por execução do dreno (a segunda rodada do coordenador, que
+reaproveita a sobra de saldo, é outra execução e outra linha); a ESPN, só quando reclamou itens ou saiu
+bloqueada/suspensa. `blob2` é `ok` ou `error` (error quando algum item falhou de vez no teto de
+tentativas, o pós-sync de algum item falhou — esse também sai pelo `logError` `football_api_error` com
+`blob2` = `drain_post_sync` — ou a gravação do estado dos itens do ciclo falhou duas vezes e o dreno só
+conseguiu devolvê-los à fila). Na ESPN, `blocked` e `suspended` dizem que a execução nem reclamou itens
+porque o provedor estava pausado. Os doubles são, nessa ordem, `claimed` (itens reclamados), `done`,
+`requeued` (devolvidos à fila sem tentativa nova do provedor, depois de tentar) e `failed`, depois
+`duration_ms`, `released` (reclamados e devolvidos à fila sem tentativa nova, por falta de saldo de
+subrequests ou de vaga no provedor: os que não chegaram a começar e o que o saldo cortou no meio; o
+pós-sync que não terminou por saldo conta em `requeued`) e `calls_used` (subrequests gastos pelo dreno,
+entre D1 e `fetch`; a soma dos drenos do tick fica em 45 no máximo). Falha do D1 no dreno sai pelo
+`logError` com o provedor em blob3, a mensagem em blob4 e sem doubles; é também assim que sobe a
+indisponibilidade persistente do D1, em que nem a liberação mínima dos itens grava: eles ficam
+`running` até o lease de 5 min vencer e o dreno seguinte os retoma, sem tentativa gasta a mais. Uma
+nova tentativa da gravação do estado que dá certo só deixa uma linha de `console.error` (`[drain]
+Gravação do estado dos itens falhou, repetindo`), sem evento. `released` acima de zero com `calls_used`
+perto da fatia é o dreno encerrado por saldo: o que sobrou volta no tick seguinte, e o painel de
+trabalho pendente o mostra até lá. O coordenador também escreve no log uma linha `[perf]` por
+invocação, com o total gasto, o orçamento e os drenos que pararam por saldo. O que o painel mostra
+como trabalho pendente por competição vem desta fila; idade das pendências é `now - created_at` dos
+itens `pending`.
 
-Ausência de linha não é zero: o evento só existe a partir do deploy do drenador.
+Ausência de linha não é zero: o evento só existe a partir do deploy do drenador (o da ESPN, a partir
+da migration 0047).
+
+#### Acesso da ESPN (403, 429, suspensão)
+
+A API pública da ESPN não é oficial: não há contrato, cota publicada nem termos de uso que cubram a
+coleta automática. O ticket 03 da resiliência a coordena como a football-data (ADR-027, adendo do
+ticket 03), com o que a ESPN faz de diferente:
+
+- **Orçamento:** `ESPN_CALLS_PER_MINUTE = 40` por janela de um minuto na linha `espn` de
+  `provider_rate_state`, abaixo do ritmo de ~46/min que o pacing do cliente já impõe (1,3 s entre
+  inícios). Vale para o poller, o sync administrativo, o fallback de resultados e o dreno (a descoberta
+  não reserva vaga por request; ver "Consumidores da ESPN").
+  Sem vaga, a data vira item pendente e volta no próximo dreno.
+- **Subrequests do dreno:** a ESPN não tem orçamento de invocação próprio. O `espnDrain` é uma entrada na
+  lista do coordenador (`runProviderDrains`) e roda na fatia que ele entrega dos 45 subrequests do ramo
+  drenador. Cada tentativa paga a vaga, o `fetch` e o registro da resposta dessa fatia (ADR-027, adendos
+  "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto. O
+  coordenador conta o trabalho pronto de cada dreno numa consulta (1 chamada dos 45), o dreno sem trabalho
+  não roda e o saldo dele fica com quem tem fila. Com os dois drenos ocupados, a fatia da ESPN comporta 2
+  itens por tick e o tick gasta 38 chamadas (com a limpeza); com a ESPN sozinha, 4 itens e 40; com a
+  football-data sozinha, 5 itens e 39. A estimativa por item é 9 (data de liga) ou 13 (sync manual e
+  descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
+  reclamação recusa e o dreno lê o estado para dizer o motivo (2 chamadas, nenhuma escrita).
+- **Subrequests do poller:** o `POLLER_CALL_BUDGET` (45) vale para a football-data e a ESPN juntas. O saldo da
+  ESPN é fixado antes de qualquer sincronização (45 menos o que já foi gasto, menos o estimado das rodadas da
+  football-data, 8 cada, menos 5 de reserva da pontuação), e cada competição da ESPN (2 a 4 datas) é admitida
+  pelo custo completo (3 chamadas por data e 6 da gravação: 12 para 2 datas, 16 para 3). A que não cabe nem
+  começa: as datas vão para a fila por data (`provider_work`, `kind` `result` ou `late`, `not_before` = o
+  instante, `last_error` = "saldo de chamadas do tick esgotado…"), sem tentativa gasta e sem
+  `football_api_error`, e o dreno as retoma nos minutos 5 ou 35. O enfileiramento (1 `db.batch()`) está
+  reservado do saldo antes de qualquer tarefa. O log `[perf]` do poller traz `espn_budget` (o saldo
+  fixado) e `espn_deferred_dates` (datas enfileiradas no tick). Tick com 1, 2, 3 e 4 competições da ESPN com
+  1 jogo na janela (2 datas, com a limpeza do `scheduled`): 20, 36, 44 e 45 chamadas (antes, 20, 36, 44 e
+  52, com a 51 e a 52 recusadas); com jogos de hoje e de ontem nas 4 (3 datas), 43 (antes, 55 e o tick
+  rejeitado). Competição adiada pelo saldo e pendência a mais no painel por até 10 minutos são esperados
+  nesses ticks; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
+  está consumindo o do poller.
+- **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,
+  sem retry imediato e sem mexer na sequência de 403. O prazo não é encurtado: o bloqueio é o maior
+  entre o `Retry-After` válido e a pausa mínima conservadora de 60 s (que também vale sem cabeçalho ou
+  com cabeçalho inválido). Só um `Retry-After` absurdo, acima de 24 h, suspende a coleta
+  (`suspended_reason = 'http_429_retry_after'`) e alerta (`provider_access_blocked`, status `429`,
+  estado `suspended`), como o 401 e o 451: o operador analisa e retoma.
+- **403:** limita e espaça. O 1º 403 bloqueia o provedor por 15 min, o 2º por 1 h e o 3º por 6 h; o 4º
+  seguido **suspende** a coleta. Cada passo emite `provider_access_blocked`. 401 e 451 suspendem na hora.
+  Dois 403 simultâneos contam um passo só. **Ordem das respostas entrelaçadas:** a última resposta, na
+  ordem em que o D1 as grava, vence. Um sucesso depois de um 403 zera a sequência (`UPDATE … SET
+  forbidden_streak = 0 WHERE forbidden_streak != 0`, atômico e sem depender do que a reserva viu, porque
+  dois isolates reservam antes de qualquer resposta); um 403 depois de um sucesso conta 1. O sucesso zera a
+  sequência, mas não levanta o bloqueio que o 403 já impôs: ele espaça a coleta e vale até o fim.
+- **Gravação que falha:** se o D1 não aceita a gravação de uma proibição (401, 451, 403, 429, ou o 429 com
+  `Retry-After` absurdo), o isolate instala um bloqueio local em memória e nenhuma reserva passa, inclusive
+  as chamadas já enfileiradas no mutex do cliente. A gravação é refeita a cada reserva, até dar certo (com o
+  instante da resposta, sem contar duas vezes um 403 que o bloqueio já absorveu); gravada, o D1 volta a ser a
+  verdade e a reserva seguinte lê dele a suspensão ou o bloqueio. Um bloqueio por prazo (429, 403) também cai
+  quando o prazo vence, mas a regravação continua. Uma suspensão não vence sozinha. Limite: o bloqueio local é
+  do isolate (cada isolate só conhece o que ele mesmo viu), e se o operador retomar o acesso antes de a
+  gravação ter dado certo em algum isolate, a regravação dele suspende de novo na próxima reserva; confira o
+  estado depois de retomar.
+- **Suspensa:** nenhuma chamada sai (nem do dreno), os itens ficam pendentes sem gastar tentativa e os
+  dados já confirmados não mudam. Não volta sozinha: continuar tentando um acesso que a resposta proibiu
+  seria desrespeitar a decisão do provedor.
+- **Falhas parciais:** o sync de várias datas grava as que chegaram e adia a que falhou e as seguintes,
+  um item `provider_work` por data (`round` = `YYYYMMDD`). Timeout e 5xx gastam tentativa (teto de 6, o
+  produtor revive no tick seguinte). Resposta 200 sem a lista `events` é incompleta: falha o item e não
+  confirma nada. Lista vazia é válida, mas **também não confirma resultado**: a partida só termina quando
+  um evento dela diz isso, e a ausência nunca encerra, cancela nem marca ausente um jogo.
+
+Para retomar uma coleta suspensa, depois de o operador conferir os termos de uso e a autorização (a
+decisão é dele, não do código):
+
+```sql
+-- npx wrangler d1 execute palpitae --remote --command "<SQL>"
+UPDATE provider_rate_state
+   SET forbidden_streak = 0, blocked_until = 0, suspended_at = NULL, suspended_reason = NULL
+ WHERE provider = 'espn';
+UPDATE provider_work SET not_before = 0 WHERE provider = 'espn' AND status = 'pending';
+```
+
+Para ver o estado: `SELECT blocked_until, forbidden_streak, suspended_at, suspended_reason FROM
+provider_rate_state WHERE provider = 'espn'` e, na fila, `SELECT kind, round, status, attempts,
+last_error FROM provider_work WHERE provider = 'espn'`.
+
+**Consumidores da ESPN.** Coordenados (reservam vaga e respeitam bloqueio e suspensão): poller (datas
+dos jogos pendentes), fallback de resultados da football-data pela ESPN, `POST /matches/sync` de
+competição ESPN e o dreno. **Parcialmente integrada:** a descoberta diária (nove datas por competição,
+`15 6 * * *`) segue a 1 chamada por request, sem reserva por request, sem fila e sem orçamento de invocação,
+mas lê o estado de acesso antes (1 consulta por invocação, só se há competição da ESPN): com a coleta
+suspensa ou bloqueada ela pula a ESPN (sem fetch, sem erro e sem fila; o `[perf]` traz `espn_skipped`), e uma
+resposta 401, 403, 429 ou 451 é registrada no gate (com `provider_access_blocked`) e vale para o resto da
+execução e para as outras; o sucesso não escreve no D1. Custo extra medido: 1 chamada por invocação (19 para
+20 com 1 competição; a ESPN suspensa gasta 3 com a limpeza e nenhum `fetch`). **Limitação conhecida da
+descoberta (follow-up, ticket próprio):** continua sujeita ao limite de 50 subrequests por invocação. Com 4
+competições da ESPN × 9 datas ela já passava do limite na `main`/#771 (42 e 54 chamadas, medidos pelo
+review), a chamada 51 é recusada e jogos novos que o D1 não conhece não chegam; a correção sugerida (orçamento
+de invocação, admissão pelo custo, fila `discovery`, status pelo dreno) e as duas armadilhas conhecidas (o
+`finished` precisa dos descartes por time indefinido do calendário inteiro, e a data `failed` precisa de
+recuperação fora do horizonte de ontem a hoje + 7) estão no ADR-027. **Fora do orçamento, por
+decisão registrada:** o radar (`radar-sync.yml`, GitHub Actions, ~40 slugs por dia, sem acesso ao D1
+durante a coleta; sai de IPs do GitHub, não do Worker) e qualquer script local. O radar segue só com o
+pacing por processo e o 403 por slug conta como falha parcial dele (`radar_sync_run` `partial`).
 
 Observação sobre `prediction_saved`: o `kind` (single/bulk/import/replicate) cai em **blob5** porque o
 `round` (blob3) é mantido na posição mesmo vazio, pra alinhar as quatro variantes na mesma coluna. O `replicate` ("Aplicar também em") grava `double1` com o número de palpites escritos nos outros grupos.

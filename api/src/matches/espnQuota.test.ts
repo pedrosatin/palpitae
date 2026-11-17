@@ -46,6 +46,10 @@ function buildFakeDb(rows: ActiveCompetition[] | ActiveRound[]) {
         async all<T>(): Promise<{ results: T[] }> {
           return { results: (unscoredReport ? [] : rows) as unknown as T[] }
         },
+        // A leitura do estado de acesso da ESPN antes da descoberta: acesso livre (sem linha).
+        async first(): Promise<null> {
+          return null
+        },
       }
       return stmt
     },

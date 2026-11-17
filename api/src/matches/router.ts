@@ -7,7 +7,9 @@ import { logError, logEvent, logRequestPerf } from '../observability'
 import { createProviderHttpObserver } from '../observability/providerHttp'
 import type { AppContext } from '../types'
 import { defaultRoundSql, roundRuleBinds } from './defaultRound'
+import { isEspnRefusal } from './espnAccess'
 import { isEspnPrimaryCompetition } from './espnSync'
+import { deferEspnWork } from './espnWork'
 import { FootballDataQuotaError } from './footballDataQuota'
 import { FootballDataSlotBusyError } from './providerBudget'
 import { enqueueProviderWork } from './providerWork'
@@ -458,13 +460,53 @@ router.post('/sync', requireAuth, async (c) => {
       apiKey,
       db: c.env.DB,
       // O sync administrativo conta no orçamento compartilhado (ADR-027).
-      coordinate: !isEspnPrimaryCompetition(competition),
+      coordinate: true,
       onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
       ae: c.env.AE,
     })
     await scoreUnprocessedMatches(result.competitionId, c.env.DB)
-    return c.json({ ok: true, synced: result })
+    const { pending, ...synced } = result
+    if (pending) {
+      // ESPN: o que chegou foi gravado e pontuado; as datas que a ESPN não
+      // entregou ficam pendentes na fila e o dreno as retoma.
+      await deferEspnWork(
+        c.env.DB,
+        {
+          kind: 'manual',
+          competitionCode: competition,
+          season: String(season),
+          competitionId: result.competitionId,
+        },
+        pending.dates,
+        pending.error,
+      )
+      return c.json({
+        ok: true,
+        pending: true,
+        pendingDates: pending.dates,
+        synced,
+        message: 'Sync parcial: as datas pendentes ficam na fila e voltam quando a ESPN responder.',
+      })
+    }
+    return c.json({ ok: true, synced })
   } catch (error) {
+    // ESPN sem vaga, bloqueada ou suspensa: o trabalho fica pendente na fila.
+    if (isEspnRefusal(error)) {
+      await deferEspnWork(
+        c.env.DB,
+        { kind: 'manual', competitionCode: competition, season: String(season), competitionId: '' },
+        dates,
+        error,
+      )
+      return c.json({
+        ok: true,
+        pending: true,
+        message:
+          error.reason === 'suspended'
+            ? 'Sync agendado: a coleta da ESPN está suspensa até o operador retomá-la.'
+            : 'Sync agendado: a ESPN está bloqueada ou sem vaga no orçamento e a coleta volta mais tarde.',
+      })
+    }
     // Sem vaga no orçamento, o trabalho não se perde: fica pendente na fila
     // durável e o cron drenador executa com o orçamento, na sua vez.
     if (error instanceof FootballDataSlotBusyError || error instanceof FootballDataQuotaError) {

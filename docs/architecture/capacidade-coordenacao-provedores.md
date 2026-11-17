@@ -79,6 +79,8 @@ Cliente: `fetchEspnScoreboard` em `api/src/providers/espn.ts`. Sem credencial. M
 
 O radar grava no D1 via `wrangler d1 execute --remote` e **não** emite `provider_http_attempt`. Um orçamento só no isolate do Worker **não** cobre o radar em Actions até haver integração explícita (reserva remota, rota HTTP ou migração para o Worker).
 
+**Atualização (ticket 03, 2026-11-17):** poller, fallback, `POST /matches/sync` e o dreno passaram a reservar vaga na linha `espn` de `provider_rate_state` e a respeitar bloqueio e suspensão; a descoberta diária respeita a suspensão e o bloqueio e registra as respostas de erro, sem reserva por request e sem orçamento de invocação (ADR-027, adendo do ticket 03). O radar segue **não integrado, por decisão**, e `api/scripts/test-results-api.ts` não chama a ESPN.
+
 ### 2.3 Outros processos externos
 
 Resend (lembretes), Google OAuth, Analytics Engine SQL API, scripts locais. Fora do escopo de coordenação de partidas neste documento (tickets 06/07).

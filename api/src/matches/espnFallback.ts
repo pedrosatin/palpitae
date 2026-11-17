@@ -10,9 +10,13 @@ import {
   fetchEspnScoreboard,
   isEspnFinal,
   parseNonNegativeInt,
+  requireScoreboardEvents,
   type EspnCompetitor,
+  type EspnGate,
   type EspnScoreboardEvent,
 } from '../providers/espn'
+import { CallBudgetExhaustedError, type CallGate } from './callBudget'
+import { createEspnGate, isEspnRefusal } from './espnAccess'
 import { espnDatesAround, resultWindowBounds, type ResultWindowBounds } from './matchPollingWindow'
 
 /**
@@ -93,6 +97,19 @@ export type EspnFallbackOptions = {
   now?: number
   /** Chamado a cada tentativa HTTP à ESPN, além da telemetria. O poller conta as chamadas da invocação. */
   onHttpAttempt?: ProviderHttpObserver
+  /**
+   * Reserva vaga no orçamento compartilhado da ESPN e respeita o bloqueio e a
+   * suspensão do acesso (ADR-027). O poller liga; sem a flag a chamada fica
+   * fora do orçamento.
+   */
+  coordinate?: boolean
+  /**
+   * Porteiro de subrequests do chamador (o poller): cada tentativa só começa se a vaga, o
+   * `fetch` e o registro da resposta cabem no saldo dele, e o `fetch` é cobrado por ele
+   * (sem `onHttpAttempt`, para não contar duas vezes). Sem saldo a competição espera o
+   * tick seguinte, sem erro nem fila: o fallback é complementar e o D1 o replaneja.
+   */
+  callGate?: CallGate
 }
 
 /**
@@ -166,16 +183,37 @@ export async function scoreWindowFromEspn(
   // Mesmos limites do poller, incluindo o resgate de até 24 h e a exclusão de
   // adiados fora da janela ativa.
   const bounds = resultWindowBounds(opts.now ?? Date.now())
+  const gate = opts.coordinate ? createEspnGate(db, ae, opts.callGate) : undefined
 
   await Promise.all(
     compIds.map(async (compId) => {
       try {
-        const updated = await scoreCompetitionWindow(db, ae, compId, bounds, opts.onHttpAttempt)
+        const updated = await scoreCompetitionWindow(
+          db,
+          ae,
+          compId,
+          bounds,
+          opts.onHttpAttempt,
+          gate,
+        )
         updatedByComp.set(compId, updated)
       } catch (err) {
         // Erro de fetch/parsing isola a competição — as demais continuam. Devolve
         // 0 para o mapa cobrir todas as comps pedidas (0 = nada atualizado).
         updatedByComp.set(compId, 0)
+        // O fallback é complementar e se replaneja pelo D1 a cada tick: com o
+        // acesso recusado ele só espera, sem erro nem fila própria (o resultado
+        // principal tem a dele).
+        if (isEspnRefusal(err)) {
+          console.info(`[espn-fallback] ESPN indisponível comp=${compId}: ${err.message}`)
+          return
+        }
+        if (err instanceof CallBudgetExhaustedError) {
+          console.info(
+            `[espn-fallback] Sem saldo de chamadas comp=${compId}: espera o próximo tick.`,
+          )
+          return
+        }
         logError(ae, 'match_results_fallback', `[espn-fallback] Falhou comp=${compId}:`, err, {
           blobs: [compId],
         })
@@ -192,6 +230,7 @@ async function scoreCompetitionWindow(
   compId: string,
   { earliestOver, rescueFloor, stillRelevant }: ResultWindowBounds,
   onHttpAttempt: ProviderHttpObserver | undefined,
+  gate: EspnGate | undefined,
 ): Promise<number> {
   const { results } = await db
     .prepare(
@@ -243,9 +282,10 @@ async function scoreCompetitionWindow(
     telemetry?.(attempt)
   }
   const scoreboards = await Promise.all(
-    Array.from(dates).map((date) => fetchEspnScoreboard(slug, date, onAttempt)),
+    Array.from(dates).map((date) => fetchEspnScoreboard(slug, date, onAttempt, gate)),
   )
-  const events = scoreboards.flatMap((scoreboard) => scoreboard.events ?? [])
+  // Resposta sem a lista de eventos falha a competição: não é "sem resultado".
+  const events = scoreboards.flatMap((scoreboard) => requireScoreboardEvents(scoreboard, slug))
 
   let updated = 0
   let skipped = 0

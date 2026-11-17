@@ -1,7 +1,7 @@
 import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types'
 
 /** Limite de instruções por `db.batch` do D1. */
-const D1_BATCH_LIMIT = 100
+export const D1_BATCH_LIMIT = 100
 
 /**
  * Executa as instruções em lotes de 100, em paralelo. Cada lote é uma transação
