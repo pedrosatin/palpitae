@@ -380,7 +380,8 @@ ticket 03), com o que a ESPN faz de diferente:
 
 - **Orçamento:** `ESPN_CALLS_PER_MINUTE = 40` por janela de um minuto na linha `espn` de
   `provider_rate_state`, abaixo do ritmo de ~46/min que o pacing do cliente já impõe (1,3 s entre
-  inícios). Vale para o poller, a descoberta, o sync administrativo, o fallback de resultados e o dreno.
+  inícios). Vale para o poller, o sync administrativo, o fallback de resultados e o dreno (a descoberta
+  não reserva vaga por request; ver "Consumidores da ESPN").
   Sem vaga, a data vira item pendente e volta no próximo dreno.
 - **Subrequests do dreno:** a ESPN não tem orçamento de invocação próprio. O `espnDrain` é uma entrada na
   lista do coordenador (`runProviderDrains`) e roda na fatia que ele entrega dos 45 subrequests do ramo
@@ -453,8 +454,20 @@ provider_rate_state WHERE provider = 'espn'` e, na fila, `SELECT kind, round, st
 last_error FROM provider_work WHERE provider = 'espn'`.
 
 **Consumidores da ESPN.** Coordenados (reservam vaga e respeitam bloqueio e suspensão): poller (datas
-dos jogos pendentes), descoberta diária (nove datas por competição), fallback de resultados da
-football-data pela ESPN, `POST /matches/sync` de competição ESPN e o dreno. **Fora do orçamento, por
+dos jogos pendentes), fallback de resultados da football-data pela ESPN, `POST /matches/sync` de
+competição ESPN e o dreno. **Parcialmente integrada:** a descoberta diária (nove datas por competição,
+`15 6 * * *`) segue a 1 chamada por request, sem reserva por request, sem fila e sem orçamento de invocação,
+mas lê o estado de acesso antes (1 consulta por invocação, só se há competição da ESPN): com a coleta
+suspensa ou bloqueada ela pula a ESPN (sem fetch, sem erro e sem fila; o `[perf]` traz `espn_skipped`), e uma
+resposta 401, 403, 429 ou 451 é registrada no gate (com `provider_access_blocked`) e vale para o resto da
+execução e para as outras; o sucesso não escreve no D1. Custo extra medido: 1 chamada por invocação (19 para
+20 com 1 competição; a ESPN suspensa gasta 3 com a limpeza e nenhum `fetch`). **Limitação conhecida da
+descoberta (follow-up, ticket próprio):** continua sujeita ao limite de 50 subrequests por invocação. Com 4
+competições da ESPN × 9 datas ela já passava do limite na `main`/#771 (42 e 54 chamadas, medidos pelo
+review), a chamada 51 é recusada e jogos novos que o D1 não conhece não chegam; a correção sugerida (orçamento
+de invocação, admissão pelo custo, fila `discovery`, status pelo dreno) e as duas armadilhas conhecidas (o
+`finished` precisa dos descartes por time indefinido do calendário inteiro, e a data `failed` precisa de
+recuperação fora do horizonte de ontem a hoje + 7) estão no ADR-027. **Fora do orçamento, por
 decisão registrada:** o radar (`radar-sync.yml`, GitHub Actions, ~40 slugs por dia, sem acesso ao D1
 durante a coleta; sai de IPs do GitHub, não do Worker) e qualquer script local. O radar segue só com o
 pacing por processo e o 403 por slug conta como falha parcial dele (`radar_sync_run` `partial`).
