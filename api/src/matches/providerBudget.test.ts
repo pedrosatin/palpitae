@@ -170,10 +170,7 @@ describe('orçamento compartilhado: um por provedor', () => {
     const { db } = setup()
     const now = Date.parse('2026-11-16T12:00:00Z')
 
-    expect(await reserveProviderSlot(db, 'espn', now)).toEqual({
-      granted: true,
-      forbiddenStreak: 0,
-    })
+    expect(await reserveProviderSlot(db, 'espn', now)).toEqual({ granted: true })
     expect(await reserveProviderSlot(db, 'espn', now)).toMatchObject({
       granted: false,
       reason: 'window_full',

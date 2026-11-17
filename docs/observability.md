@@ -392,8 +392,12 @@ ticket 03), com o que a ESPN faz de diferente:
   (`suspended_reason = 'http_429_retry_after'`) e alerta (`provider_access_blocked`, status `429`,
   estado `suspended`), como o 401 e o 451: o operador analisa e retoma.
 - **403:** limita e espaça. O 1º 403 bloqueia o provedor por 15 min, o 2º por 1 h e o 3º por 6 h; o 4º
-  seguido **suspende** a coleta. Cada passo emite `provider_access_blocked` e uma resposta de sucesso zera
-  a sequência. 401 e 451 suspendem na hora. Dois 403 simultâneos contam um passo só.
+  seguido **suspende** a coleta. Cada passo emite `provider_access_blocked`. 401 e 451 suspendem na hora.
+  Dois 403 simultâneos contam um passo só. **Ordem das respostas entrelaçadas:** a última resposta, na
+  ordem em que o D1 as grava, vence. Um sucesso depois de um 403 zera a sequência (`UPDATE … SET
+  forbidden_streak = 0 WHERE forbidden_streak != 0`, atômico e sem depender do que a reserva viu, porque
+  dois isolates reservam antes de qualquer resposta); um 403 depois de um sucesso conta 1. O sucesso zera a
+  sequência, mas não levanta o bloqueio que o 403 já impôs: ele espaça a coleta e vale até o fim.
 - **Suspensa:** nenhuma chamada sai (nem do dreno), os itens ficam pendentes sem gastar tentativa e os
   dados já confirmados não mudam. Não volta sozinha: continuar tentando um acesso que a resposta proibiu
   seria desrespeitar a decisão do provedor.

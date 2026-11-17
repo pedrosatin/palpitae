@@ -388,7 +388,7 @@ describe('fetchEspnScoreboard com o gate do orçamento compartilhado', () => {
   })
 
   const gateOf = (note: EspnGate['note'] = async () => null) => ({
-    reserve: vi.fn(async () => ({ forbiddenStreak: 0 })),
+    reserve: vi.fn(async () => {}),
     note: vi.fn(note),
   })
 
@@ -399,7 +399,7 @@ describe('fetchEspnScoreboard com o gate do orçamento compartilhado', () => {
     await fetchEspnScoreboard('bra.1', '20261007', undefined, gate)
 
     expect(gate.reserve).toHaveBeenCalledTimes(1)
-    expect(gate.note).toHaveBeenCalledWith({ forbiddenStreak: 0 }, 200, expect.any(Headers))
+    expect(gate.note).toHaveBeenCalledWith(200, expect.any(Headers))
   })
 
   it('sem vaga não há request: a recusa sobe como EspnUnavailableError', async () => {

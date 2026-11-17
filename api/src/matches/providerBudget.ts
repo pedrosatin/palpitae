@@ -90,7 +90,7 @@ export const SUSPENDED_RECHECK_MS = 6 * 60 * 60_000
  * até `blocked_until`) ou `suspended` (acesso proibido, só o operador retoma).
  */
 export type SlotReservation =
-  | { granted: true; forbiddenStreak: number }
+  | { granted: true }
   | {
       granted: false
       reason: 'window_full' | 'blocked' | 'suspended'
@@ -135,7 +135,7 @@ async function tryReserve(
   provider: BudgetedProvider,
   windowId: number,
   now: number,
-): Promise<number | null> {
+): Promise<boolean> {
   const { results } = await db
     .prepare(
       `UPDATE provider_rate_state
@@ -146,11 +146,11 @@ async function tryReserve(
          AND blocked_until <= ?2
          AND suspended_at IS NULL
          AND NOT (window_started_at = ?1 AND window_calls >= ?3)
-       RETURNING forbidden_streak`,
+       RETURNING provider`,
     )
     .bind(windowId, now, rateLimits[provider], provider)
-    .all<{ forbidden_streak: number }>()
-  return results.length === 0 ? null : results[0].forbidden_streak
+    .all<{ provider: string }>()
+  return results.length > 0
 }
 
 /**
@@ -166,8 +166,7 @@ export async function reserveProviderSlot(
   now = Date.now(),
 ): Promise<SlotReservation> {
   const windowId = Math.floor(now / WINDOW_MS)
-  const streak = await tryReserve(db, provider, windowId, now)
-  if (streak !== null) return { granted: true, forbiddenStreak: streak }
+  if (await tryReserve(db, provider, windowId, now)) return { granted: true }
 
   let state = await readProviderState(db, provider)
   if (!state) {
@@ -175,8 +174,7 @@ export async function reserveProviderSlot(
       .prepare(`INSERT OR IGNORE INTO provider_rate_state (provider, credential) VALUES (?, ?)`)
       .bind(provider, 'default')
       .run()
-    const retried = await tryReserve(db, provider, windowId, now)
-    if (retried !== null) return { granted: true, forbiddenStreak: retried }
+    if (await tryReserve(db, provider, windowId, now)) return { granted: true }
     state = await readProviderState(db, provider)
   }
   if (state?.suspendedAt != null) {
@@ -198,8 +196,9 @@ export async function reserveProviderSlot(
  * informa o prazo da retomada, usa `reserveProviderSlot`).
  */
 export async function reserveFootballDataSlot(db: D1Database, now = Date.now()): Promise<void> {
-  const streak = await tryReserve(db, 'football-data', Math.floor(now / WINDOW_MS), now)
-  if (streak === null) throw new FootballDataSlotBusyError()
+  if (!(await tryReserve(db, 'football-data', Math.floor(now / WINDOW_MS), now))) {
+    throw new FootballDataSlotBusyError()
+  }
 }
 
 /**
