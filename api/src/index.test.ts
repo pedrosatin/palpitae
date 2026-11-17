@@ -31,9 +31,13 @@ vi.mock('./matches/poller', () => ({
 vi.mock('./matches/fixtureDiscovery', () => ({
   discoverFixtures: vi.fn(async () => {}),
 }))
+vi.mock('./matches/fdWork', () => ({
+  drainFootballDataWork: vi.fn(async () => {}),
+}))
 
 import { signJwt } from './auth/jwt'
 import worker from './index'
+import { drainFootballDataWork } from './matches/fdWork'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { sendRoundReminders } from './notifications/roundReminder'
@@ -216,6 +220,18 @@ describe('scheduled handler routing', () => {
 
     expect(pollActiveMatches).toHaveBeenCalledTimes(1)
     expect(pollActiveMatches).toHaveBeenCalledWith(env.DB, 'fk', env.AE, 1792022400000)
+    expect(sendRoundReminders).not.toHaveBeenCalled()
+    expect(exportRecentDays).not.toHaveBeenCalled()
+    expect(discoverFixtures).not.toHaveBeenCalled()
+    expect(drainFootballDataWork).not.toHaveBeenCalled()
+  })
+
+  it('routes the work-drain cron to drainFootballDataWork only', async () => {
+    await run('5,10,20,25,35,40,50,55 * * * *', 1792022400000)
+
+    expect(drainFootballDataWork).toHaveBeenCalledTimes(1)
+    expect(drainFootballDataWork).toHaveBeenCalledWith(env.DB, 'fk', env.AE)
+    expect(pollActiveMatches).not.toHaveBeenCalled()
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(discoverFixtures).not.toHaveBeenCalled()

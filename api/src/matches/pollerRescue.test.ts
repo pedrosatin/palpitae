@@ -40,6 +40,11 @@ function database() {
       }
       return stmt
     },
+    // O adiamento de falha grava o item pendente da fila durável; sem efeito
+    // neste fake, que só observa os instantes em que o poller sincroniza.
+    async batch(): Promise<unknown[]> {
+      return []
+    },
   } as unknown as D1Database
   return { sqlite, db }
 }

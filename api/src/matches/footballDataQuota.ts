@@ -119,8 +119,8 @@ export class FootballDataQuotaError extends Error {
 
 /**
  * Instante até o qual este isolate não chama a football-data. Vale só para o
- * isolate: outro isolate, o radar e scripts locais não enxergam esta pausa. A
- * coordenação entre eles é do backlog de resiliência (orçamento compartilhado).
+ * isolate: outro isolate fica sabendo pelo orçamento compartilhado no D1
+ * (`providerBudget.ts`), e o radar e scripts locais seguem sem coordenação.
  */
 let pausedUntil = 0
 
@@ -134,6 +134,22 @@ export function clearFootballDataPause(): void {
 }
 
 /**
+ * Espera imposta por um 429 ou por uma resposta com cota zerada, em
+ * milissegundos: o reset informado (capado) ou, sem reset válido, a espera
+ * conservadora; um 429 nunca espera menos que `FD_RETRY_BACKOFF_MS`. `0` quando
+ * a resposta não impõe pausa. Compartilhada pelo pause do isolate
+ * (`noteFootballDataResponse`) e pelo bloqueio no orçamento do D1
+ * (`noteFootballDataBlock`).
+ */
+export function footballDataPauseMs(status: number, quota: FootballDataQuota): number {
+  if (status !== 429 && quota.remaining !== 0) return 0
+  const resetMs =
+    quota.resetSeconds === null ? FD_QUOTA_DEFAULT_PAUSE_MS : quota.resetSeconds * 1000
+  const floorMs = status === 429 ? FD_RETRY_BACKOFF_MS : 0
+  return Math.min(FD_QUOTA_MAX_PAUSE_MS, Math.max(floorMs, resetMs))
+}
+
+/**
  * Pausa o isolate depois de um 429 ou de uma resposta com cota zerada, pelo
  * reset informado. Sem reset válido usa `FD_QUOTA_DEFAULT_PAUSE_MS`; o 429
  * nunca pausa menos que `FD_RETRY_BACKOFF_MS`; nada passa de
@@ -144,12 +160,8 @@ export function noteFootballDataResponse(
   quota: FootballDataQuota,
   now: number,
 ): void {
-  if (status !== 429 && quota.remaining !== 0) return
-  const resetMs =
-    quota.resetSeconds === null ? FD_QUOTA_DEFAULT_PAUSE_MS : quota.resetSeconds * 1000
-  const floorMs = status === 429 ? FD_RETRY_BACKOFF_MS : 0
-  const pauseMs = Math.min(FD_QUOTA_MAX_PAUSE_MS, Math.max(floorMs, resetMs))
-  pausedUntil = Math.max(pausedUntil, now + pauseMs)
+  const pauseMs = footballDataPauseMs(status, quota)
+  if (pauseMs > 0) pausedUntil = Math.max(pausedUntil, now + pauseMs)
 }
 
 /**
