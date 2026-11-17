@@ -13,6 +13,13 @@ const PAGEVIEWS_BASE = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-
 
 const USER_AGENT = 'palpitae-radar/1.0 (https://palpitae.com.br)'
 
+/**
+ * Teto por requisição. A Wikimedia responde em menos de 1 s; 10 s cobre um dia
+ * ruim sem deixar uma conexão pendurada segurar o job inteiro. Estourar vira
+ * erro de um artigo só: o sync segue e o artigo mantém os pageviews anteriores.
+ */
+export const WIKIMEDIA_TIMEOUT_MS = 10_000
+
 type PageviewsResponse = {
   items?: { timestamp?: string; views?: number }[]
 }
@@ -39,7 +46,10 @@ export async function fetchPageviews(
   const encoded = encodeURIComponent(article.replaceAll(' ', '_')).replaceAll('%2F', '%252F')
   const url = `${PAGEVIEWS_BASE}/pt.wikipedia/all-access/user/${encoded}/daily/${compact(from)}/${compact(to)}`
 
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+  const res = await fetch(url, {
+    headers: { 'User-Agent': USER_AGENT },
+    signal: AbortSignal.timeout(WIKIMEDIA_TIMEOUT_MS),
+  })
   if (res.status === 404) return new Map()
   if (!res.ok) {
     throw new Error(`Pageviews respondeu ${res.status} para "${article}"`)

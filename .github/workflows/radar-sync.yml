@@ -30,6 +30,9 @@ jobs:
   sync:
     name: Coletar e gravar snapshot
     runs-on: ubuntu-latest
+    # A execução leva cerca de 70 s. 10 min é folga larga e ainda derruba uma
+    # coleta pendurada em vez de segurar o runner por 6 h.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: api
