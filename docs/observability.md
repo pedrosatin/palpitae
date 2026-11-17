@@ -204,7 +204,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha ou cota zerada, 10 em sucesso amostrado); só football-data: `double3`=requests restantes na janela e `double4`=segundos até o reset, os dois `-1` sem cabeçalho válido |
-| `provider_work_run` | `status` (`ok`/`error`; `error` quando algum item falhou de vez no teto de tentativas) | — | — | `double1`=claimed (itens reclamados), `double2`=done, `double3`=requeued (devolvidos à fila sem tentativa nova do provedor), `double4`=failed, `double5`=duration_ms. Uma linha por execução do cron drenador da fila durável de sync (ADR-027); falha do D1 no dreno sai pelo `logError` com a mensagem em blob3 e sem doubles |
+| `provider_work_run` | `status` (`ok`/`error`; `error` quando algum item falhou de vez no teto de tentativas) | — | — | `double1`=claimed (itens reclamados), `double2`=done, `double3`=requeued (devolvidos à fila sem tentativa nova do provedor), `double4`=failed, `double5`=duration_ms. Uma linha por execução do drenador da fila durável de sync (ADR-027), nos minutos do trigger fundido com o poller que não são 0 nem 30; falha do D1 no dreno sai pelo `logError` com a mensagem em blob3 e sem doubles |
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
 | `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
@@ -250,7 +250,7 @@ A fila de pacing HTTP ESPN vive no estado do isolate e serializa as chamadas
 `fetchEspnScoreboard` desse isolate; cada tentativa HTTP (incluindo o único
 retry em 429/5xx) respeita `espn_min_interval_ms` entre inícios. Invokes e
 isolates distintos mantêm filas próprias e podem sobrepor requests. A descoberta (`15 6 * * *`) roda às 06:15 UTC,
-fora dos minutos 0 e 30 do poller (`0,30 * * * *`). As medições de sobreposição
+fora dos minutos 0 e 30 do poller (trigger fundido `0,5,10,20,25,30,35,40,50,55 * * * *`, que roda o poller nesses dois minutos e o drenador nos demais). As medições de sobreposição
 feitas quando a descoberta rodava às 06:00 UTC ficam como registro histórico; o
 pilot remoto deve medir 403, `total_ms` e `api_requests_planned` antes do gate 2027.
 Retries dos provedores e chamadas do fallback ficam fora desse contador, que
@@ -341,7 +341,7 @@ recorte, "sem registro ainda" quando nunca houve evento, e a data de início da 
 
 #### Fila durável de sync (`provider_work_run`)
 
-Uma linha por execução do cron drenador (`drainFootballDataWork`): `blob2` é `ok` ou `error`
+Uma linha por execução do drenador (`drainFootballDataWork`), que roda nos minutos 5, 10, 20, 25, 35, 40, 50 e 55 do trigger fundido com o poller (nos minutos 0 e 30 só o poller roda): `blob2` é `ok` ou `error`
 (error quando algum item falhou de vez no teto de tentativas), e os doubles são, nessa ordem,
 `claimed` (itens reclamados), `done`, `requeued` (devolvidos à fila sem tentativa nova do
 provedor) e `failed`, depois `duration_ms`. Falha do D1 no dreno sai pelo `logError` com a

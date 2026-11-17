@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { RESULT_POLLER_CRON } from '../crons'
+import { POLLER_AND_DRAIN_CRON } from '../crons'
 import worker from '../index'
 import { D1_CALLS_PER_INVOCATION, limitD1Calls } from '../testing/d1CallLimit'
 import { createSqliteD1 } from '../testing/sqliteD1'
@@ -188,7 +188,7 @@ async function runCycle(env: Env, now: number): Promise<string[]> {
   const ctx = {
     waitUntil: (promise: Promise<unknown>) => void pending.push(promise),
   } as unknown as ExecutionContext
-  const controller = { cron: RESULT_POLLER_CRON, scheduledTime: now } as ScheduledController
+  const controller = { cron: POLLER_AND_DRAIN_CRON, scheduledTime: now } as ScheduledController
   await worker.scheduled!(controller, env, ctx)
   const settled = await Promise.allSettled(pending)
   return settled.flatMap((result) =>
