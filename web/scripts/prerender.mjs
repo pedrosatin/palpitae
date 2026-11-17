@@ -10,9 +10,9 @@
  * O CSS externo bloqueia a primeira pintura: enquanto `assets/index-*.css`
  * baixa, o navegador não pinta nada, e a captura do hero (o LCP da landing)
  * só aparece depois dele. Embutido no HTML, o CSS chega junto com o documento
- * e o primeiro frame não espera requisição extra. Todo o CSS usado pela SPA
- * está carregada estáticamente nesse arquivo único, então nada fica faltando;
- * os chunks CSS das páginas lazy continuam carregados via JS, como hoje.
+ * e o primeiro frame não espera requisição extra. Esse arquivo contém o CSS
+ * de entrada da SPA; as páginas lazy continuam carregando seus próprios
+ * chunks CSS via JS, como hoje.
  *
  * O `dist-ssr/` é descartado no fim: ele não deve ser publicado no Pages.
  */

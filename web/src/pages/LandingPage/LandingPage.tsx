@@ -139,7 +139,6 @@ function Features() {
         shotAlt="Tela de palpites de uma rodada, com um card por jogo, os escudos dos times e botões de mais e menos para ajustar o placar de cada um"
         shotWidth={1100}
         shotHeight={712}
-        eager
         srcSet={PALPITES_SRCSET}
         sizes={PALPITES_SIZES}
       />
@@ -369,7 +368,6 @@ function FeatureRow({
   shotWidth,
   shotHeight,
   reversed = false,
-  eager = false,
   srcSet,
   sizes,
 }: {
@@ -381,8 +379,6 @@ function FeatureRow({
   shotWidth: number
   shotHeight: number
   reversed?: boolean
-  /** Captura que pode virar o LCP do primeiro viewport: carrega na abertura. */
-  eager?: boolean
   srcSet?: string
   sizes?: string
 }) {
@@ -399,8 +395,7 @@ function FeatureRow({
           alt={shotAlt}
           width={shotWidth}
           height={shotHeight}
-          loading={eager ? 'eager' : 'lazy'}
-          fetchPriority={eager ? 'high' : undefined}
+          loading="lazy"
           srcSet={srcSet}
           sizes={sizes}
         />
@@ -426,10 +421,11 @@ function FaqItem({ q, a }: { q: string; a: string }) {
  * the LCP element, and the preload in index.html carries the same priority);
  * the rest lazy-load.
  *
- * Quando a captura é o maior elemento da primeira dobra no celular (a de
- * palpites), srcSet/sizes entregam uma variante de 640w e o navegador escolhe
- * pela largura de exibição e pelo DPR; width/height ficam no <img> para o CLS
- * não mudar.
+ * A captura de palpites da seção de recursos usa srcSet/sizes para entregar
+ * uma variante de 640w no celular, onde ela ocupa a largura da tela menos o
+ * padding; width/height ficam no <img> para o CLS não mudar. Ela fica abaixo
+ * da dobra, então carrega lazy: só a captura do hero disputa prioridade na
+ * abertura.
  */
 function Shot({
   src,

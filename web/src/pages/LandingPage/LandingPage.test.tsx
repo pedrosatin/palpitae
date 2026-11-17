@@ -141,12 +141,17 @@ describe('LandingPage – rodapé', () => {
   })
 })
 
-describe('LandingPage – captura de palpites (LCP no celular)', () => {
-  it('carrega a captura de palpites na abertura, com fetchpriority alto', () => {
+describe('LandingPage – carregamento das capturas', () => {
+  it('mantém o hero eager e a captura de palpites da seção de recursos lazy', () => {
     renderPage()
-    const img = screen.getByAltText(/Tela de palpites de uma rodada/)
-    expect(img).toHaveAttribute('loading', 'eager')
-    expect(img.getAttribute('fetchpriority')).toBe('high')
+    // Só a captura do hero (grupos, acima da dobra) disputa prioridade na
+    // abertura; a de palpites fica abaixo da dobra e volta a carregar lazy.
+    const hero = screen.getByAltText('Tela de grupos do Palpitae mostrando os bolões do usuário')
+    expect(hero).toHaveAttribute('loading', 'eager')
+    expect(hero.getAttribute('fetchpriority')).toBe('high')
+    const palpites = screen.getByAltText(/Tela de palpites de uma rodada/)
+    expect(palpites).toHaveAttribute('loading', 'lazy')
+    expect(palpites.getAttribute('fetchpriority')).toBeNull()
   })
 
   it('oferece a captura de palpites em 640w e 1100w, mantendo width e height', () => {
