@@ -14,9 +14,9 @@ const PAGEVIEWS_BASE = 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-
 const USER_AGENT = 'palpitae-radar/1.0 (https://palpitae.com.br)'
 
 /**
- * Teto por requisição. A Wikimedia responde em menos de 1 s; 10 s cobre um dia
- * ruim sem deixar uma conexão pendurada segurar o job inteiro. Estourar vira
- * erro de um artigo só: o sync segue e o artigo mantém os pageviews anteriores.
+ * Teto por requisição à Wikimedia, o mesmo do RESEND_TIMEOUT_MS: uma conexão
+ * pendurada não segura o job inteiro. Estourar vira erro de um artigo só: o
+ * sync segue e o artigo mantém os pageviews anteriores.
  */
 export const WIKIMEDIA_TIMEOUT_MS = 10_000
 
