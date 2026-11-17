@@ -18,8 +18,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Lint, Typecheck and Test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -29,21 +29,96 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            api/package-lock.json
-            web/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install root dependencies
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  api:
+    name: API (typecheck e testes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: api/package-lock.json
 
       - name: Install API dependencies
         working-directory: api
         run: npm ci
 
+      - name: Typecheck
+        working-directory: api
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: api
+        run: npm test
+
+  web:
+    name: Web (typecheck e testes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Install Web dependencies
         working-directory: web
         run: npm ci
 
-      - name: Run root check (lint, typecheck, tests)
-        run: npm run check
+      - name: Typecheck
+        working-directory: web
+        run: npm run type-check
+
+      - name: Test
+        working-directory: web
+        run: npm test
+
+  scripts:
+    name: Scripts (testes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Os testes de scripts/ usam só o Node, sem dependências para instalar.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Test
+        run: npm run test:scripts
+
+  # Mantém o nome do job único anterior para quem o procura. Falha se qualquer
+  # um dos jobs acima falhar, for cancelado ou for pulado.
+  check:
+    name: Lint, Typecheck and Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ always() }}
+    needs: [lint, api, web, scripts]
+    steps:
+      - name: Verificar o resultado dos jobs
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::Algum job do CI não terminou com sucesso."
+              exit 1
+            fi
+          done
