@@ -140,3 +140,43 @@ describe('LandingPage – rodapé', () => {
     )
   })
 })
+
+describe('LandingPage – carregamento das capturas', () => {
+  it('mantém o hero eager e a captura de palpites da seção de recursos lazy', () => {
+    renderPage()
+    // Só a captura do hero (grupos, acima da dobra) disputa prioridade na
+    // abertura; a de palpites fica abaixo da dobra e volta a carregar lazy.
+    const hero = screen.getByAltText('Tela de grupos do Palpitae mostrando os bolões do usuário')
+    expect(hero).toHaveAttribute('loading', 'eager')
+    expect(hero.getAttribute('fetchpriority')).toBe('high')
+    const palpites = screen.getByAltText(/Tela de palpites de uma rodada/)
+    expect(palpites).toHaveAttribute('loading', 'lazy')
+    expect(palpites.getAttribute('fetchpriority')).toBeNull()
+  })
+
+  it('oferece a captura de palpites em 640w e 1100w, mantendo width e height', () => {
+    renderPage()
+    const img = screen.getByAltText(/Tela de palpites de uma rodada/)
+    expect(img).toHaveAttribute('width', '1100')
+    expect(img).toHaveAttribute('height', '712')
+    const source = img.closest('picture')!.querySelector('source')
+    expect(source?.getAttribute('srcset')).toContain('palpites-640.webp 640w')
+    expect(source?.getAttribute('srcset')).toContain('palpites.webp 1100w')
+    expect(source?.getAttribute('sizes')).toContain('calc(100vw - 3rem)')
+  })
+
+  it('mantém as demais capturas lazy e sem srcset responsivo', () => {
+    renderPage()
+    const hero = screen.getByAltText('Tela de grupos do Palpitae mostrando os bolões do usuário')
+    expect(hero).toHaveAttribute('loading', 'eager')
+    expect(hero.getAttribute('fetchpriority')).toBe('high')
+    expect(hero.closest('picture')!.querySelector('source')?.getAttribute('srcset')).toBe(
+      '/screenshots/grupos.webp',
+    )
+    const lista = screen.getByAltText('Lista de grupos com membros, posição e pontos')
+    expect(lista).toHaveAttribute('loading', 'lazy')
+    expect(lista.closest('picture')!.querySelector('source')?.getAttribute('srcset')).toBe(
+      '/screenshots/grupos.webp',
+    )
+  })
+})
