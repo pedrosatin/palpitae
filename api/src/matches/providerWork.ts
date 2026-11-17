@@ -443,6 +443,11 @@ type CycleResult = {
   /** Falha da gravação do estado que só a liberação mínima contornou. */
   settleError?: string
   /**
+   * Com `settleError`: quantos itens do ciclo a liberação mínima devolveu a
+   * `pending` (as linhas que o `UPDATE` alterou). Os demais já eram de outro dreno.
+   */
+  recovered?: number
+  /**
    * Itens cujo estado o batch não gravou porque o lease deles já era de outro
    * dreno (fencing): o outro é quem os resolve.
    */
@@ -688,7 +693,8 @@ async function settleCycle(
       results = await write()
     } catch (err) {
       console.error('[drain] Gravação do estado falhou de novo, devolvendo os itens à fila:', err)
-      await releaseCycleStatement(budget.db, provider, items, now).run()
+      const released = await releaseCycleStatement(budget.db, provider, items, now).run()
+      cycle.recovered = released.meta?.changes ?? 0
       cycle.settleError = err instanceof Error ? err.message : String(err)
       return
     }
@@ -761,8 +767,12 @@ export async function drainProviderWork(
     run.claimed += items.length
     const result = await runCycle(budget, opts, items, now, observed)
     if (result.settleError !== undefined) {
-      // O estado não foi gravado e o D1 está instável: os itens voltaram a `pending`.
-      run.released += items.length
+      // O estado não foi gravado e o D1 está instável: a liberação mínima devolveu a `pending`
+      // os itens que ainda eram deste dreno. Os que outro dreno já reclamou (o filtro por dono
+      // os preserva) não foram devolvidos por ele e contam como lease perdido.
+      const recovered = result.recovered ?? 0
+      run.released += recovered
+      run.leaseLost += items.length - recovered
       run.settleError = result.settleError
       break
     }

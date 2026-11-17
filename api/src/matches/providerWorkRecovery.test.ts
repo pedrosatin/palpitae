@@ -125,6 +125,34 @@ describe('falha do D1 na gravação do estado do ciclo', () => {
     expect(budget.used).toBe(4)
   })
 
+  it('batch que falha sempre com um item já reclamado por outro dreno: só o que a liberação devolveu entra em released', async () => {
+    const { sqlite, db: raw } = setup()
+    await enqueue(raw, 3)
+    let stolen = false
+    const db = flakyD1(raw, {
+      failBatch: (sqls) => {
+        const fails = isStateBatch(sqls)
+        if (fails && !stolen) {
+          // O lease da rodada 2 venceu e outro dreno a reclamou antes da liberação mínima.
+          stolen = true
+          sqlite.exec(`UPDATE provider_work SET lease_owner = 'outro-dreno' WHERE round = '2'`)
+        }
+        return fails
+      },
+    })
+
+    const run = await drain(new DrainBudget(db, 45))
+
+    // O filtro por dono preserva o item do outro dreno: ele não foi devolvido por este.
+    expect(run).toMatchObject({ claimed: 3, done: 0, released: 2, leaseLost: 1 })
+    expect(run.settleError).toMatch(/falha simulada do batch/)
+    expect(rows(sqlite).map((row) => [row.round, row.status, row.lease_owner])).toEqual([
+      ['1', 'pending', null],
+      ['2', 'running', 'outro-dreno'],
+      ['3', 'pending', null],
+    ])
+  })
+
   it('a recuperação cabe na reserva: mesmo com o item esgotando o saldo de trabalho, não passa do limite', async () => {
     const { sqlite, db: raw } = setup()
     await enqueue(raw, 1)
