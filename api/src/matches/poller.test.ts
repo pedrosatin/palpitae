@@ -59,6 +59,11 @@ function buildFakeDb(rows: ActiveRow[]) {
       }
       return stmt
     },
+    // O adiamento de falha grava o item pendente da fila durável; sem efeito
+    // neste fake, que só observa o plano do tick.
+    async batch(): Promise<unknown[]> {
+      return []
+    },
     _captured: captured,
   }
   return db

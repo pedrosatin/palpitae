@@ -2,19 +2,15 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
 import { createProviderHttpObserver } from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
-import { reconcileCompetitionStatus } from './competitionLifecycle'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
+import { MISSING_EVENTS_PER_DISCOVERY, advanceCompetitionStatus } from './fdWork'
 import { espnDatesAround } from './matchPollingWindow'
+import { deferProviderWork } from './providerWork'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 import { runSyncTasks } from './syncTasks'
 
-/**
- * Teto de `match_missing_from_feed` por execução, somando as competições (cada
- * uma tem o próprio teto em `MISSING_EVENTS_PER_COMPETITION`). Mantém a descoberta
- * longe do limite de `writeDataPoint` por invocação; o total real vai em `double6`.
- */
-export const MISSING_EVENTS_PER_DISCOVERY = 30
+export { MISSING_EVENTS_PER_DISCOVERY }
 
 type ActiveCompetition = {
   id: string
@@ -24,42 +20,18 @@ type ActiveCompetition = {
 }
 
 /**
- * Avança o status da competição depois do sync. Falha do D1 aqui vira
- * `competition_status_error`, separada dos erros de provedor; o status fica
- * como estava e a próxima descoberta tenta de novo. Devolve `false` na falha.
- */
-async function advanceCompetitionStatus(
-  db: D1Database,
-  ae: AnalyticsEngineDataset | undefined,
-  competitionId: string,
-  now: number,
-  tbdDiscarded: number,
-): Promise<boolean> {
-  try {
-    const status = await reconcileCompetitionStatus(db, competitionId, now, tbdDiscarded)
-    if (status === 'finished') {
-      console.info(`[discovery] Competição ${competitionId} encerrada; sai da descoberta diária.`)
-    }
-    return true
-  } catch (err) {
-    logError(
-      ae,
-      'competition_status_error',
-      `[discovery] Status da competição não avançou comp=${competitionId}:`,
-      err,
-      { blobs: [competitionId] },
-    )
-    return false
-  }
-}
-
-/**
  * Descobre jogos novos das competições ativas. Roda 1x/dia de madrugada via Cron
  * Trigger (ver wrangler.toml), num horário sem jogos pra não competir com o poller.
  *
  * football-data consulta o calendário inteiro, sem matchday. ESPN consulta nove
  * datas individuais, de ontem UTC até hoje UTC + 7 dias, mesmo sem jogos no banco.
  * O upsert atualiza confrontos e horários sem remover jogos fora desse horizonte.
+ *
+ * Orçamento compartilhado (ADR-027): toda tentativa football-data reserva vaga
+ * na janela de um minuto; o que o orçamento ou a cota recusarem vira item
+ * pendente na fila durável, e o cron drenador retoma no mesmo dia — uma
+ * competição que falhou não espera a descoberta de amanhã. A ESPN segue direto,
+ * com o teto e o pacing próprios.
  *
  * Custo sem retries: 1 request por competição football-data e 9 por competição
  * ESPN. Dez competições ESPN-primárias planejam 90 requests por execução, com
@@ -121,6 +93,9 @@ export async function discoverFixtures(
         dates: comp.provider === 'espn' ? espnDates : undefined,
         apiKey,
         db,
+        // A tentativa football-data reserva vaga no orçamento compartilhado
+        // (ADR-027); a ESPN tem teto e pacing próprios.
+        coordinate: comp.provider !== 'espn',
         onHttpAttempt: createProviderHttpObserver(ae, {
           context: 'discovery',
           competitionId: comp.id,
@@ -136,6 +111,21 @@ export async function discoverFixtures(
       await scoreUnprocessedMatches(comp.id, db)
       tbdDiscarded = result?.discardedTbd ?? 0
     } catch (err) {
+      // Qualquer falha vira trabalho pendente: o dreno retoma no mesmo dia, e
+      // o progresso da descoberta não espera a de amanhã. Sem vaga ou com cota
+      // bloqueada, o prazo segue o reset; nas demais falhas, a espera
+      // conservadora.
+      await deferProviderWork(
+        db,
+        {
+          kind: 'discovery',
+          competitionCode: comp.external_id,
+          season: comp.season,
+          round: '',
+          competitionId: comp.id,
+        },
+        err,
+      )
       hadError = true
       logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
         blobs: ['fixture_discovery', comp.id],

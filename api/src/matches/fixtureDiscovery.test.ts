@@ -42,6 +42,11 @@ function buildFakeDb(rows: ActiveCompetition[]) {
       }
       return stmt
     },
+    // O adiamento de falha grava o item pendente da fila durável; sem efeito
+    // neste fake, que só observa as competições lidas.
+    async batch(): Promise<unknown[]> {
+      return []
+    },
     _captured: captured,
   }
   return db

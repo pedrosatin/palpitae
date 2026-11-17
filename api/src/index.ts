@@ -10,11 +10,13 @@ import { competitionsRouter } from './competitions/router'
 import {
   DAILY_EXPORT_CRON,
   FIXTURE_DISCOVERY_CRON,
+  PROVIDER_WORK_DRAIN_CRON,
   RESULT_POLLER_CRON,
   ROUND_REMINDER_CRON,
 } from './crons'
 import { jsonError, jsonNotFound } from './errorHandlers'
 import { groupsRouter } from './groups/router'
+import { drainFootballDataWork } from './matches/fdWork'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
@@ -126,6 +128,13 @@ export default {
       ctx.waitUntil(
         discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
       )
+      return
+    }
+
+    if (controller.cron === PROVIDER_WORK_DRAIN_CRON) {
+      // Drenador da fila durável (ADR-027): retoma o trabalho pendente da
+      // football-data entre os ticks.
+      ctx.waitUntil(drainFootballDataWork(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
       return
     }
 
