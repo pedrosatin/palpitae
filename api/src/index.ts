@@ -11,6 +11,7 @@ import {
   DAILY_EXPORT_CRON,
   FIXTURE_DISCOVERY_CRON,
   isResultPollerTick,
+  LEGACY_RESULT_POLLER_CRON,
   POLLER_AND_DRAIN_CRON,
   ROUND_REMINDER_CRON,
 } from './crons'
@@ -143,6 +144,15 @@ export default {
           undefined,
           { fetchBudget: reminderFetchBudget(env.REMINDER_FETCH_BUDGET), pilotAccess: env },
         ),
+      )
+      return
+    }
+
+    if (controller.cron === LEGACY_RESULT_POLLER_CRON) {
+      // Transição do deploy (ver crons.ts): o agendamento antigo do poller ainda
+      // pode chegar até a Cloudflare propagar o trigger fundido. Só o poller.
+      ctx.waitUntil(
+        pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
       )
       return
     }
