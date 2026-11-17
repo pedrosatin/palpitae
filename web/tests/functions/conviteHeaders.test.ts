@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 // Lê com `?raw` do Vite porque o tsconfig do web não inclui os tipos do Node.
 import headersFile from '../../public/_headers?raw'

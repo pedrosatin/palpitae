@@ -1,10 +1,13 @@
 /// <reference types="vitest" />
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, loadEnv, type UserConfig } from 'vite'
 import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { assertBuildEnv } from './build/env'
 import { guidesPlugin, sitemapPlugin } from './build/guides'
+
+const webRoot = fileURLToPath(new URL('.', import.meta.url))
 
 // https://vitejs.dev/config/
 const config: UserConfig = {
@@ -18,6 +21,22 @@ const config: UserConfig = {
     // sabe executá-los e quebraria o `npm test`.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     setupFiles: ['./src/test-setup.ts'],
+    // No PR, o CI roda só os testes que alcançam o diff pelo grafo de imports
+    // (scripts/test-changed.sh). Uma mudança nestes arquivos roda a suíte inteira.
+    // O Vitest compara caminhos absolutos do repositório inteiro, então os
+    // padrões ficam presos à web: o padrão `**/package.json` rodaria tudo a cada
+    // mudança em api/package.json.
+    forceRerunTriggers: [
+      'package.json',
+      'package-lock.json',
+      'vite.config.ts',
+      'tsconfig*.json',
+      'functions/tsconfig.json',
+      'src/test-setup.ts',
+      '.env*',
+      'src/styles/variables.css',
+      '../.github/workflows/ci.yml',
+    ].map((path) => resolve(webRoot, path)),
     testTimeout: 10000,
     css: {
       // Deixa o texto de variables.css legível via ?raw em tokens.test.ts.
@@ -28,8 +47,6 @@ const config: UserConfig = {
     },
   },
 }
-
-const webRoot = fileURLToPath(new URL('.', import.meta.url))
 
 export default defineConfig(({ command, mode }) => {
   // O build de produção para quando VITE_API_URL ou VITE_AUTH_URL faltam ou estão
