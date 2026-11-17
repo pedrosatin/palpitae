@@ -130,7 +130,7 @@ describe('espnDeferralItems', () => {
         ...base,
         round,
         notBefore: at,
-        lastError: 'saldo de chamadas da invocação esgotado; o item volta no próximo dreno',
+        lastError: 'saldo de chamadas do tick esgotado; a data volta no próximo dreno',
       })),
     )
   })

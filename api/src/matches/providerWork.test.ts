@@ -7,7 +7,6 @@ import {
   WORK_MAX_ATTEMPTS,
   claimProviderWork,
   deferProviderWork,
-  deferralOf,
   drainProviderWork,
   enqueueProviderWork,
   WORK_BUSY_RETRY_MS,
@@ -17,7 +16,6 @@ import {
   type ProviderWorkItem,
   type WorkOutcome,
 } from './providerWork'
-import { CallBudgetExhaustedError } from './callBudget'
 import { FootballDataQuotaError } from './footballDataQuota'
 import { DrainBudget } from './drainBudget'
 
@@ -470,26 +468,5 @@ describe('fila durável do provedor', () => {
     )
 
     expect(await claimProviderWork(db, { provider: 'football-data', now })).toHaveLength(1)
-  })
-
-  it('falta de saldo da invocação adia o item para já, sem tentativa, e as demais falhas seguem o prazo do erro', async () => {
-    const { sqlite, db } = setup()
-    const now = Date.parse('2026-11-16T12:00:00Z')
-
-    expect(deferralOf(new CallBudgetExhaustedError(), now)).toEqual({
-      notBefore: now,
-      lastError: 'saldo de chamadas da invocação esgotado; o item volta no próximo dreno',
-    })
-    expect(deferralOf(Object.assign(new Error('bloqueada'), { retryAt: now + 5 }), now)).toEqual({
-      notBefore: now + 5,
-      lastError: 'bloqueada',
-    })
-    expect(deferralOf('falha solta', now)).toEqual({
-      notBefore: now + WORK_BUSY_RETRY_MS,
-      lastError: 'falha solta',
-    })
-
-    await deferProviderWork(db, newItem(), new CallBudgetExhaustedError(), now)
-    expect(rows(sqlite)[0]).toMatchObject({ status: 'pending', attempts: 0, not_before: now })
   })
 })

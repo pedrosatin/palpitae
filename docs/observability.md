@@ -193,7 +193,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | event_type | blob2 | blob3 | blob4 | doubles |
 |---|---|---|---|---|
 | `poller_run` | `status` (`ok`/`error`; `error` também quando a pontuação falha) | — | — | `double1`=matches_checked, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms, `double5`=events_discarded (eventos que o sync não importou; ausente antes do registro de descartes). Descarte não muda o `status` |
-| `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms, `double5`=events_discarded, `double6`=matches_missing (jogos pendentes ausentes do calendário da football-data); os dois ausentes antes do registro de descartes. Descarte e ausência não mudam o `status`. A competição que não coube no saldo de subrequests vai para a fila e não muda o `status` (não é erro); só a falha ao enfileirá-la muda |
+| `fixture_discovery_run` | `status` (`ok`/`error`) | — | — | `double1`=competitions, `double2`=fixtures_updated, `double3`=api_calls, `double4`=duration_ms, `double5`=events_discarded, `double6`=matches_missing (jogos pendentes ausentes do calendário da football-data); os dois ausentes antes do registro de descartes. Descarte e ausência não mudam o `status` |
 | `radar_sync_run` | `status` (`ok`/`partial`/`error`; `partial` quando algum slug da ESPN ou artigo da Wikipédia falhou) | — | — | `double1`=competitions, `double2`=mapped (com artigo da Wikipédia), `double3`=pageview_rows, `double4`=duration_ms |
 | `radar_sync_error` | `source` (`espn`/`wikipedia`) | `article` em `wikipedia`; `error_message` em `espn` | `error_message` (só em `wikipedia`) | — |
 | `scheduled_unknown_cron` | `cron` (expressão recebida em `controller.cron`) | — | — | — |
@@ -209,7 +209,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
 | `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
-| `competition_status_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A descoberta não gravou o status da competição depois de um sync bem-sucedido (falha do D1), **ou** não conseguiu enfileirar a competição que não coube no saldo de subrequests da invocação (a competição fica sem descoberta e a seguinte a replaneja). O status fica como estava e a execução sai como `error` em `fixture_discovery_run` |
+| `competition_status_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A descoberta não gravou o status da competição depois de um sync bem-sucedido (falha do D1). O status fica como estava e a execução sai como `error` em `fixture_discovery_run` |
 | `match_scoring_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A pontuação da competição falhou num tick do poller. As outras competições do tick são pontuadas, o tick sai como `error` em `poller_run` e a invocação termina em exceção |
 | `match_unscored` | `competition_id` (UUID) | — | — | `double1`=jogos encerrados, com placar e sem `scored_at`, que começaram há mais de 145 minutos (115 do resultado mais cedo e 30 de um tick); `double2`=minutos desde o início do mais antigo. Um evento por competição ao fim de cada tick do poller, inclusive em tick sem jogo na janela, com no máximo 10 por execução. Entram a pontuação que parou no orçamento de chamadas, a que falhou e o jogo decisivo que espera o vencedor dos pênaltis |
 | `competition_unconfigured` | `provider` (`football-data`) | `code` da competição no provedor (ex.: `CLI`) | `external_id` da competição no provedor | `season` em blob5; sem doubles |
@@ -392,20 +392,6 @@ ticket 03), com o que a ESPN faz de diferente:
   football-data sozinha, 5 itens e 39. A estimativa por item é 9 (data de liga) ou 13 (sync manual e
   descoberta, que pontuam), medida em teste. Com a coleta bloqueada ou suspensa e itens pendentes, a
   reclamação recusa e o dreno lê o estado para dizer o motivo (2 chamadas, nenhuma escrita).
-- **Subrequests da descoberta (`15 6 * * *`):** a invocação da descoberta tem um saldo de 45 chamadas
-  (`DISCOVERY_CALL_BUDGET`, o ramo; a limpeza do `scheduled` soma 1 por fora) para a football-data e a ESPN
-  juntas. Cada competição é admitida pelo custo completo antes de começar, a football-data (17 estimados,
-  medido 13) antes da ESPN (42 estimados para 9 datas, medido 38). A que não cabe nem começa e vira item
-  `discovery` da fila: um por competição na football-data (`round` vazio) e um por data na ESPN, com
-  `not_before` = o instante, sem tentativa gasta e sem `football_api_error`. O dreno (minutos 5, 10, 20…)
-  conclui: sincroniza, grava os jogos novos, pontua e, quando o último item `discovery` da competição
-  termina, avança o status (a ESPN só até `ongoing`: `finished` espera a próxima descoberta, que vê o
-  calendário inteiro). Os itens saem num único `db.batch()` no fim, reservado do saldo antes de qualquer
-  tarefa; se ele falha, cada competição afetada registra `competition_status_error`, a execução sai como
-  `error` e a descoberta seguinte a replaneja. O `[perf]` da descoberta traz `deferred_items`, `calls_used` e
-  `calls_budget`. Descoberta com 1, 2 e 4 competições da ESPN (9 datas, com a limpeza): 40, 41 e 41
-  chamadas (antes, 40, 56 tentadas com a descoberta rejeitada e 56, também rejeitada), com 0, 9 e 27 datas
-  na fila e o dreno concluindo em até 7 ticks (cerca de 50 minutos) o que não coube.
 - **Subrequests do poller:** o `POLLER_CALL_BUDGET` (45) vale para a football-data e a ESPN juntas. O saldo da
   ESPN é fixado antes de qualquer sincronização (45 menos o que já foi gasto, menos o estimado das rodadas da
   football-data, 8 cada, menos 5 de reserva da pontuação), e cada competição da ESPN (2 a 4 datas) é admitida

@@ -7,18 +7,12 @@ import type { ProviderDrain } from './drainCoordinator'
 import { ESPN_REQUEST_CALLS, isEspnRefusal } from './espnAccess'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { espnWriteCalls } from './espnSync'
-import {
-  advanceCompetitionStatus,
-  httpContextOf,
-  logPostSyncFailures,
-  RECONCILE_CALLS,
-  scoreWithinBudget,
-} from './fdWork'
+import { httpContextOf, logPostSyncFailures, scoreWithinBudget } from './fdWork'
 import { readProviderState } from './providerBudget'
 import {
-  deferralOf,
   drainProviderWork,
   enqueueProviderWork,
+  retryAtOf,
   type DrainRun,
   type NewWorkItem,
   type ProviderWorkItem,
@@ -74,8 +68,14 @@ export function espnDeferralItems(
   error: unknown,
   now = Date.now(),
 ): NewWorkItem[] {
-  const deferral = deferralOf(error, now)
-  return espnWorkItems(base, dates).map((item) => ({ ...item, ...deferral }))
+  const noBudget = error instanceof CallBudgetExhaustedError
+  const notBefore = noBudget ? now : retryAtOf(error, now)
+  const lastError = noBudget
+    ? 'saldo de chamadas do tick esgotado; a data volta no próximo dreno'
+    : error instanceof Error
+      ? error.message
+      : String(error)
+  return espnWorkItems(base, dates).map((item) => ({ ...item, notBefore, lastError }))
 }
 
 /** Adia as datas que a ESPN não entregou: viram itens pendentes (ver `espnDeferralItems`). */
@@ -117,16 +117,6 @@ const DATE_TEAMS = 40
 export function espnSyncCost(dateCount: number): number {
   const dates = Math.max(1, dateCount)
   return ESPN_REQUEST_CALLS * dates + espnWriteCalls(DATE_EVENTS * dates, DATE_TEAMS * dates)
-}
-
-/**
- * Custo estimado da descoberta de uma competição da ESPN de `dateCount` datas numa
- * invocação só (`fixtureDiscovery.ts`): o sync de todas as datas, o mínimo para
- * pontuar (`MIN_SCORING_CALLS`) e o avanço do status (1). A descoberta admite a
- * competição por este custo, contra o saldo da invocação.
- */
-export function espnDiscoveryCost(dateCount: number): number {
-  return espnSyncCost(dateCount) + MIN_SCORING_CALLS + RECONCILE_CALLS
 }
 
 export function espnItemCost(item: ProviderWorkItem): number {
@@ -256,7 +246,6 @@ async function drainEspnWork(
     minItemCost: espnMinItemCalls(),
   })
   const postFailures = logPostSyncFailures(ae, run, 'ESPN')
-  await advanceDiscoveredCompetitions(budget, ae, run, now)
   if (run.claimed === 0) {
     // Sem saldo para um item não é fila parada: só a reclamação vazia pode ser acesso pausado.
     if (run.stoppedBy !== 'budget') await reportPausedAccess(budget, ae, now)
@@ -278,42 +267,6 @@ async function drainEspnWork(
     ],
   })
   return run
-}
-
-/**
- * A descoberta que a fila dividiu por data avança o status da competição quando o
- * último item `discovery` dela termina: depois da gravação do estado do ciclo, com a
- * guarda de que nenhum outro item da competição espera ou executa (1 chamada por
- * competição, do que sobra da fatia). Os itens concluídos não sabem quantos jogos do
- * calendário foram descartados por time indefinido (a descoberta soma isso nas datas
- * todas), então a reconciliação assume que há: a competição pode passar a
- * `ongoing`, mas `finished` espera a próxima descoberta diária, que vê o calendário
- * inteiro.
- */
-async function advanceDiscoveredCompetitions(
-  budget: DrainBudget,
-  ae: AnalyticsEngineDataset | undefined,
-  run: DrainRun,
-  now: number,
-): Promise<void> {
-  const discovered = new Map<string, ProviderWorkItem>()
-  for (const outcome of run.outcomes) {
-    if (
-      outcome.status === 'done' &&
-      outcome.item.kind === 'discovery' &&
-      outcome.item.competitionId
-    ) {
-      discovered.set(outcome.item.competitionId, outcome.item)
-    }
-  }
-  for (const item of discovered.values()) {
-    if (budget.left() < RECONCILE_CALLS) break
-    await advanceCompetitionStatus(budget.db, ae, item.competitionId, now, 1, {
-      provider: 'espn',
-      competitionCode: item.competitionCode,
-      season: item.season,
-    })
-  }
 }
 
 /**
