@@ -436,4 +436,37 @@ describe('fila durável do provedor', () => {
     })
     expect(peak).toBe(2)
   })
+
+  it('respectProviderAccess: provedor bloqueado ou suspenso não reclama nada e não escreve na fila', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(db, [{ ...newItem(), provider: 'espn' }], now)
+    const claim = (at: number) =>
+      claimProviderWork(db, { provider: 'espn', now: at, respectProviderAccess: true })
+
+    // Bloqueado até depois de `now`: nada é reclamado.
+    sqlite.exec(`UPDATE provider_rate_state SET blocked_until = ${now + 60_000} WHERE provider = 'espn'`)
+    expect(await claim(now)).toEqual([])
+    // Suspenso: nada, por mais tempo que passe.
+    sqlite.exec(
+      `UPDATE provider_rate_state SET blocked_until = 0, suspended_at = ${now} WHERE provider = 'espn'`,
+    )
+    expect(await claim(now + 48 * 3_600_000)).toEqual([])
+    expect(rows(sqlite)[0]).toMatchObject({ status: 'pending', attempts: 0 })
+
+    // O bloqueio vence e a suspensão é retomada: o item é reclamado.
+    sqlite.exec(`UPDATE provider_rate_state SET suspended_at = NULL WHERE provider = 'espn'`)
+    expect(await claim(now)).toHaveLength(1)
+  })
+
+  it('sem respectProviderAccess o estado de acesso não interfere na reclamação (football-data)', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(db, [newItem()], now)
+    sqlite.exec(
+      `UPDATE provider_rate_state SET blocked_until = ${now + 60_000} WHERE provider = 'football-data'`,
+    )
+
+    expect(await claimProviderWork(db, { provider: 'football-data', now })).toHaveLength(1)
+  })
 })

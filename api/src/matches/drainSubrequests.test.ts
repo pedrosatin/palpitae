@@ -325,7 +325,15 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
           item.close()
         }
         await budget.db.prepare('SELECT 1').first()
-        return { claimed: 0, done: 0, requeued: 0, failed: 0, released: 0, leaseLost: 0, outcomes: [] }
+        return {
+          claimed: 0,
+          done: 0,
+          requeued: 0,
+          failed: 0,
+          released: 0,
+          leaseLost: 0,
+          outcomes: [],
+        }
       },
     }
     h.limited.startInvocation()
