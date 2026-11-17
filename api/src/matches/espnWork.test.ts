@@ -209,9 +209,9 @@ describe('runEspnWorkItem', () => {
 
     expect(outcome).toMatchObject({ status: 'done' })
     expect(served).toBe(2)
-    // 5xx: vaga e fetch (2). Nova tentativa: vaga, fetch e, se houver, o registro (até 3).
-    expect(span.used()).toBeGreaterThanOrEqual(2 + 2)
-    expect(span.used()).toBeLessThanOrEqual(2 + ESPN_REQUEST_CALLS)
+    // 5xx: vaga e fetch (2, a resposta 5xx não grava nada). Nova tentativa: vaga, fetch e o
+    // registro do sucesso (3).
+    expect(span.used()).toBe(2 + ESPN_REQUEST_CALLS)
   })
 
   it('o retry de 5xx sem saldo para a segunda tentativa devolve o item sem tentativa', async () => {
@@ -246,30 +246,33 @@ describe('custo de um item da ESPN', () => {
     return { cost: span.used(), sqlite }
   }
 
-  it('data sem eventos: a requisição e nada mais', async () => {
+  it('data sem eventos: a requisição e nada mais (3 chamadas)', async () => {
     const { cost } = await measuredCost(item({ kind: 'result' }), { events: [] })
 
-    expect(cost).toBeLessThanOrEqual(ESPN_REQUEST_CALLS)
+    // vaga, fetch e o registro do sucesso, que zera a sequência de 403 sem depender da reserva.
+    expect(cost).toBe(ESPN_REQUEST_CALLS)
     expect(cost).toBeLessThanOrEqual(espnItemCost(item({ kind: 'result' })))
   })
 
-  it('data de liga (20 jogos, 40 times): dentro da estimativa de 9', async () => {
+  it('data de liga (20 jogos, 40 times): 9 chamadas medidas, dentro da estimativa de 9', async () => {
     const work = item({ kind: 'result' })
 
     const { cost, sqlite } = await measuredCost(work, board(20, 40, false))
 
     // vaga, fetch, registro, competição (2), times (batch e ids), jogos (trocas e batch).
+    expect(cost).toBe(9)
     expect(cost).toBeLessThanOrEqual(espnItemCost(work))
     expect(espnItemCost(work)).toBe(espnMinItemCalls())
     expect(espnMinItemCalls()).toBe(9)
     expect(sqlite.prepare(`SELECT COUNT(*) AS n FROM matches`).get()).toEqual({ n: 20 })
   })
 
-  it('data de 100 jogos entre 100 times continua em 1 batch de cada: dentro da mesma estimativa', async () => {
+  it('data de 100 jogos entre 100 times continua em 1 batch de cada: ainda 9 chamadas', async () => {
     const work = item({ kind: 'late' })
 
     const { cost } = await measuredCost(work, board(100, 100, false))
 
+    expect(cost).toBe(9)
     expect(cost).toBeLessThanOrEqual(espnItemCost(work))
   })
 

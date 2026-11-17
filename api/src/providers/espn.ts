@@ -149,9 +149,6 @@ export class EspnIncompleteResponseError extends Error {
   }
 }
 
-/** Vaga reservada para uma tentativa (devolvida pelo gate e repassada à resposta). */
-export type EspnSlot = { forbiddenStreak: number }
-
 /** Bloqueio que uma resposta impôs ao provedor, para o cliente falhar com o prazo. */
 export type EspnBlock = { reason: 'blocked' | 'suspended'; retryAt: number }
 
@@ -162,8 +159,8 @@ export type EspnBlock = { reason: 'blocked' | 'suspended'; retryAt: number }
  * cliente age como antes: o radar e os scripts locais seguem fora do orçamento.
  */
 export type EspnGate = {
-  reserve(): Promise<EspnSlot>
-  note(slot: EspnSlot, status: number, headers: Headers): Promise<EspnBlock | null>
+  reserve(): Promise<void>
+  note(status: number, headers: Headers): Promise<EspnBlock | null>
 }
 
 export type EspnCompetitorTeam = {
@@ -317,7 +314,7 @@ export async function fetchEspnScoreboard(
     for (let attempt = 0; attempt < 2; attempt++) {
       await awaitEspnRequestSlot(attempt > 0 ? ESPN_RETRY_BACKOFF_MS : 0)
       // Sem vaga não há request: `EspnUnavailableError` sobe para o chamador.
-      const slot = gate ? await gate.reserve() : undefined
+      if (gate) await gate.reserve()
 
       const startedAt = Date.now()
       let res: Response
@@ -339,7 +336,7 @@ export async function fetchEspnScoreboard(
         durationMs: Date.now() - startedAt,
       })
       // O bloqueio que esta resposta impõe vale para todos os isolates.
-      const block = gate && slot ? await gate.note(slot, res.status, res.headers) : null
+      const block = gate ? await gate.note(res.status, res.headers) : null
       if (res.ok) return (await res.json()) as EspnScoreboard
 
       // Corpo junto: a mensagem de um 429/5xx é o que diferencia rate limit de

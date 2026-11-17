@@ -50,8 +50,8 @@ async function attempt(
   status: number,
   headers: HeadersInit = {},
 ) {
-  const slot = await gate.reserve()
-  return gate.note(slot, status, new Headers(headers))
+  await gate.reserve()
+  return gate.note(status, new Headers(headers))
 }
 
 describe('controle de acesso da ESPN: 403', () => {
@@ -109,11 +109,11 @@ describe('controle de acesso da ESPN: 403', () => {
 
   it('dois 403 simultâneos contam um passo só e não esticam o bloqueio', async () => {
     const { db, gate } = setup()
-    const [slotA, slotB] = await Promise.all([gate.reserve(), gate.reserve()])
+    await Promise.all([gate.reserve(), gate.reserve()])
 
     const [a, b] = await Promise.all([
-      gate.note(slotA, 403, new Headers()),
-      gate.note(slotB, 403, new Headers()),
+      gate.note(403, new Headers()),
+      gate.note(403, new Headers()),
     ])
 
     expect(a).toEqual({ reason: 'blocked', retryAt: T0 + 15 * MIN })
@@ -129,9 +129,8 @@ describe('controle de acesso da ESPN: 403', () => {
     await attempt(gate, 403)
     at(15 * MIN)
 
-    const slot = await gate.reserve()
-    expect(slot.forbiddenStreak).toBe(1)
-    expect(await gate.note(slot, 200, new Headers())).toBeNull()
+    await gate.reserve()
+    expect(await gate.note(200, new Headers())).toBeNull()
 
     expect(await readProviderState(db, 'espn')).toMatchObject({
       forbiddenStreak: 0,
@@ -139,6 +138,75 @@ describe('controle de acesso da ESPN: 403', () => {
     })
     // O 403 seguinte recomeça do primeiro passo.
     expect((await attempt(gate, 403))?.retryAt).toBe(T0 + 30 * MIN)
+  })
+})
+
+describe('controle de acesso da ESPN: respostas entrelaçadas de gates independentes', () => {
+  /**
+   * Dois gates (dois isolates) reservam vaga antes de qualquer resposta, então os
+   * dois enxergam a sequência de 403 zerada. A última resposta, na ordem em que o D1
+   * as grava, vence: sucesso depois de 403 zera a sequência; 403 depois de sucesso
+   * conta 1. O estado não pode depender do que a reserva viu.
+   */
+  async function interleave(responses: [first: number, second: number]) {
+    const { db, sqlite } = setup()
+    const a = createEspnGate(db)
+    const b = createEspnGate(db)
+    await a.reserve()
+    await b.reserve()
+    // `responses` é a ordem em que as respostas chegam ao D1; A recebe o 403 e B o 200.
+    const arrivals = {
+      403: () => a.note(403, new Headers()),
+      200: () => b.note(200, new Headers()),
+    } as const
+    for (const status of responses) await arrivals[status as 403 | 200]()
+    return { db, sqlite }
+  }
+
+  it('A=403 e depois B=200: o sucesso mais recente zera a sequência', async () => {
+    const { db } = await interleave([403, 200])
+
+    expect(await readProviderState(db, 'espn')).toMatchObject({
+      forbiddenStreak: 0,
+      suspendedAt: null,
+    })
+  })
+
+  it('B=200 e depois A=403: o 403 mais recente conta 1', async () => {
+    const { db } = await interleave([200, 403])
+
+    expect(await readProviderState(db, 'espn')).toMatchObject({
+      forbiddenStreak: 1,
+      blockedUntil: T0 + 15 * MIN,
+    })
+  })
+
+  it('o sucesso zera a sequência mas não levanta o bloqueio que o 403 já impôs', async () => {
+    const { db, gate } = await (async () => {
+      const { db, sqlite } = await interleave([403, 200])
+      return { db, sqlite, gate: createEspnGate(db) }
+    })()
+
+    // O 403 espaçou a coleta em 15 min: o sucesso concorrente não a antecipa.
+    await expect(gate.reserve()).rejects.toMatchObject({
+      reason: 'blocked',
+      retryAt: T0 + 15 * MIN,
+    })
+    expect(await readProviderState(db, 'espn')).toMatchObject({ forbiddenStreak: 0 })
+  })
+
+  it('com a sequência já em 2, o sucesso entrelaçado a zera e o 403 seguinte recomeça do 1º passo', async () => {
+    const { db, sqlite, gate, at } = setup()
+    sqlite.exec(`UPDATE provider_rate_state SET forbidden_streak = 2 WHERE provider = 'espn'`)
+    const other = createEspnGate(db)
+    await other.reserve()
+    await gate.reserve()
+    // As duas reservas viram a sequência em 2; o sucesso chega depois do 403.
+    await gate.note(403, new Headers())
+    at(6 * 60 * MIN)
+    await other.note(200, new Headers())
+
+    expect(await readProviderState(db, 'espn')).toMatchObject({ forbiddenStreak: 0 })
   })
 })
 
@@ -219,9 +287,8 @@ describe('controle de acesso da ESPN: 429', () => {
     const { gate, at } = setup()
     await attempt(gate, 403) // bloqueado até T0 + 15 min
     at(MIN)
-    const slot = { forbiddenStreak: 1 }
 
-    const outcome = await gate.note(slot, 429, new Headers({ 'retry-after': '30' }))
+    const outcome = await gate.note(429, new Headers({ 'retry-after': '30' }))
 
     expect(outcome?.retryAt).toBe(T0 + 15 * MIN)
   })
@@ -240,7 +307,7 @@ describe('controle de acesso da ESPN: orçamento e falhas', () => {
     })
 
     at(MIN)
-    await expect(gate.reserve()).resolves.toEqual({ forbiddenStreak: 0 })
+    await expect(gate.reserve()).resolves.toBeUndefined()
   })
 
   it.each([
@@ -300,6 +367,6 @@ describe('retomada pelo operador', () => {
       suspendedAt: null,
       suspendedReason: null,
     })
-    await expect(gate.reserve()).resolves.toEqual({ forbiddenStreak: 0 })
+    await expect(gate.reserve()).resolves.toBeUndefined()
   })
 })

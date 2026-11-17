@@ -1,11 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError } from '../observability/events'
-import {
-  EspnUnavailableError,
-  type EspnBlock,
-  type EspnGate,
-  type EspnSlot,
-} from '../providers/espn'
+import { EspnUnavailableError, type EspnBlock, type EspnGate } from '../providers/espn'
 import { CallBudgetExhaustedError, type CallGate } from './callBudget'
 import { reserveProviderSlot } from './providerBudget'
 
@@ -183,27 +178,37 @@ async function pauseRateLimited(
 }
 
 /**
+ * O acesso funcionou: a sequência de 403 zera. Atômico no D1 e sem depender do
+ * que a reserva viu: dois isolates reservam antes de qualquer resposta, então a
+ * sequência que a reserva carregava (0) pode já estar velha quando o sucesso
+ * chega depois de um 403 concorrente. A última resposta, na ordem em que o D1 as
+ * grava, vence: sucesso depois de 403 zera; 403 depois de sucesso conta 1. O
+ * `WHERE` evita gravação quando não há sequência a zerar (o caso comum), e não
+ * levanta o bloqueio que um 403 já impôs: ele espaça a coleta e vale até o fim.
+ */
+async function resetForbiddenStreak(db: D1Database, now: number): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE provider_rate_state SET forbidden_streak = 0, updated_at = ?1
+        WHERE provider = 'espn' AND forbidden_streak != 0`,
+    )
+    .bind(now)
+    .run()
+}
+
+/**
  * Registra a resposta no D1 e devolve o bloqueio que ela impôs, ou `null`.
  * Se a gravação falha, o request já partiu: devolve a estimativa local do
  * bloqueio e deixa a falha no log, como o orçamento da football-data.
  */
 async function noteEspnResponse(
   db: D1Database,
-  slot: EspnSlot,
   status: number,
   headers: Headers,
   now: number,
 ): Promise<BlockOutcome | null> {
   if (status >= 200 && status < 400) {
-    if (slot.forbiddenStreak > 0) {
-      await db
-        .prepare(
-          `UPDATE provider_rate_state SET forbidden_streak = 0, updated_at = ?1
-            WHERE provider = 'espn' AND forbidden_streak > 0`,
-        )
-        .bind(now)
-        .run()
-    }
+    await resetForbiddenStreak(db, now)
     return null
   }
   if (status === 429) {
@@ -265,13 +270,12 @@ export function createEspnGate(
         throw new EspnUnavailableError(reservation.reason, reservation.retryAt)
       }
       callGate?.chargeFetch()
-      return { forbiddenStreak: reservation.forbiddenStreak }
     },
-    async note(slot, status, headers) {
+    async note(status, headers) {
       const now = Date.now()
       let outcome: BlockOutcome | null
       try {
-        outcome = await noteEspnResponse(db, slot, status, headers, now)
+        outcome = await noteEspnResponse(db, status, headers, now)
       } catch (err) {
         console.error('[espn] Falha ao gravar o estado de acesso da ESPN:', err)
         outcome = localEstimate(status, headers, now)
