@@ -3,7 +3,7 @@ export const EARLIEST_RESULT_MS = 115 * 60 * 1000
 export const ACTIVE_RESULT_WINDOW_MS = 200 * 60 * 1000
 export const RESCUE_WINDOW_MS = 24 * 60 * 60 * 1000
 
-/** Intervalo entre execuções do poller (`RESULT_POLLER_CRON`). */
+/** Intervalo entre execuções do poller (minutos 0 e 30 do `POLLER_AND_DRAIN_CRON`). */
 export const POLLER_TICK_MS = 30 * 60 * 1000
 
 /**

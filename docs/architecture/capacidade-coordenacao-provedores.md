@@ -238,7 +238,7 @@ Observações qualitativas úteis (valores numéricos exatos só no scratch da r
 | D1 Free leituras/dia | ~5 M rowsRead | Dias / 24 h móveis já na faixa alta do teto [medida] |
 | D1 Free escritas/dia | 100 k | Uso atual em faixa baixa; custo da coordenação ainda só em protótipo local exploratório (sem comparação de viabilidade) [medida + protótipo local] |
 | Queues Free retenção | Trabalho >24 h | Spec exige recuperação além de 24 h [doc] |
-| Cron Free (5 triggers) | 5º slot para drenador | Já há 4 crons [código + doc] |
+| Cron Free (5 triggers por conta) | Sem 5º slot para a API: a conta já usa 1 em outro Worker, e um 5º trigger derrubou o deploy (erro 10072, ADR-027) | 4 crons na API; o drenador divide o trigger do poller [código + doc + run 44009052934] |
 
 ### 4.5 Quando a capacidade não atende à meta
 
@@ -273,7 +273,7 @@ Esta tabela **não** fecha ADR nem declara D1 como escolha definitiva.
 
 1. Tabelas D1 para razão de orçamento por `(provedor, credencial)` e fila de trabalho com deduplicação, prioridade, lease, `not_before` e estados (`pending`/`leased`/`done`/`expired`/`blocked`).
 2. Camada única no Worker: reserva slot → `fetch` → grava resultado/cabeçalhos → telemetria (`provider_http_attempt`).
-3. Cron drenador a cada 1 a 5 min (ocupa o 5º slot Free ou usa folga Paid).
+3. Drenador a cada 5 a 10 min, nos minutos do trigger do poller que o poller não usa (o 5º trigger Free não existe para a API; ver o adendo da ADR-027).
 4. Radar: exceção documentada, reserva em lote no D1 antes do Actions, ou migração para o Worker (decisão aberta). Sem um desses passos, o orçamento do Worker não cobre o radar.
 5. Evolução para DO + alarme se a medição mostrar contenção no D1 ou se o drenador for indesejável.
 
@@ -327,7 +327,7 @@ Impacto na coordenação:
 | Orçamento Worker | Fora do isolate; um rate limit só no Worker **não** cobre o radar até integração explícita |
 | D1 | Escritas diárias do snapshot (SQL gerado); volume típico pequeno frente às escritas de produto, mas entra na mesma cota do banco `palpitae` |
 | Telemetria | Cego no AE de provedores; falhas ESPN do radar não aparecem em `provider_http_attempt` |
-| Quinto cron Free | Mover o radar para o Worker compete com o drenador da hipótese D1 |
+| Quinto cron Free | Não há 5º trigger para a API (erro 10072); mover o radar para o Worker só cabe como minuto novo do trigger fundido |
 
 Opções (ainda abertas ao operador): (a) exceção documentada com cota ESPN reservada fora do orçamento do Worker; (b) reserva em lote no D1 antes do job Actions; (c) migrar a coleta para o Worker (cron ou alarme DO). Enquanto a decisão não fecha, a hipótese D1 deve tratar o radar como **consumidor externo** do D1 e da ESPN. **Nenhuma opção acima é decisão definitiva neste documento.**
 
@@ -352,7 +352,7 @@ Ordem alinhada aos tickets 02 (football-data) e 03 (ESPN); **não implementada n
 | Muitas competições ESPN + fallback no mesmo ciclo | Duração de parede alta; risco de 403 | Priorizar P0/P1; adiar discovery/radar |
 | Leituras D1 perto de 5 M/dia no Free | Queries falham ao estourar cota | Otimizar queries do produto (índice em #622); coordenação deve ser barata em reads e medida |
 | Falha ESPN >24 h | Resultados pendentes além da janela atual de resgate | Fila durável em D1; alerta +3 h; sem placar inventado |
-| Conta Free e quinto cron | Drenador ou radar no Worker bloqueado | Paid, fundir crons, ou DO com alarme |
+| Conta Free e quinto cron | Drenador ou radar no Worker bloqueado | Fundir crons (adotado para o drenador, ADR-027), Paid, ou DO com alarme |
 
 ---
 
