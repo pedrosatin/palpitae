@@ -232,6 +232,26 @@ export function retryAtOf(error: unknown, now: number): number {
 }
 
 /**
+ * Prazo de retomada e último erro de um adiamento. Falta de saldo de subrequests
+ * da invocação (`CallBudgetExhaustedError`) não é falha nem bloqueio do provedor:
+ * o item volta já no próximo dreno, sem esperar uma janela, e não gasta tentativa
+ * (o item novo nasce com zero). Nos demais erros vale o prazo que o erro informa
+ * (`retryAt`) ou a espera conservadora.
+ */
+export function deferralOf(error: unknown, now: number): { notBefore: number; lastError: string } {
+  if (error instanceof CallBudgetExhaustedError) {
+    return {
+      notBefore: now,
+      lastError: 'saldo de chamadas da invocação esgotado; o item volta no próximo dreno',
+    }
+  }
+  return {
+    notBefore: retryAtOf(error, now),
+    lastError: error instanceof Error ? error.message : String(error),
+  }
+}
+
+/**
  * Adia um sync direto que o orçamento ou a cota recusaram: o trabalho vira item
  * pendente da fila, para o dreno retomar. Falha de cota ou bloqueio retoma no
  * prazo que o erro informa; sem vaga, depois de uma janela. Falhas de verdade
@@ -244,11 +264,10 @@ export async function deferProviderWork(
   error: unknown,
   now = Date.now(),
 ): Promise<void> {
-  const notBefore = retryAtOf(error, now)
-  const lastError = error instanceof Error ? error.message : String(error)
+  const deferral = deferralOf(error, now)
   await enqueueProviderWork(
     db,
-    (Array.isArray(item) ? item : [item]).map((one) => ({ ...one, notBefore, lastError })),
+    (Array.isArray(item) ? item : [item]).map((one) => ({ ...one, ...deferral })),
     now,
   )
 }
