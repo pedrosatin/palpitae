@@ -21,8 +21,9 @@ const config: UserConfig = {
     // sabe executá-los e quebraria o `npm test`.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     setupFiles: ['./src/test-setup.ts'],
-    // No PR, o CI roda só os testes que alcançam o diff pelo grafo de imports
-    // (scripts/test-changed.sh). Uma mudança nestes arquivos roda a suíte inteira.
+    // No PR, o Deploy Web roda só os testes que alcançam o diff pelo grafo de
+    // imports (scripts/test-changed.sh). Uma mudança nestes arquivos, entre eles
+    // o próprio script de seleção e o workflow que o chama, roda a suíte inteira.
     // O Vitest compara caminhos absolutos do repositório inteiro, então os
     // padrões ficam presos à web: o padrão `**/package.json` rodaria tudo a cada
     // mudança em api/package.json.
@@ -35,7 +36,8 @@ const config: UserConfig = {
       'src/test-setup.ts',
       '.env*',
       'src/styles/variables.css',
-      '../.github/workflows/ci.yml',
+      'scripts/test-changed.sh',
+      '../.github/workflows/deploy-web.yml',
     ].map((path) => resolve(webRoot, path)),
     testTimeout: 10000,
     css: {

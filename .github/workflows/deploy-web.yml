@@ -15,6 +15,10 @@ on:
 # Na PR roda so o job de testes (inclui build e csp:verify); o deploy so no push.
 # No push, o job de testes envia o dist verificado como artefato e o deploy
 # publica esse mesmo dist, sem reinstalar o projeto nem refazer o build.
+# Este workflow e o unico que verifica a web (typecheck, testes, build e CSP); o
+# CI (ci.yml) fica com lint, API e scripts. Nada da web le arquivo fora de web/,
+# nem o package.json e o lockfile da raiz (eles so servem ao lint, que fica no
+# CI), entao os paths acima bastam.
 # Travado no versionamento: nenhum job aqui escreve no repositorio.
 permissions:
   contents: read
@@ -52,8 +56,19 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      # No PR o checkout é o merge commit do PR com a base: HEAD^1 é a ponta da
+      # base, e o diff dele é o que o PR traz. Roda só os testes que esse diff
+      # alcança (scripts/test-changed.sh). No push, ou se o checkout não for um
+      # merge commit, roda a suíte inteira.
       - name: Run tests
-        run: npm test
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
+            bash scripts/test-changed.sh HEAD^1
+          else
+            npm test
+          fi
 
       - name: Build
         run: npm run build

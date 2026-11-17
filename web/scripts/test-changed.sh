@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Roda só os testes do Vitest afetados pelo que mudou desde <base>.
-# Uso no CI do PR: bash scripts/test-changed.sh HEAD^1
+# Uso no PR (Deploy Web): bash scripts/test-changed.sh HEAD^1
 # Argumentos depois da base vão para o Vitest (por exemplo --reporter=verbose).
 #
 # Um teste roda quando importa, direta ou indiretamente, um arquivo alterado.
-# Os arquivos de `forceRerunTriggers` (vite.config.ts) rodam a suíte inteira.
+# Os arquivos de `forceRerunTriggers` (vite.config.ts), entre eles este script,
+# rodam a suíte inteira.
 #
 # O grafo do Vitest não segue imports com `?raw`, `import.meta.glob` com
 # `query: '?raw'` nem leituras por `node:fs`. Os testes que leem arquivos assim
