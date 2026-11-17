@@ -2,7 +2,7 @@ import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types'
 import { runWithConcurrency } from '../concurrency'
 import { CallBudgetExhaustedError } from './callBudget'
 import type { DrainBudget, ItemBudget } from './drainBudget'
-import { FD_MAX_CONCURRENT_REQUESTS, FootballDataQuotaError } from './footballDataQuota'
+import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import type { SyncResult } from './matchUpsert'
 
 /**
@@ -66,14 +66,25 @@ export type ProviderWorkItem = {
   kind: ProviderWorkKind
   competitionCode: string
   season: string
-  /** Rodada football-data; vazio quando o sync busca a temporada inteira. */
+  /**
+   * Football-data: a rodada; vazio quando o sync busca a temporada inteira.
+   * ESPN: a data do scoreboard (`YYYYMMDD`); vazio busca a rodada corrente.
+   */
   round: string
   /** Id interno da competição no D1, para a telemetria; vazio quando o produtor não o sabe. */
   competitionId: string
   attempts: number
+  /**
+   * Dono do lease que o reclamou (fencing): o estado do item só é gravado
+   * enquanto o lease ainda é dele. Um dreno lento, cujo lease venceu e foi
+   * reclamado por outro, não fecha nem devolve o item do segundo.
+   */
+  leaseOwner: string
 }
 
 export type NewWorkItem = {
+  /** Provedor dono do item; ausente = football-data. */
+  provider?: string
   kind: ProviderWorkKind
   competitionCode: string
   season: string
@@ -124,6 +135,11 @@ export type DrainRun = {
   failed: number
   /** Reclamados e devolvidos sem começar (ou sem terminar), sem tentativa nova. */
   released: number
+  /**
+   * Itens cujo estado não foi gravado porque o lease venceu e outro dreno os
+   * reclamou (fencing). Fora de `done`, `requeued`, `failed` e `released`.
+   */
+  leaseLost: number
   /** Só `budget` pede mais saldo: com o provedor sem vaga, chamadas a mais não ajudam. */
   stoppedBy?: DrainStop
   /**
@@ -150,13 +166,16 @@ export type SyncedHandler = (
   budget: ItemBudget,
 ) => Promise<SyncedOutcome | void>
 
+const FOOTBALL_DATA = 'football-data'
+
 const WORK_KEY_SQL =
   'provider = ?1 AND kind = ?2 AND competition_code = ?3 AND season = ?4 AND round = ?5'
 
 /**
- * Grava itens na fila, deduplicados pela chave. Item `pending`/`running` fica
- * como está (a execução em curso o resolve); `done`/`failed` volta a pendente
- * com as tentativas zeradas: é um novo planejamento do mesmo trabalho.
+ * Grava itens na fila, deduplicados pela chave (o provedor do item, a
+ * football-data quando ausente). Item `pending`/`running` fica como está (a
+ * execução em curso o resolve); `done`/`failed` volta a pendente com as
+ * tentativas zeradas: é um novo planejamento do mesmo trabalho.
  */
 export async function enqueueProviderWork(
   db: D1Database,
@@ -171,7 +190,7 @@ export async function enqueueProviderWork(
           `INSERT INTO provider_work
              (provider, kind, competition_code, competition_id, season, round, priority,
               status, attempts, not_before, lease_until, last_error, created_at, updated_at)
-           VALUES ('football-data', ?1, ?2, ?3, ?4, ?5, ?6, 'pending', 0, ?7, 0, ?9, ?8, ?8)
+           VALUES (?10, ?1, ?2, ?3, ?4, ?5, ?6, 'pending', 0, ?7, 0, ?9, ?8, ?8)
            ON CONFLICT (provider, kind, competition_code, season, round) DO UPDATE SET
              status = 'pending',
              attempts = 0,
@@ -196,34 +215,40 @@ export async function enqueueProviderWork(
           item.notBefore ?? 0,
           now,
           item.lastError ?? null,
+          item.provider ?? FOOTBALL_DATA,
         ),
     ),
   )
 }
 
 /**
+ * Quando o erro diz até quando esperar (`retryAt`: cota esgotada, pausa por
+ * 429 ou 403, coleta suspensa), o prazo de retomada é esse; os demais usam a
+ * espera conservadora de uma janela.
+ */
+function retryAtOf(error: unknown, now: number): number {
+  const retryAt = (error as { retryAt?: unknown } | null)?.retryAt
+  return typeof retryAt === 'number' ? retryAt : now + WORK_BUSY_RETRY_MS
+}
+
+/**
  * Adia um sync direto que o orçamento ou a cota recusaram: o trabalho vira item
- * pendente da fila, para o dreno retomar. Falha de cota retoma no reset que a
- * resposta informou; sem vaga, depois de uma janela. Falhas de verdade (rede,
- * 5xx, gravação) seguem o mesmo caminho, com o prazo padrão.
+ * pendente da fila, para o dreno retomar. Falha de cota ou bloqueio retoma no
+ * prazo que o erro informa; sem vaga, depois de uma janela. Falhas de verdade
+ * (rede, 5xx, gravação) seguem o mesmo caminho, com o prazo padrão. Aceita
+ * vários itens (as datas de um sync da ESPN) no mesmo batch.
  */
 export async function deferProviderWork(
   db: D1Database,
-  item: NewWorkItem,
+  item: NewWorkItem | NewWorkItem[],
   error: unknown,
   now = Date.now(),
 ): Promise<void> {
-  const notBefore =
-    error instanceof FootballDataQuotaError ? error.retryAt : now + WORK_BUSY_RETRY_MS
+  const notBefore = retryAtOf(error, now)
+  const lastError = error instanceof Error ? error.message : String(error)
   await enqueueProviderWork(
     db,
-    [
-      {
-        ...item,
-        notBefore,
-        lastError: error instanceof Error ? error.message : String(error),
-      },
-    ],
+    (Array.isArray(item) ? item : [item]).map((one) => ({ ...one, notBefore, lastError })),
     now,
   )
 }
@@ -259,6 +284,8 @@ export async function claimProviderWork(
   opts: { provider: string; limit?: number; now?: number },
 ): Promise<ProviderWorkItem[]> {
   const now = opts.now ?? Date.now()
+  // Um dono por reclamação: o estado dos itens só é gravado por quem ainda o é.
+  const leaseOwner = crypto.randomUUID()
   const { results } = await db
     .prepare(
       `UPDATE provider_work
@@ -273,13 +300,7 @@ export async function claimProviderWork(
        RETURNING kind, competition_code, competition_id, season, round, attempts,
                  priority, created_at, rowid AS seq`,
     )
-    .bind(
-      now + WORK_LEASE_MS,
-      crypto.randomUUID(),
-      now,
-      opts.provider,
-      opts.limit ?? DRAIN_MAX_ITEMS,
-    )
+    .bind(now + WORK_LEASE_MS, leaseOwner, now, opts.provider, opts.limit ?? DRAIN_MAX_ITEMS)
     .all<ClaimedRow>()
   return results
     .sort((a, b) => a.priority - b.priority || a.created_at - b.created_at || a.seq - b.seq)
@@ -290,8 +311,17 @@ export async function claimProviderWork(
       season: row.season,
       round: row.round,
       attempts: row.attempts,
+      leaseOwner,
     }))
 }
+
+/**
+ * Fencing: o estado de um item só é gravado se ele segue `running` com o dono
+ * que o reclamou. O lease de 5 min vence, e um dreno lento que volta depois de
+ * outro ter reclamado o item não o fecha nem o devolve: a instrução não altera
+ * linha nenhuma, e o chamador vê `changes = 0` no resultado do batch.
+ */
+const leaseFence = (param: number) => `status = 'running' AND lease_owner = ?${param}`
 
 function completeStatement(
   db: D1Database,
@@ -302,15 +332,17 @@ function completeStatement(
   return db
     .prepare(
       `UPDATE provider_work
-          SET status = 'done', last_error = NULL, updated_at = ?6
-        WHERE ${WORK_KEY_SQL}`,
+          SET status = 'done', last_error = NULL, lease_until = 0, lease_owner = NULL,
+              updated_at = ?6
+        WHERE ${WORK_KEY_SQL} AND ${leaseFence(7)}`,
     )
-    .bind(provider, item.kind, item.competitionCode, item.season, item.round, now)
+    .bind(provider, item.kind, item.competitionCode, item.season, item.round, now, item.leaseOwner)
 }
 
 /**
  * Devolve o item à fila com o prazo e as tentativas dados, ou o marca falhado
- * quando as tentativas chegam ao teto. Solta o lease de todo jeito.
+ * quando as tentativas chegam ao teto. Solta o lease, desde que ainda seja de
+ * quem executou o item.
  */
 function requeueStatement(
   db: D1Database,
@@ -324,7 +356,7 @@ function requeueStatement(
           SET status = CASE WHEN ?6 >= ?7 THEN 'failed' ELSE 'pending' END,
               attempts = ?6, not_before = ?8, last_error = ?9,
               lease_until = 0, lease_owner = NULL, updated_at = ?10
-        WHERE ${WORK_KEY_SQL}`,
+        WHERE ${WORK_KEY_SQL} AND ${leaseFence(11)}`,
     )
     .bind(
       provider,
@@ -337,6 +369,7 @@ function requeueStatement(
       opts.notBefore,
       opts.error,
       opts.now,
+      item.leaseOwner,
     )
 }
 
@@ -355,9 +388,9 @@ function releaseStatement(
     .prepare(
       `UPDATE provider_work
           SET status = 'pending', lease_until = 0, lease_owner = NULL, updated_at = ?6
-        WHERE ${WORK_KEY_SQL} AND status = 'running'`,
+        WHERE ${WORK_KEY_SQL} AND ${leaseFence(7)}`,
     )
-    .bind(provider, item.kind, item.competitionCode, item.season, item.round, now)
+    .bind(provider, item.kind, item.competitionCode, item.season, item.round, now, item.leaseOwner)
 }
 
 export type DrainOptions = {
@@ -383,6 +416,8 @@ export type DrainOptions = {
   costClass?: (item: ProviderWorkItem) => string
   /** O menor `itemCost` possível: dimensiona quantos itens reclamar de uma vez. */
   minItemCost: number
+  /** Itens em execução ao mesmo tempo; padrão `DRAIN_CONCURRENCY`. */
+  concurrency?: number
   maxCycles?: number
   maxItems?: number
 }
@@ -394,6 +429,11 @@ type CycleResult = {
   halt?: DrainStop
   /** Falha da gravação do estado que só a liberação mínima contornou. */
   settleError?: string
+  /**
+   * Itens cujo estado o batch não gravou porque o lease deles já era de outro
+   * dreno (fencing): o outro é quem os resolve.
+   */
+  lost: ProviderWorkItem[]
 }
 
 /** Maior custo real, por classe de custo, dos itens concluídos neste dreno. Só sobe a estimativa. */
@@ -500,13 +540,16 @@ async function executeItem(ctx: CycleContext, item: ProviderWorkItem): Promise<v
   }
 }
 
-/** Instrução de estado de cada resultado do ciclo e de cada item devolvido. */
+/**
+ * Instrução de estado de cada resultado do ciclo e de cada item devolvido, e os
+ * itens a que elas se referem, na mesma ordem (o resultado do batch é por posição).
+ */
 function settleStatements(
   db: D1Database,
   provider: string,
   cycle: CycleResult,
   now: number,
-): D1PreparedStatement[] {
+): { statements: D1PreparedStatement[]; items: ProviderWorkItem[] } {
   const statements = cycle.outcomes.map((outcome) => {
     switch (outcome.status) {
       case 'done':
@@ -528,14 +571,21 @@ function settleStatements(
     }
   })
   for (const item of cycle.released) statements.push(releaseStatement(db, provider, item, now))
-  return statements
+  return { statements, items: [...cycle.outcomes.map((outcome) => outcome.item), ...cycle.released] }
 }
 
-/** Soma os resultados de um ciclo, já gravados, no total do dreno. */
+/**
+ * Soma os resultados de um ciclo, já gravados, no total do dreno. O que o
+ * fencing recusou (`lost`) não é do dreno: não conta como concluído, devolvido
+ * nem falhado, mas o trabalho que o item fez já aconteceu e fica em `outcomes`.
+ */
 function tally(run: DrainRun, cycle: CycleResult): void {
-  run.released += cycle.released.length
+  const lost = new Set(cycle.lost)
+  run.leaseLost += lost.size
+  run.released += cycle.released.filter((item) => !lost.has(item)).length
   for (const outcome of cycle.outcomes) {
     run.outcomes.push(outcome)
+    if (lost.has(outcome.item)) continue
     if (outcome.status === 'done') run.done += 1
     else if (outcome.status === 'requeued') run.requeued += 1
     else if (outcome.item.attempts + 1 >= WORK_MAX_ATTEMPTS) run.failed += 1
@@ -547,8 +597,9 @@ export const SETTLE_RETRY_MS = 250
 
 /**
  * Liberação mínima: um único `UPDATE` que devolve a `pending`, sem lease e sem
- * mexer em tentativas, prazo nem último erro, os itens `running` do ciclo. Não
- * grava o que o ciclo concluiu, então o item concluído roda de novo (idempotente).
+ * mexer em tentativas, prazo nem último erro, os itens `running` do ciclo que
+ * ainda têm o lease deste dreno (fencing). Não grava o que o ciclo concluiu,
+ * então o item concluído roda de novo (idempotente).
  */
 function releaseCycleStatement(
   db: D1Database,
@@ -556,7 +607,13 @@ function releaseCycleStatement(
   items: ProviderWorkItem[],
   now: number,
 ): D1PreparedStatement {
-  const keys = items.map((item) => [item.kind, item.competitionCode, item.season, item.round])
+  const keys = items.map((item) => [
+    item.kind,
+    item.competitionCode,
+    item.season,
+    item.round,
+    item.leaseOwner,
+  ])
   return db
     .prepare(
       `UPDATE provider_work
@@ -566,19 +623,33 @@ function releaseCycleStatement(
                        WHERE json_extract(k.value, '$[0]') = kind
                          AND json_extract(k.value, '$[1]') = competition_code
                          AND json_extract(k.value, '$[2]') = season
-                         AND json_extract(k.value, '$[3]') = round)`,
+                         AND json_extract(k.value, '$[3]') = round
+                         AND json_extract(k.value, '$[4]') = lease_owner)`,
     )
     .bind(provider, JSON.stringify(keys), now)
 }
 
+/** O lease venceu e outro dreno reclamou o item: o estado dele não foi gravado por este dreno. */
+function logLeaseLost(provider: string, item: ProviderWorkItem): void {
+  console.warn(
+    `[drain] Lease perdido provider=${provider} item=${item.kind}/${item.competitionCode}/${item.round}: o estado não foi gravado, o dreno que o reclamou o resolve.`,
+  )
+}
+
 /**
- * Grava o estado do ciclo num `db.batch()`. Se o D1 falhar, repete uma vez; se
- * falhar de novo, tenta a liberação mínima, que devolve os itens do ciclo a
- * `pending` sem tentativa e sem lease. As três chamadas estão reservadas na
- * fatia (`STATE_RESERVE_CALLS`). Devolve a mensagem da falha quando só a
- * liberação funcionou. Se nem ela funcionar, o D1 está indisponível de forma
- * persistente e o erro sobe: os itens ficam `running` até o lease de 5 min
- * vencer, e o dreno seguinte os reclama, sem tentativa gasta a mais.
+ * Grava o estado do ciclo num `db.batch()`, com o fencing por dono do lease em
+ * cada instrução (`leaseFence`): o item que outro dreno reclamou depois do
+ * vencimento do lease não é tocado, e o resultado do batch o aponta
+ * (`cycle.lost`). O fencing protege o estado da fila; o que o item já gravou
+ * no calendário e o pós-sync que já rodou antes da gravação não se desfazem.
+ *
+ * Se o D1 falhar, repete uma vez; se falhar de novo, tenta a liberação mínima,
+ * que devolve os itens do ciclo a `pending` sem tentativa e sem lease (também
+ * com o fencing). As três chamadas estão reservadas na fatia
+ * (`STATE_RESERVE_CALLS`). Registra em `cycle.settleError` a mensagem da falha
+ * quando só a liberação funcionou. Se nem ela funcionar, o D1 está indisponível
+ * de forma persistente e o erro sobe: os itens ficam `running` até o lease de
+ * 5 min vencer, e o dreno seguinte os reclama, sem tentativa gasta a mais.
  */
 async function settleCycle(
   budget: DrainBudget,
@@ -586,23 +657,29 @@ async function settleCycle(
   items: ProviderWorkItem[],
   cycle: CycleResult,
   now: number,
-): Promise<string | undefined> {
-  const write = () => budget.db.batch(settleStatements(budget.db, provider, cycle, now))
+): Promise<void> {
+  const { statements, items: settled } = settleStatements(budget.db, provider, cycle, now)
+  const write = () => budget.db.batch(statements)
+  let results: Awaited<ReturnType<typeof write>> | undefined
   try {
-    await write()
-    return undefined
+    results = await write()
   } catch (err) {
     console.error('[drain] Gravação do estado dos itens falhou, repetindo:', err)
   }
-  await new Promise((resolve) => setTimeout(resolve, SETTLE_RETRY_MS))
-  try {
-    await write()
-    return undefined
-  } catch (err) {
-    console.error('[drain] Gravação do estado falhou de novo, devolvendo os itens à fila:', err)
-    await releaseCycleStatement(budget.db, provider, items, now).run()
-    return err instanceof Error ? err.message : String(err)
+  if (!results) {
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_RETRY_MS))
+    try {
+      results = await write()
+    } catch (err) {
+      console.error('[drain] Gravação do estado falhou de novo, devolvendo os itens à fila:', err)
+      await releaseCycleStatement(budget.db, provider, items, now).run()
+      cycle.settleError = err instanceof Error ? err.message : String(err)
+      return
+    }
   }
+  // Instrução que não alterou linha: o lease já era de outro dreno.
+  cycle.lost = settled.filter((_, i) => (results[i]?.meta?.changes ?? 0) === 0)
+  for (const item of cycle.lost) logLeaseLost(provider, item)
 }
 
 /**
@@ -617,10 +694,12 @@ async function runCycle(
   now: number,
   observed: ObservedCosts,
 ): Promise<CycleResult> {
-  const cycle: CycleResult = { outcomes: [], released: [] }
+  const cycle: CycleResult = { outcomes: [], released: [], lost: [] }
   const ctx: CycleContext = { budget, opts, now, cycle, observed }
-  await runWithConcurrency(DRAIN_CONCURRENCY, items, (item) => executeItem(ctx, item))
-  cycle.settleError = await settleCycle(budget, opts.provider, items, cycle, now)
+  await runWithConcurrency(opts.concurrency ?? DRAIN_CONCURRENCY, items, (item) =>
+    executeItem(ctx, item),
+  )
+  await settleCycle(budget, opts.provider, items, cycle, now)
   return cycle
 }
 
@@ -640,7 +719,15 @@ export async function drainProviderWork(
   const now = opts.now ?? Date.now()
   const maxItems = opts.maxItems ?? DRAIN_MAX_ITEMS
   const maxCycles = opts.maxCycles ?? DRAIN_MAX_CYCLES
-  const run: DrainRun = { claimed: 0, done: 0, requeued: 0, failed: 0, released: 0, outcomes: [] }
+  const run: DrainRun = {
+    claimed: 0,
+    done: 0,
+    requeued: 0,
+    failed: 0,
+    released: 0,
+    leaseLost: 0,
+    outcomes: [],
+  }
   const observed: ObservedCosts = new Map()
   for (let cycle = 0; cycle < maxCycles; cycle++) {
     const limit = budget.claimLimit(opts.minItemCost, maxItems)

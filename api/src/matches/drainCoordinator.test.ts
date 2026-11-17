@@ -45,6 +45,7 @@ const emptyRun = (overrides: Partial<DrainRun> = {}): DrainRun => ({
   requeued: 0,
   failed: 0,
   released: 0,
+  leaseLost: 0,
   outcomes: [],
   ...overrides,
 })

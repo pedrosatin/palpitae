@@ -92,6 +92,7 @@ const item = (overrides: Partial<ProviderWorkItem> = {}): ProviderWorkItem => ({
   round: '10',
   competitionId: '',
   attempts: 0,
+  leaseOwner: 'dono',
   ...overrides,
 })
 
