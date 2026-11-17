@@ -45,6 +45,9 @@ dataset = "palpitae_events"
 #  - "15 6 * * *"   → fixture discovery: busca jogos novos (mata-mata, remarcações)
 #    das competições ativas. 1x/dia às 06:15 UTC (03:15 BRT), sem jogos e fora dos
 #    ticks 0/30 do poller. Ver fixtureDiscovery.ts.
+#  - "5,10,20,25,35,40,50,55 * * * *" → drenador da fila durável de sync
+#    (ADR-027): retoma entre os ticks o trabalho pendente da football-data
+#    (orçamento cheio, falha ou reinício). Fora dos minutos 0/30 e 15.
 # As expressões abaixo precisam bater com api/src/crons.ts (um teste compara as duas).
 # Cron sem ramo no handler só registra `scheduled_unknown_cron`.
 # O radar de competições (/admin/oportunidades) NÃO tem cron aqui: a
@@ -52,7 +55,7 @@ dataset = "palpitae_events"
 # (429 na 1ª chamada, com a quota intacta). A coleta roda no GitHub Actions —
 # .github/workflows/radar-sync.yml. Ver ADR-014.
 [triggers]
-crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *"]
+crons = ["0,30 * * * *", "5 0 * * *", "0 10 * * *", "15 6 * * *", "5,10,20,25,35,40,50,55 * * * *"]
 
 # Cold path — bucket R2 onde o export diário grava events/YYYY/MM/DD.ndjson.
 # Criar antes do deploy (de api/):

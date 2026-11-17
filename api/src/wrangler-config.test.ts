@@ -7,7 +7,7 @@ import deployWorkflow from '../../.github/workflows/deploy-api.yml?raw'
 import deployWebWorkflow from '../../.github/workflows/deploy-web.yml?raw'
 import packageJsonFile from '../package.json'
 import wranglerToml from '../wrangler.toml?raw'
-import { FIXTURE_DISCOVERY_CRON, RESULT_POLLER_CRON, SCHEDULED_CRONS } from './crons'
+import { FIXTURE_DISCOVERY_CRON, PROVIDER_WORK_DRAIN_CRON, RESULT_POLLER_CRON, SCHEDULED_CRONS } from './crons'
 
 const REPO_ROOT = new URL('../../', import.meta.url)
 
@@ -171,5 +171,17 @@ describe('wrangler api config', () => {
 
     expect(minutes(RESULT_POLLER_CRON)).toEqual(['0', '30'])
     expect(minutes(RESULT_POLLER_CRON)).not.toContain(minutes(FIXTURE_DISCOVERY_CRON)[0])
+  })
+
+  it('o drenador da fila não compartilha minuto com o poller nem com a descoberta', () => {
+    const pollerMinutes = new Set(RESULT_POLLER_CRON.split(' ')[0].split(','))
+    const discoveryMinute = FIXTURE_DISCOVERY_CRON.split(' ')[0]
+    const drainMinutes = PROVIDER_WORK_DRAIN_CRON.split(' ')[0].split(',')
+
+    expect(drainMinutes.length).toBeGreaterThan(0)
+    for (const minute of drainMinutes) {
+      expect(pollerMinutes).not.toContain(minute)
+      expect(minute).not.toBe(discoveryMinute)
+    }
   })
 })

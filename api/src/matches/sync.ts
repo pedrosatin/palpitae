@@ -11,6 +11,7 @@ import {
   readFootballDataQuota,
   waitForFootballDataQuota,
 } from './footballDataQuota'
+import { noteFootballDataBlock, reserveFootballDataSlot } from './providerBudget'
 import {
   countTbdDiscards,
   isoSeconds,
@@ -133,6 +134,14 @@ export type SyncOptions = {
   dates?: string[]
   apiKey?: string
   db: D1Database
+  /**
+   * Coordena a tentativa pelo orçamento compartilhado no D1 (ADR-027): reserva
+   * uma vaga na janela de um minuto antes de cada request e grava o bloqueio
+   * que um 429 (ou cota zerada) impõe. Os chamadores da fila durável ligam
+   * sempre. Uma chamada sem a flag fica fora do orçamento, como as exceções
+   * documentadas em `providerBudget.ts` (radar, script local) e os testes.
+   */
+  coordinate?: boolean
   /** Instante do sync (ISO 8601). Padrão: agora. Usado para gravar `locked_at`. */
   now?: string
   /** Telemetria por tentativa HTTP ao provedor (contexto e competição já embutidos). */
@@ -254,6 +263,8 @@ async function fetchMatchesFromApi(
   season: number,
   matchday: number | undefined,
   apiKey: string,
+  db: D1Database,
+  coordinate: boolean,
   onAttempt?: ProviderHttpObserver,
 ): Promise<ApiMatchesResponse> {
   const url = new URL(`${API_BASE}/competitions/${competitionCode}/matches`)
@@ -264,6 +275,9 @@ async function fetchMatchesFromApi(
     // Pausa por cota (429 ou cota zerada) vista antes neste isolate: espera ou
     // falha sem request.
     await waitForFootballDataQuota()
+    // Vaga no orçamento compartilhado entre execuções (ADR-027). Sem vaga não
+    // há request: o chamador decide o que fazer com o trabalho pendente.
+    if (coordinate) await reserveFootballDataSlot(db)
     const startedAt = Date.now()
     try {
       const res = await fetch(url.toString(), {
@@ -272,6 +286,8 @@ async function fetchMatchesFromApi(
       })
       const quota = readFootballDataQuota(res.headers, Date.now())
       noteFootballDataResponse(res.status, quota, Date.now())
+      // O bloqueio imposto por esta resposta vale para os outros isolates.
+      if (coordinate) await noteFootballDataBlock(db, res.status, quota, Date.now())
       notifyHttpAttempt(onAttempt, {
         provider: 'football-data',
         status: res.status,
@@ -666,6 +682,8 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
     season,
     matchday,
     apiKey,
+    db,
+    opts.coordinate ?? false,
     opts.onHttpAttempt,
   )
   const { competition: apiComp, matches } = data

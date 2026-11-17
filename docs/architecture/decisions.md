@@ -1043,3 +1043,42 @@ A migration 0045 deriva `group_members.role` do dono do grupo: um backfill corri
 - A contagem de entradas por convite do painel (`role = 'member'`) passa a contar o dono antigo de um grupo transferido à mão, e deixa de contar o novo dono. A diferença já aceita entre essa contagem e os eventos registrados cobre esse caso.
 - A marca `predictions_import_completed` fica na linha de `group_members` e sai com o membro. Quem sai e volta ao grupo mantém os palpites e vê o seletor de importação aberto de novo. Comportamento aceito.
 - O roteiro do operador está em `docs/operations/exclusao-conta-jogo.md`.
+
+---
+
+## ADR-027: Orçamento compartilhado e fila durável de sync da football-data
+
+**Status:** Accepted
+**Date:** 2026-11-16
+
+### Contexto
+
+A football-data.org do plano Free limita a 10 requests por minuto, e o limite vale entre execuções: o poller (a cada 30 min), a descoberta diária (1×/dia), o sync administrativo, os retries internos e os ticks que se sobrepõem não dividiam nenhuma contagem comum. Dentro de uma invocação havia teto de paralelismo (`FD_MAX_CONCURRENT_REQUESTS`) e pausa de isolate após um 429 (`footballDataQuota.ts`), mas nada controlava requests por minuto entre isolates, execuções e processos. Uma rajada de descoberta mais poller no mesmo minuto podia passar dos 10 e o retry de 6 s ia para a mesma janela cheia.
+
+O trabalho que falhava também não durava: uma descoberta que errava em 06:15 só voltava no dia seguinte, um 429 de resultado ficava para o próximo tick (30 min) e o que passasse da janela de resgate de 24 h ficava por conta da varredura de atrasados, uma rodada a cada 3 h.
+
+O estudo do [ticket 01](https://github.com/pedrosatin/palpitae/issues) da resiliência comparou as alternativas (D1, Durable Object, Queues, Workflows, KV, binding de rate limiting, GitHub Actions, Redis externo) nas PRs #625, #626 e #627. Decisão do operador de 14/11/2026: todos os provedores seguem no plano grátis e a coordenação fica no D1, com a capacidade dimensionada pelos limites grátis; as hipóteses não medidas ficam registradas nessas PRs.
+
+### Decisão
+
+Coordenação em duas tabelas D1 (migration 0046), uma camada de acesso no cliente da football-data e um cron drenador:
+
+- **`provider_rate_state`, a razão de orçamento.** Uma linha por provedor. Antes de cada request, `reserveFootballDataSlot` (`api/src/matches/providerBudget.ts`) reserva uma vaga num único `UPDATE` condicional: a janela é o minuto corrente e o orçamento é `FD_CALLS_PER_MINUTE = 8`, 80% do free tier documentado. O D1 serializa escritas, então isolates e execuções diferentes dividem a mesma janela; reserva recusada não consome vaga e não chama o provedor. Um 429 (ou cota zerada) grava `blocked_until` com o reset que a resposta informou (cap de 1 h) ou, sem reset válido, a espera conservadora de 60 s — e nenhuma reserva passa disso. A pausa por isolate continua (`waitForFootballDataQuota`) e é checada antes da reserva.
+- **`provider_work`, a fila durável.** Uma linha por chave de deduplicação (provedor, tipo, competição, temporada, rodada) — `result` (poller, prioridade 0), `late` (varredura, 1), `manual` (sync administrativo, 1) e `discovery` (2). Concluída ou falha, a linha é reusada pelo próximo planejamento, então a tabela cresce com rodadas, não com execuções, e não precisa de limpeza. Cada item guarda tentativas, prazo de retomada (`not_before`), lease de execução (`lease_until`, 5 min) e o último erro. O teto é de 6 tentativas de execução por ciclo de planejamento; o produtor revive o item.
+- **Camada de acesso.** Todo request à football-data sai de `fetchMatchesFromApi`, que espera a pausa do isolate, reserva a vaga e grava o bloqueio que a resposta impõe. Os chamadores ligam isso com `coordinate: true` — poller, descoberta e dreno sempre; o sync administrativo liga e, sem vaga, devolve `{ ok, pending }` e adia o item. Chamada sem a flag fica fora do orçamento, como as exceções declaradas.
+- **Adiamento e dreno.** O sync direto segue como era; qualquer falha do chamador (sem vaga, cota, rede, 5xx, gravação) vira item pendente por `deferProviderWork`, com o prazo da cota quando o erro a informa e a espera conservadora nos demais. O cron drenador (`5,10,20,25,35,40,50,55 * * * *`, `drainFootballDataWork` em `api/src/matches/fdWork.ts`) reclama itens prontos por prioridade com um `UPDATE ... RETURNING` — dois drenos nunca executam o mesmo item —, executa com o teto de syncs em voo e retoma também o que ficou em execução com lease vencido. A descoberta que falha de dia volta no mesmo dia, e pendências de resultado sobrevivem muito além das 24 h do resgate. Cada execução registra `provider_work_run`.
+
+O fluxo do poller e da descoberta muda o mínimo: o sync segue direto no tick e na descoberta, e só a falha muda de forma — vira item durável em vez de log solto. A ESPN fica fora deste ADR: segue com teto e pacing por isolate, e a coordenação dela é o ticket 03 da resiliência.
+
+**Exceções explícitas, fora do orçamento** por serem processos externos sem acesso ao D1 do Worker: o radar de competições (GitHub Actions, ESPN + Wikimedia, ADR-015) e `api/scripts/test-results-api.ts` (desenvolvimento local). A coordenação do radar é decisão do ticket 03.
+
+### Consequências
+
+- O orçamento de 8/min é janela fixa: 8 chamadas no fim de um minuto e 8 no começo do seguinte podem somar 16 num minuto deslizante. Se o contador do fornecedor for deslizante, o excesso vira 429 — que agora tem reset, bloqueio compartilhado e retomada durável. A margem de 20% existe para essa aproximação; mudá-la é alterar `FD_CALLS_PER_MINUTE`.
+- Cada tentativa consome 1 escrita a mais no D1 (a reserva), além das gravações de bloqueio e da fila. No pior caso do estudo (~1.200 tentativas/dia), são ~3 mil linhas/dia, ~3% da cota Free de escrita (PR #625).
+- O drenador ocupa o 5º e último slot de cron da conta no plano Free. Cada ciclo custa 1–2 consultas ao D1 quando não há nada pendente.
+- O lease de 5 min admite execução duplicada em corrida rara (dreno e tick no mesmo item); o upsert é idempotente e sem mudança não grava, então o duplicado custa uma chamada.
+- O prazo de retomada de um item `pending` não é reescrito por um novo adiamento do produtor; quem manda no prazo entre os ciclos é o dreno.
+- Retenção: as linhas de `provider_work` são reusadas e ficam; `provider_rate_state` tem uma linha por provedor. Nenhuma das duas cresce com o histórico — medição histórica segue no Analytics Engine e no export diário.
+- Testes: `providerBudget.test.ts` (reserva, janela, bloqueio), `providerWork.test.ts` (fila, deduplicação, lease, teto de tentativas), `providerCoordination.test.ts` (ponta a ponta com provedor simulado: concorrência, 429 com e sem reset, reinício, recuperação além de 24 h, reprocesso idempotente e prioridade). O teto de orçamento sobe para os demais testes de pipeline em `src/testing/vitest.setup.ts`, que não o exercem.
+- Hipóteses herdadas do estudo, não medidas: plano Cloudflare provavelmente Paid (a descoberta de 48 fetches + consultas D1 já passa dos 50 subrequests do Free), janela do fornecedor fixa ou deslizante, e o consumo real do D1 em produção. A observação pós-implantação, sem carga artificial, é entrega do ticket.

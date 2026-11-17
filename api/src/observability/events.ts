@@ -33,6 +33,8 @@ export type EventType =
   | 'match_results_fallback'
   // Tentativa HTTP a um provedor de partidas (ESPN, football-data): toda falha + amostra de sucessos
   | 'provider_http_attempt'
+  // Execução do cron drenador da fila durável de sync (ADR-027)
+  | 'provider_work_run'
   // Provedor trocou os times de um jogo já gravado (mando invertido ou time substituído)
   | 'match_teams_changed'
   // Sync achou competição nova sem configuração cadastrada e não a criou
