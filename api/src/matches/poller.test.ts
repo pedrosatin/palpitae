@@ -255,9 +255,12 @@ describe('pollActiveMatches', () => {
       expect.objectContaining({
         competitionCode: 'conmebol.libertadores',
         season: 2026,
-        matchday: undefined,
+        // A ESPN entra no orçamento compartilhado (ADR-027) e busca por data.
+        coordinate: true,
+        dates: ['20261014', '20261015'],
       }),
     )
+    expect(syncFixturesMock.mock.calls[0][0].matchday).toBeUndefined()
     expect(espnFallbackMock).not.toHaveBeenCalled()
     expect(scoreMock).not.toHaveBeenCalled()
   })

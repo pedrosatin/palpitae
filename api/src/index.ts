@@ -18,6 +18,7 @@ import {
 import { jsonError, jsonNotFound } from './errorHandlers'
 import { groupsRouter } from './groups/router'
 import { runProviderDrains } from './matches/drainCoordinator'
+import { espnDrain } from './matches/espnWork'
 import { footballDataDrain } from './matches/fdWork'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
@@ -169,11 +170,15 @@ export default {
         // Demais minutos do trigger fundido: drenadores da fila durável (ADR-027),
         // que retomam o trabalho pendente entre os ticks. Todos dividem o mesmo
         // orçamento de subrequests da invocação (`runProviderDrains`); um provedor
-        // novo entra com uma linha a mais nesta lista.
+        // novo entra com uma linha a mais nesta lista. Nenhum cron novo: o plano
+        // Free comporta 4 triggers para a API.
         ctx.waitUntil(
           runProviderDrains(
             env.DB,
-            [footballDataDrain({ apiKey: env.FOOTBALL_API_KEY ?? '', ae: env.AE })],
+            [
+              footballDataDrain({ apiKey: env.FOOTBALL_API_KEY ?? '', ae: env.AE }),
+              espnDrain({ ae: env.AE }),
+            ],
             { ae: env.AE },
           ),
         )

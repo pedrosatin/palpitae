@@ -79,7 +79,8 @@ async function runOne(
       `[drain] Falha ao drenar a fila de ${drain.provider}:`,
       err,
       {
-        blobs: ['error'],
+        // provedor em blob3, como em toda linha de `provider_work_run`; a mensagem vai para blob4
+        blobs: ['error', drain.provider],
       },
     )
     return { used: budget.used, stoppedByBudget: false }
