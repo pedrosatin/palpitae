@@ -58,6 +58,11 @@ const needsDe = (bloco) => {
 const pathsDe = (text, evento) => {
   const on = text.match(/^on:\s*\n((?:[ #].*\n|\n)+)/m)?.[1] ?? ''
   const gatilho = on.match(new RegExp(`^ {2}${evento}:\\s*\\n((?: {4,}.+\\n)+)`, 'm'))?.[1] ?? ''
+  // Lista em linha: paths: ['web/**', '.github/workflows/deploy-web.yml']
+  const inline = gatilho.match(/^ {4}paths:\s*\[(.*)\]\s*$/m)?.[1]
+  if (inline !== undefined) {
+    return inline.split(',').map((p) => p.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+  }
   const paths = gatilho.match(/^ {4}paths:\s*\n((?: {6}- .+\n)+)/m)?.[1] ?? ''
   return paths
     .split('\n')
@@ -163,10 +168,19 @@ describe('workflows do GitHub Actions', () => {
 
     // Type check antes dos testes, e a seleção só dentro do ramo de pull_request.
     assert.match(teste, /^\s+run: npm run type-check\s*$/m)
-    assert.match(
-      teste,
-      /- name: Run tests\n\s+env:\n\s+EVENT_NAME: \$\{\{ github\.event_name \}\}\n\s+run: \|\n\s+if \[ "\$EVENT_NAME" = pull_request \] && git rev-parse -q --verify HEAD\^2 >\/dev\/null; then\n\s+bash scripts\/test-changed\.sh HEAD\^1\n\s+else\n\s+npm test\n\s+fi\n/,
-    )
+    // O step é achado pelo comando, não pelo nome nem pela ordem das chaves.
+    const passos = teste.split(/\n(?= {6}- )/)
+    const passo = passos.find((p) => p.includes('scripts/test-changed.sh')) ?? ''
+    assert.match(passo, /EVENT_NAME: \$\{\{ github\.event_name \}\}/)
+    const ramoPr = passo.search(/if \[ "\$EVENT_NAME" = pull_request \]/)
+    const selecao = passo.indexOf('bash scripts/test-changed.sh HEAD^1')
+    const senao = passo.search(/^\s+else\s*$/m)
+    const completa = passo.search(/^\s+npm test\s*$/m)
+    assert.ok(ramoPr >= 0 && ramoPr < selecao && selecao < senao && senao < completa, 'a seleção precisa ficar só no ramo de pull_request, com npm test no else')
+
+    // O disparo manual verifica a web sem cancelar um deploy: grupo de concurrency próprio.
+    assert.match(text, /^ {2}workflow_dispatch:/m)
+    assert.match(text.match(/^concurrency:\s*\n {2}group: (.+)$/m)?.[1] ?? '', /workflow_dispatch/)
     assert.equal(semComentarios(text).match(/test-changed\.sh/g)?.length, 1, 'test-changed.sh fora do step de testes')
   })
 
