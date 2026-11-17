@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { logError } from '../observability/events'
 import { EspnUnavailableError, type EspnBlock, type EspnGate } from '../providers/espn'
 import { CallBudgetExhaustedError, type CallGate } from './callBudget'
-import { reserveProviderSlot, SUSPENDED_RECHECK_MS } from './providerBudget'
+import { readProviderState, reserveProviderSlot, SUSPENDED_RECHECK_MS } from './providerBudget'
 
 /**
  * Controle de acesso da ESPN (ADR-027, adendo do ticket 03).
@@ -339,25 +339,85 @@ export function createEspnGate(
         }
         return null
       }
-      const prohibition: Prohibition = {
-        status,
-        retryAfterMs: retryAfterMs(headers, now),
-        observedAt: now,
-      }
-      let outcome: BlockOutcome
-      try {
-        outcome = await persistProhibition(db, prohibition)
-      } catch (err) {
-        // O request já partiu e a resposta proibiu: o bloqueio local impede o próximo
-        // enquanto o D1 não aceitar a gravação.
-        console.error('[espn] Falha ao gravar o estado de acesso da ESPN:', err)
-        outcome = holdLocally(prohibition)
-      }
-      // O 429 comum já tem `provider_http_attempt`; a suspensão por Retry-After absurdo alerta.
-      if (outcome.status !== 429 || outcome.reason === 'suspended') {
-        alertAccessBlocked(ae, outcome, now)
-      }
-      return { reason: outcome.reason, retryAt: outcome.retryAt }
+      return noteProhibition(db, ae, status, headers, now)
+    },
+  }
+}
+
+/**
+ * Registra uma resposta que proíbe o acesso (429, 403, 401, 451) no D1 e alerta. Se o D1 não
+ * grava, o bloqueio local impede a próxima reserva do isolate. Devolve o bloqueio que vale.
+ */
+async function noteProhibition(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  status: number,
+  headers: Headers,
+  now: number,
+): Promise<EspnBlock> {
+  const prohibition: Prohibition = {
+    status,
+    retryAfterMs: retryAfterMs(headers, now),
+    observedAt: now,
+  }
+  let outcome: BlockOutcome
+  try {
+    outcome = await persistProhibition(db, prohibition)
+  } catch (err) {
+    // O request já partiu e a resposta proibiu: o bloqueio local impede o próximo
+    // enquanto o D1 não aceitar a gravação.
+    console.error('[espn] Falha ao gravar o estado de acesso da ESPN:', err)
+    outcome = holdLocally(prohibition)
+  }
+  // O 429 comum já tem `provider_http_attempt`; a suspensão por Retry-After absurdo alerta.
+  if (outcome.status !== 429 || outcome.reason === 'suspended') {
+    alertAccessBlocked(ae, outcome, now)
+  }
+  return { reason: outcome.reason, retryAt: outcome.retryAt }
+}
+
+/** Acesso à ESPN pausado: a coleta está suspensa, ou um bloqueio por prazo está vigente. */
+export type EspnAccessPause = EspnBlock
+
+/**
+ * Lê o estado de acesso da ESPN (1 consulta ao D1) e diz se a coleta está pausada: suspensa
+ * (só o operador retoma) ou bloqueada até `blocked_until`. Quem não reserva vaga por request,
+ * como a descoberta diária, confere isto antes de chamar a ESPN. `null` com o acesso livre.
+ */
+export async function readEspnAccessPause(
+  db: D1Database,
+  now = Date.now(),
+): Promise<EspnAccessPause | null> {
+  const state = await readProviderState(db, 'espn')
+  if (state?.suspendedAt != null) {
+    return { reason: 'suspended', retryAt: now + SUSPENDED_RECHECK_MS }
+  }
+  if (state && state.blockedUntil > now) {
+    return { reason: 'blocked', retryAt: state.blockedUntil }
+  }
+  return null
+}
+
+/**
+ * Gate da ESPN para quem não reserva vaga por request (a descoberta diária, ADR-027,
+ * adendo do ticket 03): cada request segue custando 1 chamada, sem reserva nem registro
+ * no D1 a cada sucesso. Só uma resposta que proíbe o acesso (401, 403, 429, 451) é
+ * registrada (o mesmo controle de acesso do gate completo, com o alerta), e a partir dela
+ * nenhum request seguinte da mesma invocação sai: o gate lembra o bloqueio na memória.
+ * Respeita também uma gravação pendente de outra execução do isolate (`settleLocalBlocks`,
+ * sem custo quando não há nenhuma).
+ */
+export function createEspnDiscoveryGate(db: D1Database, ae?: AnalyticsEngineDataset): EspnGate {
+  let stopped: EspnBlock | undefined
+  return {
+    async reserve() {
+      if (stopped) throw new EspnUnavailableError(stopped.reason, stopped.retryAt)
+      await settleLocalBlocks(db, Date.now())
+    },
+    async note(status, headers) {
+      if (!isProhibition(status)) return null
+      stopped = await noteProhibition(db, ae, status, headers, Date.now())
+      return stopped
     },
   }
 }

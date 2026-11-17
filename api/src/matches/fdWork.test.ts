@@ -317,4 +317,37 @@ describe('advanceCompetitionStatus', () => {
     ).rejects.toBeInstanceOf(CallBudgetExhaustedError)
     expect(consoleError).not.toHaveBeenCalled()
   })
+
+  describe('item de competição da ESPN na fila da football-data (o item de retomada da descoberta)', () => {
+    const espnItem = () => item({ competitionCode: 'conmebol.sudamericana', round: '' })
+
+    it('a data que a ESPN não entregou não conclui o item: ele conta tentativa, como o fetch que lança', async () => {
+      const { db } = await setup({ matches: 10, status: 'FINISHED' })
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response('erro', { status: 503 })),
+      )
+      const span = new DrainBudget(db, 45).open(12)!
+
+      const outcome = await runFootballDataWorkItem({ apiKey: 'test', now: NOW })(espnItem(), span)
+
+      expect(outcome).toMatchObject({ status: 'retry' })
+    })
+
+    it('com o acesso da ESPN pausado o item volta no prazo do bloqueio, sem tentativa e sem encerrar o dreno', async () => {
+      const { db, sqlite } = await setup({ matches: 10, status: 'FINISHED' })
+      sqlite.exec(
+        `UPDATE provider_rate_state SET blocked_until = ${NOW + 15 * 60_000} WHERE provider = 'espn'`,
+      )
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+      const span = new DrainBudget(db, 45).open(12)!
+
+      const outcome = await runFootballDataWorkItem({ apiKey: 'test', now: NOW })(espnItem(), span)
+
+      expect(outcome).toMatchObject({ status: 'requeued', notBefore: NOW + 15 * 60_000 })
+      expect(outcome).not.toHaveProperty('providerBlocked')
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+  })
 })

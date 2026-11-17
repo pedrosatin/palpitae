@@ -18,11 +18,12 @@ import { footballDataPauseMs, type FootballDataQuota } from './footballDataQuota
  * request à football-data passa por `reserveFootballDataSlot`. Cada tentativa
  * conta, inclusive a que falha.
  *
- * A ESPN usa a mesma razão (ADR-027, adendo do ticket 03): poller, descoberta,
- * sync administrativo, fallback de resultados e dreno reservam vaga na linha
- * `espn` antes de cada request (`espnAccess.ts`). Além da janela de um minuto,
- * a linha guarda o controle de acesso: a sequência de 403, o bloqueio entre
- * tentativas e a suspensão da coleta.
+ * A ESPN usa a mesma razão (ADR-027, adendo do ticket 03): poller, sync
+ * administrativo, fallback de resultados e dreno reservam vaga na linha `espn`
+ * antes de cada request (`espnAccess.ts`). A descoberta diária só lê o estado de
+ * acesso e registra as respostas de erro, sem reservar vaga por request. Além da
+ * janela de um minuto, a linha guarda o controle de acesso: a sequência de 403, o
+ * bloqueio entre tentativas e a suspensão da coleta.
  *
  * Exceções explícitas, fora do orçamento por serem processos externos sem
  * acesso ao D1 do Worker:
@@ -39,9 +40,8 @@ export const FD_CALLS_PER_MINUTE = 8
  * Orçamento por minuto da ESPN. A API pública não documenta cota: o cliente já
  * espaça os inícios em 1,3 s (~46/min por isolate, ritmo sem 403 Akamai
  * observado). O orçamento compartilhado fica em 40/min, cerca de 87% disso: um
- * isolate sozinho quase não esbarra nele (a descoberta de ~4 competições
- * planeja 36 requests), e ele limita a soma quando duas execuções se
- * sobrepõem, o que o espaçamento por isolate não enxerga.
+ * isolate sozinho quase não esbarra nele, e ele limita a soma quando duas
+ * execuções se sobrepõem, o que o espaçamento por isolate não enxerga.
  */
 export const ESPN_CALLS_PER_MINUTE = 40
 

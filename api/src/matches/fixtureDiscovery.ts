@@ -2,14 +2,12 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { logError, logEvent } from '../observability/events'
 import { createProviderHttpObserver } from '../observability/providerHttp'
 import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
+import { createEspnDiscoveryGate, isEspnRefusal, readEspnAccessPause } from './espnAccess'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
-import { isEspnRefusal } from './espnAccess'
-import { deferEspnWork, type EspnWorkBase } from './espnWork'
 import { MISSING_EVENTS_PER_DISCOVERY, advanceCompetitionStatus } from './fdWork'
 import { espnDatesAround } from './matchPollingWindow'
 import { deferProviderWork } from './providerWork'
 import { scoreUnprocessedMatches } from './scoring'
-import type { SyncResult } from './matchUpsert'
 import { syncFixtures } from './sync'
 import { runSyncTasks } from './syncTasks'
 
@@ -33,10 +31,15 @@ type ActiveCompetition = {
  * Orçamento compartilhado (ADR-027): toda tentativa football-data reserva vaga
  * na janela de um minuto; o que o orçamento ou a cota recusarem vira item
  * pendente na fila durável, e o cron drenador retoma no mesmo dia — uma
- * competição que falhou não espera a descoberta de amanhã. A ESPN faz o mesmo
- * com o orçamento e o controle de acesso dela: cada data do scoreboard que não
- * chegar vira um item pendente, e o status da competição só avança quando a
- * descoberta consultou todas as datas.
+ * competição que falhou não espera a descoberta de amanhã. A ESPN segue direto,
+ * com o teto e o pacing próprios.
+ *
+ * Controle de acesso da ESPN (ADR-027, adendo do ticket 03): a descoberta é consumidor
+ * parcialmente integrado. Cada request da ESPN segue custando 1 chamada, sem reservar
+ * vaga por request nem fila, mas a execução lê o estado de acesso antes (1 consulta) e
+ * pula a ESPN suspensa ou bloqueada, e só as respostas 401, 403, 429 e 451 são
+ * registradas no gate (nenhuma escrita a cada sucesso). A descoberta seguinte tenta
+ * de novo. O limite de 50 subrequests por invocação segue sem orçamento aqui.
  *
  * Custo sem retries: 1 request por competição football-data e 9 por competição
  * ESPN. Dez competições ESPN-primárias planejam 90 requests por execução, com
@@ -89,16 +92,23 @@ export async function discoverFixtures(
     plannedApiRequests += comp.provider === 'espn' ? espnDates.length : 1
   }
 
-  const workBase = (comp: ActiveCompetition): EspnWorkBase => ({
-    kind: 'discovery',
-    competitionCode: comp.external_id,
-    season: comp.season,
-    competitionId: comp.id,
-  })
+  // ESPN suspensa ou com bloqueio vigente: a execução não a chama (1 consulta, só se há
+  // competição da ESPN). Não é erro nem vai para a fila: a descoberta seguinte tenta de novo.
+  const espnPause = rows.results.some((comp) => comp.provider === 'espn')
+    ? await readEspnAccessPause(db)
+    : null
+  const espnGate = createEspnDiscoveryGate(db, ae)
+  let espnSkipped = 0
 
   const syncCompetition = async (comp: ActiveCompetition): Promise<void> => {
+    if (comp.provider === 'espn' && espnPause) {
+      espnSkipped += 1
+      console.info(
+        `[discovery] ESPN ${espnPause.reason === 'suspended' ? 'suspensa' : 'bloqueada'}: comp=${comp.id} fica para a próxima descoberta.`,
+      )
+      return
+    }
     let tbdDiscarded = 0
-    let pending: SyncResult['pending']
     try {
       const result = await syncFixtures({
         competitionCode: comp.external_id,
@@ -106,9 +116,11 @@ export async function discoverFixtures(
         dates: comp.provider === 'espn' ? espnDates : undefined,
         apiKey,
         db,
-        // Toda tentativa reserva vaga no orçamento compartilhado do provedor
-        // (ADR-027); a ESPN ainda tem o teto e o pacing por isolate.
-        coordinate: true,
+        // A tentativa football-data reserva vaga no orçamento compartilhado
+        // (ADR-027); a ESPN tem teto e pacing próprios, e o gate dela só registra as
+        // respostas de erro no controle de acesso.
+        coordinate: comp.provider !== 'espn',
+        espnGate: comp.provider === 'espn' ? espnGate : undefined,
         onHttpAttempt: createProviderHttpObserver(ae, {
           context: 'discovery',
           competitionId: comp.id,
@@ -116,6 +128,8 @@ export async function discoverFixtures(
         ae,
         missingEvents,
       })
+      // Data da ESPN que não chegou: a competição inteira falha, como o fetch que lança.
+      if (result?.pending) throw result.pending.error
       fixturesUpdated += result?.matches ?? 0
       eventsDiscarded += result?.discarded ?? 0
       matchesMissing += result?.missing ?? 0
@@ -123,49 +137,33 @@ export async function discoverFixtures(
       // correção de placar que o upsert do sync zerou).
       await scoreUnprocessedMatches(comp.id, db)
       tbdDiscarded = result?.discardedTbd ?? 0
-      pending = result?.pending
     } catch (err) {
+      // A ESPN recusou o acesso (o gate registrou a proibição ou já havia bloqueio): não é falha
+      // do sync, nem vai para a fila; a descoberta seguinte tenta de novo.
+      if (isEspnRefusal(err)) {
+        espnSkipped += 1
+        console.info(`[discovery] ESPN indisponível comp=${comp.id}: ${err.message}`)
+        return
+      }
       // Qualquer falha vira trabalho pendente: o dreno retoma no mesmo dia, e
       // o progresso da descoberta não espera a de amanhã. Sem vaga ou com cota
       // bloqueada, o prazo segue o reset; nas demais falhas, a espera
       // conservadora.
-      if (comp.provider === 'espn') {
-        await deferEspnWork(db, workBase(comp), espnDates, err)
-      } else {
-        await deferProviderWork(
-          db,
-          {
-            kind: 'discovery',
-            competitionCode: comp.external_id,
-            season: comp.season,
-            round: '',
-            competitionId: comp.id,
-          },
-          err,
-        )
-      }
+      await deferProviderWork(
+        db,
+        {
+          kind: 'discovery',
+          competitionCode: comp.external_id,
+          season: comp.season,
+          round: '',
+          competitionId: comp.id,
+        },
+        err,
+      )
       hadError = true
       logError(ae, 'football_api_error', `[discovery] Sync falhou comp=${comp.id}:`, err, {
         blobs: ['fixture_discovery', comp.id],
       })
-      return
-    }
-    if (pending) {
-      // ESPN: o que chegou foi gravado; as datas que faltaram voltam pelo
-      // dreno, e o status só avança com a descoberta completa.
-      await deferEspnWork(db, workBase(comp), pending.dates, pending.error)
-      if (!isEspnRefusal(pending.error)) {
-        hadError = true
-        logError(
-          ae,
-          'football_api_error',
-          `[discovery] Sync parcial comp=${comp.id}:`,
-          pending.error,
-          {
-            blobs: ['fixture_discovery', comp.id],
-          },
-        )
-      }
       return
     }
     // Só depois de um sync bem-sucedido: o status avança com o calendário atualizado.
@@ -195,6 +193,7 @@ export async function discoverFixtures(
       sync_tasks: rows.results.length,
       api_requests_planned: plannedApiRequests,
       espn_dates: espnDates,
+      espn_skipped: espnSkipped,
       espn_max_concurrent: ESPN_MAX_CONCURRENT_COMPETITIONS,
       espn_min_interval_ms: ESPN_MIN_INTERVAL_MS,
       total_ms: Date.now() - startedAt,

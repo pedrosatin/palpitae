@@ -5,6 +5,7 @@ import {
   type ProviderHttpContext,
 } from '../observability/providerHttp'
 import { CallBudgetExhaustedError } from './callBudget'
+import { isEspnRefusal } from './espnAccess'
 import { reconcileCompetitionStatus } from './competitionLifecycle'
 import type { ProviderDrain } from './drainCoordinator'
 import { CYCLE_FIXED_CALLS, type DrainBudget, type ItemBudget } from './drainBudget'
@@ -167,6 +168,11 @@ export function runFootballDataWorkItem(
           error: err.message,
           providerBlocked: true,
         }
+      }
+      // Item de competição da ESPN (a retomada de uma descoberta que falhou): o acesso pausado
+      // devolve o item no prazo do bloqueio, sem tentativa. O dreno da football-data segue.
+      if (isEspnRefusal(err)) {
+        return { item, status: 'requeued', notBefore: err.retryAt, error: err.message }
       }
       return {
         item,

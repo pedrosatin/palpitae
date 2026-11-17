@@ -5,6 +5,7 @@ import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/p
 import { CallBudgetExhaustedError, type CallGate } from './callBudget'
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
 import { createEspnGate } from './espnAccess'
+import type { EspnGate } from '../providers/espn'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 import { footballDataCompetitionConfig } from './footballDataCompetitions'
 import {
@@ -152,6 +153,12 @@ export type SyncOptions = {
    * consultas ao D1 são contadas pelo `db` que o chamador passa.
    */
   callGate?: CallGate
+  /**
+   * Gate da ESPN do chamador, no lugar do que `coordinate` cria: a descoberta diária passa o
+   * que só registra as respostas de erro no controle de acesso (`createEspnDiscoveryGate`),
+   * sem reservar vaga por request. Só vale para competição da ESPN.
+   */
+  espnGate?: EspnGate
   /** Instante do sync (ISO 8601). Padrão: agora. Usado para gravar `locked_at`. */
   now?: string
   /** Telemetria por tentativa HTTP ao provedor (contexto e competição já embutidos). */
@@ -730,7 +737,9 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
       onHttpAttempt: opts.onHttpAttempt,
       // A ESPN reserva vaga no orçamento compartilhado e registra o bloqueio
       // das respostas (ADR-027) quando o chamador coordena.
-      gate: opts.coordinate ? createEspnGate(opts.db, opts.ae, opts.callGate) : undefined,
+      gate:
+        opts.espnGate ??
+        (opts.coordinate ? createEspnGate(opts.db, opts.ae, opts.callGate) : undefined),
       callGate: opts.callGate,
       ae: opts.ae,
     })
