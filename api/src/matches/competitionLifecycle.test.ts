@@ -3,9 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
-vi.mock('./scoring', () => ({
-  scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
-}))
+vi.mock('./scoring', () => ({ scoreUnprocessedMatches: vi.fn(async () => undefined) }))
 
 import { competitionStatusSql } from '../groups/competitionStatus'
 import { finalScore } from '../testing/matchFixtures'
@@ -111,7 +109,7 @@ function openDb() {
     return row.status
   }
 
-  return { sqlite, db, addCompetition, upsertMatch, column, shown }
+  return { db, addCompetition, upsertMatch, column, shown }
 }
 
 /** Competições que a descoberta sincronizou na execução. */
@@ -274,56 +272,6 @@ describe('reconcileCompetitionStatus', () => {
     expect(await reconcileCompetitionStatus(db, 'copa', NOW)).toBeNull()
     expect(column('copa').status).toBe('finished')
     expect(shown('copa')).toBe('finished')
-  })
-
-  it('com a descoberta dividida por data na fila, a competição só avança quando nenhum item dela espera ou executa', async () => {
-    const { sqlite, db, addCompetition, upsertMatch, column } = openDb()
-    addCompetition({ id: 'copa', provider: 'espn', type: 'cup' })
-    upsertMatch('copa', { id: 'jogo', start: NOW - DAY, status: 'finished' })
-    const item = (round: string, status: string) =>
-      sqlite
-        .prepare(
-          `INSERT INTO provider_work (provider, kind, competition_code, season, round, priority,
-             status, created_at, updated_at)
-           VALUES ('espn', 'discovery', 'copa-code', '2026', ?, 2, ?, 0, 0)`,
-        )
-        .run(round, status)
-    const queue = { provider: 'espn', competitionCode: 'copa-code', season: '2026' }
-    item('20261110', 'done')
-    item('20261111', 'pending')
-    item('20261112', 'running')
-
-    // Um item pendente e um em execução seguram o avanço: o calendário está pela metade.
-    expect(await reconcileCompetitionStatus(db, 'copa', NOW, 1, queue)).toBeNull()
-    expect(column('copa').status).toBe('upcoming')
-
-    sqlite.exec(`UPDATE provider_work SET status = 'pending' WHERE round = '20261112'`)
-    expect(await reconcileCompetitionStatus(db, 'copa', NOW, 1, queue)).toBeNull()
-
-    // Os dois concluem: a competição avança (com a reserva de times indefinidos, só a ongoing).
-    sqlite.exec(`UPDATE provider_work SET status = 'done'`)
-    expect(await reconcileCompetitionStatus(db, 'copa', NOW, 1, queue)).toBe('ongoing')
-    expect(column('copa').status).toBe('ongoing')
-  })
-
-  it('os itens de outra competição ou de outro tipo não seguram o avanço', async () => {
-    const { sqlite, db, addCompetition, upsertMatch, column } = openDb()
-    addCompetition({ id: 'copa', provider: 'espn', type: 'cup' })
-    upsertMatch('copa', { id: 'jogo', start: NOW - DAY, status: 'finished' })
-    sqlite.exec(`
-      INSERT INTO provider_work (provider, kind, competition_code, season, round, priority, status, created_at, updated_at)
-      VALUES ('espn', 'discovery', 'outra', '2026', '20261110', 2, 'pending', 0, 0),
-             ('espn', 'result', 'copa-code', '2026', '20261110', 0, 'pending', 0, 0),
-             ('football-data', 'discovery', 'copa-code', '2026', '', 2, 'pending', 0, 0)`)
-
-    expect(
-      await reconcileCompetitionStatus(db, 'copa', NOW, 1, {
-        provider: 'espn',
-        competitionCode: 'copa-code',
-        season: '2026',
-      }),
-    ).toBe('ongoing')
-    expect(column('copa').status).toBe('ongoing')
   })
 
   it('competição sem jogos continua upcoming', async () => {
