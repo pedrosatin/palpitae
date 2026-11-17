@@ -10,9 +10,9 @@ import { espnWriteCalls } from './espnSync'
 import { httpContextOf, logPostSyncFailures, scoreWithinBudget } from './fdWork'
 import { readProviderState } from './providerBudget'
 import {
+  deferralOf,
   drainProviderWork,
   enqueueProviderWork,
-  retryAtOf,
   type DrainRun,
   type NewWorkItem,
   type ProviderWorkItem,
@@ -68,14 +68,8 @@ export function espnDeferralItems(
   error: unknown,
   now = Date.now(),
 ): NewWorkItem[] {
-  const noBudget = error instanceof CallBudgetExhaustedError
-  const notBefore = noBudget ? now : retryAtOf(error, now)
-  const lastError = noBudget
-    ? 'saldo de chamadas do tick esgotado; a data volta no próximo dreno'
-    : error instanceof Error
-      ? error.message
-      : String(error)
-  return espnWorkItems(base, dates).map((item) => ({ ...item, notBefore, lastError }))
+  const deferral = deferralOf(error, now, 'a data')
+  return espnWorkItems(base, dates).map((item) => ({ ...item, ...deferral }))
 }
 
 /** Adia as datas que a ESPN não entregou: viram itens pendentes (ver `espnDeferralItems`). */

@@ -542,7 +542,7 @@ describe('pollActiveMatches', () => {
   })
 
   it('caps concurrent football-data syncFixtures under FD_MAX_CONCURRENT_REQUESTS', async () => {
-    // 4 ligas FD × 2 rodadas = 8 tasks FD (> orçamento).
+    // 4 ligas FD × 2 rodadas = 8 tasks FD, 64 chamadas estimadas: passam do saldo de 38 do tick.
     const fdCodes = ['PD', 'SA', 'BL1', 'PPL'] as const
     const rows: ActiveRow[] = []
     for (const [i, code] of fdCodes.entries()) {
@@ -595,7 +595,9 @@ describe('pollActiveMatches', () => {
     await done
 
     expect(fdPeak).toBeLessThanOrEqual(FD_MAX_CONCURRENT_REQUESTS)
-    expect(syncFixturesMock.mock.calls).toHaveLength(8)
+    // Cabem 4 rodadas de 8 chamadas; as outras 4 vão para a fila num batch só, sem request.
+    expect(syncFixturesMock.mock.calls).toHaveLength(4)
+    expect(db._batches).toEqual([4])
   })
 
   it('ESPN syncs in parallel and does not wait for the football-data cap, when the poller budget fits it', async () => {
@@ -642,7 +644,7 @@ describe('pollActiveMatches', () => {
     await done
   })
 
-  it('falha ao enfileirar as datas da ESPN fica no log e o tick sai como erro, sem derrubar o poller', async () => {
+  it('falha ao enfileirar as pendências fica no log e o tick sai como erro, sem derrubar o poller', async () => {
     syncFixturesMock.mockRejectedValue(new Error('ESPN respondeu 500'))
     const row: ActiveRow = {
       comp_id: 'espn-1',
@@ -663,13 +665,14 @@ describe('pollActiveMatches', () => {
 
     // A falha do sync e a do enfileiramento são registradas, e o tick sai como erro.
     const errors = pointsOfType(ae, 'football_api_error').map((point) => point.blobs?.[1])
-    expect(errors).toContain('espn_defer')
+    expect(errors).toContain('poller_defer')
     expect(pointsOfType(ae, 'poller_run')[0].blobs).toEqual(['poller_run', 'error'])
     error.mockRestore()
   })
 
   it('ESPN task that does not fit the poller budget is deferred to the durable queue, never synced', async () => {
-    // 8 tasks FD estimadas em 64 chamadas passam do orçamento de 45: a ESPN cede o saldo.
+    // 8 tasks FD estimadas em 64 chamadas passam do orçamento de 45: 4 rodadas cabem e a ESPN
+    // fica sem saldo.
     const fdCodes = ['PD', 'SA', 'BL1', 'PPL'] as const
     const rows: ActiveRow[] = fdCodes.flatMap((code, i) =>
       ['1', '2'].map((round) => ({
@@ -699,8 +702,9 @@ describe('pollActiveMatches', () => {
         (call) => call[0].competitionCode === 'conmebol.libertadores',
       ),
     ).toHaveLength(0)
-    // As 2 datas do scoreboard (o dia anterior e o próprio) foram enfileiradas num batch só.
-    expect(db._batches).toContain(2)
+    // As 4 rodadas que não couberam e as 2 datas do scoreboard (o dia anterior e o próprio)
+    // foram enfileiradas num batch só.
+    expect(db._batches).toEqual([6])
     // Sem saldo não é falha do provedor: o tick não sai como erro e não há football_api_error.
     expect(pointsOfType(ae, 'football_api_error')).toHaveLength(0)
     expect(pointsOfType(ae, 'poller_run')[0].blobs).toEqual(['poller_run', 'ok'])
