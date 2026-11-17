@@ -19,6 +19,12 @@ export type SyncResult = {
   discardedTbd: number
   /** Jogos pendentes que o calendário completo não trouxe (`match_missing_from_feed`). */
   missing: number
+  /**
+   * Datas do scoreboard que a ESPN não entregou (ADR-027): o sync gravou o que
+   * veio das outras e o chamador adia estas na fila durável, com o `error` que
+   * as impediu. Ausente quando tudo foi consultado.
+   */
+  pending?: { dates: string[]; error: unknown }
 }
 
 /**

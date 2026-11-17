@@ -34,6 +34,9 @@ vi.mock('./matches/fixtureDiscovery', () => ({
 vi.mock('./matches/fdWork', () => ({
   footballDataDrain: vi.fn((deps: unknown) => ({ provider: 'football-data', deps })),
 }))
+vi.mock('./matches/espnWork', () => ({
+  espnDrain: vi.fn((deps: unknown) => ({ provider: 'espn', deps })),
+}))
 vi.mock('./matches/drainCoordinator', () => ({
   runProviderDrains: vi.fn(async () => 0),
 }))
@@ -50,6 +53,7 @@ import {
 } from './crons'
 import worker from './index'
 import { runProviderDrains } from './matches/drainCoordinator'
+import { espnDrain } from './matches/espnWork'
 import { footballDataDrain } from './matches/fdWork'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
@@ -251,13 +255,18 @@ describe('scheduled handler routing', () => {
     async (minute) => {
       await run(POLLER_AND_DRAIN_CRON, atMinute(minute))
 
-      // O dreno da football-data entra na lista do coordenador, que reparte o
-      // orçamento de subrequests da invocação entre todos.
+      // Os drenos da football-data e da ESPN entram na lista do coordenador, que
+      // reparte o orçamento de subrequests da invocação entre os dois. Nenhum
+      // cron novo (ADR-027).
       expect(footballDataDrain).toHaveBeenCalledWith({ apiKey: 'fk', ae: env.AE })
+      expect(espnDrain).toHaveBeenCalledWith({ ae: env.AE })
       expect(runProviderDrains).toHaveBeenCalledTimes(1)
       expect(runProviderDrains).toHaveBeenCalledWith(
         env.DB,
-        [{ provider: 'football-data', deps: { apiKey: 'fk', ae: env.AE } }],
+        [
+          { provider: 'football-data', deps: { apiKey: 'fk', ae: env.AE } },
+          { provider: 'espn', deps: { ae: env.AE } },
+        ],
         { ae: env.AE },
       )
       expect(pollActiveMatches).not.toHaveBeenCalled()

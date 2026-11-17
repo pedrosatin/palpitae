@@ -1,16 +1,19 @@
 import type { D1Database } from '@cloudflare/workers-types'
-import { runInBatches } from '../d1Batch'
+import { D1_BATCH_LIMIT, runInBatches } from '../d1Batch'
 import {
   type EspnCompetitor,
   type EspnCompetitorTeam,
   type EspnEventCompetition,
   type EspnScoreboardEvent,
   ESPN_POSTPONED_STATUSES,
+  type EspnGate,
   fetchEspnScoreboard,
   isEspnFinal,
   parseNonNegativeInt,
+  requireScoreboardEvents,
 } from '../providers/espn'
 import type { ProviderHttpObserver } from '../observability/providerHttp'
+import { CallBudgetExhaustedError, type CallGate } from './callBudget'
 import {
   countTbdDiscards,
   isoSeconds,
@@ -185,6 +188,16 @@ export type EspnSyncOptions = {
   db: D1Database
   now?: string
   onHttpAttempt?: ProviderHttpObserver
+  /** Orçamento compartilhado e controle de acesso (ADR-027); sem ele, fora do orçamento. */
+  gate?: EspnGate
+  /**
+   * Porteiro de subrequests da invocação (o dreno da fila, ADR-027): o sync só
+   * começa a gravar o calendário se o saldo cobre a gravação inteira
+   * (`espnWriteCalls`); sem saldo lança `CallBudgetExhaustedError` antes de
+   * gravar qualquer coisa. As consultas ao D1 são contadas pelo `db`, e os
+   * `fetch`, pelo `gate`.
+   */
+  callGate?: CallGate
   ae?: AnalyticsEngineDataset
 }
 
@@ -322,29 +335,84 @@ function extractValidEvent(
   }
 }
 
+/** Eventos recebidos e, se alguma data falhou, as datas que ficaram de fora e o motivo. */
+type FetchedEvents = {
+  events: EspnScoreboardEvent[]
+  pending?: { dates: string[]; error: unknown }
+}
+
+/**
+ * Consulta o scoreboard da rodada corrente (sem datas) ou de cada data, em
+ * sequência. Sem datas, a falha sobe: não há o que adiar por data. Com datas,
+ * a primeira falha — recusa do orçamento, bloqueio, timeout, 5xx ou resposta
+ * incompleta — interrompe a consulta e a data que falhou e as seguintes viram
+ * pendência (`pending`), em vez de perder as datas que já chegaram: o chamador
+ * grava o que veio e adia o resto. Interromper poupa tentativas contra um
+ * provedor que não responde.
+ */
 async function fetchEventsForSync(
   competitionCode: string,
-  dates?: string[],
-  onAttempt?: ProviderHttpObserver,
-): Promise<EspnScoreboardEvent[]> {
+  dates: string[] | undefined,
+  onAttempt: ProviderHttpObserver | undefined,
+  gate: EspnGate | undefined,
+): Promise<FetchedEvents> {
   const uniqueDates = dates ? Array.from(new Set(dates.filter(Boolean))) : []
   if (uniqueDates.length === 0) {
-    const board = await fetchEspnScoreboard(competitionCode, undefined, onAttempt)
-    return board.events ?? []
+    const board = await fetchEspnScoreboard(competitionCode, undefined, onAttempt, gate)
+    return { events: requireScoreboardEvents(board, competitionCode) }
   }
 
   // Sequencial: o cliente ESPN já serializa HTTP com pacing; evitar enfileirar
   // N promises de uma vez deixa o custo e o progresso observáveis por data.
   const byId = new Map<string, EspnScoreboardEvent>()
-  for (const yyyymmdd of uniqueDates) {
-    const board = await fetchEspnScoreboard(competitionCode, yyyymmdd, onAttempt)
-    for (const ev of board.events ?? []) {
-      if (typeof ev.id === 'string' && ev.id) {
-        byId.set(ev.id, ev)
+  for (const [index, yyyymmdd] of uniqueDates.entries()) {
+    try {
+      const board = await fetchEspnScoreboard(competitionCode, yyyymmdd, onAttempt, gate)
+      for (const ev of requireScoreboardEvents(board, competitionCode)) {
+        if (typeof ev.id === 'string' && ev.id) {
+          byId.set(ev.id, ev)
+        }
+      }
+    } catch (error) {
+      return {
+        events: Array.from(byId.values()),
+        pending: { dates: uniqueDates.slice(index), error },
       }
     }
   }
-  return Array.from(byId.values())
+  return { events: Array.from(byId.values()) }
+}
+
+/**
+ * Chamadas ao D1 da gravação de um calendário da ESPN: a competição (gravar e
+ * ler o id), os times (os batches e a leitura dos ids), os jogos (a leitura das
+ * trocas de time e os batches). Uma data de liga (cerca de 10 jogos entre 20
+ * times) fica em 6; até 100 jogos e 100 times continuam em 6.
+ */
+export function espnWriteCalls(matches: number, teams: number): number {
+  const batches = (rows: number) => Math.ceil(rows / D1_BATCH_LIMIT)
+  return 4 + batches(teams) + batches(matches)
+}
+
+/** Times distintos dos eventos, pelo id do provedor. */
+function countEspnTeams(events: ValidEspnEvent[]): number {
+  const ids = new Set<string>()
+  for (const ev of events) {
+    ids.add(ev.home.team.id)
+    ids.add(ev.away.team.id)
+  }
+  return ids.size
+}
+
+/**
+ * O calendário só começa a ser gravado se o saldo do porteiro cobre a gravação
+ * inteira: um sync cortado no meio deixaria jogos sem os times deles. Sem saldo,
+ * lança antes de gravar qualquer coisa, e o chamador retoma depois.
+ */
+function assertWriteBudget(gate: CallGate | undefined, events: ValidEspnEvent[]): void {
+  if (!gate) return
+  const needed = espnWriteCalls(events.length, countEspnTeams(events))
+  if (gate.callsLeft() < needed) throw new CallBudgetExhaustedError()
 }
 
 async function upsertEspnCompetition(
@@ -541,7 +609,12 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     throw new Error(`Competição ESPN desconhecida ${opts.competitionCode}`)
   }
 
-  const rawEvents = await fetchEventsForSync(opts.competitionCode, opts.dates, opts.onHttpAttempt)
+  const { events: rawEvents, pending } = await fetchEventsForSync(
+    opts.competitionCode,
+    opts.dates,
+    opts.onHttpAttempt,
+    opts.gate,
+  )
   const validEvents: ValidEspnEvent[] = []
   const discards: SyncDiscard[] = []
   for (const raw of rawEvents) {
@@ -565,9 +638,11 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
       discarded: await reportDiscards(opts.db, discards, discardScope),
       discardedTbd: countTbdDiscards(discards),
       missing: 0,
+      ...(pending ? { pending } : {}),
     }
   }
 
+  assertWriteBudget(opts.callGate, validEvents)
   const competition = await upsertEspnCompetition(opts.db, opts.competitionCode, meta, opts.season)
   const { teamCount, teamIds } = await upsertEspnTeams(opts.db, validEvents)
   const now = opts.now ?? isoSeconds(new Date())
@@ -592,5 +667,6 @@ export async function syncEspnFixtures(opts: EspnSyncOptions): Promise<SyncResul
     discarded,
     discardedTbd: countTbdDiscards(discards),
     missing: 0,
+    ...(pending ? { pending } : {}),
   }
 }

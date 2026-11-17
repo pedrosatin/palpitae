@@ -9,7 +9,11 @@ import {
   type FootballDataQuota,
 } from './footballDataQuota'
 import {
+  ESPN_CALLS_PER_MINUTE,
   FD_CALLS_PER_MINUTE,
+  reserveProviderSlot,
+  resumeProviderAccess,
+  setProviderRateLimitForTests,
   FootballDataSlotBusyError,
   noteFootballDataBlock,
   reserveFootballDataSlot,
@@ -66,14 +70,13 @@ describe('orçamento compartilhado da football-data', () => {
       reserveFootballDataSlot(db, now),
     ])
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
-    const refused = results.filter(
-      (r): r is PromiseRejectedResult => r.status === 'rejected',
-    )
+    const refused = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
     expect(refused).toHaveLength(1)
     expect(refused[0].reason).toBeInstanceOf(FootballDataSlotBusyError)
   })
 
-  it('janela nova volta a conceder, e o orçamento configurado é o do free tier com folga', async () => {    setFootballDataRateLimitForTests(FD_CALLS_PER_MINUTE)
+  it('janela nova volta a conceder, e o orçamento configurado é o do free tier com folga', async () => {
+    setFootballDataRateLimitForTests(FD_CALLS_PER_MINUTE)
     const { db } = setup()
     const now = Date.parse('2026-11-16T12:00:59Z')
 
@@ -153,5 +156,70 @@ describe('orçamento compartilhado da football-data', () => {
     await expect(reserveFootballDataSlot(db, now + 1000)).rejects.toBeInstanceOf(
       FootballDataSlotBusyError,
     )
+  })
+})
+
+describe('orçamento compartilhado: um por provedor', () => {
+  afterEach(() => {
+    setProviderRateLimitForTests('espn', 1000)
+  })
+
+  it('a ESPN tem janela própria, independente da football-data', async () => {
+    setProviderRateLimitForTests('espn', 1)
+    setFootballDataRateLimitForTests(1)
+    const { db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+
+    expect(await reserveProviderSlot(db, 'espn', now)).toEqual({
+      granted: true,
+      forbiddenStreak: 0,
+    })
+    expect(await reserveProviderSlot(db, 'espn', now)).toMatchObject({
+      granted: false,
+      reason: 'window_full',
+      retryAt: Math.floor(now / 60_000) * 60_000 + 60_000,
+    })
+    // A football-data ainda tem a vaga dela.
+    await expect(reserveFootballDataSlot(db, now)).resolves.toBeUndefined()
+  })
+
+  it('o orçamento da ESPN cabe no ritmo do cliente e a migration cria a linha dela', async () => {
+    const { sqlite } = setup()
+
+    expect(ESPN_CALLS_PER_MINUTE).toBeLessThan(Math.floor(60_000 / 1300))
+    expect(
+      sqlite
+        .prepare(
+          "SELECT forbidden_streak, suspended_at FROM provider_rate_state WHERE provider = 'espn'",
+        )
+        .get(),
+    ).toEqual({ forbidden_streak: 0, suspended_at: null })
+  })
+
+  it('cria a linha que faltar (migration ainda não aplicada) em vez de parar a coleta', async () => {
+    const { sqlite, db } = setup()
+    sqlite.exec("DELETE FROM provider_rate_state WHERE provider = 'espn'")
+
+    expect(await reserveProviderSlot(db, 'espn', Date.now())).toMatchObject({ granted: true })
+  })
+
+  it('a retomada do operador também traz para agora o prazo dos itens pendentes do provedor', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    sqlite.exec(
+      `UPDATE provider_rate_state SET suspended_at = ${now}, suspended_reason = 'http_403' WHERE provider = 'espn';
+       INSERT INTO provider_work (provider,kind,competition_code,season,round,priority,status,not_before,created_at,updated_at)
+         VALUES ('espn','result','x','2026','20261014',0,'pending',${now + 6 * 3_600_000},0,0),
+                ('football-data','result','y','2026','1',0,'pending',${now + 6 * 3_600_000},0,0)`,
+    )
+
+    await resumeProviderAccess(db, 'espn', now + 1000)
+
+    expect(
+      sqlite.prepare('SELECT provider, not_before FROM provider_work ORDER BY provider').all(),
+    ).toEqual([
+      { provider: 'espn', not_before: now + 1000 },
+      { provider: 'football-data', not_before: now + 6 * 3_600_000 },
+    ])
   })
 })

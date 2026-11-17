@@ -4,6 +4,7 @@ import { tryLogEvent } from '../observability/events'
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
 import { CallBudgetExhaustedError, type CallGate } from './callBudget'
 import { FOOTBALL_DATA_CLUBS } from './clubNames'
+import { createEspnGate } from './espnAccess'
 import { isEspnPrimaryCompetition, syncEspnFixtures } from './espnSync'
 import { footballDataCompetitionConfig } from './footballDataCompetitions'
 import {
@@ -138,8 +139,8 @@ export type SyncOptions = {
   /**
    * Coordena a tentativa pelo orçamento compartilhado no D1 (ADR-027): reserva
    * uma vaga na janela de um minuto antes de cada request e grava o bloqueio
-   * que um 429 (ou cota zerada) impõe. Os chamadores da fila durável ligam
-   * sempre. Uma chamada sem a flag fica fora do orçamento, como as exceções
+   * que um 429 (ou cota zerada) impõe; na ESPN, também o espaçamento do 403 e a
+   * suspensão do acesso proibido. Os chamadores da fila durável ligam sempre. Uma chamada sem a flag fica fora do orçamento, como as exceções
    * documentadas em `providerBudget.ts` (radar, script local) e os testes.
    */
   coordinate?: boolean
@@ -727,6 +728,10 @@ export async function syncFixtures(opts: SyncOptions): Promise<SyncResult> {
       db: opts.db,
       now: opts.now,
       onHttpAttempt: opts.onHttpAttempt,
+      // A ESPN reserva vaga no orçamento compartilhado e registra o bloqueio
+      // das respostas (ADR-027) quando o chamador coordena.
+      gate: opts.coordinate ? createEspnGate(opts.db, opts.ae, opts.callGate) : undefined,
+      callGate: opts.callGate,
       ae: opts.ae,
     })
   }

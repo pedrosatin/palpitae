@@ -8,6 +8,8 @@ import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { callsLeft, countD1Calls, INVOCATION_CALL_LIMIT, type CallBudget } from './callBudget'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
+import { isEspnRefusal } from './espnAccess'
+import { deferEspnWork, type EspnWorkBase } from './espnWork'
 import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import {
   DAY_MS,
@@ -330,7 +332,15 @@ async function scoreCompetitions(
 }
 
 type SyncOutcome =
-  | { success: true; comp: ActiveRound; round: string; matches: number; discarded: number }
+  | {
+      success: true
+      comp: ActiveRound
+      round: string
+      matches: number
+      discarded: number
+      /** ESPN: por que parte das datas ficou pendente; o que veio foi gravado. */
+      pendingError?: unknown
+    }
   | { success: false; comp: ActiveRound; round: string; err: unknown }
 
 /** Totais das sincronizações do tick e as competições que seguem para fallback e pontuação. */
@@ -360,23 +370,34 @@ function tallySyncOutcomes(
     syncedComps: new Set(),
     fallbackCompIds: new Set(),
   }
+  const reportFailure = (comp: ActiveRound, round: string, err: unknown) => {
+    // Recusa do orçamento, bloqueio ou suspensão da ESPN não é falha do sync:
+    // o trabalho ficou pendente na fila e o alerta de acesso já saiu quando o
+    // provedor respondeu.
+    if (isEspnRefusal(err)) {
+      console.info(`[poller] ESPN indisponível comp=${comp.comp_id} round=${round}: ${err.message}`)
+      return
+    }
+    tally.hadError = true
+    logError(
+      ae,
+      'football_api_error',
+      `[poller] Sync falhou comp=${comp.comp_id} round=${round}:`,
+      err,
+      {
+        blobs: [comp.comp_id, round],
+      },
+    )
+  }
   for (const res of results) {
     if (res.comp.provider !== 'espn' && !lateTask) tally.fallbackCompIds.add(res.comp.comp_id)
     if (res.success) {
       tally.fixturesUpdated += res.matches
       tally.eventsDiscarded += res.discarded
       tally.syncedComps.add(res.comp.comp_id)
+      if (res.pendingError !== undefined) reportFailure(res.comp, res.round, res.pendingError)
     } else {
-      tally.hadError = true
-      logError(
-        ae,
-        'football_api_error',
-        `[poller] Sync falhou comp=${res.comp.comp_id} round=${res.round}:`,
-        res.err,
-        {
-          blobs: [res.comp.comp_id, res.round],
-        },
-      )
+      reportFailure(res.comp, res.round, res.err)
     }
   }
   return tally
@@ -419,8 +440,9 @@ function tallySyncOutcomes(
  * Fila durável (ADR-027): toda tentativa football-data reserva vaga no
  * orçamento compartilhado por minuto. O que o orçamento ou a cota recusarem
  * vira item pendente em `provider_work`, e o cron drenador retoma entre os
- * ticks, inclusive além das 24 h do resgate. A ESPN segue direto no tick; a
- * coordenação dela é o ticket 03 da resiliência.
+ * ticks, inclusive além das 24 h do resgate. A ESPN segue o mesmo caminho com
+ * o orçamento e o controle de acesso dela: a data do scoreboard que falhar vira
+ * item pendente, e o que chegou das outras datas é gravado.
  */
 export async function pollActiveMatches(
   rawDb: D1Database,
@@ -441,40 +463,11 @@ export async function pollActiveMatches(
 
   const { lateTask, tasks, compCount, roundDays } = planTasks(await loadPollerRows(db, now), now)
 
-  const runSyncTask = async ({ comp, round, dates }: SyncTask): Promise<SyncOutcome> => {
-    const matchday = parseInt(round, 10)
-    const matchdayParam = comp.provider === 'espn' || Number.isNaN(matchday) ? undefined : matchday
-
-    try {
-      const result = await syncFixtures({
-        competitionCode: comp.external_id,
-        season: Number(comp.season),
-        matchday: matchdayParam,
-        dates,
-        apiKey,
-        db,
-        onHttpAttempt: countHttp(
-          createProviderHttpObserver(ae, { context: 'poller', competitionId: comp.comp_id }),
-        ),
-        ae,
-      })
-      return {
-        success: true as const,
-        comp,
-        round,
-        matches: result?.matches ?? 0,
-        discarded: result?.discarded ?? 0,
-      }
-    } catch (err) {
-      return { success: false as const, comp, round, err }
-    }
-  }
-
-  // Orçamento compartilhado (ADR-027): cada tentativa football-data reserva
-  // vaga na janela de um minuto. O que o orçamento ou a cota recusarem vira
-  // item durável na fila, para o cron drenador retomar — inclusive além das
-  // 24 h do resgate. A ESPN segue com o teto próprio (a coordenação dela é o
-  // ticket 03 da resiliência).
+  // Orçamento compartilhado (ADR-027): cada tentativa, football-data ou ESPN,
+  // reserva vaga na janela de um minuto do provedor. O que o orçamento, a cota
+  // ou o bloqueio recusarem vira item durável na fila, para o cron drenador
+  // retomar — inclusive além das 24 h do resgate. Na ESPN o item é uma data do
+  // scoreboard.
   const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
   const fdTasks = tasks.filter((task) => task.comp.provider !== 'espn')
 
@@ -521,9 +514,48 @@ export async function pollActiveMatches(
     }
   }
 
+  const runEspnTask = async (task: SyncTask): Promise<SyncOutcome> => {
+    const { comp, round, dates } = task
+    const base: EspnWorkBase = {
+      kind: task === lateTask ? 'late' : 'result',
+      competitionCode: comp.external_id,
+      season: comp.season,
+      competitionId: comp.comp_id,
+    }
+    try {
+      const result = await syncFixtures({
+        competitionCode: comp.external_id,
+        season: Number(comp.season),
+        dates,
+        apiKey,
+        db,
+        coordinate: true,
+        onHttpAttempt: countHttp(
+          createProviderHttpObserver(ae, { context: 'poller', competitionId: comp.comp_id }),
+        ),
+        ae,
+      })
+      // O que a ESPN não entregou (orçamento, bloqueio, timeout, resposta
+      // incompleta) vira uma pendência por data; o que chegou já foi gravado.
+      if (result.pending) await deferEspnWork(db, base, result.pending.dates, result.pending.error)
+      return {
+        success: true as const,
+        comp,
+        round,
+        matches: result.matches,
+        discarded: result.discarded,
+        ...(result.pending ? { pendingError: result.pending.error } : {}),
+      }
+    } catch (err) {
+      // Falha depois do fetch (gravação): nada foi aproveitado, todas as datas voltam.
+      await deferEspnWork(db, base, dates, err)
+      return { success: false as const, comp, round, err }
+    }
+  }
+
   const [fdResults, espnResults] = await Promise.all([
     runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runFdTask),
-    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runSyncTask),
+    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runEspnTask),
   ])
   const syncResults = [...fdResults, ...espnResults]
 
@@ -539,6 +571,7 @@ export async function pollActiveMatches(
       const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), {
         now,
         onHttpAttempt: countHttp(),
+        coordinate: true,
       })
       for (const [compId, updated] of updatedByComp) {
         if (updated > 0) syncedComps.add(compId)

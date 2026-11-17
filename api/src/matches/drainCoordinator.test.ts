@@ -214,7 +214,9 @@ describe('coordenador dos drenos', () => {
     expect(fd.shares).toEqual([22])
     expect(used).toBe(11)
     expect(writeDataPoint).toHaveBeenCalledWith(
-      expect.objectContaining({ blobs: ['provider_work_run', 'error', 'D1 fora do ar'] }),
+      expect.objectContaining({
+        blobs: ['provider_work_run', 'error', 'espn', 'D1 fora do ar'],
+      }),
     )
   })
 
