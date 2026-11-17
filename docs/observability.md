@@ -384,7 +384,11 @@ ticket 03), com o que a ESPN faz de diferente:
 - **Subrequests do dreno:** a ESPN não tem orçamento de invocação próprio. O `espnDrain` é uma entrada na
   lista do coordenador (`runProviderDrains`) e roda na fatia que ele entrega dos 45 subrequests do ramo
   drenador. Cada tentativa paga a vaga, o `fetch` e o registro da resposta dessa fatia (ADR-027, adendos
-  "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto.
+  "subrequests do dreno" e do ticket 03); o `calls_used` de `provider_work_run` mostra o gasto. Com os dois
+  drenos ocupados, a fatia da ESPN comporta 2 itens por tick e o tick gasta 37 chamadas (com a limpeza). A
+  estimativa por item é 9 (data de liga) ou 13 (sync manual e descoberta, que pontuam), medida em teste.
+  Com a coleta bloqueada ou suspensa a reclamação recusa e o dreno só lê o estado (2 chamadas, nenhuma
+  escrita).
 - **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,
   sem retry imediato e sem mexer na sequência de 403. O prazo não é encurtado: o bloqueio é o maior
   entre o `Retry-After` válido e a pausa mínima conservadora de 60 s (que também vale sem cabeçalho ou
