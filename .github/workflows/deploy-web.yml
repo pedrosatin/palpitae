@@ -13,6 +13,8 @@ on:
       - '.github/workflows/deploy-web.yml'
 
 # Na PR roda so o job de testes (inclui build e csp:verify); o deploy so no push.
+# No push, o job de testes envia o dist verificado como artefato e o deploy
+# publica esse mesmo dist, sem reinstalar o projeto nem refazer o build.
 # Travado no versionamento: nenhum job aqui escreve no repositorio.
 permissions:
   contents: read
@@ -33,6 +35,10 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # O lastmod do sitemap usa git log; checkout raso cai sempre na data de hoje.
+          # O dist daqui e o que vai para producao.
+          fetch-depth: 0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -60,37 +66,67 @@ jobs:
       - name: Verify CSP
         run: npm run csp:verify
 
+      # So o push envia o dist: artefato de PR nunca chega ao job de deploy.
+      # O caminho e relativo ao workspace (o working-directory nao vale aqui).
+      - name: Upload dist
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-dist
+          path: web/dist
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
   deploy:
     name: Deploy to Cloudflare Pages
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: test
-    if: github.event_name == 'push'
+    # Condicao explicita: so push na main publica. O download abaixo le apenas
+    # artefatos deste mesmo run, entao nada vindo de PR chega aqui.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     defaults:
       run:
         working-directory: web
     steps:
+      # Checkout raso: o deploy precisa de functions/ (Pages Functions, compiladas
+      # pelo wrangler), dos scripts e do lockfile. O git tambem da ao wrangler o
+      # commit do deploy. O sitemap ja vem pronto no artefato.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # O lastmod do sitemap usa git log; checkout raso cai sempre na data de hoje.
-          fetch-depth: 0
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: web/package-lock.json
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Download dist
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: web/dist
 
-      - name: Build
-        run: npm run build
-        env:
-          VITE_TBBC_SITE_KEY: ${{ vars.VITE_TBBC_SITE_KEY }}
+      # Barra um artefato incompleto antes de publicar. O csp:verify so usa
+      # modulos do Node e leva menos de um segundo.
+      - name: Check dist
+        run: |
+          test -s dist/index.html
+          test -s dist/_headers
+          test -s dist/_redirects
+          test -s dist/sitemap.xml
+          npm run csp:verify
+
+      # So o wrangler e a arvore dele, com as versoes e integridades do
+      # web/package-lock.json, num diretorio fora do repositorio: sem React nem
+      # Vite, e sem sujar o git que o wrangler le.
+      - name: Install Wrangler
+        run: |
+          node scripts/wrangler-lock.mjs "$RUNNER_TEMP/wrangler"
+          npm ci --prefix "$RUNNER_TEMP/wrangler" --no-audit --no-fund
+          echo "$RUNNER_TEMP/wrangler/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy dist --project-name=palpitae-web --branch=main
+        run: wrangler pages deploy dist --project-name=palpitae-web --branch=main
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
