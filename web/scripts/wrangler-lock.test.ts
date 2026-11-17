@@ -90,7 +90,7 @@ describe('lockfile da web', () => {
   const realPkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const { pkg, lock } = pruneLock(realLock, realPkg)
 
-  it('instala o wrangler do lockfile sem React, Vite nem Vitest', () => {
+  it('preserva as entradas do Wrangler e deixa React, Vite e Vitest de fora', () => {
     expect(pkg.devDependencies.wrangler).toBe(realLock.packages['node_modules/wrangler'].version)
     for (const name of ['react', 'react-dom', 'vite', 'vitest', 'jsdom', 'typescript']) {
       expect(lock.packages).not.toHaveProperty(`node_modules/${name}`)

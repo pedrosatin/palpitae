@@ -67,7 +67,10 @@ describe('workflows do GitHub Actions', () => {
     // O sitemap usa git log: o build que vai para produção precisa do histórico inteiro.
     assert.match(teste, /fetch-depth: 0/)
     // O upload vem depois do csp:verify e só no push.
-    assert.ok(teste.indexOf('csp:verify') < teste.indexOf('actions/upload-artifact@'))
+    // Procura o step que roda o comando, não o comentário do topo do arquivo.
+    const csp = teste.search(/^\s+run: npm run csp:verify\s*$/m)
+    assert.ok(csp > 0, 'step do csp:verify não encontrado no job de teste')
+    assert.ok(csp < teste.indexOf('actions/upload-artifact@'))
     assert.match(teste, /if: github\.event_name == 'push'\n\s+uses: actions\/upload-artifact@/)
     assert.match(teste, /include-hidden-files: true/)
 
