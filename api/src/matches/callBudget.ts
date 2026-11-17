@@ -15,6 +15,29 @@ export const INVOCATION_CALL_LIMIT = 50
 /** Chamadas que a rotina pode fazer (`limit`) e as que já fez (`used`). */
 export type CallBudget = { readonly limit: number; used: number }
 
+/**
+ * A chamada não cabe no saldo da rotina: nada foi chamado. Quem a recebe devolve
+ * o trabalho para retomar depois, sem contar falha do provedor.
+ */
+export class CallBudgetExhaustedError extends Error {
+  constructor() {
+    super('saldo de chamadas da invocação esgotado')
+    this.name = 'CallBudgetExhaustedError'
+  }
+}
+
+/**
+ * Porteiro das chamadas de uma rotina que divide a invocação com outras (o dreno
+ * da fila, ADR-027). A rotina o consulta antes de gastar, em vez de deixar o
+ * limite da plataforma falhar a chamada 51.
+ */
+export type CallGate = {
+  /** Cobra um `fetch` antes de iniciá-lo; lança `CallBudgetExhaustedError` se não couber. */
+  chargeFetch(): void
+  /** Chamadas que ainda cabem a esta rotina agora. */
+  callsLeft(): number
+}
+
 export function callsLeft(budget: CallBudget): number {
   return Math.max(0, budget.limit - budget.used)
 }

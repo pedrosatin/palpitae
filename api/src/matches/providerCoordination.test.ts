@@ -2,7 +2,8 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import { drainFootballDataWork } from './fdWork'
+import { runProviderDrains } from './drainCoordinator'
+import { footballDataDrain } from './fdWork'
 import { clearFootballDataPause } from './footballDataQuota'
 import { claimProviderWork, deferProviderWork, enqueueProviderWork } from './providerWork'
 import { setFootballDataRateLimitForTests } from './providerBudget'
@@ -15,6 +16,13 @@ import { syncFixtures } from './sync'
  * entre execuções, 429 com reset e sem, fila durável, reinício do dreno,
  * recuperação além das 24 h do resgate e reprocesso idempotente.
  */
+
+/** O dreno da football-data pelo coordenador, como o `scheduled` o chama. */
+const drainFootballDataWork = (
+  db: D1Database,
+  apiKey: string,
+  ae?: AnalyticsEngineDataset,
+): Promise<number> => runProviderDrains(db, [footballDataDrain({ apiKey, ae })], { ae })
 
 const KICKOFF = '2026-11-08T15:30:00Z'
 /** Dentro da janela ativa do poller (115 a 200 min após o início). */

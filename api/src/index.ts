@@ -17,7 +17,8 @@ import {
 } from './crons'
 import { jsonError, jsonNotFound } from './errorHandlers'
 import { groupsRouter } from './groups/router'
-import { drainFootballDataWork } from './matches/fdWork'
+import { runProviderDrains } from './matches/drainCoordinator'
+import { footballDataDrain } from './matches/fdWork'
 import { discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
@@ -165,9 +166,17 @@ export default {
           pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
         )
       } else {
-        // Demais minutos do trigger fundido: drenador da fila durável (ADR-027),
-        // que retoma o trabalho pendente da football-data entre os ticks.
-        ctx.waitUntil(drainFootballDataWork(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE))
+        // Demais minutos do trigger fundido: drenadores da fila durável (ADR-027),
+        // que retomam o trabalho pendente entre os ticks. Todos dividem o mesmo
+        // orçamento de subrequests da invocação (`runProviderDrains`); um provedor
+        // novo entra com uma linha a mais nesta lista.
+        ctx.waitUntil(
+          runProviderDrains(
+            env.DB,
+            [footballDataDrain({ apiKey: env.FOOTBALL_API_KEY ?? '', ae: env.AE })],
+            { ae: env.AE },
+          ),
+        )
       }
       return
     }
