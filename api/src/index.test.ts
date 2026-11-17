@@ -39,6 +39,7 @@ import { signJwt } from './auth/jwt'
 import {
   DAILY_EXPORT_CRON,
   FIXTURE_DISCOVERY_CRON,
+  LEGACY_RESULT_POLLER_CRON,
   POLLER_AND_DRAIN_CRON,
   PROVIDER_WORK_DRAIN_MINUTES,
   RESULT_POLLER_MINUTES,
@@ -287,16 +288,28 @@ describe('scheduled handler routing', () => {
     expect(drainFootballDataWork).not.toHaveBeenCalled()
   })
 
-  it.each([['0,30 * * * *'], ['5,10,20,25,35,40,50,55 * * * *']])(
-    'a expressão antiga %j não roda nada e registra evento de cron desconhecido',
-    async (cron) => {
-      await run(cron, Date.UTC(2026, 9, 12, 14, 30, 0))
+  it.each([
+    [0, 0],
+    [14, 30],
+  ])(
+    'na transição, o cron antigo do poller (minuto %i:%i) ainda roda só o poller',
+    async (hour, minute) => {
+      await run(LEGACY_RESULT_POLLER_CRON, Date.UTC(2026, 9, 12, hour, minute, 0))
 
-      expect(events(env)).toContainEqual(['scheduled_unknown_cron', cron])
-      expect(pollActiveMatches).not.toHaveBeenCalled()
+      expect(pollActiveMatches).toHaveBeenCalledTimes(1)
       expect(drainFootballDataWork).not.toHaveBeenCalled()
+      expect(events(env)).not.toContainEqual(['scheduled_unknown_cron', LEGACY_RESULT_POLLER_CRON])
     },
   )
+
+  it('a expressão antiga do dreno (nunca registrada) não roda nada e vira cron desconhecido', async () => {
+    const cron = '5,10,20,25,35,40,50,55 * * * *'
+    await run(cron, Date.UTC(2026, 9, 12, 14, 35, 0))
+
+    expect(events(env)).toContainEqual(['scheduled_unknown_cron', cron])
+    expect(pollActiveMatches).not.toHaveBeenCalled()
+    expect(drainFootballDataWork).not.toHaveBeenCalled()
+  })
 
   it('cron desconhecido registra evento e não roda o poller', async () => {
     await run('0 6 * * *')

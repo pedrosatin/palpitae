@@ -231,8 +231,8 @@ describe('wrangler api config', () => {
   })
 
   it('o dreno roda a cada 5 a 10 min e não ocupa o minuto 15 da descoberta', () => {
-    const fused = minutes(POLLER_AND_DRAIN_CRON)
-    const gaps = fused.map((minute, i) => (fused[(i + 1) % fused.length] - minute + 60) % 60)
+    const drain = [...PROVIDER_WORK_DRAIN_MINUTES]
+    const gaps = drain.map((minute, i) => (drain[(i + 1) % drain.length] - minute + 60) % 60)
 
     expect(Math.max(...gaps)).toBeLessThanOrEqual(10)
     expect(Math.min(...gaps)).toBeGreaterThanOrEqual(5)

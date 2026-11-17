@@ -33,14 +33,25 @@ export const POLLER_AND_DRAIN_CRON = '0,5,10,20,25,30,35,40,50,55 * * * *'
 /**
  * Export diário: 00:05 UTC. O minuto 5 também é do drenador no trigger fundido,
  * então às 00:05 as duas rotinas disparam juntas em invocações independentes.
- * É inofensivo: o drenador é idempotente (o `UPDATE ... RETURNING` da fila nunca
- * entrega o mesmo item a dois drenos) e, sem pendência, custa 1–2 consultas ao D1.
+ * É inofensivo: o claim da fila (`UPDATE ... RETURNING`) é atômico e não entrega o
+ * mesmo item a dois drenos enquanto o lease de 5 min está válido, e o reprocesso é
+ * idempotente. Sem pendência, custa 1–2 consultas ao D1.
  */
 export const DAILY_EXPORT_CRON = '5 0 * * *'
 /** Lembrete de jogos de hoje sem palpite. */
 export const ROUND_REMINDER_CRON = '0 10 * * *'
 /** Descoberta de jogos: 06:15 UTC (03:15 BRT), fora dos minutos do poller e do drenador. */
 export const FIXTURE_DISCOVERY_CRON = '15 6 * * *'
+
+/**
+ * Expressão antiga do poller (`0,30 * * * *`), de antes da fusão. Fora do
+ * wrangler.toml e de `SCHEDULED_CRONS`: existe só para a transição. A Cloudflare
+ * propaga a troca de triggers em até 15 min, e nesse intervalo o Worker novo
+ * ainda pode receber o agendamento antigo; sem este alias o tick viraria
+ * `scheduled_unknown_cron` e o poller deixaria de buscar resultados. O handler a
+ * trata como poller puro. Pode sair numa limpeza posterior, depois do deploy.
+ */
+export const LEGACY_RESULT_POLLER_CRON = '0,30 * * * *'
 
 export const SCHEDULED_CRONS = [
   POLLER_AND_DRAIN_CRON,
