@@ -132,6 +132,24 @@ describe('runEspnWorkItem', () => {
     })
   })
 
+  it('429 com Retry-After de 2 h devolve o item para 2 h depois, não para 1 h', async () => {
+    const { db } = setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 429, headers: { 'retry-after': '7200' } })),
+    )
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
+
+    const outcome = await runEspnWorkItem({})(item(), open(db))
+
+    expect(outcome).toMatchObject({
+      status: 'requeued',
+      notBefore: NOW + 2 * 60 * 60_000,
+      providerBlocked: true,
+    })
+  })
+
   it('5xx e timeout contam tentativa; resposta sem lista de eventos também', async () => {
     const { db } = setup()
     const run = runEspnWorkItem({})
