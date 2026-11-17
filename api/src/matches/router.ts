@@ -8,6 +8,9 @@ import { createProviderHttpObserver } from '../observability/providerHttp'
 import type { AppContext } from '../types'
 import { defaultRoundSql, roundRuleBinds } from './defaultRound'
 import { isEspnPrimaryCompetition } from './espnSync'
+import { FootballDataQuotaError } from './footballDataQuota'
+import { FootballDataSlotBusyError } from './providerBudget'
+import { enqueueProviderWork } from './providerWork'
 import { decidesOnPenalties, parsePenaltyPhases } from './penalties'
 import { isKnockoutPhase, orderByRound, roundLabel } from './rounds'
 import { scoreUnprocessedMatches } from './scoring'
@@ -454,12 +457,36 @@ router.post('/sync', requireAuth, async (c) => {
       dates,
       apiKey,
       db: c.env.DB,
+      // O sync administrativo conta no orçamento compartilhado (ADR-027).
+      coordinate: !isEspnPrimaryCompetition(competition),
       onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
       ae: c.env.AE,
     })
     await scoreUnprocessedMatches(result.competitionId, c.env.DB)
     return c.json({ ok: true, synced: result })
   } catch (error) {
+    // Sem vaga no orçamento, o trabalho não se perde: fica pendente na fila
+    // durável e o cron drenador executa com o orçamento, na sua vez.
+    if (error instanceof FootballDataSlotBusyError || error instanceof FootballDataQuotaError) {
+      const quota = error instanceof FootballDataQuotaError
+      await enqueueProviderWork(c.env.DB, [
+        {
+          kind: 'manual',
+          competitionCode: competition,
+          season: String(season),
+          round: matchday !== undefined ? String(matchday) : '',
+          // Cota esgotada informa quando a football-data volta; vaga cheia só espera a próxima janela.
+          ...(quota ? { notBefore: error.retryAt, lastError: error.message } : {}),
+        },
+      ])
+      return c.json({
+        ok: true,
+        pending: true,
+        message: quota
+          ? 'Sync agendado: a cota da football-data está esgotada e volta mais tarde.'
+          : 'Sync agendado: o orçamento de chamadas está cheio neste minuto.',
+      })
+    }
     const message = error instanceof Error ? error.message : String(error)
     logError(c.env.AE, 'football_api_error', 'Erro no sync:', error, {
       blobs: ['sync_endpoint'],

@@ -204,6 +204,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `football_api_error` | `context` (`sync_endpoint`/`fixture_discovery`) **ou** `comp_id` (no poller) | `round` (poller) **ou** `comp_id` (fixture_discovery) | `error_message` | — |
 | `match_results_fallback` | `competition_id` (vazio quando o fallback inteiro falhou no poller) | vazio em execução normal; `error_message` em falha | — | execução normal: `double1`=atualizados, `double2`=pulados; falha: sem doubles |
 | `provider_http_attempt` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio se a chamada não tem competição) | `status` (HTTP; `0` = sem resposta: rede, timeout ou abort) | `context` (`poller`/`discovery`/`fallback`/`sync`) em blob5; `double1`=duration_ms, `double2`=peso (1 em falha ou cota zerada, 10 em sucesso amostrado); só football-data: `double3`=requests restantes na janela e `double4`=segundos até o reset, os dois `-1` sem cabeçalho válido |
+| `provider_work_run` | `status` (`ok`/`error`; `error` quando algum item falhou de vez no teto de tentativas) | — | — | `double1`=claimed (itens reclamados), `double2`=done, `double3`=requeued (devolvidos à fila sem tentativa nova do provedor), `double4`=failed, `double5`=duration_ms. Uma linha por execução do cron drenador da fila durável de sync (ADR-027); falha do D1 no dreno sai pelo `logError` com a mensagem em blob3 e sem doubles |
 | `match_teams_changed` | `provider` (`espn`/`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `kind` em blob5: `swap` (mando invertido, os palpites do jogo foram invertidos junto) ou `replace` (um time mudou, os palpites ficaram como estavam); sem doubles |
 | `sync_event_discarded` | `provider` (`espn`/`football-data`) | `competition_id` (UUID; vazio quando a competição ainda não existe no banco) | `reason`: `unknown_stage` (fase fora do mapa da ESPN), `season_mismatch` (evento de outra edição), `missing_competitor` (time ausente ou indefinido), `invalid_event` (id, data ou confronto inválidos) | `detail` em blob5: slug da fase em `unknown_stage`, ano recebido em `season_mismatch`, `tbd` para time a definir, `same_team`/`id`/`date`/`competition` em `invalid_event`, vazio se não há; `competition_code` (id da competição no provedor) em blob6; `double1`=eventos descartados com esse motivo e detalhe no sync |
 | `match_missing_from_feed` | `provider` (`football-data`) | `competition_id` (UUID) | `external_id` do jogo no provedor | `start_time` gravado em blob5; sem doubles. Só a descoberta registra, com dois tetos: no máximo 10 por competição e 30 por execução, somando as competições, para ficar longe do limite de `writeDataPoint` por invocação. O total real, sem teto, vai em `fixture_discovery_run.double6` |
@@ -322,18 +323,32 @@ Um 429, ou uma resposta com zero requests restantes, pausa as chamadas até o re
 válido a pausa é de 60 s; o 429 pausa no mínimo 6 s; nenhuma pausa passa de 1 h. Durante a
 pausa, uma chamada espera até 65 s; se o reset estiver mais longe, falha sem request
 (`FootballDataQuotaError`, registrada como `football_api_error`), e o próximo ciclo tenta de
-novo: 30 min no poller (com o fallback da ESPN no mesmo tick), 24 h na descoberta. O retry do 429
-passa pela mesma regra.
+novo: 30 min no poller (com o fallback da ESPN no mesmo tick), no mesmo dia na descoberta, pelo
+cron drenador. O retry do 429 passa pela mesma regra.
 
-A pausa vale só para o isolate que viu a resposta. Outro isolate do Worker, o radar no GitHub
-Actions e scripts locais não a enxergam, então ela não é um orçamento global: discovery e poller
-em isolates diferentes ainda podem coincidir no mesmo minuto. A coordenação entre eles é do
-backlog de resiliência dos provedores.
+Desde o ADR-027 a pausa não vale só para o isolate: o bloqueio também é gravado no D1
+(`provider_rate_state`) e vale para qualquer reserva de vaga do Worker, entre execuções. O
+orçamento compartilhado é de 8 requests por minuto (80% do free tier), com a fila durável de
+trabalho pendente em `provider_work` e o cron drenador retomando o que ficou pendente — ver
+[ADR-027](architecture/decisions.md#adr-027-orçamento-compartilhado-e-fila-durável-de-sync-da-football-data).
+O radar no GitHub Actions e o script local `test-results-api.ts` seguem fora do orçamento,
+como exceções declaradas lá.
 
 Ausência de linha não é zero: o evento só existe a partir do deploy, e uma competição sem
 tentativa no período não aparece. O painel mostra "indisponível" quando a API não envia o
 recorte, "sem registro ainda" quando nunca houve evento, e a data de início da coleta quando ela
 é mais nova que o período.
+
+#### Fila durável de sync (`provider_work_run`)
+
+Uma linha por execução do cron drenador (`drainFootballDataWork`): `blob2` é `ok` ou `error`
+(error quando algum item falhou de vez no teto de tentativas), e os doubles são, nessa ordem,
+`claimed` (itens reclamados), `done`, `requeued` (devolvidos à fila sem tentativa nova do
+provedor) e `failed`, depois `duration_ms`. Falha do D1 no dreno sai pelo `logError` com a
+mensagem em blob3 e sem doubles. O que o painel mostra como trabalho pendente por competição
+vem desta fila; idade das pendências é `now - created_at` dos itens `pending`.
+
+Ausência de linha não é zero: o evento só existe a partir do deploy do drenador.
 
 Observação sobre `prediction_saved`: o `kind` (single/bulk/import/replicate) cai em **blob5** porque o
 `round` (blob3) é mantido na posição mesmo vazio, pra alinhar as quatro variantes na mesma coluna. O `replicate` ("Aplicar também em") grava `double1` com o número de palpites escritos nos outros grupos.

@@ -6,6 +6,8 @@ import type { AppContext } from '../types'
 import { signJwt } from '../auth/jwt'
 import { withSessionAccounts } from '../testing/session'
 import * as observability from '../observability'
+import { FootballDataQuotaError } from './footballDataQuota'
+import { FootballDataSlotBusyError } from './providerBudget'
 
 const { syncFixturesSpy, scoreUnprocessedMatchesSpy } = vi.hoisted(() => ({
   syncFixturesSpy: vi.fn(),
@@ -447,13 +449,15 @@ describe('matches router – GET /', () => {
       const response = await runSync(await syncRequest(ADMIN), env)
 
       expect(response.status).toBe(200)
-      expect(syncFixturesSpy).toHaveBeenCalledWith({
-        competitionCode: 'WC',
-        season: 2026,
-        matchday: undefined,
-        apiKey: env.FOOTBALL_API_KEY,
-        db: env.DB,
-      })
+      expect(syncFixturesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          competitionCode: 'WC',
+          season: 2026,
+          matchday: undefined,
+          apiKey: env.FOOTBALL_API_KEY,
+          db: env.DB,
+        }),
+      )
       await expect(response.json()).resolves.toMatchObject({
         ok: true,
       })
@@ -492,6 +496,70 @@ describe('matches router – GET /', () => {
         email: 'admin@palpitae.test',
       }, 'secret', 3600)
       userToken = await signJwt({ sub: 'user@example.com', email: 'user@example.com' }, 'secret', 3600)
+    })
+
+    it('sem vaga no orçamento, o sync administrativo fica pendente na fila', async () => {
+      syncFixturesSpy.mockRejectedValue(new FootballDataSlotBusyError())
+      const batch = vi.fn(async () => [])
+      const db = { ...createMatchesDbMock([]), batch }
+
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+      const response = await app.fetch(
+        new Request('http://localhost/matches/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: 'session=' + adminToken },
+          body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+        }),
+        {
+          ...fakeEnv(db as unknown as D1Database),
+          ADMIN_EMAIL: 'admin@palpitae.test',
+          FOOTBALL_API_KEY: 'fake-api-key',
+        },
+        { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as unknown as ExecutionContext,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toMatchObject({ ok: true, pending: true })
+      // O item manual entrou na fila durável para o dreno executar.
+      expect(batch).toHaveBeenCalledTimes(1)
+      expect(syncFixturesSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ coordinate: true, competitionCode: 'WC', season: 2022 }),
+      )
+    })
+
+    it('com a cota da football-data esgotada, o sync administrativo fica pendente com o prazo da cota', async () => {
+      const retryAt = Date.now() + 5 * 60_000
+      syncFixturesSpy.mockRejectedValue(new FootballDataQuotaError(retryAt))
+      const batch = vi.fn(async () => [])
+      const bind = vi.fn()
+      const db = {
+        ...createMatchesDbMock([]),
+        batch,
+        prepare: vi.fn(() => ({ bind: bind.mockReturnThis() })),
+      }
+
+      const app = new Hono<AppContext>()
+      app.route('/matches', matchesRouter)
+      const response = await app.fetch(
+        new Request('http://localhost/matches/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Cookie: 'session=' + adminToken },
+          body: JSON.stringify({ competition: 'WC', season: 2022, matchday: 1 }),
+        }),
+        {
+          ...fakeEnv(db as unknown as D1Database),
+          ADMIN_EMAIL: 'admin@palpitae.test',
+          FOOTBALL_API_KEY: 'fake-api-key',
+        },
+        { waitUntil: vi.fn(), passThroughOnException: vi.fn(), props: {} } as unknown as ExecutionContext,
+      )
+
+      expect(response.status).toBe(200)
+      await expect(response.json()).resolves.toMatchObject({ ok: true, pending: true })
+      expect(batch).toHaveBeenCalledTimes(1)
+      // O item manual volta no instante que a cota informou, não na próxima janela.
+      expect(bind.mock.calls.some((args) => args.includes(retryAt))).toBe(true)
     })
 
     it('returns 500 and logs error when syncFixtures fails', async () => {

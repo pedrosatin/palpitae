@@ -8,6 +8,7 @@ import { ESPN_MIN_INTERVAL_MS } from '../providers/espn'
 import { callsLeft, countD1Calls, INVOCATION_CALL_LIMIT, type CallBudget } from './callBudget'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { scoreWindowFromEspn } from './espnFallback'
+import { FD_MAX_CONCURRENT_REQUESTS, runWithConcurrency } from './footballDataQuota'
 import {
   DAY_MS,
   EARLIEST_RESULT_MS,
@@ -17,8 +18,8 @@ import {
   resultWindowBounds,
 } from './matchPollingWindow'
 import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
+import { deferProviderWork } from './providerWork'
 import { syncFixtures } from './sync'
-import { runSyncTasks } from './syncTasks'
 
 type ActiveRound = {
   comp_id: string
@@ -414,6 +415,12 @@ function tallySyncOutcomes(
  * `POLLER_CALL_BUDGET`. Entram as sincronizadas no tick e as que têm jogo
  * encerrado sem pontuação no D1, com ou sem jogo na janela. A que não termina
  * continua no tick seguinte de onde parou, e o erro de uma não impede as outras.
+ *
+ * Fila durável (ADR-027): toda tentativa football-data reserva vaga no
+ * orçamento compartilhado por minuto. O que o orçamento ou a cota recusarem
+ * vira item pendente em `provider_work`, e o cron drenador retoma entre os
+ * ticks, inclusive além das 24 h do resgate. A ESPN segue direto no tick; a
+ * coordenação dela é o ticket 03 da resiliência.
  */
 export async function pollActiveMatches(
   rawDb: D1Database,
@@ -463,7 +470,62 @@ export async function pollActiveMatches(
     }
   }
 
-  const syncResults = await runSyncTasks(tasks, (task) => task.comp.provider, runSyncTask)
+  // Orçamento compartilhado (ADR-027): cada tentativa football-data reserva
+  // vaga na janela de um minuto. O que o orçamento ou a cota recusarem vira
+  // item durável na fila, para o cron drenador retomar — inclusive além das
+  // 24 h do resgate. A ESPN segue com o teto próprio (a coordenação dela é o
+  // ticket 03 da resiliência).
+  const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
+  const fdTasks = tasks.filter((task) => task.comp.provider !== 'espn')
+
+  const runFdTask = async (task: SyncTask): Promise<SyncOutcome> => {
+    const { comp, round } = task
+    const matchday = parseInt(round, 10)
+    const matchdayParam = Number.isNaN(matchday) ? undefined : matchday
+    try {
+      const result = await syncFixtures({
+        competitionCode: comp.external_id,
+        season: Number(comp.season),
+        matchday: matchdayParam,
+        apiKey,
+        db,
+        coordinate: true,
+        onHttpAttempt: countHttp(
+          createProviderHttpObserver(ae, { context: 'poller', competitionId: comp.comp_id }),
+        ),
+        ae,
+      })
+      return {
+        success: true as const,
+        comp,
+        round,
+        matches: result?.matches ?? 0,
+        discarded: result?.discarded ?? 0,
+      }
+    } catch (err) {
+      // Qualquer falha vira trabalho pendente: o dreno retoma entre os ticks,
+      // inclusive além das 24 h do resgate. Sem vaga ou com cota bloqueada, o
+      // prazo segue o reset; nas demais falhas, a espera conservadora.
+      await deferProviderWork(
+        db,
+        {
+          kind: task === lateTask ? 'late' : 'result',
+          competitionCode: comp.external_id,
+          season: comp.season,
+          round,
+          competitionId: comp.comp_id,
+        },
+        err,
+      )
+      return { success: false as const, comp, round, err }
+    }
+  }
+
+  const [fdResults, espnResults] = await Promise.all([
+    runWithConcurrency(FD_MAX_CONCURRENT_REQUESTS, fdTasks, runFdTask),
+    runWithConcurrency(ESPN_MAX_CONCURRENT_COMPETITIONS, espnTasks, runSyncTask),
+  ])
+  const syncResults = [...fdResults, ...espnResults]
 
   // Requests primárias planejadas, sem retries nem chamadas do fallback.
   const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)
