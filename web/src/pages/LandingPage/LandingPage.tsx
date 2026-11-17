@@ -139,6 +139,9 @@ function Features() {
         shotAlt="Tela de palpites de uma rodada, com um card por jogo, os escudos dos times e botões de mais e menos para ajustar o placar de cada um"
         shotWidth={1100}
         shotHeight={712}
+        eager
+        srcSet={PALPITES_SRCSET}
+        sizes={PALPITES_SIZES}
       />
     </section>
   )
@@ -347,6 +350,16 @@ function Footer() {
 
 /* ─── Local presentational helpers ─────────────────────────────────────── */
 
+/**
+ * Srcset da captura de palpites. No celular a captura ocupa a largura da tela
+ * menos o padding da seção (100vw - 3rem), e no desktop fica na coluna de 1fr
+ * do grid (456px com a seção no máximo de 1100px). A variante de 640w cobre as
+ * duas larguras de exibição em DPR 1; com o DPR 2,6 do celular o navegador
+ * escolhe a de 1100w.
+ */
+const PALPITES_SRCSET = '/screenshots/palpites-640.webp 640w, /screenshots/palpites.webp 1100w'
+const PALPITES_SIZES = '(max-width: 860px) calc(100vw - 3rem), 456px'
+
 function FeatureRow({
   tag,
   title,
@@ -356,6 +369,9 @@ function FeatureRow({
   shotWidth,
   shotHeight,
   reversed = false,
+  eager = false,
+  srcSet,
+  sizes,
 }: {
   tag: string
   title: string
@@ -365,6 +381,10 @@ function FeatureRow({
   shotWidth: number
   shotHeight: number
   reversed?: boolean
+  /** Captura que pode virar o LCP do primeiro viewport: carrega na abertura. */
+  eager?: boolean
+  srcSet?: string
+  sizes?: string
 }) {
   return (
     <article className={`${styles.feature} ${reversed ? styles.featureReversed : ''}`}>
@@ -374,7 +394,16 @@ function FeatureRow({
         <p className={styles.featureDesc}>{description}</p>
       </div>
       <BrowserFrame className={styles.featureShot}>
-        <Shot src={shot} alt={shotAlt} width={shotWidth} height={shotHeight} loading="lazy" />
+        <Shot
+          src={shot}
+          alt={shotAlt}
+          width={shotWidth}
+          height={shotHeight}
+          loading={eager ? 'eager' : 'lazy'}
+          fetchPriority={eager ? 'high' : undefined}
+          srcSet={srcSet}
+          sizes={sizes}
+        />
       </BrowserFrame>
     </article>
   )
@@ -396,6 +425,11 @@ function FaqItem({ q, a }: { q: string; a: string }) {
  * truth. The hero shot passes loading="eager" and fetchPriority="high" (it's
  * the LCP element, and the preload in index.html carries the same priority);
  * the rest lazy-load.
+ *
+ * Quando a captura é o maior elemento da primeira dobra no celular (a de
+ * palpites), srcSet/sizes entregam uma variante de 640w e o navegador escolhe
+ * pela largura de exibição e pelo DPR; width/height ficam no <img> para o CLS
+ * não mudar.
  */
 function Shot({
   src,
@@ -404,6 +438,8 @@ function Shot({
   height,
   loading,
   fetchPriority,
+  srcSet,
+  sizes,
 }: {
   src: string
   alt: string
@@ -411,11 +447,13 @@ function Shot({
   height: number
   loading: 'eager' | 'lazy'
   fetchPriority?: 'high' | 'low' | 'auto'
+  srcSet?: string
+  sizes?: string
 }) {
   const webp = src.replace(/\.png$/, '.webp')
   return (
     <picture>
-      <source srcSet={webp} type="image/webp" />
+      <source srcSet={srcSet ?? webp} type="image/webp" sizes={srcSet ? sizes : undefined} />
       <img
         src={src}
         alt={alt}
