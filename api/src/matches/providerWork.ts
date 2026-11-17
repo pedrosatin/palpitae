@@ -236,7 +236,7 @@ export function retryAtOf(error: unknown, now: number): number {
  * do tick (`CallBudgetExhaustedError`) não é falha nem bloqueio do provedor: o
  * trabalho fica elegível para o próximo dreno, sem esperar uma janela, e o item
  * novo nasce sem tentativa. Os demais erros seguem `retryAtOf`. `what` nomeia o trabalho
- * na mensagem do painel ("a data", "a rodada").
+ * na mensagem gravada em `last_error` ("a data", "a rodada").
  */
 export function deferralOf(
   error: unknown,

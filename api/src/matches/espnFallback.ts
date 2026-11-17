@@ -318,8 +318,18 @@ async function scoreCompetitionWindow(
     onHttpAttempt?.(attempt)
     telemetry?.(attempt)
   }
-  const scoreboards = await Promise.all(
+  // Espera todas as datas antes de propagar a falha de uma delas: a reserva da
+  // competição só é devolvida depois que nenhuma chamada dela está em andamento,
+  // senão o saldo do tick conta menos do que foi gasto. A falha propagada é a da
+  // primeira data da lista, a mesma que `Promise.all` escolheria na ordem.
+  const settled = await Promise.allSettled(
     Array.from(dates).map((date) => fetchEspnScoreboard(slug, date, onAttempt, gate)),
+  )
+  const failed = settled.find((outcome) => outcome.status === 'rejected')
+  if (failed) throw failed.reason
+  const scoreboards = settled.map(
+    (outcome) =>
+      (outcome as PromiseFulfilledResult<Awaited<ReturnType<typeof fetchEspnScoreboard>>>).value,
   )
   // Resposta sem a lista de eventos falha a competição: não é "sem resultado".
   const events = scoreboards.flatMap((scoreboard) => requireScoreboardEvents(scoreboard, slug))

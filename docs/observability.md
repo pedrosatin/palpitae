@@ -419,8 +419,8 @@ ticket 03), com o que a ESPN faz de diferente:
   `D1_ERROR`). Tick com 1, 2, 3 e 4 competições da ESPN com
   1 jogo na janela (2 datas, com a limpeza do `scheduled`): 20, 36, 44 e 45 chamadas (antes, 20, 36, 44 e
   52, com a 51 e a 52 recusadas); com jogos de hoje e de ontem nas 4 (3 datas), 43 (antes, 55 e o tick
-  rejeitado). Competição adiada pelo saldo e pendência a mais no painel por até 10 minutos são esperados
-  nesses ticks; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
+  rejeitado). Competições adiadas pelo saldo geram pendências, e o prazo de execução depende da fila e do
+  saldo dos próximos drenos; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
   está consumindo o do poller, e um `fd_deferred_rounds` acima de zero em todo tick de jogo, de que houve adiamento de
   rodadas; o motivo de cada uma fica em `last_error` na fila (saldo do tick, 429 ou outra falha).
 - **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,

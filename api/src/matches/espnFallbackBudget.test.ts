@@ -165,4 +165,47 @@ describe('fallback da ESPN com o saldo do poller', () => {
     expect(h.d1Calls() + h.espn.mock.calls.length).toBe(8)
     expect(h.errors()).toEqual([])
   })
+
+  it('uma data que falha não devolve a reserva enquanto outra ainda está em andamento', async () => {
+    const h = await setup()
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    // O dia do jogo responde 404; o dia anterior só responde quando o teste libera.
+    const espn = vi.fn(async (input: string | URL | Request) => {
+      if (new URL(String(input)).searchParams.get('dates') === '20261117') {
+        return new Response('not found', { status: 404 })
+      }
+      await held
+      return Response.json({ events: [] })
+    })
+    vi.stubGlobal('fetch', espn)
+    const budget = new DrainBudget(h.db, 40, 0)
+
+    let returned = false
+    const run = scoreWindowFromEspn(h.db, h.ae, [h.id], {
+      now: NOW,
+      coordinate: true,
+      budget,
+    }).then((result) => {
+      returned = true
+      return result
+    })
+    await vi.waitFor(() => expect(espn).toHaveBeenCalledTimes(2))
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(returned).toBe(false)
+    expect(budget.hasInFlight()).toBe(true)
+
+    release()
+    const result = await run
+    const usedOnReturn = budget.used
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(result.get(h.id)).toBe(0)
+    expect(budget.hasInFlight()).toBe(false)
+    expect(budget.used).toBe(usedOnReturn)
+    expect(h.errors()).toHaveLength(1)
+  })
 })

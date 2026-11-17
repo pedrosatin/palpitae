@@ -494,9 +494,9 @@ describe.each(POLLER_TICKS)(
       expectNoD1Error(h)
       expect(h.events('football_api_error')).toEqual([])
       expect(h.events('poller_run').map((e) => e.blobs[1])).toEqual(['ok'])
-      // As 4 primeiras rodadas levam o 429 e repetem depois do reset; as outras 7 vão para a fila,
-      // e o fallback, sem as 11 chamadas de uma competição livres, não consulta nada: 45 com a
-      // limpeza, o orçamento inteiro do poller e nada além.
+      // As 4 primeiras rodadas levam o 429 e repetem depois do reset (8 fetches); 3 sincronizam e 8
+      // vão para a fila. O fallback, sem as 11 chamadas de uma competição livres, não consulta nada.
+      // O tick gasta 46 chamadas: as 45 do orçamento do poller e a limpeza do `scheduled`.
       expect(h.fetches.fd).toBe(8)
       expect(h.fetches.limited).toBe(4)
       expect(h.fetches.espn).toBe(0)
