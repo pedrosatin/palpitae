@@ -147,4 +147,21 @@ describe('orçamento de subrequests do dreno', () => {
     // 40 − 3 (estado) − 12 (reserva do outro) = 25, com a reserva dele incluída.
     expect(first.callsLeft()).toBe(25)
   })
+
+  it('com reserva própria (o saldo da ESPN no poller), só ela fica de fora do trabalho e do D1 do ciclo', async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    const budget = new DrainBudget(db, 10, 1)
+
+    // 10 − 1 de reserva: cabe uma estimativa de 9, e não de 10.
+    expect(budget.open(10)).toBeNull()
+    const item = budget.open(9)!
+    for (let i = 0; i < 9; i++) await item.db.prepare('SELECT 1').first()
+    // A reserva é do ciclo: o D1 dele ainda grava, e o do item recusa a que a invadiria.
+    await expect(item.db.prepare('SELECT 1').first()).rejects.toBeInstanceOf(
+      CallBudgetExhaustedError,
+    )
+    await budget.db.prepare('SELECT 1').first()
+    expect(budget.used).toBe(10)
+  })
 })

@@ -11,6 +11,7 @@ vi.mock('./competitionLifecycle', () => ({
 
 import { reconcileCompetitionStatus } from './competitionLifecycle'
 import { discoverFixtures } from './fixtureDiscovery'
+import { EspnUnavailableError } from '../providers/espn'
 import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
@@ -26,8 +27,9 @@ type ActiveCompetition = {
   provider?: string
 }
 
-function buildFakeDb(rows: ActiveCompetition[]) {
+function buildFakeDb(rows: ActiveCompetition[], accessRow: () => unknown = () => null) {
   const captured: { sql: string; params: unknown[] } = { sql: '', params: [] }
+  const batches: number[] = []
   const db = {
     prepare(sql: string) {
       captured.sql = sql
@@ -39,15 +41,21 @@ function buildFakeDb(rows: ActiveCompetition[]) {
         async all<T>(): Promise<{ results: T[] }> {
           return { results: rows as unknown as T[] }
         },
+        // A leitura do estado de acesso da ESPN antes da descoberta (livre, sem linha, por padrão).
+        async first(): Promise<unknown> {
+          return accessRow()
+        },
       }
       return stmt
     },
     // O adiamento de falha grava o item pendente da fila durável; sem efeito
     // neste fake, que só observa as competições lidas.
-    async batch(): Promise<unknown[]> {
+    async batch(statements: unknown[]): Promise<unknown[]> {
+      batches.push(statements.length)
       return []
     },
     _captured: captured,
+    _batches: batches,
   }
   return db
 }
@@ -410,5 +418,87 @@ describe('discoverFixtures', () => {
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(7)
     expect(espnResolvedWhileFdHeld).toBe(true)
+  })
+
+  describe('ESPN e o controle de acesso', () => {
+    const espnComp = {
+      id: 'espn-1',
+      external_id: 'conmebol.libertadores',
+      season: '2026',
+      provider: 'espn',
+    }
+
+    it('data da ESPN que não chegou falha a competição inteira, como o fetch que lança, e o status não avança', async () => {
+      syncFixturesMock.mockResolvedValueOnce({
+        matches: 2,
+        pending: { dates: ['20261110'], error: new Error('ESPN respondeu 503') },
+      } as never)
+      const ae = buildFakeAe()
+      const db = buildFakeDb([espnComp])
+
+      await discoverFixtures(
+        db as unknown as D1Database,
+        'key',
+        ae as unknown as AnalyticsEngineDataset,
+      )
+
+      const errors = pointsOfType(ae, 'football_api_error')
+      expect(errors).toHaveLength(1)
+      expect(errors[0].blobs?.[3]).toBe('ESPN respondeu 503')
+      expect(reconcileMock).not.toHaveBeenCalled()
+      expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('error')
+    })
+
+    it('a recusa do acesso não é falha do sync: sem erro, sem fila e sem avançar o status', async () => {
+      syncFixturesMock.mockResolvedValueOnce({
+        matches: 0,
+        pending: {
+          dates: ['20261110'],
+          error: new EspnUnavailableError('blocked', Date.now() + 60_000),
+        },
+      } as never)
+      const ae = buildFakeAe()
+      const db = buildFakeDb([espnComp])
+
+      await discoverFixtures(
+        db as unknown as D1Database,
+        'key',
+        ae as unknown as AnalyticsEngineDataset,
+      )
+
+      expect(pointsOfType(ae, 'football_api_error')).toEqual([])
+      expect(db._batches).toEqual([])
+      expect(reconcileMock).not.toHaveBeenCalled()
+      expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('ok')
+    })
+
+    it('com a ESPN pausada a competição não é sincronizada, e a football-data segue', async () => {
+      const db = buildFakeDb(
+        [espnComp, { id: 'fd-1', external_id: 'WC', season: '2026', provider: 'football-data' }],
+        () => ({
+          blocked_until: Date.now() + 60_000,
+          forbidden_streak: 1,
+          suspended_at: null,
+          suspended_reason: null,
+        }),
+      )
+
+      await discoverFixtures(db as unknown as D1Database, 'key')
+
+      expect(syncFixturesMock).toHaveBeenCalledTimes(1)
+      expect(syncFixturesMock.mock.calls[0][0].competitionCode).toBe('WC')
+    })
+
+    it('só lê o estado de acesso quando há competição da ESPN', async () => {
+      const first = vi.fn(() => null)
+      const db = buildFakeDb(
+        [{ id: 'fd-1', external_id: 'WC', season: '2026', provider: 'football-data' }],
+        first,
+      )
+
+      await discoverFixtures(db as unknown as D1Database, 'key')
+
+      expect(first).not.toHaveBeenCalled()
+    })
   })
 })

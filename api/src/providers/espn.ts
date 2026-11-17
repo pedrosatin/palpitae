@@ -106,6 +106,63 @@ async function awaitEspnRequestSlot(minDelayMs = 0): Promise<void> {
   lastEspnRequestStartedAt = Date.now()
 }
 
+/**
+ * A ESPN respondeu com status de erro. `status` deixa o chamador separar
+ * rate limit, proibição de acesso e queda do provedor.
+ */
+export class EspnHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'EspnHttpError'
+  }
+}
+
+/**
+ * A ESPN não foi chamada, ou o acesso foi vedado, e o trabalho espera
+ * `retryAt` (ms epoch): orçamento do minuto cheio (`window_full`), pausa por
+ * 429 ou 403 (`blocked`) ou coleta suspensa porque a resposta proibiu o acesso
+ * (`suspended`, só o operador retoma). Não é falha do sync: nenhuma tentativa
+ * é gasta com ela.
+ */
+export class EspnUnavailableError extends Error {
+  constructor(
+    readonly reason: 'window_full' | 'blocked' | 'suspended',
+    readonly retryAt: number,
+    detail?: string,
+  ) {
+    super(
+      detail ??
+        `ESPN indisponível (${reason}): nova tentativa a partir de ${new Date(retryAt).toISOString()}`,
+    )
+    this.name = 'EspnUnavailableError'
+  }
+}
+
+/** Resposta 200 sem o que o scoreboard sempre traz: não confirma nada. */
+export class EspnIncompleteResponseError extends Error {
+  constructor(slug: string) {
+    super(`ESPN respondeu sem a lista de eventos em ${slug}: resposta incompleta`)
+    this.name = 'EspnIncompleteResponseError'
+  }
+}
+
+/** Bloqueio que uma resposta impôs ao provedor, para o cliente falhar com o prazo. */
+export type EspnBlock = { reason: 'blocked' | 'suspended'; retryAt: number }
+
+/**
+ * Coordenação das tentativas pelo orçamento compartilhado (ADR-027). O cliente
+ * não sabe de D1: o gate reserva a vaga antes de cada request (lança
+ * `EspnUnavailableError` se negada) e registra a resposta depois. Sem gate o
+ * cliente age como antes: o radar e os scripts locais seguem fora do orçamento.
+ */
+export type EspnGate = {
+  reserve(): Promise<void>
+  note(status: number, headers: Headers): Promise<EspnBlock | null>
+}
+
 export type EspnCompetitorTeam = {
   id?: string
   displayName?: string
@@ -198,6 +255,20 @@ export type EspnScoreboard = {
   leagues?: EspnScoreboardLeague[]
 }
 
+/**
+ * Eventos do scoreboard, ou falha se a resposta não trouxe a lista. Ausência de
+ * `events` não é "sem jogos": é resposta incompleta, e quem a tratasse como
+ * lista vazia daria o sync por feito. Lista vazia continua válida (data sem
+ * jogos), mas também não confirma resultado de nenhuma partida.
+ */
+export function requireScoreboardEvents(
+  board: EspnScoreboard | null | undefined,
+  slug: string,
+): EspnScoreboardEvent[] {
+  if (!board || !Array.isArray(board.events)) throw new EspnIncompleteResponseError(slug)
+  return board.events
+}
+
 /** URL do scoreboard de uma liga, opcionalmente filtrada por data no formato YYYYMMDD. Exportada para testes. */
 export function espnScoreboardUrl(slug: string, yyyymmdd?: string): string {
   if (yyyymmdd) {
@@ -226,17 +297,24 @@ function delay(ms: number): Promise<void> {
  *
  * `onAttempt` recebe provedor, status e duração de cada tentativa (status 0
  * sem resposta); nunca altera o resultado nem lança.
+ *
+ * Com `gate`, cada tentativa reserva vaga no orçamento compartilhado e a
+ * resposta é registrada nele (ADR-027). Uma resposta que bloqueia o provedor
+ * (429, 403, 401, 451) falha na hora com `EspnUnavailableError`, sem o retry.
  */
 export async function fetchEspnScoreboard(
   slug: string,
   yyyymmdd?: string,
   onAttempt?: ProviderHttpObserver,
+  gate?: EspnGate,
 ): Promise<EspnScoreboard> {
   return withEspnPace(async () => {
     let lastError: unknown = new Error(`ESPN: nenhuma tentativa feita para ${slug}`)
 
     for (let attempt = 0; attempt < 2; attempt++) {
       await awaitEspnRequestSlot(attempt > 0 ? ESPN_RETRY_BACKOFF_MS : 0)
+      // Sem vaga não há request: `EspnUnavailableError` sobe para o chamador.
+      if (gate) await gate.reserve()
 
       const startedAt = Date.now()
       let res: Response
@@ -257,12 +335,16 @@ export async function fetchEspnScoreboard(
         status: res.status,
         durationMs: Date.now() - startedAt,
       })
+      // O bloqueio que esta resposta impõe vale para todos os isolates.
+      const block = gate ? await gate.note(res.status, res.headers) : null
       if (res.ok) return (await res.json()) as EspnScoreboard
 
       // Corpo junto: a mensagem de um 429/5xx é o que diferencia rate limit de
       // outage na hora de olhar o log do Actions.
       const body = (await res.text().catch(() => '')).slice(0, 200)
-      lastError = new Error(`ESPN respondeu ${res.status} em ${slug}: ${body}`)
+      const message = `ESPN respondeu ${res.status} em ${slug}: ${body}`
+      if (block) throw new EspnUnavailableError(block.reason, block.retryAt, message)
+      lastError = new EspnHttpError(res.status, message)
       if (!isRetryable(res.status)) throw lastError
     }
 

@@ -5,6 +5,7 @@ import {
   type ProviderHttpContext,
 } from '../observability/providerHttp'
 import { CallBudgetExhaustedError } from './callBudget'
+import { isEspnRefusal } from './espnAccess'
 import { reconcileCompetitionStatus } from './competitionLifecycle'
 import type { ProviderDrain } from './drainCoordinator'
 import { CYCLE_FIXED_CALLS, type DrainBudget, type ItemBudget } from './drainBudget'
@@ -37,7 +38,7 @@ export const MISSING_EVENTS_PER_DISCOVERY = 30
  */
 
 /** Quem disparou a tentativa, na telemetria por item. */
-function httpContextOf(kind: ProviderWorkKind): ProviderHttpContext {
+export function httpContextOf(kind: ProviderWorkKind): ProviderHttpContext {
   return kind === 'discovery' ? 'discovery' : kind === 'manual' ? 'sync' : 'poller'
 }
 
@@ -168,6 +169,11 @@ export function runFootballDataWorkItem(
           providerBlocked: true,
         }
       }
+      // Item de competição da ESPN (a retomada de uma descoberta que falhou): o acesso pausado
+      // devolve o item no prazo do bloqueio, sem tentativa. O dreno da football-data segue.
+      if (isEspnRefusal(err)) {
+        return { item, status: 'requeued', notBefore: err.retryAt, error: err.message }
+      }
       return {
         item,
         status: 'retry',
@@ -233,7 +239,11 @@ export function footballDataSyncedHandler(deps: {
     if (item.kind === 'result' || item.kind === 'late') return
     const competitionId = result?.competitionId || item.competitionId
     if (competitionId) {
-      const scoring = await scoreWithinBudget(competitionId, item, budget)
+      const scoring = await scoreWithinBudget(
+        competitionId,
+        budget,
+        item.kind === 'discovery' ? RECONCILE_CALLS : 0,
+      )
       if (scoring) return scoring
     }
     if (item.kind === 'discovery') {
@@ -250,16 +260,16 @@ export function footballDataSyncedHandler(deps: {
 }
 
 /**
- * Pontua a competição com o saldo do item. Devolve o que o pós-sync deve
- * registrar quando a pontuação não terminou ou falhou, e `undefined` quando
- * terminou.
+ * Pontua a competição com o saldo do item, menos `reserved` chamadas que o
+ * pós-sync ainda vai gastar. Devolve o que o pós-sync deve registrar quando a
+ * pontuação não terminou ou falhou, e `undefined` quando terminou. Compartilhada
+ * com o dreno da ESPN.
  */
-async function scoreWithinBudget(
+export async function scoreWithinBudget(
   competitionId: string,
-  item: ProviderWorkItem,
   budget: ItemBudget,
+  reserved = 0,
 ): Promise<{ error?: string; incomplete?: boolean } | undefined> {
-  const reserved = item.kind === 'discovery' ? RECONCILE_CALLS : 0
   try {
     const outcome = await scoreUnprocessedMatches(
       competitionId,
@@ -273,8 +283,15 @@ async function scoreWithinBudget(
   }
 }
 
-/** Registra o pós-sync que falhou. Falha do pós-sync não repete o item, mas não pode sumir. */
-function logPostSyncFailures(ae: AnalyticsEngineDataset | undefined, run: DrainRun): number {
+/**
+ * Registra o pós-sync que falhou. Falha do pós-sync não repete o item, mas não
+ * pode sumir. `provider` entra na mensagem (o dreno da ESPN o informa).
+ */
+export function logPostSyncFailures(
+  ae: AnalyticsEngineDataset | undefined,
+  run: DrainRun,
+  provider = '',
+): number {
   const failures = run.outcomes.filter((outcome) => outcome.status === 'done' && outcome.postError)
   for (const outcome of failures) {
     if (outcome.status !== 'done' || outcome.postSilent) continue
@@ -282,7 +299,7 @@ function logPostSyncFailures(ae: AnalyticsEngineDataset | undefined, run: DrainR
     tryLogError(
       ae,
       'football_api_error',
-      `[drain] Pós-sync falhou item=${outcome.item.kind}/${outcome.item.competitionCode}:`,
+      `[drain] Pós-sync${provider ? ` da ${provider}` : ''} falhou item=${outcome.item.kind}/${outcome.item.competitionCode}:`,
       outcome.postError,
       { blobs: ['drain_post_sync'] },
     )
@@ -304,6 +321,7 @@ export function footballDataDrain(deps: {
   return {
     provider: 'football-data',
     minCalls: CYCLE_FIXED_CALLS + footballDataMinItemCalls(),
+    queue: {},
     run: (budget) => drainFootballDataWork(budget, deps),
   }
 }
@@ -336,7 +354,7 @@ async function drainFootballDataWork(
   // A gravação do estado que falhou (`settleError`) também marca a execução com erro.
   const failed = run.failed > 0 || postFailures > 0 || run.settleError !== undefined
   tryLogEvent(ae, 'provider_work_run', {
-    blobs: [failed ? 'error' : 'ok'],
+    blobs: [failed ? 'error' : 'ok', 'football-data'],
     // claimed, done, requeued, failed, duration_ms, released, calls_used
     doubles: [
       run.claimed,

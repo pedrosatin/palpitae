@@ -58,6 +58,11 @@ export const CYCLE_FIXED_CALLS = CLAIM_CALLS + STATE_RESERVE_CALLS
  * de cada item passa por `open`, que reserva a estimativa dele antes de começar e
  * entrega um D1 e um `fetch` que recusam, sem chamar, o que invadiria a reserva
  * do estado.
+ *
+ * O poller usa a mesma fatia para o saldo da ESPN no tick (ADR-027, adendo do
+ * ticket 03): `reserve` é o que fica de fora do trabalho dos itens (as sincronizações
+ * por competição), para o `db` do ciclo (o enfileiramento do que não coube) sempre
+ * caber. O dreno usa a reserva do estado, que é o padrão.
  */
 export class DrainBudget {
   private readonly budget: CallBudget
@@ -69,6 +74,7 @@ export class DrainBudget {
   constructor(
     readonly rawDb: D1Database,
     limit: number,
+    private readonly reserve = STATE_RESERVE_CALLS,
   ) {
     this.budget = { limit, used: 0 }
     this.db = countD1Calls(rawDb, this.budget)
@@ -90,7 +96,7 @@ export class DrainBudget {
 
   /** Livre para itens novos: sem a reserva do estado e sem o que os itens em voo ainda vão gastar. */
   private free(except?: ItemBudget): number {
-    let reserved = STATE_RESERVE_CALLS
+    let reserved = this.reserve
     for (const item of this.inFlight) {
       if (item !== except) reserved += item.pending()
     }
@@ -138,7 +144,7 @@ export class DrainBudget {
 
   /** Gasta uma chamada da fatia, ou falha se isso invadisse a reserva do estado. */
   private spend(): void {
-    if (this.budget.used + 1 > this.budget.limit - STATE_RESERVE_CALLS) {
+    if (this.budget.used + 1 > this.budget.limit - this.reserve) {
       throw new CallBudgetExhaustedError()
     }
     this.budget.used += 1

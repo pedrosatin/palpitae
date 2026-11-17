@@ -294,6 +294,7 @@ describe('coordenação das chamadas da football-data', () => {
         round: '10',
         competitionId: 'c1',
         attempts: 0,
+        leaseOwner: expect.any(String),
       },
     ])
   })

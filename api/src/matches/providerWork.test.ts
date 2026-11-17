@@ -10,6 +10,7 @@ import {
   drainProviderWork,
   enqueueProviderWork,
   WORK_BUSY_RETRY_MS,
+  WORK_LEASE_MS,
   WORK_RETRY_DELAY_MS,
   type DrainOptions,
   type ProviderWorkItem,
@@ -47,6 +48,7 @@ const item = (overrides: Partial<ProviderWorkItem> = {}): ProviderWorkItem => ({
   round: '10',
   competitionId: 'c1',
   attempts: 0,
+  leaseOwner: 'dono',
   ...overrides,
 })
 
@@ -113,7 +115,7 @@ describe('fila durável do provedor', () => {
 
     // Reinício: o lease venceu e o dreno seguinte reclama o mesmo item.
     const reclaimed = await claimProviderWork(db, { provider: 'football-data', now: now + 6 * 60_000 })
-    expect(reclaimed).toEqual([item({ attempts: 0 })])
+    expect(reclaimed).toEqual([item({ attempts: 0, leaseOwner: expect.any(String) })])
   })
 
   it('não reclama antes do prazo de retomada', async () => {
@@ -247,5 +249,224 @@ describe('fila durável do provedor', () => {
     expect(run.done).toBe(1)
     expect(run.outcomes[0]).toMatchObject({ status: 'done', postError: 'Scoring Error' })
     expect(rows(sqlite)[0]).toMatchObject({ status: 'done' })
+  })
+
+  /** Promessa que o teste resolve de fora, para segurar um item em execução. */
+  function deferred() {
+    let resolve!: () => void
+    const promise = new Promise<void>((done) => (resolve = done))
+    return { promise, resolve }
+  }
+
+  it('fencing: o dreno cujo lease venceu não fecha nem devolve o item que outro reclamou', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(db, [newItem()], now)
+    const lost = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const gates = { a: deferred(), b: deferred() }
+    const slowDrain = (who: 'a' | 'b', at: number, status: 'done' | 'retry') =>
+      drain(db, {
+        provider: 'football-data',
+        now: at,
+        maxCycles: 1,
+        runItem: async (work) => {
+          await gates[who].promise
+          return status === 'done'
+            ? { item: work, status }
+            : { item: work, status, error: 'falha tardia' }
+        },
+      })
+
+    // O dreno A reclama o item e demora; o lease vence e o dreno B reclama o mesmo item.
+    const drainA = slowDrain('a', now, 'retry')
+    await vi.waitFor(() => expect(rows(sqlite)[0]).toMatchObject({ status: 'running' }))
+    const ownerOf = () => sqlite.prepare('SELECT lease_owner AS owner FROM provider_work').get()
+    const ownerA = ownerOf()
+    const drainB = slowDrain('b', now + WORK_LEASE_MS + 1000, 'done')
+    await vi.waitFor(() => expect(ownerOf()).not.toEqual(ownerA))
+
+    // O resultado atrasado de A (uma falha que devolveria o item à fila) não grava nada.
+    gates.a.resolve()
+    const runA = await drainA
+    expect(runA).toMatchObject({
+      claimed: 1,
+      done: 0,
+      failed: 0,
+      requeued: 0,
+      released: 0,
+      leaseLost: 1,
+    })
+    expect(rows(sqlite)[0]).toMatchObject({ status: 'running', attempts: 0 })
+    expect(lost).toHaveBeenCalledTimes(1)
+
+    // O dono atual conclui normalmente.
+    gates.b.resolve()
+    expect(await drainB).toMatchObject({ claimed: 1, done: 1, leaseLost: 0 })
+    expect(rows(sqlite)[0]).toMatchObject({ status: 'done' })
+  })
+
+  it('fencing no batch de estado: só o item que mudou de dono fica de fora, os outros gravam', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(
+      db,
+      [newItem({ round: '10' }), newItem({ round: '11' }), newItem({ round: '12' })],
+      now,
+    )
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const gate = deferred()
+    const slow = drain(db, {
+      provider: 'football-data',
+      now,
+      maxCycles: 1,
+      runItem: async (work) => {
+        await gate.promise
+        return { item: work, status: 'done' }
+      },
+    })
+    await vi.waitFor(() => expect(rows(sqlite).every((row) => row.status === 'running')).toBe(true))
+
+    // Outro dreno reclama só a rodada 11 depois que o lease dela venceu.
+    sqlite.exec(`UPDATE provider_work SET lease_until = 0 WHERE round = '11'`)
+    const [stolen] = await claimProviderWork(db, {
+      provider: 'football-data',
+      now: now + 1000,
+      limit: 1,
+    })
+    expect(stolen.round).toBe('11')
+
+    gate.resolve()
+    const run = await slow
+    expect(run).toMatchObject({ claimed: 3, done: 2, leaseLost: 1 })
+    const states = Object.fromEntries(rows(sqlite).map((row) => [row.round, row.status]))
+    expect(states).toEqual({ '10': 'done', '11': 'running', '12': 'done' })
+  })
+
+  it('cada provedor tem a sua fila: a chave e a reclamação não se misturam', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(
+      db,
+      [
+        newItem({ competitionCode: 'X', round: '20261014' }),
+        { ...newItem({ competitionCode: 'X', round: '20261014' }), provider: 'espn' },
+      ],
+      now,
+    )
+
+    expect(sqlite.prepare('SELECT provider FROM provider_work ORDER BY provider').all()).toEqual([
+      { provider: 'espn' },
+      { provider: 'football-data' },
+    ])
+    const espn = await claimProviderWork(db, { provider: 'espn', now })
+    expect(espn).toHaveLength(1)
+    // A reclamação da ESPN não toca o item da football-data.
+    expect(
+      sqlite.prepare("SELECT status FROM provider_work WHERE provider = 'football-data'").get(),
+    ).toEqual({ status: 'pending' })
+
+    // Fechar o item da ESPN fecha só a linha dela.
+    await drain(db, {
+      provider: 'espn',
+      now: now + WORK_LEASE_MS + 1000,
+      runItem: async (work) => ({ item: work, status: 'done' }),
+    })
+    expect(
+      sqlite.prepare('SELECT provider, status FROM provider_work ORDER BY provider').all(),
+    ).toEqual([
+      { provider: 'espn', status: 'done' },
+      { provider: 'football-data', status: 'pending' },
+    ])
+  })
+
+  it('adiamento por prazo do erro (bloqueio ou suspensão) e vários itens no mesmo lote', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    const retryAt = now + 6 * 60 * 60_000
+    const blocked = Object.assign(new Error('ESPN indisponível (suspended)'), { retryAt })
+
+    await deferProviderWork(
+      db,
+      ['20261014', '20261015'].map((round) => ({
+        ...newItem({ competitionCode: 'conmebol.sudamericana', round }),
+        provider: 'espn',
+      })),
+      blocked,
+      now,
+    )
+
+    expect(
+      sqlite
+        .prepare(
+          `SELECT provider, round, status, not_before, last_error FROM provider_work ORDER BY round`,
+        )
+        .all(),
+    ).toEqual(
+      ['20261014', '20261015'].map((round) => ({
+        provider: 'espn',
+        round,
+        status: 'pending',
+        not_before: retryAt,
+        last_error: 'ESPN indisponível (suspended)',
+      })),
+    )
+  })
+
+  it('o teto de itens em voo do provedor limita a execução simultânea do dreno', async () => {
+    const { db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(
+      db,
+      Array.from({ length: 6 }, (_, i) => ({ ...newItem({ round: String(i + 1) }), provider: 'espn' })),
+      now,
+    )
+    let inFlight = 0
+    let peak = 0
+    await drain(db, {
+      provider: 'espn',
+      now,
+      concurrency: 2,
+      runItem: async (work) => {
+        inFlight += 1
+        peak = Math.max(peak, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight -= 1
+        return { item: work, status: 'done' }
+      },
+    })
+    expect(peak).toBe(2)
+  })
+
+  it('respectProviderAccess: provedor bloqueado ou suspenso não reclama nada e não escreve na fila', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(db, [{ ...newItem(), provider: 'espn' }], now)
+    const claim = (at: number) =>
+      claimProviderWork(db, { provider: 'espn', now: at, respectProviderAccess: true })
+
+    // Bloqueado até depois de `now`: nada é reclamado.
+    sqlite.exec(`UPDATE provider_rate_state SET blocked_until = ${now + 60_000} WHERE provider = 'espn'`)
+    expect(await claim(now)).toEqual([])
+    // Suspenso: nada, por mais tempo que passe.
+    sqlite.exec(
+      `UPDATE provider_rate_state SET blocked_until = 0, suspended_at = ${now} WHERE provider = 'espn'`,
+    )
+    expect(await claim(now + 48 * 3_600_000)).toEqual([])
+    expect(rows(sqlite)[0]).toMatchObject({ status: 'pending', attempts: 0 })
+
+    // O bloqueio vence e a suspensão é retomada: o item é reclamado.
+    sqlite.exec(`UPDATE provider_rate_state SET suspended_at = NULL WHERE provider = 'espn'`)
+    expect(await claim(now)).toHaveLength(1)
+  })
+
+  it('sem respectProviderAccess o estado de acesso não interfere na reclamação (football-data)', async () => {
+    const { sqlite, db } = setup()
+    const now = Date.parse('2026-11-16T12:00:00Z')
+    await enqueueProviderWork(db, [newItem()], now)
+    sqlite.exec(
+      `UPDATE provider_rate_state SET blocked_until = ${now + 60_000} WHERE provider = 'football-data'`,
+    )
+
+    expect(await claimProviderWork(db, { provider: 'football-data', now })).toHaveLength(1)
   })
 })

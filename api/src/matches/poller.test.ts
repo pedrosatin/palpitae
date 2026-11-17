@@ -2,7 +2,11 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the three collaborators — pollActiveMatches only orchestrates them.
-vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
+vi.mock('./sync', async (importOriginal) => ({
+  // `syncWriteCalls` é a estimativa de custo da gravação (o poller reserva o saldo da football-data).
+  ...(await importOriginal<typeof import('./sync')>()),
+  syncFixtures: vi.fn(async () => undefined),
+}))
 vi.mock('./scoring', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./scoring')>()),
   scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
@@ -37,6 +41,7 @@ type ActiveRow = {
  */
 function buildFakeDb(rows: ActiveRow[]) {
   const captured: { sql: string; params: unknown[] } = { sql: '', params: [] }
+  const batches: number[] = []
   const db = {
     prepare(sql: string) {
       const unscoredReport = sql.includes('GROUP BY competition_id')
@@ -59,12 +64,14 @@ function buildFakeDb(rows: ActiveRow[]) {
       }
       return stmt
     },
-    // O adiamento de falha grava o item pendente da fila durável; sem efeito
-    // neste fake, que só observa o plano do tick.
-    async batch(): Promise<unknown[]> {
+    // O adiamento de falha grava o item pendente da fila durável; este fake só
+    // registra quantas instruções cada batch levou.
+    async batch(statements: unknown[]): Promise<unknown[]> {
+      batches.push(statements.length)
       return []
     },
     _captured: captured,
+    _batches: batches,
   }
   return db
 }
@@ -255,9 +262,12 @@ describe('pollActiveMatches', () => {
       expect.objectContaining({
         competitionCode: 'conmebol.libertadores',
         season: 2026,
-        matchday: undefined,
+        // A ESPN entra no orçamento compartilhado (ADR-027) e busca por data.
+        coordinate: true,
+        dates: ['20261014', '20261015'],
       }),
     )
+    expect(syncFixturesMock.mock.calls[0][0].matchday).toBeUndefined()
     expect(espnFallbackMock).not.toHaveBeenCalled()
     expect(scoreMock).not.toHaveBeenCalled()
   })
@@ -532,7 +542,7 @@ describe('pollActiveMatches', () => {
   })
 
   it('caps concurrent football-data syncFixtures under FD_MAX_CONCURRENT_REQUESTS', async () => {
-    // 4 ligas FD × 2 rodadas = 8 tasks FD (> orçamento). ESPN não conta na cota.
+    // 4 ligas FD × 2 rodadas = 8 tasks FD (> orçamento).
     const fdCodes = ['PD', 'SA', 'BL1', 'PPL'] as const
     const rows: ActiveRow[] = []
     for (const [i, code] of fdCodes.entries()) {
@@ -553,26 +563,13 @@ describe('pollActiveMatches', () => {
         utc_day: '2026-10-18',
       })
     }
-    rows.push({
-      comp_id: 'espn-1',
-      external_id: 'conmebol.libertadores',
-      provider: 'espn',
-      season: '2026',
-      round: 'GROUP_STAGE',
-      utc_day: '2026-10-18',
-    })
 
     let fdInFlight = 0
     let fdPeak = 0
     let holdFd = true
     const fdWaiters: Array<() => void> = []
 
-    syncFixturesMock.mockImplementation(async (opts) => {
-      const isEspn = opts.competitionCode === 'conmebol.libertadores'
-      if (isEspn) {
-        return { matches: 1 } as never
-      }
-
+    syncFixturesMock.mockImplementation(async () => {
       fdInFlight++
       fdPeak = Math.max(fdPeak, fdInFlight)
       if (holdFd) {
@@ -592,7 +589,48 @@ describe('pollActiveMatches', () => {
     })
     expect(fdPeak).toBe(FD_MAX_CONCURRENT_REQUESTS)
     expect(fdInFlight).toBe(FD_MAX_CONCURRENT_REQUESTS)
-    // ESPN resolve em paralelo e não espera a cota FD.
+
+    holdFd = false
+    for (const release of fdWaiters.splice(0)) release()
+    await done
+
+    expect(fdPeak).toBeLessThanOrEqual(FD_MAX_CONCURRENT_REQUESTS)
+    expect(syncFixturesMock.mock.calls).toHaveLength(8)
+  })
+
+  it('ESPN syncs in parallel and does not wait for the football-data cap, when the poller budget fits it', async () => {
+    // 3 tasks FD (24 chamadas estimadas) deixam saldo para uma tarefa da ESPN (12).
+    const rows: ActiveRow[] = ['PD', 'SA', 'BL1'].map((code, i) => ({
+      comp_id: `fd-${i}`,
+      external_id: code,
+      provider: 'football-data',
+      season: '2026',
+      round: '1',
+      utc_day: '2026-10-18',
+    }))
+    rows.push({
+      comp_id: 'espn-1',
+      external_id: 'conmebol.libertadores',
+      provider: 'espn',
+      season: '2026',
+      round: 'GROUP_STAGE',
+      utc_day: '2026-10-18',
+    })
+    let holdFd = true
+    const fdWaiters: Array<() => void> = []
+    syncFixturesMock.mockImplementation(async (opts) => {
+      if (opts.competitionCode === 'conmebol.libertadores') return { matches: 1 } as never
+      if (holdFd) await new Promise<void>((resolve) => fdWaiters.push(resolve))
+      return { matches: 1 } as never
+    })
+
+    const db = buildFakeDb(rows)
+    const done = pollActiveMatches(db as unknown as D1Database, 'key')
+
+    await vi.waitFor(() => {
+      expect(fdWaiters.length).toBe(3)
+    })
+    // ESPN resolve em paralelo, com o fim da sincronização preso na football-data.
     expect(
       syncFixturesMock.mock.calls.some(
         (call) => call[0].competitionCode === 'conmebol.libertadores',
@@ -602,15 +640,69 @@ describe('pollActiveMatches', () => {
     holdFd = false
     for (const release of fdWaiters.splice(0)) release()
     await done
+  })
 
-    expect(fdPeak).toBeLessThanOrEqual(FD_MAX_CONCURRENT_REQUESTS)
-    const fdCalls = syncFixturesMock.mock.calls.filter(
-      (call) => call[0].competitionCode !== 'conmebol.libertadores',
+  it('falha ao enfileirar as datas da ESPN fica no log e o tick sai como erro, sem derrubar o poller', async () => {
+    syncFixturesMock.mockRejectedValue(new Error('ESPN respondeu 500'))
+    const row: ActiveRow = {
+      comp_id: 'espn-1',
+      external_id: 'conmebol.libertadores',
+      provider: 'espn',
+      season: '2026',
+      round: 'GROUP_STAGE',
+      utc_day: '2026-10-18',
+    }
+    const ae = buildFakeAe()
+    const db = buildFakeDb([row])
+    db.batch = async () => {
+      throw new Error('D1 fora do ar')
+    }
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await pollActiveMatches(db as unknown as D1Database, 'key', ae)
+
+    // A falha do sync e a do enfileiramento são registradas, e o tick sai como erro.
+    const errors = pointsOfType(ae, 'football_api_error').map((point) => point.blobs?.[1])
+    expect(errors).toContain('espn_defer')
+    expect(pointsOfType(ae, 'poller_run')[0].blobs).toEqual(['poller_run', 'error'])
+    error.mockRestore()
+  })
+
+  it('ESPN task that does not fit the poller budget is deferred to the durable queue, never synced', async () => {
+    // 8 tasks FD estimadas em 64 chamadas passam do orçamento de 45: a ESPN cede o saldo.
+    const fdCodes = ['PD', 'SA', 'BL1', 'PPL'] as const
+    const rows: ActiveRow[] = fdCodes.flatMap((code, i) =>
+      ['1', '2'].map((round) => ({
+        comp_id: `fd-${i}`,
+        external_id: code,
+        provider: 'football-data',
+        season: '2026',
+        round,
+        utc_day: '2026-10-18',
+      })),
     )
-    const espnCalls = syncFixturesMock.mock.calls.filter(
-      (call) => call[0].competitionCode === 'conmebol.libertadores',
-    )
-    expect(fdCalls).toHaveLength(8)
-    expect(espnCalls).toHaveLength(1)
+    rows.push({
+      comp_id: 'espn-1',
+      external_id: 'conmebol.libertadores',
+      provider: 'espn',
+      season: '2026',
+      round: 'GROUP_STAGE',
+      utc_day: '2026-10-18',
+    })
+    const ae = buildFakeAe()
+    const db = buildFakeDb(rows)
+
+    await pollActiveMatches(db as unknown as D1Database, 'key', ae)
+
+    expect(
+      syncFixturesMock.mock.calls.filter(
+        (call) => call[0].competitionCode === 'conmebol.libertadores',
+      ),
+    ).toHaveLength(0)
+    // As 2 datas do scoreboard (o dia anterior e o próprio) foram enfileiradas num batch só.
+    expect(db._batches).toContain(2)
+    // Sem saldo não é falha do provedor: o tick não sai como erro e não há football_api_error.
+    expect(pointsOfType(ae, 'football_api_error')).toHaveLength(0)
+    expect(pointsOfType(ae, 'poller_run')[0].blobs).toEqual(['poller_run', 'ok'])
   })
 })

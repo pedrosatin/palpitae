@@ -31,6 +31,12 @@ const TICK_MS = 5 * 60_000
 const ITEMS = 16
 /** A limpeza de registros expirados do `scheduled` é 1 chamada, por fora do dreno. */
 const CLEANUP_CALLS = 1
+/**
+ * Com a ESPN na lista do `scheduled`, o coordenador conta o trabalho pronto de cada
+ * dreno antes de repartir: 1 chamada do orçamento de 45. Em troca, a ESPN ociosa nem
+ * roda e a football-data fica com o saldo inteiro (os mesmos 5 itens por tick da #771).
+ */
+const PROBE_CALLS = 1
 /** Saldo do dreno: 45 das 50 chamadas (as 5 restantes cobrem a limpeza e a folga). */
 const DRAIN_CALL_BUDGET = 45
 
@@ -198,7 +204,7 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
     expectWithinBudget(h.limited)
     // Sem a recusa em cadeia: reclamar, no máximo 4 reservas recusadas (os itens em voo) e
     // gravar o estado, em vez de 1 + 16 × 2 + 1 com a limpeza.
-    expect(h.limited.calls() - CLEANUP_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
+    expect(h.limited.calls() - CLEANUP_CALLS - PROBE_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
     expect(h.state.fetches).toBe(0)
     // Nenhum item preso em `running` até o lease vencer, e nenhuma tentativa gasta.
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
@@ -298,7 +304,7 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
     expect([requeued, failed]).toEqual([0, 0])
     expect(claimed).toBe(done + released)
     expect(callsUsed).toBeLessThanOrEqual(DRAIN_CALL_BUDGET)
-    expect(callsUsed).toBe(h.limited.calls() - CLEANUP_CALLS)
+    expect(callsUsed).toBe(h.limited.calls() - CLEANUP_CALLS - PROBE_CALLS)
   })
 
   it('dois drenos no mesmo tick dividem os 45: o da football-data fica com a fatia dele', async () => {
@@ -315,7 +321,15 @@ describe('dreno da football-data com 50 subrequests por invocação', () => {
           item.close()
         }
         await budget.db.prepare('SELECT 1').first()
-        return { claimed: 0, done: 0, requeued: 0, failed: 0, released: 0, outcomes: [] }
+        return {
+          claimed: 0,
+          done: 0,
+          requeued: 0,
+          failed: 0,
+          released: 0,
+          leaseLost: 0,
+          outcomes: [],
+        }
       },
     }
     h.limited.startInvocation()
@@ -348,8 +362,8 @@ describe('falha do D1 na gravação do estado, dentro do saldo de 50', () => {
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
     expect(count(h.sqlite, `status = 'done'`)).toBe(5)
     expect(count(h.sqlite, `attempts > 0`)).toBe(0)
-    // Os 38 do tick normal mais a nova tentativa do batch.
-    expect(h.limited.calls()).toBe(39)
+    // Os 38 do tick normal, a sondagem do coordenador e a nova tentativa do batch.
+    expect(h.limited.calls()).toBe(40)
   })
 
   it('batch de estado que falha sempre: os itens voltam a pending sem tentativa e o tick seguinte os refaz', async () => {
@@ -361,8 +375,8 @@ describe('falha do D1 na gravação do estado, dentro do saldo de 50', () => {
     expect(await runDrainTick(h, DRAIN_MINUTE)).toEqual([])
 
     expectWithinBudget(h.limited)
-    // Tentativa, nova tentativa e liberação cabem na reserva: 38 + 1 + 1.
-    expect(h.limited.calls()).toBe(40)
+    // Tentativa, nova tentativa e liberação cabem na reserva: 38 + 1 (sondagem) + 1 + 1.
+    expect(h.limited.calls()).toBe(41)
     expect(count(h.sqlite, `status = 'running'`)).toBe(0)
     expect(count(h.sqlite, `status = 'pending' AND attempts = 0`)).toBe(ITEMS)
     const runs = h.writeDataPoint.mock.calls
@@ -449,7 +463,7 @@ describe('429 da football-data dentro do dreno', () => {
     expect(await runDrainTick(h, DRAIN_MINUTE + TICK_MS)).toEqual([])
     expectWithinBudget(h.limited)
     expect(h.state.fetches).toBe(fetchesBefore)
-    expect(h.limited.calls() - CLEANUP_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
+    expect(h.limited.calls() - CLEANUP_CALLS - PROBE_CALLS).toBeLessThanOrEqual(1 + 4 + 1)
 
     // Passado o reset, a fila termina por inteiro, sem tentativa gasta.
     clearFootballDataPause()

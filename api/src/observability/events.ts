@@ -35,6 +35,8 @@ export type EventType =
   | 'provider_http_attempt'
   // Execução do cron drenador da fila durável de sync (ADR-027)
   | 'provider_work_run'
+  // Acesso a um provedor bloqueado (403 espaçado) ou suspenso porque a resposta o proibiu
+  | 'provider_access_blocked'
   // Provedor trocou os times de um jogo já gravado (mando invertido ou time substituído)
   | 'match_teams_changed'
   // Sync achou competição nova sem configuração cadastrada e não a criou
