@@ -8,7 +8,6 @@ import {
   countD1Calls,
   INVOCATION_CALL_LIMIT,
   type CallBudget,
-  type CallGate,
 } from './callBudget'
 import { DrainBudget, type ItemBudget } from './drainBudget'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
@@ -295,9 +294,10 @@ function footballDataTaskCost(task: SyncTask): number {
 }
 
 /**
- * Saldo das sincronizações do tick, football-data e ESPN juntas, fixado antes de
- * qualquer tarefa: o que sobra de `POLLER_CALL_BUDGET` depois do que já foi gasto
- * (a leitura dos jogos) e da reserva da pontuação.
+ * Saldo de uma fase do tick, fixado antes de ela começar: o que sobra de
+ * `POLLER_CALL_BUDGET` depois do que já foi gasto e da reserva da pontuação. As
+ * sincronizações (football-data e ESPN juntas) recebem o que a leitura dos jogos
+ * deixa; o fallback, o que as sincronizações deixam.
  */
 function syncAllowance(budget: CallBudget): number {
   return Math.max(0, callsLeft(budget) - SCORING_RESERVE_CALLS)
@@ -422,7 +422,8 @@ function tallySyncOutcomes(
       console.info(`[poller] ESPN indisponível comp=${comp.comp_id} round=${round}: ${err.message}`)
       return
     }
-    // Sem saldo no tick a data foi para a fila e o dreno a retoma: não é falha do provedor.
+    // Sem saldo no tick o trabalho foi para a fila e fica elegível para o próximo dreno: não
+    // é falha do provedor.
     if (err instanceof CallBudgetExhaustedError) {
       console.info(`[poller] Sem saldo de chamadas comp=${comp.comp_id} round=${round}: adiado.`)
       return
@@ -452,21 +453,6 @@ function tallySyncOutcomes(
   return tally
 }
 
-/**
- * Porteiro do fallback da ESPN: só gasta o que sobra além da reserva da pontuação, e
- * cobra cada `fetch` do saldo do tick.
- */
-function fallbackGateOf(budget: CallBudget): CallGate {
-  const limit = POLLER_CALL_BUDGET - SCORING_RESERVE_CALLS
-  return {
-    callsLeft: () => callsLeft({ limit, used: budget.used }),
-    chargeFetch: () => {
-      if (budget.used + 1 > limit) throw new CallBudgetExhaustedError()
-      budget.used += 1
-    },
-  }
-}
-
 /** Tarefa da football-data e o saldo reservado para ela; `null` quando não coube. */
 type FdAdmission = { task: SyncTask; span: ItemBudget | null }
 
@@ -492,8 +478,8 @@ type SyncPhase = {
  * (`DrainBudget`). A football-data é admitida primeiro, na ordem das tarefas, pelo
  * custo do item do dreno (`footballDataItemCost`: vaga, `fetch` e gravação da rodada);
  * a ESPN fica com o que resta (vaga, `fetch` e registro de cada data, mais a
- * gravação). A tarefa que não cabe nem começa: vira pendência na fila durável, e o
- * dreno a retoma. O enfileiramento (1 chamada) está reservado do saldo, e os `fetch`
+ * gravação). A tarefa que não cabe nem começa: vira pendência na fila durável e fica
+ * elegível para o próximo dreno. O enfileiramento (1 chamada) está reservado do saldo, e os `fetch`
  * são cobrados pelo porteiro, não pelo observador (sem contar duas vezes).
  */
 async function syncProviderTasks(opts: {
@@ -511,8 +497,9 @@ async function syncProviderTasks(opts: {
   const espnDeferrals: NewWorkItem[] = []
 
   // A football-data reserva o custo de todas as tarefas antes de qualquer sync, na
-  // ordem delas: a que espera a vez no teto de paralelismo já tem o saldo garantido, e
-  // a ESPN, que admite as dela ao começar cada uma, só enxerga o que sobrou.
+  // ordem delas, de modo que a tarefa que espera a vez no teto de paralelismo já tem o
+  // saldo garantido, e a ESPN, que admite as dela ao começar cada uma, só enxerga o que
+  // sobrou.
   const fdAdmitted = fdTasks.map((task) => ({
     task,
     span: syncBudget.open(footballDataTaskCost(task)),
@@ -699,9 +686,10 @@ async function syncProviderTasks(opts: {
  * a football-data e a ESPN juntas. Cada tarefa é admitida pelo custo completo contra um
  * saldo fixado antes das sincronizações, com o enfileiramento reservado: a rodada da
  * football-data primeiro (vaga, `fetch` e gravação), a ESPN com o que sobra (3 chamadas
- * por data e a gravação). A que não cabe vira pendência na fila e o dreno a retoma, sem
- * erro de provedor nem tentativa gasta. O fallback só gasta o que sobra além da reserva
- * da pontuação.
+ * por data e a gravação). A que não cabe vira pendência na fila e fica elegível para o
+ * próximo dreno, sem erro de provedor nem tentativa gasta. O fallback só gasta o que
+ * sobra além da reserva da pontuação, e cada competição dele reserva o custo completo
+ * (consulta, datas e gravação) antes de começar.
  */
 export async function pollActiveMatches(
   rawDb: D1Database,
@@ -739,13 +727,16 @@ export async function pollActiveMatches(
   // e só chama a ESPN quando ainda há partidas elegíveis sem resultado final.
   if (fallbackCompIds.size > 0) {
     // O fallback é complementar (o D1 o replaneja a cada tick) e só gasta o que sobra além da
-    // reserva da pontuação: sem saldo ele espera o tick seguinte, sem fila nem erro. O porteiro
-    // cobra os `fetch`, e o observador não os conta de novo.
+    // reserva da pontuação. Cada competição reserva o custo completo (consulta, datas e
+    // gravação) antes de começar, e o D1 e o porteiro dela recusam sem chamar o que passaria
+    // do saldo: sem saldo ela espera o tick seguinte, sem fila nem erro. O porteiro cobra os
+    // `fetch`, e o observador não os conta de novo.
+    const fallbackBudget = new DrainBudget(rawDb, syncAllowance(budget), 0)
     try {
       const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), {
         now,
         coordinate: true,
-        callGate: fallbackGateOf(budget),
+        budget: fallbackBudget,
       })
       for (const [compId, updated] of updatedByComp) {
         if (updated > 0) syncedComps.add(compId)
@@ -755,6 +746,8 @@ export async function pollActiveMatches(
       logError(ae, 'match_results_fallback', '[poller] Fallback ESPN falhou:', err, {
         blobs: [''],
       })
+    } finally {
+      budget.used += fallbackBudget.used
     }
   }
 

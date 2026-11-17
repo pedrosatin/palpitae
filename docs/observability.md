@@ -405,19 +405,24 @@ ticket 03), com o que a ESPN faz de diferente:
   completo com o que sobra (3 chamadas por data e 6 da gravação: 12 para 2 datas, 16 para 3). A tarefa que não
   cabe nem começa: a rodada ou as datas vão para a fila (`provider_work`, `kind` `result` ou `late`,
   `not_before` = o instante, `last_error` = "saldo de chamadas do tick esgotado…"), sem tentativa gasta e sem
-  `football_api_error`, e o dreno as retoma nos minutos 5 ou 35. O enfileiramento (1 `db.batch()` para os dois
-  provedores) está reservado do saldo antes de qualquer tarefa. O log `[perf]` do poller traz `sync_budget` (o
+  `football_api_error`, e ficam elegíveis para o próximo dreno. O enfileiramento (1 `db.batch()` para os dois
+  provedores) está reservado do saldo antes de qualquer tarefa. O fallback da ESPN para as competições da
+  football-data fica com o que as sincronizações deixam além da reserva da pontuação, e cada competição dele
+  reserva o custo completo antes de começar (11: a consulta, 3 datas de 3 chamadas e a gravação); a que não
+  cabe espera o tick seguinte sem consultar nada, sem erro nem fila. O log `[perf]` do poller traz `sync_budget` (o
   saldo fixado), `fd_deferred_rounds` (rodadas enfileiradas no tick) e `espn_deferred_dates` (datas
   enfileiradas). Ticks da football-data medidos pelo `scheduled` real, com a limpeza: 1 e 2 rodadas, 15 e 22
-  chamadas, como antes; 6 rodadas, 45, com 4 sincronizadas e 2 na fila (antes, 47 com as 6 no tick); 6 rodadas
-  com 429 de reset de 60 s e 8 requests por minuto, 46, com 3 sincronizadas e 3 na fila (antes, 52 tentadas e
-  o tick rejeitado com `D1_ERROR`). Tick com 1, 2, 3 e 4 competições da ESPN com
+  chamadas, como antes; 6 rodadas, 38, com 4 sincronizadas, 2 na fila e o fallback fora do tick (antes, 47 com
+  as 6 no tick); 6 rodadas com 429 de reset de 60 s e 8 requests por minuto, 45, com 3 sincronizadas e 3 na
+  fila (antes, 52 tentadas e o tick rejeitado com `D1_ERROR`); 11 competições com 1 rodada cada e 4 respostas
+  429 de reset de 1 s, 46, com 3 sincronizadas e 8 na fila (antes, 58 tentadas e o tick rejeitado com
+  `D1_ERROR`). Tick com 1, 2, 3 e 4 competições da ESPN com
   1 jogo na janela (2 datas, com a limpeza do `scheduled`): 20, 36, 44 e 45 chamadas (antes, 20, 36, 44 e
   52, com a 51 e a 52 recusadas); com jogos de hoje e de ontem nas 4 (3 datas), 43 (antes, 55 e o tick
   rejeitado). Competição adiada pelo saldo e pendência a mais no painel por até 10 minutos são esperados
   nesses ticks; um `espn_deferred_dates` alto em todo tick de jogo é o sinal de que o saldo da football-data
-  está consumindo o do poller, e um `fd_deferred_rounds` acima de zero em todo tick de jogo, de que há mais de 4
-  rodadas da football-data na janela.
+  está consumindo o do poller, e um `fd_deferred_rounds` acima de zero em todo tick de jogo, de que houve adiamento de
+  rodadas; o motivo de cada uma fica em `last_error` na fila (saldo do tick, 429 ou outra falha).
 - **429:** pausa pelo `Retry-After` (segundos ou data) que o fornecedor impôs, para todos os isolates,
   sem retry imediato e sem mexer na sequência de 403. O prazo não é encurtado: o bloqueio é o maior
   entre o `Retry-After` válido e a pausa mínima conservadora de 60 s (que também vale sem cabeçalho ou

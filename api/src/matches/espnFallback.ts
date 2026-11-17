@@ -15,8 +15,9 @@ import {
   type EspnGate,
   type EspnScoreboardEvent,
 } from '../providers/espn'
-import { CallBudgetExhaustedError, type CallGate } from './callBudget'
-import { createEspnGate, isEspnRefusal } from './espnAccess'
+import { CallBudgetExhaustedError } from './callBudget'
+import type { DrainBudget, ItemBudget } from './drainBudget'
+import { createEspnGate, ESPN_REQUEST_CALLS, isEspnRefusal } from './espnAccess'
 import { espnDatesAround, resultWindowBounds, type ResultWindowBounds } from './matchPollingWindow'
 
 /**
@@ -79,6 +80,20 @@ export const FOOTBALL_DATA_TO_ESPN: Record<string, string> = {
  */
 const KICKOFF_TOLERANCE_MS = 150 * 60 * 1000
 
+/**
+ * Datas do scoreboard de uma competição, no máximo. Os jogos consultados começaram
+ * entre 24 h e 115 min atrás, menos de 24 h de intervalo, então caem em até 2 dias
+ * UTC; cada dia pede ele e o anterior, e os dois dias juntos pedem 3 datas.
+ */
+export const FALLBACK_MAX_DATES = 3
+
+/**
+ * Custo completo do fallback de uma competição, que ela reserva antes de começar
+ * quando o chamador passa um saldo: a consulta dos jogos (1), cada data (vaga,
+ * `fetch` e registro da resposta, `ESPN_REQUEST_CALLS`) e a gravação (1 batch).
+ */
+export const FALLBACK_COMPETITION_CALLS = 1 + ESPN_REQUEST_CALLS * FALLBACK_MAX_DATES + 1
+
 type EspnEvent = EspnScoreboardEvent
 
 type WindowMatch = {
@@ -104,12 +119,16 @@ export type EspnFallbackOptions = {
    */
   coordinate?: boolean
   /**
-   * Porteiro de subrequests do chamador (o poller): cada tentativa só começa se a vaga, o
-   * `fetch` e o registro da resposta cabem no saldo dele, e o `fetch` é cobrado por ele
-   * (sem `onHttpAttempt`, para não contar duas vezes). Sem saldo a competição espera o
-   * tick seguinte, sem erro nem fila: o fallback é complementar e o D1 o replaneja.
+   * Saldo de subrequests do chamador (o poller). Cada competição reserva o custo
+   * completo (`FALLBACK_COMPETITION_CALLS`) antes de começar; sem ele livre, espera
+   * outra competição devolver o que reservou e não gastou. A consulta, as tentativas
+   * e a gravação saem pelo D1 e pelo porteiro da competição, que recusam sem chamar o
+   * que passaria do saldo, e o `fetch` é cobrado pelo porteiro (sem `onHttpAttempt`,
+   * para não contar duas vezes). Com saldo, a chamada é sempre coordenada. A
+   * competição que não cabe espera o tick seguinte, sem erro nem fila: o fallback é
+   * complementar e o D1 o replaneja.
    */
-  callGate?: CallGate
+  budget?: DrainBudget
 }
 
 /**
@@ -183,18 +202,21 @@ export async function scoreWindowFromEspn(
   // Mesmos limites do poller, incluindo o resgate de até 24 h e a exclusão de
   // adiados fora da janela ativa.
   const bounds = resultWindowBounds(opts.now ?? Date.now())
-  const gate = opts.coordinate ? createEspnGate(db, ae, opts.callGate) : undefined
+  const { budget } = opts
+  const gate = opts.coordinate && !budget ? createEspnGate(db, ae) : undefined
 
   await Promise.all(
     compIds.map(async (compId) => {
+      const span = budget ? await admitCompetition(budget) : undefined
       try {
+        if (span === null) throw new CallBudgetExhaustedError()
         const updated = await scoreCompetitionWindow(
-          db,
+          span?.db ?? db,
           ae,
           compId,
           bounds,
           opts.onHttpAttempt,
-          gate,
+          span ? createEspnGate(span.db, ae, span) : gate,
         )
         updatedByComp.set(compId, updated)
       } catch (err) {
@@ -217,11 +239,26 @@ export async function scoreWindowFromEspn(
         logError(ae, 'match_results_fallback', `[espn-fallback] Falhou comp=${compId}:`, err, {
           blobs: [compId],
         })
+      } finally {
+        span?.close()
       }
     }),
   )
 
   return updatedByComp
+}
+
+/**
+ * Reserva o custo completo de uma competição no saldo. Sem ele livre, espera outra
+ * competição em andamento terminar, que devolve o que reservou e não gastou, e tenta
+ * de novo; sem nenhuma em andamento, devolve `null`: o que falta não cabe no tick.
+ */
+async function admitCompetition(budget: DrainBudget): Promise<ItemBudget | null> {
+  for (;;) {
+    const span = budget.open(FALLBACK_COMPETITION_CALLS)
+    if (span || !budget.hasInFlight()) return span
+    await budget.nextRelease()
+  }
 }
 
 async function scoreCompetitionWindow(

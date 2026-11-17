@@ -59,7 +59,7 @@ export function espnWorkItems(base: EspnWorkBase, dates: string[] | undefined): 
  * Itens pendentes das datas que a ESPN não entregou, com o prazo que o erro
  * informa (bloqueio, `Retry-After`) ou a espera conservadora. Falta de saldo de
  * subrequests do tick (`CallBudgetExhaustedError`) não é falha nem bloqueio do
- * provedor: a data volta no próximo dreno, sem esperar uma janela, e não gasta
+ * provedor: a data fica elegível para o próximo dreno, sem esperar uma janela, e não gasta
  * tentativa (o item novo nasce com zero).
  */
 export function espnDeferralItems(

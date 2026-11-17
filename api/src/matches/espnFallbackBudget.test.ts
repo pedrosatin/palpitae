@@ -2,15 +2,18 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetEspnClientForTests, setEspnMinIntervalForTests } from '../providers/espn'
+import { limitD1Calls } from '../testing/d1CallLimit'
 import { createSqliteD1 } from '../testing/sqliteD1'
-import type { CallGate } from './callBudget'
-import { scoreWindowFromEspn } from './espnFallback'
+import { DrainBudget } from './drainBudget'
+import { FALLBACK_COMPETITION_CALLS, scoreWindowFromEspn } from './espnFallback'
 import { syncFixtures } from './sync'
 
 /**
  * O fallback da ESPN para as competições da football-data dentro do saldo de
- * subrequests do poller (ADR-027, adendo do ticket 03): só tenta o que cabe, cobra
- * o `fetch` pelo porteiro e, sem saldo, espera o tick seguinte sem erro nem fila.
+ * subrequests do poller (ADR-027, adendos dos tickets 03 e 09): cada competição
+ * reserva o custo completo antes de começar, a consulta, as tentativas e a gravação
+ * saem desse saldo, o `fetch` é cobrado pelo porteiro e, sem saldo, a competição
+ * espera o tick seguinte sem consultar nada, sem erro nem fila.
  */
 
 const NOW = Date.parse('2026-11-17T14:30:00Z')
@@ -92,53 +95,74 @@ async function setup() {
       .map(([point]) => point as { blobs: string[] })
       .filter((point) => point.blobs[0] === 'match_results_fallback' && point.blobs.length > 2)
   const status = () => sqlite.prepare(`SELECT status FROM matches`).get()
-  return { sqlite, db, id, espn, ae, errors, status }
-}
-
-const gateOf = (callsLeft: number): CallGate & { charged: number } => {
-  const gate = {
-    charged: 0,
-    callsLeft: () => callsLeft,
-    chargeFetch: () => {
-      gate.charged += 1
-    },
-  }
-  return gate
+  // Conta as chamadas ao D1 a partir daqui, sem recusar nenhuma.
+  const counted = limitD1Calls(db, null)
+  return { sqlite, db: counted.db, d1Calls: counted.calls, id, espn, ae, errors, status }
 }
 
 describe('fallback da ESPN com o saldo do poller', () => {
-  it('sem saldo para a tentativa (vaga, fetch e registro), a competição espera o próximo tick: sem fetch, sem erro', async () => {
+  it('o custo completo de uma competição: a consulta, 3 datas de 3 chamadas e a gravação', () => {
+    expect(FALLBACK_COMPETITION_CALLS).toBe(11)
+  })
+
+  it('sem o custo completo livre, a competição espera o próximo tick: sem consulta ao D1, sem fetch, sem erro', async () => {
     const h = await setup()
-    const gate = gateOf(2)
+    const budget = new DrainBudget(h.db, FALLBACK_COMPETITION_CALLS - 1, 0)
 
     const result = await scoreWindowFromEspn(h.db, h.ae, [h.id], {
       now: NOW,
       coordinate: true,
-      callGate: gate,
+      budget,
     })
 
     expect(result.get(h.id)).toBe(0)
+    expect(h.d1Calls()).toBe(0)
     expect(h.espn).not.toHaveBeenCalled()
-    expect(gate.charged).toBe(0)
+    expect(budget.used).toBe(0)
     expect(h.errors()).toEqual([])
     expect(h.status()).toEqual({ status: 'scheduled' })
     expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Sem saldo de chamadas'))
   })
 
-  it('com saldo, cada fetch é cobrado uma vez pelo porteiro (as duas datas) e o resultado é gravado', async () => {
+  it('com saldo, a consulta, as duas datas e a gravação saem do saldo, e cada fetch é cobrado uma vez', async () => {
     const h = await setup()
-    const gate = gateOf(40)
+    const budget = new DrainBudget(h.db, 40, 0)
 
     const result = await scoreWindowFromEspn(h.db, h.ae, [h.id], {
       now: NOW,
       coordinate: true,
-      callGate: gate,
+      budget,
     })
 
     expect(result.get(h.id)).toBe(1)
     // O dia do jogo e o anterior: 2 requests, cobrados pelo porteiro e não por um observador.
     expect(h.espn).toHaveBeenCalledTimes(2)
-    expect(gate.charged).toBe(2)
+    // A consulta (1), cada data com a vaga, o `fetch` e o registro (3) e a gravação (1): 8, abaixo
+    // das 11 reservadas, e tudo o que saiu passou pelo saldo.
+    expect(budget.used).toBe(8)
+    expect(h.d1Calls() + h.espn.mock.calls.length).toBe(budget.used)
     expect(h.status()).toEqual({ status: 'finished' })
+  })
+
+  it('com saldo para uma competição só, a segunda espera a primeira terminar e, sem as 11 livres, não consulta nada', async () => {
+    const h = await setup()
+    // 11 para a primeira, que gasta 8 e devolve 3: a segunda, sem jogo, não cabe nas 3 que sobram.
+    const budget = new DrainBudget(h.db, FALLBACK_COMPETITION_CALLS, 0)
+
+    const result = await scoreWindowFromEspn(h.db, h.ae, [h.id, 'sem-jogos'], {
+      now: NOW,
+      coordinate: true,
+      budget,
+    })
+
+    expect(result).toEqual(
+      new Map([
+        [h.id, 1],
+        ['sem-jogos', 0],
+      ]),
+    )
+    expect(budget.used).toBe(8)
+    expect(h.d1Calls() + h.espn.mock.calls.length).toBe(8)
+    expect(h.errors()).toEqual([])
   })
 })

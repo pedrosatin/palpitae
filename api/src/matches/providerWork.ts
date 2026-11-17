@@ -234,8 +234,8 @@ export function retryAtOf(error: unknown, now: number): number {
 /**
  * Prazo e motivo de um trabalho que o poller adia. Falta de saldo de subrequests
  * do tick (`CallBudgetExhaustedError`) não é falha nem bloqueio do provedor: o
- * trabalho volta no próximo dreno, sem esperar uma janela, e o item novo nasce
- * sem tentativa. Os demais erros seguem `retryAtOf`. `what` nomeia o trabalho
+ * trabalho fica elegível para o próximo dreno, sem esperar uma janela, e o item
+ * novo nasce sem tentativa. Os demais erros seguem `retryAtOf`. `what` nomeia o trabalho
  * na mensagem do painel ("a data", "a rodada").
  */
 export function deferralOf(
@@ -246,7 +246,7 @@ export function deferralOf(
   if (error instanceof CallBudgetExhaustedError) {
     return {
       notBefore: now,
-      lastError: `saldo de chamadas do tick esgotado; ${what} volta no próximo dreno`,
+      lastError: `saldo de chamadas do tick esgotado; ${what} fica elegível para o próximo dreno`,
     }
   }
   return {

@@ -116,7 +116,7 @@ describe('espnWorkItems', () => {
 describe('espnDeferralItems', () => {
   const at = NOW
 
-  it('falta de saldo do tick não é falha nem bloqueio: a data volta já no próximo dreno, sem tentativa', () => {
+  it('falta de saldo do tick não é falha nem bloqueio: a data fica elegível já para o próximo dreno, sem tentativa', () => {
     const items = espnDeferralItems(
       base,
       ['20261014', '20261015'],
@@ -130,7 +130,7 @@ describe('espnDeferralItems', () => {
         ...base,
         round,
         notBefore: at,
-        lastError: 'saldo de chamadas do tick esgotado; a data volta no próximo dreno',
+        lastError: 'saldo de chamadas do tick esgotado; a data fica elegível para o próximo dreno',
       })),
     )
   })
