@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { captureGuideOrigin } from '../src/analytics/guideOrigin'
 import { LANDING_GUIDE_LINKS } from '../src/pages/LandingPage/guideLinks'
@@ -45,6 +45,12 @@ function loadPage(html: string) {
   }
 }
 
+/** Largura e altura do IHDR de um PNG. */
+function pngSize(path: string): { width: number; height: number } {
+  const buf = readFileSync(path)
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) }
+}
+
 describe('guide catalog', () => {
   it('has unique slugs, an ISO date and a description of search-snippet length', () => {
     expect(new Set(guides.map((g) => g.slug)).size).toBe(guides.length)
@@ -53,6 +59,47 @@ describe('guide catalog', () => {
       expect(g.description.length).toBeGreaterThanOrEqual(120)
       expect(g.description.length).toBeLessThanOrEqual(175)
     }
+  })
+
+  it('aponta cada figura para PNG e WebP existentes, com width/height na proporção do arquivo', () => {
+    const publicDir = join(process.cwd(), 'public')
+    const figures = guides.flatMap((g) => g.sections.map((s) => s.figure).filter(Boolean))
+    expect(figures.length).toBeGreaterThan(0)
+    for (const figure of figures) {
+      const pngRel = figure!.src.replace(/^\//, '')
+      const webpRel = (figure!.webp ?? figure!.src.replace(/\.png$/i, '.webp')).replace(/^\//, '')
+      const pngPath = join(publicDir, pngRel)
+      const webpPath = join(publicDir, webpRel)
+      expect(existsSync(pngPath), pngPath).toBe(true)
+      expect(existsSync(webpPath), webpPath).toBe(true)
+      expect(figure!.src.endsWith('.png')).toBe(true)
+      expect(webpRel.endsWith('.webp')).toBe(true)
+      const { width, height } = pngSize(pngPath)
+      const fileRatio = width / height
+      const declaredRatio = figure!.width / figure!.height
+      expect(Math.abs(fileRatio - declaredRatio)).toBeLessThan(0.02)
+    }
+  })
+
+  it('escapa aspas e tags no alt da figura', () => {
+    const html = renderGuide({
+      ...guides[0],
+      sections: [
+        {
+          heading: 'Figura de teste',
+          body: ['Parágrafo.'],
+          figure: {
+            src: '/screenshots/guias/criar-grupo-pontuacao.png',
+            webp: '/screenshots/guias/criar-grupo-pontuacao.webp',
+            alt: 'a"<b>',
+            width: 100,
+            height: 100,
+          },
+        },
+      ],
+    })
+    expect(html).toContain('alt="a&quot;&lt;b&gt;"')
+    expect(html).not.toContain('alt="a"<b>"')
   })
 
   it('emits a valid FAQPage JSON-LD mirroring the visible FAQ', () => {
@@ -171,6 +218,7 @@ describe('guia do Brasileirão 2027', () => {
 
   it('condiciona a temporada 2027 à publicação da tabela', () => {
     expect(pageText).toContain('A Série A 2027 entra nessa lista depois da publicação da tabela.')
+    expect(pageText).toContain('A lista traz a Série A 2026 até o fim da temporada, em dezembro.')
     expect(pageText).not.toMatch(/2027[^.]*(já está|disponível)/)
   })
 
