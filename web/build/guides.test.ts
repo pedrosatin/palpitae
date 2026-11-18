@@ -188,6 +188,29 @@ describe('guia do Brasileirão 2027', () => {
     }
   })
 
+  it('mostra o fluxo real com capturas, pontuação e aviso de que não envolve dinheiro', () => {
+    for (const excerpt of [
+      'Chamar a galera no WhatsApp',
+      'Clássico',
+      'Só placar exato',
+      'Só vencedor',
+      'Personalizado',
+      'Oculto até o jogo começar',
+      'Sempre visível',
+      'palpitae.bet',
+      'sem depósito, Pix, odds ou prêmio em dinheiro',
+    ]) {
+      expect(pageText).toContain(excerpt)
+    }
+    const figures = [...doc.querySelectorAll('figure.shot')]
+    expect(figures.length).toBeGreaterThanOrEqual(3)
+    expect(doc.querySelector('img[src="/screenshots/guias/criar-grupo-pontuacao.png"]')).toBeTruthy()
+    expect(doc.querySelector('source[srcset="/screenshots/guias/whatsapp-convite.webp"]')).toBeTruthy()
+    expect(
+      pageText.includes('O bolão do Brasileirão no Palpitae envolve dinheiro ou é casa de apostas?'),
+    ).toBe(true)
+  })
+
   it('não altera o botão dos guias sem texto próprio', () => {
     const other = new DOMParser().parseFromString(renderGuide(guides[0]), 'text/html')
     const buttons = [...other.querySelectorAll('a.btn')]

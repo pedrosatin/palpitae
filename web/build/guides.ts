@@ -39,10 +39,23 @@ function loginHref(from: string, competitionSlug?: string): string {
   return `${LOGIN_PATH}?${params}`
 }
 
+interface GuideFigure {
+  /** Path under /public, e.g. /screenshots/guias/foo.png */
+  src: string
+  /** Matching .webp next to the PNG, when it exists in /public. */
+  webp?: string
+  alt: string
+  caption?: string
+  width: number
+  height: number
+}
+
 interface GuideSection {
   heading: string
   /** Paragraphs, rendered as <p>. Plain text — authored by us. */
   body: string[]
+  /** Optional product screenshot after the paragraphs. */
+  figure?: GuideFigure
 }
 
 interface GuideFaq {
@@ -247,30 +260,62 @@ export const guides: Guide[] = [
     slug: 'bolao-do-brasileirao',
     title: 'Como criar um bolão do Brasileirão 2027',
     teaser:
-      'Clique aqui e veja como criar um bolão do Brasileirão 2027: início em 27 de janeiro, o que é preciso para começar, pontuação recomendada e regras para 38 rodadas.',
+      'Clique aqui e veja como criar um bolão do Brasileirão 2027 grátis: passo a passo com pontuação, convite no WhatsApp e tabela junto do ranking.',
     description:
-      'Como criar um bolão do Brasileirão 2027 com os amigos, o que é preciso para começar e a pontuação recomendada. A Série A começa em 27 de janeiro, segundo a CBF.',
+      'Como criar um bolão do Brasileirão 2027 grátis no Palpitae: passo a passo com pontuação, WhatsApp e tabela. Sem dinheiro e sem casa de apostas.',
     intro:
-      'A Série A de 2027 começa em 27 de janeiro, segundo o calendário divulgado pela CBF. Para criar o bolão, você precisa de uma conta Google e dos amigos que vão entrar no grupo por link ou código.',
+      'No Palpitae você cria um bolão do Brasileirão grátis, sem depósito, Pix, odds ou prêmio em dinheiro: a disputa é só de pontos entre amigos. Entre com a conta Google, escolha a Série A disponível no formulário, defina a pontuação e chame a turma pelo WhatsApp. A Série A 2027 entra na lista depois que a CBF publicar a tabela, com início previsto em 27 de janeiro; até lá a lista mostra a temporada em andamento.',
     cta: {
       heading: 'Entre e crie o grupo do bolão',
-      text: 'Depois de entrar com a conta Google, o formulário de criação abre com a Série A 2027 já escolhida, se ela estiver na lista. A Série A 2027 entra nessa lista depois da publicação da tabela.',
+      text: 'Depois de entrar com a conta Google, o formulário de criação abre com a Série A 2027 já escolhida, se ela estiver na lista. A Série A 2027 entra nessa lista depois da publicação da tabela. Enquanto isso, escolha a Série A em andamento e palpita as rodadas que faltam.',
       label: 'Criar bolão no Palpitae',
     },
     competitionSlug: 'campeonato-brasileiro-serie-a-2027',
     sections: [
       {
-        heading: 'Quando o Brasileirão 2027 entra no Palpitae',
+        heading: 'Como criar o bolão do Brasileirão no Palpitae',
         body: [
-          'O calendário divulgado pela CBF marca o início da Série A em 27 de janeiro de 2027. A tabela com os confrontos e os horários de cada rodada ainda não tinha sido publicada na última atualização deste guia, em novembro de 2026.',
-          'O Palpitae carrega os jogos de uma temporada depois da publicação da tabela. Enquanto a Série A 2027 não aparecer na lista de competições do formulário de criação, não dá para criar o grupo dessa temporada. A lista mostra as competições com jogos em andamento ou por começar, e cada grupo acompanha uma competição.',
+          'O fluxo no app é curto. Você entra com a conta Google, abre Criar grupo, dá um nome ao bolão e escolhe a Série A disponível na lista de competições. Em seguida marca a pontuação e a visibilidade dos palpites e cria o grupo.',
+          'Cada participante entra pelo convite, palpita até o apito inicial de cada jogo e acompanha o ranking do grupo ao lado da tabela do campeonato.',
         ],
+        figure: {
+          src: '/screenshots/guias/criar-grupo-pontuacao.png',
+          webp: '/screenshots/guias/criar-grupo-pontuacao.webp',
+          alt: 'Formulário Criar grupo do Palpitae com Brasileirão Série A 2026, modos Clássico, Só placar exato, Só vencedor e Personalizado, e visibilidade Oculto ou Sempre visível',
+          caption:
+            'No formulário de criação você escolhe a Série A disponível, a pontuação e se os palpites ficam ocultos até o jogo começar.',
+          width: 430,
+          height: 685,
+        },
+      },
+      {
+        heading: 'Chamar a galera no WhatsApp',
+        body: [
+          'Depois que o grupo existe, a tela de sucesso destaca o botão Chamar a galera no WhatsApp. No celular ele abre o compartilhamento nativo; no computador monta a mensagem no wa.me com o link do convite. Também dá para copiar o link ou o código, se alguém preferir entrar depois.',
+        ],
+        figure: {
+          src: '/screenshots/guias/whatsapp-convite.png',
+          webp: '/screenshots/guias/whatsapp-convite.webp',
+          alt: 'Tela Grupo criado com o botão Chamar a galera no WhatsApp, código de convite e link para copiar',
+          caption:
+            'O botão Chamar a galera no WhatsApp é a ação principal para trazer os amigos ao bolão.',
+          width: 520,
+          height: 720,
+        },
       },
       {
         heading: 'Pontuação recomendada para 38 rodadas',
         body: [
-          'Recomendamos a opção Clássico, que já vem marcada no formulário de criação do Palpitae. Ela dá 3 pontos para quem crava o placar exato e 1 ponto para quem acerta só o resultado. Em 38 rodadas, essa diferença separa os primeiros colocados.',
-          'Combine também quando o palpite trava. O mais justo é travar cada palpite no horário de início do próprio jogo, porque os jogos de uma mesma rodada se espalham entre sexta e segunda. Se a rodada inteira travasse de uma vez, ninguém conseguiria palpitar no jogo de segunda depois do início do jogo de sexta.',
+          'O formulário oferece quatro modos com os nomes exatos da tela: Clássico (3 pontos no placar exato e 1 no resultado), Só placar exato (3 e 0), Só vencedor (0 e 1, com palpite em Casa, Empate ou Fora) e Personalizado (valores livres de 0 a 10). Para 38 rodadas, o Clássico já vem marcado e costuma separar bem o ranking, porque o placar exato vale mais que só o resultado.',
+          'Na mesma tela você escolhe a visibilidade: Oculto até o jogo começar, para ninguém copiar o placar do amigo, ou Sempre visível. Cada palpite trava no horário de início do próprio jogo, o que importa no Brasileirão porque a rodada se espalha entre sexta e segunda.',
+          'A página do grupo junta o ranking do bolão e a tabela do Brasileirão atualizadas automaticamente. Em 380 jogos isso elimina a planilha manual de pontos e de classificação.',
+        ],
+      },
+      {
+        heading: 'Quando o Brasileirão 2027 entra no Palpitae',
+        body: [
+          'O calendário divulgado pela CBF marca o início da Série A em 27 de janeiro de 2027. A tabela com os confrontos e os horários de cada rodada ainda não tinha sido publicada na última atualização deste guia, em novembro de 2026.',
+          'O Palpitae carrega os jogos de uma temporada depois da publicação da tabela. Enquanto a Série A 2027 não aparecer na lista de competições do formulário de criação, não dá para criar o grupo dessa temporada. A lista mostra as competições com jogos em andamento ou por começar, e cada grupo acompanha uma competição.',
         ],
       },
       {
@@ -283,19 +328,26 @@ export const guides: Guide[] = [
       {
         heading: 'Como manter o grupo engajado por 38 rodadas',
         body: [
-          'A temporada é longa, e o grupo esvazia se registrar o palpite der trabalho. Palpite pelo celular, lembrete antes da rodada e classificação atualizada automaticamente fazem mais diferença do que qualquer prêmio.',
+          'A temporada é longa, e o grupo esvazia se registrar o palpite der trabalho. Palpite pelo celular, lembrete antes da rodada e classificação atualizada automaticamente fazem mais diferença do que qualquer prêmio simbólico combinado fora do app.',
           'Marcos no caminho também ajudam, como quem lidera no primeiro turno, quem foi o melhor do returno e quem acertou mais placares exatos. Esses títulos paralelos renovam o interesse de quem já não briga pelo topo.',
         ],
-      },
-      {
-        heading: 'Como o bolão do Brasileirão funciona no Palpitae',
-        body: [
-          'No Palpitae você cria um grupo privado gratuito, convida os amigos por link ou código e cada um dá seus palpites rodada a rodada. Os resultados sincronizam sozinhos, a pontuação é automática e cada palpite trava no início do próprio jogo.',
-          'A página do grupo traz a classificação do bolão e a tabela real do campeonato, e dá para ver quem manja de futebol e quem só tem sorte a temporada inteira.',
-        ],
+        figure: {
+          src: '/screenshots/guias/ranking-grupo.png',
+          webp: '/screenshots/guias/ranking-grupo.webp',
+          alt: 'Página do grupo no Palpitae com as abas Palpites, Ranking e Tabela do Brasileirão Série A',
+          caption:
+            'No grupo, o ranking do bolão e a tabela do Brasileirão ficam nas abas Ranking e Tabela.',
+          width: 1100,
+          height: 900,
+        },
       },
     ],
     faq: [
+      {
+        question: 'O bolão do Brasileirão no Palpitae envolve dinheiro ou é casa de apostas?',
+        answer:
+          'O Palpitae em palpitae.com.br oferece bolão gratuito entre amigos, só com pontos e classificação. O site não recebe depósito, não usa Pix, não trabalha com odds e não paga prêmio em dinheiro. Também não é casa de apostas nem site .bet, e não tem relação com palpitae.bet.',
+      },
       {
         question: 'Quando começa o Brasileirão 2027?',
         answer:
@@ -323,7 +375,7 @@ export const guides: Guide[] = [
       },
     ],
     published: '2026-07-12',
-    updated: '2026-11-09',
+    updated: '2026-11-18',
   },
   {
     slug: 'bolao-copa-do-mundo',
@@ -678,6 +730,18 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+/** Product screenshot for a guide section: WebP when present, PNG fallback. */
+function renderFigure(figure: GuideFigure): string {
+  const img = `<img src="${escapeHtml(figure.src)}" alt="${escapeHtml(figure.alt)}" width="${figure.width}" height="${figure.height}" loading="lazy" decoding="async" />`
+  const picture = figure.webp
+    ? `<picture><source srcset="${escapeHtml(figure.webp)}" type="image/webp" />${img}</picture>`
+    : img
+  const caption = figure.caption
+    ? `\n  <figcaption>${escapeHtml(figure.caption)}</figcaption>`
+    : ''
+  return `<figure class="shot">\n  ${picture}${caption}\n</figure>`
+}
+
 /** Shared <style> for every guide page — mirrors the app's dark design tokens. */
 const PAGE_CSS = `
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -714,6 +778,9 @@ nav.related h2{font-size:1.125rem;margin:24px 0 12px}
 nav.related ul{list-style:none;display:flex;flex-direction:column;gap:10px}
 nav.related a{color:#49f21b;font-weight:500}
 section.faq h3{font-size:1.0625rem;line-height:1.35;margin:24px 0 8px}
+figure.shot{margin:8px 0 28px;padding:12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px}
+figure.shot img{width:100%;height:auto;border-radius:8px}
+figure.shot figcaption{margin-top:10px;color:#a3a3a3;font-size:.875rem;line-height:1.45}
 @media (prefers-reduced-motion:reduce){a.card{transition:none}a.card:hover{transform:none}}
 ${CONSENT_CSS}
 `.trim()
@@ -817,10 +884,11 @@ export function renderGuide(g: Guide, gaId = ''): string {
     },
   }
   const sections = g.sections
-    .map(
-      (s) =>
-        `<h2>${escapeHtml(s.heading)}</h2>\n${s.body.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n')}`,
-    )
+    .map((s) => {
+      const paragraphs = s.body.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n')
+      const figure = s.figure ? renderFigure(s.figure) : ''
+      return `<h2>${escapeHtml(s.heading)}</h2>\n${paragraphs}${figure ? `\n${figure}` : ''}`
+    })
     .join('\n')
   const faqHtml = g.faq?.length
     ? `<section class="faq"><h2>Perguntas frequentes</h2>\n${g.faq
