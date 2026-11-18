@@ -19,7 +19,7 @@ interface GroupTabContentProps {
   requestedRound?: string | null
   /** Chamado quando a aba Palpitar abre na rodada pedida, para tirá-la da URL. */
   onRequestedRoundApplied?: () => void
-  onJoinRequestDecided?: () => void
+  onJoinRequestDecided?: (action: 'approve' | 'reject') => void
 }
 
 export default function GroupTabContent({

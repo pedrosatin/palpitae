@@ -1281,13 +1281,15 @@ Só o dono via o código de convite. Membros que compartilham cartões de marco 
 
 ### Decision
 
-- Cada grupo tem `public_id` (32 hex aleatórios), gerado na criação e no backfill da migration. Trocar `invite_code` não altera o `public_id`.
-- `join_requests_enabled` (default ligado) deixa o dono desligar novos pedidos sem invalidar o link.
+- Cada grupo tem `public_id` (32 hex aleatórios), gerado na criação e no backfill da migration. Trocar `invite_code` não altera o `public_id`. O `public_id` é visível para todo membro do grupo (o código de convite continua só com o dono).
+- `join_requests_enabled` (default ligado) deixa o dono desligar novos pedidos sem invalidar o link. Com pedidos desligados, `POST /groups/join-requests` responde 403.
 - Pedidos ficam em `group_join_requests` (pending/approved/rejected). Um pendente por usuário e grupo; limite diário por usuário; cooldown após recusa. Recusar não bane.
-- A prévia pública (`GET /public/groups/:publicId`) mostra só nome, campeonato e número de membros — sem nomes nem código de convite.
-- Aprovação reutiliza a inserção de membro do convite e grava `group_joined` com `entry_method = request`.
+- A prévia pública (`GET /public/groups/:publicId`) mostra só nome, campeonato e número de membros, sem nomes nem código de convite.
+- Aprovação reutiliza a inserção de membro do convite e grava no servidor `group_joined` com `entry_method = request`. No navegador do dono, a aprovação dispara `approve_join_request` (sem dado pessoal). Quem pede dispara `join_request`.
+- O cliente não pode mandar `entry_method=request` em `POST /groups/join`; esse valor só nasce na aprovação.
+- A migration 0048 inclui o trigger `groups_public_id_insert` para cobrir INSERTs do Worker antigo entre a migration e o publish. O trigger sai num contract futuro, quando o Worker antigo não estiver mais no ar.
 
 ### Consequences
 
 - O link revela existência e tamanho do grupo a quem o possui; não enumera grupos (id não sequencial) e responde 404 genérico para id inválido.
-- Dimensões GA4 `entry_method=request` e evento `join_request` precisam ser cadastradas no painel antes do deploy.
+- Antes do merge: conferir no GA4 que a dimensão personalizada de evento `entry_method` existe (o `join_group` já a usa). Eventos personalizados (`join_request`, `approve_join_request`) aparecem sozinhos; registrar como eventos-chave é opcional.

@@ -215,8 +215,9 @@ recomendados do GA4.
 |---|---|---|
 | `login` | Volta do OAuth com sessão válida. O clique em "Entrar com Google" grava uma marca no `sessionStorage`, e o `/auth/me` a consome. | `{ method }` (`google`) |
 | `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
-| `join_group` | `POST /groups/join` respondeu 200, ou aprovação de pedido de entrada. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. | `{ entry_method }` (`convite_link` quando o código enviado veio de `/convite/<código>`, `convite_antigo` quando veio de um link antigo com `?convite=`, `codigo` quando foi digitado ou colado no modal, `request` quando o dono aprovou um pedido pelo link `/grupo/<public_id>`) |
+| `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. A conversão do caminho por pedido fica no evento de servidor `group_joined` com `entry_method=request`, não neste evento do navegador. | `{ entry_method }` (`convite_link` quando o código enviado veio de `/convite/<código>`, `convite_antigo` quando veio de um link antigo com `?convite=`, `codigo` quando foi digitado ou colado no modal). O cliente não envia `request`. |
 | `join_request` | Visitante autenticado enviou pedido em `POST /groups/join-requests`. | (sem parâmetros) |
+| `approve_join_request` | Dono aprovou um pedido na aba Membros. Sem dado pessoal. | (sem parâmetros) |
 
 O link de convite é `https://palpitae.com.br/convite/<CODE>`. A Pages Function
 `web/functions/convite/[code].ts` monta o preview (título e descrição com o grupo). Na SPA, o
@@ -282,6 +283,8 @@ Para aceitar um parâmetro novo em produção, adicione a chave correspondente e
 | `login` | `method`, `origem` |
 | `share_invite` | `method`, `context` |
 | `join_group` | `entry_method` |
+| `join_request` | (nenhum) |
+| `approve_join_request` | (nenhum) |
 | `submit_criar_grupo` | `origem` |
 | `click_create_group_preset_selecionado` | `preset` |
 | `click_create_group_ajuda_pontuacao` | `campo` |

@@ -4,7 +4,7 @@ import { hasFeatureAccess, hasPilotAccess } from '../auth/permissions'
 import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
-import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
+import { parseClientEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership, isPilotGroupBlocked, memberDisplaySql } from './membership'
 import { parseGroupName } from './groupName'
@@ -679,7 +679,7 @@ router.post('/join', requireAuth, async (c) => {
     blobs: [
       group.id,
       await hashUserId(userId),
-      parseEntryMethod(body.entry_method),
+      parseClientEntryMethod(body.entry_method),
       await readRecentSignupFlag(db, inserted.memberId),
     ],
   })
@@ -883,9 +883,13 @@ router.patch('/:id', requireAuth, async (c) => {
     await updateGroup.run()
   }
 
-  logEvent(c.env.AE, 'group_renamed', {
-    blobs: [groupId, await hashUserId(userId)],
-  })
+  // Só registra rename quando o nome (ou a pontuação, que recalcula) mudou.
+  // Ligar/desligar pedidos pelo link não é rename.
+  if (name !== undefined || pointsClassified !== undefined) {
+    logEvent(c.env.AE, 'group_renamed', {
+      blobs: [groupId, await hashUserId(userId)],
+    })
+  }
 
   return c.json({
     group: {

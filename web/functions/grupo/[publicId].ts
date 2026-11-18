@@ -57,7 +57,7 @@ export function normalizePublicId(raw: string | undefined): string | null {
 
 export function buildGroupMeta(preview: GroupPreview | null): { title: string; description: string } | null {
   if (!preview) return null
-  const title = `Pedido para ${preview.group_name} — Palpitae`
+  const title = `Pede pra entrar no bolão "${preview.group_name}" no Palpitae`
   const parts = [
     preview.competition_name,
     `${preview.member_count} ${preview.member_count === 1 ? 'participante' : 'participantes'}`,

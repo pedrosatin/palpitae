@@ -127,8 +127,13 @@ export default function GroupTabs({
         >
           Membros
           {pendingJoinRequestCount > 0 && (
-            <span className={styles.tabBadge} aria-label={`${pendingJoinRequestCount} pedidos pendentes`}>
+            <span className={styles.tabBadge}>
               {pendingJoinRequestCount}
+              <span className="sr-only">
+                {pendingJoinRequestCount === 1
+                  ? '1 pedido pendente'
+                  : `${pendingJoinRequestCount} pedidos pendentes`}
+              </span>
             </span>
           )}
         </a>

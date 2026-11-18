@@ -70,6 +70,15 @@ Se a publicação do deploy 2 falhar, quem fica no ar é o Worker do deploy 1, q
 - Se o código do deploy 1 for revertido antes do deploy 2, o Worker volta a ler `user_name`. O que o Worker do deploy 1 gravou ficou só em `display_name`: quem trocou de nome depois do deploy 1 aparece com o nome antigo, e quem entrou depois dele aparece sem nome.
 - Depois do deploy 2, o Worker anterior ao deploy 1 não funciona mais: a coluna não existe. O `git revert` do deploy 2 não recria a coluna. Para voltar, escreva uma migration nova de expand que recrie `user_name` e copie os dados de `display_name`.
 
+## Trigger de backfill enquanto o Worker antigo grava
+
+Quando uma coluna nova precisa existir em linhas que o Worker anterior ainda
+insere sem ela (intervalo entre a migration e o publish), a migration de expand
+cria um trigger `AFTER INSERT ... WHEN NEW.<coluna> IS NULL`, no padrão do
+exemplo `users_user_name_insert` acima. A migration `0048_group_join_requests`
+faz isso com `groups_public_id_insert`. O trigger sai numa migration de contract
+posterior, depois que o Worker que grava a coluna estiver em produção.
+
 ## Rodar migrations à mão
 
 Os comandos rodam de `api/` e sempre com `--config ./wrangler.toml`. Sem essa opção, um `wrangler.json` ou `wrangler.jsonc` num diretório acima venceria o `api/wrangler.toml`, como o da raiz fazia até 14/11/2026, e o wrangler não acharia as migrations.

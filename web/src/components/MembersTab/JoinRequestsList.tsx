@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { trackJoinGroup } from '../../analytics/funnel'
+import { trackApproveJoinRequest } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
 import { apiFetch, readApiError } from '../../lib/api'
@@ -17,7 +17,7 @@ export type JoinRequestItem = {
 
 interface JoinRequestsListProps {
   groupId: string
-  onDecided?: () => void
+  onDecided?: (action: 'approve' | 'reject') => void
 }
 
 export default function JoinRequestsList({ groupId, onDecided }: JoinRequestsListProps) {
@@ -58,9 +58,9 @@ export default function JoinRequestsList({ groupId, onDecided }: JoinRequestsLis
         { method: 'POST' },
       )
       if (!res.ok) throw new Error(await readApiError(res, 'Não foi possível decidir o pedido'))
-      if (action === 'approve') trackJoinGroup('request')
+      if (action === 'approve') trackApproveJoinRequest()
       setRequests((prev) => prev.filter((r) => r.id !== requestId))
-      onDecided?.()
+      onDecided?.(action)
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Não foi possível decidir o pedido')
     } finally {

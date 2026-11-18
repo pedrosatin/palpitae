@@ -168,6 +168,54 @@ describe('Exclusão de conta pelo operador', () => {
     expect((await call('admin', '/admin/users/admin', 'DELETE')).status).toBe(400)
     expect(rows("SELECT id FROM users WHERE id = 'admin'")).toEqual([{ id: 'admin' }])
   })
+
+  it('exclui o dono depois que ele recusou um pedido (decided_by SET NULL)', async () => {
+    const { sqlite, call, rows } = setup()
+    sqlite.exec(`
+      INSERT INTO users (id,email,provider,provider_id) VALUES ('pedido','pedido@test.com','google','pedido');
+      INSERT INTO group_join_requests (id,group_id,user_id,status,decided_at,decided_by)
+        VALUES ('jr-rej','bolao','pedido','rejected',datetime('now'),'ana');
+    `)
+
+    const res = await call('admin', '/admin/users/ana', 'DELETE')
+    expect(res.status).toBe(200)
+    expect(rows("SELECT id FROM users WHERE id = 'ana'")).toEqual([])
+    expect(rows("SELECT id, decided_by FROM group_join_requests WHERE id = 'jr-rej'")).toEqual([
+      { id: 'jr-rej', decided_by: null },
+    ])
+  })
+
+  it('exclui o dono depois que ele aprovou um pedido', async () => {
+    const { sqlite, call, rows } = setup()
+    sqlite.exec(`
+      INSERT INTO users (id,email,provider,provider_id) VALUES ('aprovado','aprovado@test.com','google','aprovado');
+      INSERT INTO group_members (id,group_id,user_id,role,joined_at)
+        VALUES ('b-aprovado','bolao','aprovado','member','2026-01-03 00:00:00');
+      INSERT INTO group_join_requests (id,group_id,user_id,status,decided_at,decided_by)
+        VALUES ('jr-ok','bolao','aprovado','approved',datetime('now'),'ana');
+    `)
+
+    const res = await call('admin', '/admin/users/ana', 'DELETE')
+    expect(res.status).toBe(200)
+    expect(rows("SELECT id FROM users WHERE id = 'ana'")).toEqual([])
+    expect(rows("SELECT id, decided_by FROM group_join_requests WHERE id = 'jr-ok'")).toEqual([
+      { id: 'jr-ok', decided_by: null },
+    ])
+  })
+
+  it('exclui quem pediu e o pedido sai em cascata', async () => {
+    const { sqlite, call, rows } = setup()
+    sqlite.exec(`
+      INSERT INTO users (id,email,provider,provider_id) VALUES ('pedido','pedido@test.com','google','pedido');
+      INSERT INTO group_join_requests (id,group_id,user_id,status)
+        VALUES ('jr-pend','bolao','pedido','pending');
+    `)
+
+    const res = await call('admin', '/admin/users/pedido', 'DELETE')
+    expect(res.status).toBe(200)
+    expect(rows("SELECT id FROM users WHERE id = 'pedido'")).toEqual([])
+    expect(rows("SELECT id FROM group_join_requests WHERE id = 'jr-pend'")).toEqual([])
+  })
 })
 
 describe('Papel de dono em group_members', () => {

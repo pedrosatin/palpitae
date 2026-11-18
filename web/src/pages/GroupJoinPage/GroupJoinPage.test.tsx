@@ -66,9 +66,13 @@ describe('GroupJoinPage', () => {
   })
 
   it('usuário logado envia pedido', async () => {
-    vi.mocked(apiFetch).mockResolvedValue(
-      Response.json({ request: { id: 'r1', status: 'pending' } }, { status: 201 }),
-    )
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce(
+        Response.json({ status: 'none', group_id: 'g1' }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ request: { id: 'r1', status: 'pending' } }, { status: 201 }),
+      )
 
     render(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
@@ -82,8 +86,32 @@ describe('GroupJoinPage', () => {
     )
 
     await screen.findByRole('heading', { name: 'Bolão da Firma' })
-    await userEvent.click(screen.getByTestId('pedir-entrada'))
+    await userEvent.click(await screen.findByTestId('pedir-entrada'))
     await waitFor(() => expect(trackJoinRequest).toHaveBeenCalled())
     expect(await screen.findByText(/Pedido enviado/i)).toBeInTheDocument()
+  })
+
+  it('membro que já participa vê link para o grupo', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(
+      Response.json({ status: 'member', group_id: 'g1' }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
+        <Routes>
+          <Route
+            path="/grupo/:publicId"
+            element={<GroupJoinPage user={{ id: 'u1', email: 'a@b.com', nickname: 'Ana' }} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Você já participa')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Ir para o grupo' })).toHaveAttribute(
+      'href',
+      '/grupos/g1',
+    )
+    expect(screen.queryByTestId('pedir-entrada')).not.toBeInTheDocument()
   })
 })

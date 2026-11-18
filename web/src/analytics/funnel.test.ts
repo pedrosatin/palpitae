@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as ga from './ga'
 import {
   markLoginStarted,
+  trackApproveJoinRequest,
   trackJoinGroup,
   trackJoinRequest,
   trackLoginIfPending,
@@ -48,6 +49,11 @@ describe('funnel events', () => {
   it('trackJoinRequest envia join_request', () => {
     trackJoinRequest()
     expect(mockTrackEvent).toHaveBeenCalledWith('join_request')
+  })
+
+  it('trackApproveJoinRequest envia approve_join_request sem params', () => {
+    trackApproveJoinRequest()
+    expect(mockTrackEvent).toHaveBeenCalledWith('approve_join_request')
   })
 
   it('tracks login only after a sign-in click and only once', () => {

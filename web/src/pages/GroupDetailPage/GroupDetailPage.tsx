@@ -164,12 +164,15 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
     setGroup((prev) => (prev ? { ...prev, join_requests_enabled: enabled } : prev))
   }
 
-  function handleJoinRequestDecided() {
+  function handleJoinRequestDecided(action: 'approve' | 'reject') {
     setGroup((prev) =>
       prev
         ? {
             ...prev,
             pending_join_request_count: Math.max(0, (prev.pending_join_request_count ?? 1) - 1),
+            ...(action === 'approve'
+              ? { member_count: (prev.member_count ?? 0) + 1 }
+              : {}),
           }
         : prev,
     )
@@ -244,8 +247,8 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
           />
         )}
 
-        {/* Link de pedido: qualquer membro compartilha sem expor o código. */}
-        {group.public_id && !isFinished && (
+        {/* Link de pedido: membros só veem com pedidos ligados; o dono religa em Configurar. */}
+        {group.public_id && !isFinished && (isAdmin || group.join_requests_enabled !== false) && (
           <GroupLinkSection publicId={group.public_id} groupName={group.name} />
         )}
 

@@ -19,6 +19,8 @@ type Preview = {
   joinRequestsEnabled: boolean
 }
 
+type Membership = { status: 'member' | 'pending' | 'none'; groupId: string }
+
 type State =
   | { status: 'loading' }
   | { status: 'invalid' }
@@ -54,8 +56,27 @@ async function lookupGroup(publicId: string): Promise<State> {
   }
 }
 
+async function lookupMembership(publicId: string): Promise<Membership | null> {
+  try {
+    const res = await apiFetch(
+      buildApiUrl(`/groups/join-requests/me?public_id=${encodeURIComponent(publicId)}`),
+    )
+    if (!res.ok) return null
+    const body = (await res.json()) as { status?: string; group_id?: string }
+    if (
+      (body.status === 'member' || body.status === 'pending' || body.status === 'none') &&
+      typeof body.group_id === 'string'
+    ) {
+      return { status: body.status, groupId: body.group_id }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 function pageTitle(state: State): string {
-  if (state.status === 'ready') return `Entrar em ${state.preview.groupName}`
+  if (state.status === 'ready') return `Pedir para entrar em ${state.preview.groupName}`
   if (state.status === 'invalid') return 'Link inválido'
   return 'Pedido de entrada'
 }
@@ -83,6 +104,7 @@ function GroupJoinContent({
   user: User | null
 }) {
   const [state, setState] = useState<State>(publicId ? { status: 'loading' } : { status: 'invalid' })
+  const [membership, setMembership] = useState<Membership | null>(null)
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -101,6 +123,20 @@ function GroupJoinContent({
     }
   }, [publicId])
 
+  useEffect(() => {
+    if (!publicId || !user) {
+      setMembership(null)
+      return
+    }
+    let cancelled = false
+    void lookupMembership(publicId).then((result) => {
+      if (!cancelled) setMembership(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [publicId, user])
+
   async function requestJoin() {
     if (!publicId) return
     trackEvent('click_group_join_pedir')
@@ -112,7 +148,17 @@ function GroupJoinContent({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ public_id: publicId }),
       })
-      if (!res.ok) throw new Error(await readApiError(res, 'Não foi possível pedir entrada'))
+      if (!res.ok) {
+        const body = (await res.clone().json().catch(() => ({}))) as {
+          error?: string
+          group_id?: string
+        }
+        if (res.status === 409 && body.group_id && /já é membro/i.test(body.error ?? '')) {
+          setMembership({ status: 'member', groupId: body.group_id })
+          return
+        }
+        throw new Error(await readApiError(res, 'Não foi possível pedir entrada'))
+      }
       trackJoinRequest()
       setDone(true)
       setMessage('Pedido enviado. O dono do grupo vai analisar.')
@@ -139,13 +185,14 @@ function GroupJoinContent({
 
   const preview = state.status === 'ready' ? state.preview : null
   const canRequest = preview?.joinRequestsEnabled !== false
+  const alreadyMember = membership?.status === 'member'
 
   return (
     <Shell>
       {state.status === 'loading' && <p className={styles.notice}>Carregando grupo...</p>}
       {state.status === 'unavailable' && (
         <div className={styles.heading}>
-          <h1 className={styles.title}>Você recebeu um convite para um bolão</h1>
+          <h1 className={styles.title}>Alguém te chamou para um bolão</h1>
           <p className={styles.notice}>Os detalhes do grupo não carregaram agora.</p>
         </div>
       )}
@@ -166,8 +213,20 @@ function GroupJoinContent({
 
       <p className={styles.free}>Grátis, sem apostas</p>
 
-      {user ? (
-        canRequest && !done ? (
+      {alreadyMember && membership ? (
+        <>
+          <p className={styles.notice} role="status">
+            Você já participa
+          </p>
+          <Link
+            to={`/grupos/${encodeURIComponent(membership.groupId)}`}
+            className={styles.landingButton}
+          >
+            Ir para o grupo
+          </Link>
+        </>
+      ) : user ? (
+        canRequest && !done && membership?.status !== 'pending' ? (
           <Button onClick={requestJoin} disabled={submitting} data-testid="pedir-entrada">
             {submitting ? 'Enviando…' : 'Pedir para participar'}
           </Button>
@@ -181,7 +240,13 @@ function GroupJoinContent({
         )
       )}
 
-      {!canRequest && preview && (
+      {membership?.status === 'pending' && !done && (
+        <p className={styles.notice} role="status">
+          Você já pediu entrada neste grupo. Aguarde a decisão do dono.
+        </p>
+      )}
+
+      {!canRequest && preview && !alreadyMember && (
         <p className={styles.notice}>Este grupo não está aceitando pedidos pelo link.</p>
       )}
       {message && (
@@ -189,7 +254,7 @@ function GroupJoinContent({
           {message}
         </p>
       )}
-      {user && (
+      {user && !alreadyMember && (
         <button type="button" className={styles.landingLink} onClick={() => navigate('/')}>
           Ir para meus grupos
         </button>

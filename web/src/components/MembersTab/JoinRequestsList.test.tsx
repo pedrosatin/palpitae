@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import JoinRequestsList from './JoinRequestsList'
 
 vi.mock('../../analytics/funnel', () => ({
-  trackJoinGroup: vi.fn(),
+  trackApproveJoinRequest: vi.fn(),
   trackJoinRequest: vi.fn(),
 }))
 
@@ -18,14 +18,14 @@ vi.mock('../../lib/api', async () => {
 })
 
 import { apiFetch } from '../../lib/api'
-import { trackJoinGroup } from '../../analytics/funnel'
+import { trackApproveJoinRequest } from '../../analytics/funnel'
 
 describe('JoinRequestsList', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('lista pedidos e aprova', async () => {
+  it('lista pedidos e aprova com approve_join_request', async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce(
         Response.json({
@@ -45,7 +45,7 @@ describe('JoinRequestsList', () => {
     render(<JoinRequestsList groupId="g1" />)
     expect(await screen.findByText('Carla')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Aprovar' }))
-    await waitFor(() => expect(trackJoinGroup).toHaveBeenCalledWith('request'))
+    await waitFor(() => expect(trackApproveJoinRequest).toHaveBeenCalled())
     expect(screen.queryByText('Carla')).not.toBeInTheDocument()
   })
 })
