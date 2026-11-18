@@ -201,6 +201,19 @@
 
 /* ─── Rename modal ────────────────────────────────────────────────────── */
 
+.joinRequestsLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.joinRequestsLabel input {
+  margin-top: 0.2em;
+}
+
 .renameForm {
   display: flex;
   flex-direction: column;
@@ -462,6 +475,22 @@
 .tabActive {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
+}
+
+.tabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-1);
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-on-primary, #fff);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
 }
 
 /* ─── Tab Content ─────────────────────────────────────────────────────── */

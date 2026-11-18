@@ -13,8 +13,10 @@ interface RenameGroupModalProps {
   groupId: string
   currentName: string
   currentPointsClassified?: number
+  currentJoinRequestsEnabled?: boolean
   onPointsClassifiedChanged?: (points: number) => void | Promise<void>
   onRenamed: (newName: string) => void
+  onJoinRequestsEnabledChanged?: (enabled: boolean) => void
 }
 
 export function RenameGroupModal({
@@ -24,9 +26,14 @@ export function RenameGroupModal({
   currentName,
   onRenamed,
   currentPointsClassified,
+  currentJoinRequestsEnabled,
   onPointsClassifiedChanged,
+  onJoinRequestsEnabledChanged,
 }: RenameGroupModalProps) {
   const [pointsClassified, setPointsClassified] = useState(currentPointsClassified ?? 0)
+  const [joinRequestsEnabled, setJoinRequestsEnabled] = useState(
+    currentJoinRequestsEnabled ?? true,
+  )
   const [renameValue, setRenameValue] = useState(currentName)
   const [renaming, setRenaming] = useState(false)
   const [renameError, setRenameError] = useState<string | null>(null)
@@ -35,9 +42,10 @@ export function RenameGroupModal({
     if (isOpen) {
       setRenameValue(currentName)
       setPointsClassified(currentPointsClassified ?? 0)
+      setJoinRequestsEnabled(currentJoinRequestsEnabled ?? true)
       setRenameError(null)
     }
-  }, [isOpen, currentName, currentPointsClassified])
+  }, [isOpen, currentName, currentPointsClassified, currentJoinRequestsEnabled])
 
   async function submitRename(event: React.FormEvent) {
     event.preventDefault()
@@ -56,6 +64,10 @@ export function RenameGroupModal({
     setRenaming(true)
     setRenameError(null)
 
+    const joinRequestsChanged =
+      currentJoinRequestsEnabled !== undefined &&
+      currentJoinRequestsEnabled !== joinRequestsEnabled
+
     try {
       const res = await apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`), {
         method: 'PATCH',
@@ -65,6 +77,7 @@ export function RenameGroupModal({
           ...(currentPointsClassified !== undefined && currentPointsClassified !== pointsClassified
             ? { points_classified: pointsClassified }
             : {}),
+          ...(joinRequestsChanged ? { join_requests_enabled: joinRequestsEnabled } : {}),
         }),
       }).catch(() => {
         throw new Error(CONNECTION_ERROR)
@@ -75,6 +88,7 @@ export function RenameGroupModal({
       trackEvent('submit_renomear_grupo')
       invalidateApiCache('groups:')
       onRenamed(name)
+      if (joinRequestsChanged) onJoinRequestsEnabledChanged?.(joinRequestsEnabled)
       if (currentPointsClassified !== undefined && currentPointsClassified !== pointsClassified) {
         invalidateApiCache()
         await onPointsClassifiedChanged?.(pointsClassified)
@@ -122,6 +136,17 @@ export function RenameGroupModal({
               palpites. 0 desliga. Alterar este valor recalcula os pontos dos jogos já encerrados.
             </p>
           </>
+        )}
+        {currentJoinRequestsEnabled !== undefined && (
+          <label htmlFor="edit-join-requests" className={styles.joinRequestsLabel}>
+            <input
+              id="edit-join-requests"
+              type="checkbox"
+              checked={joinRequestsEnabled}
+              onChange={(e) => setJoinRequestsEnabled(e.target.checked)}
+            />
+            Aceitar pedidos de entrada pelo link do grupo
+          </label>
         )}
         {renameError && <p className={styles.renameError}>{renameError}</p>}
         <div className={styles.renameActions}>

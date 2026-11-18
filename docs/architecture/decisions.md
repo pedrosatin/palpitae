@@ -1269,3 +1269,25 @@ Medições pelo `worker.scheduled` real, com SQLite das migrations e recusa da c
 Na semente dos testes pelo cron real, 1/2/4 competições ESPN passam de 23/43/56 chamadas tentadas para 41/42/42; nove football-data passam de 58 para 23. Os cenários de 56 e 58 chamadas rejeitavam a execução na base. A final antiga sob quatro football-data custa 24 por descoberta e chega a `finished` depois do dreno, inclusive com três descobertas consecutivas.
 
 Na distribuição de produção de 19/11/2026, com 10 football-data e 4 ESPN ativas e 53 grupos, o cenário com calendários sintéticos admite Brasileirão Série A e Premier League às 06:15 UTC, em 24 chamadas incluindo a limpeza. Adia 44 itens, sendo 8 calendários football-data e 36 datas ESPN. Sem outra carga, a fila termina em 21 ticks, às 08:50 UTC, quando aparece o último jogo novo; as quatro públicas ficam completas às 07:05 UTC. Com um `result` de ontem e um `late` de anteontem da Libertadores replanejados antes de cada um dos três primeiros drenos, termina em 22 ticks às 08:55 UTC, com as públicas completas às 07:10 UTC. Nenhum dreno ultrapassa 35 chamadas. Ambos os estados finais têm 46 jogos e são iguais ao controle sem limite. Os horários descrevem essa carga finita; entrada contínua prioritária pode prolongar a espera.
+
+## ADR-028: Link público de pedido de entrada no grupo
+
+**Status:** Accepted
+**Date:** 2026-11-18
+
+### Context
+
+Só o dono via o código de convite. Membros que compartilham cartões de marco não podiam trazer amigos sem expor o código. Um link estável, separado do convite, permite pedido de entrada com aprovação do dono.
+
+### Decision
+
+- Cada grupo tem `public_id` (32 hex aleatórios), gerado na criação e no backfill da migration. Trocar `invite_code` não altera o `public_id`.
+- `join_requests_enabled` (default ligado) deixa o dono desligar novos pedidos sem invalidar o link.
+- Pedidos ficam em `group_join_requests` (pending/approved/rejected). Um pendente por usuário e grupo; limite diário por usuário; cooldown após recusa. Recusar não bane.
+- A prévia pública (`GET /public/groups/:publicId`) mostra só nome, campeonato e número de membros — sem nomes nem código de convite.
+- Aprovação reutiliza a inserção de membro do convite e grava `group_joined` com `entry_method = request`.
+
+### Consequences
+
+- O link revela existência e tamanho do grupo a quem o possui; não enumera grupos (id não sequencial) e responde 404 genérico para id inválido.
+- Dimensões GA4 `entry_method=request` e evento `join_request` precisam ser cadastradas no painel antes do deploy.

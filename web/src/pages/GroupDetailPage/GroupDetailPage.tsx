@@ -6,6 +6,7 @@ import JoinGroupModal from '../../components/JoinGroupModal'
 import GroupRulesModal from '../../components/GroupRulesModal'
 import GroupHeader from './GroupHeader'
 import GroupInviteSection from './GroupInviteSection'
+import GroupLinkSection from './GroupLinkSection'
 import RenameGroupModal from './RenameGroupModal'
 import ErrorState from '../../components/ErrorState'
 import ErrorBoundary, { TabError } from '../../components/ErrorBoundary'
@@ -159,6 +160,21 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
     setGroup((prev) => (prev ? { ...prev, name } : prev))
   }
 
+  function handleJoinRequestsEnabledChanged(enabled: boolean) {
+    setGroup((prev) => (prev ? { ...prev, join_requests_enabled: enabled } : prev))
+  }
+
+  function handleJoinRequestDecided() {
+    setGroup((prev) =>
+      prev
+        ? {
+            ...prev,
+            pending_join_request_count: Math.max(0, (prev.pending_join_request_count ?? 1) - 1),
+          }
+        : prev,
+    )
+  }
+
   function handleRotateInvite() {
     rotateInvite((inviteCode) =>
       setGroup((prev) => (prev ? { ...prev, invite_code: inviteCode } : prev)),
@@ -173,8 +189,10 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
         groupId={groupId}
         currentName={group?.name ?? ''}
         currentPointsClassified={group?.points_classified ?? 0}
+        currentJoinRequestsEnabled={group?.join_requests_enabled ?? true}
         onPointsClassifiedChanged={handlePointsClassifiedChanged}
         onRenamed={handleGroupRenamed}
+        onJoinRequestsEnabledChanged={handleJoinRequestsEnabledChanged}
       />
       {group && (
         <GroupRulesModal isOpen={rulesOpen} onClose={() => setRulesOpen(false)} group={group} />
@@ -226,10 +244,16 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
           />
         )}
 
+        {/* Link de pedido: qualquer membro compartilha sem expor o código. */}
+        {group.public_id && !isFinished && (
+          <GroupLinkSection publicId={group.public_id} groupName={group.name} />
+        )}
+
         <GroupTabs
           activeTab={activeTab}
           showStandings={showStandings}
           isAdmin={isAdmin}
+          pendingJoinRequestCount={group.pending_join_request_count ?? 0}
           tabsOffset={tabsOffset}
           tabHref={tabHref}
           onTabClick={handleTabClick}
@@ -251,6 +275,7 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
             onOpenRules={() => setRulesOpen(true)}
             requestedRound={requestedRound}
             onRequestedRoundApplied={clearRequestedRound}
+            onJoinRequestDecided={handleJoinRequestDecided}
           />
         </ErrorBoundary>
       </>

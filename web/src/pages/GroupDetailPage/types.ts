@@ -18,6 +18,10 @@ export interface GroupDetail {
   competition_status?: 'upcoming' | 'ongoing' | 'finished' | null
   is_admin: boolean
   invite_code: string | null
+  /** Identificador público do link de pedido (qualquer membro pode compartilhar). */
+  public_id?: string | null
+  join_requests_enabled?: boolean
+  pending_join_request_count?: number
   created_at: string
   points_exact: number
   points_penalty?: number

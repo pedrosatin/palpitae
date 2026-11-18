@@ -8,12 +8,14 @@ import Avatar from '../Avatar'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
 import MemberBadge from '../MemberBadge'
+import JoinRequestsList from './JoinRequestsList'
 import styles from './MembersTab.module.css'
 
 interface MembersTabProps {
   groupId: string
   currentUserId: string
   onMemberRemoved?: (userId: string) => void
+  onJoinRequestDecided?: () => void
 }
 
 function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void) {
@@ -89,7 +91,12 @@ function MemberItem({ member, currentUserId, removing, onRemove }: MemberItemPro
   )
 }
 
-export default function MembersTab({ groupId, currentUserId, onMemberRemoved }: MembersTabProps) {
+export default function MembersTab({
+  groupId,
+  currentUserId,
+  onMemberRemoved,
+  onJoinRequestDecided,
+}: MembersTabProps) {
   const { members, loading, error, removing, confirmDialog, removeMember } = useMembers(
     groupId,
     onMemberRemoved,
@@ -105,6 +112,7 @@ export default function MembersTab({ groupId, currentUserId, onMemberRemoved }: 
 
   return (
     <div className={styles.root}>
+      <JoinRequestsList groupId={groupId} onDecided={onJoinRequestDecided} />
       <p className={styles.hint}>
         {members.length} {members.length === 1 ? 'membro' : 'membros'} neste grupo
       </p>

@@ -19,12 +19,17 @@ export function trackShareInvite(method: ShareInviteMethod, context: string): vo
   trackEvent('share_invite', { method, context })
 }
 
-export type JoinGroupEntryMethod = 'convite_link' | 'convite_antigo' | 'codigo'
+export type JoinGroupEntryMethod = 'convite_link' | 'convite_antigo' | 'codigo' | 'request'
 
 /** Entrada no grupo confirmada pela API. */
 export function trackJoinGroup(entryMethod: JoinGroupEntryMethod): void {
   // Não usar `source`: o GA4 trata esse parâmetro como origem da sessão.
   trackEvent('join_group', { entry_method: entryMethod })
+}
+
+/** Pedido de entrada enviado pelo link público do grupo. */
+export function trackJoinRequest(): void {
+  trackEvent('join_request')
 }
 
 // O OAuth sai do app (Google → API → volta para o front) e o retorno não traz
