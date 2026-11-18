@@ -291,7 +291,7 @@ export const guides: Guide[] = [
       {
         heading: 'Chamar a galera no WhatsApp',
         body: [
-          'Depois que o grupo existe, a tela de sucesso destaca o botão Chamar a galera no WhatsApp. No celular ele abre o compartilhamento nativo; no computador abre o WhatsApp Web com a mensagem e o link do convite. Também dá para copiar o link ou o código do convite.',
+          'Depois que o grupo existe, a tela de sucesso destaca o botão Chamar a galera no WhatsApp. No celular ele abre o compartilhamento nativo; no computador abre o WhatsApp com a mensagem e o link do convite. Também dá para copiar o link ou o código do convite.',
         ],
         figure: {
           src: '/screenshots/guias/whatsapp-convite.png',
@@ -308,7 +308,7 @@ export const guides: Guide[] = [
         body: [
           'O formulário oferece quatro modos. Clássico: 3 pontos no placar exato e 1 no resultado. Só placar exato: 3 e 0. Só vencedor: 0 e 1, com palpite em Casa, Empate ou Fora. Personalizado: valores livres de 0 a 10. Para 38 rodadas, o Clássico já vem marcado no formulário.',
           'Na mesma tela você escolhe a visibilidade: Oculto até o jogo começar, para ninguém copiar o placar do amigo, ou Sempre visível. Cada palpite trava no horário de início do próprio jogo, o que importa no Brasileirão porque a rodada se espalha entre sexta e segunda.',
-          'A página do grupo junta o ranking do bolão e a tabela do Brasileirão. O ranking e a tabela se atualizam sozinhos, sem planilha de pontos. Em 380 jogos isso elimina a conta manual de classificação.',
+          'A página do grupo junta o ranking do bolão e a tabela do Brasileirão, e os dois se atualizam sozinhos. Em 380 jogos, isso elimina a conta manual de pontos e de classificação.',
         ],
         figure: {
           src: '/screenshots/guias/ranking-grupo.png',
@@ -316,8 +316,8 @@ export const guides: Guide[] = [
           alt: 'Página do grupo no Palpitae com o ranking do bolão e as abas Palpitar, Tabela, Grupo, Ranking e Membros',
           caption:
             'No grupo, o ranking do bolão e a tabela do Brasileirão ficam nas abas Ranking e Tabela.',
-          width: 1100,
-          height: 820,
+          width: 1192,
+          height: 512,
         },
       },
       {
