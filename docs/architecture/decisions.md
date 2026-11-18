@@ -1292,4 +1292,4 @@ Só o dono via o código de convite. Membros que compartilham cartões de marco 
 ### Consequences
 
 - O link revela existência e tamanho do grupo a quem o possui; não enumera grupos (id não sequencial) e responde 404 genérico para id inválido.
-- Antes do merge: conferir no GA4 que a dimensão personalizada de evento `entry_method` existe (o `join_group` já a usa). Eventos personalizados (`join_request`, `approve_join_request`) aparecem sozinhos; registrar como eventos-chave é opcional.
+- O relatório por `entry_method` depende da dimensão personalizada de evento `entry_method` no GA4 (o `join_group` já a usa). Eventos personalizados (`join_request`, `approve_join_request`) aparecem sozinhos; registrar como eventos-chave é opcional.

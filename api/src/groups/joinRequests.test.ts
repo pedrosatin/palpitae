@@ -6,12 +6,12 @@
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import worker from '../index'
 import { signJwt } from '../auth/jwt'
 import { hashUserId } from '../observability'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import {
+  JOIN_REQUEST_ALREADY_MEMBER,
   JOIN_REQUEST_ALREADY_PENDING,
   JOIN_REQUEST_APPROVE_MEMBERSHIP_CAP,
   JOIN_REQUEST_COOLDOWN,
@@ -25,6 +25,17 @@ import {
   JOIN_REQUEST_REJECT_COOLDOWN_DAYS,
 } from './joinRequests'
 import { MAX_ACTIVE_MEMBERSHIPS } from './groupCaps'
+import { tryInsertGroupMember } from './joinMember'
+
+vi.mock('./joinMember', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./joinMember')>()
+  return {
+    ...actual,
+    tryInsertGroupMember: vi.fn(actual.tryInsertGroupMember),
+  }
+})
+
+import worker from '../index'
 
 const JWT_SECRET = 'test-join-requests'
 const PUBLIC_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -33,6 +44,7 @@ const INVITE = 'ABCD-EFGH'
 const handles: DatabaseSync[] = []
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
+  vi.mocked(tryInsertGroupMember).mockClear()
 })
 
 async function fixture(opts: { maxMembers?: number; joinRequestsEnabled?: number } = {}) {
@@ -602,6 +614,142 @@ describe('autorização e corrida', () => {
       .bind(req.id)
       .first<{ status: string }>()
     expect(row?.status).toBe('pending')
+  })
+
+  it('insert do membro lançando exceção → pedido volta a pending e não há membro', async () => {
+    const { request, db } = await fixture()
+    const created = await request('visitor', '/groups/join-requests', 'POST', {
+      public_id: PUBLIC_ID,
+    })
+    const { request: req } = (await created.json()) as { request: { id: string } }
+
+    vi.mocked(tryInsertGroupMember).mockRejectedValueOnce(new Error('falha simulada no insert'))
+
+    const res = await request(
+      'owner',
+      `/groups/group/join-requests/${req.id}/approve`,
+      'POST',
+    )
+    expect(res.status).toBe(500)
+
+    const row = await db
+      .prepare('SELECT status, decided_by FROM group_join_requests WHERE id = ?')
+      .bind(req.id)
+      .first<{ status: string; decided_by: string | null }>()
+    expect(row).toEqual({ status: 'pending', decided_by: null })
+
+    const member = await db
+      .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
+      .bind('group', 'visitor')
+      .first()
+    expect(member).toBeNull()
+  })
+
+  it('reversão colidindo com pendente novo → nenhum approved sem membro', async () => {
+    const { request, sqlite, db } = await fixture()
+    const created = await request('visitor', '/groups/join-requests', 'POST', {
+      public_id: PUBLIC_ID,
+    })
+    const { request: req } = (await created.json()) as { request: { id: string } }
+
+    vi.mocked(tryInsertGroupMember).mockImplementationOnce(async () => {
+      // Enquanto o claim está approved, outro pedido pendente do mesmo usuário
+      // entra (ex.: após cooldown em outra sessão). A reversão bate no UNIQUE.
+      sqlite.exec(`
+        INSERT INTO group_join_requests (id, group_id, user_id, status)
+          VALUES ('jr-other', 'group', 'visitor', 'pending')
+      `)
+      return { ok: false, error: JOIN_REQUEST_GROUP_FULL, status: 409 }
+    })
+
+    const res = await request(
+      'owner',
+      `/groups/group/join-requests/${req.id}/approve`,
+      'POST',
+    )
+    expect(res.status).toBe(409)
+
+    const claimed = await db
+      .prepare('SELECT status, decided_by FROM group_join_requests WHERE id = ?')
+      .bind(req.id)
+      .first<{ status: string; decided_by: string | null }>()
+    expect(claimed?.status).toBe('rejected')
+    expect(claimed?.decided_by).toBeNull()
+
+    const member = await db
+      .prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?')
+      .bind('group', 'visitor')
+      .first()
+    expect(member).toBeNull()
+
+    const approvedOrphan = await db
+      .prepare(
+        `SELECT id FROM group_join_requests
+         WHERE group_id = ? AND user_id = ? AND status = 'approved'`,
+      )
+      .bind('group', 'visitor')
+      .first()
+    expect(approvedOrphan).toBeNull()
+  })
+
+  it('corrida: já é membro no insert → sucesso idempotente (approved)', async () => {
+    const { request, db } = await fixture()
+    const created = await request('visitor', '/groups/join-requests', 'POST', {
+      public_id: PUBLIC_ID,
+    })
+    const { request: req } = (await created.json()) as { request: { id: string } }
+
+    vi.mocked(tryInsertGroupMember).mockResolvedValueOnce({
+      ok: false,
+      error: JOIN_REQUEST_ALREADY_MEMBER,
+      status: 409,
+    })
+
+    const res = await request(
+      'owner',
+      `/groups/group/join-requests/${req.id}/approve`,
+      'POST',
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { group: { id: string } }
+    expect(body.group.id).toBe('group')
+
+    const row = await db
+      .prepare('SELECT status FROM group_join_requests WHERE id = ?')
+      .bind(req.id)
+      .first<{ status: string }>()
+    expect(row?.status).toBe('approved')
+  })
+})
+
+describe('GET /groups/join-requests/me', () => {
+  it('none: sem group_id', async () => {
+    const { request } = await fixture()
+    const res = await request('visitor', `/groups/join-requests/me?public_id=${PUBLIC_ID}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ status: 'none' })
+  })
+
+  it('pending: sem group_id', async () => {
+    const { request } = await fixture()
+    await request('visitor', '/groups/join-requests', 'POST', { public_id: PUBLIC_ID })
+    const res = await request('visitor', `/groups/join-requests/me?public_id=${PUBLIC_ID}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ status: 'pending' })
+  })
+
+  it('member: devolve group_id', async () => {
+    const { request } = await fixture()
+    const res = await request('member', `/groups/join-requests/me?public_id=${PUBLIC_ID}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ status: 'member', group_id: 'group' })
+  })
+
+  it('banido: same resposta genérica (none, sem vazar ban)', async () => {
+    const { request } = await fixture()
+    const res = await request('banned', `/groups/join-requests/me?public_id=${PUBLIC_ID}`)
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ status: 'none' })
   })
 })
 

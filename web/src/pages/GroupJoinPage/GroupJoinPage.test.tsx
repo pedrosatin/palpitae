@@ -68,7 +68,7 @@ describe('GroupJoinPage', () => {
   it('usuário logado envia pedido', async () => {
     vi.mocked(apiFetch)
       .mockResolvedValueOnce(
-        Response.json({ status: 'none', group_id: 'g1' }),
+        Response.json({ status: 'none' }),
       )
       .mockResolvedValueOnce(
         Response.json({ request: { id: 'r1', status: 'pending' } }, { status: 201 }),
@@ -112,6 +112,26 @@ describe('GroupJoinPage', () => {
       'href',
       '/grupos/g1',
     )
+    expect(screen.queryByTestId('pedir-entrada')).not.toBeInTheDocument()
+  })
+
+  it('pedido pendente: status sem group_id mostra aviso', async () => {
+    vi.mocked(apiFetch).mockResolvedValue(Response.json({ status: 'pending' }))
+
+    render(
+      <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
+        <Routes>
+          <Route
+            path="/grupo/:publicId"
+            element={<GroupJoinPage user={{ id: 'u1', email: 'a@b.com', nickname: 'Ana' }} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(
+      await screen.findByText(/Você já pediu entrada neste grupo/i),
+    ).toBeInTheDocument()
     expect(screen.queryByTestId('pedir-entrada')).not.toBeInTheDocument()
   })
 })

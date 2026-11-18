@@ -58,7 +58,11 @@ async function requireOwner(
   return { userId, db }
 }
 
-/** Volta o pedido a pending (grupo cheio após claim atômico). */
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed/i.test(error.message)
+}
+
+/** Volta o pedido a pending (falha após claim atômico). */
 async function revertClaimToPending(db: D1Database, requestId: string): Promise<void> {
   await db
     .prepare(
@@ -68,6 +72,32 @@ async function revertClaimToPending(db: D1Database, requestId: string): Promise<
     )
     .bind(requestId)
     .run()
+}
+
+/**
+ * Desfaz o claim. Se outro pedido pendente do mesmo usuário já existir (índice
+ * único parcial), marca o reclamado como `rejected` com `decided_by` NULL em
+ * vez de deixar `approved` sem membro.
+ */
+async function revertClaimOrRejectOnConflict(
+  db: D1Database,
+  requestId: string,
+): Promise<'pending' | 'rejected'> {
+  try {
+    await revertClaimToPending(db, requestId)
+    return 'pending'
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error
+    await db
+      .prepare(
+        `UPDATE group_join_requests
+         SET status = 'rejected', decided_at = datetime('now'), decided_by = NULL
+         WHERE id = ? AND status = 'approved'`,
+      )
+      .bind(requestId)
+      .run()
+    return 'rejected'
+  }
 }
 
 /** Marca o pedido já claimado como rejected (ex.: banido após o claim). */
@@ -127,10 +157,10 @@ export function registerJoinRequestRoutes(router: GroupsApp): void {
       .bind(group.id, userId)
       .first()
     if (pending) {
-      return c.json({ status: 'pending', group_id: group.id })
+      return c.json({ status: 'pending' })
     }
 
-    return c.json({ status: 'none', group_id: group.id })
+    return c.json({ status: 'none' })
   })
 
   /**
@@ -324,7 +354,9 @@ export function registerJoinRequestRoutes(router: GroupsApp): void {
    * Aprova o pedido de forma atômica: claim do pending → insert do membro.
    * Se o insert falhar (grupo cheio), o pedido volta a pending com 409.
    * Banido: pedido fica rejected com 403. Dispara `group_joined` com
-   * `entry_method = request` só quando o membro entra de fato (ou já era membro).
+   * `entry_method = request` só quando o membro entra de fato. Quem já era
+   * membro (ou entrou por convite na corrida) mantém o pedido `approved` sem
+   * novo `group_joined`.
    */
   router.post('/:id/join-requests/:requestId/approve', requireAuth, async (c) => {
     const groupId = c.req.param('id')
@@ -365,39 +397,55 @@ export function registerJoinRequestRoutes(router: GroupsApp): void {
       return c.json({ error: JOIN_REQUEST_REFUSED }, 403)
     }
 
+    // Já membro (ex.: entrou por convite): sucesso idempotente, sem group_joined.
     const existing = await getGroupMembership(db, groupId, requesterId)
     if (existing) {
       return c.json({ group: { id: group.id, name: group.name } })
     }
 
-    const inserted = await tryInsertGroupMember(db, group, requesterId, null)
-    if (!inserted.ok) {
-      if (inserted.status === 403) {
-        await finalizeClaimAsRejected(db, requestId, userId)
-        return c.json({ error: JOIN_REQUEST_REFUSED }, 403)
+    try {
+      const inserted = await tryInsertGroupMember(db, group, requesterId, null)
+      if (!inserted.ok) {
+        if (inserted.status === 403) {
+          await finalizeClaimAsRejected(db, requestId, userId)
+          return c.json({ error: JOIN_REQUEST_REFUSED }, 403)
+        }
+        // Corrida: entrou por convite entre a checagem e o insert.
+        if (inserted.error === JOIN_REQUEST_ALREADY_MEMBER) {
+          return c.json({ group: { id: group.id, name: group.name } })
+        }
+        if (inserted.error === JOIN_MEMBERSHIP_CAP_ERROR) {
+          await revertClaimOrRejectOnConflict(db, requestId)
+          return c.json({ error: JOIN_REQUEST_APPROVE_MEMBERSHIP_CAP }, 409)
+        }
+        // Grupo cheio (ou grupo sumiu): pedido volta a pending.
+        await revertClaimOrRejectOnConflict(db, requestId)
+        return c.json(
+          { error: inserted.status === 404 ? 'Grupo não encontrado' : inserted.error },
+          inserted.status === 404 ? 404 : 409,
+        )
       }
-      if (inserted.error === JOIN_MEMBERSHIP_CAP_ERROR) {
-        await revertClaimToPending(db, requestId)
-        return c.json({ error: JOIN_REQUEST_APPROVE_MEMBERSHIP_CAP }, 409)
+
+      logEvent(c.env.AE, 'group_joined', {
+        blobs: [
+          group.id,
+          await hashUserId(requesterId),
+          'request',
+          await readRecentSignupFlag(db, inserted.memberId),
+        ],
+      })
+
+      return c.json({ group: { id: group.id, name: group.name } })
+    } catch {
+      const outcome = await revertClaimOrRejectOnConflict(db, requestId)
+      if (outcome === 'rejected') {
+        return c.json(
+          { error: 'Não foi possível concluir a aprovação. Tente de novo.' },
+          409,
+        )
       }
-      // Grupo cheio (ou grupo sumiu): pedido volta a pending.
-      await revertClaimToPending(db, requestId)
-      return c.json(
-        { error: inserted.status === 404 ? 'Grupo não encontrado' : inserted.error },
-        inserted.status === 404 ? 404 : 409,
-      )
+      return c.json({ error: 'Não foi possível concluir a aprovação. Tente de novo.' }, 500)
     }
-
-    logEvent(c.env.AE, 'group_joined', {
-      blobs: [
-        group.id,
-        await hashUserId(requesterId),
-        'request',
-        await readRecentSignupFlag(db, inserted.memberId),
-      ],
-    })
-
-    return c.json({ group: { id: group.id, name: group.name } })
   })
 
   /**

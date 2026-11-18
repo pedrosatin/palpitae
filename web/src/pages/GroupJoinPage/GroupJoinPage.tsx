@@ -19,7 +19,9 @@ type Preview = {
   joinRequestsEnabled: boolean
 }
 
-type Membership = { status: 'member' | 'pending' | 'none'; groupId: string }
+type Membership =
+  | { status: 'member'; groupId: string }
+  | { status: 'pending' | 'none' }
 
 type State =
   | { status: 'loading' }
@@ -63,11 +65,11 @@ async function lookupMembership(publicId: string): Promise<Membership | null> {
     )
     if (!res.ok) return null
     const body = (await res.json()) as { status?: string; group_id?: string }
-    if (
-      (body.status === 'member' || body.status === 'pending' || body.status === 'none') &&
-      typeof body.group_id === 'string'
-    ) {
-      return { status: body.status, groupId: body.group_id }
+    if (body.status === 'member' && typeof body.group_id === 'string') {
+      return { status: 'member', groupId: body.group_id }
+    }
+    if (body.status === 'pending' || body.status === 'none') {
+      return { status: body.status }
     }
     return null
   } catch {

@@ -40,7 +40,7 @@ export const JOIN_REQUEST_REFUSED = 'Não é possível pedir entrada neste grupo
 
 export const JOIN_REQUEST_ALREADY_PENDING = 'Você já pediu entrada neste grupo'
 export const JOIN_REQUEST_COOLDOWN =
-  'Seu pedido foi recusado. Você pode pedir de novo 7 dias depois da recusa.'
+  `Seu pedido foi recusado. Você pode pedir de novo ${JOIN_REQUEST_REJECT_COOLDOWN_DAYS} dias depois da recusa.`
 export const JOIN_REQUEST_DAILY_LIMIT =
   'Você atingiu o limite diário de pedidos de entrada. Tente de novo depois das 21h, horário de Brasília.'
 export const JOIN_REQUEST_GROUP_FULL = 'Este grupo atingiu o limite de membros'
