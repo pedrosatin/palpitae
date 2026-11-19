@@ -1287,7 +1287,7 @@ Só o dono via o código de convite. Membros que compartilham cartões de marco 
 - A prévia pública (`GET /public/groups/:publicId`) mostra só nome, campeonato e número de membros, sem nomes nem código de convite.
 - Aprovação reutiliza a inserção de membro do convite e grava no servidor `group_joined` com `entry_method = request`. No navegador do dono, a aprovação dispara `approve_join_request` (sem dado pessoal). Quem pede dispara `join_request`.
 - O cliente não pode mandar `entry_method=request` em `POST /groups/join`; esse valor só nasce na aprovação.
-- A migration 0048 inclui o trigger `groups_public_id_insert` para cobrir INSERTs do Worker antigo entre a migration e o publish. O trigger sai num contract futuro, quando o Worker antigo não estiver mais no ar.
+- A migration 0051 inclui o trigger `groups_public_id_insert` para cobrir INSERTs do Worker antigo entre a migration e o publish. O trigger sai num contract futuro, quando o Worker antigo não estiver mais no ar.
 
 ### Consequences
 

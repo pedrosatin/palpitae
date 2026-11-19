@@ -75,7 +75,7 @@ Se a publicação do deploy 2 falhar, quem fica no ar é o Worker do deploy 1, q
 Quando uma coluna nova precisa existir em linhas que o Worker anterior ainda
 insere sem ela (intervalo entre a migration e o publish), a migration de expand
 cria um trigger `AFTER INSERT ... WHEN NEW.<coluna> IS NULL`, no padrão do
-exemplo `users_user_name_insert` acima. A migration `0048_group_join_requests`
+exemplo `users_user_name_insert` acima. A migration `0051_group_join_requests`
 faz isso com `groups_public_id_insert`. O trigger sai numa migration de contract
 posterior, depois que o Worker que grava a coluna estiver em produção.
 

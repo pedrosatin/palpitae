@@ -259,7 +259,7 @@ A private competition created by a user for a specific competition.
 | `competition_id` | TEXT FK     | References `competitions.id`     |
 | `owner_user_id`  | TEXT FK     | References `users.id`            |
 | `invite_code`    | TEXT UNIQUE | Public join link token           |
-| `public_id`      | TEXT UNIQUE | Link de pedido de entrada (32 hex; migration 0048) |
+| `public_id`      | TEXT UNIQUE | Link de pedido de entrada (32 hex; migration 0051) |
 | `join_requests_enabled` | INTEGER | 1 = aceita pedidos pelo link (default) |
 | `payment_status` | TEXT        | `pending` \| `paid` \| `expired` |
 | `max_members`    | INTEGER     | Default 50, max 50               |
