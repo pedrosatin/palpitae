@@ -33,6 +33,12 @@ export type Env = {
   RESEND_API_KEY: string
   // Teto de chamadas ao Resend por execução do lembrete diário. Padrão 45 (plano Free).
   REMINDER_FETCH_BUDGET?: string
+  // Limiar em horas para resultado atrasado sem placar (padrão 3). Ver resultOverdue.ts.
+  RESULT_OVERDUE_HOURS?: string
+  // Liga o e-mail de alerta de resultado atrasado ao ADMIN_EMAIL via Resend (`1`/`true`).
+  RESULT_OVERDUE_ALERT?: string
+  // Cooldown em horas entre e-mails do mesmo alerta (padrão 6).
+  RESULT_OVERDUE_ALERT_COOLDOWN_HOURS?: string
   // Orçamento diário de linhas do D1 por usuário (ADR-022). Padrões 250000 lidas e
   // 5000 escritas. Valor que não seja inteiro positivo volta ao padrão.
   D1_DAILY_ROWS_READ_PER_USER?: string

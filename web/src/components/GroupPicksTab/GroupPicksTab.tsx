@@ -10,6 +10,7 @@ import { isMatchLocked } from '../../lib/predictionDrafts'
 import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
 import { pickPoints } from '../../lib/roundSummary'
 import ErrorState from '../ErrorState'
+import { isResultOverdue } from '../../lib/resultOverdue'
 import { teamShortName, type Match } from '../MatchCard/types'
 import PenaltyBadge from '../PenaltyBadge'
 import RoundHeader from '../RoundHeader/RoundHeader'
@@ -137,6 +138,7 @@ function MatchPicksCard({
   hidden,
   open,
   pickers,
+  now,
 }: {
   match: Match
   memberPicks: MemberPrediction[]
@@ -147,10 +149,12 @@ function MatchPicksCard({
   open: boolean
   /** Membros que já palpitaram este jogo aberto. `null` quando não se sabe. */
   pickers: GroupMember[] | null
+  now: number
 }) {
   const isFinished = match.status === 'finished'
   const serverLocked = serverConfirmsLock(match, memberPicks)
   const rows = buildPickRows(memberPicks, members, serverLocked || !hidden)
+  const resultPending = isResultOverdue(match, now)
 
   return (
     <div className={styles.matchCard}>
@@ -185,6 +189,11 @@ function MatchPicksCard({
       {open && (
         <p className={styles.matchTime}>
           {match.postponed ? 'data a definir' : formatMatchDate(match.start_time)}
+        </p>
+      )}
+      {resultPending && (
+        <p className={styles.resultPending} title="Placar ainda não confirmado pelo provedor">
+          resultado pendente
         </p>
       )}
       {open && pickers && (
@@ -415,6 +424,7 @@ export default function GroupPicksTab({
             hidden={hidden}
             open={isOpen(match)}
             pickers={pickersOf(match)}
+            now={now}
           />
         ))}
       </div>

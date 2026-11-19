@@ -50,6 +50,12 @@ export interface BusinessResponse {
   // Ausentes numa API anterior ao snapshot por campeonato — a página cai no
   // top 10 legado (`topCompetitions`) enquanto o deploy da API não chega.
   activeGroupDays?: number
+  /** Limiar em horas de `overdue_no_score` nesta resposta (padrão 3). */
+  overdueResultHours?: number
+  /** Soma de `overdue_no_score` em todas as temporadas. */
+  overdueTotal?: number
+  /** Soma de `finished_unscored` em todas as temporadas. */
+  finishedUnscoredTotal?: number
   competitions?: CompetitionSnapshot[]
   topCompetitions: { competition: string; groups: number }[]
 }

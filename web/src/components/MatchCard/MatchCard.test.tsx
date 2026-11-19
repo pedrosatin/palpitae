@@ -49,9 +49,20 @@ function makePrediction(overrides: Partial<Prediction> = {}): Prediction {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function renderCard(match: Match, prediction: Prediction | undefined, onSaved = vi.fn()) {
+function renderCard(
+  match: Match,
+  prediction: Prediction | undefined,
+  onSaved = vi.fn(),
+  extras: { now?: number } = {},
+) {
   return render(
-    <MatchCard match={match} prediction={prediction} groupId="group-1" onSaved={onSaved} />,
+    <MatchCard
+      match={match}
+      prediction={prediction}
+      groupId="group-1"
+      onSaved={onSaved}
+      now={extras.now}
+    />,
   )
 }
 
@@ -692,6 +703,67 @@ describe('MatchCard – Score inputs', () => {
   })
 })
 
+describe('MatchCard – resultado pendente (atraso de feed)', () => {
+  const fourHoursAgo = new Date(Date.now() - 4 * 3_600_000).toISOString()
+  const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000).toISOString()
+
+  it('mostra "resultado pendente" após kickoff + 3 h sem placar', () => {
+    renderCard(
+      makeMatch({ start_time: fourHoursAgo, status: 'scheduled', postponed: 0 }),
+      undefined,
+      vi.fn(),
+      { now: Date.now() },
+    )
+
+    expect(screen.getByText(/resultado pendente/i)).toBeInTheDocument()
+    expect(screen.queryByText(/^bloqueado$/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('group').getAttribute('aria-label')).toMatch(/resultado pendente/)
+  })
+
+  it('não troca placar existente por resultado inventado', () => {
+    renderCard(
+      makeMatch({
+        start_time: fourHoursAgo,
+        status: 'live',
+        postponed: 0,
+        home_score: null,
+        away_score: null,
+      }),
+      undefined,
+      vi.fn(),
+      { now: Date.now() },
+    )
+
+    expect(screen.getByText(/resultado pendente/i)).toBeInTheDocument()
+    expect(screen.getByText('vs')).toBeInTheDocument()
+    expect(screen.queryByText(/^\d+\s*×\s*\d+$/)).not.toBeInTheDocument()
+  })
+
+  it('dentro da janela de 3 h continua só "bloqueado"', () => {
+    renderCard(
+      makeMatch({ start_time: twoHoursAgo, status: 'scheduled', postponed: 0 }),
+      undefined,
+      vi.fn(),
+      { now: Date.now() },
+    )
+
+    expect(screen.getByText(/bloqueado/i)).toBeInTheDocument()
+    expect(screen.queryByText(/resultado pendente/i)).not.toBeInTheDocument()
+  })
+
+  it('adiado conhecido não vira resultado pendente', () => {
+    renderCard(
+      makeMatch({ start_time: fourHoursAgo, status: 'scheduled', postponed: 1 }),
+      undefined,
+      vi.fn(),
+      { now: Date.now() },
+    )
+
+    expect(screen.getByText(/adiado/i)).toBeInTheDocument()
+    expect(screen.queryByText(/resultado pendente/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('MatchCard – jogo adiado (postponed)', () => {
   const pastStart = new Date(Date.now() - 86_400_000).toISOString() // 1 dia atrás
 
@@ -713,11 +785,13 @@ describe('MatchCard – jogo adiado (postponed)', () => {
     expect(screen.getByRole('button', { name: /Salvar/i })).toBeInTheDocument()
   })
 
-  it('sem a flag, o mesmo jogo aparece bloqueado (controle)', () => {
+  it('sem a flag, o mesmo jogo no passado aparece como resultado pendente (controle)', () => {
+    // Passado de 1 dia: além do limiar de 3 h, o badge de atraso substitui "bloqueado".
     renderCard(makeMatch({ start_time: pastStart }), undefined)
 
-    expect(screen.getByText(/bloqueado/i)).toBeInTheDocument()
+    expect(screen.getByText(/resultado pendente/i)).toBeInTheDocument()
     expect(screen.queryByText(/adiado/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^bloqueado$/i)).not.toBeInTheDocument()
   })
 
   it('jogo já encerrado ignora a flag e segue mostrando o resultado', () => {
