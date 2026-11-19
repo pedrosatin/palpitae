@@ -212,6 +212,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `competition_status_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A descoberta não gravou o status da competição depois de um sync bem-sucedido (falha do D1). O status fica como estava e a execução sai como `error` em `fixture_discovery_run` |
 | `match_scoring_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A pontuação da competição falhou num tick do poller. As outras competições do tick são pontuadas, o tick sai como `error` em `poller_run` e a invocação termina em exceção |
 | `match_unscored` | `competition_id` (UUID) | — | — | `double1`=jogos encerrados, com placar e sem `scored_at`, que começaram há mais de 145 minutos (115 do resultado mais cedo e 30 de um tick); `double2`=minutos desde o início do mais antigo. Um evento por competição ao fim de cada tick do poller, inclusive em tick sem jogo na janela, com no máximo 10 por execução. Entram a pontuação que parou no orçamento de chamadas, a que falhou e o jogo decisivo que espera o vencedor dos pênaltis |
+| `result_overdue_alert` | `outcome` (`sent`/`suppressed`/`clear`/`skipped_budget`/`misconfig`/`send_failed`/`count_failed`/`cooldown_read_failed`/`cooldown_write_failed`) | detalhe opcional (`admin_email`/`resend_api_key`/`http_N` em falha de envio) | — | Em `sent`/`suppressed`/`send_failed`: `double1`=jogos atrasados, `double2`=minutos desde o kickoff do mais antigo. Em `skipped_budget`: `double1`=saldo restante, `double2`=chamadas necessárias (4). Em `clear`: zeros. Roda no fim do poller quando `RESULT_OVERDUE_ALERT` está ligado; e-mail ao `ADMIN_EMAIL` via Resend, com cooldown em `ops_alert_state` (padrão 6 h, `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS`). Limiar = `RESULT_OVERDUE_HOURS` (padrão 3). Sem o flag, sem e-mail |
 | `competition_unconfigured` | `provider` (`football-data`) | `code` da competição no provedor (ex.: `CLI`) | `external_id` da competição no provedor | `season` em blob5; sem doubles |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
@@ -845,15 +846,19 @@ para o front anterior.
 
 A mesma linha traz a **saúde de resultados** da temporada, também só contagens
 de jogos: `overdue_no_score` (jogos `scheduled`/`live`, não adiados, com
-`home_score` ou `away_score` nulo e `start_time` há 3 horas ou mais) sinaliza
-buraco de feed; `finished_unscored` (jogos `finished` com `scored_at` nulo)
-sinaliza backlog de pontuação, e inclui `finished` sem placar, que o scoring não
-alcança. `start_time` é comparado via `datetime()`, então `Z`, milissegundos e
-offset não mudam o resultado. Temporada sem jogo ou sem pendência vem com
-zero. O front antigo ignora os campos novos; o novo mostra "indisponível" (ou
-"—") se a API ainda não os enviar, em vez de tratar a falta como zero.
+`home_score` ou `away_score` nulo e `start_time` há pelo menos
+`RESULT_OVERDUE_HOURS` horas, padrão 3) sinaliza buraco de feed;
+`finished_unscored` (jogos `finished` com `scored_at` nulo) sinaliza backlog de
+pontuação, e inclui `finished` sem placar, que o scoring não alcança.
+`start_time` é comparado via `datetime()`, então `Z`, milissegundos e offset não
+mudam o resultado. Temporada sem jogo ou sem pendência vem com zero. A resposta
+também leva `overdueResultHours` (limiar usado), `overdueTotal` e
+`finishedUnscoredTotal` (somas). O front antigo ignora os campos novos; o novo
+mostra "indisponível" (ou "—") se a API ainda não os enviar, em vez de tratar a
+falta como zero. A mesma regra (`api/src/matches/resultOverdue.ts`) alimenta o
+badge "resultado pendente" no card do participante e o alerta por e-mail.
 
-Do Analytics Engine, `GET /metrics/ops?days=` alimenta a seção **Provedores de partidas ·
+Do Analytics Engine e do D1, `GET /metrics/ops?days=` alimenta a seção **Provedores de partidas ·
 falhas e carga**, separada do `/metrics/overview` para que uma falha nela não derrube a página
 e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
 
@@ -874,7 +879,13 @@ e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
   (`unscoredMatches`), lidas de `match_unscored`. `matches` e `oldest_minutes` são o pico do
   período, `cycles` conta os ciclos que registraram a pendência e `last_seen` é o registro mais
   recente. O painel mostra a lista em "Jogos encerrados sem pontuação". Sem o campo (API
-  anterior), a página omite a subseção.
+  anterior), a página omite a subseção;
+- itens abertos ou falhos da fila durável `provider_work` (`pendingWork`), lidos do D1:
+  provedor, status (`pending`/`running`/`failed`), contagem, idade do item mais antigo
+  (`oldest_age_minutes` = agora − `created_at`) e máximo de tentativas. Isso é trabalho ainda
+  não concluído, distinto das tentativas HTTP reais acima. Sem o campo (API anterior), a
+  página omite a subseção. Falha do D1 nesta consulta devolve lista vazia e não derruba o
+  restante do `/ops`.
 
 `discards` e `missingMatches` só levam identificadores do provedor (slug da fase, código da
 competição, id do jogo, horário ISO); qualquer outro texto chega vazio. Sem os dois campos (API
@@ -883,10 +894,24 @@ anterior), a página omite a subseção em vez de mostrar zero.
 A página resolve o id da competição para nome e temporada com o snapshot de
 `/metrics/business`. Competição desconhecida aparece como "Campeonato" mais os 8 primeiros
 caracteres do id; evento sem competição aparece como "sem liga". Mensagens livres do provedor
-nunca saem no payload: valores de competição que não são UUID viram "sem liga". Falhas HTTP
-acendem um alerta de aviso no topo da página. `football_api_error` aparece nos rótulos como
-"Erro de sync de provedor", porque o poller, a descoberta e o sync manual cobrem os dois
-provedores.
+nunca saem no payload: valores de competição que não são UUID viram "sem liga". Falhas HTTP,
+resultados atrasados (`overdueTotal` > 0) e itens na fila `provider_work` acendem aviso no
+topo da página. `football_api_error` aparece nos rótulos como "Erro de sync de provedor",
+porque o poller, a descoberta e o sync manual cobrem os dois provedores.
+
+#### Alerta automático de resultado atrasado
+
+Canal gratuito: e-mail ao `ADMIN_EMAIL` via Resend (`RESEND_API_KEY`), o mesmo fornecedor dos
+lembretes. Desligado por padrão. Para ligar, defina no Worker
+`RESULT_OVERDUE_ALERT = "1"` (em `[vars]` do `wrangler.toml` ou via dashboard). Opcional:
+`RESULT_OVERDUE_HOURS` (padrão 3) e `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS` (padrão 6). O poller
+avalia o alerta no fim de cada tick (minutos 0 e 30), só se o saldo de subrequests da
+invocação comportar até 4 chamadas (contagem, cooldown e `fetch`). O cooldown fica em
+`ops_alert_state` (migration 0050) e impede um e-mail a cada tick. O evento
+`result_overdue_alert` registra enviado, silenciado, limpo, pulado por saldo ou falha. Sem
+`ADMIN_EMAIL` ou sem `RESEND_API_KEY`, o outcome é `misconfig` e não há envio. Discord,
+Telegram e notificações nativas da Cloudflare ficaram de fora: exigiriam webhook ou conta
+nova.
 
 Do Analytics Engine, `GET /metrics/competition-activity?days=` alimenta a seção **Atividade por
 campeonato**, também separada do `/overview` pelo mesmo motivo. Agrega no período (7/30/90 dias):
