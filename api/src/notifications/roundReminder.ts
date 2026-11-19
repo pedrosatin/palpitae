@@ -25,7 +25,12 @@ import {
 } from './reminderEmail'
 import { signUnsubToken } from './unsubscribeToken'
 
-type ReminderSendStatus = 'accepted' | 'unknown_primary' | 'unknown_fallback' | 'expired'
+type ReminderSendStatus =
+  | 'claimed'
+  | 'accepted'
+  | 'unknown_primary'
+  | 'unknown_fallback'
+  | 'expired'
 type ReminderProvider = 'resend' | 'mailjet'
 
 const APP_URL = 'https://palpitae.com.br'
@@ -39,24 +44,33 @@ const MAX_SEND_ATTEMPTS = 3
 
 // O plano da conta Cloudflare não está confirmado (docs/architecture/
 // capacidade-coordenacao-provedores.md), então vale o pior caso: Free, com 50
-// subrequests por invocação. O D1 conta junto com o `fetch`. A invocação gasta 4
-// consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de
-// segurança do `scheduled`) e deixa 1 de folga, que cobre a nova tentativa da
-// liberação quando a primeira falha. Sobram 45 subrequests para os `fetch` ao Resend,
-// contando cada reenvio, e para as revalidações de descadastro, contando a nova
-// tentativa de cada uma. É o padrão do teto; `REMINDER_FETCH_BUDGET` o substitui
-// (`reminderFetchBudget`).
+// subrequests por invocação. O D1 conta junto com o `fetch`. Fixas fora do orçamento
+// compartilhado: SELECT dos pendentes, batch de reserva, liberação das reservas,
+// limpeza de segurança do `scheduled` e a gravação em lote do `accepted` no fim.
+// Folga de 1 cobre a nova tentativa da liberação. Sobram 44 para `fetch`,
+// revalidações de descadastro e, com Mailjet, o que a reconciliação e as marcas
+// incertas descontarem do mesmo teto (`D1_MAILJET_OVERHEAD` + cobrança ao vivo).
+// `REMINDER_FETCH_BUDGET` substitui o padrão (`reminderFetchBudget`).
 const SUBREQUEST_LIMIT = 50
-const D1_SUBREQUESTS = 4
+const D1_FIXED_SUBREQUESTS = 5
 const SUBREQUEST_MARGIN = 1
-export const RESEND_FETCH_BUDGET = SUBREQUEST_LIMIT - D1_SUBREQUESTS - SUBREQUEST_MARGIN
+export const RESEND_FETCH_BUDGET = SUBREQUEST_LIMIT - D1_FIXED_SUBREQUESTS - SUBREQUEST_MARGIN
+
+/**
+ * Com Mailjet ligado, a reconciliação gasta 1 SELECT e até 2 UPDATEs (aceite
+ * confirmado e `expired`). O lote ainda grava o `accepted` do Mailjet em 1 UPDATE
+ * além do `accepted` do Resend já reservado em `D1_FIXED_SUBREQUESTS`. Esses 4
+ * saem do teto compartilhado antes dos envios. Marcas `unknown_*` (uma por
+ * destinatário, na hora do desfecho) e os `fetch` de CustomID cobram o saldo ao vivo.
+ */
+export const D1_MAILJET_OVERHEAD = 4
 
 /**
  * Teto de `fetch` por execução a partir de `REMINDER_FETCH_BUDGET`. Vazio ou ausente
  * vale `RESEND_FETCH_BUDGET`. Um valor que não seja inteiro positivo também volta ao
  * padrão, com erro no log, para que um erro de digitação não desligue o lembrete.
- * Acima de 45 só cabe com o plano Paid da Cloudflare: no Free, o Worker é cortado no
- * 51º subrequest.
+ * Acima de 44 só cabe com o plano Paid da Cloudflare: no Free, o Worker é cortado no
+ * 51º subrequest. Com Mailjet, `sendRoundReminders` ainda desconta `D1_MAILJET_OVERHEAD`.
  */
 export function reminderFetchBudget(raw: string | undefined): number {
   const value = raw?.trim()
@@ -210,13 +224,17 @@ function isTransientEmailError(err: unknown): boolean {
   return !emailError?.quotaExceeded && (status === 429 || status >= 500 || status === 0)
 }
 
-/** Atualiza status/provider de um conjunto de reservas do dia. */
+/**
+ * Atualiza status/provider de reservas. `reminderDate` padrão é o dia corrente;
+ * a reconciliação passa a data da linha quando expira ou confirma dias anteriores.
+ */
 async function markReminderStatus(
   db: D1Database,
   day: ReminderDay,
   userIds: string[],
   status: ReminderSendStatus,
   provider: ReminderProvider | null,
+  reminderDate: string = day.date,
 ): Promise<void> {
   if (userIds.length === 0) return
   await withD1Retry(() =>
@@ -226,9 +244,27 @@ async function markReminderStatus(
          SET status = ?, provider = ?
          WHERE reminder_date = ? AND user_id IN (SELECT value FROM json_each(?))`,
       )
-      .bind(status, provider, day.date, JSON.stringify(userIds))
+      .bind(status, provider, reminderDate, JSON.stringify(userIds))
       .run(),
   )
+}
+
+/**
+ * Grava envio incerto na hora do desfecho e tira o usuário da liberação.
+ * Fora do saldo compartilhado: perder o estado incerto liberaria a reserva e
+ * abriria caminho a duplicata no Mailjet. As marcas são raras (só falha
+ * transitória) e cabem na folga operacional do teto de 50.
+ */
+async function markUncertainNow(
+  db: D1Database,
+  day: ReminderDay,
+  userId: string,
+  status: 'unknown_primary' | 'unknown_fallback',
+  provider: ReminderProvider,
+  pendingClaims: Set<string>,
+): Promise<void> {
+  pendingClaims.delete(userId)
+  await markReminderStatus(db, day, [userId], status, provider)
 }
 
 /**
@@ -260,7 +296,9 @@ async function sendWithRetry(
       return
     } catch (err) {
       if (!isTransientEmailError(err) || attempt >= MAX_SEND_ATTEMPTS) throw err
-      if (budget.used >= budget.max) throw new SubrequestBudgetError()
+      // Sem saldo para nova tentativa: preserva o erro incerto (timeout/5xx) para o
+      // chamador gravar `unknown_primary` em vez de liberar a reserva.
+      if (budget.used >= budget.max) throw err
       const retryAfterMs = err instanceof EmailError ? err.retryAfterMs : undefined
       await sleep(retryAfterMs ?? 500 * 2 ** (attempt - 1))
     }
@@ -353,6 +391,7 @@ export const PENDING_MATCHES_SQL = `SELECT
          AND NOT EXISTS (
            SELECT 1 FROM email_reminder_sends s
            WHERE s.user_id = u.id AND s.reminder_date = ?
+             AND s.status != 'unknown_primary'
          )
        ORDER BY m.start_time ASC`
 
@@ -561,8 +600,8 @@ async function claimRecipients(
       .bind(day.retentionCutoff),
     db
       .prepare(
-        `INSERT INTO email_reminder_sends (user_id, reminder_date)
-         SELECT u.id, ? FROM json_each(?) j
+        `INSERT INTO email_reminder_sends (user_id, reminder_date, status)
+         SELECT u.id, ?, 'claimed' FROM json_each(?) j
          JOIN users u ON u.id = j.value
          WHERE u.email_unsubscribed_at IS NULL
          ON CONFLICT (user_id, reminder_date) DO NOTHING
@@ -586,7 +625,8 @@ async function releaseClaims(db: D1Database, userIds: string[], day: ReminderDay
       db
         .prepare(
           `DELETE FROM email_reminder_sends
-           WHERE reminder_date = ? AND user_id IN (SELECT value FROM json_each(?))`,
+           WHERE reminder_date = ? AND status = 'claimed'
+             AND user_id IN (SELECT value FROM json_each(?))`,
         )
         .bind(day.date, JSON.stringify(userIds))
         .run(),
@@ -639,9 +679,15 @@ type DispatchOptions = {
   mailjet?: MailjetCredentials
   /**
    * Quando a cota do Resend esgotou nesta execução, os demais vão direto ao
-   * Mailjet (se configurado) em vez de repetir a recusa.
+   * Mailjet (se configurado) em vez de repetir a recusa. Quem já tem
+   * `unknown_primary` nunca entra nesse desvio.
    */
   resendUnavailable?: { value: boolean }
+  /**
+   * Usuários com `unknown_primary` do dia: só reenviam no Resend com a mesma
+   * Idempotency-Key. Nunca vão ao Mailjet.
+   */
+  retryPrimary?: Set<string>
 }
 
 type DispatchResult = {
@@ -697,6 +743,7 @@ async function dispatchDigests(
     claimStartedAt,
     mailjet,
     resendUnavailable = { value: false },
+    retryPrimary = new Set<string>(),
   }: DispatchOptions,
 ): Promise<DispatchResult> {
   // A leitura de descadastro da reserva vale a partir do início da gravação.
@@ -733,11 +780,10 @@ async function dispatchDigests(
   const unsubscribedUserIds: string[] = []
   const acceptedResend: string[] = []
   const acceptedMailjet: string[] = []
-  const unknownPrimary: string[] = []
-  const unknownFallback: string[] = []
 
   for (const { digest, hashedId, unsubToken, tokenError } of prepared) {
     const matchCount = digest.matchIds.size
+    const isPrimaryRetry = retryPrimary.has(digest.userId)
     const recordFailure = (reason: string) => {
       failedUserIds.push(digest.userId)
       logEvent(ae, 'email_reminder_failed', {
@@ -788,7 +834,8 @@ async function dispatchDigests(
       }
       const beforeAttempt = () => guard.assertSubscribed(digest.userId)
 
-      if (mailjet && resendUnavailable.value) {
+      // Cota esgotada desvia ao Mailjet, exceto quem já tem unknown_primary.
+      if (mailjet && resendUnavailable.value && !isPrimaryRetry) {
         const outcome = await sendViaMailjetFallback(
           mailjet,
           msg,
@@ -798,8 +845,14 @@ async function dispatchDigests(
         )
         if (outcome === 'accepted') recordSent('mailjet')
         else {
-          pendingClaims.delete(digest.userId)
-          unknownFallback.push(digest.userId)
+          await markUncertainNow(
+            db,
+            day,
+            digest.userId,
+            'unknown_fallback',
+            'mailjet',
+            pendingClaims,
+          )
           recordFailure('unknown_fallback')
         }
         continue
@@ -809,7 +862,6 @@ async function dispatchDigests(
         await sendWithRetry(resendApiKey, msg, budget, beforeAttempt)
         recordSent('resend')
       } catch (err) {
-        if (!mailjet) throw err
         if (
           err instanceof UnsubscribedError ||
           err instanceof SubrequestBudgetError ||
@@ -819,13 +871,35 @@ async function dispatchDigests(
         }
 
         if (!(err instanceof EmailError) || isTransientEmailError(err)) {
-          // Aceite do Resend incerto: não cai no Mailjet (risco de duplicata).
+          // Aceite do Resend incerto: grava na hora e nunca cai no Mailjet.
+          if (mailjet) {
+            await markUncertainNow(
+              db,
+              day,
+              digest.userId,
+              'unknown_primary',
+              'resend',
+              pendingClaims,
+            )
+            recordFailure('unknown_primary')
+            console.error(`[roundReminder] Envio incerto no Resend para ${hashedId}:`, err)
+            continue
+          }
+          throw err
+        }
+
+        // Recusa definitiva. unknown_primary só tenta de novo o Resend.
+        if (isPrimaryRetry) {
           pendingClaims.delete(digest.userId)
-          unknownPrimary.push(digest.userId)
-          recordFailure('unknown_primary')
-          console.error(`[roundReminder] Envio incerto no Resend para ${hashedId}:`, err)
+          recordFailure(failureReason(err))
+          console.error(
+            `[roundReminder] Resend recusou retry de unknown_primary para ${hashedId}:`,
+            err,
+          )
           continue
         }
+
+        if (!mailjet) throw err
 
         if (err.quotaExceeded) resendUnavailable.value = true
 
@@ -838,8 +912,14 @@ async function dispatchDigests(
         )
         if (outcome === 'accepted') recordSent('mailjet')
         else {
-          pendingClaims.delete(digest.userId)
-          unknownFallback.push(digest.userId)
+          await markUncertainNow(
+            db,
+            day,
+            digest.userId,
+            'unknown_fallback',
+            'mailjet',
+            pendingClaims,
+          )
           recordFailure('unknown_fallback')
         }
       }
@@ -850,24 +930,27 @@ async function dispatchDigests(
         recordFailure(failureReason(err))
         // Com Mailjet, cota do Resend não encerra a fila: o ramo acima já desviou.
         stopped = mailjet && err instanceof EmailError && err.quotaExceeded ? null : stopReason(err)
-        console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
+        // MailjetError não leva o corpo da API (pode ecoar o destinatário).
+        if (err instanceof MailjetError) {
+          console.error(
+            `[roundReminder] Falha ao enviar para ${hashedId}: Mailjet status=${err.status}`,
+          )
+        } else {
+          console.error(`[roundReminder] Falha ao enviar para ${hashedId}:`, err)
+        }
       }
     } finally {
       guard.done(digest.userId)
     }
   }
 
-  if (mailjet) {
-    // Uma gravação por estado. Falha aqui não desfaz o aceite do provedor: a
-    // reserva já saiu de pendingClaims e a linha impede reenvio no mesmo dia.
-    try {
-      await markReminderStatus(db, day, acceptedResend, 'accepted', 'resend')
-      await markReminderStatus(db, day, acceptedMailjet, 'accepted', 'mailjet')
-      await markReminderStatus(db, day, unknownPrimary, 'unknown_primary', 'resend')
-      await markReminderStatus(db, day, unknownFallback, 'unknown_fallback', 'mailjet')
-    } catch (err) {
-      console.error('[roundReminder] Falha ao gravar status das reservas:', err)
-    }
+  // Aceites em lote no fim (reserva D1_FIXED / D1_MAILJET_OVERHEAD). Incertos já
+  // gravaram na hora do desfecho. Falha aqui não desfaz o aceite do provedor.
+  try {
+    await markReminderStatus(db, day, acceptedResend, 'accepted', 'resend')
+    await markReminderStatus(db, day, acceptedMailjet, 'accepted', 'mailjet')
+  } catch (err) {
+    console.error('[roundReminder] Falha ao gravar status das reservas:', err)
   }
 
   return { sent, matchesListed, failedUserIds, unsubscribedUserIds }
@@ -888,11 +971,11 @@ export type ReminderOptions = {
 }
 
 /**
- * Reconcilia reservas com aceite incerto. `unknown_fallback` consulta o CustomID
- * no Mailjet e só marca `accepted` com prova. Sem prova, não reenvia. Passado o
- * fim do dia em Brasília, marca `expired`. `unknown_primary` volta à fila: a
- * reserva é apagada para o SELECT/claim do dia remontarem o digest e repetirem
- * o Resend com a mesma chave de idempotência.
+ * Reconcilia reservas com aceite incerto nos últimos 7 dias. Passado o fim do
+ * dia da linha em Brasília, marca `expired`. No dia corrente, `unknown_primary`
+ * permanece na tabela e volta em `retryPrimary` para novo `fetch` no Resend com
+ * a mesma Idempotency-Key (nunca Mailjet). `unknown_fallback` consulta o
+ * CustomID e só marca `accepted` com prova; sem prova, não reenvia.
  */
 async function reconcileUncertainSends(
   db: D1Database,
@@ -901,63 +984,68 @@ async function reconcileUncertainSends(
   nowMs: number,
   budget: FetchBudget,
   ae: AnalyticsEngineDataset | undefined,
-): Promise<void> {
+): Promise<string[]> {
+  // SELECT e UPDATEs de aceite/expired cabem em D1_MAILJET_OVERHEAD (já descontado
+  // do teto). Só os fetch de CustomID cobram o saldo compartilhado ao vivo.
   const { results } = await db
     .prepare(
-      `SELECT user_id, status FROM email_reminder_sends
-       WHERE reminder_date = ? AND status IN ('unknown_primary', 'unknown_fallback')`,
+      `SELECT user_id, status, reminder_date FROM email_reminder_sends
+       WHERE reminder_date >= ? AND reminder_date <= ?
+         AND status IN ('unknown_primary', 'unknown_fallback')`,
     )
-    .bind(day.date)
-    .all<{ user_id: string; status: ReminderSendStatus }>()
+    .bind(day.retentionCutoff, day.date)
+    .all<{ user_id: string; status: ReminderSendStatus; reminder_date: string }>()
 
-  if (results.length === 0) return
+  if (results.length === 0) return []
 
-  const pastDeadline = nowMs >= Date.parse(day.endIso)
   const retryPrimary: string[] = []
-  const expired: string[] = []
-  const acceptedFallback: string[] = []
+  const expiredByDate = new Map<string, string[]>()
+  const acceptedFallbackByDate = new Map<string, string[]>()
 
   for (const row of results) {
-    if (pastDeadline) {
-      expired.push(row.user_id)
+    const rowEndMs = nextZonedMidnightMs(nowMs, row.reminder_date)
+    if (nowMs >= rowEndMs) {
+      const list = expiredByDate.get(row.reminder_date) ?? []
+      list.push(row.user_id)
+      expiredByDate.set(row.reminder_date, list)
       continue
     }
     if (row.status === 'unknown_primary') {
+      // Só o dia corrente chega aqui: dias anteriores já passaram do fim do dia.
       retryPrimary.push(row.user_id)
       continue
     }
-    // unknown_fallback: só aceita com prova no Mailjet.
+    // unknown_fallback do dia corrente: só aceita com prova no Mailjet.
     if (budget.used >= budget.max) break
     budget.used++
     try {
-      const customId = reminderCorrelationId(row.user_id, day.date)
+      const customId = reminderCorrelationId(row.user_id, row.reminder_date)
       const { found } = await findMailjetMessageByCustomId(mailjet, customId)
-      if (found) acceptedFallback.push(row.user_id)
+      if (found) {
+        const list = acceptedFallbackByDate.get(row.reminder_date) ?? []
+        list.push(row.user_id)
+        acceptedFallbackByDate.set(row.reminder_date, list)
+      }
     } catch (err) {
       const hashedId = await hashUserId(row.user_id).catch(() => '<hash-error>')
-      console.error(`[roundReminder] Reconciliação Mailjet falhou para ${hashedId}:`, err)
+      const status = err instanceof MailjetError ? err.status : 'error'
+      console.error(
+        `[roundReminder] Reconciliação Mailjet falhou para ${hashedId}: status=${status}`,
+      )
       logEvent(ae, 'email_reminder_failed', {
-        blobs: [hashedId, day.date, 'reconcile_failed'],
+        blobs: [hashedId, row.reminder_date, 'reconcile_failed'],
         doubles: [0],
       })
     }
   }
 
-  await markReminderStatus(db, day, acceptedFallback, 'accepted', 'mailjet')
-  await markReminderStatus(db, day, expired, 'expired', null)
-  if (retryPrimary.length > 0) {
-    // Volta à fila do dia: o claim seguinte remonta o digest e reenvia no Resend.
-    await withD1Retry(() =>
-      db
-        .prepare(
-          `DELETE FROM email_reminder_sends
-           WHERE reminder_date = ? AND status = 'unknown_primary'
-             AND user_id IN (SELECT value FROM json_each(?))`,
-        )
-        .bind(day.date, JSON.stringify(retryPrimary))
-        .run(),
-    )
+  for (const [reminderDate, userIds] of acceptedFallbackByDate) {
+    await markReminderStatus(db, day, userIds, 'accepted', 'mailjet', reminderDate)
   }
+  for (const [reminderDate, userIds] of expiredByDate) {
+    await markReminderStatus(db, day, userIds, 'expired', null, reminderDate)
+  }
+  return retryPrimary
 }
 
 /**
@@ -989,10 +1077,15 @@ export async function sendRoundReminders(
 
   const day = reminderDay(nowMs)
   const budgetCap = fetchBudget ?? RESEND_FETCH_BUDGET
-  const reconcileBudget: FetchBudget = { used: 0, max: budgetCap }
+  // Com Mailjet, reserva o overhead fixo de D1 da reconciliação/aceites no teto
+  // compartilhado. Os fetch de CustomID e as marcas unknown_* cobram o saldo ao vivo.
+  const sharedMax = Math.max(0, budgetCap - (mailjet ? D1_MAILJET_OVERHEAD : 0))
+  const reconcileBudget: FetchBudget = { used: 0, max: sharedMax }
+  let retryPrimary = new Set<string>()
 
   if (mailjet) {
-    await reconcileUncertainSends(db, mailjet, day, nowMs, reconcileBudget, ae)
+    const retries = await reconcileUncertainSends(db, mailjet, day, nowMs, reconcileBudget, ae)
+    retryPrimary = new Set(retries)
   }
 
   const { results } = await db
@@ -1002,6 +1095,8 @@ export async function sendRoundReminders(
   const digests = buildDigests(withPilotAccess(results, pilotAccess))
 
   if (digests.length === 0) {
+    // Reconciliação já rodou (expirou dias anteriores / confirmou CustomID).
+    // unknown_primary sem jogo pendente permanece até o fim do dia.
     console.info('[roundReminder] Nenhum jogo sem palpite hoje.')
     logEvent(ae, 'cron_round_reminder', { doubles: [0, 0, 0, 0] })
     return
@@ -1014,15 +1109,18 @@ export async function sendRoundReminders(
     digests.map((digest) => digest.userId),
     day,
   )
+  // unknown_primary do dia já tem linha: entra na fila sem novo claim.
+  for (const userId of retryPrimary) claimed.add(userId)
   // A partir da reserva, toda saída passa pela liberação. Só o aceite do provedor
-  // (ou o registro de envio incerto com Mailjet) retira um usuário deste conjunto.
+  // (ou o registro de envio incerto) retira um usuário deste conjunto. releaseClaims
+  // só apaga status `claimed`, então unknown_* permanece.
   let recipients: Digest[] = []
   let result: DispatchResult
   try {
     recipients = digests.filter((digest) => claimed.has(digest.userId)).sort(byQueueOrder)
     const apiBaseUrl = unsub?.apiBaseUrl ? unsub.apiBaseUrl.replace(/\/+$/, '') : undefined
-    // As consultas de reconciliação já descontaram do teto desta execução.
-    const remainingBudget = Math.max(0, budgetCap - reconcileBudget.used)
+    // Reconciliação (SELECT + lookups) já descontou do teto desta execução.
+    const remainingBudget = Math.max(0, sharedMax - reconcileBudget.used)
     result = await dispatchDigests(recipients, {
       db,
       resendApiKey,
@@ -1035,6 +1133,7 @@ export async function sendRoundReminders(
       pendingClaims: claimed,
       claimStartedAt,
       mailjet,
+      retryPrimary,
     })
   } finally {
     await releaseClaims(db, [...claimed], day)

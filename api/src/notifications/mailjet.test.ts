@@ -67,11 +67,13 @@ describe('sendMailjetEmail', () => {
     expect(body.Messages[0].Headers['List-Unsubscribe']).toContain('unsub')
   })
 
-  it('lança MailjetError em HTTP de erro', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response('nope', { status: 401 }))
+  it('lança MailjetError em HTTP de erro sem o corpo na mensagem', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response('{"ErrorMessage":"a@example.com bounced"}', { status: 401 }),
+    )
     await expect(
       sendMailjetEmail(CREDS, { to: 'a@example.com', subject: 'Oi', html: '<p>hi</p>' }, 'id'),
-    ).rejects.toMatchObject({ name: 'MailjetError', status: 401 })
+    ).rejects.toMatchObject({ name: 'MailjetError', status: 401, message: 'Mailjet respondeu 401' })
   })
 
   it('lança quando Status da mensagem não é success', async () => {

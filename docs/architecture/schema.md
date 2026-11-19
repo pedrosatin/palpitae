@@ -283,10 +283,10 @@ Registro do lembrete diário por e-mail (migration 0036, ADR-020; status na 0054
 | `user_id`       | TEXT FK | References `users.id`           |
 | `reminder_date` | TEXT    | Dia em Brasília, YYYY-MM-DD     |
 | `created_at`    | TEXT    | Instante da reserva, UTC        |
-| `status`        | TEXT    | `accepted` (padrão), `unknown_primary`, `unknown_fallback`, `expired` |
+| `status`        | TEXT    | `claimed` (padrão da reserva), `accepted`, `unknown_primary`, `unknown_fallback`, `expired` |
 | `provider`      | TEXT    | `resend`, `mailjet` ou NULL     |
 
-Primary key: `(user_id, reminder_date)`. A linha reserva o envio. O aceite do provedor mantém a linha com `status = accepted`. Sem o fallback Mailjet, falha libera a reserva (apaga a linha), como antes. Com `MAILJET_API_KEY` e `MAILJET_API_SECRET`, envio incerto grava `unknown_primary` ou `unknown_fallback` e mantém a linha para reconciliar pelo CustomID, sem reenviar às cegas. O cron apaga as linhas com mais de 7 dias. O dia mais recente com `status = accepted` ordena a fila de envio quando o teto não cobre todos.
+Primary key: `(user_id, reminder_date)`. A linha começa como `claimed`. O aceite do provedor grava `accepted`. Sem o fallback Mailjet, falha apaga a reserva `claimed`, como antes. Com `MAILJET_API_KEY` e `MAILJET_API_SECRET`, envio incerto grava `unknown_primary` ou `unknown_fallback` na hora do desfecho e mantém a linha: o Resend pode repetir com a mesma Idempotency-Key; o Mailjet só confirma `unknown_fallback` pelo CustomID, sem reenviar às cegas. Passado o fim do dia da linha (dentro da retenção de 7 dias), a reconciliação marca `expired`. O cron apaga as linhas com mais de 7 dias. O dia mais recente com `status = accepted` ordena a fila de envio quando o teto não cobre todos.
 
 ---
 

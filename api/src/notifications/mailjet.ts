@@ -32,8 +32,9 @@ export function mailjetCredentials(
 export class MailjetError extends Error {
   readonly status: number
 
-  constructor(status: number, body: string) {
-    super(`Mailjet respondeu ${status}: ${body}`)
+  constructor(status: number, _body?: string) {
+    // Sem o corpo na mensagem: a API pode ecoar o destinatário e vazar no log.
+    super(`Mailjet respondeu ${status}`)
     this.name = 'MailjetError'
     this.status = status
   }

@@ -139,7 +139,7 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 45, pilotAccess: env },
+      { fetchBudget: 44, pilotAccess: env, mailjet: undefined },
     )
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(pollActiveMatches).not.toHaveBeenCalled()
@@ -163,7 +163,7 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 120, pilotAccess: reminderEnv },
+      { fetchBudget: 120, pilotAccess: reminderEnv, mailjet: undefined },
     )
   })
 
@@ -179,7 +179,7 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'unsub-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 45, pilotAccess: reminderEnv },
+      { fetchBudget: 44, pilotAccess: reminderEnv, mailjet: undefined },
     )
   })
 
@@ -195,7 +195,7 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 45, pilotAccess: reminderEnv },
+      { fetchBudget: 44, pilotAccess: reminderEnv, mailjet: undefined },
     )
   })
 
