@@ -276,15 +276,17 @@ A private competition created by a user for a specific competition.
 
 ### `email_reminder_sends`
 
-Registro do lembrete diário por e-mail (migration 0036, ADR-020). No máximo uma linha por usuário e dia.
+Registro do lembrete diário por e-mail (migration 0036, ADR-020; status na 0054). No máximo uma linha por usuário e dia.
 
 | Column          | Type    | Notes                           |
 | --------------- | ------- | ------------------------------- |
 | `user_id`       | TEXT FK | References `users.id`           |
 | `reminder_date` | TEXT    | Dia em Brasília, YYYY-MM-DD     |
 | `created_at`    | TEXT    | Instante da reserva, UTC        |
+| `status`        | TEXT    | `accepted` (padrão), `unknown_primary`, `unknown_fallback`, `expired` |
+| `provider`      | TEXT    | `resend`, `mailjet` ou NULL     |
 
-Primary key: `(user_id, reminder_date)`. A linha reserva o envio. O aceite do provedor mantém a linha. A execução apaga a linha de quem ficou sem aceite, inclusive quando o lote aborta por exceção. O cron apaga as linhas com mais de 7 dias. O dia mais recente de cada usuário ordena a fila de envio quando o teto não cobre todos.
+Primary key: `(user_id, reminder_date)`. A linha reserva o envio. O aceite do provedor mantém a linha com `status = accepted`. Sem o fallback Mailjet, falha libera a reserva (apaga a linha), como antes. Com `MAILJET_API_KEY` e `MAILJET_API_SECRET`, envio incerto grava `unknown_primary` ou `unknown_fallback` e mantém a linha para reconciliar pelo CustomID, sem reenviar às cegas. O cron apaga as linhas com mais de 7 dias. O dia mais recente com `status = accepted` ordena a fila de envio quando o teto não cobre todos.
 
 ---
 

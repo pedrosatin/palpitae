@@ -56,9 +56,10 @@ describe('planos de consulta das subqueries por rodada', () => {
     expect(steps.filter((s) => s.startsWith('SEARCH b '))).toEqual([
       'SEARCH b USING COVERING INDEX sqlite_autoindex_group_bans_1 (group_id=? AND user_id=?)',
     ])
-    // O último envio de cada usuário, que ordena a fila, vem da chave primária.
+    // O último aceite de cada usuário, que ordena a fila, busca pela chave
+    // primária e lê `status` (migration 0054); deixa de ser covering index.
     expect(steps).toContain(
-      'SEARCH ls USING COVERING INDEX sqlite_autoindex_email_reminder_sends_1 (user_id=?)',
+      'SEARCH ls USING INDEX sqlite_autoindex_email_reminder_sends_1 (user_id=?)',
     )
   })
 })

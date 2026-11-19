@@ -31,6 +31,10 @@ export type Env = {
   FRONTEND_URL: string
   FOOTBALL_API_KEY: string
   RESEND_API_KEY: string
+  // Fallback do lembrete diário (Mailjet). As duas precisam existir; sem elas o
+  // fallback fica desligado e o comportamento do Resend não muda.
+  MAILJET_API_KEY?: string
+  MAILJET_API_SECRET?: string
   // Teto de chamadas ao Resend por execução do lembrete diário. Padrão 45 (plano Free).
   REMINDER_FETCH_BUDGET?: string
   // Limiar em horas para resultado atrasado sem placar (padrão 3). Ver resultOverdue.ts.

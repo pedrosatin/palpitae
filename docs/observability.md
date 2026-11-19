@@ -230,8 +230,8 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `matches_cache` | `result` (`hit`/`miss`) | `competition_id` | — | — |
 | `security_storage_error` | `source` (`request_limits`/`logout`/`logout_all`/`cleanup`) | `category` (`read`/`write`/`oauth`) em `request_limits`; `error_message` nos demais | `error_message` (só em `request_limits`) | — |
 | `request_perf` | `route` (`GET /matches`, ...) | `status` (HTTP, string) | — | `double1`=total_ms, `double2`=db_ms (0 se ausente), `double3`=rows (0 se ausente) |
-| `email_reminder_sent` | `user_hash` | `reminder_date` (dia em Brasília; antes do lembrete diário era `competition_name`) | sem valor (antes era `round`) | `double1`=jogos pendentes do usuário, inclusive os de grupos que ficam só no link "e mais N grupos", `double2`=grupos listados no e-mail |
-| `email_reminder_failed` | `user_hash` | `reminder_date` | `reason` (`quota_exceeded`, `subrequest_budget`, `unsub_check_failed`, `http_<status>`, `unknown`) | `double1`=jogos que o e-mail listaria |
+| `email_reminder_sent` | `user_hash` | `reminder_date` (dia em Brasília; antes do lembrete diário era `competition_name`) | `provider` (`resend` ou `mailjet`; antes vazio / era `round`) | `double1`=jogos pendentes do usuário, inclusive os de grupos que ficam só no link "e mais N grupos", `double2`=grupos listados no e-mail |
+| `email_reminder_failed` | `user_hash` | `reminder_date` | `reason` (`quota_exceeded`, `subrequest_budget`, `unsub_check_failed`, `http_<status>`, `unknown_primary`, `unknown_fallback`, `mailjet_http_<status>`, `reconcile_failed`, `unknown`) | `double1`=jogos que o e-mail listaria |
 | `cron_round_reminder` | — | — | — | `double1`=rodadas com jogo listado, `double2`=sent, `double3`=failed, `double4`=jogos listados nos e-mails enviados |
 | `cron_round_reminder_misconfig` | `reason` (`no_api_key`) | — | — | — |
 | `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app) | — | — |

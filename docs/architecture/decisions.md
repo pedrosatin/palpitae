@@ -808,7 +808,8 @@ O ponto sem volta é o início do `fetch` ao Resend. Descadastro depois disso n�
 - Quem nunca palpita recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
 - Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. A fila por último envio reveza o excedente entre os dias. Se o excedente passar do teto, alguém fica de fora dois dias seguidos, sempre quem recebeu mais recentemente.
 - O revezamento olha os 7 dias guardados em `email_reminder_sends`. Quem não recebeu nesse período é tratado como quem nunca recebeu.
-- `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia e o número de jogos listados.
+- `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia, o provedor (`resend` ou `mailjet`) e o número de jogos listados.
+- Fallback Mailjet (2026-11-19): com `MAILJET_API_KEY` e `MAILJET_API_SECRET` no Worker, recusa definitiva do Resend (4xx permanente, cota esgotada) tenta o Mailjet com o mesmo `CustomID` da chave de idempotência. Timeout/5xx do Resend ou do Mailjet não disparam o outro provedor: gravam `unknown_primary` / `unknown_fallback` em `email_reminder_sends` (migration 0054) e reconciliam na execução seguinte. Sem as duas credenciais, o comportamento anterior permanece (falha libera a reserva). Conta Mailjet, DNS do remetente e cadastro dos segredos são passo humano fora do deploy automático.
 
 ## ADR-021: Ranking com pontos e variação da última rodada encerrada
 

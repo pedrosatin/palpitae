@@ -611,6 +611,217 @@ describe('sendRoundReminders', () => {
     })
   })
 
+  describe('fallback Mailjet', () => {
+    const mailjet = { apiKey: 'mj-public', apiSecret: 'mj-private' }
+
+    function runWithMailjet(db: D1Database, ae?: AnalyticsEngineDataset) {
+      return sendRoundReminders(db, 'key', ae, undefined, undefined, WEDNESDAY, { mailjet })
+    }
+
+    function isMailjetSend(url: unknown) {
+      return String(url) === 'https://api.mailjet.com/v3.1/send'
+    }
+
+    function isMailjetLookup(url: unknown) {
+      return String(url).startsWith('https://api.mailjet.com/v3/REST/message')
+    }
+
+    function isResendSend(url: unknown) {
+      return String(url) === 'https://api.resend.com/emails'
+    }
+
+    it('sem credenciais Mailjet, 422 libera a reserva como antes', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch).mockResolvedValueOnce(new Response('boom', { status: 422 }))
+
+      await run(db)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(isResendSend(vi.mocked(fetch).mock.calls[0][0])).toBe(true)
+      expect(sqlite.prepare('SELECT * FROM email_reminder_sends').all()).toEqual([])
+    })
+
+    it('após 422 do Resend envia pelo Mailjet com o mesmo CustomID', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response('boom', { status: 422 }))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ Messages: [{ Status: 'success', To: [{ MessageID: 1 }] }] }),
+            { status: 200 },
+          ),
+        )
+
+      await runWithMailjet(db)
+
+      expect(vi.mocked(fetch).mock.calls.map((call) => call[0]).map(String)).toEqual([
+        'https://api.resend.com/emails',
+        'https://api.mailjet.com/v3.1/send',
+      ])
+      const mailjetBody = JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string)
+      expect(mailjetBody.Messages[0].CustomID).toBe('lembrete-diario/ana/2026-11-18')
+      expect(
+        sqlite
+          .prepare('SELECT user_id, status, provider FROM email_reminder_sends')
+          .all(),
+      ).toEqual([{ user_id: 'ana', status: 'accepted', provider: 'mailjet' }])
+    })
+
+    it('timeout do Resend não cai no Mailjet e grava unknown_primary', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      const { ae, writeDataPoint } = fakeAe()
+      skipWaits()
+      vi.mocked(fetch).mockImplementation(async () => {
+        throw new DOMException('The operation was aborted.', 'TimeoutError')
+      })
+
+      await runWithMailjet(db, ae)
+
+      expect(vi.mocked(fetch).mock.calls.every((call) => isResendSend(call[0]))).toBe(true)
+      expect(
+        sqlite
+          .prepare('SELECT user_id, status, provider FROM email_reminder_sends')
+          .all(),
+      ).toEqual([{ user_id: 'ana', status: 'unknown_primary', provider: 'resend' }])
+      expect(eventsOf(writeDataPoint, 'email_reminder_failed').map((e) => e.blobs[3])).toEqual([
+        'unknown_primary',
+      ])
+    })
+
+    it('5xx esgotado do Resend também fica unknown_primary, sem Mailjet', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      vi.mocked(fetch).mockImplementation(
+        async () => new Response('', { status: 500, headers: { 'Retry-After': '0' } }),
+      )
+
+      await runWithMailjet(db)
+
+      expect(fetch).toHaveBeenCalledTimes(3)
+      expect(vi.mocked(fetch).mock.calls.every((call) => isResendSend(call[0]))).toBe(true)
+      expect(
+        sqlite.prepare('SELECT status FROM email_reminder_sends').all(),
+      ).toEqual([{ status: 'unknown_primary' }])
+    })
+
+    it('timeout do Mailjet grava unknown_fallback e a reconciliação confirma o CustomID', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      skipWaits()
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response('boom', { status: 422 }))
+        .mockImplementationOnce(async () => {
+          throw new DOMException('The operation was aborted.', 'TimeoutError')
+        })
+
+      await runWithMailjet(db)
+
+      expect(
+        sqlite
+          .prepare('SELECT status, provider FROM email_reminder_sends')
+          .all(),
+      ).toEqual([{ status: 'unknown_fallback', provider: 'mailjet' }])
+
+      vi.mocked(fetch).mockReset()
+      vi.mocked(fetch).mockImplementation(async (url) => {
+        if (isMailjetLookup(url)) {
+          return new Response(JSON.stringify({ Count: 1, Data: [{ ID: 7 }] }), { status: 200 })
+        }
+        throw new Error(`chamada inesperada na reconciliação: ${String(url)}`)
+      })
+
+      await runWithMailjet(db)
+
+      expect(vi.mocked(fetch).mock.calls.map((call) => String(call[0]))).toEqual([
+        expect.stringContaining('https://api.mailjet.com/v3/REST/message'),
+      ])
+      expect(
+        sqlite
+          .prepare('SELECT status, provider FROM email_reminder_sends')
+          .all(),
+      ).toEqual([{ status: 'accepted', provider: 'mailjet' }])
+    })
+
+    it('reconciliação sem prova não reenvia pelo Mailjet', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      sqlite.exec(`
+        INSERT INTO email_reminder_sends (user_id, reminder_date, status, provider)
+        VALUES ('ana', '2026-11-18', 'unknown_fallback', 'mailjet');
+      `)
+      vi.mocked(fetch).mockImplementation(async (url) => {
+        if (isMailjetLookup(url)) {
+          return new Response(JSON.stringify({ Count: 0, Data: [] }), { status: 200 })
+        }
+        throw new Error(`chamada inesperada: ${String(url)}`)
+      })
+
+      await runWithMailjet(db)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(isMailjetLookup(vi.mocked(fetch).mock.calls[0][0])).toBe(true)
+      expect(
+        sqlite.prepare('SELECT status FROM email_reminder_sends').all(),
+      ).toEqual([{ status: 'unknown_fallback' }])
+    })
+
+    it('cota do Resend desvia o lote ao Mailjet', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      addMember(sqlite, 'g1', 'bia')
+      vi.mocked(fetch).mockImplementation(async (url) => {
+        if (isResendSend(url)) {
+          return new Response('{"name":"daily_quota_exceeded"}', { status: 429 })
+        }
+        return new Response(
+          JSON.stringify({ Messages: [{ Status: 'success', To: [{ MessageID: 1 }] }] }),
+          { status: 200 },
+        )
+      })
+
+      await runWithMailjet(db)
+
+      const urls = vi.mocked(fetch).mock.calls.map((call) => String(call[0]))
+      expect(urls.filter(isResendSend)).toHaveLength(1)
+      expect(urls.filter(isMailjetSend)).toHaveLength(2)
+      expect(
+        sqlite
+          .prepare('SELECT user_id, provider FROM email_reminder_sends ORDER BY user_id')
+          .all(),
+      ).toEqual([
+        { user_id: 'ana', provider: 'mailjet' },
+        { user_id: 'bia', provider: 'mailjet' },
+      ])
+    })
+
+    it('unknown_primary volta à fila e reenvia no Resend com a mesma chave', async () => {
+      const { sqlite, db } = createFixture()
+      addMatch(sqlite, { id: 'm1', start: '2026-11-18T22:00:00Z' })
+      sqlite.exec(`
+        INSERT INTO email_reminder_sends (user_id, reminder_date, status, provider)
+        VALUES ('ana', '2026-11-18', 'unknown_primary', 'resend');
+      `)
+      vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 200 }))
+
+      await runWithMailjet(db)
+
+      expect(fetch).toHaveBeenCalledTimes(1)
+      expect(isResendSend(vi.mocked(fetch).mock.calls[0][0])).toBe(true)
+      const key = (vi.mocked(fetch).mock.calls[0][1]!.headers as Record<string, string>)[
+        'Idempotency-Key'
+      ]
+      expect(key).toBe('lembrete-diario/ana/2026-11-18')
+      expect(
+        sqlite
+          .prepare('SELECT status, provider FROM email_reminder_sends')
+          .all(),
+      ).toEqual([{ status: 'accepted', provider: 'resend' }])
+    })
+  })
+
   describe('teto de subrequests por execução', () => {
     const TOTAL = RESEND_FETCH_BUDGET + 6
 

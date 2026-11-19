@@ -24,6 +24,7 @@ import { DISCOVERY_CALL_BUDGET, discoverFixtures } from './matches/fixtureDiscov
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
+import { mailjetCredentials } from './notifications/mailjet'
 import { reminderFetchBudget, sendRoundReminders } from './notifications/roundReminder'
 import { unsubSigningSecret } from './notifications/unsubscribeToken'
 import { logError, tryLogEvent } from './observability/events'
@@ -147,7 +148,11 @@ export default {
           env.FRONTEND_URL,
           env.BASE_URL ? { secret: unsubSigningSecret(env), apiBaseUrl: env.BASE_URL } : undefined,
           undefined,
-          { fetchBudget: reminderFetchBudget(env.REMINDER_FETCH_BUDGET), pilotAccess: env },
+          {
+            fetchBudget: reminderFetchBudget(env.REMINDER_FETCH_BUDGET),
+            pilotAccess: env,
+            mailjet: mailjetCredentials(env.MAILJET_API_KEY, env.MAILJET_API_SECRET),
+          },
         ),
       )
       return

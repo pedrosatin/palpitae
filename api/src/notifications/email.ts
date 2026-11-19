@@ -23,8 +23,14 @@ export type EmailMessage = {
   /**
    * Chave de idempotência do Resend, válida por 24 h. Repetir a chave com o mesmo
    * corpo não envia outro e-mail. Com corpo diferente o Resend responde 409.
+   * No Mailjet a mesma string vai em `CustomID` para reconciliar envio incerto.
    */
   idempotencyKey?: string
+}
+
+/** Chave estável do lembrete diário: idempotência do Resend e CustomID do Mailjet. */
+export function reminderCorrelationId(userId: string, reminderDate: string): string {
+  return `lembrete-diario/${userId}/${reminderDate}`
 }
 
 /**

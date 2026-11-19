@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { EmailError, sendEmail } from './email'
+import { EmailError, reminderCorrelationId, sendEmail } from './email'
+
+describe('reminderCorrelationId', () => {
+  it('monta a chave estável do lembrete diário', () => {
+    expect(reminderCorrelationId('ana', '2026-11-19')).toBe('lembrete-diario/ana/2026-11-19')
+  })
+})
 
 describe('EmailError', () => {
   it('sets status, message, and name correctly', () => {
