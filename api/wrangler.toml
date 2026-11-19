@@ -75,7 +75,7 @@ bucket_name = "palpitae-events"
 [vars]
 BASE_URL = "https://api.palpitae.com.br"
 FRONTEND_URL = "https://palpitae.com.br"
-# Alerta por e-mail de resultado atrasado ao ADMIN_EMAIL (ADR-027 e docs/observability.md).
+# Alerta por e-mail de resultado atrasado ao ADMIN_EMAIL (ver docs/observability.md).
 # Reserva a janela antes de enviar; cooldown padrão de 6 h.
 RESULT_OVERDUE_ALERT = "1"
 # CF-Worker que a Cloudflare preenche no proxy do Pages, com o nome do projeto.
