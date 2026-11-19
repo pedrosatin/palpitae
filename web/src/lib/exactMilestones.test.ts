@@ -3,6 +3,7 @@ import {
   achievedExactMilestones,
   exactMilestoneBadgeLabel,
   exactMilestoneHighlightText,
+  exactMilestoneShareHighlightText,
   exactMilestonesTitle,
   highestExactMilestoneFromHits,
 } from './exactMilestones'
@@ -34,6 +35,16 @@ describe('exactMilestones', () => {
     )
     expect(exactMilestoneHighlightText([5, 15])).toBe(
       'Você cruzou os marcos de 5 e 15 placares exatos neste grupo',
+    )
+  })
+
+  it('monta a frase do compartilhamento em primeira pessoa', () => {
+    expect(exactMilestoneShareHighlightText([])).toBeNull()
+    expect(exactMilestoneShareHighlightText([5])).toBe(
+      'Cruzei o marco de 5 placares exatos neste grupo',
+    )
+    expect(exactMilestoneShareHighlightText([5, 15])).toBe(
+      'Cruzei os marcos de 5 e 15 placares exatos neste grupo',
     )
   })
 })

@@ -1,4 +1,4 @@
-/** Limiares de placares exatos no grupo (mesmos da API / auditoria 01). */
+/** Limiares de placares exatos no grupo (mesmos da API: 5, 15 e 30). */
 export const EXACT_MILESTONES = [5, 15, 30] as const
 
 export type ExactMilestone = (typeof EXACT_MILESTONES)[number]
@@ -30,7 +30,7 @@ export function exactMilestonesTitle(milestones: ExactMilestone[]): string {
   return `Marcos de ${head} e ${last} placares exatos neste grupo`
 }
 
-/** Frase do resumo quando a rodada cruza um ou mais limiares. */
+/** Frase do resumo (segunda pessoa) quando a rodada cruza um ou mais limiares. */
 export function exactMilestoneHighlightText(crossed: ExactMilestone[]): string | null {
   if (crossed.length === 0) return null
   if (crossed.length === 1) {
@@ -39,4 +39,17 @@ export function exactMilestoneHighlightText(crossed: ExactMilestone[]): string |
   const head = crossed.slice(0, -1).join(', ')
   const last = crossed[crossed.length - 1]
   return `Você cruzou os marcos de ${head} e ${last} placares exatos neste grupo`
+}
+
+/**
+ * Frase do texto compartilhado em primeira pessoa: quem lê é o destinatário.
+ */
+export function exactMilestoneShareHighlightText(crossed: ExactMilestone[]): string | null {
+  if (crossed.length === 0) return null
+  if (crossed.length === 1) {
+    return `Cruzei o marco de ${crossed[0]} placares exatos neste grupo`
+  }
+  const head = crossed.slice(0, -1).join(', ')
+  const last = crossed[crossed.length - 1]
+  return `Cruzei os marcos de ${head} e ${last} placares exatos neste grupo`
 }

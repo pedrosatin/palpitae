@@ -404,6 +404,60 @@ describe('LeaderboardTab selos da rodada', () => {
     expect(screen.queryByText('15 exatos')).not.toBeInTheDocument()
     expect(screen.queryByText('30 exatos')).not.toBeInTheDocument()
   })
+
+  it('mostra nome longo com admin, você, rei, sequência e marco no mesmo grupo de selos', async () => {
+    const longName = 'Maria Fernanda Albuquerque dos Santos Extra'
+    const richMembers = [
+      { ...members[0], display_name: longName, exact_hits: 15 },
+      { ...members[1], exact_hits: 1 },
+    ]
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/round-standings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            round: '34',
+            standings: [
+              {
+                user_id: 'u1',
+                round_points: 9,
+                position_change: 1,
+                streak: 5,
+                exact_hits: 15,
+                exact_milestone: 15,
+                exact_milestones_crossed: [],
+              },
+              {
+                user_id: 'u2',
+                round_points: 0,
+                position_change: -1,
+                streak: 0,
+              },
+            ],
+          }),
+        } as Response)
+      }
+      if (u.includes('/members')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ members: richMembers }),
+        } as Response)
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${u}`))
+    })
+
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    await waitFor(() => screen.getByText(longName))
+
+    const pedro = rowOf(longName)
+    const badges = pedro.getByText('admin').parentElement as HTMLElement
+    expect(badges).toContainElement(pedro.getByText('você'))
+    expect(badges).toContainElement(pedro.getByText('rei da rodada'))
+    expect(badges).toContainElement(pedro.getByText('5 seguidas'))
+    expect(badges).toContainElement(pedro.getByText('15 exatos'))
+    expect(badges.parentElement).toContainElement(screen.getByText(longName))
+  })
 })
 
 describe('LeaderboardTab – analytics', () => {

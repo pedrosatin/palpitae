@@ -31,6 +31,12 @@ interface RoundShareActionsProps {
   shareLink: string | null
 }
 
+type DownloadNotice =
+  | { kind: 'copied' }
+  | { kind: 'downloaded' }
+  | { kind: 'manual'; link: string }
+  | null
+
 async function shareRoundImage(input: {
   groupName?: string
   roundLabel: string
@@ -62,34 +68,54 @@ async function shareRoundImage(input: {
   }
 }
 
+async function copyShareText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function shareMilestoneImage(input: {
   groupName?: string
   crossed: ExactMilestone[]
   exactHits: number
   shareLink: string | null
-}): Promise<boolean> {
+}): Promise<{ ok: boolean; notice: DownloadNotice }> {
   const card = buildMilestoneShareCardData({
     groupName: input.groupName ?? 'Palpitae',
     crossed: input.crossed,
     exactHits: input.exactHits,
     origin: window.location.origin,
+    groupLink: input.shareLink,
   })
-  if (!card) return true
+  if (!card) return { ok: true, notice: null }
   trackEvent('click_resumo_marco_compartilhar')
   try {
     const blob = await renderMilestoneShareCardBlob(card)
-    if (!blob) return false
-    const result = await shareOrDownloadImage(
-      blob,
-      milestoneShareFileName(card.milestone),
-      milestoneShareText(card, input.shareLink),
-    )
+    if (!blob) return { ok: false, notice: null }
+    const text = milestoneShareText(card, input.shareLink)
+    const result = await shareOrDownloadImage(blob, milestoneShareFileName(card.milestone), text)
     if (result === 'shared') {
       trackShareInvite('native', 'exact_milestone')
+      return { ok: true, notice: null }
     }
-    return true
+    if (result === 'cancelled') return { ok: true, notice: null }
+
+    // Desktop / falha do menu: a imagem baixou; o link vai no clipboard (e já
+    // está no rodapé do PNG).
+    if (input.shareLink) {
+      const copied = await copyShareText(text)
+      if (copied) {
+        trackShareInvite('copy_link', 'exact_milestone')
+        return { ok: true, notice: { kind: 'copied' } }
+      }
+      return { ok: true, notice: { kind: 'manual', link: input.shareLink } }
+    }
+    return { ok: true, notice: { kind: 'downloaded' } }
   } catch {
-    return false
+    return { ok: false, notice: null }
   }
 }
 
@@ -108,6 +134,7 @@ export function RoundShareActions({
   const [sharing, setSharing] = useState(false)
   const [sharingMilestone, setSharingMilestone] = useState(false)
   const [shareError, setShareError] = useState(false)
+  const [downloadNotice, setDownloadNotice] = useState<DownloadNotice>(null)
 
   const canShareRound = Boolean(self && standings)
   if (!canShareRound && crossed.length === 0) return null
@@ -116,6 +143,7 @@ export function RoundShareActions({
     if (!standings || !self) return
     setSharing(true)
     setShareError(false)
+    setDownloadNotice(null)
     const ok = await shareRoundImage({
       groupName,
       roundLabel,
@@ -131,8 +159,15 @@ export function RoundShareActions({
   async function onShareMilestone() {
     setSharingMilestone(true)
     setShareError(false)
-    const ok = await shareMilestoneImage({ groupName, crossed, exactHits, shareLink })
+    setDownloadNotice(null)
+    const { ok, notice } = await shareMilestoneImage({
+      groupName,
+      crossed,
+      exactHits,
+      shareLink,
+    })
     if (!ok) setShareError(true)
+    else setDownloadNotice(notice)
     setSharingMilestone(false)
   }
 
@@ -156,6 +191,24 @@ export function RoundShareActions({
       {shareError && (
         <span className={styles.error} role="alert">
           Não foi possível gerar a imagem neste navegador.
+        </span>
+      )}
+      {downloadNotice?.kind === 'copied' && (
+        <span className={styles.noticeOk} role="status">
+          Imagem baixada e link copiado
+        </span>
+      )}
+      {downloadNotice?.kind === 'downloaded' && (
+        <span className={styles.noticeOk} role="status">
+          Imagem baixada
+        </span>
+      )}
+      {downloadNotice?.kind === 'manual' && (
+        <span className={styles.noticeManual} role="status">
+          Imagem baixada. Copie o link:{' '}
+          <a href={downloadNotice.link} className={styles.noticeLink}>
+            {downloadNotice.link}
+          </a>
         </span>
       )}
     </div>

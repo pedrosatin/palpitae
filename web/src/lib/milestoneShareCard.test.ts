@@ -7,12 +7,17 @@ import {
 } from './milestoneShareCard'
 import { LIME, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './shareCardParts'
 
-function build(crossed: Array<5 | 15 | 30> = [5], exactHits = 5) {
+function build(
+  crossed: Array<5 | 15 | 30> = [5],
+  exactHits = 5,
+  groupLink: string | null = null,
+) {
   return buildMilestoneShareCardData({
     groupName: 'Realidade do BR',
     crossed,
     exactHits,
     origin: 'https://palpitae.com.br',
+    groupLink,
   })
 }
 
@@ -24,6 +29,7 @@ describe('buildMilestoneShareCardData', () => {
       crossed: [5, 15],
       exactHits: 16,
       domain: 'palpitae.com.br',
+      groupLink: null,
     })
   })
 
@@ -40,10 +46,10 @@ describe('buildMilestoneShareCardData', () => {
 })
 
 describe('textos do cartão de marco', () => {
-  it('inclui o link do grupo quando informado', () => {
-    const data = build([5], 5)!
-    expect(milestoneShareText(data, 'https://palpitae.com.br/convite/AAAA-BBBB')).toBe(
-      'Você cruzou o marco de 5 placares exatos neste grupo no bolão "Realidade do BR" no Palpitae. Já são 5 placares exatos. Entra com a gente: https://palpitae.com.br/convite/AAAA-BBBB',
+  it('inclui o link do grupo em primeira pessoa quando informado', () => {
+    const data = build([5], 5, 'https://palpitae.com.br/convite/AAAA-BBBB')!
+    expect(milestoneShareText(data)).toBe(
+      'Cruzei o marco de 5 placares exatos neste grupo no bolão "Realidade do BR" no Palpitae. Já são 5 placares exatos. Entra com a gente: https://palpitae.com.br/convite/AAAA-BBBB',
     )
   })
 
@@ -78,5 +84,15 @@ describe('drawMilestoneShareCard', () => {
     drawMilestoneShareCard(ctx, build([5], 5)!)
     expect(draws.some((d) => d.text === '5' && d.color === LIME)).toBe(true)
     expect(draws.some((d) => d.text === 'MARCO ATINGIDO')).toBe(true)
+  })
+
+  it('grava o link do grupo no rodapé da imagem', () => {
+    const { ctx, draws } = recordingContext()
+    Object.assign(ctx, { canvas: { width: SHARE_CARD_WIDTH, height: SHARE_CARD_HEIGHT } })
+    drawMilestoneShareCard(
+      ctx,
+      build([5], 5, 'https://palpitae.com.br/convite/AAAA-BBBB')!,
+    )
+    expect(draws.some((d) => d.text === 'palpitae.com.br/convite/AAAA-BBBB')).toBe(true)
   })
 })

@@ -1,21 +1,28 @@
 /**
  * Cartão de compartilhamento do marco de placares exatos. Mesmo estilo dos
  * cartões de rodada e classificação; o herói é o limiar cruzado. O texto do
- * compartilhamento inclui o link do grupo (convite ou pedido de entrada).
+ * compartilhamento e o rodapé da imagem levam o link do grupo (convite ou
+ * pedido de entrada).
  */
-import { exactMilestoneHighlightText, type ExactMilestone } from './exactMilestones'
+import {
+  exactMilestoneShareHighlightText,
+  type ExactMilestone,
+} from './exactMilestones'
 import {
   ASH,
   BONE,
   FONT,
   INK,
   LIME,
+  PAD,
+  SHARE_CARD_HEIGHT,
+  SHARE_CARD_WIDTH,
   drawEyebrow,
-  drawFooter,
   fillTracked,
   hline,
   renderCardBlob,
   stripScheme,
+  truncate,
 } from './shareCardParts'
 
 export interface MilestoneShareCardData {
@@ -25,6 +32,8 @@ export interface MilestoneShareCardData {
   crossed: ExactMilestone[]
   exactHits: number
   domain: string
+  /** Link do grupo gravado no rodapé e no texto; null cai no domínio. */
+  groupLink: string | null
 }
 
 export function buildMilestoneShareCardData(input: {
@@ -32,6 +41,7 @@ export function buildMilestoneShareCardData(input: {
   crossed: ExactMilestone[]
   exactHits: number
   origin: string
+  groupLink?: string | null
 }): MilestoneShareCardData | null {
   if (input.crossed.length === 0) return null
   const milestone = input.crossed[input.crossed.length - 1]
@@ -41,14 +51,16 @@ export function buildMilestoneShareCardData(input: {
     crossed: input.crossed,
     exactHits: input.exactHits,
     domain: stripScheme(input.origin),
+    groupLink: input.groupLink ?? null,
   }
 }
 
 /** Texto que acompanha a imagem; `groupLink` entra quando há link do grupo. */
 export function milestoneShareText(data: MilestoneShareCardData, groupLink?: string | null): string {
-  const highlight = exactMilestoneHighlightText(data.crossed) ?? ''
+  const highlight = exactMilestoneShareHighlightText(data.crossed) ?? ''
+  const link = groupLink ?? data.groupLink
   const base = `${highlight} no bolão "${data.groupName}" no Palpitae. Já são ${data.exactHits} placares exatos.`
-  if (groupLink) return `${base} Entra com a gente: ${groupLink}`
+  if (link) return `${base} Entra com a gente: ${link}`
   return `${base} ${data.domain}`
 }
 
@@ -56,13 +68,34 @@ export function milestoneShareFileName(milestone: ExactMilestone): string {
   return `palpitae-marco-${milestone}-exatos.png`
 }
 
+/** Texto legível do link no rodapé (sem esquema). */
+function footerLinkLabel(data: MilestoneShareCardData): string {
+  if (data.groupLink) return stripScheme(data.groupLink)
+  return data.domain
+}
+
+/** Rodapé do cartão de marco: tagline e URL do grupo (ou domínio). */
+function drawMilestoneFooter(ctx: CanvasRenderingContext2D, data: MilestoneShareCardData): void {
+  const W = SHARE_CARD_WIDTH
+  const H = SHARE_CARD_HEIGHT
+  const label = footerLinkLabel(data)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = ASH
+  ctx.font = `500 30px ${FONT}`
+  ctx.fillText('traga a galera pro bolão', W / 2, H - 110)
+  ctx.fillStyle = LIME
+  ctx.font = `700 36px ${FONT}`
+  ctx.fillText(truncate(ctx, label, W - PAD * 2), W / 2, H - 55)
+}
+
 /** Pinta o cartão inteiro no contexto. Coordenadas absolutas em 1080×1350. */
 export function drawMilestoneShareCard(
   ctx: CanvasRenderingContext2D,
   data: MilestoneShareCardData,
 ): void {
-  const W = 1080
-  const H = 1350
+  const W = SHARE_CARD_WIDTH
+  const H = SHARE_CARD_HEIGHT
 
   ctx.fillStyle = INK
   ctx.fillRect(0, 0, W, H)
@@ -101,7 +134,7 @@ export function drawMilestoneShareCard(
     ctx.fillText(`Também cruzou: ${data.crossed.slice(0, -1).join(', ')}`, W / 2, heroY + 420)
   }
 
-  drawFooter(ctx, 'traga a galera pro bolão', data.domain)
+  drawMilestoneFooter(ctx, data)
 }
 
 /** Renderiza o cartão num PNG. `null` quando o canvas não existe (jsdom). */

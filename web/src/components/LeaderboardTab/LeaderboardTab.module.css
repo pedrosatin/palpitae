@@ -119,6 +119,7 @@
   display: inline-flex;
   flex-wrap: wrap;
   min-width: 0;
+  max-width: 100%;
   gap: var(--space-1);
 }
 
@@ -238,6 +239,21 @@
     font-size: 0.625rem;
     line-height: 1.4;
     padding: 0 var(--space-1);
+    white-space: nowrap;
+  }
+}
+
+/* Em 320 px o nome longo corta com reticências e os cinco selos quebram linha
+   dentro da célula, sem forçar rolagem horizontal da tabela. */
+@media (max-width: 360px) {
+  .thPts,
+  .thExact,
+  .thRound {
+    width: 2.5rem;
+  }
+
+  .badges {
+    row-gap: 2px;
   }
 }
 

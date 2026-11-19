@@ -160,13 +160,12 @@ describe('RoundSummary', () => {
     ).toBeInTheDocument()
   })
 
-  it('rodada em andamento ou futura não mostra resumo nem busca os palpites do grupo', () => {
+  it('rodada em andamento ou futura não mostra resumo nem busca o grupo', () => {
     const fetchSpy = mockGroupApi([])
     renderSummary([done('a', 1, 0), makeMatch({ id: 'b' })], [])
     expect(screen.queryByRole('region', { name: 'Resumo da rodada' })).not.toBeInTheDocument()
-    expect(
-      fetchSpy.mock.calls.some((call) => String(call[0]).includes('/predictions/group')),
-    ).toBe(false)
+    // Sem escopo de rodada encerrada: nenhum fetch (nem palpites, nem round-standings).
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('sem resposta do grupo mostra só os números próprios e esconde o cartão', async () => {
@@ -293,7 +292,7 @@ describe('RoundSummary', () => {
     expect(screen.getByRole('button', { name: 'Compartilhar rodada' })).toBeEnabled()
   })
 
-  it('compartilha o marco pelo menu nativo e inclui o link de convite', async () => {
+  it('compartilha o marco pelo menu nativo e inclui a URL completa do convite', async () => {
     mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
       round: '34',
       standings: [
@@ -321,10 +320,137 @@ describe('RoundSummary', () => {
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
     const arg = share.mock.calls[0][0] as { files: File[]; text: string }
     expect(arg.files[0].name).toBe('palpitae-marco-5-exatos.png')
-    expect(arg.text).toMatch(/convite|AAAA-BBBB|palpitae/i)
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    expect(arg.text).toContain(inviteUrl)
+    expect(arg.text).toMatch(/^Cruzei o marco/)
+    expect(mockMilestoneRender.mock.calls[0][0]).toMatchObject({ groupLink: inviteUrl })
 
     Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('membro comum compartilha o link público e nunca o código de convite', async () => {
+    const publicId = 'abcdef0123456789abcdef0123456789'
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      publicId,
+      isOwner: false,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    const groupUrl = `${window.location.origin}/grupo/${publicId}`
+    expect(arg.text).toContain(groupUrl)
+    expect(arg.text).not.toContain('AAAA-BBBB')
+    expect(arg.text).not.toContain('/convite/')
+    expect(mockMilestoneRender.mock.calls[0][0]).toMatchObject({ groupLink: groupUrl })
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('no download do marco copia o link e confirma de forma acessível', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:m'),
+      revokeObjectURL: vi.fn(),
+    })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining(inviteUrl))
+    expect(writeText.mock.calls[0][0]).toMatch(/^Cruzei o marco/)
+    expect(mockMilestoneRender.mock.calls[0][0]).toMatchObject({ groupLink: inviteUrl })
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Imagem baixada e link copiado',
+    )
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+  })
+
+  it('no download sem clipboard mostra o link para copiar', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true })
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+      configurable: true,
+    })
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:m'),
+      revokeObjectURL: vi.fn(),
+    })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent('Imagem baixada. Copie o link:')
+    expect(status.querySelector('a')).toHaveAttribute('href', inviteUrl)
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
   })
 
   it('avisa quando a geração do cartão do marco falha', async () => {

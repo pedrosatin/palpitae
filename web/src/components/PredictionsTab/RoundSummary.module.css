@@ -76,3 +76,19 @@
   font-size: var(--font-size-sm);
   color: var(--color-danger);
 }
+
+.noticeOk {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.noticeManual {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.noticeLink {
+  color: var(--color-primary);
+  word-break: break-all;
+}
