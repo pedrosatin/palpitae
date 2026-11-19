@@ -19,9 +19,15 @@ function makeApp() {
 
 // Nas contas deste arquivo, o id é o próprio e-mail (ver authHeaders).
 function makeEnv(overrides: Partial<Env> = {}): Env {
+  const stubStmt = {
+    bind: () => stubStmt,
+    first: async () => null,
+    all: async () => ({ results: [] }),
+    run: async () => ({ success: true, meta: { changes: 0 } }),
+  }
   const env = {
     JWT_SECRET,
-    DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) } as unknown as D1Database,
+    DB: { prepare: () => stubStmt } as unknown as D1Database,
     ADMIN_EMAIL: ADMIN,
     CF_ACCOUNT_ID: 'acct',
     AE_SQL_TOKEN: 'tok',
@@ -1346,9 +1352,14 @@ describe('GET /metrics/business', () => {
       makeEnv({ DB: createBusinessFixture(healthMatchesSql()) }),
     )
 
-    const { competitions } = (await res.json()) as { competitions: CompetitionRow[] }
+    const body = (await res.json()) as {
+      competitions: CompetitionRow[]
+      overdueResultHours: number
+      overdueTotal: number
+      finishedUnscoredTotal: number
+    }
     const health = Object.fromEntries(
-      competitions.map((c) => [
+      body.competitions.map((c) => [
         c.id,
         { overdue: c.overdue_no_score, unscored: c.finished_unscored },
       ]),
@@ -1364,6 +1375,28 @@ describe('GET /metrics/business', () => {
       // Sem nenhum jogo: continua na lista, zerada.
       'comp-empty': { overdue: 0, unscored: 0 },
     })
+    expect(body.overdueResultHours).toBe(3)
+    expect(body.overdueTotal).toBe(6)
+    expect(body.finishedUnscoredTotal).toBe(3)
+  })
+
+  it('respeita RESULT_OVERDUE_HOURS no snapshot de saúde', async () => {
+    const res = await makeApp().request(
+      '/metrics/business',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({
+        DB: createBusinessFixture(healthMatchesSql()),
+        RESULT_OVERDUE_HOURS: '6',
+      }),
+    )
+    const body = (await res.json()) as {
+      overdueResultHours: number
+      competitions: CompetitionRow[]
+    }
+    expect(body.overdueResultHours).toBe(6)
+    // Com limiar de 6 h, o scheduled a 3h01 sai da contagem do br26.
+    const br26 = body.competitions.find((c) => c.id === 'comp-br26')
+    expect(br26?.overdue_no_score).toBeLessThan(5)
   })
 
   it('a saúde de resultados não altera grupos, membros nem ativos da temporada', async () => {

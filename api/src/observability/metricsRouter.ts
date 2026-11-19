@@ -1,6 +1,11 @@
 import { Hono, type Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { isAdminUser } from '../auth/permissions'
+import {
+  overdueCutoffSqlBind,
+  overdueNoScoreSql,
+  overdueResultHours,
+} from '../matches/resultOverdue'
 import { radarRouter } from '../radar/router'
 import type { AppContext } from '../types'
 import { runAeSql } from './aeSql'
@@ -350,6 +355,7 @@ metricsRouter.get('/ops', async (c) => {
       discards,
       missingMatches,
       unscoredMatches,
+      pendingWorkRows,
     ] = await Promise.all([
       runAeSql(
         c.env,
@@ -411,8 +417,39 @@ metricsRouter.get('/ops', async (c) => {
           `FROM ${DATASET} WHERE blob1 = 'match_unscored' AND ${since} ` +
           `GROUP BY competition_id ORDER BY last_seen DESC LIMIT 200`,
       ),
+      // Fila durável: estado real do D1 (não AE). Só itens abertos ou falhos.
+      // Envolve em Promise.resolve para um stub sem `.all` não lançar ao montar
+      // o Promise.all (senão as consultas AE já disparadas ficam órfãs).
+      Promise.resolve()
+        .then(() =>
+          c.env.DB.prepare(
+            `SELECT provider, status, COUNT(*) AS items, MIN(created_at) AS oldest_created_at, ` +
+              `MAX(attempts) AS max_attempts ` +
+              `FROM provider_work ` +
+              `WHERE status IN ('pending', 'running', 'failed') ` +
+              `GROUP BY provider, status ` +
+              `ORDER BY provider ASC, status ASC`,
+          ).all<{
+            provider: string
+            status: string
+            items: number
+            oldest_created_at: number
+            max_attempts: number
+          }>(),
+        )
+        .catch((err: unknown) => {
+          console.error('[metrics] falha ao ler provider_work:', err)
+          return {
+            results: [] as {
+              provider: string
+              status: string
+              items: number
+              oldest_created_at: number
+              max_attempts: number
+            }[],
+          }
+        }),
     ])
-
     const sumBy = (rows: AeRow[], key: (r: AeRow) => string, value: string) => {
       const out = new Map<string, number>()
       for (const r of rows) out.set(key(r), (out.get(key(r)) ?? 0) + Number(r[value] ?? 0))
@@ -506,6 +543,19 @@ metricsRouter.get('/ops', async (c) => {
         cycles: Number(r.cycles ?? 0),
         last_seen: String(r.last_seen ?? ''),
       })),
+      // Idade = now - created_at do item mais antigo do grupo (fila D1, não AE).
+      pendingWork: (pendingWorkRows.results ?? []).map((r) => {
+        const oldest = Number(r.oldest_created_at ?? 0)
+        const ageMinutes =
+          oldest > 0 ? Math.max(0, Math.round((Date.now() - oldest) / 60_000)) : 0
+        return {
+          provider: providerToken(r.provider),
+          status: providerToken(r.status),
+          items: Number(r.items ?? 0),
+          oldest_age_minutes: ageMinutes,
+          max_attempts: Number(r.max_attempts ?? 0),
+        }
+      }),
     })
   } catch (err) {
     console.error('[metrics] falha na SQL API (ops):', err)
@@ -886,9 +936,6 @@ metricsRouter.get('/signup-origins', async (c) => {
 /** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
 const ACTIVE_GROUP_DAYS = 14
 
-/** Tolerância após o kickoff antes de um jogo sem placar contar como atrasado. */
-const OVERDUE_RESULT_HOURS = 3
-
 /**
  * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
  * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
@@ -908,7 +955,7 @@ const OVERDUE_RESULT_HOURS = 3
  *                       últimos ACTIVE_GROUP_DAYS dias, relógio UTC do D1
  *   overdue_no_score  → jogos scheduled/live, não adiados, sem placar completo
  *                       (home_score ou away_score nulo) e com início há mais de
- *                       OVERDUE_RESULT_HOURS horas: buraco de feed
+ *                       `RESULT_OVERDUE_HOURS` (padrão 3): buraco de feed
  *   finished_unscored → jogos finished com scored_at nulo: backlog de pontuação
  *                       (inclui finished sem placar, que o scoring não alcança)
  *                       Os dois contam só jogos, nunca ids nem times.
@@ -919,6 +966,7 @@ const OVERDUE_RESULT_HOURS = 3
 metricsRouter.get('/business', async (c) => {
   const days = parseDays(c.req.query('days'))
   const db = c.env.DB
+  const overdueHours = overdueResultHours(c.env.RESULT_OVERDUE_HOURS)
 
   const [rollupCounts, groupMembership, competitions] = await Promise.all([
     db
@@ -972,14 +1020,12 @@ metricsRouter.get('/business', async (c) => {
           `WHERE datetime(p.updated_at) > datetime('now', ?) ` +
           `GROUP BY g.competition_id) ac ON ac.competition_id = c.id ` +
           `LEFT JOIN (SELECT competition_id, ` +
-          `SUM(CASE WHEN status IN ('scheduled', 'live') AND postponed = 0 ` +
-          `AND (home_score IS NULL OR away_score IS NULL) ` +
-          `AND datetime(start_time) <= datetime('now', ?) THEN 1 ELSE 0 END) AS overdue_no_score, ` +
+          `SUM(CASE WHEN ${overdueNoScoreSql('')} THEN 1 ELSE 0 END) AS overdue_no_score, ` +
           `SUM(CASE WHEN status = 'finished' AND scored_at IS NULL THEN 1 ELSE 0 END) AS finished_unscored ` +
           `FROM matches GROUP BY competition_id) mh ON mh.competition_id = c.id ` +
           `ORDER BY groups_current DESC, c.name ASC, c.season ASC, c.id ASC`,
       )
-      .bind(`-${ACTIVE_GROUP_DAYS} days`, `-${OVERDUE_RESULT_HOURS} hours`)
+      .bind(`-${ACTIVE_GROUP_DAYS} days`, overdueCutoffSqlBind(overdueHours))
       .all<{
         id: string
         name: string
@@ -1011,6 +1057,12 @@ metricsRouter.get('/business', async (c) => {
     .slice(0, 10)
     .map((r) => ({ competition: r.name, groups: r.groups_current }))
 
+  const overdueTotal = competitionRows.reduce((s, r) => s + Number(r.overdue_no_score ?? 0), 0)
+  const finishedUnscoredTotal = competitionRows.reduce(
+    (s, r) => s + Number(r.finished_unscored ?? 0),
+    0,
+  )
+
   return c.json({
     days,
     usersTotal: rollupCounts?.usersTotal ?? 0,
@@ -1021,6 +1073,10 @@ metricsRouter.get('/business', async (c) => {
     avgGroupsPerUser,
     medianGroupsPerUser,
     activeGroupDays: ACTIVE_GROUP_DAYS,
+    /** Limiar em horas usado em `overdue_no_score` nesta resposta. */
+    overdueResultHours: overdueHours,
+    overdueTotal,
+    finishedUnscoredTotal,
     competitions: competitionRows,
     topCompetitions,
   })

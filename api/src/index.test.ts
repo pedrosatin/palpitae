@@ -246,7 +246,7 @@ describe('scheduled handler routing', () => {
       await run(POLLER_AND_DRAIN_CRON, scheduledTime)
 
       expect(pollActiveMatches).toHaveBeenCalledTimes(1)
-      expect(pollActiveMatches).toHaveBeenCalledWith(env.DB, 'fk', env.AE, scheduledTime)
+      expect(pollActiveMatches).toHaveBeenCalledWith(env.DB, 'fk', env.AE, scheduledTime, env)
       expect(runProviderDrains).not.toHaveBeenCalled()
       expect(sendRoundReminders).not.toHaveBeenCalled()
       expect(exportRecentDays).not.toHaveBeenCalled()
