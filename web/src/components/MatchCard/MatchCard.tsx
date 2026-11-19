@@ -1,4 +1,5 @@
 import { formatMatchDate } from '../../lib/matchTime'
+import { isResultOverdue } from '../../lib/resultOverdue'
 import { pickPoints, pointsLabel } from '../../lib/roundSummary'
 import TieInfo from './TieInfo'
 import CheckIcon from '../CheckIcon'
@@ -28,7 +29,13 @@ const STATUS_CLASS: Record<PredictionStatus, string> = {
   penalty: styles.statusEmpty,
 }
 
-function stateLabel(locked: boolean, isFinished: boolean, status: PredictionStatus) {
+function stateLabel(
+  locked: boolean,
+  isFinished: boolean,
+  status: PredictionStatus,
+  resultPending: boolean,
+) {
+  if (resultPending) return 'resultado pendente'
   if (!locked) return PREDICTION_STATUS_LABEL[status]
   if (isFinished) return 'encerrado'
   return 'bloqueado'
@@ -77,6 +84,10 @@ export default function MatchCard(props: MatchCardProps) {
     handleScoreInput,
   } = useMatchCard(props)
 
+  // Kickoff + 3 h sem placar (não adiado): o feed atrasou. Mantém o placar
+  // existente; só acrescenta o rótulo. Texto no badge, sem depender só de cor.
+  const resultPending = isResultOverdue(match, props.now ?? Date.now())
+
   // Escolha de pênalti na mesma linha dos controles, para o empate não aumentar a
   // altura do card. Depois da escolha os botões viram um chip, e o toque reabre.
   const penaltyInline = (
@@ -93,7 +104,7 @@ export default function MatchCard(props: MatchCardProps) {
 
   // O leitor de tela ouve o jogo e o estado juntos ao entrar no card. "contra" no
   // lugar de "×", que seria lido como "vezes".
-  const groupLabel = `${match.home_team_name} contra ${match.away_team_name}, ${stateLabel(locked, isFinished, status)}`
+  const groupLabel = `${match.home_team_name} contra ${match.away_team_name}, ${stateLabel(locked, isFinished, status, resultPending)}`
 
   return (
     <div
@@ -109,7 +120,12 @@ export default function MatchCard(props: MatchCardProps) {
         </span>
         {isFinished && <span className={styles.badgeFinished}>encerrado</span>}
         {isPostponed && <span className={styles.badgePostponed}>adiado</span>}
-        {locked && !isFinished && !isPostponed && (
+        {resultPending && (
+          <span className={styles.badgePending} title="Placar ainda não confirmado pelo provedor">
+            resultado pendente
+          </span>
+        )}
+        {locked && !isFinished && !isPostponed && !resultPending && (
           <span className={styles.badgeLocked}>bloqueado</span>
         )}
         {!locked && (

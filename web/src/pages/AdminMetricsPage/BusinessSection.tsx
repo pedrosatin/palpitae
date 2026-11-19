@@ -50,7 +50,10 @@ export default function BusinessSection({ business }: { business: BusinessRespon
             competitions={business.competitions}
             activeGroupDays={business.activeGroupDays ?? 14}
           />
-          <ResultsHealthTable competitions={business.competitions} />
+          <ResultsHealthTable
+            competitions={business.competitions}
+            overdueHours={business.overdueResultHours ?? 3}
+          />
         </>
       ) : (
         <LegacyTopCompetitions topCompetitions={business.topCompetitions} />
@@ -200,11 +203,17 @@ function HealthCount({ value }: { value: number | undefined }) {
 }
 
 /**
- * Buraco de feed (jogo sem placar após kickoff + 3h) versus backlog de
+ * Buraco de feed (jogo sem placar após kickoff + limiar) versus backlog de
  * pontuação (finished sem scored_at), por temporada. Quem tem pendência vem
  * primeiro; zeros continuam visíveis.
  */
-function ResultsHealthTable({ competitions }: { competitions: CompetitionSnapshot[] }) {
+function ResultsHealthTable({
+  competitions,
+  overdueHours,
+}: {
+  competitions: CompetitionSnapshot[]
+  overdueHours: number
+}) {
   if (competitions.length === 0) return null
 
   const hasHealth = competitions.some(
@@ -229,8 +238,8 @@ function ResultsHealthTable({ competitions }: { competitions: CompetitionSnapsho
       <h3 className={styles.subTitle}>Saúde dos resultados por campeonato</h3>
       <p className={styles.hint}>
         {withOverdue} temporada(s) com jogo atrasado · {withUnscored} com jogo encerrado sem
-        pontuação · atrasado = agendado ou ao vivo, sem placar completo, 3h após o início (adiados
-        ficam de fora)
+        pontuação · atrasado = agendado ou ao vivo, sem placar completo, {overdueHours}h após o
+        início (adiados ficam de fora)
       </p>
       <div className={styles.tableScroll}>
         <table className={styles.table} aria-label="Saúde dos resultados por campeonato">

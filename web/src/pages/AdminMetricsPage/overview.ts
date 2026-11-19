@@ -3,7 +3,7 @@ import { lastDays } from './dates'
 import { parseSqlUtc } from './format'
 import { evaluateLoginFailureAlert } from './loginFailureAlert'
 import { totalHttpFailures, type OpsResponse } from './ProviderOpsSection'
-import type { ArchiveFile, MetricsAlert, OverviewResponse } from './types'
+import type { ArchiveFile, BusinessResponse, MetricsAlert, OverviewResponse } from './types'
 
 // Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
 const MAX_CHART_TYPES = SERIES_COLORS.length
@@ -138,7 +138,11 @@ export function buildWhaleShare(overview: OverviewResponse, totalPredictions: nu
 const RECENT_ERROR_INSPECTION_ONLY = new Set(['login_failure', 'oauth_error'])
 
 // Triagem rápida: o que precisa de atenção agora, pro topo da página.
-export function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null): MetricsAlert[] {
+export function buildAlerts(
+  overview: OverviewResponse,
+  ops: OpsResponse | null,
+  business?: BusinessResponse | null,
+): MetricsAlert[] {
   const list: MetricsAlert[] = []
 
   for (const r of overview.lastRuns) {
@@ -166,6 +170,26 @@ export function buildAlerts(overview: OverviewResponse, ops: OpsResponse | null)
     list.push({
       key: 'provider-http',
       label: `${httpFailures} falha(s) HTTP de provedor`,
+      level: 'warn',
+    })
+  }
+  const overdueTotal =
+    business?.overdueTotal ??
+    business?.competitions?.reduce((s, c) => s + Number(c.overdue_no_score ?? 0), 0) ??
+    0
+  if (overdueTotal > 0) {
+    const hours = business?.overdueResultHours ?? 3
+    list.push({
+      key: 'result-overdue',
+      label: `${overdueTotal} resultado(s) atrasado(s) (+${hours}h)`,
+      level: 'warn',
+    })
+  }
+  const pendingWork = ops?.pendingWork?.reduce((s, r) => s + Number(r.items ?? 0), 0) ?? 0
+  if (pendingWork > 0) {
+    list.push({
+      key: 'provider-work',
+      label: `${pendingWork} item(ns) na fila de provedores`,
       level: 'warn',
     })
   }

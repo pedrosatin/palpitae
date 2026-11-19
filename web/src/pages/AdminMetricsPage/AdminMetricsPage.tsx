@@ -76,6 +76,7 @@ function useMetricsData(
   overview: OverviewResponse | null,
   archive: ArchiveResponse | null,
   ops: OpsResponse | null,
+  business: BusinessResponse | null,
 ) {
   const stacked = useMemo(
     () =>
@@ -111,7 +112,10 @@ function useMetricsData(
     [overview, kpis],
   )
 
-  const alerts = useMemo(() => (overview ? buildAlerts(overview, ops) : []), [overview, ops])
+  const alerts = useMemo(
+    () => (overview ? buildAlerts(overview, ops, business) : []),
+    [overview, ops, business],
+  )
 
   const archiveFiles = archive && archive.files.length > 0 ? archive.files : null
 
@@ -590,7 +594,7 @@ export default function AdminMetricsPage() {
     alerts,
     archiveDays,
     archiveStats,
-  } = useMetricsData(overview, archive, ops)
+  } = useMetricsData(overview, archive, ops, business)
 
   const competitionNames: CompetitionNames = useMemo(
     () =>

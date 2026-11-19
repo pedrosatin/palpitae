@@ -75,6 +75,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+.resultPending {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-warning, #f59e0b);
+  text-align: center;
+}
+
 .pickers {
   display: flex;
   flex-direction: column;

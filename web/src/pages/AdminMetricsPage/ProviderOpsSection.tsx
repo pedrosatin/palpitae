@@ -42,6 +42,17 @@ export interface OpsResponse {
   missingMatches?: OpsMissingMatchRow[]
   /** Ausente em API anterior ao registro de jogos encerrados sem pontuação. */
   unscoredMatches?: OpsUnscoredRow[]
+  /** Fila durável `provider_work` (D1): itens abertos ou falhos. Ausente em API antiga. */
+  pendingWork?: OpsPendingWorkRow[]
+}
+
+interface OpsPendingWorkRow {
+  provider: string
+  status: string
+  items: number
+  /** Minutos desde o `created_at` do item mais antigo do grupo. */
+  oldest_age_minutes: number
+  max_attempts: number
 }
 
 interface OpsDiscardRow {
@@ -612,6 +623,64 @@ function UnscoredMatches({ ops, names }: { ops: OpsResponse; names: CompetitionN
   )
 }
 
+const WORK_STATUS_LABEL: Record<string, string> = {
+  pending: 'pendente',
+  running: 'em execução',
+  failed: 'falhou',
+}
+
+function PendingWorkTable({ rows }: { rows: OpsPendingWorkRow[] }) {
+  return (
+    <div className={styles.tableScroll}>
+      <table className={styles.table} aria-label="Fila de trabalho dos provedores">
+        <thead>
+          <tr>
+            <th>provedor</th>
+            <th>status</th>
+            <th className={styles.num}>itens</th>
+            <th className={styles.num}>mais antigo há</th>
+            <th className={styles.num}>tentativas (máx.)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.provider}|${r.status}`}>
+              <td>{providerLabel(r.provider)}</td>
+              <td className={styles.nowrap}>{WORK_STATUS_LABEL[r.status] ?? r.status}</td>
+              <td className={styles.num}>{formatNumber(r.items)}</td>
+              <td className={styles.num}>{formatAge(r.oldest_age_minutes)}</td>
+              <td className={styles.num}>{formatNumber(r.max_attempts)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * Itens abertos ou falhos em `provider_work` (D1). Idade = agora − created_at
+ * do item mais antigo do grupo. Some quando a API ainda não envia o campo.
+ */
+function PendingWork({ ops }: { ops: OpsResponse }) {
+  if (!Array.isArray(ops.pendingWork)) return null
+  return (
+    <>
+      <h3 className={styles.subTitle}>Fila de trabalho dos provedores</h3>
+      <p className={styles.hint}>
+        Itens `pending`, `running` e `failed` da fila durável. A idade é do item mais antigo de
+        cada grupo. Chamadas HTTP acima são tentativas reais registradas; esta tabela é o
+        trabalho ainda não concluído, não o planejamento.
+      </p>
+      {ops.pendingWork.length === 0 ? (
+        <p className={styles.hint}>Nenhum item aberto ou falho na fila.</p>
+      ) : (
+        <PendingWorkTable rows={ops.pendingWork} />
+      )}
+    </>
+  )
+}
+
 /** A resposta pode vir de uma API antiga ou truncada: só renderiza o que tem forma. */
 function isUsable(ops: OpsResponse | null): ops is OpsResponse {
   return (
@@ -657,6 +726,7 @@ export default function ProviderOpsSection({
           <Discards ops={ops} names={names} />
           <MissingMatches ops={ops} names={names} />
           <UnscoredMatches ops={ops} names={names} />
+          <PendingWork ops={ops} />
         </>
       )}
     </section>

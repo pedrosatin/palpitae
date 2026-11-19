@@ -321,6 +321,54 @@ describe('ProviderOpsSection', () => {
     expect(screen.queryByRole('heading', { name: /sem pontuação/ })).not.toBeInTheDocument()
   })
 
+  it('lista a fila de trabalho dos provedores com idade', () => {
+    render(
+      <ProviderOpsSection
+        ops={makeOps({
+          pendingWork: [
+            {
+              provider: 'football-data',
+              status: 'pending',
+              items: 3,
+              oldest_age_minutes: 90,
+              max_attempts: 2,
+            },
+            {
+              provider: 'espn',
+              status: 'failed',
+              items: 1,
+              oldest_age_minutes: 4000,
+              max_attempts: 6,
+            },
+          ],
+        })}
+        names={names}
+      />,
+    )
+
+    const table = screen.getByRole('table', { name: 'Fila de trabalho dos provedores' })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(within(rows[0]).getByText('football-data.org')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('pendente')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('3')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('90 min')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('ESPN')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('falhou')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('3 d')).toBeInTheDocument()
+  })
+
+  it('fila vazia diz que não há item aberto', () => {
+    render(<ProviderOpsSection ops={makeOps({ pendingWork: [] })} names={names} />)
+    expect(screen.getByText('Nenhum item aberto ou falho na fila.')).toBeInTheDocument()
+  })
+
+  it('API anterior à fila não mostra a seção', () => {
+    render(<ProviderOpsSection ops={makeOps()} names={names} />)
+    expect(
+      screen.queryByRole('heading', { name: /Fila de trabalho dos provedores/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('lista as competições com jogo encerrado que ficou sem pontuação', () => {
     render(
       <ProviderOpsSection
