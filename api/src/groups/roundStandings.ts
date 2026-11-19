@@ -17,16 +17,6 @@ export interface RoundMemberRow {
   since_points: number
   /** Exatos da rodada de referência e das rodadas numeradas posteriores. */
   since_exact: number
-  /**
-   * Exatos do membro com `matches.scored_at` anterior ao início da janela de
-   * pontuação da rodada de referência.
-   */
-  milestone_before: number
-  /**
-   * Exatos do membro com `matches.scored_at` até o fim da janela de pontuação
-   * da rodada de referência (inclui jogos de outras rodadas pontuados nela).
-   */
-  milestone_after: number
 }
 
 /** Limiares de placares exatos no grupo: 5, 15 e 30. */
@@ -45,13 +35,20 @@ export interface RoundStanding {
   exact_hits: number
   /** Maior marco de placares exatos atingido no grupo. `null` abaixo do primeiro limiar. */
   exact_milestone: ExactMilestone | null
-  /** Marcos cruzados na rodada de referência. Vazio se nenhum limiar foi cruzado nela. */
+  /** Marcos cuja linha em `exact_milestones` tem `round` igual à rodada de referência. */
   exact_milestones_crossed: ExactMilestone[]
 }
 
 export interface RoundStandingsResponse {
   round: string | null
   standings: RoundStanding[]
+}
+
+/** Linha gravada em `exact_milestones`. `round` nulo é backfill sem destaque. */
+export interface ExactMilestoneRow {
+  user_id: string
+  threshold: number
+  round: string | null
 }
 
 type Score = (row: RoundMemberRow) => number
@@ -82,13 +79,31 @@ export function highestExactMilestone(exactHits: number): ExactMilestone | null 
   return highest
 }
 
+/** Limiares já alcançados pelo total de exatos. */
+export function thresholdsReached(exactHits: number): ExactMilestone[] {
+  return EXACT_MILESTONES.filter((threshold) => exactHits >= threshold)
+}
+
 /**
  * Limiares cruzados ao passar de `before` para `after` exatos.
- * Dispara só quando `before < T <= after`. A rodada seguinte, com `before >= T`,
- * não redispara.
+ * Mantida para testes unitários do intervalo; a API grava e destaca por estado.
  */
 export function exactMilestonesCrossed(before: number, after: number): ExactMilestone[] {
   return EXACT_MILESTONES.filter((threshold) => before < threshold && after >= threshold)
+}
+
+/** Marcos do membro cuja linha tem `round` igual à rodada de referência. */
+export function crossedForReference(
+  rows: ExactMilestoneRow[],
+  userId: string,
+  referenceRound: string,
+): ExactMilestone[] {
+  return EXACT_MILESTONES.filter((threshold) =>
+    rows.some(
+      (row) =>
+        row.user_id === userId && row.threshold === threshold && row.round === referenceRound,
+    ),
+  )
 }
 
 /**
@@ -100,17 +115,13 @@ export function exactMilestonesCrossed(before: number, after: number): ExactMile
  * com um estado que nunca existiu. Jogo remarcado de rodada anterior conta como
  * ponto de antes. Membro fora de `streaks` tem sequência 0.
  *
- * O marco permanente usa o total de exatos do grupo. O cruzamento segue a ordem
- * de pontuação: a janela da rodada de referência é o intervalo
- * `[MIN(scored_at), MAX(scored_at)]` dos jogos dela. `milestone_before` conta
- * exatos com `scored_at` anterior ao início; `milestone_after` conta exatos com
- * `scored_at` até o fim, inclusive de jogos de outras rodadas (adiados) pontuados
- * dentro da janela. Assim o destaque aparece uma vez, na rodada de referência em
- * cuja janela o N-ésimo exato foi pontuado.
+ * O marco permanente usa o total de exatos do grupo. O destaque de cruzamento
+ * vem das linhas de `exact_milestones` cuja `round` é a rodada de referência.
  */
 export function computeRoundStandings(
   rows: RoundMemberRow[],
   streaks: ReadonlyMap<string, number>,
+  crossedByUser: ReadonlyMap<string, ExactMilestone[]> = new Map(),
 ): RoundStanding[] {
   const pointsBefore: Score = (row) => row.total_points - row.since_points
   const exactBefore: Score = (row) => row.exact_hits - row.since_exact
@@ -131,7 +142,7 @@ export function computeRoundStandings(
       streak: streaks.get(row.user_id) ?? 0,
       exact_hits: row.exact_hits,
       exact_milestone: highestExactMilestone(row.exact_hits),
-      exact_milestones_crossed: exactMilestonesCrossed(row.milestone_before, row.milestone_after),
+      exact_milestones_crossed: crossedByUser.get(row.user_id) ?? [],
     }
   })
 }
@@ -275,9 +286,7 @@ async function fetchRoundMembers(
          COALESCE(r.round_points, 0) AS round_points,
          COALESCE(r.round_exact, 0) AS round_exact,
          COALESCE(r.since_points, 0) AS since_points,
-         COALESCE(r.since_exact, 0) AS since_exact,
-         COALESCE(x.milestone_before, 0) AS milestone_before,
-         COALESCE(x.milestone_after, 0) AS milestone_after
+         COALESCE(r.since_exact, 0) AS since_exact
        FROM group_members gm
        INNER JOIN users u ON gm.user_id = u.id
        LEFT JOIN leaderboard l ON gm.group_id = l.group_id AND gm.user_id = l.user_id
@@ -296,32 +305,9 @@ async function fetchRoundMembers(
            AND CAST(m.round AS INTEGER) >= CAST(? AS INTEGER)
          GROUP BY p.user_id
        ) r ON gm.user_id = r.user_id
-       LEFT JOIN (
-         SELECT
-           p.user_id,
-           SUM(CASE WHEN m.scored_at < w.window_start THEN ${EXACT_HIT_SQL} ELSE 0 END)
-             AS milestone_before,
-           SUM(CASE WHEN m.scored_at <= w.window_end THEN ${EXACT_HIT_SQL} ELSE 0 END)
-             AS milestone_after
-         FROM predictions p
-         JOIN groups g ON g.id = p.group_id
-         JOIN matches m ON m.id = p.match_id AND m.competition_id = g.competition_id
-         CROSS JOIN (
-           SELECT MIN(m2.scored_at) AS window_start, MAX(m2.scored_at) AS window_end
-           FROM matches m2
-           JOIN groups g2 ON g2.competition_id = m2.competition_id
-           WHERE g2.id = ?
-             AND m2.round = ?
-             AND m2.status = 'finished'
-             AND m2.scored_at IS NOT NULL
-         ) w
-         WHERE p.group_id = ?
-           AND m.scored_at IS NOT NULL
-         GROUP BY p.user_id
-       ) x ON gm.user_id = x.user_id
        WHERE gm.group_id = ? AND ${notBannedSql('gm')}`,
     )
-    .bind(round, round, groupId, round, groupId, round, groupId, groupId)
+    .bind(round, round, groupId, round, groupId)
     .all<RoundMemberRow>()
   return results
 }
@@ -347,6 +333,133 @@ async function fetchMemberRoundPicks(db: D1Database, groupId: string): Promise<M
   return results
 }
 
+async function fetchExactMilestones(db: D1Database, groupId: string): Promise<ExactMilestoneRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT user_id, threshold, round
+       FROM exact_milestones
+       WHERE group_id = ?`,
+    )
+    .bind(groupId)
+    .all<ExactMilestoneRow>()
+  return results
+}
+
+async function isExactMilestonesInitialized(db: D1Database, groupId: string): Promise<boolean> {
+  const row = await db
+    .prepare(`SELECT 1 AS ok FROM exact_milestones_initialized WHERE group_id = ?`)
+    .bind(groupId)
+    .first<{ ok: number }>()
+  return row !== null
+}
+
+function milestoneKey(userId: string, threshold: number): string {
+  return `${userId}:${threshold}`
+}
+
+/** Linhas a gravar no backfill da primeira leitura: limiares já atingidos, sem destaque. */
+export function backfillMilestoneInserts(
+  members: RoundMemberRow[],
+): { user_id: string; threshold: ExactMilestone }[] {
+  const inserts: { user_id: string; threshold: ExactMilestone }[] = []
+  for (const member of members) {
+    for (const threshold of thresholdsReached(member.exact_hits)) {
+      inserts.push({ user_id: member.user_id, threshold })
+    }
+  }
+  return inserts
+}
+
+/** Limiares novos a gravar com a rodada de referência atual. */
+export function newMilestoneInserts(
+  members: RoundMemberRow[],
+  existing: ExactMilestoneRow[],
+): { user_id: string; threshold: ExactMilestone }[] {
+  const have = new Set(existing.map((row) => milestoneKey(row.user_id, row.threshold)))
+  const inserts: { user_id: string; threshold: ExactMilestone }[] = []
+  for (const member of members) {
+    for (const threshold of thresholdsReached(member.exact_hits)) {
+      if (!have.has(milestoneKey(member.user_id, threshold))) {
+        inserts.push({ user_id: member.user_id, threshold })
+      }
+    }
+  }
+  return inserts
+}
+
+function crossedMap(
+  rows: ExactMilestoneRow[],
+  members: RoundMemberRow[],
+  referenceRound: string,
+): Map<string, ExactMilestone[]> {
+  const map = new Map<string, ExactMilestone[]>()
+  for (const member of members) {
+    map.set(member.user_id, crossedForReference(rows, member.user_id, referenceRound))
+  }
+  return map
+}
+
+/**
+ * Grava marcos na primeira observação e devolve o mapa de destaque da rodada.
+ *
+ * Sem rodada de referência o chamador não entra aqui. Na primeira leitura do
+ * grupo, grava os limiares já atingidos com `round` nulo (backfill, sem
+ * destaque) e marca o grupo como inicializado. Depois disso, cada limiar novo
+ * recebe a rodada de referência atual. A chave primária com `ON CONFLICT DO
+ * NOTHING` evita duas leituras concorrentes gravarem o mesmo marco com rodadas
+ * diferentes; a releitura decide o que destacar.
+ */
+export async function recordExactMilestones(
+  db: D1Database,
+  groupId: string,
+  referenceRound: string,
+  members: RoundMemberRow[],
+): Promise<Map<string, ExactMilestone[]>> {
+  const initialized = await isExactMilestonesInitialized(db, groupId)
+  let existing = await fetchExactMilestones(db, groupId)
+
+  if (!initialized) {
+    const statements = [
+      db
+        .prepare(
+          `INSERT INTO exact_milestones_initialized (group_id) VALUES (?)
+           ON CONFLICT (group_id) DO NOTHING`,
+        )
+        .bind(groupId),
+      ...backfillMilestoneInserts(members).map((row) =>
+        db
+          .prepare(
+            `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
+             VALUES (?, ?, ?, NULL)
+             ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
+          )
+          .bind(groupId, row.user_id, row.threshold),
+      ),
+    ]
+    await db.batch(statements)
+    existing = await fetchExactMilestones(db, groupId)
+    return crossedMap(existing, members, referenceRound)
+  }
+
+  const pending = newMilestoneInserts(members, existing)
+  if (pending.length > 0) {
+    await db.batch(
+      pending.map((row) =>
+        db
+          .prepare(
+            `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
+          )
+          .bind(groupId, row.user_id, row.threshold, referenceRound),
+      ),
+    )
+    existing = await fetchExactMilestones(db, groupId)
+  }
+
+  return crossedMap(existing, members, referenceRound)
+}
+
 export async function getRoundStandings(
   db: D1Database,
   groupId: string,
@@ -358,5 +471,9 @@ export async function getRoundStandings(
     fetchRoundMembers(db, groupId, round),
     fetchMemberRoundPicks(db, groupId),
   ])
-  return { round, standings: computeRoundStandings(members, computeStreaks(phases, picks)) }
+  const crossedByUser = await recordExactMilestones(db, groupId, round, members)
+  return {
+    round,
+    standings: computeRoundStandings(members, computeStreaks(phases, picks), crossedByUser),
+  }
 }

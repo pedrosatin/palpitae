@@ -7,11 +7,17 @@ import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import {
+  backfillMilestoneInserts,
   computeRoundStandings,
   computeStreaks,
+  crossedForReference,
   exactMilestonesCrossed,
   highestExactMilestone,
+  newMilestoneInserts,
   pickReferenceRound,
+  thresholdsReached,
+  type ExactMilestone,
+  type ExactMilestoneRow,
   type MemberRoundPicks,
   type RoundMemberRow,
   type RoundPhaseRow,
@@ -22,8 +28,8 @@ const NO_STREAKS = new Map<string, number>()
 function noMilestone(exactHits = 0) {
   return {
     exact_hits: exactHits,
-    exact_milestone: null,
-    exact_milestones_crossed: [] as const,
+    exact_milestone: null as ExactMilestone | null,
+    exact_milestones_crossed: [] as ExactMilestone[],
   }
 }
 
@@ -36,10 +42,14 @@ function member(overrides: Partial<RoundMemberRow> & { user_id: string }): Round
     round_exact: 0,
     since_points: overrides.round_points ?? 0,
     since_exact: 0,
-    milestone_before: 0,
-    milestone_after: 0,
     ...overrides,
   }
+}
+
+function crossedMap(
+  entries: Record<string, ExactMilestone[]>,
+): Map<string, ExactMilestone[]> {
+  return new Map(Object.entries(entries))
 }
 
 function changes(rows: RoundMemberRow[]) {
@@ -178,7 +188,7 @@ describe('computeRoundStandings', () => {
     ])
   })
 
-  it('marca o maior marco pelo total e o cruzamento só na janela do limiar', () => {
+  it('marca o maior marco pelo total e o cruzamento pelas linhas da rodada', () => {
     const rows = [
       member({
         user_id: 'cruzou',
@@ -188,8 +198,6 @@ describe('computeRoundStandings', () => {
         round_exact: 1,
         since_points: 3,
         since_exact: 1,
-        milestone_before: 4,
-        milestone_after: 5,
       }),
       member({
         user_id: 'ja-tinha',
@@ -199,14 +207,16 @@ describe('computeRoundStandings', () => {
         round_exact: 1,
         since_points: 3,
         since_exact: 1,
-        milestone_before: 5,
-        milestone_after: 6,
       }),
       member({ user_id: 'zero', total_points: 0 }),
     ]
 
     const byUser = Object.fromEntries(
-      computeRoundStandings(rows, NO_STREAKS).map((s) => [
+      computeRoundStandings(
+        rows,
+        NO_STREAKS,
+        crossedMap({ cruzou: [5], 'ja-tinha': [], zero: [] }),
+      ).map((s) => [
         s.user_id,
         { exact_milestone: s.exact_milestone, exact_milestones_crossed: s.exact_milestones_crossed },
       ]),
@@ -219,38 +229,17 @@ describe('computeRoundStandings', () => {
     })
   })
 
-  it('não conta exato pontuado depois da janela da referência', () => {
-    const rows = [
-      member({
-        user_id: 'a',
-        exact_hits: 5,
-        round_exact: 0,
-        since_exact: 1,
-        milestone_before: 4,
-        milestone_after: 4,
-      }),
-    ]
+  it('aceita vários limiares cruzados na mesma leitura', () => {
+    const rows = [member({ user_id: 'a', exact_hits: 15 })]
 
-    // before = 4, after = 4; o 5º veio depois da janela da referência.
-    expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestones_crossed).toEqual([])
-    expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestone).toBe(5)
-  })
-
-  it('retorna 5 e 15 quando a janela sobe de 4 para 15', () => {
-    const rows = [
-      member({
-        user_id: 'a',
-        exact_hits: 15,
-        milestone_before: 4,
-        milestone_after: 15,
-      }),
-    ]
-
-    expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestones_crossed).toEqual([5, 15])
+    expect(
+      computeRoundStandings(rows, NO_STREAKS, crossedMap({ a: [5, 15] }))[0]
+        .exact_milestones_crossed,
+    ).toEqual([5, 15])
   })
 })
 
-describe('highestExactMilestone e exactMilestonesCrossed', () => {
+describe('highestExactMilestone, thresholdsReached e exactMilestonesCrossed', () => {
   it('devolve null abaixo de 5 e o maior limiar atingido', () => {
     expect(highestExactMilestone(0)).toBeNull()
     expect(highestExactMilestone(4)).toBeNull()
@@ -262,6 +251,14 @@ describe('highestExactMilestone e exactMilestonesCrossed', () => {
     expect(highestExactMilestone(40)).toBe(30)
   })
 
+  it('lista os limiares alcançados pelo total', () => {
+    expect(thresholdsReached(0)).toEqual([])
+    expect(thresholdsReached(4)).toEqual([])
+    expect(thresholdsReached(5)).toEqual([5])
+    expect(thresholdsReached(15)).toEqual([5, 15])
+    expect(thresholdsReached(30)).toEqual([5, 15, 30])
+  })
+
   it('dispara em 4→5 e não redispara em 5→6; cobre 15 e 30', () => {
     expect(exactMilestonesCrossed(4, 5)).toEqual([5])
     expect(exactMilestonesCrossed(5, 6)).toEqual([])
@@ -271,6 +268,36 @@ describe('highestExactMilestone e exactMilestonesCrossed', () => {
     expect(exactMilestonesCrossed(29, 30)).toEqual([30])
     expect(exactMilestonesCrossed(4, 16)).toEqual([5, 15])
     expect(exactMilestonesCrossed(0, 0)).toEqual([])
+  })
+
+  it('destaca só linhas cuja round é a referência', () => {
+    const rows: ExactMilestoneRow[] = [
+      { user_id: 'a', threshold: 5, round: '34' },
+      { user_id: 'a', threshold: 15, round: null },
+      { user_id: 'b', threshold: 5, round: '33' },
+    ]
+    expect(crossedForReference(rows, 'a', '34')).toEqual([5])
+    expect(crossedForReference(rows, 'a', '33')).toEqual([])
+    expect(crossedForReference(rows, 'b', '33')).toEqual([5])
+  })
+
+  it('monta backfill e inserções novas sem repetir o que já existe', () => {
+    const members = [
+      member({ user_id: 'a', exact_hits: 7 }),
+      member({ user_id: 'b', exact_hits: 15 }),
+      member({ user_id: 'c', exact_hits: 0 }),
+    ]
+    expect(backfillMilestoneInserts(members)).toEqual([
+      { user_id: 'a', threshold: 5 },
+      { user_id: 'b', threshold: 5 },
+      { user_id: 'b', threshold: 15 },
+    ])
+    expect(
+      newMilestoneInserts(members, [{ user_id: 'b', threshold: 5, round: null }]),
+    ).toEqual([
+      { user_id: 'a', threshold: 5 },
+      { user_id: 'b', threshold: 15 },
+    ])
   })
 })
 
@@ -545,7 +572,11 @@ async function createFixture() {
     sqlite
       .prepare(
         `INSERT INTO leaderboard (group_id, user_id, total_points, exact_hits, last_updated)
-         VALUES ('group-a', ?, ?, ?, '2026-06-14T00:00:00Z')`,
+         VALUES ('group-a', ?, ?, ?, '2026-06-14T00:00:00Z')
+         ON CONFLICT (group_id, user_id) DO UPDATE SET
+           total_points = excluded.total_points,
+           exact_hits = excluded.exact_hits,
+           last_updated = excluded.last_updated`,
       )
       .run(user, total, exact)
   }
@@ -969,27 +1000,77 @@ describe('GET /groups/:id/round-standings', () => {
     expect(body.standings.map((s) => s.position_change)).toEqual([0, 0, 0])
   })
 
-  it('grupo novo sem exatos devolve marco null e cruzamento vazio', async () => {
-    const { standings, addMatch } = await createFixture()
+  it('grupo novo sem exatos inicializa sem destaque e destaca o 5 depois', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     addMatch({ round: '1' })
 
-    const body = await standings()
-
-    expect(body.round).toBe('1')
+    const first = await standings()
+    expect(first.round).toBe('1')
     expect(
-      body.standings.every(
+      first.standings.every(
         (s) => s.exact_milestone === null && s.exact_milestones_crossed.length === 0,
       ),
     ).toBe(true)
+    expect(
+      sqlite
+        .prepare(`SELECT 1 AS ok FROM exact_milestones_initialized WHERE group_id = 'group-a'`)
+        .get(),
+    ).toEqual({ ok: 1 })
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM exact_milestones WHERE group_id = 'group-a'`).get(),
+    ).toEqual({ n: 0 })
+
+    const hits = [1, 2, 3, 4, 5].map((i) =>
+      addMatch({ round: '2', start: ROUND_START, scoredAt: `2026-05-02T0${i}:00:00Z` }),
+    )
+    for (const match of hits) addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 15, 5)
+
+    const crossed = await standings()
+    expect(crossed.round).toBe('2')
+    expect(crossed.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice' ORDER BY threshold`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: '2' }])
   })
 
-  it('cruzar 5 exatos dispara uma vez; a rodada seguinte não redispara', async () => {
+  it('grupo antigo na primeira leitura faz backfill sem destaque', async () => {
+    const { sqlite, standings, addMatch, setBoard } = await createFixture()
+    addMatch({ round: '1' })
+    setBoard('alice', 21, 7)
+
+    const body = await standings()
+    expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: null }])
+  })
+
+  it('grava o marco na rodada observada, mantém o destaque nela e some na seguinte', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
-    // 4 exatos antes da janela e o 5º pontuado na janela da rodada 2.
     const prior = [1, 2, 3, 4].map(() =>
       addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
     )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 12, 4)
+    await standings()
+
     const fifth = addMatch({
       round: '2',
       start: ROUND_START,
@@ -1005,7 +1086,19 @@ describe('GET /groups/:id/round-standings', () => {
       exact_milestones_crossed: [5],
     })
 
-    // Fecha a rodada 3 com mais um exato: total 6, sem novo cruzamento.
+    const again = await standings()
+    expect(again.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestones_crossed: [5],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice' AND threshold = 5`,
+        )
+        .get(),
+    ).toEqual({ n: 1 })
+
     const sixth = addMatch({
       round: '3',
       start: AFTER,
@@ -1014,7 +1107,8 @@ describe('GET /groups/:id/round-standings', () => {
     addPick('alice', sixth, { awarded: 3 })
     sqlite
       .prepare(
-        `UPDATE leaderboard SET total_points = 18, exact_hits = 6 WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        `UPDATE leaderboard SET total_points = 18, exact_hits = 6
+         WHERE group_id = 'group-a' AND user_id = 'alice'`,
       )
       .run()
 
@@ -1029,20 +1123,16 @@ describe('GET /groups/:id/round-standings', () => {
   it('membro sozinho no grupo recebe o marco normalmente', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     sqlite.exec(`DELETE FROM group_members WHERE user_id IN ('bob', 'carol')`)
-    const prior = [1, 2, 3, 4].map(() =>
-      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    addMatch({ round: '1' })
+    await standings()
+
+    const hits = [1, 2, 3, 4, 5].map((i) =>
+      addMatch({ round: '2', start: ROUND_START, scoredAt: `2026-05-02T0${i}:00:00Z` }),
     )
-    for (const match of prior) addPick('alice', match, { awarded: 3 })
-    const fifth = addMatch({
-      round: '2',
-      start: ROUND_START,
-      scoredAt: '2026-05-02T00:00:00Z',
-    })
-    addPick('alice', fifth, { awarded: 3 })
+    for (const match of hits) addPick('alice', match, { awarded: 3 })
     setBoard('alice', 15, 5)
 
     const body = await standings()
-
     expect(body.standings).toHaveLength(1)
     expect(body.standings[0]).toMatchObject({
       user_id: 'alice',
@@ -1051,123 +1141,112 @@ describe('GET /groups/:id/round-standings', () => {
     })
   })
 
-  it('marca o cruzamento de 15 placares exatos na janela do limiar', async () => {
-    const { standings, addMatch, addPick, setBoard } = await createFixture()
-    const prior = Array.from({ length: 14 }, () =>
-      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
-    )
-    for (const match of prior) addPick('alice', match, { awarded: 3 })
-    addPick(
-      'alice',
-      addMatch({ round: '2', start: ROUND_START, scoredAt: '2026-05-02T00:00:00Z' }),
-      { awarded: 3 },
-    )
+  it('marca o cruzamento de 15 e de 30 placares exatos', async () => {
+    const { standings, addMatch, setBoard } = await createFixture()
+    addMatch({ round: '1' })
+    await standings()
     setBoard('alice', 45, 15)
+    addMatch({ round: '2', start: ROUND_START })
 
     expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
       exact_milestone: 15,
-      exact_milestones_crossed: [15],
+      exact_milestones_crossed: [5, 15],
     })
-  })
 
-  it('marca o cruzamento de 30 placares exatos na janela do limiar', async () => {
-    const { standings, addMatch, addPick, setBoard } = await createFixture()
-    const prior = Array.from({ length: 29 }, () =>
-      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
-    )
-    for (const match of prior) addPick('alice', match, { awarded: 3 })
-    addPick(
-      'alice',
-      addMatch({ round: '2', start: ROUND_START, scoredAt: '2026-05-02T00:00:00Z' }),
-      { awarded: 3 },
-    )
-    setBoard('alice', 90, 30)
+    const { standings: standings30, addMatch: add30, setBoard: set30 } = await createFixture()
+    add30({ round: '1' })
+    await standings30()
+    set30('alice', 90, 30)
+    add30({ round: '2', start: ROUND_START })
 
-    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+    expect((await standings30()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
       exact_milestone: 30,
-      exact_milestones_crossed: [30],
+      exact_milestones_crossed: [5, 15, 30],
     })
   })
 
-  it('adiado da rodada anterior pontuado na janela da referência cruza o marco', async () => {
+  it('exato pontuado entre rodadas destaca na próxima referência lida', async () => {
     const { standings, addMatch, addPick, setBoard } = await createFixture()
     const prior = [1, 2, 3, 4].map(() =>
-      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+      addMatch({ round: '33', start: BEFORE, scoredAt: '2026-03-02T00:00:00Z' }),
     )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
-    // Janela da 34: 20:00 → 18:00 do dia seguinte. O 5º exato é adiado da 33
-    // pontuado no meio da janela.
-    addMatch({
-      round: '34',
-      start: ROUND_START,
-      scoredAt: '2026-05-01T20:00:00Z',
+    addMatch({ round: '34', start: ROUND_START, scoredAt: '2026-05-01T20:00:00Z' })
+    setBoard('alice', 12, 4)
+
+    const before = await standings()
+    expect(before.round).toBe('34')
+    expect(before.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: null,
+      exact_milestones_crossed: [],
     })
-    addMatch({
-      round: '34',
-      start: '2026-05-02T19:00:00Z',
-      scoredAt: '2026-05-02T18:00:00Z',
-    })
-    const postponed = addMatch({
+
+    const late = addMatch({
       round: '33',
       start: BEFORE,
-      scoredAt: '2026-05-02T12:00:00Z',
+      scoredAt: '2026-05-10T12:00:00Z',
     })
-    addPick('alice', postponed, { awarded: 3 })
+    addPick('alice', late, { awarded: 3 })
     setBoard('alice', 15, 5)
 
-    const body = await standings()
-    expect(body.round).toBe('34')
-    expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+    // Ainda na 34: a próxima leitura observa o 5º e destaca nela.
+    const on34 = await standings()
+    expect(on34.round).toBe('34')
+    expect(on34.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       exact_milestone: 5,
       exact_milestones_crossed: [5],
     })
   })
 
-  it('exato de rodada antiga pontuado na janela da nova referência cruza nela', async () => {
-    const { standings, addMatch, addPick, setBoard } = await createFixture()
+  it('exato entre o fechamento da 34 e a leitura da 35 destaca na 35', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const prior = [1, 2, 3, 4].map(() =>
-      addMatch({ round: '32', start: BEFORE, scoredAt: '2026-03-02T00:00:00Z' }),
+      addMatch({ round: '33', start: BEFORE, scoredAt: '2026-03-02T00:00:00Z' }),
     )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
-    // 33 e 34 fechadas; a referência é 34. O 5º exato é de um jogo da 33 pontuado
-    // depois que a 34 já era referência, dentro da janela dela.
-    addMatch({
+    addMatch({ round: '34', start: ROUND_START, scoredAt: '2026-05-01T20:00:00Z' })
+    setBoard('alice', 12, 4)
+    await standings()
+
+    const late = addMatch({
       round: '33',
-      start: '2026-04-15T19:00:00Z',
-      scoredAt: '2026-04-16T00:00:00Z',
+      start: BEFORE,
+      scoredAt: '2026-05-10T12:00:00Z',
     })
-    addMatch({
-      round: '34',
-      start: ROUND_START,
-      scoredAt: '2026-05-01T20:00:00Z',
-    })
-    addMatch({
-      round: '34',
-      start: '2026-05-02T19:00:00Z',
-      scoredAt: '2026-05-02T18:00:00Z',
-    })
-    const lateFrom33 = addMatch({
-      round: '33',
-      start: '2026-04-15T21:00:00Z',
-      scoredAt: '2026-05-02T10:00:00Z',
-    })
-    addPick('alice', lateFrom33, { awarded: 3 })
-    setBoard('alice', 15, 5)
+    addPick('alice', late, { awarded: 3 })
+    sqlite
+      .prepare(
+        `UPDATE leaderboard SET total_points = 15, exact_hits = 5
+         WHERE group_id = 'group-a' AND user_id = 'alice'`,
+      )
+      .run()
+    addMatch({ round: '35', start: AFTER, scoredAt: '2026-06-02T00:00:00Z' })
 
     const body = await standings()
-    expect(body.round).toBe('34')
+    expect(body.round).toBe('35')
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       exact_milestone: 5,
       exact_milestones_crossed: [5],
     })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice' AND threshold = 5`,
+        )
+        .get(),
+    ).toEqual({ round: '35' })
   })
 
-  it('repontuação na mesma janela não redispara o cruzamento', async () => {
+  it('repontuação que muda scored_at não redispara o cruzamento', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard, setScoredAt } = await createFixture()
     const prior = [1, 2, 3, 4].map(() =>
       addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
     )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 12, 4)
+    await standings()
+
     const fifth = addMatch({
       round: '2',
       start: ROUND_START,
@@ -1180,18 +1259,19 @@ describe('GET /groups/:id/round-standings', () => {
       exact_milestones_crossed: [5],
     })
 
-    // Revisão: o mesmo jogo é pontuado de novo; a janela se move e before já era >= 5.
     setScoredAt(fifth, '2026-05-03T00:00:00Z')
-    sqlite
-      .prepare(
-        `UPDATE leaderboard SET total_points = 15, exact_hits = 5 WHERE group_id = 'group-a' AND user_id = 'alice'`,
-      )
-      .run()
-
     expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
       exact_milestone: 5,
       exact_milestones_crossed: [5],
     })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice' AND threshold = 5`,
+        )
+        .get(),
+    ).toEqual({ n: 1 })
 
     const sixth = addMatch({
       round: '3',
@@ -1201,7 +1281,8 @@ describe('GET /groups/:id/round-standings', () => {
     addPick('alice', sixth, { awarded: 3 })
     sqlite
       .prepare(
-        `UPDATE leaderboard SET total_points = 18, exact_hits = 6 WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        `UPDATE leaderboard SET total_points = 18, exact_hits = 6
+         WHERE group_id = 'group-a' AND user_id = 'alice'`,
       )
       .run()
 
@@ -1211,21 +1292,14 @@ describe('GET /groups/:id/round-standings', () => {
     })
   })
 
-  it('4 para 15 numa só janela devolve 5 e 15; a seguinte não redispara', async () => {
-    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
-    const prior = [1, 2, 3, 4].map(() =>
-      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
-    )
-    for (const match of prior) addPick('alice', match, { awarded: 3 })
-    const burst = Array.from({ length: 11 }, (_, i) =>
-      addMatch({
-        round: '2',
-        start: ROUND_START,
-        scoredAt: `2026-05-02T${String(i).padStart(2, '0')}:00:00Z`,
-      }),
-    )
-    for (const match of burst) addPick('alice', match, { awarded: 3 })
+  it('4 para 15 numa leitura grava e destaca os dois; a seguinte não redispara', async () => {
+    const { sqlite, standings, addMatch, setBoard } = await createFixture()
+    addMatch({ round: '1' })
+    setBoard('alice', 12, 4)
+    await standings()
+
     setBoard('alice', 45, 15)
+    addMatch({ round: '2', start: ROUND_START })
 
     const crossed = await standings()
     expect(crossed.round).toBe('2')
@@ -1233,23 +1307,134 @@ describe('GET /groups/:id/round-standings', () => {
       exact_milestone: 15,
       exact_milestones_crossed: [5, 15],
     })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice' ORDER BY threshold`,
+        )
+        .all(),
+    ).toEqual([
+      { threshold: 5, round: '2' },
+      { threshold: 15, round: '2' },
+    ])
 
-    const next = addMatch({
-      round: '3',
-      start: AFTER,
-      scoredAt: '2026-06-02T00:00:00Z',
-    })
-    addPick('alice', next, { awarded: 3 })
-    sqlite
-      .prepare(
-        `UPDATE leaderboard SET total_points = 48, exact_hits = 16 WHERE group_id = 'group-a' AND user_id = 'alice'`,
-      )
-      .run()
-
+    setBoard('alice', 48, 16)
+    addMatch({ round: '3', start: AFTER })
     expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
       exact_milestone: 15,
       exact_milestones_crossed: [],
     })
+  })
+
+  it('duas gravações concorrentes do mesmo marco ficam com uma linha só', async () => {
+    const { standings, addMatch, setBoard, sqlite } = await createFixture()
+    addMatch({ round: '1' })
+    await standings()
+    setBoard('alice', 15, 5)
+    addMatch({ round: '2', start: ROUND_START })
+
+    // Simula duas leituras que tentam gravar o mesmo limiar com rodadas diferentes.
+    // A chave primária e o DO NOTHING preservam a primeira; a releitura decide o destaque.
+    sqlite
+      .prepare(
+        `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
+         VALUES ('group-a', 'alice', 5, '34')
+         ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
+      )
+      .run()
+    sqlite
+      .prepare(
+        `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
+         VALUES ('group-a', 'alice', 5, '35')
+         ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
+      )
+      .run()
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice' AND threshold = 5`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: '34' }])
+
+    // A referência atual é 2; a linha vencedora tem round 34, então não destaca aqui.
+    const body = await standings()
+    expect(body.round).toBe('2')
+    expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [],
+    })
+  })
+
+  it('sem rodada de referência não grava marco', async () => {
+    const { sqlite, standings, addMatch, setBoard } = await createFixture()
+    addMatch({ round: '8', start: ROUND_START })
+    addMatch({ round: 'LAST_16', start: AFTER })
+    setBoard('alice', 15, 5)
+
+    expect(await standings()).toEqual({ round: null, standings: [] })
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM exact_milestones WHERE group_id = 'group-a'`).get(),
+    ).toEqual({ n: 0 })
+    expect(
+      sqlite
+        .prepare(`SELECT COUNT(*) AS n FROM exact_milestones_initialized WHERE group_id = 'group-a'`)
+        .get(),
+    ).toEqual({ n: 0 })
+  })
+
+  it('exclusão de conta e de grupo apagam as linhas de marcos', async () => {
+    const { sqlite, standings, addMatch, setBoard } = await createFixture()
+    addMatch({ round: '1' })
+    await standings()
+    // bob não é dono: a exclusão de conta do dono exige transferência (ADR-026).
+    setBoard('bob', 15, 5)
+    addMatch({ round: '2', start: ROUND_START })
+    await standings()
+
+    expect(
+      sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'bob'`,
+        )
+        .get(),
+    ).toEqual({ n: 1 })
+
+    sqlite.exec(`DELETE FROM users WHERE id = 'bob'`)
+    expect(
+      sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'bob'`,
+        )
+        .get(),
+    ).toEqual({ n: 0 })
+
+    const { sqlite: sqlite2, standings: standings2, addMatch: add2, setBoard: set2 } =
+      await createFixture()
+    add2({ round: '1' })
+    await standings2()
+    set2('carol', 15, 5)
+    add2({ round: '2', start: ROUND_START })
+    await standings2()
+    expect(
+      sqlite2
+        .prepare(`SELECT COUNT(*) AS n FROM exact_milestones_initialized WHERE group_id = 'group-a'`)
+        .get(),
+    ).toEqual({ n: 1 })
+
+    sqlite2.exec(`DELETE FROM groups WHERE id = 'group-a'`)
+    expect(
+      sqlite2.prepare(`SELECT COUNT(*) AS n FROM exact_milestones WHERE group_id = 'group-a'`).get(),
+    ).toEqual({ n: 0 })
+    expect(
+      sqlite2
+        .prepare(`SELECT COUNT(*) AS n FROM exact_milestones_initialized WHERE group_id = 'group-a'`)
+        .get(),
+    ).toEqual({ n: 0 })
   })
 })
 
