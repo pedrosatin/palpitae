@@ -362,6 +362,48 @@ describe('LeaderboardTab selos da rodada', () => {
       ana.getByText('4 seguidas'),
     )
   })
+
+  it('mostra o maior marco a partir dos exatos do membro, mesmo sem rodada', async () => {
+    const richMembers = [
+      { ...members[0], exact_hits: 16 },
+      { ...members[1], exact_hits: 1 },
+    ]
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url) => {
+      const u = url.toString()
+      if (u.includes('/round-standings')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ round: null, standings: [] }),
+        } as Response)
+      }
+      if (u.includes('/members')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ members: richMembers }),
+        } as Response)
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${u}`))
+    })
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    await waitFor(() => screen.getByText('Ana'))
+
+    const pedro = rowOf('Pedro')
+    const label = 'Marcos de 5 e 15 placares exatos neste grupo'
+    expect(pedro.getByText('15 exatos')).toHaveAttribute('aria-hidden', 'true')
+    expect(pedro.getByText(label)).toHaveClass('sr-only')
+    expect(pedro.getByTitle(label)).toContainElement(pedro.getByText('15 exatos'))
+    expect(rowOf('Ana').queryByText(/exatos/)).not.toBeInTheDocument()
+  })
+
+  it('não inventa selo de marco com zero exatos', async () => {
+    mockFetch(noRound)
+    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    await waitFor(() => screen.getByText('Ana'))
+
+    expect(screen.queryByText('5 exatos')).not.toBeInTheDocument()
+    expect(screen.queryByText('15 exatos')).not.toBeInTheDocument()
+    expect(screen.queryByText('30 exatos')).not.toBeInTheDocument()
+  })
 })
 
 describe('LeaderboardTab – analytics', () => {

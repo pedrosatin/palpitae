@@ -9,6 +9,8 @@ import type { Env } from '../types'
 import {
   computeRoundStandings,
   computeStreaks,
+  exactMilestonesCrossed,
+  highestExactMilestone,
   pickReferenceRound,
   type MemberRoundPicks,
   type RoundMemberRow,
@@ -17,12 +19,21 @@ import {
 
 const NO_STREAKS = new Map<string, number>()
 
+function noMilestone(exactHits = 0) {
+  return {
+    exact_hits: exactHits,
+    exact_milestone: null,
+    exact_milestones_crossed: [] as const,
+  }
+}
+
 function member(overrides: Partial<RoundMemberRow> & { user_id: string }): RoundMemberRow {
   return {
     joined_at: '2026-01-01T00:00:00Z',
     total_points: 0,
     exact_hits: 0,
     round_points: 0,
+    round_exact: 0,
     since_points: overrides.round_points ?? 0,
     since_exact: 0,
     ...overrides,
@@ -127,8 +138,8 @@ describe('computeRoundStandings', () => {
 
     // Antes da referência, alice tinha 8 e bob tinha 13. Descontando só a referência, seria 17 a 13.
     expect(computeRoundStandings(rows, NO_STREAKS)).toEqual([
-      { user_id: 'alice', round_points: 3, position_change: 1, streak: 0 },
-      { user_id: 'bob', round_points: 5, position_change: -1, streak: 0 },
+      { user_id: 'alice', round_points: 3, position_change: 1, streak: 0, ...noMilestone() },
+      { user_id: 'bob', round_points: 5, position_change: -1, streak: 0, ...noMilestone() },
     ])
   })
 
@@ -149,8 +160,8 @@ describe('computeRoundStandings', () => {
     ]
 
     expect(computeRoundStandings(rows, NO_STREAKS)).toEqual([
-      { user_id: 'palpitou', round_points: 8, position_change: 1, streak: 0 },
-      { user_id: 'ausente', round_points: 0, position_change: -1, streak: 0 },
+      { user_id: 'palpitou', round_points: 8, position_change: 1, streak: 0, ...noMilestone() },
+      { user_id: 'ausente', round_points: 0, position_change: -1, streak: 0, ...noMilestone() },
     ])
   })
 
@@ -163,6 +174,82 @@ describe('computeRoundStandings', () => {
       ['a', 4],
       ['b', 0],
     ])
+  })
+
+  it('marca o maior marco pelo total e o cruzamento só na rodada do limiar', () => {
+    const rows = [
+      member({
+        user_id: 'cruzou',
+        total_points: 20,
+        exact_hits: 5,
+        round_points: 3,
+        round_exact: 1,
+        since_points: 3,
+        since_exact: 1,
+      }),
+      member({
+        user_id: 'ja-tinha',
+        total_points: 18,
+        exact_hits: 6,
+        round_points: 3,
+        round_exact: 1,
+        since_points: 3,
+        since_exact: 1,
+      }),
+      member({ user_id: 'zero', total_points: 0 }),
+    ]
+
+    const byUser = Object.fromEntries(
+      computeRoundStandings(rows, NO_STREAKS).map((s) => [
+        s.user_id,
+        { exact_milestone: s.exact_milestone, exact_milestones_crossed: s.exact_milestones_crossed },
+      ]),
+    )
+
+    expect(byUser).toEqual({
+      cruzou: { exact_milestone: 5, exact_milestones_crossed: [5] },
+      'ja-tinha': { exact_milestone: 5, exact_milestones_crossed: [] },
+      zero: { exact_milestone: null, exact_milestones_crossed: [] },
+    })
+  })
+
+  it('não conta exato da rodada seguinte no cruzamento da referência', () => {
+    const rows = [
+      member({
+        user_id: 'a',
+        exact_hits: 5,
+        round_exact: 0,
+        since_exact: 1,
+      }),
+    ]
+
+    // before = 4, after_ref = 4; o 5º veio depois da referência.
+    expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestones_crossed).toEqual([])
+    expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestone).toBe(5)
+  })
+})
+
+describe('highestExactMilestone e exactMilestonesCrossed', () => {
+  it('devolve null abaixo de 5 e o maior limiar atingido', () => {
+    expect(highestExactMilestone(0)).toBeNull()
+    expect(highestExactMilestone(4)).toBeNull()
+    expect(highestExactMilestone(5)).toBe(5)
+    expect(highestExactMilestone(14)).toBe(5)
+    expect(highestExactMilestone(15)).toBe(15)
+    expect(highestExactMilestone(29)).toBe(15)
+    expect(highestExactMilestone(30)).toBe(30)
+    expect(highestExactMilestone(40)).toBe(30)
+  })
+
+  it('dispara em 4→5 e não redispara em 5→6; cobre 15 e 30', () => {
+    expect(exactMilestonesCrossed(4, 5)).toEqual([5])
+    expect(exactMilestonesCrossed(5, 6)).toEqual([])
+    expect(exactMilestonesCrossed(9, 10)).toEqual([])
+    expect(exactMilestonesCrossed(14, 15)).toEqual([15])
+    expect(exactMilestonesCrossed(15, 16)).toEqual([])
+    expect(exactMilestonesCrossed(29, 30)).toEqual([30])
+    expect(exactMilestonesCrossed(4, 16)).toEqual([5, 15])
+    expect(exactMilestonesCrossed(0, 0)).toEqual([])
   })
 })
 
@@ -366,6 +453,8 @@ async function createFixture() {
         round_points: number
         position_change: number | null
         streak: number
+        exact_milestone: number | null
+        exact_milestones_crossed: number[]
       }[]
     }
   }
@@ -717,9 +806,9 @@ describe('GET /groups/:id/round-standings', () => {
     expect(await standings()).toEqual({
       round: '2',
       standings: [
-        { user_id: 'bob', round_points: 3, position_change: 1, streak: 2 },
-        { user_id: 'alice', round_points: 0, position_change: -1, streak: 0 },
-        { user_id: 'carol', round_points: 0, position_change: 0, streak: 0 },
+        { user_id: 'bob', round_points: 3, position_change: 1, streak: 2, ...noMilestone(1) },
+        { user_id: 'alice', round_points: 0, position_change: -1, streak: 0, ...noMilestone(1) },
+        { user_id: 'carol', round_points: 0, position_change: 0, streak: 0, ...noMilestone() },
       ],
     })
   })
@@ -760,9 +849,9 @@ describe('GET /groups/:id/round-standings', () => {
     expect(await standings()).toEqual({
       round: '2',
       standings: [
-        { user_id: 'alice', round_points: 1, position_change: 1, streak: 2 },
-        { user_id: 'bob', round_points: 0, position_change: -1, streak: 0 },
-        { user_id: 'carol', round_points: 0, position_change: 0, streak: 0 },
+        { user_id: 'alice', round_points: 1, position_change: 1, streak: 2, ...noMilestone() },
+        { user_id: 'bob', round_points: 0, position_change: -1, streak: 0, ...noMilestone() },
+        { user_id: 'carol', round_points: 0, position_change: 0, streak: 0, ...noMilestone() },
       ],
     })
   })
@@ -849,6 +938,98 @@ describe('GET /groups/:id/round-standings', () => {
     const body = await standings()
 
     expect(body.standings.map((s) => s.position_change)).toEqual([0, 0, 0])
+  })
+
+  it('grupo novo sem exatos devolve marco null e cruzamento vazio', async () => {
+    const { standings, addMatch } = await createFixture()
+    addMatch({ round: '1' })
+
+    const body = await standings()
+
+    expect(body.round).toBe('1')
+    expect(
+      body.standings.every(
+        (s) => s.exact_milestone === null && s.exact_milestones_crossed.length === 0,
+      ),
+    ).toBe(true)
+  })
+
+  it('cruzar 5 exatos dispara uma vez; a rodada seguinte não redispara', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
+    // 4 exatos antes (awarded = points_exact = 3) e o 5º na rodada 2.
+    const prior = [1, 2, 3, 4].map(() => addMatch({ round: '1', start: BEFORE }))
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    const fifth = addMatch({ round: '2', start: ROUND_START })
+    addPick('alice', fifth, { awarded: 3 })
+    setBoard('alice', 15, 5)
+
+    const crossed = await standings()
+    expect(crossed.round).toBe('2')
+    expect(crossed.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+
+    // Fecha a rodada 3 com mais um exato: total 6, sem novo cruzamento.
+    const sixth = addMatch({ round: '3', start: AFTER })
+    addPick('alice', sixth, { awarded: 3 })
+    sqlite
+      .prepare(
+        `UPDATE leaderboard SET total_points = 18, exact_hits = 6 WHERE group_id = 'group-a' AND user_id = 'alice'`,
+      )
+      .run()
+
+    const next = await standings()
+    expect(next.round).toBe('3')
+    expect(next.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [],
+    })
+  })
+
+  it('membro sozinho no grupo recebe o marco normalmente', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
+    sqlite.exec(`DELETE FROM group_members WHERE user_id IN ('bob', 'carol')`)
+    const prior = [1, 2, 3, 4].map(() => addMatch({ round: '1', start: BEFORE }))
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    const fifth = addMatch({ round: '2', start: ROUND_START })
+    addPick('alice', fifth, { awarded: 3 })
+    setBoard('alice', 15, 5)
+
+    const body = await standings()
+
+    expect(body.standings).toHaveLength(1)
+    expect(body.standings[0]).toMatchObject({
+      user_id: 'alice',
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+  })
+
+  it('marca o cruzamento de 15 placares exatos na rodada do limiar', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    const prior = Array.from({ length: 14 }, () => addMatch({ round: '1', start: BEFORE }))
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    addPick('alice', addMatch({ round: '2', start: ROUND_START }), { awarded: 3 })
+    setBoard('alice', 45, 15)
+
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 15,
+      exact_milestones_crossed: [15],
+    })
+  })
+
+  it('marca o cruzamento de 30 placares exatos na rodada do limiar', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    const prior = Array.from({ length: 29 }, () => addMatch({ round: '1', start: BEFORE }))
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    addPick('alice', addMatch({ round: '2', start: ROUND_START }), { awarded: 3 })
+    setBoard('alice', 90, 30)
+
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 30,
+      exact_milestones_crossed: [30],
+    })
   })
 })
 

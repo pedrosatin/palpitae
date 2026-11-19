@@ -1,7 +1,22 @@
 import { useEffect, useState } from 'react'
+import { trackShareInvite } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
+import { useRoundStandings } from '../../hooks/useRoundStandings'
 import { fetchGroupPredictions } from '../../lib/groupPredictions'
 import type { GroupMember } from '../../lib/groupReminder'
+import {
+  EXACT_MILESTONES,
+  exactMilestoneHighlightText,
+  type ExactMilestone,
+} from '../../lib/exactMilestones'
+import { buildGroupLink } from '../../lib/groupLink'
+import { buildInviteLink } from '../../lib/invite'
+import {
+  buildMilestoneShareCardData,
+  milestoneShareFileName,
+  milestoneShareText,
+  renderMilestoneShareCardBlob,
+} from '../../lib/milestoneShareCard'
 import {
   highlightText,
   pointsLabel,
@@ -34,11 +49,26 @@ interface GroupRoundData {
 interface RoundSummaryProps {
   groupId: string
   groupName?: string
+  /** Rótulo exibido ("Rodada 34"). */
   roundLabel: string
+  /** Número da rodada selecionada, para cruzar com a referência da API. */
+  selectedRound?: string | null
   roundMatches: Match[]
   /** Palpites do próprio usuário, os mesmos dos chips dos cards. */
   predictions: Map<string, Prediction>
   pointsExact: number
+  /** Código de convite, só quando o dono compartilha o marco. */
+  inviteCode?: string | null
+  /** Identificador público do grupo para o link de pedido de entrada. */
+  publicId?: string | null
+  /** Dono usa o link de convite; demais membros usam o link público. */
+  isOwner?: boolean
+}
+
+function asExactMilestones(values: number[] | undefined): ExactMilestone[] {
+  if (!values?.length) return []
+  const allowed = new Set<number>(EXACT_MILESTONES)
+  return values.filter((v): v is ExactMilestone => allowed.has(v))
 }
 
 /**
@@ -87,24 +117,44 @@ function useGroupRoundData(groupId: string, enabled: boolean, finishedKey: strin
   return data?.key === finishedKey ? data : null
 }
 
+function groupShareLink(input: {
+  isOwner: boolean
+  inviteCode?: string | null
+  publicId?: string | null
+}): string | null {
+  if (input.isOwner && input.inviteCode) return buildInviteLink(input.inviteCode)
+  if (input.publicId) return buildGroupLink(input.publicId)
+  return null
+}
+
 /**
  * Resumo da rodada encerrada, no topo da aba Palpitar. Só aparece com todos os jogos
  * encerrados, ou encerrados e adiados (resumo parcial). Os números do próprio usuário
  * saem dos palpites já carregados. A colocação, o destaque e o cartão esperam os
- * palpites do grupo.
+ * palpites do grupo. O marco só destaca quando a rodada selecionada é a referência
+ * e a API reporta cruzamento.
  */
 export default function RoundSummary({
   groupId,
   groupName,
   roundLabel,
+  selectedRound,
   roundMatches,
   predictions,
   pointsExact,
+  inviteCode,
+  publicId,
+  isOwner = false,
 }: RoundSummaryProps) {
   const scope = roundScope(roundMatches)
   const finishedKey = scope ? scope.finished.map((m) => m.id).join(',') : ''
   const groupData = useGroupRoundData(groupId, scope !== null, finishedKey)
+  const { round: referenceRound, standings: roundStandings } = useRoundStandings(
+    groupId,
+    scope !== null,
+  )
   const [sharing, setSharing] = useState(false)
+  const [sharingMilestone, setSharingMilestone] = useState(false)
   const [shareError, setShareError] = useState(false)
 
   if (!scope) return null
@@ -122,6 +172,14 @@ export default function RoundSummary({
   const self = standings?.find((s) => s.isYou)
   const highlight = standings ? highlightText(roundLeaders(standings)) : null
   const notice = postponedNotice(scope.postponed)
+
+  const selfRoundStanding =
+    groupData && referenceRound !== null && selectedRound === referenceRound
+      ? roundStandings.find((s) => s.user_id === groupData.selfUserId)
+      : undefined
+  const crossed = asExactMilestones(selfRoundStanding?.exact_milestones_crossed)
+  const milestoneHighlight = exactMilestoneHighlightText(crossed)
+  const shareLink = groupShareLink({ isOwner, inviteCode, publicId })
 
   async function handleShare() {
     if (!standings || !self) return
@@ -147,6 +205,38 @@ export default function RoundSummary({
       setShareError(true)
     } finally {
       setSharing(false)
+    }
+  }
+
+  async function handleMilestoneShare() {
+    const card = buildMilestoneShareCardData({
+      groupName: groupName ?? 'Palpitae',
+      crossed,
+      exactHits: selfRoundStanding?.exact_hits ?? crossed[crossed.length - 1] ?? 0,
+      origin: window.location.origin,
+    })
+    if (!card) return
+    trackEvent('click_resumo_marco_compartilhar')
+    setSharingMilestone(true)
+    setShareError(false)
+    try {
+      const blob = await renderMilestoneShareCardBlob(card)
+      if (!blob) {
+        setShareError(true)
+        return
+      }
+      const result = await shareOrDownloadImage(
+        blob,
+        milestoneShareFileName(card.milestone),
+        milestoneShareText(card, shareLink),
+      )
+      if (result === 'shared') {
+        trackShareInvite('native', 'exact_milestone')
+      }
+    } catch {
+      setShareError(true)
+    } finally {
+      setSharingMilestone(false)
     }
   }
 
@@ -187,19 +277,32 @@ export default function RoundSummary({
         </p>
       )}
       {highlight && <p className={styles.line}>{highlight}.</p>}
+      {milestoneHighlight && <p className={styles.milestone}>{milestoneHighlight}.</p>}
       {notice && <p className={styles.notice}>{notice}.</p>}
-      {self && standings && (
+      {(self && standings) || crossed.length > 0 ? (
         <div className={styles.actions}>
-          <Button variant="outline" size="sm" onClick={handleShare} disabled={sharing}>
-            {sharing ? 'Gerando imagem...' : 'Compartilhar rodada'}
-          </Button>
+          {self && standings && (
+            <Button variant="outline" size="sm" onClick={handleShare} disabled={sharing}>
+              {sharing ? 'Gerando imagem...' : 'Compartilhar rodada'}
+            </Button>
+          )}
+          {crossed.length > 0 && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleMilestoneShare}
+              disabled={sharingMilestone}
+            >
+              {sharingMilestone ? 'Gerando imagem...' : 'Compartilhar marco'}
+            </Button>
+          )}
           {shareError && (
             <span className={styles.error} role="alert">
               Não foi possível gerar a imagem neste navegador.
             </span>
           )}
         </div>
-      )}
+      ) : null}
     </section>
   )
 }

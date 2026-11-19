@@ -53,8 +53,27 @@ function groupPick(userId: string, matchId: string, home: number, away: number, 
   }
 }
 
-function mockGroupApi(predictions: unknown[], ok = true) {
-  return vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+function mockGroupApi(
+  predictions: unknown[],
+  ok = true,
+  roundStandings: {
+    round: string | null
+    standings: {
+      user_id: string
+      round_points: number
+      position_change: number | null
+      streak?: number
+      exact_hits?: number
+      exact_milestone?: number | null
+      exact_milestones_crossed?: number[]
+    }[]
+  } = { round: '34', standings: [] },
+) {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input)
+    if (url.includes('/round-standings')) {
+      return new Response(JSON.stringify(roundStandings), { status: 200 })
+    }
     if (!ok) return new Response('{}', { status: 500 })
     return new Response(
       JSON.stringify({ self_user_id: 'me', members, predictions, open_pickers: {} }),
@@ -63,15 +82,23 @@ function mockGroupApi(predictions: unknown[], ok = true) {
   })
 }
 
-function renderSummary(matches: Match[], mine: Prediction[]) {
+function renderSummary(
+  matches: Match[],
+  mine: Prediction[],
+  extras: { inviteCode?: string; publicId?: string; isOwner?: boolean } = {},
+) {
   return render(
     <RoundSummary
       groupId="g1"
       groupName="Realidade do BR"
       roundLabel="Rodada 34"
+      selectedRound="34"
       roundMatches={matches}
       predictions={new Map(mine.map((p) => [p.match_id, p]))}
       pointsExact={3}
+      inviteCode={extras.inviteCode}
+      publicId={extras.publicId}
+      isOwner={extras.isOwner}
     />,
   )
 }
@@ -127,11 +154,13 @@ describe('RoundSummary', () => {
     ).toBeInTheDocument()
   })
 
-  it('rodada em andamento ou futura não mostra resumo nem busca o grupo', () => {
+  it('rodada em andamento ou futura não mostra resumo nem busca os palpites do grupo', () => {
     const fetchSpy = mockGroupApi([])
     renderSummary([done('a', 1, 0), makeMatch({ id: 'b' })], [])
     expect(screen.queryByRole('region', { name: 'Resumo da rodada' })).not.toBeInTheDocument()
-    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(
+      fetchSpy.mock.calls.some((call) => String(call[0]).includes('/predictions/group')),
+    ).toBe(false)
   })
 
   it('sem resposta do grupo mostra só os números próprios e esconde o cartão', async () => {
@@ -180,7 +209,13 @@ describe('RoundSummary', () => {
   it('trocar entre rodadas encerradas reaproveita a resposta do grupo', async () => {
     const fetchSpy = mockGroupApi([groupPick('me', 'a', 2, 1, 3)])
     const mine = new Map([['a', own('a', 2, 1, 3)]])
-    const props = { groupId: 'g1', roundLabel: 'Rodada 34', predictions: mine, pointsExact: 3 }
+    const props = {
+      groupId: 'g1',
+      roundLabel: 'Rodada 34',
+      selectedRound: '34',
+      predictions: mine,
+      pointsExact: 3,
+    }
     const { rerender } = render(<RoundSummary {...props} roundMatches={[done('a', 2, 1)]} />)
     await screen.findByRole('button', { name: 'Compartilhar rodada' })
 
@@ -188,7 +223,57 @@ describe('RoundSummary', () => {
     rerender(<RoundSummary {...props} roundMatches={[done('a', 2, 1)]} />)
     await screen.findByRole('button', { name: 'Compartilhar rodada' })
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const groupCalls = fetchSpy.mock.calls.filter((call) =>
+      String(call[0]).includes('/predictions/group'),
+    )
+    expect(groupCalls).toHaveLength(1)
+  })
+
+  it('destaca o marco só na rodada de referência e oferece o cartão com o link', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+
+    expect(
+      await screen.findByText('Você cruzou o marco de 5 placares exatos neste grupo.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Compartilhar marco' })).toBeInTheDocument()
+  })
+
+  it('não redispara o destaque do marco quando a API não reporta cruzamento', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 6,
+          exact_milestone: 5,
+          exact_milestones_crossed: [],
+        },
+      ],
+    })
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+
+    await screen.findByRole('button', { name: 'Compartilhar rodada' })
+    expect(screen.queryByText(/cruzou o marco/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Compartilhar marco' })).not.toBeInTheDocument()
   })
 
   it('avisa quando a geração do cartão falha', async () => {

@@ -46,6 +46,9 @@ export default function GroupTabContent({
           pointsExact={group.points_exact}
           initialRound={requestedRound}
           onInitialRoundApplied={onRequestedRoundApplied}
+          inviteCode={group.invite_code}
+          publicId={group.public_id}
+          isOwner={isAdmin}
         />
       )}
       {activeTab === 'standings' && showStandings && (

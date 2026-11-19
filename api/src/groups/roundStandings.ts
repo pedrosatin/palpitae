@@ -11,11 +11,18 @@ export interface RoundMemberRow {
   exact_hits: number
   /** Pontos só na rodada de referência, o que a coluna mostra. */
   round_points: number
+  /** Placares exatos só na rodada de referência. */
+  round_exact: number
   /** Pontos da rodada de referência e das rodadas numeradas posteriores. */
   since_points: number
   /** Exatos da rodada de referência e das rodadas numeradas posteriores. */
   since_exact: number
 }
+
+/** Limiares de placares exatos no grupo (auditoria 01: 5 / 15 / 30). */
+export const EXACT_MILESTONES = [5, 15, 30] as const
+
+export type ExactMilestone = (typeof EXACT_MILESTONES)[number]
 
 export interface RoundStanding {
   user_id: string
@@ -24,6 +31,12 @@ export interface RoundStanding {
   position_change: number | null
   /** Rodadas encerradas seguidas, da referência para trás, com todos os jogos palpitados. */
   streak: number
+  /** Placares exatos acumulados do membro no grupo (mesmo total do ranking). */
+  exact_hits: number
+  /** Maior marco de placares exatos atingido no grupo. `null` abaixo do primeiro limiar. */
+  exact_milestone: ExactMilestone | null
+  /** Marcos cruzados na rodada de referência. Vazio se nenhum limiar foi cruzado nela. */
+  exact_milestones_crossed: ExactMilestone[]
 }
 
 export interface RoundStandingsResponse {
@@ -50,6 +63,24 @@ function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMembe
   )
 }
 
+/** Maior limiar `<= exactHits`. `null` abaixo de 5. */
+export function highestExactMilestone(exactHits: number): ExactMilestone | null {
+  let highest: ExactMilestone | null = null
+  for (const threshold of EXACT_MILESTONES) {
+    if (exactHits >= threshold) highest = threshold
+  }
+  return highest
+}
+
+/**
+ * Limiares cruzados ao passar de `before` para `after` exatos.
+ * Dispara só quando `before < T <= after`. A rodada seguinte, com `before >= T`,
+ * não redispara.
+ */
+export function exactMilestonesCrossed(before: number, after: number): ExactMilestone[] {
+  return EXACT_MILESTONES.filter((threshold) => before < threshold && after >= threshold)
+}
+
 /**
  * Pontos de cada membro na rodada e a variação de posição, na ordem atual do
  * ranking, que já tem os jogos pontuados da rodada em andamento.
@@ -58,6 +89,11 @@ function ranked(rows: RoundMemberRow[], points: Score, exact: Score): RoundMembe
  * e sem as rodadas numeradas posteriores. Descontar só a referência compararia
  * com um estado que nunca existiu. Jogo remarcado de rodada anterior conta como
  * ponto de antes. Membro fora de `streaks` tem sequência 0.
+ *
+ * O marco permanente usa o total de exatos do grupo. O cruzamento usa só os
+ * exatos até o fim da rodada de referência (`exact_hits - since_exact +
+ * round_exact`), para um exato da rodada aberta seguinte não disparar o destaque
+ * antes dessa rodada virar referência.
  */
 export function computeRoundStandings(
   rows: RoundMemberRow[],
@@ -74,12 +110,19 @@ export function computeRoundStandings(
     rows,
     (row) => row.total_points,
     (row) => row.exact_hits,
-  ).map((row, index) => ({
-    user_id: row.user_id,
-    round_points: row.round_points,
-    position_change: hadPoints ? positionBefore.get(row.user_id)! - (index + 1) : null,
-    streak: streaks.get(row.user_id) ?? 0,
-  }))
+  ).map((row, index) => {
+    const beforeExact = row.exact_hits - row.since_exact
+    const afterReference = beforeExact + row.round_exact
+    return {
+      user_id: row.user_id,
+      round_points: row.round_points,
+      position_change: hadPoints ? positionBefore.get(row.user_id)! - (index + 1) : null,
+      streak: streaks.get(row.user_id) ?? 0,
+      exact_hits: row.exact_hits,
+      exact_milestone: highestExactMilestone(row.exact_hits),
+      exact_milestones_crossed: exactMilestonesCrossed(beforeExact, afterReference),
+    }
+  })
 }
 
 /** Agregado dos jogos da competição numa combinação de rodada e fase. */
@@ -219,6 +262,7 @@ async function fetchRoundMembers(
          COALESCE(l.total_points, 0) AS total_points,
          COALESCE(l.exact_hits, 0) AS exact_hits,
          COALESCE(r.round_points, 0) AS round_points,
+         COALESCE(r.round_exact, 0) AS round_exact,
          COALESCE(r.since_points, 0) AS since_points,
          COALESCE(r.since_exact, 0) AS since_exact
        FROM group_members gm
@@ -228,6 +272,7 @@ async function fetchRoundMembers(
          SELECT
            p.user_id,
            SUM(CASE WHEN m.round = ? THEN ${PREDICTION_POINTS_SQL} ELSE 0 END) AS round_points,
+           SUM(CASE WHEN m.round = ? THEN ${EXACT_HIT_SQL} ELSE 0 END) AS round_exact,
            SUM(${PREDICTION_POINTS_SQL}) AS since_points,
            SUM(${EXACT_HIT_SQL}) AS since_exact
          FROM predictions p
@@ -240,7 +285,7 @@ async function fetchRoundMembers(
        ) r ON gm.user_id = r.user_id
        WHERE gm.group_id = ? AND ${notBannedSql('gm')}`,
     )
-    .bind(round, groupId, round, groupId)
+    .bind(round, round, groupId, round, groupId)
     .all<RoundMemberRow>()
   return results
 }

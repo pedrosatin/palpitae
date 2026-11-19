@@ -137,7 +137,8 @@
 }
 
 .kingBadge,
-.streakBadge {
+.streakBadge,
+.milestoneBadge {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
@@ -152,6 +153,11 @@
 .streakBadge {
   background-color: var(--color-surface-elevated);
   color: var(--color-text-secondary);
+}
+
+.milestoneBadge {
+  background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
 }
 
 .tdPts,
@@ -227,7 +233,8 @@
   /* Dois seletores de classe: o selo vem de outro módulo CSS e não pode depender da ordem. */
   .badges .memberBadge,
   .kingBadge,
-  .streakBadge {
+  .streakBadge,
+  .milestoneBadge {
     font-size: 0.625rem;
     line-height: 1.4;
     padding: 0 var(--space-1);
