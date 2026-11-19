@@ -212,7 +212,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `competition_status_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A descoberta não gravou o status da competição depois de um sync bem-sucedido (falha do D1). O status fica como estava e a execução sai como `error` em `fixture_discovery_run` |
 | `match_scoring_error` | `competition_id` (UUID) | `error_message` | — | Sem doubles. A pontuação da competição falhou num tick do poller. As outras competições do tick são pontuadas, o tick sai como `error` em `poller_run` e a invocação termina em exceção |
 | `match_unscored` | `competition_id` (UUID) | — | — | `double1`=jogos encerrados, com placar e sem `scored_at`, que começaram há mais de 145 minutos (115 do resultado mais cedo e 30 de um tick); `double2`=minutos desde o início do mais antigo. Um evento por competição ao fim de cada tick do poller, inclusive em tick sem jogo na janela, com no máximo 10 por execução. Entram a pontuação que parou no orçamento de chamadas, a que falhou e o jogo decisivo que espera o vencedor dos pênaltis |
-| `result_overdue_alert` | `outcome` (`sent`/`suppressed`/`clear`/`skipped_budget`/`misconfig`/`send_failed`/`count_failed`/`cooldown_read_failed`/`cooldown_write_failed`) | detalhe opcional (`admin_email`/`resend_api_key`/`http_N` em falha de envio) | — | Em `sent`/`suppressed`/`send_failed`: `double1`=jogos atrasados, `double2`=minutos desde o kickoff do mais antigo. Em `skipped_budget`: `double1`=saldo restante, `double2`=chamadas necessárias (4). Em `clear`: zeros. Roda no fim do poller quando `RESULT_OVERDUE_ALERT` está ligado; e-mail ao `ADMIN_EMAIL` via Resend, com cooldown em `ops_alert_state` (padrão 6 h, `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS`). Limiar = `RESULT_OVERDUE_HOURS` (padrão 3). Sem o flag, sem e-mail |
+| `result_overdue_alert` | `outcome` (`sent`/`suppressed`/`clear`/`skipped_budget`/`misconfig`/`send_failed`/`send_uncertain`/`count_failed`/`cooldown_reserve_failed`/`cooldown_release_failed`) | detalhe opcional (`admin_email`/`resend_api_key`/`http_N`/`send_error`) | — | Em `sent`/`suppressed`/`send_failed`/`send_uncertain`: `double1`=jogos atrasados, `double2`=minutos desde o kickoff do mais antigo. Em `skipped_budget`: `double1`=saldo restante, `double2`=chamadas necessárias (4). Em `clear`: zeros. Roda no fim do poller quando `RESULT_OVERDUE_ALERT` está ligado; e-mail ao `ADMIN_EMAIL` via Resend, com cooldown em `ops_alert_state` (padrão 6 h, `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS`). Limiar = `RESULT_OVERDUE_HOURS` (padrão 3). Sem o flag, sem e-mail |
 | `competition_unconfigured` | `provider` (`football-data`) | `code` da competição no provedor (ex.: `CLI`) | `external_id` da competição no provedor | `season` em blob5; sem doubles |
 | `prediction_saved` | `group_id` | `round` (vazio em bulk/import/replicate — múltiplas rodadas) | `user_hash` | `kind` (`single`/`bulk`/`import`/`replicate`) em blob5; `competition_id` (UUID) em blob6, ausente em eventos anteriores ao deploy do enriquecimento; `double1`=count (nº de palpites salvos) |
 | `group_created` | `group_id` | `competition_id` | `user_hash` | `predictions_visibility` (`hidden`/`public`) em blob5; `double1`=points_exact, `double2`=points_winner, `double3`=points_penalty |
@@ -909,13 +909,20 @@ lembretes. Desligado por padrão. Para ligar, defina no Worker
 `RESULT_OVERDUE_HOURS` (padrão 3) e `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS` (padrão 6). O poller
 avalia o alerta no fim de cada tick (minutos 0 e 30), só se o saldo de subrequests da
 invocação comportar até 4 chamadas no pior caso (contagem, reserva do cooldown, `fetch` e
-liberação da reserva). O caminho de sucesso gasta 3. A reserva é um UPSERT condicional em
-`ops_alert_state` (migration 0050) antes do envio: só o tick com `meta.changes > 0` chama o
-Resend. Em falha definitiva do envio a reserva é liberada para o próximo tick; sucesso e
-HTTP 409 (mesma chave de idempotência) mantêm a reserva. O assunto flexiona singular e
+liberação da reserva). O caminho de sucesso e a falha ambígua gastam 3. A reserva é um UPSERT
+condicional em `ops_alert_state` (migration 0050) antes do envio: só o tick com
+`meta.changes > 0` chama o Resend. A reserva é a identidade da tentativa; a chave de
+idempotência é `result-overdue-<last_sent_at>` e o corpo é montado uma vez por reserva.
+
+A resposta do envio cai em três classes. Em 2xx o outcome é `sent` e a reserva permanece. Em
+falha definitiva (4xx exceto 409 e 429, por exemplo 400, 401, 403, 422) a reserva é liberada
+para o próximo tick tentar com chave nova. Em falha ambígua (timeout, erro de rede, 5xx,
+qualquer 409, 429) a reserva permanece até o fim do cooldown, sem reenvio, e o evento registra
+`send_uncertain` com o status HTTP. Uma falha ambígua pode perder o alerta até o cooldown
+acabar; o painel de métricas continua mostrando os atrasados. O assunto flexiona singular e
 plural ("1 resultado atrasado" / "N resultados atrasados"). O evento `result_overdue_alert`
-registra enviado, silenciado, limpo, pulado por saldo ou falha. Sem `ADMIN_EMAIL` ou sem
-`RESEND_API_KEY`, o outcome é `misconfig` e não há envio. Discord, Telegram e notificações
+registra enviado, incerto, silenciado, limpo, pulado por saldo ou falha. Sem `ADMIN_EMAIL` ou
+sem `RESEND_API_KEY`, o outcome é `misconfig` e não há envio. Discord, Telegram e notificações
 nativas da Cloudflare ficaram de fora: exigiriam webhook ou conta nova.
 
 Do Analytics Engine, `GET /metrics/competition-activity?days=` alimenta a seção **Atividade por
