@@ -27,6 +27,12 @@ interface PredictionsTabProps {
   initialRound?: string | null
   /** Chamado depois que a aba aplica `initialRound` na carga dos jogos. */
   onInitialRoundApplied?: () => void
+  /** Código de convite do dono, para o cartão do marco. */
+  inviteCode?: string | null
+  /** Identificador público do grupo, para o link de pedido de entrada. */
+  publicId?: string | null
+  /** Dono compartilha o convite; demais membros, o link público. */
+  isOwner?: boolean
 }
 
 function leg1Context(
@@ -76,6 +82,9 @@ export default function PredictionsTab({
   pointsExact = 3,
   initialRound,
   onInitialRoundApplied,
+  inviteCode,
+  publicId,
+  isOwner = false,
 }: PredictionsTabProps) {
   const {
     now,
@@ -213,9 +222,13 @@ export default function PredictionsTab({
         groupId={groupId}
         groupName={groupName}
         roundLabel={labelFor(selectedRound)}
+        selectedRound={selectedRound}
         roundMatches={roundMatches}
         predictions={predictions}
         pointsExact={pointsExact}
+        inviteCode={inviteCode}
+        publicId={publicId}
+        isOwner={isOwner}
       />
 
       {/* Atalho para a rodada com jogo adiado ou remarcado. Sem isso o palpite

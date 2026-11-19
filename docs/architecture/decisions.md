@@ -821,7 +821,7 @@ A aba Ranking mostrava posição, jogador, pontos e exatos. O grupo não via qua
 
 ### Decision
 
-`GET /groups/:id/round-standings` calcula o resultado na hora, sem tabela nova nem migration, em `api/src/groups/roundStandings.ts`. A autenticação e o gate são os de `GET /groups/:id/members`.
+`GET /groups/:id/round-standings` calcula o resultado na hora em `api/src/groups/roundStandings.ts`. A autenticação e o gate são os de `GET /groups/:id/members`. Os marcos de placares exatos usam as tabelas `exact_milestones` e `exact_milestones_initialized` (migration `0052`).
 
 A rodada de referência do grupo sai só dos `matches` da competição do grupo:
 
@@ -840,6 +840,18 @@ Na web, `LeaderboardTab` carrega membros e `round-standings` em paralelo e só d
 
 A API devolve `streak` em cada linha, com as rodadas encerradas seguidas em que o membro palpitou todos os jogos pontuados, contadas da referência para trás. Só contam as rodadas encerradas pelo critério acima. Rodada numerada aberta é pulada sem quebrar a sequência, e jogo adiado sem data não é exigido. A web calcula o rei da rodada. São os membros com o maior `round_points`, se for maior que 0, e empate coroa todos. Os dois saem dos palpites e dos jogos a cada leitura, sem tabela nem backfill, e por isso valem para rodadas passadas e acompanham a pontuação refeita. Nenhum deles dá ponto no ranking.
 
+Cada linha também traz `exact_hits`, `exact_milestone` (maior limiar atingido entre 5, 15 e 30 placares exatos no grupo, ou `null`) e `exact_milestones_crossed` (limiares cuja linha em `exact_milestones` tem `round` igual à rodada de referência). O total histórico de exatos do membro vem de `leaderboard.exact_hits`. `EXACT_HIT_SQL` calcula só os agregados da rodada e da rodada em diante na consulta de membros (conta quando `points_exact > points_winner` e `points_awarded = points_exact`).
+
+Consultas de `getRoundStandings` e `recordExactMilestones`:
+
+1. Leitura preliminar das fases (`ROUND_PHASES_SQL`) para obter a rodada de referência candidata. Sem referência a rota devolve `{ round: null, standings: [] }` e não grava.
+2. `db.batch` com fases, membros (`ROUND_MEMBERS_SQL`, bind da rodada candidata) e palpites por rodada. O D1 executa o lote numa transação, então as três leituras veem o mesmo estado. Se a referência do lote divergir da candidata, a rota refetcha os membros com a referência do lote.
+3. Inicialização: `INSERT INTO exact_milestones_initialized (group_id) VALUES (?) ON CONFLICT DO NOTHING`. Só quem recebe `meta.changes > 0` faz o backfill (`INSERT INTO exact_milestones ... round = NULL` para cada limiar já atingido). Quem perde o marcador segue o caminho de grupo inicializado.
+4. Depois de inicializado: para cada limiar `T` com `exact_hits >= T` ainda sem linha, `INSERT INTO exact_milestones (..., round) VALUES (..., referência) ON CONFLICT DO NOTHING`.
+5. Releitura de `SELECT user_id, threshold, round FROM exact_milestones WHERE group_id = ?`. O destaque (`exact_milestones_crossed`) sai só das linhas cuja `round` é a referência. A resposta nunca anuncia um marco cuja gravação falhou; a próxima leitura tenta de novo.
+
+A chave primária `(group_id, user_id, threshold)` impede duas leituras concorrentes de gravar o mesmo marco com rodadas diferentes. Grupo novo lido com zero exatos só inicializa; o primeiro cruzamento depois disso recebe a rodada de referência e aparece no resumo. Cruzar 4→5 dispara uma vez; 5→6 na rodada seguinte deixa `exact_milestones_crossed` vazio; 4→15 numa leitura grava e destaca 5 e 15. Repontuação que muda `scored_at` não redispara, porque o destaque depende da linha gravada. Membro que sai e volta mantém a linha. Correção de placar que tira o exato e o devolve não cria outra linha nem muda a rodada. Grupo solo recebe o marco; grupo novo ou zero exatos fica sem selo. No ranking, o selo permanente sai de `members.exact_hits` (mesmo total do `leaderboard`), para continuar visível quando não há rodada de referência. O resumo e o share só destacam o cruzamento quando a rodada selecionada é a referência e `exact_milestones_crossed` não está vazio. O cartão do marco leva o link de convite quando o dono compartilha e o link público de pedido de entrada quando outro membro compartilha (`share_invite` com `context = exact_milestone`). Sem pontos extras.
+
 ### Consequences
 
 - Champions e Copa do Mundo perdem a coluna quando o mata-mata começa. Copa do Brasil e Libertadores nunca têm a coluna, porque as fases delas vêm sem número. Competição com `round` por fase, como `REGULAR_SEASON`, também fica sem coluna.
@@ -848,6 +860,9 @@ A API devolve `streak` em cada linha, com as rodadas encerradas seguidas em que 
 - A variação compara a ordem antes e depois da rodada de referência. Um jogo remarcado de rodada antiga que pontua depois entra no total e na posição anterior como se sempre estivesse lá, sem aparecer como movimento.
 - Caso aceito: uma fase preliminar eliminatória adiada que termine depois do início da rodada de referência tira a coluna até uma rodada posterior fechar.
 - Risco aceito: uma leitura entre a gravação dos pontos e a atualização do `leaderboard` pode mostrar variação errada por alguns segundos. A próxima abertura da aba corrige.
+- A tabela `exact_milestones` sai em cascata com a exclusão de conta (`user_id`, índice `idx_exact_milestones_user`) ou de grupo (ADR-026). A marca `exact_milestones_initialized` pertence ao grupo (`group_id` PK com `ON DELETE CASCADE`) e apaga só com ele; sair ou voltar de um membro não a remove. Sem dados pessoais além dos ids.
+- Risco aceito: o destaque do cruzamento aparece na primeira abertura da aba depois que o total cruzou o limiar, na rodada de referência daquele momento. Se ninguém abrir o ranking entre o cruzamento e a troca de referência, o destaque cai na referência seguinte.
+- Risco aceito: se a gravação do D1 falhar depois da aquisição do marcador e a liberação do marcador também falhar, o grupo fica marcado como inicializado sem backfill; a leitura seguinte trata limiares antigos como marcos novos com a rodada corrente.
 
 ## ADR-022: Workers Free com orçamento diário de linhas do D1 por usuário
 
@@ -1030,7 +1045,7 @@ Apagar um jogo duplicado direto no banco leva os palpites dele em cascata, mas o
 
 Decisão do operador de 14/11/2026: na exclusão da conta de um dono, o grupo passa ao membro ativo mais antigo. Ativo é quem tem linha em `group_members` e não está em `group_bans`, sem contar a própria conta. Mais antigo é o menor `joined_at`; no empate, vence o menor `user_id`, o mesmo desempate do ranking (`rankingOrderSql`). Grupo sem outro membro ativo é apagado, com palpites, ranking e banimentos em cascata. A regra vale também para grupo já excluído pelo dono (`deleted_at`), que continua excluído com o novo dono.
 
-`DELETE /admin/users/:id`, só para o admin, faz tudo numa transação do D1: transfere os grupos, apaga os que ficaram sem membro, apaga as linhas de `payments` da conta (tabela sem uso e sem cascata) e apaga a conta. A cascata leva perfil, participações, palpites, ranking, banimentos, palpites de chave e reservas de lembrete. A sessão deixa de valer na requisição seguinte, porque `verifySession` exige a conta no banco. O admin não exclui a própria conta pela rota.
+`DELETE /admin/users/:id`, só para o admin, faz tudo numa transação do D1: transfere os grupos, apaga os que ficaram sem membro, apaga as linhas de `payments` da conta (tabela sem uso e sem cascata) e apaga a conta. A cascata leva perfil, participações, palpites, ranking, banimentos, palpites de chave, reservas de lembrete e marcos de placares exatos (`exact_milestones`). A sessão deixa de valer na requisição seguinte, porque `verifySession` exige a conta no banco. O admin não exclui a própria conta pela rota.
 
 `DELETE /admin/matches/:id`, também só para o admin, apaga o jogo e, na mesma transação, refaz o ranking de todos os grupos não excluídos da competição: zera as linhas e soma de novo os palpites que sobraram. Se o jogo é de fase eliminatória, o outro jogo do confronto (mesma fase, mando invertido) volta à fila de pontuação, como no gatilho `matches_rescore_context` da 0044.
 
