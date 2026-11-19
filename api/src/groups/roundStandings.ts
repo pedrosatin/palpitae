@@ -17,9 +17,19 @@ export interface RoundMemberRow {
   since_points: number
   /** Exatos da rodada de referência e das rodadas numeradas posteriores. */
   since_exact: number
+  /**
+   * Exatos do membro com `matches.scored_at` anterior ao início da janela de
+   * pontuação da rodada de referência.
+   */
+  milestone_before: number
+  /**
+   * Exatos do membro com `matches.scored_at` até o fim da janela de pontuação
+   * da rodada de referência (inclui jogos de outras rodadas pontuados nela).
+   */
+  milestone_after: number
 }
 
-/** Limiares de placares exatos no grupo (auditoria 01: 5 / 15 / 30). */
+/** Limiares de placares exatos no grupo: 5, 15 e 30. */
 export const EXACT_MILESTONES = [5, 15, 30] as const
 
 export type ExactMilestone = (typeof EXACT_MILESTONES)[number]
@@ -90,10 +100,13 @@ export function exactMilestonesCrossed(before: number, after: number): ExactMile
  * com um estado que nunca existiu. Jogo remarcado de rodada anterior conta como
  * ponto de antes. Membro fora de `streaks` tem sequência 0.
  *
- * O marco permanente usa o total de exatos do grupo. O cruzamento usa só os
- * exatos até o fim da rodada de referência (`exact_hits - since_exact +
- * round_exact`), para um exato da rodada aberta seguinte não disparar o destaque
- * antes dessa rodada virar referência.
+ * O marco permanente usa o total de exatos do grupo. O cruzamento segue a ordem
+ * de pontuação: a janela da rodada de referência é o intervalo
+ * `[MIN(scored_at), MAX(scored_at)]` dos jogos dela. `milestone_before` conta
+ * exatos com `scored_at` anterior ao início; `milestone_after` conta exatos com
+ * `scored_at` até o fim, inclusive de jogos de outras rodadas (adiados) pontuados
+ * dentro da janela. Assim o destaque aparece uma vez, na rodada de referência em
+ * cuja janela o N-ésimo exato foi pontuado.
  */
 export function computeRoundStandings(
   rows: RoundMemberRow[],
@@ -111,8 +124,6 @@ export function computeRoundStandings(
     (row) => row.total_points,
     (row) => row.exact_hits,
   ).map((row, index) => {
-    const beforeExact = row.exact_hits - row.since_exact
-    const afterReference = beforeExact + row.round_exact
     return {
       user_id: row.user_id,
       round_points: row.round_points,
@@ -120,7 +131,7 @@ export function computeRoundStandings(
       streak: streaks.get(row.user_id) ?? 0,
       exact_hits: row.exact_hits,
       exact_milestone: highestExactMilestone(row.exact_hits),
-      exact_milestones_crossed: exactMilestonesCrossed(beforeExact, afterReference),
+      exact_milestones_crossed: exactMilestonesCrossed(row.milestone_before, row.milestone_after),
     }
   })
 }
@@ -264,7 +275,9 @@ async function fetchRoundMembers(
          COALESCE(r.round_points, 0) AS round_points,
          COALESCE(r.round_exact, 0) AS round_exact,
          COALESCE(r.since_points, 0) AS since_points,
-         COALESCE(r.since_exact, 0) AS since_exact
+         COALESCE(r.since_exact, 0) AS since_exact,
+         COALESCE(x.milestone_before, 0) AS milestone_before,
+         COALESCE(x.milestone_after, 0) AS milestone_after
        FROM group_members gm
        INNER JOIN users u ON gm.user_id = u.id
        LEFT JOIN leaderboard l ON gm.group_id = l.group_id AND gm.user_id = l.user_id
@@ -283,9 +296,32 @@ async function fetchRoundMembers(
            AND CAST(m.round AS INTEGER) >= CAST(? AS INTEGER)
          GROUP BY p.user_id
        ) r ON gm.user_id = r.user_id
+       LEFT JOIN (
+         SELECT
+           p.user_id,
+           SUM(CASE WHEN m.scored_at < w.window_start THEN ${EXACT_HIT_SQL} ELSE 0 END)
+             AS milestone_before,
+           SUM(CASE WHEN m.scored_at <= w.window_end THEN ${EXACT_HIT_SQL} ELSE 0 END)
+             AS milestone_after
+         FROM predictions p
+         JOIN groups g ON g.id = p.group_id
+         JOIN matches m ON m.id = p.match_id AND m.competition_id = g.competition_id
+         CROSS JOIN (
+           SELECT MIN(m2.scored_at) AS window_start, MAX(m2.scored_at) AS window_end
+           FROM matches m2
+           JOIN groups g2 ON g2.competition_id = m2.competition_id
+           WHERE g2.id = ?
+             AND m2.round = ?
+             AND m2.status = 'finished'
+             AND m2.scored_at IS NOT NULL
+         ) w
+         WHERE p.group_id = ?
+           AND m.scored_at IS NOT NULL
+         GROUP BY p.user_id
+       ) x ON gm.user_id = x.user_id
        WHERE gm.group_id = ? AND ${notBannedSql('gm')}`,
     )
-    .bind(round, round, groupId, round, groupId)
+    .bind(round, round, groupId, round, groupId, round, groupId, groupId)
     .all<RoundMemberRow>()
   return results
 }

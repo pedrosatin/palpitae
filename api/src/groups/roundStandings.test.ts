@@ -36,6 +36,8 @@ function member(overrides: Partial<RoundMemberRow> & { user_id: string }): Round
     round_exact: 0,
     since_points: overrides.round_points ?? 0,
     since_exact: 0,
+    milestone_before: 0,
+    milestone_after: 0,
     ...overrides,
   }
 }
@@ -176,7 +178,7 @@ describe('computeRoundStandings', () => {
     ])
   })
 
-  it('marca o maior marco pelo total e o cruzamento só na rodada do limiar', () => {
+  it('marca o maior marco pelo total e o cruzamento só na janela do limiar', () => {
     const rows = [
       member({
         user_id: 'cruzou',
@@ -186,6 +188,8 @@ describe('computeRoundStandings', () => {
         round_exact: 1,
         since_points: 3,
         since_exact: 1,
+        milestone_before: 4,
+        milestone_after: 5,
       }),
       member({
         user_id: 'ja-tinha',
@@ -195,6 +199,8 @@ describe('computeRoundStandings', () => {
         round_exact: 1,
         since_points: 3,
         since_exact: 1,
+        milestone_before: 5,
+        milestone_after: 6,
       }),
       member({ user_id: 'zero', total_points: 0 }),
     ]
@@ -213,19 +219,34 @@ describe('computeRoundStandings', () => {
     })
   })
 
-  it('não conta exato da rodada seguinte no cruzamento da referência', () => {
+  it('não conta exato pontuado depois da janela da referência', () => {
     const rows = [
       member({
         user_id: 'a',
         exact_hits: 5,
         round_exact: 0,
         since_exact: 1,
+        milestone_before: 4,
+        milestone_after: 4,
       }),
     ]
 
-    // before = 4, after_ref = 4; o 5º veio depois da referência.
+    // before = 4, after = 4; o 5º veio depois da janela da referência.
     expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestones_crossed).toEqual([])
     expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestone).toBe(5)
+  })
+
+  it('retorna 5 e 15 quando a janela sobe de 4 para 15', () => {
+    const rows = [
+      member({
+        user_id: 'a',
+        exact_hits: 15,
+        milestone_before: 4,
+        milestone_after: 15,
+      }),
+    ]
+
+    expect(computeRoundStandings(rows, NO_STREAKS)[0].exact_milestones_crossed).toEqual([5, 15])
   })
 })
 
@@ -376,6 +397,8 @@ interface MatchSeed {
   start?: string
   /** Jogo encerrado que a pontuação ainda não processou. */
   unscored?: boolean
+  /** Instantâneo de pontuação; o padrão é `2026-06-02T00:00:00Z`. */
+  scoredAt?: string
 }
 
 async function createFixture() {
@@ -484,10 +507,16 @@ async function createFixture() {
             ? 'REGULAR_SEASON'
             : seed.round,
         seed.postponed ?? 0,
-        status === 'finished' && !seed.unscored ? '2026-06-02T00:00:00Z' : null,
+        status === 'finished' && !seed.unscored
+          ? (seed.scoredAt ?? '2026-06-02T00:00:00Z')
+          : null,
         ...finalScore(status),
       )
     return id
+  }
+
+  function setScoredAt(matchId: string, scoredAt: string | null) {
+    sqlite.prepare(`UPDATE matches SET scored_at = ? WHERE id = ?`).run(scoredAt, matchId)
   }
 
   function addPick(
@@ -521,7 +550,7 @@ async function createFixture() {
       .run(user, total, exact)
   }
 
-  return { sqlite, get, standings, addMatch, addPick, setBoard }
+  return { sqlite, get, standings, addMatch, addPick, setBoard, setScoredAt }
 }
 
 describe('computeStreaks', () => {
@@ -956,10 +985,16 @@ describe('GET /groups/:id/round-standings', () => {
 
   it('cruzar 5 exatos dispara uma vez; a rodada seguinte não redispara', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
-    // 4 exatos antes (awarded = points_exact = 3) e o 5º na rodada 2.
-    const prior = [1, 2, 3, 4].map(() => addMatch({ round: '1', start: BEFORE }))
+    // 4 exatos antes da janela e o 5º pontuado na janela da rodada 2.
+    const prior = [1, 2, 3, 4].map(() =>
+      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
-    const fifth = addMatch({ round: '2', start: ROUND_START })
+    const fifth = addMatch({
+      round: '2',
+      start: ROUND_START,
+      scoredAt: '2026-05-02T00:00:00Z',
+    })
     addPick('alice', fifth, { awarded: 3 })
     setBoard('alice', 15, 5)
 
@@ -971,7 +1006,11 @@ describe('GET /groups/:id/round-standings', () => {
     })
 
     // Fecha a rodada 3 com mais um exato: total 6, sem novo cruzamento.
-    const sixth = addMatch({ round: '3', start: AFTER })
+    const sixth = addMatch({
+      round: '3',
+      start: AFTER,
+      scoredAt: '2026-06-02T00:00:00Z',
+    })
     addPick('alice', sixth, { awarded: 3 })
     sqlite
       .prepare(
@@ -990,9 +1029,15 @@ describe('GET /groups/:id/round-standings', () => {
   it('membro sozinho no grupo recebe o marco normalmente', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     sqlite.exec(`DELETE FROM group_members WHERE user_id IN ('bob', 'carol')`)
-    const prior = [1, 2, 3, 4].map(() => addMatch({ round: '1', start: BEFORE }))
+    const prior = [1, 2, 3, 4].map(() =>
+      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
-    const fifth = addMatch({ round: '2', start: ROUND_START })
+    const fifth = addMatch({
+      round: '2',
+      start: ROUND_START,
+      scoredAt: '2026-05-02T00:00:00Z',
+    })
     addPick('alice', fifth, { awarded: 3 })
     setBoard('alice', 15, 5)
 
@@ -1006,11 +1051,17 @@ describe('GET /groups/:id/round-standings', () => {
     })
   })
 
-  it('marca o cruzamento de 15 placares exatos na rodada do limiar', async () => {
+  it('marca o cruzamento de 15 placares exatos na janela do limiar', async () => {
     const { standings, addMatch, addPick, setBoard } = await createFixture()
-    const prior = Array.from({ length: 14 }, () => addMatch({ round: '1', start: BEFORE }))
+    const prior = Array.from({ length: 14 }, () =>
+      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
-    addPick('alice', addMatch({ round: '2', start: ROUND_START }), { awarded: 3 })
+    addPick(
+      'alice',
+      addMatch({ round: '2', start: ROUND_START, scoredAt: '2026-05-02T00:00:00Z' }),
+      { awarded: 3 },
+    )
     setBoard('alice', 45, 15)
 
     expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
@@ -1019,16 +1070,185 @@ describe('GET /groups/:id/round-standings', () => {
     })
   })
 
-  it('marca o cruzamento de 30 placares exatos na rodada do limiar', async () => {
+  it('marca o cruzamento de 30 placares exatos na janela do limiar', async () => {
     const { standings, addMatch, addPick, setBoard } = await createFixture()
-    const prior = Array.from({ length: 29 }, () => addMatch({ round: '1', start: BEFORE }))
+    const prior = Array.from({ length: 29 }, () =>
+      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    )
     for (const match of prior) addPick('alice', match, { awarded: 3 })
-    addPick('alice', addMatch({ round: '2', start: ROUND_START }), { awarded: 3 })
+    addPick(
+      'alice',
+      addMatch({ round: '2', start: ROUND_START, scoredAt: '2026-05-02T00:00:00Z' }),
+      { awarded: 3 },
+    )
     setBoard('alice', 90, 30)
 
     expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
       exact_milestone: 30,
       exact_milestones_crossed: [30],
+    })
+  })
+
+  it('adiado da rodada anterior pontuado na janela da referência cruza o marco', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    const prior = [1, 2, 3, 4].map(() =>
+      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    )
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    // Janela da 34: 20:00 → 18:00 do dia seguinte. O 5º exato é adiado da 33
+    // pontuado no meio da janela.
+    addMatch({
+      round: '34',
+      start: ROUND_START,
+      scoredAt: '2026-05-01T20:00:00Z',
+    })
+    addMatch({
+      round: '34',
+      start: '2026-05-02T19:00:00Z',
+      scoredAt: '2026-05-02T18:00:00Z',
+    })
+    const postponed = addMatch({
+      round: '33',
+      start: BEFORE,
+      scoredAt: '2026-05-02T12:00:00Z',
+    })
+    addPick('alice', postponed, { awarded: 3 })
+    setBoard('alice', 15, 5)
+
+    const body = await standings()
+    expect(body.round).toBe('34')
+    expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+  })
+
+  it('exato de rodada antiga pontuado na janela da nova referência cruza nela', async () => {
+    const { standings, addMatch, addPick, setBoard } = await createFixture()
+    const prior = [1, 2, 3, 4].map(() =>
+      addMatch({ round: '32', start: BEFORE, scoredAt: '2026-03-02T00:00:00Z' }),
+    )
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    // 33 e 34 fechadas; a referência é 34. O 5º exato é de um jogo da 33 pontuado
+    // depois que a 34 já era referência, dentro da janela dela.
+    addMatch({
+      round: '33',
+      start: '2026-04-15T19:00:00Z',
+      scoredAt: '2026-04-16T00:00:00Z',
+    })
+    addMatch({
+      round: '34',
+      start: ROUND_START,
+      scoredAt: '2026-05-01T20:00:00Z',
+    })
+    addMatch({
+      round: '34',
+      start: '2026-05-02T19:00:00Z',
+      scoredAt: '2026-05-02T18:00:00Z',
+    })
+    const lateFrom33 = addMatch({
+      round: '33',
+      start: '2026-04-15T21:00:00Z',
+      scoredAt: '2026-05-02T10:00:00Z',
+    })
+    addPick('alice', lateFrom33, { awarded: 3 })
+    setBoard('alice', 15, 5)
+
+    const body = await standings()
+    expect(body.round).toBe('34')
+    expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+  })
+
+  it('repontuação na mesma janela não redispara o cruzamento', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard, setScoredAt } = await createFixture()
+    const prior = [1, 2, 3, 4].map(() =>
+      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    )
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    const fifth = addMatch({
+      round: '2',
+      start: ROUND_START,
+      scoredAt: '2026-05-02T00:00:00Z',
+    })
+    addPick('alice', fifth, { awarded: 3 })
+    setBoard('alice', 15, 5)
+
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestones_crossed: [5],
+    })
+
+    // Revisão: o mesmo jogo é pontuado de novo; a janela se move e before já era >= 5.
+    setScoredAt(fifth, '2026-05-03T00:00:00Z')
+    sqlite
+      .prepare(
+        `UPDATE leaderboard SET total_points = 15, exact_hits = 5 WHERE group_id = 'group-a' AND user_id = 'alice'`,
+      )
+      .run()
+
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+
+    const sixth = addMatch({
+      round: '3',
+      start: AFTER,
+      scoredAt: '2026-06-02T00:00:00Z',
+    })
+    addPick('alice', sixth, { awarded: 3 })
+    sqlite
+      .prepare(
+        `UPDATE leaderboard SET total_points = 18, exact_hits = 6 WHERE group_id = 'group-a' AND user_id = 'alice'`,
+      )
+      .run()
+
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [],
+    })
+  })
+
+  it('4 para 15 numa só janela devolve 5 e 15; a seguinte não redispara', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
+    const prior = [1, 2, 3, 4].map(() =>
+      addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' }),
+    )
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    const burst = Array.from({ length: 11 }, (_, i) =>
+      addMatch({
+        round: '2',
+        start: ROUND_START,
+        scoredAt: `2026-05-02T${String(i).padStart(2, '0')}:00:00Z`,
+      }),
+    )
+    for (const match of burst) addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 45, 15)
+
+    const crossed = await standings()
+    expect(crossed.round).toBe('2')
+    expect(crossed.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 15,
+      exact_milestones_crossed: [5, 15],
+    })
+
+    const next = addMatch({
+      round: '3',
+      start: AFTER,
+      scoredAt: '2026-06-02T00:00:00Z',
+    })
+    addPick('alice', next, { awarded: 3 })
+    sqlite
+      .prepare(
+        `UPDATE leaderboard SET total_points = 48, exact_hits = 16 WHERE group_id = 'group-a' AND user_id = 'alice'`,
+      )
+      .run()
+
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 15,
+      exact_milestones_crossed: [],
     })
   })
 })
