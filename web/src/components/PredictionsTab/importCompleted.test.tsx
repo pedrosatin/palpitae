@@ -78,7 +78,10 @@ describe('Barra de importação', () => {
   it('lê os grupos da lista do painel em cache, sem buscar de novo', async () => {
     const { fetchMock } = setup()
     const groupsCalls = () =>
-      fetchMock.mock.calls.filter(([url]) => String(url).includes('/groups')).length
+      fetchMock.mock.calls.filter(([url]) => {
+        const path = String(url)
+        return path.includes('/groups') && !path.includes('/round-standings')
+      }).length
     await fetchGroupsList('u1')
     expect(groupsCalls()).toBe(1)
 

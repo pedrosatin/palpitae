@@ -2,6 +2,13 @@ import { useCallback, useMemo, useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers } from '../../hooks/useGroupMembers'
 import { useRoundStandings, type RoundStanding } from '../../hooks/useRoundStandings'
+import {
+  achievedExactMilestones,
+  exactMilestoneBadgeLabel,
+  exactMilestonesTitle,
+  highestExactMilestoneFromHits,
+  type ExactMilestone,
+} from '../../lib/exactMilestones'
 import Avatar from '../Avatar'
 import ErrorState from '../ErrorState'
 import MemberBadge from '../MemberBadge'
@@ -34,15 +41,22 @@ function MemberBadges({
   isSelf,
   isKing,
   streak,
+  exactMilestone,
+  exactHits,
 }: {
   isOwner: boolean
   isSelf: boolean
   isKing: boolean
   streak: number
+  exactMilestone: ExactMilestone | null
+  exactHits: number
 }) {
   const showStreak = streak >= STREAK_BADGE_MIN
-  if (!isOwner && !isSelf && !isKing && !showStreak) return null
+  if (!isOwner && !isSelf && !isKing && !showStreak && !exactMilestone) return null
   const streakLabel = `${streak} rodadas seguidas com todos os jogos palpitados`
+  const milestoneTitle = exactMilestone
+    ? exactMilestonesTitle(achievedExactMilestones(exactHits))
+    : ''
   return (
     <span className={styles.badges}>
       {isOwner && <MemberBadge variant="owner" className={styles.memberBadge} />}
@@ -52,6 +66,12 @@ function MemberBadges({
         <span className={styles.streakBadge} title={streakLabel}>
           <span aria-hidden="true">{`${streak} seguidas`}</span>
           <span className="sr-only">{streakLabel}</span>
+        </span>
+      )}
+      {exactMilestone && (
+        <span className={styles.milestoneBadge} title={milestoneTitle}>
+          <span aria-hidden="true">{exactMilestoneBadgeLabel(exactMilestone)}</span>
+          <span className="sr-only">{milestoneTitle}</span>
         </span>
       )}
     </span>
@@ -202,6 +222,8 @@ export default function LeaderboardTab({
                         isSelf={member.user_id === currentUserId}
                         isKing={kings.has(member.user_id)}
                         streak={standingByUser.get(member.user_id)?.streak ?? 0}
+                        exactMilestone={highestExactMilestoneFromHits(member.exact_hits)}
+                        exactHits={member.exact_hits}
                       />
                     </div>
                   </div>

@@ -119,6 +119,7 @@
   display: inline-flex;
   flex-wrap: wrap;
   min-width: 0;
+  max-width: 100%;
   gap: var(--space-1);
 }
 
@@ -128,7 +129,9 @@
 }
 
 .displayName {
+  display: block;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -137,7 +140,8 @@
 }
 
 .kingBadge,
-.streakBadge {
+.streakBadge,
+.milestoneBadge {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
@@ -152,6 +156,11 @@
 .streakBadge {
   background-color: var(--color-surface-elevated);
   color: var(--color-text-secondary);
+}
+
+.milestoneBadge {
+  background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
 }
 
 .tdPts,
@@ -227,10 +236,26 @@
   /* Dois seletores de classe: o selo vem de outro módulo CSS e não pode depender da ordem. */
   .badges .memberBadge,
   .kingBadge,
-  .streakBadge {
+  .streakBadge,
+  .milestoneBadge {
     font-size: 0.625rem;
     line-height: 1.4;
     padding: 0 var(--space-1);
+    white-space: nowrap;
+  }
+}
+
+/* Em 320 px o nome longo corta com reticências e os cinco selos quebram linha
+   dentro da célula, sem forçar rolagem horizontal da tabela. */
+@media (max-width: 360px) {
+  .thPts,
+  .thExact,
+  .thRound {
+    width: 2.5rem;
+  }
+
+  .badges {
+    row-gap: 2px;
   }
 }
 

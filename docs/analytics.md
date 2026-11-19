@@ -178,7 +178,9 @@ Eventos da config de pontuação/visibilidade no grupo (CreateGroupModal + Match
 > seguem **não** rastreados — só o clique intencional no vencedor do pênalti gera evento.
 
 Compartilhamento do convite (`ShareButtons`, usado em GroupInviteSection + CreateGroupSuccessView).
-O `<contexto>` é `group_detail` na página do grupo e `create_group` no modal de sucesso:
+O `<contexto>` é `group_detail` na página do grupo, `create_group` no modal de sucesso,
+`group_link` no link público de pedido de entrada e `exact_milestone` no cartão do marco
+de placares exatos:
 
 | Evento | Disparo | Params |
 |---|---|---|
@@ -214,7 +216,7 @@ recomendados do GA4.
 | Evento | Disparo | Params |
 |---|---|---|
 | `login` | Volta do OAuth com sessão válida. O clique em "Entrar com Google" grava uma marca no `sessionStorage`, e o `/auth/me` a consome. | `{ method }` (`google`) |
-| `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`) |
+| `share_invite` | convite compartilhado: menu nativo concluído, link ou código copiado, WhatsApp/X aberto com o texto pronto | `{ method, context }` (`native`/`copy_link`/`copy_code`/`whatsapp`/`twitter`; `create_group`/`group_detail`/`group_link`/`exact_milestone`) |
 | `join_group` | `POST /groups/join` respondeu 200. Dispara junto com `submit_entrar_grupo`, que continua sendo enviado para não quebrar a série histórica. A conversão do caminho por pedido fica no evento de servidor `group_joined` com `entry_method=request`, não neste evento do navegador. | `{ entry_method }` (`convite_link` quando o código enviado veio de `/convite/<código>`, `convite_antigo` quando veio de um link antigo com `?convite=`, `codigo` quando foi digitado ou colado no modal). O cliente não envia `request`. |
 | `join_request` | Visitante autenticado enviou pedido em `POST /groups/join-requests`. | (sem parâmetros) |
 | `approve_join_request` | Dono aprovou um pedido na aba Membros. Sem dado pessoal. | (sem parâmetros) |
