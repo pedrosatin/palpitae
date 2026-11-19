@@ -157,7 +157,13 @@ export default {
       // Transição do deploy (ver crons.ts): o agendamento antigo do poller ainda
       // pode chegar até a Cloudflare propagar o trigger fundido. Só o poller.
       ctx.waitUntil(
-        pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+        pollActiveMatches(
+          env.DB,
+          env.FOOTBALL_API_KEY ?? '',
+          env.AE,
+          controller.scheduledTime,
+          env,
+        ),
       )
       return
     }
@@ -166,8 +172,16 @@ export default {
       if (isResultPollerTick(controller.scheduledTime)) {
         // Minutos 0 e 30: só o poller — resultados da janela ativa + pontuação
         // (ADR-007). O drenador não compete com ele; retoma no minuto 5/35.
+        // O alerta de resultado atrasado (ticket 05) roda no fim do tick, se
+        // RESULT_OVERDUE_ALERT estiver ligado e o saldo de subrequests couber.
         ctx.waitUntil(
-          pollActiveMatches(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+          pollActiveMatches(
+            env.DB,
+            env.FOOTBALL_API_KEY ?? '',
+            env.AE,
+            controller.scheduledTime,
+            env,
+          ),
         )
       } else {
         // Demais minutos do trigger fundido: drenadores da fila durável (ADR-027),

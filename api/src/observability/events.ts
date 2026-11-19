@@ -51,6 +51,8 @@ export type EventType =
   | 'match_scoring_error'
   // Competição com jogo encerrado que segue sem pontuação depois de mais de um ciclo do poller
   | 'match_unscored'
+  // Alerta de resultado atrasado (kickoff + limiar): enviado, silenciado, limpo ou pulado
+  | 'result_overdue_alert'
   // Radar de competições (inteligência de produto, admin)
   | 'radar_sync_run'
   | 'radar_sync_error'

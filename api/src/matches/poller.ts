@@ -26,6 +26,11 @@ import {
 } from './matchPollingWindow'
 import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
 import { deferralOf, enqueueProviderWork, type NewWorkItem } from './providerWork'
+import {
+  checkAndSendResultOverdueAlert,
+  overdueAlertCallsLeft,
+  type ResultOverdueAlertEnv,
+} from './resultOverdueAlert'
 import { syncFixtures } from './sync'
 
 type ActiveRound = {
@@ -699,10 +704,20 @@ export async function pollActiveMatches(
   apiKey: string,
   ae?: AnalyticsEngineDataset,
   now = Date.now(),
+  /** Quando presente, avalia o alerta de resultado atrasado no fim do tick. */
+  alertEnv?: ResultOverdueAlertEnv,
 ): Promise<void> {
   const startedAt = Date.now()
   const budget: CallBudget = { limit: POLLER_CALL_BUDGET, used: 0 }
   const db = countD1Calls(rawDb, budget)
+
+  const runOverdueAlert = async () => {
+    if (!alertEnv) return
+    // Limpeza do cron (1) + este alerta (até RESULT_OVERDUE_ALERT_CALLS) precisam
+    // caber nos 50 da invocação. Sem saldo, a função só registra skipped_budget.
+    const left = overdueAlertCallsLeft(budget.used, CLEANUP_CALLS)
+    await checkAndSendResultOverdueAlert(rawDb, alertEnv, ae, now, left)
+  }
 
   const { lateTask, tasks, compCount, roundDays } = planTasks(await loadPollerRows(db, now), now)
 
@@ -765,6 +780,7 @@ export async function pollActiveMatches(
       // matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded
       doubles: [0, 0, 0, Date.now() - startedAt, 0],
     })
+    await runOverdueAlert()
     return
   }
 
@@ -786,6 +802,8 @@ export async function pollActiveMatches(
       eventsDiscarded,
     ],
   })
+
+  await runOverdueAlert()
 
   // Falha de D1 na pontuação. Depois de todas as competições terem a vez e do tick
   // registrado como erro, a primeira falha é relançada e a invocação sai como exceção.

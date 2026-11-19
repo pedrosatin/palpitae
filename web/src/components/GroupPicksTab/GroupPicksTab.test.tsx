@@ -843,3 +843,77 @@ describe('GroupPicksTab – jogo que começa com a aba aberta', () => {
     expect(picksCalls(fetchSpy)).toBe(1)
   })
 })
+
+describe('GroupPicksTab resultado pendente', () => {
+  const fourHoursAgo = new Date(Date.now() - 4 * 3_600_000).toISOString()
+  const emptyPicks = {
+    self_user_id: 'user-1',
+    members: [{ user_id: 'user-1', display: 'Pedro' }],
+    predictions: [] as Array<Record<string, unknown>>,
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('mostra o selo quando o jogo passou do limiar sem placar', async () => {
+    mockFetch(
+      [makeMatch({ id: 'm1', round: '1', status: 'scheduled', start_time: fourHoursAgo, postponed: 0 })],
+      emptyPicks,
+    )
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+    expect(await screen.findByText(/resultado pendente/i)).toBeInTheDocument()
+  })
+
+  it('não mostra o selo em jogo adiado conhecido', async () => {
+    mockFetch(
+      [makeMatch({ id: 'm1', round: '1', status: 'scheduled', start_time: fourHoursAgo, postponed: 1 })],
+      emptyPicks,
+    )
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+    await waitFor(() => {
+      expect(screen.getByText(/data a definir/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/resultado pendente/i)).not.toBeInTheDocument()
+  })
+
+  it('não mostra o selo em jogo encerrado com placar', async () => {
+    mockFetch(
+      [
+        makeMatch({
+          id: 'm1',
+          round: '1',
+          status: 'finished',
+          start_time: fourHoursAgo,
+          home_score: 2,
+          away_score: 1,
+        }),
+      ],
+      emptyPicks,
+    )
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+    await waitFor(() => {
+      expect(screen.getByText(/2\s*×\s*1/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/resultado pendente/i)).not.toBeInTheDocument()
+  })
+
+  it('mostra o selo com placar incompleto ao vivo além do limiar', async () => {
+    mockFetch(
+      [
+        makeMatch({
+          id: 'm1',
+          round: '1',
+          status: 'live',
+          start_time: fourHoursAgo,
+          postponed: 0,
+          home_score: null,
+          away_score: null,
+        }),
+      ],
+      emptyPicks,
+    )
+    render(<GroupPicksTab groupId="g1" competitionId="c1" />)
+    expect(await screen.findByText(/resultado pendente/i)).toBeInTheDocument()
+  })
+})
