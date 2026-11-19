@@ -121,20 +121,45 @@ test('ranking em 320 px: nome longo e vários selos sem overflow', async ({ page
     const nameEl = [...nameCell.querySelectorAll('span')].find((el) =>
       (el.textContent ?? '').includes('Maria Fernanda'),
     ) as HTMLElement
-    const badges = nameEl?.parentElement?.querySelector(':scope > span:last-child') as HTMLElement
+    const badgesWrap = nameEl?.parentElement?.querySelector(':scope > span:last-child') as HTMLElement
+    const style = nameEl ? getComputedStyle(nameEl) : null
+    const cellBox = nameCell.getBoundingClientRect()
+    const badgeEls = badgesWrap
+      ? ([...badgesWrap.querySelectorAll(':scope > *')] as HTMLElement[])
+      : []
     return {
-      tableScroll: root ? (root as HTMLElement).scrollWidth > (root as HTMLElement).clientWidth + 1 : false,
+      tableScroll: root
+        ? (root as HTMLElement).scrollWidth > (root as HTMLElement).clientWidth + 1
+        : false,
       nameOverflows: nameEl ? nameEl.scrollWidth > nameEl.clientWidth + 0.5 : false,
-      nameEllipsis: nameEl ? getComputedStyle(nameEl).textOverflow === 'ellipsis' : false,
-      badgesOutside: badges
-        ? badges.getBoundingClientRect().right > nameCell.getBoundingClientRect().right + 1
-        : true,
+      nameEllipsis: style?.textOverflow === 'ellipsis',
+      nameOverflowHidden: style?.overflow === 'hidden' || style?.overflowX === 'hidden',
       cellOverflows: nameCell.scrollWidth > nameCell.clientWidth + 1,
+      badgesOutside: badgeEls.some(
+        (badge) => badge.getBoundingClientRect().right > cellBox.right + 1,
+      ),
+      badgeBounds: badgeEls.map((badge) => {
+        const box = badge.getBoundingClientRect()
+        return {
+          text: (badge.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          inside:
+            box.left >= cellBox.left - 1 &&
+            box.right <= cellBox.right + 1 &&
+            box.top >= cellBox.top - 1 &&
+            box.bottom <= cellBox.bottom + 1,
+        }
+      }),
     }
   })
 
   expect(layout.tableScroll).toBe(false)
-  expect(layout.badgesOutside).toBe(false)
   expect(layout.cellOverflows).toBe(false)
-  expect(layout.nameEllipsis || layout.nameOverflows).toBe(true)
+  expect(layout.nameOverflows).toBe(true)
+  expect(layout.nameEllipsis).toBe(true)
+  expect(layout.nameOverflowHidden).toBe(true)
+  expect(layout.badgesOutside).toBe(false)
+  expect(layout.badgeBounds.length).toBeGreaterThanOrEqual(5)
+  for (const badge of layout.badgeBounds) {
+    expect(badge.inside, `selo fora da célula: ${badge.text}`).toBe(true)
+  }
 })

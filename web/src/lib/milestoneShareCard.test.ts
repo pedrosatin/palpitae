@@ -2,10 +2,27 @@ import { describe, expect, it } from 'vitest'
 import {
   buildMilestoneShareCardData,
   drawMilestoneShareCard,
+  layoutFooterLink,
   milestoneShareFileName,
   milestoneShareText,
+  MILESTONE_FOOTER_MAX_WIDTH,
+  splitFooterLink,
 } from './milestoneShareCard'
-import { LIME, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './shareCardParts'
+import { FONT, LIME, SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH } from './shareCardParts'
+
+/** Link público completo: domínio + /grupo/ + 32 hex. */
+const PUBLIC_GROUP_LINK =
+  'https://palpitae.com.br/grupo/abcdef0123456789abcdef0123456789'
+const PUBLIC_GROUP_LABEL = 'palpitae.com.br/grupo/abcdef0123456789abcdef0123456789'
+
+/**
+ * Largura proporcional realista para sans-serif bold: ~0.62 × tamanho por
+ * caractere latino típico. O link público de 32 hex mede ~1.020 px em 36 px,
+ * acima dos 920 px úteis do rodapé.
+ */
+function proportionalWidth(text: string, fontSize: number): number {
+  return text.length * fontSize * 0.62
+}
 
 function build(
   crossed: Array<5 | 15 | 30> = [5],
@@ -88,11 +105,67 @@ describe('drawMilestoneShareCard', () => {
 
   it('grava o link do grupo no rodapé da imagem', () => {
     const { ctx, draws } = recordingContext()
-    Object.assign(ctx, { canvas: { width: SHARE_CARD_WIDTH, height: SHARE_CARD_HEIGHT } })
+    Object.assign(ctx, {
+      canvas: { width: SHARE_CARD_WIDTH, height: SHARE_CARD_HEIGHT },
+      measureText: (t: string) => ({ width: proportionalWidth(t, 36) }),
+    })
     drawMilestoneShareCard(
       ctx,
       build([5], 5, 'https://palpitae.com.br/convite/AAAA-BBBB')!,
     )
     expect(draws.some((d) => d.text === 'palpitae.com.br/convite/AAAA-BBBB')).toBe(true)
+  })
+
+  it('desenha o link público de 32 hex completo, sem perder caracteres', () => {
+    const { ctx, draws } = recordingContext()
+    let currentSize = 36
+    Object.assign(ctx, {
+      canvas: { width: SHARE_CARD_WIDTH, height: SHARE_CARD_HEIGHT },
+      measureText: (t: string) => ({ width: proportionalWidth(t, currentSize) }),
+    })
+    Object.defineProperty(ctx, 'font', {
+      set(value: string) {
+        const match = /(\d+)px/.exec(value)
+        if (match) currentSize = Number(match[1])
+      },
+      get() {
+        return `700 ${currentSize}px ${FONT}`
+      },
+    })
+    drawMilestoneShareCard(ctx, build([5], 5, PUBLIC_GROUP_LINK)!)
+
+    const drawn = draws.map((d) => d.text)
+    expect(drawn).toContain('palpitae.com.br/grupo/')
+    expect(drawn).toContain('abcdef0123456789abcdef0123456789')
+    expect(drawn.every((t) => !t.includes('…'))).toBe(true)
+  })
+})
+
+describe('layoutFooterLink', () => {
+  it('parte o link público em duas linhas que cabem na largura útil', () => {
+    expect(proportionalWidth(PUBLIC_GROUP_LABEL, 36)).toBeGreaterThan(MILESTONE_FOOTER_MAX_WIDTH)
+
+    const layout = layoutFooterLink(proportionalWidth, PUBLIC_GROUP_LABEL)
+    expect(layout.lines.length).toBe(2)
+    expect(layout.lines.join('')).toBe(PUBLIC_GROUP_LABEL)
+    for (const line of layout.lines) {
+      expect(proportionalWidth(line, layout.fontSize)).toBeLessThanOrEqual(
+        MILESTONE_FOOTER_MAX_WIDTH,
+      )
+    }
+    expect(layout.fontSize).toBeGreaterThanOrEqual(22)
+    expect(layout.fontSize).toBeLessThanOrEqual(36)
+  })
+
+  it('mantém uma linha quando o texto já cabe', () => {
+    const layout = layoutFooterLink(proportionalWidth, 'palpitae.com.br')
+    expect(layout).toEqual({ fontSize: 36, lines: ['palpitae.com.br'] })
+  })
+
+  it('prefere quebrar depois de uma barra', () => {
+    expect(splitFooterLink(PUBLIC_GROUP_LABEL)).toEqual([
+      'palpitae.com.br/grupo/',
+      'abcdef0123456789abcdef0123456789',
+    ])
   })
 })

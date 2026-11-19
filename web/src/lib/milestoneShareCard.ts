@@ -22,7 +22,6 @@ import {
   hline,
   renderCardBlob,
   stripScheme,
-  truncate,
 } from './shareCardParts'
 
 export interface MilestoneShareCardData {
@@ -74,7 +73,66 @@ function footerLinkLabel(data: MilestoneShareCardData): string {
   return data.domain
 }
 
-/** Rodapé do cartão de marco: tagline e URL do grupo (ou domínio). */
+/** Largura útil do rodapé (cartão menos as duas margens). */
+export const MILESTONE_FOOTER_MAX_WIDTH = SHARE_CARD_WIDTH - PAD * 2
+
+const FOOTER_LINK_FONT_MAX = 36
+const FOOTER_LINK_FONT_MIN = 22
+
+/**
+ * Parte o link em duas linhas sem perder caracteres. Prefere quebrar depois
+ * de `/`; se não houver barra útil, parte no meio.
+ */
+export function splitFooterLink(label: string): [string, string] {
+  if (!label.includes('/')) {
+    const mid = Math.ceil(label.length / 2)
+    return [label.slice(0, mid), label.slice(mid)]
+  }
+  const parts = label.split('/')
+  let best = 1
+  let bestScore = Number.POSITIVE_INFINITY
+  for (let i = 1; i < parts.length; i++) {
+    const left = parts.slice(0, i).join('/')
+    const right = parts.slice(i).join('/')
+    if (!left || !right) continue
+    const score = Math.abs(left.length - right.length)
+    if (score < bestScore) {
+      best = i
+      bestScore = score
+    }
+  }
+  return [parts.slice(0, best).join('/') + '/', parts.slice(best).join('/')]
+}
+
+export interface FooterLinkLayout {
+  fontSize: number
+  lines: [string] | [string, string]
+}
+
+/**
+ * Escolhe tamanho de fonte e uma ou duas linhas para o link caber na largura
+ * útil, sem truncar. Reduz a fonte até o mínimo se as duas linhas ainda
+ * estourarem.
+ */
+export function layoutFooterLink(
+  measure: (text: string, fontSize: number) => number,
+  label: string,
+  maxWidth: number = MILESTONE_FOOTER_MAX_WIDTH,
+): FooterLinkLayout {
+  for (let fontSize = FOOTER_LINK_FONT_MAX; fontSize >= FOOTER_LINK_FONT_MIN; fontSize -= 1) {
+    if (measure(label, fontSize) <= maxWidth) {
+      return { fontSize, lines: [label] }
+    }
+    const [left, right] = splitFooterLink(label)
+    if (measure(left, fontSize) <= maxWidth && measure(right, fontSize) <= maxWidth) {
+      return { fontSize, lines: [left, right] }
+    }
+  }
+  const [left, right] = splitFooterLink(label)
+  return { fontSize: FOOTER_LINK_FONT_MIN, lines: [left, right] }
+}
+
+/** Rodapé do cartão de marco: tagline e URL do grupo (ou domínio), sem truncar. */
 function drawMilestoneFooter(ctx: CanvasRenderingContext2D, data: MilestoneShareCardData): void {
   const W = SHARE_CARD_WIDTH
   const H = SHARE_CARD_HEIGHT
@@ -83,10 +141,23 @@ function drawMilestoneFooter(ctx: CanvasRenderingContext2D, data: MilestoneShare
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = ASH
   ctx.font = `500 30px ${FONT}`
-  ctx.fillText('traga a galera pro bolão', W / 2, H - 110)
+  ctx.fillText('traga a galera pro bolão', W / 2, H - 120)
+
+  const layout = layoutFooterLink(
+    (text, fontSize) => {
+      ctx.font = `700 ${fontSize}px ${FONT}`
+      return ctx.measureText(text).width
+    },
+    label,
+  )
   ctx.fillStyle = LIME
-  ctx.font = `700 36px ${FONT}`
-  ctx.fillText(truncate(ctx, label, W - PAD * 2), W / 2, H - 55)
+  ctx.font = `700 ${layout.fontSize}px ${FONT}`
+  if (layout.lines.length === 1) {
+    ctx.fillText(layout.lines[0], W / 2, H - 55)
+  } else {
+    ctx.fillText(layout.lines[0], W / 2, H - 78)
+    ctx.fillText(layout.lines[1], W / 2, H - 42)
+  }
 }
 
 /** Pinta o cartão inteiro no contexto. Coordenadas absolutas em 1080×1350. */
