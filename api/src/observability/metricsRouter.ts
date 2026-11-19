@@ -420,9 +420,10 @@ metricsRouter.get('/ops', async (c) => {
       // Fila durável: estado real do D1 (não AE). Só itens abertos ou falhos.
       // Envolve em Promise.resolve para um stub sem `.all` não lançar ao montar
       // o Promise.all (senão as consultas AE já disparadas ficam órfãs).
+      // Falha do D1 marca `pendingWorkError` em vez de lista vazia (vazio ≠ indisponível).
       Promise.resolve()
-        .then(() =>
-          c.env.DB.prepare(
+        .then(async () => {
+          const rows = await c.env.DB.prepare(
             `SELECT provider, status, COUNT(*) AS items, MIN(created_at) AS oldest_created_at, ` +
               `MAX(attempts) AS max_attempts ` +
               `FROM provider_work ` +
@@ -435,19 +436,12 @@ metricsRouter.get('/ops', async (c) => {
             items: number
             oldest_created_at: number
             max_attempts: number
-          }>(),
-        )
+          }>()
+          return { ok: true as const, rows }
+        })
         .catch((err: unknown) => {
           console.error('[metrics] falha ao ler provider_work:', err)
-          return {
-            results: [] as {
-              provider: string
-              status: string
-              items: number
-              oldest_created_at: number
-              max_attempts: number
-            }[],
-          }
+          return { ok: false as const, rows: null }
         }),
     ])
     const sumBy = (rows: AeRow[], key: (r: AeRow) => string, value: string) => {
@@ -544,18 +538,23 @@ metricsRouter.get('/ops', async (c) => {
         last_seen: String(r.last_seen ?? ''),
       })),
       // Idade = now - created_at do item mais antigo do grupo (fila D1, não AE).
-      pendingWork: (pendingWorkRows.results ?? []).map((r) => {
-        const oldest = Number(r.oldest_created_at ?? 0)
-        const ageMinutes =
-          oldest > 0 ? Math.max(0, Math.round((Date.now() - oldest) / 60_000)) : 0
-        return {
-          provider: providerToken(r.provider),
-          status: providerToken(r.status),
-          items: Number(r.items ?? 0),
-          oldest_age_minutes: ageMinutes,
-          max_attempts: Number(r.max_attempts ?? 0),
-        }
-      }),
+      ...(pendingWorkRows.ok
+        ? {
+            pendingWork: (pendingWorkRows.rows?.results ?? []).map((r) => {
+              const oldest = Number(r.oldest_created_at ?? 0)
+              const ageMinutes =
+                oldest > 0 ? Math.max(0, Math.round((Date.now() - oldest) / 60_000)) : 0
+              return {
+                provider: providerToken(r.provider),
+                status: providerToken(r.status),
+                items: Number(r.items ?? 0),
+                oldest_age_minutes: ageMinutes,
+                max_attempts: Number(r.max_attempts ?? 0),
+              }
+            }),
+            pendingWorkError: false as const,
+          }
+        : { pendingWorkError: true as const }),
     })
   } catch (err) {
     console.error('[metrics] falha na SQL API (ops):', err)

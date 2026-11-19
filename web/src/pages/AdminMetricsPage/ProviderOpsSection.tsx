@@ -44,6 +44,8 @@ export interface OpsResponse {
   unscoredMatches?: OpsUnscoredRow[]
   /** Fila durável `provider_work` (D1): itens abertos ou falhos. Ausente em API antiga. */
   pendingWork?: OpsPendingWorkRow[]
+  /** true quando a consulta D1 da fila falhou (distinto de lista vazia). */
+  pendingWorkError?: boolean
 }
 
 interface OpsPendingWorkRow {
@@ -661,8 +663,17 @@ function PendingWorkTable({ rows }: { rows: OpsPendingWorkRow[] }) {
 /**
  * Itens abertos ou falhos em `provider_work` (D1). Idade = agora − created_at
  * do item mais antigo do grupo. Some quando a API ainda não envia o campo.
+ * `pendingWorkError` distingue falha de consulta de fila vazia.
  */
 function PendingWork({ ops }: { ops: OpsResponse }) {
+  if (ops.pendingWorkError) {
+    return (
+      <>
+        <h3 className={styles.subTitle}>Fila de trabalho dos provedores</h3>
+        <p className={styles.hint}>Fila indisponível.</p>
+      </>
+    )
+  }
   if (!Array.isArray(ops.pendingWork)) return null
   return (
     <>

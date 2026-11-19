@@ -185,13 +185,21 @@ export function buildAlerts(
       level: 'warn',
     })
   }
-  const pendingWork = ops?.pendingWork?.reduce((s, r) => s + Number(r.items ?? 0), 0) ?? 0
-  if (pendingWork > 0) {
+  if (ops?.pendingWorkError) {
     list.push({
       key: 'provider-work',
-      label: `${pendingWork} item(ns) na fila de provedores`,
+      label: 'fila de provedores indisponível',
       level: 'warn',
     })
+  } else {
+    const pendingWork = ops?.pendingWork?.reduce((s, r) => s + Number(r.items ?? 0), 0) ?? 0
+    if (pendingWork > 0) {
+      list.push({
+        key: 'provider-work',
+        label: `${pendingWork} item(ns) na fila de provedores`,
+        level: 'warn',
+      })
+    }
   }
   const emailFailed = Number(overview.emailHealth.failed)
   if (emailFailed > 0) {

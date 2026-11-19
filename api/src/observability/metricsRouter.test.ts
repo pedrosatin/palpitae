@@ -396,6 +396,14 @@ describe('GET /metrics/ops', () => {
     discards: Record<string, unknown>[]
     missingMatches: Record<string, unknown>[]
     unscoredMatches: Record<string, unknown>[]
+    pendingWork?: {
+      provider: string
+      status: string
+      items: number
+      oldest_age_minutes: number
+      max_attempts: number
+    }[]
+    pendingWorkError?: boolean
   }
 
   it('401 sem sessão, 403 para não-admin e 503 sem credenciais da SQL API', async () => {
@@ -775,6 +783,45 @@ describe('GET /metrics/ops', () => {
       makeEnv({ AE: ae as unknown as AnalyticsEngineDataset }),
     )
     expect(ae.writeDataPoint).not.toHaveBeenCalled()
+  })
+
+  it('pendingWork vazio quando a fila não tem item aberto', async () => {
+    const { sqlite, db } = createSqliteD1()
+    handles.push(sqlite)
+    vi.stubGlobal('fetch', fetchBySql({}))
+    const res = await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: db }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as OpsBody
+    expect(body.pendingWorkError).toBe(false)
+    expect(body.pendingWork).toEqual([])
+  })
+
+  it('pendingWorkError quando a consulta de provider_work falha', async () => {
+    const stubStmt = {
+      bind: () => stubStmt,
+      first: async () => null,
+      all: async () => {
+        throw new Error('D1 provider_work down')
+      },
+      run: async () => ({ success: true, meta: { changes: 0 } }),
+    }
+    const brokenDb = { prepare: () => stubStmt } as unknown as D1Database
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.stubGlobal('fetch', fetchBySql({}))
+    const res = await makeApp().request(
+      '/metrics/ops',
+      { headers: await authHeaders(ADMIN) },
+      makeEnv({ DB: brokenDb }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as OpsBody
+    expect(body.pendingWorkError).toBe(true)
+    expect(body.pendingWork).toBeUndefined()
+    expect(body.httpByProvider).toEqual([])
   })
 })
 
