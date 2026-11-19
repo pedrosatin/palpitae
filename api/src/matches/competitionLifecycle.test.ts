@@ -3,7 +3,9 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
-vi.mock('./scoring', () => ({ scoreUnprocessedMatches: vi.fn(async () => undefined) }))
+vi.mock('./scoring', () => ({
+  scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
+}))
 
 import { competitionStatusSql } from '../groups/competitionStatus'
 import { finalScore } from '../testing/matchFixtures'

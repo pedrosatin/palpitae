@@ -477,7 +477,7 @@ describe('coordenação das chamadas da ESPN: reinício do dreno', () => {
 })
 
 describe('coordenação das chamadas da ESPN: descoberta e fallback', () => {
-  it('a descoberta com 403 alimenta o gate: 1 request, sem fila, o status não avança e a execução seguinte a pula', async () => {
+  it('a descoberta com 403 alimenta o gate, adia as nove datas e não avança o status', async () => {
     const { sqlite, db, provider, ae, byType, at } = await setup()
     sqlite.exec("UPDATE competitions SET status = 'upcoming'")
     provider.behavior = () => status(403)
@@ -485,10 +485,9 @@ describe('coordenação das chamadas da ESPN: descoberta e fallback', () => {
 
     await discoverFixtures(db, '', ae, POLL_AT)
 
-    // O 403 vale para o provedor inteiro, dentro da invocação: um só request, sem fila (a descoberta
-    // segue sem fila por data) e sem avançar o status do calendário que não chegou.
+    // O 403 interrompe a coleta, adia as nove datas e preserva o status.
     expect(provider.calls).toHaveLength(1)
-    expect(workRows(sqlite)).toHaveLength(0)
+    expect(workRows(sqlite)).toHaveLength(9)
     expect(sqlite.prepare('SELECT status FROM competitions').get()).toEqual({ status: 'upcoming' })
     // Recusa do acesso não é falha do sync: o alerta próprio já saiu.
     expect(byType('football_api_error')).toHaveLength(0)

@@ -1,8 +1,12 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('./sync', () => ({ syncFixtures: vi.fn(async () => undefined) }))
-vi.mock('./scoring', () => ({
+vi.mock('./sync', async (original) => ({
+  ...(await original<typeof import('./sync')>()),
+  syncFixtures: vi.fn(async () => undefined),
+}))
+vi.mock('./scoring', async (original) => ({
+  ...(await original<typeof import('./scoring')>()),
   scoreUnprocessedMatches: vi.fn(async () => ({ scored: 0, complete: true })),
 }))
 vi.mock('./competitionLifecycle', () => ({
@@ -11,6 +15,7 @@ vi.mock('./competitionLifecycle', () => ({
 
 import { reconcileCompetitionStatus } from './competitionLifecycle'
 import { discoverFixtures } from './fixtureDiscovery'
+import { CallBudgetExhaustedError } from './callBudget'
 import { EspnUnavailableError } from '../providers/espn'
 import { FD_MAX_CONCURRENT_REQUESTS } from './footballDataQuota'
 import { scoreUnprocessedMatches } from './scoring'
@@ -142,8 +147,8 @@ describe('discoverFixtures', () => {
     expect(calls[1][0]).not.toHaveProperty('matchday')
 
     expect(scoreMock).toHaveBeenCalledTimes(2)
-    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything())
-    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c1', expect.anything(), expect.any(Number))
+    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything(), expect.any(Number))
   })
 
   it('logs fixture_discovery_run event with ok status and correct counts on success', async () => {
@@ -193,10 +198,16 @@ describe('discoverFixtures', () => {
 
     // First competition shouldn't be scored if sync fails
     expect(scoreMock).toHaveBeenCalledTimes(1)
-    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything())
+    expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything(), expect.any(Number))
     // Nem tem o status avançado com um calendário que não foi atualizado.
     expect(reconcileMock).toHaveBeenCalledTimes(1)
-    expect(reconcileMock).toHaveBeenCalledWith(expect.anything(), 'c2', expect.any(Number), 0)
+    expect(reconcileMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'c2',
+      expect.any(Number),
+      0,
+      undefined,
+    )
 
     const errors = pointsOfType(ae, 'football_api_error')
     expect(errors).toHaveLength(1)
@@ -222,7 +233,7 @@ describe('discoverFixtures', () => {
 
     await discoverFixtures(db as unknown as D1Database, 'key', undefined, 1_000)
 
-    expect(reconcileMock).toHaveBeenCalledWith(expect.anything(), 'c1', 1_000, 1)
+    expect(reconcileMock).toHaveBeenCalledWith(expect.anything(), 'c1', 1_000, 1, undefined)
   })
 
   it('falha ao gravar o status vira competition_status_error, não erro de provedor', async () => {
@@ -467,7 +478,7 @@ describe('discoverFixtures', () => {
       )
 
       expect(pointsOfType(ae, 'football_api_error')).toEqual([])
-      expect(db._batches).toEqual([])
+      expect(db._batches).toEqual([18])
       expect(reconcileMock).not.toHaveBeenCalled()
       expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('ok')
     })
@@ -499,6 +510,106 @@ describe('discoverFixtures', () => {
       await discoverFixtures(db as unknown as D1Database, 'key')
 
       expect(first).not.toHaveBeenCalled()
+    })
+  })
+  describe('saldo de subrequests da invocação', () => {
+    const fdComps = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        id: `fd-${i}`,
+        external_id: `COMP${i}`,
+        season: '2026',
+        provider: 'football-data',
+      }))
+
+    it('admite pelo custo completo e enfileira o que não cabe, num batch só, sem erro de provedor', async () => {
+      const db = buildFakeDb(fdComps(4))
+      const ae = buildFakeAe()
+
+      // 45 − 1 (a leitura) − 1 (o enfileiramento) = 43: duas competições de 17 cabem, a terceira não.
+      await discoverFixtures(
+        db as unknown as D1Database,
+        'key',
+        ae as unknown as AnalyticsEngineDataset,
+        0,
+        {
+          callBudget: 45,
+        },
+      )
+
+      expect(syncFixturesMock).toHaveBeenCalledTimes(2)
+      // As duas que não couberam vão para a fila em 1 batch, um item por competição.
+      expect(db._batches).toEqual([2])
+      expect(pointsOfType(ae, 'football_api_error')).toEqual([])
+      expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('ok')
+    })
+
+    it('a football-data (1 request) entra antes da ESPN (9 datas) no saldo', async () => {
+      const db = buildFakeDb([
+        { id: 'espn-1', external_id: 'conmebol.libertadores', season: '2026', provider: 'espn' },
+        ...fdComps(1),
+      ])
+
+      await discoverFixtures(db as unknown as D1Database, 'key', undefined, 0, { callBudget: 45 })
+
+      // A ESPN custa 42 e não cabe depois da football-data (17); as 9 datas dela vão para a fila.
+      expect(syncFixturesMock).toHaveBeenCalledTimes(1)
+      expect(syncFixturesMock.mock.calls[0][0].competitionCode).toBe('COMP0')
+      expect(db._batches).toEqual([18])
+    })
+
+    it('uma competição da ESPN sozinha cabe no saldo inteiro, sem fila', async () => {
+      const db = buildFakeDb([
+        { id: 'espn-1', external_id: 'conmebol.libertadores', season: '2026', provider: 'espn' },
+      ])
+
+      await discoverFixtures(db as unknown as D1Database, 'key', undefined, 0, { callBudget: 45 })
+
+      expect(syncFixturesMock).toHaveBeenCalledTimes(1)
+      expect(db._batches).toEqual([])
+    })
+
+    it('o sync que fica sem saldo no meio vira item da fila, não erro nem tentativa', async () => {
+      syncFixturesMock.mockRejectedValueOnce(new CallBudgetExhaustedError())
+      const db = buildFakeDb(fdComps(1))
+      const ae = buildFakeAe()
+
+      await discoverFixtures(
+        db as unknown as D1Database,
+        'key',
+        ae as unknown as AnalyticsEngineDataset,
+        0,
+        {
+          callBudget: 45,
+        },
+      )
+
+      expect(db._batches).toEqual([1])
+      expect(pointsOfType(ae, 'football_api_error')).toEqual([])
+      expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('ok')
+      expect(reconcileMock).not.toHaveBeenCalled()
+    })
+
+    it('a falha ao enfileirar registra competition_status_error por competição e marca a execução como erro', async () => {
+      const db = buildFakeDb(fdComps(4))
+      db.batch = async () => {
+        throw new Error('D1 fora do ar')
+      }
+      const ae = buildFakeAe()
+
+      await discoverFixtures(
+        db as unknown as D1Database,
+        'key',
+        ae as unknown as AnalyticsEngineDataset,
+        0,
+        {
+          callBudget: 45,
+        },
+      )
+
+      const errors = pointsOfType(ae, 'competition_status_error')
+      expect(errors.map((point) => point.blobs?.[1]).sort()).toEqual(['fd-2', 'fd-3'])
+      expect(errors[0].blobs?.[2]).toBe('D1 fora do ar')
+      expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('error')
     })
   })
 })

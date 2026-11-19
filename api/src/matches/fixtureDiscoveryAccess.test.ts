@@ -289,9 +289,9 @@ describe('descoberta alimenta o controle de acesso com as respostas de erro', ()
       blockedUntil: DISCOVERY_AT + 15 * MIN,
     })
     expect(h.events('provider_access_blocked')).toHaveLength(1)
-    // A recusa não é falha do sync: sem erro de provedor falso e sem fila.
+    // A recusa adia as datas, sem erro de provedor falso.
     expect(h.events('football_api_error')).toEqual([])
-    expect(queueCount(h.sqlite)).toBe(0)
+    expect(queueCount(h.sqlite)).toBe(18)
 
     // A descoberta seguinte, dentro do bloqueio, pula a ESPN sem nenhum fetch.
     expect(await runDiscovery(h, DISCOVERY_AT + 5 * MIN)).toEqual([])
@@ -324,7 +324,7 @@ describe('descoberta alimenta o controle de acesso com as respostas de erro', ()
     })
   })
 
-  it('o sucesso não escreve no estado de acesso: só a leitura de antes da primeira competição', async () => {
+  it('cada sucesso reserva a vaga e registra a resposta no estado de acesso', async () => {
     const sqls: string[] = []
     const h = await setupWorld({
       espn: 1,
@@ -340,7 +340,7 @@ describe('descoberta alimenta o controle de acesso com as respostas de erro', ()
     expect(await runDiscovery(h)).toEqual([])
 
     const access = sqls.filter((sql) => sql.includes('provider_rate_state'))
-    expect(access).toHaveLength(1)
+    expect(access).toHaveLength(19)
     expect(access[0]).toMatch(/^\s*SELECT/)
   })
 
@@ -361,7 +361,7 @@ describe('descoberta alimenta o controle de acesso com as respostas de erro', ()
 })
 
 describe('descoberta com a ESPN liberada: o caso comum', () => {
-  it('1 competição: o mesmo resultado e 1 chamada a mais que a da main, a leitura do estado de acesso', async () => {
+  it('1 competição: o mesmo resultado com as reservas e o registro das respostas', async () => {
     const h = await setupWorld({ espn: 1 })
     const before = matchCount(h.sqlite)
 
@@ -373,7 +373,7 @@ describe('descoberta com a ESPN liberada: o caso comum', () => {
     expect(h.events('football_api_error')).toEqual([])
     // As 19 chamadas da `main` (9 requests, a leitura das competições, a gravação, a pontuação, o
     // status e a limpeza do `scheduled`) mais a leitura do estado de acesso.
-    expect(h.limited.calls()).toBe(MAIN_CALLS_ONE_COMPETITION + 1)
+    expect(h.limited.calls()).toBe(MAIN_CALLS_ONE_COMPETITION + 19)
   })
 })
 

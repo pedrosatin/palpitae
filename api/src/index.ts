@@ -20,7 +20,7 @@ import { groupsRouter } from './groups/router'
 import { runProviderDrains } from './matches/drainCoordinator'
 import { espnDrain } from './matches/espnWork'
 import { footballDataDrain } from './matches/fdWork'
-import { discoverFixtures } from './matches/fixtureDiscovery'
+import { DISCOVERY_CALL_BUDGET, discoverFixtures } from './matches/fixtureDiscovery'
 import { pollActiveMatches } from './matches/poller'
 import { matchesRouter } from './matches/router'
 import { notificationsRouter } from './notifications/router'
@@ -129,7 +129,10 @@ export default {
     if (controller.cron === FIXTURE_DISCOVERY_CRON) {
       // Descobre jogos novos (mata-mata, remarcações) das competições ativas.
       ctx.waitUntil(
-        discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime),
+        // O saldo de subrequests da invocação vale para a football-data e a ESPN juntas.
+        discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime, {
+          callBudget: DISCOVERY_CALL_BUDGET,
+        }),
       )
       return
     }

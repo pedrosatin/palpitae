@@ -181,10 +181,12 @@ export async function enqueueProviderWork(
   db: D1Database,
   items: NewWorkItem[],
   now = Date.now(),
+  extraStatements: D1PreparedStatement[] = [],
 ): Promise<void> {
   if (items.length === 0) return
-  await db.batch(
-    items.map((item) =>
+  await db.batch([
+    ...extraStatements,
+    ...items.map((item) =>
       db
         .prepare(
           `INSERT INTO provider_work
@@ -218,7 +220,7 @@ export async function enqueueProviderWork(
           item.provider ?? FOOTBALL_DATA,
         ),
     ),
-  )
+  ])
 }
 
 /**

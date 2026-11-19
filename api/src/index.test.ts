@@ -29,6 +29,7 @@ vi.mock('./matches/poller', () => ({
   pollActiveMatches: vi.fn(async () => {}),
 }))
 vi.mock('./matches/fixtureDiscovery', () => ({
+  DISCOVERY_CALL_BUDGET: 45,
   discoverFixtures: vi.fn(async () => {}),
 }))
 vi.mock('./matches/fdWork', () => ({
@@ -226,7 +227,10 @@ describe('scheduled handler routing', () => {
     await run('15 6 * * *', 1792022400000)
 
     expect(discoverFixtures).toHaveBeenCalledTimes(1)
-    expect(discoverFixtures).toHaveBeenCalledWith(env.DB, 'fk', env.AE, 1792022400000)
+    // O saldo de 45 subrequests da invocação é o do ramo, com a limpeza do `scheduled` por fora.
+    expect(discoverFixtures).toHaveBeenCalledWith(env.DB, 'fk', env.AE, 1792022400000, {
+      callBudget: 45,
+    })
     expect(pollActiveMatches).not.toHaveBeenCalled()
     expect(sendRoundReminders).not.toHaveBeenCalled()
     expect(exportRecentDays).not.toHaveBeenCalled()
