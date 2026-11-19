@@ -12,14 +12,24 @@
  *
  * Reserva condicional antes do envio: o UPSERT só grava se `last_sent_at` estiver
  * fora da janela de cooldown (ou a linha não existir). Só o tick que obtém
- * `meta.changes > 0` tenta o Resend. Em falha definitiva do envio a reserva é
- * liberada para o próximo tick tentar de novo; sucesso e HTTP 409 (mesma chave
- * de idempotência) mantêm a reserva.
+ * `meta.changes > 0` tenta o Resend. A reserva é a identidade da tentativa: a
+ * chave de idempotência deriva só de `last_sent_at` gravado (`result-overdue-<ts>`),
+ * e o corpo é montado uma vez por reserva.
+ *
+ * Resposta do envio em três classes:
+ * - 2xx: `sent`, mantém a reserva.
+ * - Falha definitiva (4xx exceto 409 e 429): libera a reserva para o próximo tick
+ *   tentar com reserva e chave novas.
+ * - Falha ambígua (timeout, rede, 5xx, qualquer 409, 429): mantém a reserva até o
+ *   fim do cooldown, sem reenvio, e registra `send_uncertain`. Nesse caso o alerta
+ *   pode ficar sem e-mail até o cooldown acabar; o painel continua mostrando os
+ *   atrasados.
  */
 
 import { sendEmail, EmailError } from '../notifications/email'
 import { tryLogEvent, tryLogError, type EventType } from '../observability/events'
 import type { Env } from '../types'
+import { INVOCATION_CALL_LIMIT } from './callBudget'
 import {
   countOverdueResults,
   overdueResultHours,
@@ -35,7 +45,7 @@ export const DEFAULT_OVERDUE_ALERT_COOLDOWN_HOURS = 6
 /**
  * Subrequests máximos deste passo no pior caso:
  * 1 contagem + 1 reserva + 1 `fetch` do Resend + 1 liberação da reserva.
- * Caminho de sucesso gasta 3 (sem liberação).
+ * Caminho de sucesso e falha ambígua gastam 3 (sem liberação).
  */
 export const RESULT_OVERDUE_ALERT_CALLS = 4
 
@@ -57,6 +67,7 @@ export type ResultOverdueAlertOutcome =
   | 'suppressed'
   | 'sent'
   | 'send_failed'
+  | 'send_uncertain'
 
 const ALERT_EVENT: EventType = 'result_overdue_alert'
 
@@ -82,14 +93,9 @@ function adminInbox(env: ResultOverdueAlertEnv): string | null {
   return email ? email : null
 }
 
-/** Índice da janela de cooldown que contém `nowMs` (chave estável na janela). */
-export function overdueAlertWindowIndex(nowMs: number, cooldownMs: number): number {
-  return Math.floor(nowMs / cooldownMs)
-}
-
 /**
- * Corpo estável na janela: conta jogos e temporadas, sem a idade do jogo mais
- * antigo (que muda a cada tick e quebraria a chave de idempotência do Resend).
+ * Corpo montado uma vez por reserva. Sem a idade do jogo: o texto acompanha a
+ * contagem no instante da reserva e não muda em recuperação.
  */
 function buildAlertEmail(
   summary: OverdueResultSummary,
@@ -117,14 +123,35 @@ function buildAlertEmail(
   return { subject, html, text }
 }
 
-/** Chave de idempotência: janela + contagens (corpo e chave mudam juntos). */
-export function overdueAlertIdempotencyKey(
-  nowMs: number,
-  cooldownMs: number,
-  summary: Pick<OverdueResultSummary, 'matches' | 'competitions'>,
-): string {
-  const window = overdueAlertWindowIndex(nowMs, cooldownMs)
-  return `result-overdue-${window}-${summary.matches}-${summary.competitions}`
+/** Chave de idempotência: só o instante da reserva em `ops_alert_state`. */
+export function overdueAlertIdempotencyKey(reservedAt: number): string {
+  return `result-overdue-${reservedAt}`
+}
+
+/**
+ * Saldo que o poller passa ao alerta: teto da invocação menos o já gasto e a
+ * limpeza do `scheduled` (1 chamada) que roda na mesma invocação.
+ */
+export function overdueAlertCallsLeft(budgetUsed: number, cleanupCalls = 1): number {
+  return INVOCATION_CALL_LIMIT - budgetUsed - cleanupCalls
+}
+
+/**
+ * Classifica a falha do `sendEmail`.
+ * Definitiva: Resend com certeza não enviou (4xx exceto 409 e 429).
+ * Ambígua: timeout, rede, 5xx, qualquer 409, 429.
+ */
+export function classifySendFailure(err: unknown): 'definitive' | 'ambiguous' {
+  if (!(err instanceof EmailError)) return 'ambiguous'
+  const status = err.status
+  if (status === 409 || status === 429) return 'ambiguous'
+  if (status >= 400 && status < 500) return 'definitive'
+  return 'ambiguous'
+}
+
+function sendFailureDetail(err: unknown): string {
+  if (err instanceof EmailError) return `http_${err.status}`
+  return 'send_error'
 }
 
 /**
@@ -164,7 +191,7 @@ async function reserveAlertWindow(
 }
 
 /**
- * Libera a reserva deste tick (`last_sent_at = nowMs`) para o próximo tick
+ * Libera a reserva deste tick (`last_sent_at = reservedAt`) para o próximo tick
  * tentar de novo. Só mexe na linha se o valor ainda for o que este tick gravou,
  * para não apagar a reserva de um isolate mais novo.
  */
@@ -172,7 +199,7 @@ async function releaseAlertWindow(
   db: D1Database,
   ae: AnalyticsEngineDataset | undefined,
   reservedAt: number,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await db
       .prepare(
@@ -182,10 +209,12 @@ async function releaseAlertWindow(
       )
       .bind(reservedAt, RESULT_OVERDUE_ALERT_KEY, reservedAt)
       .run()
+    return true
   } catch (err) {
     tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] Falha ao liberar reserva:', err, {
       blobs: ['cooldown_release_failed'],
     })
+    return false
   }
 }
 
@@ -260,7 +289,7 @@ export async function checkAndSendResultOverdueAlert(
   }
 
   const mail = buildAlertEmail(summary, hours, env.FRONTEND_URL)
-  const idempotencyKey = overdueAlertIdempotencyKey(nowMs, cooldownMs, summary)
+  const idempotencyKey = overdueAlertIdempotencyKey(nowMs)
 
   try {
     await sendEmail(apiKey, {
@@ -271,26 +300,22 @@ export async function checkAndSendResultOverdueAlert(
       idempotencyKey,
     })
   } catch (err) {
-    // Mesma chave + corpo já aceito: o Resend devolve 409. Trata como enviado e
-    // mantém a reserva (não liberar).
-    if (err instanceof EmailError && err.status === 409) {
-      tryLogEvent(ae, ALERT_EVENT, {
-        blobs: ['sent', 'idempotent_replay'],
+    const detail = sendFailureDetail(err)
+    if (classifySendFailure(err) === 'definitive') {
+      tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] Falha definitiva ao enviar e-mail:', err, {
+        blobs: ['send_failed', detail],
         doubles: [summary.matches, summary.oldest_minutes],
       })
-      return 'sent'
+      await releaseAlertWindow(db, ae, nowMs)
+      return 'send_failed'
     }
 
-    const detail = err instanceof EmailError ? `http_${err.status}` : 'send_error'
-    tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] Falha ao enviar e-mail:', err, {
-      blobs: ['send_failed', detail],
+    // Ambígua: mantém a reserva. Sem reenvio até o cooldown; o painel segue com os atrasados.
+    tryLogEvent(ae, ALERT_EVENT, {
+      blobs: ['send_uncertain', detail],
       doubles: [summary.matches, summary.oldest_minutes],
     })
-    // Falha definitiva ou ambígua (5xx, rede, timeout): libera a reserva para o
-    // próximo tick tentar. Corpo e chave estáveis fazem o Resend deduplicar se o
-    // primeiro envio tiver sido aceito sem resposta.
-    await releaseAlertWindow(db, ae, nowMs)
-    return 'send_failed'
+    return 'send_uncertain'
   }
 
   tryLogEvent(ae, ALERT_EVENT, {

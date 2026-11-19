@@ -28,6 +28,7 @@ import { MIN_SCORING_CALLS, scoreUnprocessedMatches } from './scoring'
 import { deferralOf, enqueueProviderWork, type NewWorkItem } from './providerWork'
 import {
   checkAndSendResultOverdueAlert,
+  overdueAlertCallsLeft,
   type ResultOverdueAlertEnv,
 } from './resultOverdueAlert'
 import { syncFixtures } from './sync'
@@ -714,7 +715,7 @@ export async function pollActiveMatches(
     if (!alertEnv) return
     // Limpeza do cron (1) + este alerta (até RESULT_OVERDUE_ALERT_CALLS) precisam
     // caber nos 50 da invocação. Sem saldo, a função só registra skipped_budget.
-    const left = INVOCATION_CALL_LIMIT - budget.used - CLEANUP_CALLS
+    const left = overdueAlertCallsLeft(budget.used, CLEANUP_CALLS)
     await checkAndSendResultOverdueAlert(rawDb, alertEnv, ae, now, left)
   }
 
