@@ -36,7 +36,7 @@ describe('unlikelyExactShareCard', () => {
       origin: 'https://palpitae.com.br',
       groupLink: 'https://palpitae.com.br/grupo/abc',
     })!
-    expect(unlikelyExactShareText(card)).toContain('menos de 10%')
+    expect(unlikelyExactShareText(card)).toContain('no máximo 10%')
     expect(unlikelyExactShareText(card)).not.toMatch(/\bsó \d+%/)
     expect(unlikelyExactShareText(card)).toContain('Entra com a gente:')
     expect(unlikelyExactShareFileName()).toBe('palpitae-placar-improvavel.png')

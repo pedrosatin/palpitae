@@ -308,7 +308,7 @@ describe('RoundSummary', () => {
 
     expect(
       await screen.findByText(
-        'Você cravou um placar improvável: menos de 10% dos palpiteiros da competição acertaram.',
+        'Você cravou um placar improvável: no máximo 10% dos palpiteiros da competição acertaram.',
       ),
     ).toBeInTheDocument()
     expect(
@@ -519,7 +519,7 @@ describe('RoundSummary', () => {
     const groupUrl = `${window.location.origin}/grupo/${publicId}`
     expect(arg.files[0].name).toBe('palpitae-placar-improvavel.png')
     expect(arg.text).toContain(groupUrl)
-    expect(arg.text).toContain('menos de 10%')
+    expect(arg.text).toContain('no máximo 10%')
     expect(arg.text).not.toContain('AAAA-BBBB')
     expect(arg.text).not.toContain('/convite/')
     expect(mockUnlikelyRender.mock.calls[0][0]).toMatchObject({ groupLink: groupUrl })

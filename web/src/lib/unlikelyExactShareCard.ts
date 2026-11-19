@@ -1,6 +1,6 @@
 /**
  * Cartão de compartilhamento do placar improvável. Mesmo estilo dos cartões
- * de marco e de rodada; o destaque é o limiar público (menos de 10%), sem
+ * de marco e de rodada; o destaque é o limiar público (no máximo 10%), sem
  * percentual nem contagens do jogo. O texto e o rodapé levam o link do grupo
  * (convite ou pedido de entrada).
  */
