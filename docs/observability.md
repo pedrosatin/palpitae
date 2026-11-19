@@ -907,8 +907,8 @@ porque o poller, a descoberta e o sync manual cobrem os dois provedores.
 #### Alerta automático de resultado atrasado
 
 Canal gratuito: e-mail ao `ADMIN_EMAIL` via Resend (`RESEND_API_KEY`), o mesmo fornecedor dos
-lembretes. Desligado por padrão. Para ligar, defina no Worker
-`RESULT_OVERDUE_ALERT = "1"` (em `[vars]` do `wrangler.toml` ou via dashboard). Opcional:
+lembretes. Ligado em produção desde 19/11/2026 por `RESULT_OVERDUE_ALERT = "1"` em `[vars]`
+do `wrangler.toml`; sem a variável, não há e-mail. Opcional:
 `RESULT_OVERDUE_HOURS` (padrão 3) e `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS` (padrão 6). O poller
 avalia o alerta no fim de cada tick (minutos 0 e 30), só se o saldo de subrequests da
 invocação comportar até 4 chamadas no pior caso (contagem, reserva do cooldown, `fetch` e

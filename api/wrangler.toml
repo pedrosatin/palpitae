@@ -75,6 +75,9 @@ bucket_name = "palpitae-events"
 [vars]
 BASE_URL = "https://api.palpitae.com.br"
 FRONTEND_URL = "https://palpitae.com.br"
+# Alerta por e-mail de resultado atrasado ao ADMIN_EMAIL (ver docs/observability.md).
+# Reserva a janela antes de enviar; cooldown padrão de 6 h.
+RESULT_OVERDUE_ALERT = "1"
 # CF-Worker que a Cloudflare preenche no proxy do Pages, com o nome do projeto.
 # Atualize antes ou junto de renomear o projeto Pages. Ver docs/security.md.
 FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
@@ -84,9 +87,8 @@ FRONTEND_WORKER_ZONE = "palpitae-web.pages.dev"
 # Opcional: limiar em horas para resultado atrasado sem placar (padrão 3). Ver
 # api/src/matches/resultOverdue.ts e docs/observability.md.
 # RESULT_OVERDUE_HOURS = "3"
-# Opcional: e-mail de alerta de resultado atrasado ao ADMIN_EMAIL via Resend.
-# Desligado por padrão. Exige ADMIN_EMAIL e RESEND_API_KEY. Cooldown padrão 6 h.
-# RESULT_OVERDUE_ALERT = "1"
+# Alerta de resultado atrasado: ligado em [vars] acima. Exige ADMIN_EMAIL e
+# RESEND_API_KEY. Cooldown padrão 6 h.
 # RESULT_OVERDUE_ALERT_COOLDOWN_HOURS = "6"
 # Opcional: orçamento diário de linhas do D1 por usuário (padrões 250000 lidas e
 # 5000 escritas). Valor que não seja inteiro positivo volta ao padrão. Ver ADR-022.
