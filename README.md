@@ -2,6 +2,8 @@
 
 A prediction game for football tournaments worldwide.
 
+Play at [palpitae.com.br](https://palpitae.com.br).
+
 Users sign in with Google and submit predictions for a competition's matches. The
 system scores each prediction against the real results and ranks users on a
 leaderboard. Any authenticated user can create a prediction group and invite
