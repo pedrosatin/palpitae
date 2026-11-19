@@ -21,11 +21,10 @@ import { syncFixtures } from './sync'
 
 /**
  * A descoberta diária (`15 6 * * *`) e o controle de acesso da ESPN (ADR-027, adendo
- * do ticket 03). A descoberta é consumidor parcialmente integrado: segue chamando a
- * ESPN a 1 chamada por request, sem reservar vaga por request, mas lê o estado de
- * acesso antes (1 consulta por invocação) e pula a ESPN suspensa ou bloqueada, e só
- * as respostas de erro (401, 403, 429, 451) alimentam o gate (nenhuma escrita no D1 a
- * cada sucesso). Pelo `scheduled` real, sobre o SQLite das migrations.
+ * do ticket 03). Cada tentativa reserva vaga, faz o request e registra a resposta
+ * no D1, inclusive em caso de sucesso, ao custo de 3 chamadas. A descoberta lê o
+ * estado de acesso antes e pula a ESPN suspensa ou bloqueada. O teste usa o
+ * `scheduled` real sobre o SQLite das migrations.
  */
 
 const DAY = 24 * 60 * 60_000
@@ -371,8 +370,8 @@ describe('descoberta com a ESPN liberada: o caso comum', () => {
     expect(matchCount(h.sqlite)).toBe(before + NEW_GAMES.length)
     expect(queueCount(h.sqlite)).toBe(0)
     expect(h.events('football_api_error')).toEqual([])
-    // As 19 chamadas da `main` (9 requests, a leitura das competições, a gravação, a pontuação, o
-    // status e a limpeza do `scheduled`) mais a leitura do estado de acesso.
+    // Às 19 chamadas anteriores somam-se 18 da reserva e do registro das nove respostas
+    // e 1 da leitura do estado de acesso, totalizando 38.
     expect(h.limited.calls()).toBe(MAIN_CALLS_ONE_COMPETITION + 19)
   })
 })

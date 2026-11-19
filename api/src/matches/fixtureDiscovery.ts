@@ -14,7 +14,7 @@ import {
   footballDataItemCost,
   scoreWithinBudget,
 } from './fdWork'
-import { espnDatesAround } from './matchPollingWindow'
+import { ESPN_DISCOVERY_DATE_COUNT, espnDatesAround } from './matchPollingWindow'
 import { deferralOf, enqueueProviderWork, type NewWorkItem } from './providerWork'
 import type { SyncResult } from './matchUpsert'
 import { syncFixtures } from './sync'
@@ -273,7 +273,8 @@ async function enqueueDeferrals(run: DiscoveryRun, budget: DrainBudget): Promise
  * request da ESPN custa 3 (vaga, `fetch` e registro da resposta), então uma
  * competição da ESPN de 9 datas custa cerca de 40 sozinha. A descoberta tem um
  * saldo de invocação (`DISCOVERY_CALL_BUDGET`, 45) e admite cada competição pelo
- * custo completo antes de começar, a football-data (barata) primeiro. A que não
+ * custo completo antes de começar, em ordem de visibilidade pública, quantidade
+ * de grupos e slug. A que não
  * cabe nem começa e vira item `discovery` da fila (um por competição na
  * football-data, um por data na ESPN), pronto para o próximo dreno, sem tentativa
  * gasta e sem erro de provedor; o dreno conclui, grava os jogos novos, pontua e
@@ -305,11 +306,14 @@ export async function discoverFixtures(
   // e esses dias são a janela de correção do calendário.
   const rows = await budget.db
     .prepare(
-      `SELECT id, external_id, season, provider
-         FROM competitions
+      `SELECT c.id, c.external_id, c.season, c.provider
+         FROM competitions c
         WHERE status != 'finished'
           AND provider IN ('football-data', 'espn')
-          AND external_id IS NOT NULL`,
+          AND external_id IS NOT NULL
+        ORDER BY CASE WHEN visibility = 'public' THEN 0 ELSE 1 END,
+          (SELECT COUNT(*) FROM groups g WHERE g.competition_id = c.id) DESC,
+          c.slug ASC`,
     )
     .all<ActiveCompetition>()
 
@@ -328,7 +332,7 @@ export async function discoverFixtures(
     apiKey,
     ae,
     now,
-    espnDates: espnDatesAround(utcDay, -1, 9),
+    espnDates: espnDatesAround(utcDay, -1, ESPN_DISCOVERY_DATE_COUNT),
     missingEvents: { remaining: MISSING_EVENTS_PER_DISCOVERY },
     deferrals: [],
     fixturesUpdated: 0,
@@ -346,16 +350,13 @@ export async function discoverFixtures(
     ? await readEspnAccessPause(budget.db, now)
     : null
 
-  // Admissão pelo custo completo, a football-data (1 request) antes da ESPN (9 datas): a
-  // reserva é feita antes de qualquer tarefa, na ordem, e o que não cabe nem começa. Sem
-  // `callBudget` tudo é admitido, sem custo a conferir.
-  const ordered = [...rows.results].sort(
-    (a, b) => Number(a.provider === 'espn') - Number(b.provider === 'espn'),
-  )
+  // A consulta prioriza visibilidade pública, uso por grupos e slug, sem preferência
+  // por provedor. A reserva pelo custo completo segue essa ordem; o que não cabe
+  // vai para a fila antes de qualquer tarefa começar.
   const costOf = (comp: ActiveCompetition) =>
     opts.callBudget === undefined ? 0 : discoveryCost(comp, run.espnDates.length)
   const admitted: { comp: ActiveCompetition; span: ItemBudget }[] = []
-  for (const comp of ordered) {
+  for (const comp of rows.results) {
     if (comp.provider === 'espn' && espnPause) continue
     const span = budget.open(costOf(comp))
     if (span) admitted.push({ comp, span })

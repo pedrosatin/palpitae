@@ -18,6 +18,7 @@ import { discoverFixtures } from './fixtureDiscovery'
 import { clearFootballDataPause } from './footballDataQuota'
 import { espnDate } from './matchPollingWindow'
 import { setFootballDataRateLimitForTests, setProviderRateLimitForTests } from './providerBudget'
+import { enqueueProviderWork } from './providerWork'
 import { syncFixtures } from './sync'
 
 /**
@@ -31,8 +32,8 @@ import { syncFixtures } from './sync'
  */
 
 const DAY = 24 * 60 * 60_000
-const DISCOVERY_AT = Date.UTC(2026, 10, 17, 6, 15, 0)
-const TODAY = Date.UTC(2026, 10, 17)
+const DISCOVERY_AT = Date.UTC(2026, 10, 19, 6, 15, 0)
+const TODAY = Date.UTC(2026, 10, 19)
 const ESPN_SLUGS = [
   'conmebol.libertadores',
   'conmebol.sudamericana',
@@ -49,10 +50,11 @@ const FD_CODES = [
   { code: 'FL1', id: 2015 },
   { code: 'DED', id: 2003 },
   { code: 'BSA', id: 2013 },
+  { code: 'CL', id: 2001 },
 ] as const
 /** Minutos do dreno no trigger fundido, a partir das 06:20 (os minutos 0 e 30 são do poller). */
 const DRAIN_TICKS = [6, 7, 8, 9, 10, 11].flatMap((hour) =>
-  [5, 10, 20, 25, 35, 40, 50, 55].map((minute) => Date.UTC(2026, 10, 17, hour, minute, 0)),
+  [5, 10, 20, 25, 35, 40, 50, 55].map((minute) => Date.UTC(2026, 10, 19, hour, minute, 0)),
 )
 /** A limpeza de registros expirados do `scheduled` é 1 chamada. */
 const CLEANUP_CALLS = 1
@@ -142,7 +144,25 @@ function fdCalendar(code: string, id: number, withNew: boolean) {
   }
 }
 
+const PRODUCTION_USAGE: Record<string, number> = {
+  'campeonato-brasileiro-serie-a-2026': 36,
+  'premier-league-2026': 5,
+  'uefa-champions-league-2026': 3,
+  'copa-do-brasil-2026': 4,
+  'conmebol-libertadores-2026': 3,
+  'conmebol-sudamericana-2026': 2,
+}
+const PUBLIC_SLUGS = [
+  'campeonato-brasileiro-serie-a-2026',
+  'premier-league-2026',
+  'uefa-champions-league-2026',
+  'copa-do-brasil-2026',
+]
+
 type WorldOptions = {
+  /** Visibilidade e grupos da produção de 19/11/2026, com calendários sintéticos. */
+  production?: boolean
+
   /** Competições da ESPN com jogos a descobrir (9 datas cada). */
   espn: number
   /** Competições da football-data com jogos a descobrir (1 request cada). */
@@ -199,6 +219,33 @@ async function setupWorld(options: WorldOptions) {
   }
   for (const comp of fdComps) {
     await syncFixtures({ competitionCode: comp.code, season: 2026, db, apiKey: 'test' })
+  }
+  // Nos cenários anteriores a football-data representa as competições públicas.
+  sqlite.exec(
+    "UPDATE competitions SET visibility = CASE WHEN provider = 'football-data' THEN 'public' ELSE 'pilot' END",
+  )
+  if (options.production) {
+    sqlite.exec(
+      "INSERT INTO users (id, email, provider, provider_id) VALUES ('owner', 'owner@example.test', 'google', 'owner')",
+    )
+    const competitions = sqlite.prepare('SELECT id, slug FROM competitions').all() as {
+      id: string
+      slug: string
+    }[]
+    for (const comp of competitions) {
+      sqlite
+        .prepare('UPDATE competitions SET visibility = ? WHERE id = ?')
+        .run(PUBLIC_SLUGS.includes(comp.slug) ? 'public' : 'pilot', comp.id)
+      for (let i = 0; i < (PRODUCTION_USAGE[comp.slug] ?? 0); i++) {
+        const key = `${comp.slug}-${i}`
+        sqlite
+          .prepare(`INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code)
+          VALUES (?, ?, ?, 'owner', ?)`)
+          .run(key, key, comp.id, key)
+      }
+    }
+    expect(competitions).toHaveLength(14)
+    expect(sqlite.prepare('SELECT SUM(1) AS n FROM groups').get()).toEqual({ n: 53 })
   }
   discovering = true
   fetches.espn = 0
@@ -502,7 +549,7 @@ describe('regressões da descoberta adiada', () => {
       phase = 'FINAL', leg = NULL, start_time = '2026-11-01T20:00:00Z', scored_at = '2026-11-02T00:00:00Z'
       WHERE provider = 'espn'; UPDATE competitions SET status = 'ongoing' WHERE provider = 'espn'`)
     h.behavior.espn = (slug, date) => {
-      if (date !== '20261120') return Response.json({ events: [] })
+      if (date !== '20261122') return Response.json({ events: [] })
       const event = espnEvent(slug, { key: 'tbd', dayOffset: 3 }, false)
       event.competitions![0].competitors![0].team = { id: '0', displayName: 'TBD' }
       return Response.json({ events: [event] })
@@ -523,7 +570,7 @@ it('runbook recupera a data failed depois de sair do horizonte, de 7 para 8 jogo
   expect(await runDiscovery(h)).toEqual([])
   expect(openWork(h.sqlite)).toBe(9)
   h.sqlite.exec(`UPDATE provider_work SET status = 'failed', attempts = 6
-    WHERE provider = 'espn' AND round = '20261116'`)
+    WHERE provider = 'espn' AND round = '20261118'`)
   await drainUntilSettled(h)
   expect(matchCount(h.sqlite)).toBe(7)
   // O mesmo UPDATE do procedimento operacional, depois de corrigir a causa da falha.
@@ -531,7 +578,7 @@ it('runbook recupera a data failed depois de sair do horizonte, de 7 para 8 jogo
   h.sqlite
     .prepare(`UPDATE provider_work SET status = 'pending', attempts = 0,
     not_before = ?, lease_until = 0, lease_owner = NULL
-    WHERE provider = 'espn' AND kind = 'discovery' AND round = '20261116' AND status = 'failed'`)
+    WHERE provider = 'espn' AND kind = 'discovery' AND round = '20261118' AND status = 'failed'`)
     .run(recoveryAt)
   for (const tick of DRAIN_TICKS.slice(0, 8)) {
     expect(await runCron(h, POLLER_AND_DRAIN_CRON, tick + 10 * DAY)).toEqual([])
@@ -541,4 +588,114 @@ it('runbook recupera a data failed depois de sair do horizonte, de 7 para 8 jogo
   expect(openWork(h.sqlite)).toBe(0)
   expect(matchCount(h.sqlite)).toBe(8)
   expect(snapshot(h.sqlite)).toEqual(await controlSnapshot({ espn: 2 }))
+})
+
+describe('mistura de produção de 19/11/2026', () => {
+  const options = { espn: 4, fd: 10, production: true }
+  const completed = (h: World) =>
+    h.sqlite
+      .prepare(`
+    SELECT c.slug FROM competitions c JOIN matches m ON m.competition_id = c.id
+    GROUP BY c.id HAVING COUNT(*) = CASE WHEN c.provider = 'espn' THEN 4 ELSE 3 END
+    ORDER BY c.slug`)
+      .all()
+      .map((r) => r.slug as string)
+
+  it.each([false, true])(
+    'conclui a fila e reproduz o controle, com result/late concorrentes = %s',
+    async (concurrent) => {
+      const h = await setupWorld(options)
+      expect(await runDiscovery(h)).toEqual([])
+      expect(h.limited.calls()).toBe(24)
+      expect(h.fetches).toEqual({ fd: 2, espn: 0 })
+      expect(completed(h)).toEqual(['campeonato-brasileiro-serie-a-2026', 'premier-league-2026'])
+      expect(openWork(h.sqlite)).toBe(44)
+      expect(workCount(h.sqlite, "provider = 'football-data'")).toBe(8)
+      expect(workCount(h.sqlite, "provider = 'espn'")).toBe(36)
+
+      let ticks = 0
+      let publicAt = 0
+      let lastNewAt = DISCOVERY_AT
+      let previous = matchCount(h.sqlite)
+      const calls: number[] = []
+      for (const at of DRAIN_TICKS.filter((t) => t > DISCOVERY_AT)) {
+        if (openWork(h.sqlite) === 0) break
+        if (concurrent && ticks < 3) {
+          // Uma janela do poller e um resgate atrasado por tick nos primeiros três ticks,
+          // de ontem e anteontem, sem criar itens discovery adicionais.
+          const comp = h.sqlite
+            .prepare(
+              "SELECT id, external_id FROM competitions WHERE slug = 'conmebol-libertadores-2026'",
+            )
+            .get()!
+          await enqueueProviderWork(
+            h.db,
+            [
+              {
+                provider: 'espn',
+                kind: 'result',
+                competitionId: String(comp.id),
+                competitionCode: String(comp.external_id),
+                season: '2026',
+                round: '20261118',
+              },
+              {
+                provider: 'espn',
+                kind: 'late',
+                competitionId: String(comp.id),
+                competitionCode: String(comp.external_id),
+                season: '2026',
+                round: '20261117',
+              },
+            ],
+            at,
+          )
+        }
+        expect(await runCron(h, POLLER_AND_DRAIN_CRON, at)).toEqual([])
+        calls.push(h.limited.calls())
+        expect(h.limited.calls()).toBeLessThanOrEqual(46)
+        ticks++
+        const count = matchCount(h.sqlite)
+        if (count > previous) lastNewAt = at
+        previous = count
+        if (!publicAt && PUBLIC_SLUGS.every((slug) => completed(h).includes(slug))) publicAt = at
+      }
+      expect(openWork(h.sqlite)).toBe(0)
+      expect(workCount(h.sqlite, "status != 'done' OR attempts > 0")).toBe(0)
+      expect(matchCount(h.sqlite)).toBe(46)
+      expect(ticks).toBe(concurrent ? 22 : 21)
+      expect(new Date(publicAt).toISOString()).toBe(
+        concurrent ? '2026-11-19T07:10:00.000Z' : '2026-11-19T07:05:00.000Z',
+      )
+      expect(new Date(lastNewAt).toISOString()).toBe(
+        concurrent ? '2026-11-19T08:55:00.000Z' : '2026-11-19T08:50:00.000Z',
+      )
+      expect(workCount(h.sqlite, "kind IN ('result', 'late') AND status = 'done'")).toBe(
+        concurrent ? 2 : 0,
+      )
+      const final = snapshot(h.sqlite)
+      expect(final).toEqual(await controlSnapshot(options))
+      process.stdout.write(
+        `PRODUCAO ${JSON.stringify({ concurrent, ticks, calls, publicAt: new Date(publicAt).toISOString(), lastNewAt: new Date(lastNewAt).toISOString(), settledAt: new Date(Date.now()).toISOString() })}\n`,
+      )
+    },
+  )
+
+  it('admite ESPN pública com grupos antes de football-data piloto sem grupos', async () => {
+    const h = await setupWorld(options)
+    h.sqlite.exec(`UPDATE competitions SET status = 'finished' WHERE slug IN (
+      'campeonato-brasileiro-serie-a-2026', 'premier-league-2026', 'uefa-champions-league-2026')`)
+    expect(await runDiscovery(h)).toEqual([])
+    expect(h.fetches).toEqual({ fd: 0, espn: 9 })
+    expect(completed(h)).toEqual(['copa-do-brasil-2026'])
+    expect(openWork(h.sqlite)).toBe(34)
+  })
+
+  it('desempata por slug mesmo com ordem de inserção inversa', async () => {
+    const h = await setupWorld({ espn: 0, fd: 2 })
+    // PPL é inserida antes de PD, mas la-liga deve preceder primeira-liga.
+    await discoverFixtures(h.env.DB, 'test', h.ae, DISCOVERY_AT, { callBudget: 19 })
+    expect(completed(h)).toEqual(['la-liga-2026'])
+    expect(openWork(h.sqlite)).toBe(1)
+  })
 })

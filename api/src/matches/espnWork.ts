@@ -26,6 +26,7 @@ import {
   type SyncedHandler,
   type WorkOutcome,
 } from './providerWork'
+import { ESPN_DISCOVERY_DATE_COUNT } from './matchPollingWindow'
 import { MIN_SCORING_CALLS } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -235,9 +236,9 @@ export function espnSyncedHandler(): SyncedHandler {
       .prepare(`SELECT SUM(discarded_tbd) AS tbd
       FROM discovery_dates WHERE competition_id = ?1
         AND window_start = (SELECT MAX(window_start) FROM discovery_dates WHERE competition_id = ?1)
-      HAVING COUNT(*) = 9 AND COUNT(discarded_tbd) = 9
+      HAVING COUNT(*) = ?2 AND COUNT(discarded_tbd) = ?2
         AND NOT EXISTS (SELECT 1 FROM discovery_dates WHERE competition_id = ?1 AND discarded_tbd IS NULL)`)
-      .bind(competitionId)
+      .bind(competitionId, ESPN_DISCOVERY_DATE_COUNT)
       .first<{ tbd: number }>()
     if (evidence) {
       const advanced = await advanceCompetitionStatus(

@@ -543,10 +543,10 @@ describe('discoverFixtures', () => {
       expect(pointsOfType(ae, 'fixture_discovery_run')[0].blobs?.[1]).toBe('ok')
     })
 
-    it('a football-data (1 request) entra antes da ESPN (9 datas) no saldo', async () => {
+    it('respeita a ordem de relevância devolvida pela consulta ao admitir pelo custo completo', async () => {
       const db = buildFakeDb([
-        { id: 'espn-1', external_id: 'conmebol.libertadores', season: '2026', provider: 'espn' },
         ...fdComps(1),
+        { id: 'espn-1', external_id: 'conmebol.libertadores', season: '2026', provider: 'espn' },
       ])
 
       await discoverFixtures(db as unknown as D1Database, 'key', undefined, 0, { callBudget: 45 })

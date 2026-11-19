@@ -13,7 +13,7 @@ export const FINISH_CONFIRMATION_DAYS = 7
 
 /**
  * Descoberta da ESPN que a fila dividiu por data: a competição só avança quando
- * nenhum item `discovery` dela espera ou executa (`?4` provedor, `?5` código e
+ * nenhum item `discovery` dela está em `pending`, `running` ou `failed` (`?4` provedor, `?5` código e
  * `?6` temporada). Sem isso, o primeiro item concluído a avançaria com o calendário
  * pela metade.
  */

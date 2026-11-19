@@ -1031,6 +1031,17 @@ O `[perf]` de `cron discoverFixtures` registra `calls_used`, `calls_budget` e `d
 
 A ESPN também reserva vaga e registra cada resposta de sucesso, ao custo de 3 chamadas por tentativa. O dreno de uma data de descoberta estima 16 chamadas, incluindo pontuação e as 3 chamadas da evidência e reconciliação. A tabela `discovery_dates` guarda uma linha por competição, janela diária e data consultada; `discarded_tbd IS NULL` indica evidência pendente. As linhas são mantidas para diagnóstico e para impedir encerramento com uma data antiga perdida. Crescem nove linhas por competição adiada por dia, sem payload de jogos.
 
+A migration `0049_discovery_dates.sql` deve estar aplicada antes deste Worker. A admissão ordena públicas antes de pilotos, depois quantidade de grupos decrescente e slug crescente, sem preferência por provedor. A contagem de grupos usa o índice existente na consulta das competições. O custo completo ainda decide se a competição cabe; quando não cabe, ela vai para a fila e a avaliação continua.
+
+O teste `fixtureDiscoveryBudget.test.ts` reproduz a distribuição informada da produção de 19/11/2026 com calendários sintéticos. São 10 football-data e 4 ESPN, com 53 grupos. As públicas são Brasileirão Série A com 36 grupos, Premier League com 5, Copa do Brasil com 4 e Champions League com 3. As pilotos ESPN têm 3 grupos na Libertadores, 2 na Sul-Americana e zero na Série B; as sete pilotos football-data não têm grupos.
+
+| Carga no dreno | Chamadas da descoberta, com limpeza | Admitidas às 06:15 UTC | Itens adiados | Ticks até esvaziar | Públicas completas UTC | Último jogo novo e fila vazia UTC | Máximo de chamadas por dreno |
+| --- | ---: | --- | ---: | ---: | --- | --- | ---: |
+| Só discovery | 24 | Brasileirão Série A e Premier League | 44 | 21 | 07:05 | 08:50 | 35 |
+| Com result e late | 24 | Brasileirão Série A e Premier League | 44 | 22 | 07:10 | 08:55 | 35 |
+
+Os 44 itens são 8 calendários football-data e 36 datas ESPN, sem tentativas gastas no adiamento. A variante injeta um `result` de ontem e um `late` de anteontem da Libertadores antes dos três primeiros ticks, reabrindo as duas chaves para simular seis execuções prioritárias. O dreno processa essa carga prioritária no cron real. As duas variantes terminam com 46 jogos, pontuação e status iguais ao controle sem limite, sem tentativa da chamada 51. A medida cobre entrada finita; tráfego prioritário contínuo pode adiar a descoberta por mais tempo. Horários de 19/11/2026, com início às 06:15 UTC, equivalentes a 03:15 BRT.
+
 ### Recuperar uma data failed fora do horizonte
 
 Depois de corrigir a causa de `last_error` e conferir o acesso ao provedor, liste a chave original. A pausa ou suspensão do provedor continua valendo; retome acesso somente pelo procedimento já documentado.
