@@ -13,8 +13,9 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import {
   GROUP_EXACT_ON_ROUND_SQL,
   IN_GROUP_TIPSTERS_ON_MATCH_SQL,
+  MATCH_SCORE_RARITY_COMMIT_SQL,
   MATCH_SCORE_RARITY_COMPUTE_SQL,
-  MATCH_SCORE_RARITY_UPSERT_SQL,
+  MATCH_SCORE_RARITY_RESERVE_SQL,
   ROUND_MATCH_RARITY_SQL,
   UNLIKELY_EXACTS_FOR_ROUND_SQL,
 } from './unlikelyExacts'
@@ -171,13 +172,22 @@ async function seedScenario() {
   }
 }
 
-/** Simula a 1ª leitura: calcula agregados ausentes e lê candidatos do grupo. */
+/**
+ * Simula a 1ª leitura: reserva + cálculo + commit por jogo (com releitura da
+ * lista a cada jogo) e lê candidatos do grupo.
+ */
 async function measureFirstRead(): Promise<number> {
   let total = 0
   total += await rowsRead(ROUND_MATCH_RARITY_SQL, [GROUP_ID, ROUND])
 
   for (let m = 0; m < MATCHES; m++) {
+    total += await rowsRead(ROUND_MATCH_RARITY_SQL, [GROUP_ID, ROUND])
     const matchId = `m-${m}`
+    const reserve = await db
+      .prepare(MATCH_SCORE_RARITY_RESERVE_SQL)
+      .bind(matchId, SCORED_AT)
+      .run()
+    total += Number(reserve.meta.rows_read)
     const compute = await db
       .prepare(MATCH_SCORE_RARITY_COMPUTE_SQL)
       .bind(1, 0, matchId)
@@ -185,13 +195,14 @@ async function measureFirstRead(): Promise<number> {
     total += Number(compute.meta.rows_read)
     const tipsterCount = Number(compute.results[0]?.tipster_count ?? 0)
     const exactCount = Number(compute.results[0]?.exact_count ?? 0)
-    const upsert = await db
-      .prepare(MATCH_SCORE_RARITY_UPSERT_SQL)
-      .bind(matchId, tipsterCount, exactCount, SCORED_AT)
+    const commit = await db
+      .prepare(MATCH_SCORE_RARITY_COMMIT_SQL)
+      .bind(tipsterCount, exactCount, matchId, SCORED_AT)
       .run()
-    total += Number(upsert.meta.rows_read)
+    total += Number(commit.meta.rows_read)
   }
 
+  total += await rowsRead(ROUND_MATCH_RARITY_SQL, [GROUP_ID, ROUND])
   total += await rowsRead(GROUP_EXACT_ON_ROUND_SQL, [GROUP_ID, GROUP_ID, ROUND])
   const matchIds = JSON.stringify(Array.from({ length: MATCHES }, (_, i) => `m-${i}`))
   total += await rowsRead(IN_GROUP_TIPSTERS_ON_MATCH_SQL, [GROUP_ID, matchIds])

@@ -3,8 +3,11 @@
 -- `match_score_rarity` guarda o agregado por jogo (palpiteiros distintos e
 -- exatos), compartilhado entre todos os grupos. Calculado na primeira leitura
 -- de round-standings que precisa dele, ou de novo quando `matches.scored_at`
--- diverge de `scored_at_snapshot` (correção de placar / repontuação). Exclusão
--- de grupo ou usuário fica defasada até a próxima repontuação do jogo (ADR-029).
+-- diverge de `scored_at_snapshot` (correção de placar / repontuação). Leituras
+-- concorrentes disputam uma reserva `status = 'computing'` (TTL 60 s); só quem
+-- obtém a reserva calcula. A gravação `ready` exige que o snapshot ainda seja o
+-- `scored_at` atual do jogo. Exclusão de grupo ou usuário fica defasada até a
+-- próxima repontuação do jogo (ADR-029).
 --
 -- `unlikely_exacts` grava o reconhecimento do membro na primeira leitura em que
 -- o placar é raro na rodada de referência (X = 10%, M = 10 tipsters no total e
@@ -17,7 +20,9 @@ CREATE TABLE IF NOT EXISTS match_score_rarity (
   tipster_count INTEGER NOT NULL CHECK (tipster_count >= 0),
   exact_count INTEGER NOT NULL CHECK (exact_count >= 0),
   scored_at_snapshot TEXT NOT NULL,
-  computed_at TEXT NOT NULL DEFAULT (datetime('now'))
+  computed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  status TEXT NOT NULL DEFAULT 'ready'
+    CHECK (status IN ('computing', 'ready'))
 );
 
 CREATE TABLE IF NOT EXISTS unlikely_exacts (

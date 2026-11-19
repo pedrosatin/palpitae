@@ -8,9 +8,9 @@ import {
 } from './unlikelyExacts'
 
 /**
- * A raridade por jogo roda no máximo uma vez por `scored_at` (agregado em
- * `match_score_rarity`). As leituras seguintes do ranking usam o agregado da
- * rodada e os palpites do próprio grupo.
+ * A raridade por jogo usa reserva `computing` por snapshot e confirma `ready`
+ * (agregado em `match_score_rarity`). As leituras seguintes do ranking usam o
+ * agregado da rodada e os palpites do próprio grupo.
  */
 
 type PlanRow = { id: number; parent: number; detail: string }

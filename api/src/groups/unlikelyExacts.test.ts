@@ -1,15 +1,22 @@
+/// <reference types="node" />
 import { describe, expect, it } from 'vitest'
+import { createSqliteD1 } from '../testing/sqliteD1'
 import {
   buildUnlikelyCandidates,
+  ensureMatchScoreRarity,
   isUnlikelyExact,
+  MATCH_SCORE_RARITY_COMMIT_SQL,
+  MATCH_SCORE_RARITY_COMPUTE_SQL,
   needsRarityRecompute,
   outsideTipsterCount,
   pendingUnlikelyInserts,
   qualifiesUnlikelyExact,
   summarizeUnlikelyExacts,
+  tryReserveMatchScoreRarity,
   UNLIKELY_EXACT_MAX_PERCENT,
   UNLIKELY_EXACT_MIN_OUTSIDE_TIPSTERS,
   UNLIKELY_EXACT_MIN_TIPSTERS,
+  type RoundMatchRarityRow,
   type UnlikelyExactCandidate,
   type UnlikelyExactRow,
 } from './unlikelyExacts'
@@ -65,7 +72,7 @@ describe('outsideTipsterCount', () => {
 })
 
 describe('needsRarityRecompute', () => {
-  it('pede recálculo sem snapshot ou com scored_at diferente', () => {
+  it('pede recálculo sem snapshot, em computing ou com scored_at diferente', () => {
     expect(
       needsRarityRecompute({
         match_id: 'm1',
@@ -75,6 +82,19 @@ describe('needsRarityRecompute', () => {
         tipster_count: null,
         exact_count: null,
         scored_at_snapshot: null,
+        status: null,
+      }),
+    ).toBe(true)
+    expect(
+      needsRarityRecompute({
+        match_id: 'm1',
+        home_score: 1,
+        away_score: 0,
+        scored_at: '2026-06-02T00:00:00Z',
+        tipster_count: 0,
+        exact_count: 0,
+        scored_at_snapshot: '2026-06-02T00:00:00Z',
+        status: 'computing',
       }),
     ).toBe(true)
     expect(
@@ -86,6 +106,7 @@ describe('needsRarityRecompute', () => {
         tipster_count: 10,
         exact_count: 1,
         scored_at_snapshot: '2026-06-02T00:00:00Z',
+        status: 'ready',
       }),
     ).toBe(true)
     expect(
@@ -97,6 +118,7 @@ describe('needsRarityRecompute', () => {
         tipster_count: 10,
         exact_count: 1,
         scored_at_snapshot: '2026-06-02T00:00:00Z',
+        status: 'ready',
       }),
     ).toBe(false)
   })
@@ -207,5 +229,70 @@ describe('constantes públicas', () => {
     expect(UNLIKELY_EXACT_MAX_PERCENT).toBe(10)
     expect(UNLIKELY_EXACT_MIN_TIPSTERS).toBe(10)
     expect(UNLIKELY_EXACT_MIN_OUTSIDE_TIPSTERS).toBe(10)
+  })
+})
+
+describe('reserva e commit de match_score_rarity', () => {
+  function seedMatch(sqlite: ReturnType<typeof createSqliteD1>['sqlite'], scoredAt: string) {
+    sqlite.exec(`
+      INSERT INTO competitions (id, name, slug, season, status, type, penalty_phases, visibility)
+      VALUES ('comp-a', 'Liga', 'liga', '2026', 'ongoing', 'league', '[]', 'public');
+      INSERT INTO teams (id, name, short_name, slug) VALUES ('t0', 'A', 'A', 'a'), ('t1', 'B', 'B', 'b');
+      INSERT INTO users (id, email, provider, provider_id, user_name)
+      VALUES ('u0', 'u0@example.com', 'google', 'g0', 'U0');
+      INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code)
+      VALUES ('g0', 'G', 'comp-a', 'u0', 'AAAA-BBBB');
+      INSERT INTO group_members (id, group_id, user_id, joined_at)
+      VALUES ('gm0', 'g0', 'u0', '2026-01-01T00:00:00Z');
+      INSERT INTO matches (
+        id, competition_id, external_id, provider, home_team_id, away_team_id,
+        start_time, status, round, phase, postponed, scored_at, home_score, away_score
+      ) VALUES (
+        'm1', 'comp-a', 'ext-1', 'football-data', 't0', 't1',
+        '2026-06-01T19:00:00Z', 'finished', '1', 'REGULAR_SEASON', 0, '${scoredAt}', 1, 0
+      );
+      INSERT INTO predictions (
+        id, user_id, group_id, match_id, predicted_home_score, predicted_away_score, points_awarded
+      ) VALUES ('p0', 'u0', 'g0', 'm1', 1, 0, 3);
+    `)
+  }
+
+  it('conclusão atrasada de S1 não sobrescreve agregado S2', async () => {
+    const { sqlite, db } = createSqliteD1()
+    const s1 = '2026-06-02T00:00:00Z'
+    const s2 = '2026-06-03T00:00:00Z'
+    seedMatch(sqlite, s1)
+
+    expect(await tryReserveMatchScoreRarity(db, 'm1', s1)).toBe(true)
+    const computedS1 = await db
+      .prepare(MATCH_SCORE_RARITY_COMPUTE_SQL)
+      .bind(1, 0, 'm1')
+      .first<{ tipster_count: number; exact_count: number }>()
+
+    sqlite.prepare(`UPDATE matches SET scored_at = ? WHERE id = 'm1'`).run(s2)
+    const rowS2: RoundMatchRarityRow = {
+      match_id: 'm1',
+      home_score: 1,
+      away_score: 0,
+      scored_at: s2,
+      tipster_count: 0,
+      exact_count: 0,
+      scored_at_snapshot: s1,
+      status: 'computing',
+    }
+    const readyS2 = await ensureMatchScoreRarity(db, rowS2)
+    expect(readyS2?.scored_at_snapshot).toBe(s2)
+
+    const staleCommit = await db
+      .prepare(MATCH_SCORE_RARITY_COMMIT_SQL)
+      .bind(Number(computedS1?.tipster_count ?? 0), Number(computedS1?.exact_count ?? 0), 'm1', s1)
+      .run()
+    expect(staleCommit.meta.changes).toBe(0)
+
+    expect(
+      sqlite
+        .prepare(`SELECT scored_at_snapshot, status FROM match_score_rarity WHERE match_id = 'm1'`)
+        .get(),
+    ).toEqual({ scored_at_snapshot: s2, status: 'ready' })
   })
 })

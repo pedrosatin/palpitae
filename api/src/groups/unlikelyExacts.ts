@@ -8,9 +8,13 @@ export const UNLIKELY_EXACT_MIN_TIPSTERS = 10
 
 /**
  * Mínimo de palpiteiros distintos que não são membros do grupo de quem lê.
- * Impede que o reconhecimento dependa do palpite de uma só pessoa desconhecida.
+ * Com um só grupo, impede inferir o palpite de uma pessoa desconhecida; com
+ * vários grupos ainda resta uma inferência de um bit (cravou ou não).
  */
 export const UNLIKELY_EXACT_MIN_OUTSIDE_TIPSTERS = 10
+
+/** TTL da reserva `computing` em `match_score_rarity` (segundos). */
+export const RARITY_RESERVE_TTL_SECONDS = 60
 
 /** Candidato a gravar: membro do grupo com placar exato raro na rodada. */
 export interface UnlikelyExactCandidate {
@@ -48,6 +52,7 @@ export interface RoundMatchRarityRow {
   tipster_count: number | null
   exact_count: number | null
   scored_at_snapshot: string | null
+  status: 'computing' | 'ready' | null
 }
 
 /** Agregado por jogo compartilhado entre grupos. */
@@ -70,7 +75,8 @@ export const ROUND_MATCH_RARITY_SQL = `SELECT
   m.scored_at AS scored_at,
   r.tipster_count AS tipster_count,
   r.exact_count AS exact_count,
-  r.scored_at_snapshot AS scored_at_snapshot
+  r.scored_at_snapshot AS scored_at_snapshot,
+  r.status AS status
 FROM matches m
 LEFT JOIN match_score_rarity r ON r.match_id = m.id
 WHERE m.competition_id = (SELECT competition_id FROM groups WHERE id = ?)
@@ -92,23 +98,45 @@ JOIN groups pg ON pg.id = p.group_id AND pg.deleted_at IS NULL
 WHERE p.match_id = ?`
 
 /**
- * Upsert do agregado. `ON CONFLICT DO UPDATE` só aplica quando o snapshot
- * gravado difere do novo (outra pontuação do jogo).
+ * Reserva o cálculo do agregado. `ON CONFLICT DO UPDATE` só aplica quando não
+ * há linha fresca para o snapshot: snapshot diferente, ou reserva `computing`
+ * com `computed_at` anterior ao TTL. Quem obtém `meta.changes > 0` calcula;
+ * quem não obtém segue sem o reconhecimento deste jogo nesta leitura.
  */
-export const MATCH_SCORE_RARITY_UPSERT_SQL = `INSERT INTO match_score_rarity (
-  match_id, tipster_count, exact_count, scored_at_snapshot, computed_at
-) VALUES (?, ?, ?, ?, datetime('now'))
+export const MATCH_SCORE_RARITY_RESERVE_SQL = `INSERT INTO match_score_rarity (
+  match_id, tipster_count, exact_count, scored_at_snapshot, computed_at, status
+) VALUES (?, 0, 0, ?, datetime('now'), 'computing')
 ON CONFLICT (match_id) DO UPDATE SET
-  tipster_count = excluded.tipster_count,
-  exact_count = excluded.exact_count,
+  tipster_count = 0,
+  exact_count = 0,
   scored_at_snapshot = excluded.scored_at_snapshot,
-  computed_at = excluded.computed_at
-WHERE match_score_rarity.scored_at_snapshot != excluded.scored_at_snapshot`
+  computed_at = excluded.computed_at,
+  status = 'computing'
+WHERE match_score_rarity.scored_at_snapshot != excluded.scored_at_snapshot
+   OR (
+     match_score_rarity.status = 'computing'
+     AND match_score_rarity.computed_at <= datetime('now', '-${RARITY_RESERVE_TTL_SECONDS} seconds')
+   )`
+
+/**
+ * Confirma o agregado `ready`. Só grava se a linha ainda é a reserva deste
+ * snapshot e o `scored_at` atual do jogo em `matches` é o mesmo calculado
+ * (evita que uma conclusão atrasada sobrescreva um snapshot mais novo).
+ */
+export const MATCH_SCORE_RARITY_COMMIT_SQL = `UPDATE match_score_rarity SET
+  tipster_count = ?,
+  exact_count = ?,
+  computed_at = datetime('now'),
+  status = 'ready'
+WHERE match_id = ?
+  AND status = 'computing'
+  AND scored_at_snapshot = ?
+  AND scored_at_snapshot = (SELECT scored_at FROM matches WHERE id = match_score_rarity.match_id)`
 
 /**
  * Membros deste grupo com placar exato pontuado nos jogos da rodada, cruzados
- * com o agregado já fresco. O filtro de raridade e o mínimo de tipsters fora
- * do grupo entram em TypeScript (`buildUnlikelyCandidates`).
+ * com o agregado já fresco (`status = 'ready'`). O filtro de raridade e o
+ * mínimo de tipsters fora do grupo entram em TypeScript (`buildUnlikelyCandidates`).
  */
 export const GROUP_EXACT_ON_ROUND_SQL = `SELECT
   p.user_id AS user_id,
@@ -119,7 +147,9 @@ export const GROUP_EXACT_ON_ROUND_SQL = `SELECT
   r.exact_count AS exact_tipster_count
 FROM matches m
 JOIN match_score_rarity r
-  ON r.match_id = m.id AND r.scored_at_snapshot = m.scored_at
+  ON r.match_id = m.id
+ AND r.scored_at_snapshot = m.scored_at
+ AND r.status = 'ready'
 JOIN predictions p ON p.match_id = m.id AND p.group_id = ?
 JOIN groups g ON g.id = p.group_id
 WHERE m.competition_id = (SELECT competition_id FROM groups WHERE id = ?)
@@ -170,10 +200,13 @@ export function qualifiesUnlikelyExact(
   return isUnlikelyExact(tipsterCount, exactTipsterCount)
 }
 
-/** Agregado ausente ou com `scored_at` diferente do snapshot. */
+/** Agregado ausente, em cálculo, ou com `scored_at` diferente do snapshot. */
 export function needsRarityRecompute(row: RoundMatchRarityRow): boolean {
-  if (row.scored_at_snapshot == null) return true
-  return row.scored_at_snapshot !== row.scored_at
+  if (row.scored_at_snapshot == null || row.status == null) return true
+  if (row.status === 'computing') return true
+  if (row.scored_at_snapshot !== row.scored_at) return true
+  if (row.tipster_count == null || row.exact_count == null) return true
+  return false
 }
 
 export function outsideTipsterCount(tipsterCount: number, inGroupTipsters: number): number {
@@ -280,22 +313,45 @@ function insertStatements(
   )
 }
 
+/** Tenta obter a reserva de cálculo para o jogo/snapshot. */
+export async function tryReserveMatchScoreRarity(
+  db: D1Database,
+  matchId: string,
+  scoredAt: string,
+): Promise<boolean> {
+  const result = await db
+    .prepare(MATCH_SCORE_RARITY_RESERVE_SQL)
+    .bind(matchId, scoredAt)
+    .run()
+  return (result.meta?.changes ?? 0) > 0
+}
+
 /**
  * Calcula e grava o agregado de um jogo quando falta ou o `scored_at` mudou.
- * Um jogo por vez, para limitar o custo da primeira leitura da rodada.
+ * Coordena por reserva: só quem obtém `meta.changes > 0` calcula; quem perde
+ * a disputa deixa o reconhecimento deste jogo para a próxima leitura.
  */
 export async function ensureMatchScoreRarity(
   db: D1Database,
   row: RoundMatchRarityRow,
-): Promise<MatchScoreRarity> {
-  if (!needsRarityRecompute(row) && row.tipster_count != null && row.exact_count != null) {
+): Promise<MatchScoreRarity | null> {
+  if (
+    !needsRarityRecompute(row) &&
+    row.status === 'ready' &&
+    row.tipster_count != null &&
+    row.exact_count != null &&
+    row.scored_at_snapshot != null
+  ) {
     return {
       match_id: row.match_id,
       tipster_count: row.tipster_count,
       exact_count: row.exact_count,
-      scored_at_snapshot: row.scored_at_snapshot!,
+      scored_at_snapshot: row.scored_at_snapshot,
     }
   }
+
+  const reserved = await tryReserveMatchScoreRarity(db, row.match_id, row.scored_at)
+  if (!reserved) return null
 
   const computed = await db
     .prepare(MATCH_SCORE_RARITY_COMPUTE_SQL)
@@ -305,10 +361,12 @@ export async function ensureMatchScoreRarity(
   const tipsterCount = Number(computed?.tipster_count ?? 0)
   const exactCount = Number(computed?.exact_count ?? 0)
 
-  await db
-    .prepare(MATCH_SCORE_RARITY_UPSERT_SQL)
-    .bind(row.match_id, tipsterCount, exactCount, row.scored_at)
+  const committed = await db
+    .prepare(MATCH_SCORE_RARITY_COMMIT_SQL)
+    .bind(tipsterCount, exactCount, row.match_id, row.scored_at)
     .run()
+
+  if ((committed.meta?.changes ?? 0) === 0) return null
 
   return {
     match_id: row.match_id,
@@ -323,31 +381,35 @@ export async function ensureMatchScoreRarity(
  * grupo. Preferimos cálculo preguiçoso na leitura a calcular no fim da
  * pontuação (`scoring.ts`): o tick do poller já opera no orçamento de
  * subrequests da ADR-027, e o agregado é compartilhado por todos os grupos
- * depois da primeira abertura.
+ * depois da primeira abertura. A lista de snapshots é relida a cada jogo do
+ * laço, para não trabalhar com uma captura defasada por reservas concorrentes.
  */
 export async function ensureRoundMatchRarities(
   db: D1Database,
   groupId: string,
   referenceRound: string,
 ): Promise<RoundMatchRarityRow[]> {
-  const { results } = await db
+  const { results: seed } = await db
     .prepare(ROUND_MATCH_RARITY_SQL)
     .bind(groupId, referenceRound)
     .all<RoundMatchRarityRow>()
 
-  const rows = results
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!
-    if (!needsRarityRecompute(row)) continue
-    const fresh = await ensureMatchScoreRarity(db, row)
-    rows[i] = {
-      ...row,
-      tipster_count: fresh.tipster_count,
-      exact_count: fresh.exact_count,
-      scored_at_snapshot: fresh.scored_at_snapshot,
-    }
+  const matchIds = seed.map((row) => row.match_id)
+  for (const matchId of matchIds) {
+    const { results: latest } = await db
+      .prepare(ROUND_MATCH_RARITY_SQL)
+      .bind(groupId, referenceRound)
+      .all<RoundMatchRarityRow>()
+    const row = latest.find((entry) => entry.match_id === matchId)
+    if (!row || !needsRarityRecompute(row)) continue
+    await ensureMatchScoreRarity(db, row)
   }
-  return rows
+
+  const { results } = await db
+    .prepare(ROUND_MATCH_RARITY_SQL)
+    .bind(groupId, referenceRound)
+    .all<RoundMatchRarityRow>()
+  return results
 }
 
 async function fetchGroupExactHits(
