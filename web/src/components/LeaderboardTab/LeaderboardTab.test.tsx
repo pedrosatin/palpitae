@@ -405,7 +405,7 @@ describe('LeaderboardTab selos da rodada', () => {
     expect(screen.queryByText('30 exatos')).not.toBeInTheDocument()
   })
 
-  it('mostra nome longo com admin, você, rei, sequência e marco no mesmo grupo de selos', async () => {
+  it('mostra nome longo com admin, você, rei, sequência, marco e improvável no mesmo grupo de selos', async () => {
     const longName = 'Maria Fernanda Albuquerque dos Santos Extra'
     const richMembers = [
       { ...members[0], display_name: longName, exact_hits: 15 },
@@ -427,12 +427,14 @@ describe('LeaderboardTab selos da rodada', () => {
                 exact_hits: 15,
                 exact_milestone: 15,
                 exact_milestones_crossed: [],
+                unlikely_exact: true,
               },
               {
                 user_id: 'u2',
                 round_points: 0,
                 position_change: -1,
                 streak: 0,
+                unlikely_exact: false,
               },
             ],
           }),
@@ -456,7 +458,9 @@ describe('LeaderboardTab selos da rodada', () => {
     expect(badges).toContainElement(pedro.getByText('rei da rodada'))
     expect(badges).toContainElement(pedro.getByText('5 seguidas'))
     expect(badges).toContainElement(pedro.getByText('15 exatos'))
+    expect(badges).toContainElement(pedro.getByText('improvável'))
     expect(badges.parentElement).toContainElement(screen.getByText(longName))
+    expect(rowOf('Ana').queryByText('improvável')).not.toBeInTheDocument()
   })
 })
 

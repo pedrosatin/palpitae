@@ -7,6 +7,7 @@ import {
   exactMilestoneHighlightText,
   type ExactMilestone,
 } from '../../lib/exactMilestones'
+import { unlikelyExactHighlightText } from '../../lib/unlikelyExact'
 import { buildGroupLink } from '../../lib/groupLink'
 import { buildInviteLink } from '../../lib/invite'
 import {
@@ -117,26 +118,35 @@ interface RoundStandingRow {
   user_id: string
   exact_hits?: number
   exact_milestones_crossed?: number[]
+  unlikely_exact?: boolean
 }
 
-/** Marcos cruzados na rodada de referência; vazio fora dela ou sem cruzamento. */
+/** Marcos e placar improvável na rodada de referência; vazio fora dela. */
 function selfExactCrossing(input: {
   selfUserId: string | undefined
   referenceRound: string | null
   selectedRound: string | null | undefined
   standings: RoundStandingRow[]
-}): { crossed: ExactMilestone[]; exactHits: number } {
+}): {
+  crossed: ExactMilestone[]
+  exactHits: number
+  unlikelyExact: boolean
+} {
   if (
     !input.selfUserId ||
     input.referenceRound === null ||
     input.selectedRound !== input.referenceRound
   ) {
-    return { crossed: [], exactHits: 0 }
+    return { crossed: [], exactHits: 0, unlikelyExact: false }
   }
   const row = input.standings.find((s) => s.user_id === input.selfUserId)
   const crossed = asExactMilestones(row?.exact_milestones_crossed)
   const exactHits = row?.exact_hits ?? crossed[crossed.length - 1] ?? 0
-  return { crossed, exactHits }
+  return {
+    crossed,
+    exactHits,
+    unlikelyExact: row?.unlikely_exact === true,
+  }
 }
 
 /**
@@ -181,13 +191,14 @@ export default function RoundSummary({
   const self = standings?.find((s) => s.isYou)
   const highlight = standings ? highlightText(roundLeaders(standings)) : null
   const notice = postponedNotice(scope.postponed)
-  const { crossed, exactHits } = selfExactCrossing({
+  const { crossed, exactHits, unlikelyExact } = selfExactCrossing({
     selfUserId: groupData?.selfUserId,
     referenceRound,
     selectedRound,
     standings: roundStandings,
   })
   const milestoneHighlight = exactMilestoneHighlightText(crossed)
+  const unlikelyHighlight = unlikelyExactHighlightText(unlikelyExact)
   const shareLink = groupShareLink({ isOwner, inviteCode, publicId })
 
   return (
@@ -204,6 +215,7 @@ export default function RoundSummary({
       )}
       {highlight && <p className={styles.line}>{highlight}.</p>}
       {milestoneHighlight && <p className={styles.milestone}>{milestoneHighlight}.</p>}
+      {unlikelyHighlight && <p className={styles.unlikely}>{unlikelyHighlight}.</p>}
       {notice && <p className={styles.notice}>{notice}.</p>}
       <RoundShareActions
         groupName={groupName}
@@ -214,6 +226,7 @@ export default function RoundSummary({
         self={self}
         crossed={crossed}
         exactHits={exactHits}
+        unlikelyExact={unlikelyExact}
         shareLink={shareLink}
       />
     </section>

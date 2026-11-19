@@ -17,7 +17,8 @@ export type ShareInviteMethod = 'whatsapp' | 'twitter' | 'copy_link' | 'copy_cod
 
 /**
  * Convite compartilhado. `context` é o mesmo prefixo dos cliques
- * (`create_group`, `group_detail`, `group_link`, `exact_milestone`).
+ * (`create_group`, `group_detail`, `group_link`, `exact_milestone`,
+ * `unlikely_exact`).
  */
 export function trackShareInvite(method: ShareInviteMethod, context: string): void {
   trackEvent('share_invite', { method, context })

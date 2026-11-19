@@ -2,6 +2,12 @@ import type { D1Database } from '@cloudflare/workers-types'
 import { isKnockoutPhase } from '../matches/rounds'
 import { EXACT_HIT_SQL, PREDICTION_POINTS_SQL } from '../matches/scoring'
 import { notBannedSql } from './ranking'
+import {
+  loadUnlikelyExactStandings,
+  UNLIKELY_EXACTS_FOR_ROUND_SQL,
+  type UnlikelyExactRow,
+  type UnlikelyExactStanding,
+} from './unlikelyExacts'
 
 /** Membro com os totais do ranking e o que ele fez na rodada de referência. */
 export interface RoundMemberRow {
@@ -37,6 +43,8 @@ export interface RoundStanding {
   exact_milestone: ExactMilestone | null
   /** Marcos cuja linha em `exact_milestones` tem `round` igual à rodada de referência. */
   exact_milestones_crossed: ExactMilestone[]
+  /** Placar exato raro na competição, na rodada de referência. */
+  unlikely_exact: boolean
 }
 
 export interface RoundStandingsResponse {
@@ -117,11 +125,13 @@ export function crossedForReference(
  *
  * O marco permanente usa o total de exatos do grupo. O destaque de cruzamento
  * vem das linhas de `exact_milestones` cuja `round` é a rodada de referência.
+ * O placar improvável vem das linhas de `unlikely_exacts` da mesma rodada.
  */
 export function computeRoundStandings(
   rows: RoundMemberRow[],
   streaks: ReadonlyMap<string, number>,
   crossedByUser: ReadonlyMap<string, ExactMilestone[]> = new Map(),
+  unlikelyByUser: ReadonlyMap<string, UnlikelyExactStanding> = new Map(),
 ): RoundStanding[] {
   const pointsBefore: Score = (row) => row.total_points - row.since_points
   const exactBefore: Score = (row) => row.exact_hits - row.since_exact
@@ -135,6 +145,7 @@ export function computeRoundStandings(
     (row) => row.total_points,
     (row) => row.exact_hits,
   ).map((row, index) => {
+    const unlikely = unlikelyByUser.get(row.user_id)
     return {
       user_id: row.user_id,
       round_points: row.round_points,
@@ -143,6 +154,7 @@ export function computeRoundStandings(
       exact_hits: row.exact_hits,
       exact_milestone: highestExactMilestone(row.exact_hits),
       exact_milestones_crossed: crossedByUser.get(row.user_id) ?? [],
+      unlikely_exact: unlikely?.unlikely_exact ?? false,
     }
   })
 }
@@ -319,9 +331,12 @@ async function fetchRoundMembers(
 }
 
 /**
- * Lê fases, membros e palpites no mesmo `db.batch`, para as três consultas
- * verem o mesmo estado do D1. O `round` do bind vem de uma leitura prévia;
- * se a referência no lote divergir, a chamada refetcha os membros.
+ * Lê fases, membros, palpites e linhas já gravadas de placar improvável no
+ * mesmo `db.batch`, para as consultas verem o mesmo estado do D1. O agregado
+ * por jogo (`match_score_rarity`) e os candidatos novos vêm depois, só para a
+ * rodada de referência. O `round` do bind vem de uma leitura prévia; se a
+ * referência no lote divergir, a chamada refetcha membros e as linhas gravadas
+ * com a referência sincronizada.
  */
 async function fetchStandingsSnapshot(
   db: D1Database,
@@ -331,27 +346,46 @@ async function fetchStandingsSnapshot(
   phases: RoundPhaseRow[]
   members: RoundMemberRow[]
   picks: MemberRoundPicks[]
+  unlikelyExisting: UnlikelyExactRow[]
   round: string | null
 }> {
-  const [phasesResult, membersResult, picksResult] = await db.batch([
+  const [phasesResult, membersResult, picksResult, awardsResult] = await db.batch([
     db.prepare(ROUND_PHASES_SQL).bind(groupId),
     db.prepare(ROUND_MEMBERS_SQL).bind(round, round, groupId, round, groupId),
     db.prepare(MEMBER_ROUND_PICKS_SQL).bind(groupId),
+    db.prepare(UNLIKELY_EXACTS_FOR_ROUND_SQL).bind(groupId, round),
   ])
   const phases = (phasesResult.results ?? []) as RoundPhaseRow[]
   const syncedRound = pickReferenceRound(phases)
   if (syncedRound === null) {
-    return { phases, members: [], picks: [], round: null }
+    return {
+      phases,
+      members: [],
+      picks: [],
+      unlikelyExisting: [],
+      round: null,
+    }
   }
   if (syncedRound !== round) {
     const members = await fetchRoundMembers(db, groupId, syncedRound)
     const picks = (picksResult.results ?? []) as MemberRoundPicks[]
-    return { phases, members, picks, round: syncedRound }
+    const awardsResync = await db
+      .prepare(UNLIKELY_EXACTS_FOR_ROUND_SQL)
+      .bind(groupId, syncedRound)
+      .all<UnlikelyExactRow>()
+    return {
+      phases,
+      members,
+      picks,
+      unlikelyExisting: awardsResync.results ?? [],
+      round: syncedRound,
+    }
   }
   return {
     phases,
     members: (membersResult.results ?? []) as RoundMemberRow[],
     picks: (picksResult.results ?? []) as MemberRoundPicks[],
+    unlikelyExisting: (awardsResult.results ?? []) as UnlikelyExactRow[],
     round: syncedRound,
   }
 }
@@ -552,11 +586,19 @@ export async function getRoundStandings(
   const snapshot = await fetchStandingsSnapshot(db, groupId, preliminaryRound)
   if (snapshot.round === null) return { round: null, standings: [] }
 
+  const memberIds = snapshot.members.map((member) => member.user_id)
   const crossedByUser = await recordExactMilestones(
     db,
     groupId,
     snapshot.round,
     snapshot.members,
+  )
+  const unlikelyByUser = await loadUnlikelyExactStandings(
+    db,
+    groupId,
+    snapshot.round,
+    snapshot.unlikelyExisting,
+    memberIds,
   )
   return {
     round: snapshot.round,
@@ -564,6 +606,7 @@ export async function getRoundStandings(
       snapshot.members,
       computeStreaks(snapshot.phases, snapshot.picks),
       crossedByUser,
+      unlikelyByUser,
     ),
   }
 }

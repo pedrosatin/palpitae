@@ -1308,3 +1308,44 @@ Só o dono via o código de convite. Membros que compartilham cartões de marco 
 
 - O link revela existência e tamanho do grupo a quem o possui; não enumera grupos (id não sequencial) e responde 404 genérico para id inválido.
 - O relatório por `entry_method` depende da dimensão personalizada de evento `entry_method` no GA4 (o `join_group` já a usa). Eventos personalizados (`join_request`, `approve_join_request`) aparecem sozinhos; registrar como eventos-chave é opcional.
+
+## ADR-029: Placar improvável na competição inteira
+
+**Status:** Accepted
+**Date:** 2026-11-19
+
+### Context
+
+O resumo da rodada e o ranking já reconhecem o rei da rodada, a sequência de preenchimento e os marcos de placares exatos no grupo (ADR-021). Falta reconhecer o placar exato que poucos cravaram. Medir a raridade só dentro do grupo falha nos grupos solo (maioria da base). A auditoria de engajamento (ticket 01) e a decisão do operador fixaram a raridade entre todos os palpiteiros distintos da competição no Palpitae, com piso `X = 10%` e `M = 10`.
+
+### Decision
+
+`GET /groups/:id/round-standings` passa a devolver, em cada linha, `unlikely_exact` (boolean). O campo é aditivo; clientes antigos o ignoram. Sem pontos extras, sem ranking global entre grupos e sem percentual nem contagens na resposta (privacidade).
+
+Regra de raridade (Opção B):
+
+1. Só jogos da rodada de referência, `finished` com `scored_at`, placar oficial preenchido.
+2. Denominador: `COUNT(DISTINCT user_id)` entre palpites de grupos com `deleted_at IS NULL` na competição do grupo. O mesmo usuário em vários grupos conta uma vez.
+3. Numerador: usuários distintos cujo `predicted_home_score`/`predicted_away_score` batem com o placar oficial. Não usa `points_awarded` (regras de grupo diferem).
+4. O jogo é raro quando `tipsters >= 10` e `exact_tipsters * 100 <= tipsters * 10`.
+5. Só o membro deste grupo com placar exato pontuado (`points_exact > points_winner` e `points_awarded = points_exact`) recebe o reconhecimento.
+6. Além do mínimo total, o reconhecimento só vale com pelo menos 10 palpiteiros distintos que não são membros do grupo de quem lê. O mínimo de 10 de fora impede a inferência a partir de um só grupo (cenário 19 conhecidos + 1 privado). Com conhecimento de vários grupos resta uma inferência de um bit (a pessoa de fora cravou ou não o placar); o risco foi aceito porque revela só se um desconhecido acertou o placar de um jogo encerrado e exige conhecer quase todos os outros palpites.
+7. Empate no raro: todos que cravaram e passam nos mínimos recebem.
+
+Privacidade: a API e a UI mostram só o texto qualitativo com o limiar público (`no máximo 10%`). Não devolvem o percentual exato do jogo nem as contagens de tipsters. O limiar é público; o número do jogo não é. Contagens ficam só em `unlikely_exacts` / `match_score_rarity` para auditoria interna.
+
+Agregado compartilhado: a tabela `match_score_rarity` (migration `0053`) guarda `(match_id, tipster_count, exact_count, scored_at_snapshot, status)`. O cálculo roda de forma preguiçosa na leitura de `round-standings`. Antes de agregar, a leitura tenta uma reserva `status = 'computing'` com o `scored_at_snapshot` alvo (`INSERT ... ON CONFLICT DO UPDATE` só quando não há linha, o snapshot é outro ou a reserva expirou após 60 s). Só quem obtém `meta.changes > 0` calcula e confirma `status = 'ready'`; quem perde a disputa segue sem o reconhecimento daquele jogo nesta leitura. A confirmação exige que o snapshot calculado ainda seja o `scored_at` atual em `matches`, para uma conclusão atrasada não sobrescrever um snapshot mais novo. Preferimos a leitura ao fim da pontuação em `scoring.ts` porque o tick do poller já opera no orçamento de subrequests da ADR-027. Exclusão de grupo ou usuário pode deixar o agregado defasado até a próxima repontuação do jogo (`scored_at` novo); isso é aceitável.
+
+Estabilidade: a tabela `unlikely_exacts` grava `(group_id, user_id, match_id)` na primeira observação, com `round`, `tipster_count`, `exact_tipster_count`, `outside_tipster_count` e o placar. A chave primária com `ON CONFLICT DO NOTHING` impede redisparo. O selo da rodada sai das linhas cuja `round` é a referência. Correção de placar ou repontuação não apaga a linha nem cria outra na rodada seguinte. Falha de gravação é registrada e o GET responde com o que já está no banco.
+
+Custo: cada leitura do grupo lê os agregados dos jogos da rodada de referência (≤ número de jogos) e os palpites do próprio grupo. Leituras concorrentes disputam a reserva por jogo e snapshot; o cálculo completo dos palpites da competição roda uma vez por reserva obtida (e de novo se a reserva expirar sem confirmação). Medição em D1/Miniflare com 50 grupos × 20 palpiteiros × 10 jogos: consulta legada 30 224 `rows_read` por abertura; 1ª leitura com reserva e cálculo 21 072; reuso 877. Plano de consulta em `unlikelyExacts.queryPlan.test.ts`; medição em `unlikelyExacts.rowsRead.test.ts`.
+
+Na web, o ranking mostra o selo `improvável` (`title` + SR) só para quem tem `unlikely_exact` na referência. O resumo e o cartão compartilhável usam o texto qualitativo; o cartão leva o link de convite (dono) ou o link público de pedido de entrada (membro), com `share_invite` em contexto `unlikely_exact`. Grupo solo recebe o selo quando a competição tem massa e há ≥ 10 tipsters fora do grupo. Mata-mata sem rodada de referência devolve `{ round: null, standings: [] }` e não inventa selo.
+
+### Consequences
+
+- Com a base atual do Brasileirão (mediana ~5 palpiteiros/jogo), o selo quase não dispara até a competição passar de 10 palpiteiros distintos por jogo e de 10 fora do grupo; na Copa do Mundo a massa já basta.
+- Sem percentual nem contagens na resposta, um membro não deduz o palpite de um tipster privado a partir do número exibido.
+- O SQL só considera jogos da rodada de referência atual. O reconhecimento é gravado na primeira leitura do grupo nessa referência. Se a referência avançar antes de qualquer abertura, aquele placar raro não gera selo na rodada seguinte (o código não projeta reconhecimento para a referência futura). Preferimos documentar esse comportamento a acrescentar backfill por rodadas anteriores.
+- Exclusão de grupo/usuário pode alterar o agregado real sem invalidar `match_score_rarity` até a próxima repontuação; risco aceito.
+- As tabelas saem em cascata com exclusão de conta, grupo ou jogo.
