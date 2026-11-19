@@ -663,6 +663,7 @@ describe('mistura de produção de 19/11/2026', () => {
       expect(openWork(h.sqlite)).toBe(0)
       expect(workCount(h.sqlite, "status != 'done' OR attempts > 0")).toBe(0)
       expect(matchCount(h.sqlite)).toBe(46)
+      expect(Math.max(...calls)).toBeLessThanOrEqual(35)
       expect(ticks).toBe(concurrent ? 22 : 21)
       expect(new Date(publicAt).toISOString()).toBe(
         concurrent ? '2026-11-19T07:10:00.000Z' : '2026-11-19T07:05:00.000Z',
