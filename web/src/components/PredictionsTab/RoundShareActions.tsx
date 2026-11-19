@@ -15,6 +15,12 @@ import {
   roundShareFileName,
   roundShareText,
 } from '../../lib/roundShareCard'
+import {
+  buildUnlikelyExactShareCardData,
+  renderUnlikelyExactShareCardBlob,
+  unlikelyExactShareFileName,
+  unlikelyExactShareText,
+} from '../../lib/unlikelyExactShareCard'
 import { shareOrDownloadImage } from '../../lib/shareImage'
 import Button from '../Button'
 import styles from './RoundSummary.module.css'
@@ -28,6 +34,8 @@ interface RoundShareActionsProps {
   self: RoundStanding | undefined
   crossed: ExactMilestone[]
   exactHits: number
+  unlikelyExact: boolean
+  unlikelyExactPercent: number | null
   shareLink: string | null
 }
 
@@ -119,7 +127,49 @@ async function shareMilestoneImage(input: {
   }
 }
 
-/** Botões de compartilhar rodada e marco, com estado e erro locais. */
+async function shareUnlikelyExactImage(input: {
+  groupName?: string
+  percent: number | null
+  shareLink: string | null
+}): Promise<{ ok: boolean; notice: DownloadNotice }> {
+  const card = buildUnlikelyExactShareCardData({
+    groupName: input.groupName ?? 'Palpitae',
+    percent: input.percent,
+    origin: window.location.origin,
+    groupLink: input.shareLink,
+  })
+  if (!card) return { ok: true, notice: null }
+  trackEvent('click_resumo_improvavel_compartilhar')
+  try {
+    const blob = await renderUnlikelyExactShareCardBlob(card)
+    if (!blob) return { ok: false, notice: null }
+    const text = unlikelyExactShareText(card, input.shareLink)
+    const result = await shareOrDownloadImage(
+      blob,
+      unlikelyExactShareFileName(card.percent),
+      text,
+    )
+    if (result === 'shared') {
+      trackShareInvite('native', 'unlikely_exact')
+      return { ok: true, notice: null }
+    }
+    if (result === 'cancelled') return { ok: true, notice: null }
+
+    if (input.shareLink) {
+      const copied = await copyShareText(text)
+      if (copied) {
+        trackShareInvite('copy_link', 'unlikely_exact')
+        return { ok: true, notice: { kind: 'copied' } }
+      }
+      return { ok: true, notice: { kind: 'manual', link: input.shareLink } }
+    }
+    return { ok: true, notice: { kind: 'downloaded' } }
+  } catch {
+    return { ok: false, notice: null }
+  }
+}
+
+/** Botões de compartilhar rodada, marco e placar improvável. */
 export function RoundShareActions({
   groupName,
   roundLabel,
@@ -129,15 +179,19 @@ export function RoundShareActions({
   self,
   crossed,
   exactHits,
+  unlikelyExact,
+  unlikelyExactPercent,
   shareLink,
 }: RoundShareActionsProps) {
   const [sharing, setSharing] = useState(false)
   const [sharingMilestone, setSharingMilestone] = useState(false)
+  const [sharingUnlikely, setSharingUnlikely] = useState(false)
   const [shareError, setShareError] = useState(false)
   const [downloadNotice, setDownloadNotice] = useState<DownloadNotice>(null)
 
   const canShareRound = Boolean(self && standings)
-  if (!canShareRound && crossed.length === 0) return null
+  const canShareUnlikely = unlikelyExact && unlikelyExactPercent != null
+  if (!canShareRound && crossed.length === 0 && !canShareUnlikely) return null
 
   async function onShareRound() {
     if (!standings || !self) return
@@ -171,6 +225,20 @@ export function RoundShareActions({
     setSharingMilestone(false)
   }
 
+  async function onShareUnlikely() {
+    setSharingUnlikely(true)
+    setShareError(false)
+    setDownloadNotice(null)
+    const { ok, notice } = await shareUnlikelyExactImage({
+      groupName,
+      percent: unlikelyExactPercent,
+      shareLink,
+    })
+    if (!ok) setShareError(true)
+    else setDownloadNotice(notice)
+    setSharingUnlikely(false)
+  }
+
   return (
     <div className={styles.actions}>
       {canShareRound && (
@@ -186,6 +254,16 @@ export function RoundShareActions({
           disabled={sharingMilestone}
         >
           {sharingMilestone ? 'Gerando imagem...' : 'Compartilhar marco'}
+        </Button>
+      )}
+      {canShareUnlikely && (
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={onShareUnlikely}
+          disabled={sharingUnlikely}
+        >
+          {sharingUnlikely ? 'Gerando imagem...' : 'Compartilhar placar improvável'}
         </Button>
       )}
       {shareError && (

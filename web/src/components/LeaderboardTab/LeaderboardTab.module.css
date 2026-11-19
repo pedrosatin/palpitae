@@ -141,7 +141,8 @@
 
 .kingBadge,
 .streakBadge,
-.milestoneBadge {
+.milestoneBadge,
+.unlikelyBadge {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-sm);
@@ -161,6 +162,11 @@
 .milestoneBadge {
   background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
   color: var(--color-primary);
+}
+
+.unlikelyBadge {
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
 }
 
 .tdPts,
@@ -237,7 +243,8 @@
   .badges .memberBadge,
   .kingBadge,
   .streakBadge,
-  .milestoneBadge {
+  .milestoneBadge,
+  .unlikelyBadge {
     font-size: 0.625rem;
     line-height: 1.4;
     padding: 0 var(--space-1);
@@ -245,7 +252,7 @@
   }
 }
 
-/* Em 320 px o nome longo corta com reticências e os cinco selos quebram linha
+/* Em 320 px o nome longo corta com reticências e os selos quebram linha
    dentro da célula, sem forçar rolagem horizontal da tabela. */
 @media (max-width: 360px) {
   .thPts,

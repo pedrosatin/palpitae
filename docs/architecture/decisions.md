@@ -1308,3 +1308,38 @@ Só o dono via o código de convite. Membros que compartilham cartões de marco 
 
 - O link revela existência e tamanho do grupo a quem o possui; não enumera grupos (id não sequencial) e responde 404 genérico para id inválido.
 - O relatório por `entry_method` depende da dimensão personalizada de evento `entry_method` no GA4 (o `join_group` já a usa). Eventos personalizados (`join_request`, `approve_join_request`) aparecem sozinhos; registrar como eventos-chave é opcional.
+
+## ADR-029: Placar improvável na competição inteira
+
+**Status:** Accepted
+**Date:** 2026-11-19
+
+### Context
+
+O resumo da rodada e o ranking já reconhecem o rei da rodada, a sequência de preenchimento e os marcos de placares exatos no grupo (ADR-021). Falta reconhecer o placar exato que poucos cravaram. Medir a raridade só dentro do grupo falha nos grupos solo (maioria da base). A auditoria de engajamento (ticket 01) e a decisão do operador fixaram a raridade entre todos os palpiteiros distintos da competição no Palpitae, com piso `X = 10%` e `M = 10`.
+
+### Decision
+
+`GET /groups/:id/round-standings` passa a devolver, em cada linha, `unlikely_exact` (boolean) e `unlikely_exact_percent` (inteiro de 1 a 10, ou `null`). Os campos são aditivos; clientes antigos os ignoram. Sem pontos extras e sem ranking global entre grupos.
+
+Regra de raridade (Opção B):
+
+1. Só jogos da rodada de referência, `finished` com `scored_at`, placar oficial preenchido.
+2. Denominador: `COUNT(DISTINCT user_id)` entre palpites de grupos com `deleted_at IS NULL` na competição do grupo. O mesmo usuário em vários grupos conta uma vez.
+3. Numerador: usuários distintos cujo `predicted_home_score`/`predicted_away_score` batem com o placar oficial. Não usa `points_awarded` (regras de grupo diferem).
+4. O jogo é raro quando `tipsters >= 10` e `exact_tipsters * 100 <= tipsters * 10`.
+5. Só o membro deste grupo com placar exato pontuado (`points_exact > points_winner` e `points_awarded = points_exact`) recebe o reconhecimento.
+6. O percentual exibido é `max(1, round(100 * exact / tipsters))`, limitado a 10. Empate no raro: todos que cravaram recebem.
+
+Estabilidade: a tabela `unlikely_exacts` (migration `0053`) grava `(group_id, user_id, match_id)` na primeira observação, com `round`, `tipster_count`, `exact_tipster_count`, `percent_rounded` e o placar. A chave primária com `ON CONFLICT DO NOTHING` impede redisparo. O selo da rodada sai das linhas cuja `round` é a referência. Correção de placar ou repontuação não apaga a linha nem cria outra na rodada seguinte. Falha de gravação é registrada e o GET responde com o que já está no banco.
+
+Custo: a consulta agrega só os jogos da rodada (índice `idx_matches_comp_scored` ou `idx_matches_comp_round_start`) e os palpites por `match_id` (`idx_predictions_match`) e por grupo (`idx_predictions_group`). O plano de consulta está em `unlikelyExacts.queryPlan.test.ts`. Não há varredura de palpites por membro da competição fora desses índices.
+
+Na web, o ranking mostra o selo `improvável` (`title` + SR) só para quem tem `unlikely_exact` na referência. O resumo e o cartão compartilhável destacam o percentual na mesma rodada; o cartão leva o link de convite (dono) ou o link público de pedido de entrada (membro), com `share_invite` em contexto `unlikely_exact`. Grupo solo recebe o selo quando a competição tem massa. Mata-mata sem rodada de referência devolve `{ round: null, standings: [] }` e não inventa selo.
+
+### Consequences
+
+- Com a base atual do Brasileirão (mediana ~5 palpiteiros/jogo), o selo quase não dispara até a competição passar de 10 palpiteiros distintos por jogo; na Copa do Mundo a massa já basta.
+- O percentual arredondado não revela contagens pequenas nem nomes de outros grupos ou usuários.
+- Risco aceito: o reconhecimento aparece na primeira abertura da aba depois que o jogo raro fecha, na rodada de referência daquele momento. Se ninguém abrir entre o fechamento e a troca de referência, o destaque cai na referência seguinte (o mesmo risco dos marcos).
+- A tabela sai em cascata com exclusão de conta, grupo ou jogo.

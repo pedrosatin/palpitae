@@ -15,6 +15,10 @@ export interface RoundStanding {
   exact_milestone?: number | null
   /** Marcos cruzados na rodada de referência. Ausente ou [] se nenhum. */
   exact_milestones_crossed?: number[]
+  /** Placar exato raro na competição, na rodada de referência. */
+  unlikely_exact?: boolean
+  /** Menor percentual arredondado entre os placares raros da rodada. */
+  unlikely_exact_percent?: number | null
 }
 
 interface RoundStandings {

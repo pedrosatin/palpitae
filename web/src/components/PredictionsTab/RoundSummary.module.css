@@ -61,6 +61,13 @@
   color: var(--color-primary);
 }
 
+.unlikely {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-warning);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

@@ -59,6 +59,8 @@ async function mockGroupRanking(page: Page) {
             exact_hits: 15,
             exact_milestone: 15,
             exact_milestones_crossed: [],
+            unlikely_exact: true,
+            unlikely_exact_percent: 10,
           },
           {
             user_id: 'u2',
@@ -68,6 +70,8 @@ async function mockGroupRanking(page: Page) {
             exact_hits: 1,
             exact_milestone: null,
             exact_milestones_crossed: [],
+            unlikely_exact: false,
+            unlikely_exact_percent: null,
           },
         ],
       }
@@ -114,6 +118,7 @@ test('ranking em 320 px: nome longo e vários selos sem overflow', async ({ page
   await expect(row.getByText('rei da rodada')).toBeVisible()
   await expect(row.getByText('5 seguidas')).toBeVisible()
   await expect(row.getByText('15 exatos')).toBeVisible()
+  await expect(row.getByText('improvável')).toBeVisible()
 
   const layout = await row.evaluate((tr) => {
     const root = tr.closest('[class*="root"]') ?? tr.closest('div')
@@ -158,7 +163,7 @@ test('ranking em 320 px: nome longo e vários selos sem overflow', async ({ page
   expect(layout.nameEllipsis).toBe(true)
   expect(layout.nameOverflowHidden).toBe(true)
   expect(layout.badgesOutside).toBe(false)
-  expect(layout.badgeBounds.length).toBeGreaterThanOrEqual(5)
+  expect(layout.badgeBounds.length).toBeGreaterThanOrEqual(6)
   for (const badge of layout.badgeBounds) {
     expect(badge.inside, `selo fora da célula: ${badge.text}`).toBe(true)
   }

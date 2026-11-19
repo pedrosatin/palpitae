@@ -9,6 +9,10 @@ import {
   highestExactMilestoneFromHits,
   type ExactMilestone,
 } from '../../lib/exactMilestones'
+import {
+  UNLIKELY_EXACT_BADGE_LABEL,
+  unlikelyExactBadgeTitle,
+} from '../../lib/unlikelyExact'
 import Avatar from '../Avatar'
 import ErrorState from '../ErrorState'
 import MemberBadge from '../MemberBadge'
@@ -43,6 +47,8 @@ function MemberBadges({
   streak,
   exactMilestone,
   exactHits,
+  unlikelyExact,
+  unlikelyExactPercent,
 }: {
   isOwner: boolean
   isSelf: boolean
@@ -50,13 +56,18 @@ function MemberBadges({
   streak: number
   exactMilestone: ExactMilestone | null
   exactHits: number
+  unlikelyExact: boolean
+  unlikelyExactPercent: number | null
 }) {
   const showStreak = streak >= STREAK_BADGE_MIN
-  if (!isOwner && !isSelf && !isKing && !showStreak && !exactMilestone) return null
+  if (!isOwner && !isSelf && !isKing && !showStreak && !exactMilestone && !unlikelyExact) {
+    return null
+  }
   const streakLabel = `${streak} rodadas seguidas com todos os jogos palpitados`
   const milestoneTitle = exactMilestone
     ? exactMilestonesTitle(achievedExactMilestones(exactHits))
     : ''
+  const unlikelyTitle = unlikelyExactBadgeTitle(unlikelyExactPercent)
   return (
     <span className={styles.badges}>
       {isOwner && <MemberBadge variant="owner" className={styles.memberBadge} />}
@@ -72,6 +83,12 @@ function MemberBadges({
         <span className={styles.milestoneBadge} title={milestoneTitle}>
           <span aria-hidden="true">{exactMilestoneBadgeLabel(exactMilestone)}</span>
           <span className="sr-only">{milestoneTitle}</span>
+        </span>
+      )}
+      {unlikelyExact && (
+        <span className={styles.unlikelyBadge} title={unlikelyTitle}>
+          <span aria-hidden="true">{UNLIKELY_EXACT_BADGE_LABEL}</span>
+          <span className="sr-only">{unlikelyTitle}</span>
         </span>
       )}
     </span>
@@ -224,6 +241,12 @@ export default function LeaderboardTab({
                         streak={standingByUser.get(member.user_id)?.streak ?? 0}
                         exactMilestone={highestExactMilestoneFromHits(member.exact_hits)}
                         exactHits={member.exact_hits}
+                        unlikelyExact={
+                          standingByUser.get(member.user_id)?.unlikely_exact === true
+                        }
+                        unlikelyExactPercent={
+                          standingByUser.get(member.user_id)?.unlikely_exact_percent ?? null
+                        }
                       />
                     </div>
                   </div>

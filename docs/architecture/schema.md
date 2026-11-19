@@ -550,6 +550,27 @@ CREATE TABLE IF NOT EXISTS exact_milestones_initialized (
   initialized_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Unlikely exact scores (raridade na competição: X=10%, M=10)
+-- Congela tipster_count e percent_rounded na primeira observação (ADR-029).
+CREATE TABLE IF NOT EXISTS unlikely_exacts (
+  group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+  round TEXT NOT NULL,
+  tipster_count INTEGER NOT NULL CHECK (tipster_count >= 10),
+  exact_tipster_count INTEGER NOT NULL CHECK (exact_tipster_count >= 1),
+  percent_rounded INTEGER NOT NULL CHECK (percent_rounded BETWEEN 1 AND 10),
+  home_score INTEGER NOT NULL,
+  away_score INTEGER NOT NULL,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (group_id, user_id, match_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_unlikely_exacts_group_round
+  ON unlikely_exacts(group_id, round);
+CREATE INDEX IF NOT EXISTS idx_unlikely_exacts_user
+  ON unlikely_exacts(user_id);
+
 -- Payments
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,

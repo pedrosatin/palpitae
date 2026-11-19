@@ -10,6 +10,7 @@ vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 
 const mockRender = vi.fn()
 const mockMilestoneRender = vi.fn()
+const mockUnlikelyRender = vi.fn()
 vi.mock('../../lib/roundShareCard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/roundShareCard')>()),
   renderRoundShareCardBlob: (...args: unknown[]) => mockRender(...args),
@@ -18,6 +19,10 @@ vi.mock('../../lib/milestoneShareCard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/milestoneShareCard')>()),
   renderMilestoneShareCardBlob: (...args: unknown[]) => mockMilestoneRender(...args),
 }))
+vi.mock('../../lib/unlikelyExactShareCard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/unlikelyExactShareCard')>()),
+  renderUnlikelyExactShareCardBlob: (...args: unknown[]) => mockUnlikelyRender(...args),
+}))
 
 beforeEach(() => invalidateApiCache())
 
@@ -25,6 +30,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   mockRender.mockReset()
   mockMilestoneRender.mockReset()
+  mockUnlikelyRender.mockReset()
 })
 
 const members = [
@@ -72,6 +78,8 @@ function mockGroupApi(
       exact_hits?: number
       exact_milestone?: number | null
       exact_milestones_crossed?: number[]
+      unlikely_exact?: boolean
+      unlikely_exact_percent?: number | null
     }[]
   } = { round: '34', standings: [] },
 ) {
@@ -279,6 +287,162 @@ describe('RoundSummary', () => {
     await screen.findByRole('button', { name: 'Compartilhar rodada' })
     expect(screen.queryByText(/cruzou o marco/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Compartilhar marco' })).not.toBeInTheDocument()
+  })
+
+  it('destaca o placar improvável na rodada de referência e oferece o cartão', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+          unlikely_exact_percent: 10,
+        },
+      ],
+    })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      publicId: 'abcdef0123456789abcdef0123456789',
+      isOwner: false,
+    })
+
+    expect(
+      await screen.findByText(
+        'Você cravou um placar improvável: só 10% dos palpiteiros da competição acertaram.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Compartilhar placar improvável' }),
+    ).toBeInTheDocument()
+  })
+
+  it('não destaca placar improvável fora da rodada de referência', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '33',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+          unlikely_exact_percent: 5,
+        },
+      ],
+    })
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+
+    await screen.findByRole('button', { name: 'Compartilhar rodada' })
+    expect(screen.queryByText(/placar improvável/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Compartilhar placar improvável' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('compartilha o placar improvável pelo menu nativo com o link do grupo', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+          unlikely_exact_percent: 10,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockResolvedValue(new Blob(['u'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    expect(arg.files[0].name).toBe('palpitae-placar-improvavel-10.png')
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    expect(arg.text).toContain(inviteUrl)
+    expect(arg.text).toMatch(/^Cravei um placar improvável/)
+    expect(mockUnlikelyRender.mock.calls[0][0]).toMatchObject({ groupLink: inviteUrl })
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('no download do placar improvável copia o link', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+          unlikely_exact_percent: 5,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockResolvedValue(new Blob(['u'], { type: 'image/png' }))
+    Object.defineProperty(navigator, 'canShare', { value: () => false, configurable: true })
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:u'),
+      revokeObjectURL: vi.fn(),
+    })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining(inviteUrl))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Imagem baixada e link copiado',
+    )
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+  })
+
+  it('avisa quando a geração do cartão do placar improvável falha', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+          unlikely_exact_percent: 10,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockRejectedValue(new Error('canvas'))
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível gerar a imagem')
   })
 
   it('avisa quando a geração do cartão falha', async () => {
