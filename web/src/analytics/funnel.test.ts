@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as ga from './ga'
-import { markLoginStarted, trackJoinGroup, trackLoginIfPending, trackShareInvite } from './funnel'
+import {
+  markLoginStarted,
+  trackApproveJoinRequest,
+  trackJoinGroup,
+  trackJoinRequest,
+  trackLoginIfPending,
+  trackShareInvite,
+} from './funnel'
 import { captureGuideOrigin } from './guideOrigin'
 
 vi.mock('./ga', () => ({ trackEvent: vi.fn() }))
@@ -37,6 +44,16 @@ describe('funnel events', () => {
     expect(mockTrackEvent).toHaveBeenCalledWith('join_group', {
       entry_method: 'convite_link',
     })
+  })
+
+  it('trackJoinRequest envia join_request', () => {
+    trackJoinRequest()
+    expect(mockTrackEvent).toHaveBeenCalledWith('join_request')
+  })
+
+  it('trackApproveJoinRequest envia approve_join_request sem params', () => {
+    trackApproveJoinRequest()
+    expect(mockTrackEvent).toHaveBeenCalledWith('approve_join_request')
   })
 
   it('tracks login only after a sign-in click and only once', () => {

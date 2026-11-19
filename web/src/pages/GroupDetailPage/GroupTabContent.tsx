@@ -19,6 +19,7 @@ interface GroupTabContentProps {
   requestedRound?: string | null
   /** Chamado quando a aba Palpitar abre na rodada pedida, para tirá-la da URL. */
   onRequestedRoundApplied?: () => void
+  onJoinRequestDecided?: (action: 'approve' | 'reject') => void
 }
 
 export default function GroupTabContent({
@@ -31,6 +32,7 @@ export default function GroupTabContent({
   onOpenRules,
   requestedRound,
   onRequestedRoundApplied,
+  onJoinRequestDecided,
 }: GroupTabContentProps) {
   return (
     <div className={styles.tabContent}>
@@ -70,7 +72,11 @@ export default function GroupTabContent({
         />
       )}
       {activeTab === 'members' && isAdmin && (
-        <MembersTab groupId={groupId} currentUserId={userId} />
+        <MembersTab
+          groupId={groupId}
+          currentUserId={userId}
+          onJoinRequestDecided={onJoinRequestDecided}
+        />
       )}
     </div>
   )

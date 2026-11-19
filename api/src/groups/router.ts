@@ -4,7 +4,7 @@ import { hasFeatureAccess, hasPilotAccess } from '../auth/permissions'
 import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
-import { parseEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
+import { parseClientEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership, isPilotGroupBlocked, memberDisplaySql } from './membership'
 import { parseGroupName } from './groupName'
@@ -12,7 +12,6 @@ import {
   ACTIVE_GROUPS_OWNED_COUNT_SQL,
   ACTIVE_MEMBERSHIPS_COUNT_SQL,
   CREATE_MEMBERSHIP_CAP_ERROR,
-  JOIN_MEMBERSHIP_CAP_ERROR,
   MAX_ACTIVE_GROUPS_OWNED,
   MAX_ACTIVE_MEMBERSHIPS,
   OWNED_CAP_ERROR,
@@ -30,6 +29,9 @@ import { fetchLiveMatchesByCompetition } from './liveMatches'
 import { competitionStatusSql } from './competitionStatus'
 import { getRoundStandings } from './roundStandings'
 import { notBannedSql, rankingOrderSql, userPositionSql } from './ranking'
+import { tryInsertGroupMember } from './joinMember'
+import { generatePublicId } from './joinRequests'
+import { registerJoinRequestRoutes } from './joinRequestRoutes'
 
 const router = new Hono<AppContext>()
 
@@ -547,6 +549,7 @@ router.post('/', requireAuth, async (c) => {
 
   const groupId = crypto.randomUUID()
   const memberId = crypto.randomUUID()
+  const public_id = generatePublicId()
 
   try {
     // Os tetos por usuário são conferidos no próprio INSERT do grupo. Um SELECT COUNT
@@ -558,8 +561,8 @@ router.post('/', requireAuth, async (c) => {
       const [group] = await db.batch([
         db
           .prepare(
-            `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, points_exact, points_winner, points_penalty, points_classified, predictions_visibility)
-             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, public_id, points_exact, points_winner, points_penalty, points_classified, predictions_visibility)
+             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
               WHERE ${ACTIVE_GROUPS_OWNED_COUNT_SQL} < ?
                 AND ${ACTIVE_MEMBERSHIPS_COUNT_SQL} < ?`,
           )
@@ -569,6 +572,7 @@ router.post('/', requireAuth, async (c) => {
             competition_id,
             userId,
             inviteCode,
+            public_id,
             points_exact,
             points_winner,
             points_penalty,
@@ -605,7 +609,7 @@ router.post('/', requireAuth, async (c) => {
       doubles: [points_exact, points_winner, points_penalty],
     })
 
-    return c.json({ group: { id: groupId, name, competition_id, invite_code } }, 201)
+    return c.json({ group: { id: groupId, name, competition_id, invite_code, public_id } }, 201)
   } catch (error) {
     console.error('[groups] Error creating group for user %s:', userId, error)
     return c.json({ error: 'Erro ao criar grupo' }, 500)
@@ -664,66 +668,28 @@ router.post('/join', requireAuth, async (c) => {
   const conflict = await joinConflict(db, group.id, userId)
   if (conflict) return c.json({ error: conflict.error }, conflict.status)
 
-  // Limite de membros checado no próprio INSERT: um SELECT COUNT separado deixaria
-  // duas entradas simultâneas passarem do limite. O D1 serializa as escritas, então
-  // a contagem dentro do INSERT já vê a linha da outra requisição.
-  // Pelo mesmo motivo, o INSERT reconfere banimento, convite atual e grupo não excluído,
-  // e confere o teto de participações de quem entra.
-  const memberId = crypto.randomUUID()
-  const inserted = await db
-    .prepare(
-      `INSERT INTO group_members (id, group_id, user_id, role)
-       SELECT ?, ?, ?, 'member'
-        WHERE (SELECT COUNT(*) FROM group_members WHERE group_id = ?) < ?
-          AND NOT EXISTS (SELECT 1 FROM group_bans WHERE group_id = ? AND user_id = ?)
-          AND EXISTS (SELECT 1 FROM groups WHERE id = ? AND invite_code = ? AND deleted_at IS NULL)
-          AND ${ACTIVE_MEMBERSHIPS_COUNT_SQL} < ?
-       ON CONFLICT DO NOTHING`,
-    )
-    .bind(
-      memberId,
-      group.id,
-      userId,
-      group.id,
-      group.max_members,
-      group.id,
-      userId,
-      group.id,
-      invite_code,
-      userId,
-      MAX_ACTIVE_MEMBERSHIPS,
-    )
-    .run()
-
-  if (!inserted.meta.changes) {
-    const currentGroup = await db
-      .prepare('SELECT id FROM groups WHERE id = ? AND invite_code = ? AND deleted_at IS NULL')
-      .bind(group.id, invite_code)
-      .first()
-    if (!currentGroup) return c.json({ error: 'Código de convite inválido' }, 404)
-    const raceConflict = await joinConflict(db, group.id, userId)
-    if (raceConflict) return c.json({ error: raceConflict.error }, raceConflict.status)
-    const memberships = await db
-      .prepare(`SELECT ${ACTIVE_MEMBERSHIPS_COUNT_SQL} AS n`)
-      .bind(userId)
-      .first<{ n: number }>()
-    if ((memberships?.n ?? 0) >= MAX_ACTIVE_MEMBERSHIPS) {
-      return c.json({ error: JOIN_MEMBERSHIP_CAP_ERROR }, 409)
-    }
-    return c.json({ error: 'Este grupo atingiu o limite de membros' }, 409)
+  // Limite, banimento, convite atual e teto de participações no mesmo INSERT
+  // (ver tryInsertGroupMember). Aprovação de pedido reutiliza o mesmo caminho.
+  const inserted = await tryInsertGroupMember(db, group, userId, invite_code)
+  if (!inserted.ok) {
+    return c.json({ error: inserted.error }, inserted.status)
   }
 
   logEvent(c.env.AE, 'group_joined', {
     blobs: [
       group.id,
       await hashUserId(userId),
-      parseEntryMethod(body.entry_method),
-      await readRecentSignupFlag(db, memberId),
+      parseClientEntryMethod(body.entry_method),
+      await readRecentSignupFlag(db, inserted.memberId),
     ],
   })
 
   return c.json({ group: { id: group.id, name: group.name } })
 })
+
+// Pedidos pelo link público: /join-requests antes de /:id para o segmento
+// estático não ser lido como id de grupo.
+registerJoinRequestRoutes(router)
 
 /**
  * GET /groups/:id
@@ -751,6 +717,8 @@ router.get('/:id', requireAuth, async (c) => {
          ${competitionStatusSql('g', 'c')} AS competition_status,
          g.owner_user_id AS admin_id,
          g.invite_code,
+         g.public_id,
+         g.join_requests_enabled,
          g.created_at,
          g.points_exact,
          g.points_winner,
@@ -760,7 +728,9 @@ router.get('/:id', requireAuth, async (c) => {
          COUNT(DISTINCT gm.user_id) AS member_count,
          COALESCE(l.total_points, 0) AS user_points,
          COALESCE(l.exact_hits, 0) AS exact_hits,
-         ${userPositionSql('g.id', '?')} AS user_position
+         ${userPositionSql('g.id', '?')} AS user_position,
+         (SELECT COUNT(*) FROM group_join_requests r
+           WHERE r.group_id = g.id AND r.status = 'pending') AS pending_join_request_count
        FROM groups g
        INNER JOIN group_members gm ON g.id = gm.group_id AND ${notBannedSql('gm')}
        LEFT JOIN competitions c ON g.competition_id = c.id
@@ -771,6 +741,8 @@ router.get('/:id', requireAuth, async (c) => {
     .bind(userId, userId, groupId)
     .first<
       GroupRow & {
+        public_id: string | null
+        join_requests_enabled: number
         points_exact: number
         points_winner: number
         points_penalty: number
@@ -779,12 +751,15 @@ router.get('/:id', requireAuth, async (c) => {
         user_points: number
         exact_hits: number
         user_position: number | null
+        pending_join_request_count: number
       }
     >()
 
   if (!group) {
     return c.json({ error: 'Grupo não encontrado' }, 404)
   }
+
+  const isAdmin = group.admin_id === userId
 
   return c.json({
     group: {
@@ -795,8 +770,11 @@ router.get('/:id', requireAuth, async (c) => {
       competition_type: group.competition_type ?? null,
       competition_code: group.competition_code ?? null,
       competition_status: group.competition_status ?? null,
-      is_admin: group.admin_id === userId,
-      invite_code: group.admin_id === userId ? group.invite_code : null,
+      is_admin: isAdmin,
+      invite_code: isAdmin ? group.invite_code : null,
+      public_id: group.public_id,
+      join_requests_enabled: Boolean(group.join_requests_enabled),
+      pending_join_request_count: isAdmin ? Number(group.pending_join_request_count) || 0 : 0,
       created_at: group.created_at,
       points_exact: group.points_exact,
       points_winner: group.points_winner,
@@ -817,23 +795,37 @@ router.get('/:id', requireAuth, async (c) => {
  * Updates a group name or classified bonus. Only the owner may do this.
  * Existing scored predictions and rankings are recalculated when the bonus changes.
  *
- * Body: { name?: string, points_classified?: number }
- * Response 200: { group: { id, name } }
+ * Body: { name?: string, points_classified?: number, join_requests_enabled?: boolean }
+ * Response 200: { group: { id, name?, points_classified?, join_requests_enabled? } }
  */
 router.patch('/:id', requireAuth, async (c) => {
   const userId = c.get('userId')
   const groupId = c.req.param('id')
   const db = c.env.DB
 
-  const body = await readJsonObject<{ name?: string; points_classified?: number }>(c)
+  const body = await readJsonObject<{
+    name?: string
+    points_classified?: number
+    join_requests_enabled?: boolean
+  }>(c)
   if (!body) return c.json({ error: INVALID_BODY }, 400)
   const pointsClassified = body.points_classified
   if (pointsClassified !== undefined && !isPointValue(pointsClassified)) {
     return c.json({ error: 'Pontos de classificado devem ser um inteiro entre 0 e 10' }, 400)
   }
+  if (
+    body.join_requests_enabled !== undefined &&
+    typeof body.join_requests_enabled !== 'boolean'
+  ) {
+    return c.json({ error: 'join_requests_enabled deve ser boolean' }, 400)
+  }
 
-  if (body.name === undefined && pointsClassified === undefined) {
-    return c.json({ error: 'Informe nome ou pontos de classificado' }, 400)
+  if (
+    body.name === undefined &&
+    pointsClassified === undefined &&
+    body.join_requests_enabled === undefined
+  ) {
+    return c.json({ error: 'Informe nome, pontos de classificado ou pedidos pelo link' }, 400)
   }
 
   const parsedName = body.name === undefined ? undefined : parseGroupName(body.name)
@@ -862,6 +854,10 @@ router.patch('/:id', requireAuth, async (c) => {
     updates.push('points_classified = ?')
     values.push(pointsClassified)
   }
+  if (body.join_requests_enabled !== undefined) {
+    updates.push('join_requests_enabled = ?')
+    values.push(body.join_requests_enabled ? 1 : 0)
+  }
   const updateGroup = db
     .prepare(`UPDATE groups SET ${updates.join(', ')} WHERE id = ?`)
     .bind(...values, groupId)
@@ -887,15 +883,22 @@ router.patch('/:id', requireAuth, async (c) => {
     await updateGroup.run()
   }
 
-  logEvent(c.env.AE, 'group_renamed', {
-    blobs: [groupId, await hashUserId(userId)],
-  })
+  // Só registra rename quando o nome (ou a pontuação, que recalcula) mudou.
+  // Ligar/desligar pedidos pelo link não é rename.
+  if (name !== undefined || pointsClassified !== undefined) {
+    logEvent(c.env.AE, 'group_renamed', {
+      blobs: [groupId, await hashUserId(userId)],
+    })
+  }
 
   return c.json({
     group: {
       id: groupId,
       ...(name !== undefined ? { name } : {}),
       ...(pointsClassified !== undefined ? { points_classified: pointsClassified } : {}),
+      ...(body.join_requests_enabled !== undefined
+        ? { join_requests_enabled: body.join_requests_enabled }
+        : {}),
     },
   })
 })

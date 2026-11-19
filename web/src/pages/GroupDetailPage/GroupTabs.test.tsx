@@ -59,6 +59,22 @@ describe('GroupTabs', () => {
     expect(membersTab.className).toContain('tabActive')
   })
 
+  it('selo de pedidos: número visível com aria-hidden e texto sr-only', () => {
+    renderWithRouter(
+      <GroupTabs
+        {...defaultProps}
+        isAdmin={true}
+        pendingJoinRequestCount={2}
+        activeTab={'members' as Tab}
+      />,
+    )
+    const membersTab = screen.getByRole('link', { name: /Membros/ })
+    expect(membersTab).toHaveAccessibleName(/2 pedidos pendentes/)
+    const visibleCount = membersTab.querySelector('[aria-hidden="true"]')
+    expect(visibleCount).toHaveTextContent('2')
+    expect(membersTab.querySelector('.sr-only')).toHaveTextContent('2 pedidos pendentes')
+  })
+
   it('calls onTabClick when a tab is clicked', async () => {
     const user = userEvent.setup({ delay: null })
     const onTabClick = vi.fn()

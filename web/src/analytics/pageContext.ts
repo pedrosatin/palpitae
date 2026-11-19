@@ -31,6 +31,7 @@ interface GaRoute {
 const GA_ROUTES: readonly GaRoute[] = [
   { path: '/grupos/:id', end: false, label: 'Grupo', normalizedPath: '/grupos/:id' },
   { path: '/convite/:code', end: false, label: 'Convite', normalizedPath: '/convite/:code' },
+  { path: '/grupo/:publicId', end: false, label: 'Pedido de entrada', normalizedPath: '/grupo/:publicId' },
   { path: '/entrar', end: true, label: 'Entrar' },
   { path: '/configuracoes', end: true, label: 'Configurações' },
   { path: '/admin', end: false, label: 'Admin' },

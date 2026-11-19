@@ -64,6 +64,8 @@ export type EventType =
   | 'prediction_saved'
   | 'group_created'
   | 'group_joined'
+  // Pedido de entrada pelo link público do grupo (antes da aprovação)
+  | 'join_request'
   // Abertura de /convite/:code por uma pessoa, sem nenhum dado do convite ou de quem abriu
   | 'invite_opened'
   | 'member_removed'

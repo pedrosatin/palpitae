@@ -3,10 +3,23 @@
  * de métricas. Ver "Funil de convite" em docs/observability.md.
  */
 
-export const ENTRY_METHODS = ['convite_link', 'convite_antigo', 'codigo'] as const
+/** Métodos que o cliente pode mandar em `POST /groups/join`. Sem `request`. */
+export const CLIENT_ENTRY_METHODS = ['convite_link', 'convite_antigo', 'codigo'] as const
+export type ClientEntryMethod = (typeof CLIENT_ENTRY_METHODS)[number]
+
+/**
+ * Métodos que o painel e o Analytics Engine contam. `request` só é gravado pela
+ * aprovação de pedido no servidor; o cliente não pode forjá-lo no join.
+ */
+export const ENTRY_METHODS = [...CLIENT_ENTRY_METHODS, 'request'] as const
 export type EntryMethod = (typeof ENTRY_METHODS)[number]
 
-/** Método de entrada aceito, ou '' quando o cliente não informou um valor conhecido. */
+/** Método aceito do cliente, ou '' quando não informou um valor conhecido. */
+export function parseClientEntryMethod(raw: unknown): ClientEntryMethod | '' {
+  return CLIENT_ENTRY_METHODS.find((method) => method === raw) ?? ''
+}
+
+/** Método aceito na contagem do painel (inclui `request` gravado pelo servidor). */
 export function parseEntryMethod(raw: unknown): EntryMethod | '' {
   return ENTRY_METHODS.find((method) => method === raw) ?? ''
 }
@@ -75,7 +88,7 @@ export function summarizeInviteEvents(rows: AeRow[]): InviteEventTotals {
   const totals: InviteEventTotals = {
     opens: 0,
     joins: 0,
-    joinsByMethod: { convite_link: 0, convite_antigo: 0, codigo: 0, unknown: 0 },
+    joinsByMethod: { convite_link: 0, convite_antigo: 0, codigo: 0, request: 0, unknown: 0 },
     newMembers: 0,
     existingMembers: 0,
     unclassifiedJoins: 0,
