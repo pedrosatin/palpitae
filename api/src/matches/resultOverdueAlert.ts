@@ -6,9 +6,15 @@
  * `true`). Cooldown em `ops_alert_state` (padrão 6 h, `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS`).
  *
  * Roda no fim do poller, só quando o saldo de subrequests da invocação comporta
- * a contagem, a leitura/gravação do cooldown e o `fetch` do e-mail (até 4
- * chamadas). Sem saldo, sem e-mail e sem segredo novo: o painel e o evento AE
- * continuam sendo a fonte de verdade.
+ * a contagem, a reserva do cooldown e o `fetch` do e-mail (até
+ * `RESULT_OVERDUE_ALERT_CALLS` chamadas). Sem saldo, registra `skipped_budget` e
+ * encerra sem consultar o D1 nem enviar e-mail.
+ *
+ * Reserva condicional antes do envio: o UPSERT só grava se `last_sent_at` estiver
+ * fora da janela de cooldown (ou a linha não existir). Só o tick que obtém
+ * `meta.changes > 0` tenta o Resend. Em falha definitiva do envio a reserva é
+ * liberada para o próximo tick tentar de novo; sucesso e HTTP 409 (mesma chave
+ * de idempotência) mantêm a reserva.
  */
 
 import { sendEmail, EmailError } from '../notifications/email'
@@ -27,8 +33,9 @@ export const RESULT_OVERDUE_ALERT_KEY = 'result_overdue'
 export const DEFAULT_OVERDUE_ALERT_COOLDOWN_HOURS = 6
 
 /**
- * Subrequests máximos deste passo: 1 contagem + 1 leitura do cooldown + 1
- * escrita + 1 `fetch` do Resend.
+ * Subrequests máximos deste passo no pior caso:
+ * 1 contagem + 1 reserva + 1 `fetch` do Resend + 1 liberação da reserva.
+ * Caminho de sucesso gasta 3 (sem liberação).
  */
 export const RESULT_OVERDUE_ALERT_CALLS = 4
 
@@ -75,30 +82,111 @@ function adminInbox(env: ResultOverdueAlertEnv): string | null {
   return email ? email : null
 }
 
+/** Índice da janela de cooldown que contém `nowMs` (chave estável na janela). */
+export function overdueAlertWindowIndex(nowMs: number, cooldownMs: number): number {
+  return Math.floor(nowMs / cooldownMs)
+}
+
+/**
+ * Corpo estável na janela: conta jogos e temporadas, sem a idade do jogo mais
+ * antigo (que muda a cada tick e quebraria a chave de idempotência do Resend).
+ */
 function buildAlertEmail(
   summary: OverdueResultSummary,
   hours: number,
   frontendUrl: string | undefined,
 ): { subject: string; html: string; text: string } {
-  const age =
-    summary.oldest_minutes < 120
-      ? `${summary.oldest_minutes} min`
-      : `${Math.round(summary.oldest_minutes / 60)} h`
-  const subject = `[Palpitae] ${summary.matches} resultado(s) atrasado(s)`
+  const n = summary.matches
+  const c = summary.competitions
+  const resultado = n === 1 ? 'resultado atrasado' : 'resultados atrasados'
+  const jogo = n === 1 ? 'jogo' : 'jogos'
+  const temporada = c === 1 ? 'temporada' : 'temporadas'
+  const subject = `[Palpitae] ${n} ${resultado}`
   const panel = frontendUrl
     ? `${frontendUrl.replace(/\/$/, '')}/admin/metricas`
     : 'https://palpitae.com.br/admin/metricas'
   const text =
-    `${summary.matches} jogo(s) sem placar completo há mais de ${hours} h do início previsto ` +
-    `(${summary.competitions} temporada(s); o mais antigo começou há ${age}). ` +
-    `Adiados conhecidos ficam de fora. Painel: ${panel}`
+    `${n} ${jogo} sem placar completo há mais de ${hours} h do início previsto ` +
+    `(${c} ${temporada}). Adiados conhecidos ficam de fora. Painel: ${panel}`
   const html =
-    `<p><strong>${summary.matches}</strong> jogo(s) sem placar completo há mais de ` +
+    `<p><strong>${n}</strong> ${jogo} sem placar completo há mais de ` +
     `<strong>${hours} h</strong> do início previsto ` +
-    `(${summary.competitions} temporada(s); o mais antigo começou há ${age}).</p>` +
+    `(${c} ${temporada}).</p>` +
     `<p>Adiados conhecidos ficam de fora. ` +
     `<a href="${panel}">Abrir o painel de métricas</a>.</p>`
   return { subject, html, text }
+}
+
+/** Chave de idempotência: janela + contagens (corpo e chave mudam juntos). */
+export function overdueAlertIdempotencyKey(
+  nowMs: number,
+  cooldownMs: number,
+  summary: Pick<OverdueResultSummary, 'matches' | 'competitions'>,
+): string {
+  const window = overdueAlertWindowIndex(nowMs, cooldownMs)
+  return `result-overdue-${window}-${summary.matches}-${summary.competitions}`
+}
+
+/**
+ * Reserva a janela de cooldown. Só um tick obtém `changes > 0`: INSERT novo ou
+ * UPDATE quando `last_sent_at` já passou do limiar. Um `last_sent_at` mais novo
+ * (outro isolate) não é sobrescrito.
+ */
+async function reserveAlertWindow(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  nowMs: number,
+  cooldownMs: number,
+  matchCount: number,
+): Promise<'reserved' | 'held' | 'failed'> {
+  const threshold = nowMs - cooldownMs
+  try {
+    const result = await db
+      .prepare(
+        `INSERT INTO ops_alert_state (alert_key, last_sent_at, last_count, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(alert_key) DO UPDATE SET
+           last_sent_at = excluded.last_sent_at,
+           last_count = excluded.last_count,
+           updated_at = excluded.updated_at
+         WHERE ops_alert_state.last_sent_at < ?`,
+      )
+      .bind(RESULT_OVERDUE_ALERT_KEY, nowMs, matchCount, nowMs, threshold)
+      .run()
+    return (result.meta?.changes ?? 0) > 0 ? 'reserved' : 'held'
+  } catch (err) {
+    tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] Falha ao reservar cooldown:', err, {
+      blobs: ['cooldown_reserve_failed'],
+      doubles: [matchCount, 0],
+    })
+    return 'failed'
+  }
+}
+
+/**
+ * Libera a reserva deste tick (`last_sent_at = nowMs`) para o próximo tick
+ * tentar de novo. Só mexe na linha se o valor ainda for o que este tick gravou,
+ * para não apagar a reserva de um isolate mais novo.
+ */
+async function releaseAlertWindow(
+  db: D1Database,
+  ae: AnalyticsEngineDataset | undefined,
+  reservedAt: number,
+): Promise<void> {
+  try {
+    await db
+      .prepare(
+        `UPDATE ops_alert_state
+         SET last_sent_at = 0, updated_at = ?
+         WHERE alert_key = ? AND last_sent_at = ?`,
+      )
+      .bind(reservedAt, RESULT_OVERDUE_ALERT_KEY, reservedAt)
+      .run()
+  } catch (err) {
+    tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] Falha ao liberar reserva:', err, {
+      blobs: ['cooldown_release_failed'],
+    })
+  }
 }
 
 /**
@@ -155,22 +243,15 @@ export async function checkAndSendResultOverdueAlert(
   const cooldownHours = overdueAlertCooldownHours(env.RESULT_OVERDUE_ALERT_COOLDOWN_HOURS)
   const cooldownMs = cooldownHours * 60 * 60 * 1000
 
-  let lastSent = 0
-  try {
-    const row = await db
-      .prepare(`SELECT last_sent_at FROM ops_alert_state WHERE alert_key = ?`)
-      .bind(RESULT_OVERDUE_ALERT_KEY)
-      .first<{ last_sent_at: number }>()
-    lastSent = Number(row?.last_sent_at ?? 0)
-  } catch (err) {
-    tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] Falha ao ler cooldown:', err, {
-      blobs: ['cooldown_read_failed'],
+  const reservation = await reserveAlertWindow(db, ae, nowMs, cooldownMs, summary.matches)
+  if (reservation === 'failed') {
+    tryLogEvent(ae, ALERT_EVENT, {
+      blobs: ['send_failed', 'cooldown_reserve_failed'],
       doubles: [summary.matches, summary.oldest_minutes],
     })
     return 'send_failed'
   }
-
-  if (lastSent > 0 && nowMs - lastSent < cooldownMs) {
+  if (reservation === 'held') {
     tryLogEvent(ae, ALERT_EVENT, {
       blobs: ['suppressed'],
       doubles: [summary.matches, summary.oldest_minutes],
@@ -179,43 +260,37 @@ export async function checkAndSendResultOverdueAlert(
   }
 
   const mail = buildAlertEmail(summary, hours, env.FRONTEND_URL)
+  const idempotencyKey = overdueAlertIdempotencyKey(nowMs, cooldownMs, summary)
+
   try {
     await sendEmail(apiKey, {
       to,
       subject: mail.subject,
       html: mail.html,
       text: mail.text,
-      // Mesma chave por janela de cooldown: o Resend não reenvia o mesmo corpo.
-      idempotencyKey: `result-overdue-${Math.floor(nowMs / cooldownMs)}`,
+      idempotencyKey,
     })
   } catch (err) {
+    // Mesma chave + corpo já aceito: o Resend devolve 409. Trata como enviado e
+    // mantém a reserva (não liberar).
+    if (err instanceof EmailError && err.status === 409) {
+      tryLogEvent(ae, ALERT_EVENT, {
+        blobs: ['sent', 'idempotent_replay'],
+        doubles: [summary.matches, summary.oldest_minutes],
+      })
+      return 'sent'
+    }
+
     const detail = err instanceof EmailError ? `http_${err.status}` : 'send_error'
     tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] Falha ao enviar e-mail:', err, {
       blobs: ['send_failed', detail],
       doubles: [summary.matches, summary.oldest_minutes],
     })
+    // Falha definitiva ou ambígua (5xx, rede, timeout): libera a reserva para o
+    // próximo tick tentar. Corpo e chave estáveis fazem o Resend deduplicar se o
+    // primeiro envio tiver sido aceito sem resposta.
+    await releaseAlertWindow(db, ae, nowMs)
     return 'send_failed'
-  }
-
-  try {
-    await db
-      .prepare(
-        `INSERT INTO ops_alert_state (alert_key, last_sent_at, last_count, updated_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(alert_key) DO UPDATE SET
-           last_sent_at = excluded.last_sent_at,
-           last_count = excluded.last_count,
-           updated_at = excluded.updated_at`,
-      )
-      .bind(RESULT_OVERDUE_ALERT_KEY, nowMs, summary.matches, nowMs)
-      .run()
-  } catch (err) {
-    // O e-mail já saiu; falha ao gravar o cooldown só registra. O próximo tick
-    // pode reenviar até a gravação voltar (a idempotency key do Resend mitiga).
-    tryLogError(ae, ALERT_EVENT, '[result-overdue-alert] E-mail enviado, cooldown não gravou:', err, {
-      blobs: ['cooldown_write_failed'],
-      doubles: [summary.matches, summary.oldest_minutes],
-    })
   }
 
   tryLogEvent(ae, ALERT_EVENT, {
