@@ -1,3 +1,6 @@
+/** Datas da janela diária da descoberta ESPN, de ontem a hoje + 7. */
+export const ESPN_DISCOVERY_DATE_COUNT = 9
+
 /** Limites compartilhados entre o poller primário e o resgate de resultados. */
 export const EARLIEST_RESULT_MS = 115 * 60 * 1000
 export const ACTIVE_RESULT_WINDOW_MS = 200 * 60 * 1000

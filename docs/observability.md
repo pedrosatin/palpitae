@@ -1023,3 +1023,64 @@ reversível por dicionário.
 - **Queues pro buffer de eventos**: exigem plano Workers pago. Cron diário + Analytics Engine
   como staging resolve sem custo.
 - **D1 como store de logs**: competiria com o domínio pelos write limits do D1.
+
+
+## Orçamento da descoberta diária
+
+O `[perf]` de `cron discoverFixtures` registra `calls_used`, `calls_budget` e `deferred_items`. O saldo do ramo é 45, com 1 chamada reservada para enfileirar; a limpeza do `scheduled` soma 1 fora do ramo. `fixture_discovery_run = error` com `competition_status_error` indica que o batch de pendências falhou. Confira a próxima descoberta e a fila por competição; uma fila vazia nesse caso não confirma calendário completo.
+
+A ESPN também reserva vaga e registra cada resposta de sucesso, ao custo de 3 chamadas por tentativa. O dreno de uma data de descoberta estima 16 chamadas, incluindo pontuação e as 3 chamadas da evidência e reconciliação. A tabela `discovery_dates` guarda uma linha por competição, janela diária e data consultada; `discarded_tbd IS NULL` indica evidência pendente. As linhas são mantidas para diagnóstico e para impedir encerramento com uma data antiga perdida. Crescem nove linhas por competição adiada por dia, sem payload de jogos.
+
+A migration `0049_discovery_dates.sql` deve estar aplicada antes deste Worker. A admissão ordena públicas antes de pilotos, depois quantidade de grupos decrescente e slug crescente, sem preferência por provedor. A contagem de grupos usa o índice existente na consulta das competições. O custo completo ainda decide se a competição cabe; quando não cabe, ela vai para a fila e a avaliação continua.
+
+O teste `fixtureDiscoveryBudget.test.ts` reproduz a distribuição informada da produção de 19/11/2026 com calendários sintéticos. São 10 football-data e 4 ESPN, com 53 grupos. As públicas são Brasileirão Série A com 36 grupos, Premier League com 5, Copa do Brasil com 4 e Champions League com 3. As pilotos ESPN têm 3 grupos na Libertadores, 2 na Sul-Americana e zero na Série B; as sete pilotos football-data não têm grupos.
+
+| Carga no dreno | Chamadas da descoberta, com limpeza | Admitidas às 06:15 UTC | Itens adiados | Ticks até esvaziar | Públicas completas UTC | Último jogo novo e fila vazia UTC | Máximo de chamadas por dreno |
+| --- | ---: | --- | ---: | ---: | --- | --- | ---: |
+| Só discovery | 24 | Brasileirão Série A e Premier League | 44 | 21 | 07:05 | 08:50 | 35 |
+| Com result e late | 24 | Brasileirão Série A e Premier League | 44 | 22 | 07:10 | 08:55 | 35 |
+
+Os 44 itens são 8 calendários football-data e 36 datas ESPN, sem tentativas gastas no adiamento. A variante injeta um `result` de ontem e um `late` de anteontem da Libertadores antes dos três primeiros ticks, reabrindo as duas chaves para simular seis execuções prioritárias. O dreno processa essa carga prioritária no cron real. As duas variantes terminam com 46 jogos, pontuação e status iguais ao controle sem limite, sem tentativa da chamada 51. A medida cobre entrada finita; tráfego prioritário contínuo pode adiar a descoberta por mais tempo. Horários de 19/11/2026, com início às 06:15 UTC, equivalentes a 03:15 BRT.
+
+### Recuperar uma data failed fora do horizonte
+
+Depois de corrigir a causa de `last_error` e conferir o acesso ao provedor, liste a chave original. A pausa ou suspensão do provedor continua valendo; retome acesso somente pelo procedimento já documentado.
+
+```sql
+SELECT provider, kind, competition_code, season, round, attempts, last_error
+FROM provider_work WHERE kind = 'discovery' AND status = 'failed';
+```
+
+Execute a atualização para a chave conferida, com parâmetros. `agora_ms` é o instante atual em milissegundos Unix; preserve `round`, inclusive se a data já estiver fora dos nove dias da descoberta.
+
+```sql
+UPDATE provider_work
+SET status = 'pending', attempts = 0, not_before = :agora_ms,
+    lease_until = 0, lease_owner = NULL, updated_at = :agora_ms
+WHERE provider = :provider AND kind = 'discovery'
+  AND competition_code = :competition_code AND season = :season
+  AND round = :round AND status = 'failed';
+```
+
+Confirme `status = 'done'`, os jogos da data e `scored_at` depois do dreno. Para ESPN, confira também que a data deixou de ter evidência NULL em `discovery_dates`. O teste de recuperação marca uma data com seis tentativas, avança dez dias, executa esse procedimento e recupera o oitavo jogo que faltava, com o mesmo estado do controle.
+
+
+### Chamadas medidas pelo cron real
+
+Contagem inclui D1, fetch e a limpeza. As colunas com rejeição incluem chamadas tentadas depois de a plataforma recusar a 51. A semente tem um jogo existente e três jogos novos por competição ESPN, e dois novos por competição football-data.
+
+| Cenário | Base `311aa032` | Com orçamento | Pendências novas |
+| --- | ---: | ---: | --- |
+| 1 ESPN, nove datas | 23 | 41 | Nenhuma |
+| 2 ESPN, nove datas cada | 43 | 42 | 9 datas |
+| 4 ESPN, nove datas cada | 56, rejeitada | 42 | 27 datas |
+| 4 football-data + 2 ESPN | 56, rejeitada | 24 | 2 calendários + 18 datas |
+| 9 football-data | 58, rejeitada | 23 | 7 calendários |
+| 429 na quarta tentativa ESPN | 20 | 26 | 18 datas |
+| Falha do batch final, 2 ESPN | 43, sem adiamento | 42, erro registrado | Replanejadas na repetição |
+| 4 football-data + final ESPN antiga | 52, rejeitada | 24 por descoberta | 2 calendários + 9 datas |
+| 4 football-data + ESPN com time indefinido | 53, rejeitada | 24 | 2 calendários + 9 datas |
+
+Os 11 testes de `fixtureDiscoveryBudget.test.ts` passam com o orçamento. Executados contra os arquivos de produção da base `311aa032`, os dez testes de regressão falham e o de equivalência do caso comum passa. Além dos cenários da tabela, a recuperação manual de `failed` fora do horizonte recupera o oitavo jogo; a final antiga chega a `finished` após três descobertas sob contenção e o dreno completo, enquanto o time indefinido mantém `ongoing`. Nenhum tick medido com o orçamento tenta a chamada 51. Nos cenários de 2 e 4 ESPN a fila termina em 3 e 8 ticks do dreno, respectivamente; os ticks medidos gastam no máximo 40 chamadas. Na semente de 4 ESPN, o último jogo chega às 07:10, 55 minutos após a descoberta das 06:15.
+
+No caso comum, jogos e pontuação continuam disponíveis na própria descoberta. Sob contenção, o jogo novo e seus pontos aparecem quando a data termina no dreno. A prioridade continua favorecendo resultados e resgates; a fila de descoberta pode esperar mais se houver entrada contínua de itens prioritários. Não há prazo máximo novo para a fila.
