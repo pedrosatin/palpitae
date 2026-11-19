@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import { trackShareInvite } from '../../analytics/funnel'
-import { trackEvent } from '../../analytics/ga'
 import { useRoundStandings } from '../../hooks/useRoundStandings'
 import { fetchGroupPredictions } from '../../lib/groupPredictions'
 import type { GroupMember } from '../../lib/groupReminder'
@@ -12,12 +10,6 @@ import {
 import { buildGroupLink } from '../../lib/groupLink'
 import { buildInviteLink } from '../../lib/invite'
 import {
-  buildMilestoneShareCardData,
-  milestoneShareFileName,
-  milestoneShareText,
-  renderMilestoneShareCardBlob,
-} from '../../lib/milestoneShareCard'
-import {
   highlightText,
   pointsLabel,
   postponedNotice,
@@ -27,15 +19,9 @@ import {
   tallyRound,
   type GroupRoundPick,
 } from '../../lib/roundSummary'
-import {
-  buildRoundShareCardData,
-  renderRoundShareCardBlob,
-  roundShareFileName,
-  roundShareText,
-} from '../../lib/roundShareCard'
-import { shareOrDownloadImage } from '../../lib/shareImage'
-import Button from '../Button'
 import type { Match, Prediction } from '../MatchCard'
+import { RoundShareActions } from './RoundShareActions'
+import { RoundSummaryStats } from './RoundSummaryStats'
 import styles from './RoundSummary.module.css'
 
 interface GroupRoundData {
@@ -127,6 +113,32 @@ function groupShareLink(input: {
   return null
 }
 
+interface RoundStandingRow {
+  user_id: string
+  exact_hits?: number
+  exact_milestones_crossed?: number[]
+}
+
+/** Marcos cruzados na rodada de referência; vazio fora dela ou sem cruzamento. */
+function selfExactCrossing(input: {
+  selfUserId: string | undefined
+  referenceRound: string | null
+  selectedRound: string | null | undefined
+  standings: RoundStandingRow[]
+}): { crossed: ExactMilestone[]; exactHits: number } {
+  if (
+    !input.selfUserId ||
+    input.referenceRound === null ||
+    input.selectedRound !== input.referenceRound
+  ) {
+    return { crossed: [], exactHits: 0 }
+  }
+  const row = input.standings.find((s) => s.user_id === input.selfUserId)
+  const crossed = asExactMilestones(row?.exact_milestones_crossed)
+  const exactHits = row?.exact_hits ?? crossed[crossed.length - 1] ?? 0
+  return { crossed, exactHits }
+}
+
 /**
  * Resumo da rodada encerrada, no topo da aba Palpitar. Só aparece com todos os jogos
  * encerrados, ou encerrados e adiados (resumo parcial). Os números do próprio usuário
@@ -153,9 +165,6 @@ export default function RoundSummary({
     groupId,
     scope !== null,
   )
-  const [sharing, setSharing] = useState(false)
-  const [sharingMilestone, setSharingMilestone] = useState(false)
-  const [shareError, setShareError] = useState(false)
 
   if (!scope) return null
 
@@ -172,102 +181,19 @@ export default function RoundSummary({
   const self = standings?.find((s) => s.isYou)
   const highlight = standings ? highlightText(roundLeaders(standings)) : null
   const notice = postponedNotice(scope.postponed)
-
-  const selfRoundStanding =
-    groupData && referenceRound !== null && selectedRound === referenceRound
-      ? roundStandings.find((s) => s.user_id === groupData.selfUserId)
-      : undefined
-  const crossed = asExactMilestones(selfRoundStanding?.exact_milestones_crossed)
+  const { crossed, exactHits } = selfExactCrossing({
+    selfUserId: groupData?.selfUserId,
+    referenceRound,
+    selectedRound,
+    standings: roundStandings,
+  })
   const milestoneHighlight = exactMilestoneHighlightText(crossed)
   const shareLink = groupShareLink({ isOwner, inviteCode, publicId })
-
-  async function handleShare() {
-    if (!standings || !self) return
-    trackEvent('click_resumo_rodada_compartilhar')
-    setSharing(true)
-    setShareError(false)
-    try {
-      const data = buildRoundShareCardData({
-        groupName: groupName ?? 'Palpitae',
-        roundLabel,
-        standings,
-        self: { ...own, position: self.position },
-        postponed: scope!.postponed,
-        origin: window.location.origin,
-      })
-      const blob = await renderRoundShareCardBlob(data)
-      if (!blob) {
-        setShareError(true)
-        return
-      }
-      await shareOrDownloadImage(blob, roundShareFileName(roundLabel), roundShareText(data))
-    } catch {
-      setShareError(true)
-    } finally {
-      setSharing(false)
-    }
-  }
-
-  async function handleMilestoneShare() {
-    const card = buildMilestoneShareCardData({
-      groupName: groupName ?? 'Palpitae',
-      crossed,
-      exactHits: selfRoundStanding?.exact_hits ?? crossed[crossed.length - 1] ?? 0,
-      origin: window.location.origin,
-    })
-    if (!card) return
-    trackEvent('click_resumo_marco_compartilhar')
-    setSharingMilestone(true)
-    setShareError(false)
-    try {
-      const blob = await renderMilestoneShareCardBlob(card)
-      if (!blob) {
-        setShareError(true)
-        return
-      }
-      const result = await shareOrDownloadImage(
-        blob,
-        milestoneShareFileName(card.milestone),
-        milestoneShareText(card, shareLink),
-      )
-      if (result === 'shared') {
-        trackShareInvite('native', 'exact_milestone')
-      }
-    } catch {
-      setShareError(true)
-    } finally {
-      setSharingMilestone(false)
-    }
-  }
 
   return (
     <section className={styles.summary} aria-label="Resumo da rodada">
       <h3 className={styles.title}>Resumo da rodada</h3>
-      <div className={styles.stats}>
-        <div className={styles.stat}>
-          <span className={styles.value}>{own.points}</span>
-          <span className={styles.label}>{own.points === 1 ? 'ponto' : 'pontos'}</span>
-        </div>
-        {pointsExact > 0 && (
-          <div className={styles.stat}>
-            <span className={styles.value}>{own.exact}</span>
-            <span className={styles.label}>
-              {own.exact === 1 ? 'placar exato' : 'placares exatos'}
-            </span>
-          </div>
-        )}
-        <div className={styles.stat}>
-          <span className={styles.value}>{own.correct}</span>
-          <span className={styles.label}>
-            {own.correct === 1 ? 'resultado certo' : 'resultados certos'}
-          </span>
-        </div>
-      </div>
-      {own.missed > 0 && (
-        <p className={styles.line}>
-          {own.missed === 1 ? '1 jogo ficou' : `${own.missed} jogos ficaram`} sem palpite.
-        </p>
-      )}
+      <RoundSummaryStats own={own} pointsExact={pointsExact} />
       {self && standings && (
         <p className={styles.line}>
           <strong>
@@ -279,30 +205,17 @@ export default function RoundSummary({
       {highlight && <p className={styles.line}>{highlight}.</p>}
       {milestoneHighlight && <p className={styles.milestone}>{milestoneHighlight}.</p>}
       {notice && <p className={styles.notice}>{notice}.</p>}
-      {(self && standings) || crossed.length > 0 ? (
-        <div className={styles.actions}>
-          {self && standings && (
-            <Button variant="outline" size="sm" onClick={handleShare} disabled={sharing}>
-              {sharing ? 'Gerando imagem...' : 'Compartilhar rodada'}
-            </Button>
-          )}
-          {crossed.length > 0 && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleMilestoneShare}
-              disabled={sharingMilestone}
-            >
-              {sharingMilestone ? 'Gerando imagem...' : 'Compartilhar marco'}
-            </Button>
-          )}
-          {shareError && (
-            <span className={styles.error} role="alert">
-              Não foi possível gerar a imagem neste navegador.
-            </span>
-          )}
-        </div>
-      ) : null}
+      <RoundShareActions
+        groupName={groupName}
+        roundLabel={roundLabel}
+        postponed={scope.postponed}
+        own={own}
+        standings={standings}
+        self={self}
+        crossed={crossed}
+        exactHits={exactHits}
+        shareLink={shareLink}
+      />
     </section>
   )
 }

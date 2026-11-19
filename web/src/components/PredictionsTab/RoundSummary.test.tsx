@@ -9,9 +9,14 @@ import RoundSummary from './RoundSummary'
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 
 const mockRender = vi.fn()
+const mockMilestoneRender = vi.fn()
 vi.mock('../../lib/roundShareCard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/roundShareCard')>()),
   renderRoundShareCardBlob: (...args: unknown[]) => mockRender(...args),
+}))
+vi.mock('../../lib/milestoneShareCard', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/milestoneShareCard')>()),
+  renderMilestoneShareCardBlob: (...args: unknown[]) => mockMilestoneRender(...args),
 }))
 
 beforeEach(() => invalidateApiCache())
@@ -19,6 +24,7 @@ beforeEach(() => invalidateApiCache())
 afterEach(() => {
   vi.restoreAllMocks()
   mockRender.mockReset()
+  mockMilestoneRender.mockReset()
 })
 
 const members = [
@@ -285,5 +291,72 @@ describe('RoundSummary', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível gerar a imagem')
     expect(screen.getByRole('button', { name: 'Compartilhar rodada' })).toBeEnabled()
+  })
+
+  it('compartilha o marco pelo menu nativo e inclui o link de convite', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockResolvedValue(new Blob(['m'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      isOwner: true,
+    })
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    expect(arg.files[0].name).toBe('palpitae-marco-5-exatos.png')
+    expect(arg.text).toMatch(/convite|AAAA-BBBB|palpitae/i)
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('avisa quando a geração do cartão do marco falha', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          exact_hits: 5,
+          exact_milestone: 5,
+          exact_milestones_crossed: [5],
+        },
+      ],
+    })
+    mockMilestoneRender.mockRejectedValue(new Error('canvas'))
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+    await userEvent.click(await screen.findByRole('button', { name: 'Compartilhar marco' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Não foi possível gerar a imagem')
+    expect(screen.getByRole('button', { name: 'Compartilhar marco' })).toBeEnabled()
+  })
+
+  it('rótulos no singular quando há 1 ponto, 1 exato e 1 acerto', async () => {
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)])
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)])
+
+    const region = screen.getByRole('region', { name: 'Resumo da rodada' })
+    expect(region).toHaveTextContent(/3\s*pontos/)
+    expect(region).toHaveTextContent(/1\s*placar exato/)
+    expect(await screen.findByText(/1º de 3/)).toBeInTheDocument()
   })
 })
