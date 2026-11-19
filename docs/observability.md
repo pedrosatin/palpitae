@@ -855,8 +855,9 @@ mudam o resultado. Temporada sem jogo ou sem pendência vem com zero. A resposta
 também leva `overdueResultHours` (limiar usado), `overdueTotal` e
 `finishedUnscoredTotal` (somas). O front antigo ignora os campos novos; o novo
 mostra "indisponível" (ou "—") se a API ainda não os enviar, em vez de tratar a
-falta como zero. A mesma regra (`api/src/matches/resultOverdue.ts`) alimenta o
-badge "resultado pendente" no card do participante e o alerta por e-mail.
+falta como zero. O participante usa uma implementação equivalente
+(`web/src/lib/resultOverdue.ts`) com limiar fixo de 3 horas; o painel e o e-mail
+usam `RESULT_OVERDUE_HOURS` via `api/src/matches/resultOverdue.ts`.
 
 Do Analytics Engine e do D1, `GET /metrics/ops?days=` alimenta a seção **Provedores de partidas ·
 falhas e carga**, separada do `/metrics/overview` para que uma falha nela não derrube a página
@@ -884,8 +885,9 @@ e para que um front novo conviva com uma API ainda sem o endpoint. Traz:
   provedor, status (`pending`/`running`/`failed`), contagem, idade do item mais antigo
   (`oldest_age_minutes` = agora − `created_at`) e máximo de tentativas. Isso é trabalho ainda
   não concluído, distinto das tentativas HTTP reais acima. Sem o campo (API anterior), a
-  página omite a subseção. Falha do D1 nesta consulta devolve lista vazia e não derruba o
-  restante do `/ops`.
+  página omite a subseção. Falha do D1 nesta consulta devolve `pendingWorkError: true`
+  (sem `pendingWork`) e não derruba o restante do `/ops`; o painel mostra "fila
+  indisponível" e o aviso do topo permanece.
 
 `discards` e `missingMatches` só levam identificadores do provedor (slug da fase, código da
 competição, id do jogo, horário ISO); qualquer outro texto chega vazio. Sem os dois campos (API
@@ -906,12 +908,15 @@ lembretes. Desligado por padrão. Para ligar, defina no Worker
 `RESULT_OVERDUE_ALERT = "1"` (em `[vars]` do `wrangler.toml` ou via dashboard). Opcional:
 `RESULT_OVERDUE_HOURS` (padrão 3) e `RESULT_OVERDUE_ALERT_COOLDOWN_HOURS` (padrão 6). O poller
 avalia o alerta no fim de cada tick (minutos 0 e 30), só se o saldo de subrequests da
-invocação comportar até 4 chamadas (contagem, cooldown e `fetch`). O cooldown fica em
-`ops_alert_state` (migration 0050) e impede um e-mail a cada tick. O evento
-`result_overdue_alert` registra enviado, silenciado, limpo, pulado por saldo ou falha. Sem
-`ADMIN_EMAIL` ou sem `RESEND_API_KEY`, o outcome é `misconfig` e não há envio. Discord,
-Telegram e notificações nativas da Cloudflare ficaram de fora: exigiriam webhook ou conta
-nova.
+invocação comportar até 4 chamadas no pior caso (contagem, reserva do cooldown, `fetch` e
+liberação da reserva). O caminho de sucesso gasta 3. A reserva é um UPSERT condicional em
+`ops_alert_state` (migration 0050) antes do envio: só o tick com `meta.changes > 0` chama o
+Resend. Em falha definitiva do envio a reserva é liberada para o próximo tick; sucesso e
+HTTP 409 (mesma chave de idempotência) mantêm a reserva. O assunto flexiona singular e
+plural ("1 resultado atrasado" / "N resultados atrasados"). O evento `result_overdue_alert`
+registra enviado, silenciado, limpo, pulado por saldo ou falha. Sem `ADMIN_EMAIL` ou sem
+`RESEND_API_KEY`, o outcome é `misconfig` e não há envio. Discord, Telegram e notificações
+nativas da Cloudflare ficaram de fora: exigiriam webhook ou conta nova.
 
 Do Analytics Engine, `GET /metrics/competition-activity?days=` alimenta a seção **Atividade por
 campeonato**, também separada do `/overview` pelo mesmo motivo. Agrega no período (7/30/90 dias):
