@@ -1320,7 +1320,7 @@ O resumo da rodada e o ranking já reconhecem o rei da rodada, a sequência de p
 
 ### Decision
 
-`GET /groups/:id/round-standings` passa a devolver, em cada linha, `unlikely_exact` (boolean) e `unlikely_exact_percent` (inteiro de 1 a 10, ou `null`). Os campos são aditivos; clientes antigos os ignoram. Sem pontos extras e sem ranking global entre grupos.
+`GET /groups/:id/round-standings` passa a devolver, em cada linha, `unlikely_exact` (boolean). O campo é aditivo; clientes antigos o ignoram. Sem pontos extras, sem ranking global entre grupos e sem percentual nem contagens na resposta (privacidade).
 
 Regra de raridade (Opção B):
 
@@ -1329,17 +1329,23 @@ Regra de raridade (Opção B):
 3. Numerador: usuários distintos cujo `predicted_home_score`/`predicted_away_score` batem com o placar oficial. Não usa `points_awarded` (regras de grupo diferem).
 4. O jogo é raro quando `tipsters >= 10` e `exact_tipsters * 100 <= tipsters * 10`.
 5. Só o membro deste grupo com placar exato pontuado (`points_exact > points_winner` e `points_awarded = points_exact`) recebe o reconhecimento.
-6. O percentual exibido é `max(1, round(100 * exact / tipsters))`, limitado a 10. Empate no raro: todos que cravaram recebem.
+6. Além do mínimo total, o reconhecimento só vale com pelo menos 10 palpiteiros distintos que não são membros do grupo de quem lê. Assim a decisão não depende do palpite de uma só pessoa desconhecida (cenário 19 conhecidos + 1 privado).
+7. Empate no raro: todos que cravaram e passam nos mínimos recebem.
 
-Estabilidade: a tabela `unlikely_exacts` (migration `0053`) grava `(group_id, user_id, match_id)` na primeira observação, com `round`, `tipster_count`, `exact_tipster_count`, `percent_rounded` e o placar. A chave primária com `ON CONFLICT DO NOTHING` impede redisparo. O selo da rodada sai das linhas cuja `round` é a referência. Correção de placar ou repontuação não apaga a linha nem cria outra na rodada seguinte. Falha de gravação é registrada e o GET responde com o que já está no banco.
+Privacidade: a API e a UI mostram só o texto qualitativo com o limiar público (`menos de 10%`). Não devolvem o percentual exato do jogo nem as contagens de tipsters. O limiar é público; o número do jogo não é. Contagens ficam só em `unlikely_exacts` / `match_score_rarity` para auditoria interna.
 
-Custo: a consulta agrega só os jogos da rodada (índice `idx_matches_comp_scored` ou `idx_matches_comp_round_start`) e os palpites por `match_id` (`idx_predictions_match`) e por grupo (`idx_predictions_group`). O plano de consulta está em `unlikelyExacts.queryPlan.test.ts`. Não há varredura de palpites por membro da competição fora desses índices.
+Agregado compartilhado: a tabela `match_score_rarity` (migration `0053`) guarda `(match_id, tipster_count, exact_count, scored_at_snapshot)`. O cálculo roda de forma preguiçosa na leitura de `round-standings` (um jogo por vez, `ON CONFLICT DO UPDATE` só quando o snapshot diverge do `matches.scored_at`), e todas as leituras seguintes reutilizam o agregado. Preferimos a leitura ao fim da pontuação em `scoring.ts` porque o tick do poller já opera no orçamento de subrequests da ADR-027. Exclusão de grupo ou usuário pode deixar o agregado defasado até a próxima repontuação do jogo (`scored_at` novo); isso é aceitável.
 
-Na web, o ranking mostra o selo `improvável` (`title` + SR) só para quem tem `unlikely_exact` na referência. O resumo e o cartão compartilhável destacam o percentual na mesma rodada; o cartão leva o link de convite (dono) ou o link público de pedido de entrada (membro), com `share_invite` em contexto `unlikely_exact`. Grupo solo recebe o selo quando a competição tem massa. Mata-mata sem rodada de referência devolve `{ round: null, standings: [] }` e não inventa selo.
+Estabilidade: a tabela `unlikely_exacts` grava `(group_id, user_id, match_id)` na primeira observação, com `round`, `tipster_count`, `exact_tipster_count`, `outside_tipster_count` e o placar. A chave primária com `ON CONFLICT DO NOTHING` impede redisparo. O selo da rodada sai das linhas cuja `round` é a referência. Correção de placar ou repontuação não apaga a linha nem cria outra na rodada seguinte. Falha de gravação é registrada e o GET responde com o que já está no banco.
+
+Custo: cada leitura do grupo lê os agregados dos jogos da rodada de referência (≤ número de jogos) e os palpites do próprio grupo. O cálculo completo dos palpites da competição acontece no máximo uma vez por jogo por `scored_at`. Medição em D1/Miniflare com 50 grupos × 20 palpiteiros × 10 jogos: consulta legada 30 224 `rows_read` por abertura; 1ª leitura com cálculo 20 876; reuso 877. Plano de consulta em `unlikelyExacts.queryPlan.test.ts`; medição em `unlikelyExacts.rowsRead.test.ts`.
+
+Na web, o ranking mostra o selo `improvável` (`title` + SR) só para quem tem `unlikely_exact` na referência. O resumo e o cartão compartilhável usam o texto qualitativo; o cartão leva o link de convite (dono) ou o link público de pedido de entrada (membro), com `share_invite` em contexto `unlikely_exact`. Grupo solo recebe o selo quando a competição tem massa e há ≥ 10 tipsters fora do grupo. Mata-mata sem rodada de referência devolve `{ round: null, standings: [] }` e não inventa selo.
 
 ### Consequences
 
-- Com a base atual do Brasileirão (mediana ~5 palpiteiros/jogo), o selo quase não dispara até a competição passar de 10 palpiteiros distintos por jogo; na Copa do Mundo a massa já basta.
-- O percentual arredondado não revela contagens pequenas nem nomes de outros grupos ou usuários.
-- Risco aceito: o reconhecimento aparece na primeira abertura da aba depois que o jogo raro fecha, na rodada de referência daquele momento. Se ninguém abrir entre o fechamento e a troca de referência, o destaque cai na referência seguinte (o mesmo risco dos marcos).
-- A tabela sai em cascata com exclusão de conta, grupo ou jogo.
+- Com a base atual do Brasileirão (mediana ~5 palpiteiros/jogo), o selo quase não dispara até a competição passar de 10 palpiteiros distintos por jogo e de 10 fora do grupo; na Copa do Mundo a massa já basta.
+- Sem percentual nem contagens na resposta, um membro não deduz o palpite de um tipster privado a partir do número exibido.
+- O SQL só considera jogos da rodada de referência atual. O reconhecimento é gravado na primeira leitura do grupo nessa referência. Se a referência avançar antes de qualquer abertura, aquele placar raro não gera selo na rodada seguinte (o código não projeta reconhecimento para a referência futura). Preferimos documentar esse comportamento a acrescentar backfill por rodadas anteriores.
+- Exclusão de grupo/usuário pode alterar o agregado real sem invalidar `match_score_rarity` até a próxima repontuação; risco aceito.
+- As tabelas saem em cascata com exclusão de conta, grupo ou jogo.

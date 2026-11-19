@@ -550,8 +550,18 @@ CREATE TABLE IF NOT EXISTS exact_milestones_initialized (
   initialized_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Unlikely exact scores (raridade na competição: X=10%, M=10)
--- Congela tipster_count e percent_rounded na primeira observação (ADR-029).
+-- Agregado de raridade por jogo (compartilhado entre grupos; ADR-029).
+-- Recalcula quando matches.scored_at diverge de scored_at_snapshot.
+CREATE TABLE IF NOT EXISTS match_score_rarity (
+  match_id TEXT PRIMARY KEY REFERENCES matches(id) ON DELETE CASCADE,
+  tipster_count INTEGER NOT NULL CHECK (tipster_count >= 0),
+  exact_count INTEGER NOT NULL CHECK (exact_count >= 0),
+  scored_at_snapshot TEXT NOT NULL,
+  computed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Unlikely exact scores (raridade na competição: X=10%, M=10 total e M=10 fora do grupo)
+-- Congela tipster_count, exact_tipster_count e outside_tipster_count na primeira observação (ADR-029).
 CREATE TABLE IF NOT EXISTS unlikely_exacts (
   group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -559,7 +569,7 @@ CREATE TABLE IF NOT EXISTS unlikely_exacts (
   round TEXT NOT NULL,
   tipster_count INTEGER NOT NULL CHECK (tipster_count >= 10),
   exact_tipster_count INTEGER NOT NULL CHECK (exact_tipster_count >= 1),
-  percent_rounded INTEGER NOT NULL CHECK (percent_rounded BETWEEN 1 AND 10),
+  outside_tipster_count INTEGER NOT NULL CHECK (outside_tipster_count >= 10),
   home_score INTEGER NOT NULL,
   away_score INTEGER NOT NULL,
   recorded_at TEXT NOT NULL DEFAULT (datetime('now')),

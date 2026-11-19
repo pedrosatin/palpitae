@@ -6,11 +6,11 @@ import {
 } from './unlikelyExactShareCard'
 
 describe('unlikelyExactShareCard', () => {
-  it('monta o cartão só com percentual', () => {
+  it('monta o cartão só com o reconhecimento qualitativo', () => {
     expect(
       buildUnlikelyExactShareCardData({
         groupName: 'Bolão',
-        percent: null,
+        hasUnlikelyExact: false,
         origin: 'https://palpitae.com.br',
       }),
     ).toBeNull()
@@ -18,27 +18,27 @@ describe('unlikelyExactShareCard', () => {
     expect(
       buildUnlikelyExactShareCardData({
         groupName: 'Bolão',
-        percent: 10,
+        hasUnlikelyExact: true,
         origin: 'https://palpitae.com.br',
         groupLink: 'https://palpitae.com.br/grupo/abc',
       }),
     ).toEqual({
       groupName: 'Bolão',
-      percent: 10,
       domain: 'palpitae.com.br',
       groupLink: 'https://palpitae.com.br/grupo/abc',
     })
   })
 
-  it('monta o texto e o nome do arquivo', () => {
+  it('monta o texto e o nome do arquivo sem percentual do jogo', () => {
     const card = buildUnlikelyExactShareCardData({
       groupName: 'Bolão',
-      percent: 5,
+      hasUnlikelyExact: true,
       origin: 'https://palpitae.com.br',
       groupLink: 'https://palpitae.com.br/grupo/abc',
     })!
-    expect(unlikelyExactShareText(card)).toContain('só 5%')
+    expect(unlikelyExactShareText(card)).toContain('menos de 10%')
+    expect(unlikelyExactShareText(card)).not.toMatch(/\bsó \d+%/)
     expect(unlikelyExactShareText(card)).toContain('Entra com a gente:')
-    expect(unlikelyExactShareFileName(5)).toBe('palpitae-placar-improvavel-5.png')
+    expect(unlikelyExactShareFileName()).toBe('palpitae-placar-improvavel.png')
   })
 })

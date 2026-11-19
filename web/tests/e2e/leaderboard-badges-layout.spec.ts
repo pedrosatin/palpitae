@@ -60,7 +60,6 @@ async function mockGroupRanking(page: Page) {
             exact_milestone: 15,
             exact_milestones_crossed: [],
             unlikely_exact: true,
-            unlikely_exact_percent: 10,
           },
           {
             user_id: 'u2',
@@ -71,7 +70,6 @@ async function mockGroupRanking(page: Page) {
             exact_milestone: null,
             exact_milestones_crossed: [],
             unlikely_exact: false,
-            unlikely_exact_percent: null,
           },
         ],
       }

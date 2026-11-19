@@ -48,7 +48,6 @@ function MemberBadges({
   exactMilestone,
   exactHits,
   unlikelyExact,
-  unlikelyExactPercent,
 }: {
   isOwner: boolean
   isSelf: boolean
@@ -57,7 +56,6 @@ function MemberBadges({
   exactMilestone: ExactMilestone | null
   exactHits: number
   unlikelyExact: boolean
-  unlikelyExactPercent: number | null
 }) {
   const showStreak = streak >= STREAK_BADGE_MIN
   if (!isOwner && !isSelf && !isKing && !showStreak && !exactMilestone && !unlikelyExact) {
@@ -67,7 +65,7 @@ function MemberBadges({
   const milestoneTitle = exactMilestone
     ? exactMilestonesTitle(achievedExactMilestones(exactHits))
     : ''
-  const unlikelyTitle = unlikelyExactBadgeTitle(unlikelyExactPercent)
+  const unlikelyTitle = unlikelyExactBadgeTitle()
   return (
     <span className={styles.badges}>
       {isOwner && <MemberBadge variant="owner" className={styles.memberBadge} />}
@@ -243,9 +241,6 @@ export default function LeaderboardTab({
                         exactHits={member.exact_hits}
                         unlikelyExact={
                           standingByUser.get(member.user_id)?.unlikely_exact === true
-                        }
-                        unlikelyExactPercent={
-                          standingByUser.get(member.user_id)?.unlikely_exact_percent ?? null
                         }
                       />
                     </div>

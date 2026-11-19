@@ -7,24 +7,21 @@ import {
 } from './unlikelyExact'
 
 describe('unlikelyExact', () => {
-  it('monta o rótulo curto e o title com o percentual', () => {
+  it('monta o rótulo curto e o title qualitativo', () => {
     expect(UNLIKELY_EXACT_BADGE_LABEL).toBe('improvável')
-    expect(unlikelyExactBadgeTitle(null)).toBe(
-      'Placar exato improvável na competição nesta rodada',
-    )
-    expect(unlikelyExactBadgeTitle(3)).toBe(
-      'Placar exato que só 3% dos palpiteiros da competição cravaram nesta rodada',
+    expect(unlikelyExactBadgeTitle()).toBe(
+      'Placar exato que menos de 10% dos palpiteiros da competição cravaram nesta rodada',
     )
   })
 
-  it('monta a frase do resumo e a do compartilhamento', () => {
-    expect(unlikelyExactHighlightText(null)).toBeNull()
-    expect(unlikelyExactHighlightText(10)).toBe(
-      'Você cravou um placar improvável: só 10% dos palpiteiros da competição acertaram',
+  it('monta a frase do resumo e a do compartilhamento sem contagens', () => {
+    expect(unlikelyExactHighlightText(false)).toBeNull()
+    expect(unlikelyExactHighlightText(true)).toBe(
+      'Você cravou um placar improvável: menos de 10% dos palpiteiros da competição acertaram',
     )
-    expect(unlikelyExactShareHighlightText(null)).toBeNull()
-    expect(unlikelyExactShareHighlightText(5)).toBe(
-      'Cravei um placar improvável: só 5% dos palpiteiros da competição acertaram',
+    expect(unlikelyExactShareHighlightText(false)).toBeNull()
+    expect(unlikelyExactShareHighlightText(true)).toBe(
+      'Cravei um placar improvável: menos de 10% dos palpiteiros da competição acertaram',
     )
   })
 })

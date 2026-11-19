@@ -428,7 +428,6 @@ describe('LeaderboardTab selos da rodada', () => {
                 exact_milestone: 15,
                 exact_milestones_crossed: [],
                 unlikely_exact: true,
-                unlikely_exact_percent: 10,
               },
               {
                 user_id: 'u2',
@@ -436,7 +435,6 @@ describe('LeaderboardTab selos da rodada', () => {
                 position_change: -1,
                 streak: 0,
                 unlikely_exact: false,
-                unlikely_exact_percent: null,
               },
             ],
           }),

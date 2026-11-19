@@ -35,7 +35,6 @@ interface RoundShareActionsProps {
   crossed: ExactMilestone[]
   exactHits: number
   unlikelyExact: boolean
-  unlikelyExactPercent: number | null
   shareLink: string | null
 }
 
@@ -129,12 +128,12 @@ async function shareMilestoneImage(input: {
 
 async function shareUnlikelyExactImage(input: {
   groupName?: string
-  percent: number | null
+  unlikelyExact: boolean
   shareLink: string | null
 }): Promise<{ ok: boolean; notice: DownloadNotice }> {
   const card = buildUnlikelyExactShareCardData({
     groupName: input.groupName ?? 'Palpitae',
-    percent: input.percent,
+    hasUnlikelyExact: input.unlikelyExact,
     origin: window.location.origin,
     groupLink: input.shareLink,
   })
@@ -146,7 +145,7 @@ async function shareUnlikelyExactImage(input: {
     const text = unlikelyExactShareText(card, input.shareLink)
     const result = await shareOrDownloadImage(
       blob,
-      unlikelyExactShareFileName(card.percent),
+      unlikelyExactShareFileName(),
       text,
     )
     if (result === 'shared') {
@@ -180,7 +179,6 @@ export function RoundShareActions({
   crossed,
   exactHits,
   unlikelyExact,
-  unlikelyExactPercent,
   shareLink,
 }: RoundShareActionsProps) {
   const [sharing, setSharing] = useState(false)
@@ -190,7 +188,7 @@ export function RoundShareActions({
   const [downloadNotice, setDownloadNotice] = useState<DownloadNotice>(null)
 
   const canShareRound = Boolean(self && standings)
-  const canShareUnlikely = unlikelyExact && unlikelyExactPercent != null
+  const canShareUnlikely = unlikelyExact
   if (!canShareRound && crossed.length === 0 && !canShareUnlikely) return null
 
   async function onShareRound() {
@@ -231,7 +229,7 @@ export function RoundShareActions({
     setDownloadNotice(null)
     const { ok, notice } = await shareUnlikelyExactImage({
       groupName,
-      percent: unlikelyExactPercent,
+      unlikelyExact,
       shareLink,
     })
     if (!ok) setShareError(true)

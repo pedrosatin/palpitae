@@ -1,9 +1,11 @@
 /**
  * Cartão de compartilhamento do placar improvável. Mesmo estilo dos cartões
- * de marco e de rodada; o herói é o percentual. O texto e o rodapé levam o
- * link do grupo (convite ou pedido de entrada).
+ * de marco e de rodada; o destaque é o limiar público (menos de 10%), sem
+ * percentual nem contagens do jogo. O texto e o rodapé levam o link do grupo
+ * (convite ou pedido de entrada).
  */
 import {
+  UNLIKELY_EXACT_THRESHOLD_PERCENT,
   unlikelyExactShareHighlightText,
 } from './unlikelyExact'
 import {
@@ -27,21 +29,19 @@ import {
 
 export interface UnlikelyExactShareCardData {
   groupName: string
-  percent: number
   domain: string
   groupLink: string | null
 }
 
 export function buildUnlikelyExactShareCardData(input: {
   groupName: string
-  percent: number | null | undefined
+  hasUnlikelyExact: boolean
   origin: string
   groupLink?: string | null
 }): UnlikelyExactShareCardData | null {
-  if (input.percent == null) return null
+  if (!input.hasUnlikelyExact) return null
   return {
     groupName: input.groupName,
-    percent: input.percent,
     domain: stripScheme(input.origin),
     groupLink: input.groupLink ?? null,
   }
@@ -51,15 +51,15 @@ export function unlikelyExactShareText(
   data: UnlikelyExactShareCardData,
   groupLink?: string | null,
 ): string {
-  const highlight = unlikelyExactShareHighlightText(data.percent) ?? ''
+  const highlight = unlikelyExactShareHighlightText(true) ?? ''
   const link = groupLink ?? data.groupLink
   const base = `${highlight} no bolão "${data.groupName}" no Palpitae.`
   if (link) return `${base} Entra com a gente: ${link}`
   return `${base} ${data.domain}`
 }
 
-export function unlikelyExactShareFileName(percent: number): string {
-  return `palpitae-placar-improvavel-${percent}.png`
+export function unlikelyExactShareFileName(): string {
+  return 'palpitae-placar-improvavel.png'
 }
 
 function footerLinkLabel(data: UnlikelyExactShareCardData): string {
@@ -116,22 +116,22 @@ export function drawUnlikelyExactShareCard(
   ctx.font = `700 34px ${FONT}`
   fillTracked(ctx, 'NA COMPETIÇÃO INTEIRA', W / 2, 280, 8)
 
-  const heroY = 520
+  const heroY = 480
   ctx.textBaseline = 'middle'
   ctx.fillStyle = LIME
-  ctx.font = `800 280px ${FONT}`
-  ctx.fillText(`${data.percent}%`, W / 2, heroY)
+  ctx.font = `800 120px ${FONT}`
+  ctx.fillText(`< ${UNLIKELY_EXACT_THRESHOLD_PERCENT}%`, W / 2, heroY)
   ctx.strokeStyle = LIME
   ctx.lineWidth = 6
-  hline(ctx, W / 2 - 140, heroY + 180, W / 2 + 140)
+  hline(ctx, W / 2 - 200, heroY + 100, W / 2 + 200)
 
   ctx.textBaseline = 'alphabetic'
   ctx.fillStyle = ASH
   ctx.font = `500 40px ${FONT}`
-  ctx.fillText('dos palpiteiros cravaram', W / 2, heroY + 260)
+  ctx.fillText('dos palpiteiros cravaram', W / 2, heroY + 180)
   ctx.fillStyle = BONE
   ctx.font = `600 40px ${FONT}`
-  ctx.fillText('o mesmo placar exato', W / 2, heroY + 340)
+  ctx.fillText('o mesmo placar exato', W / 2, heroY + 260)
 
   drawUnlikelyFooter(ctx, data)
 }

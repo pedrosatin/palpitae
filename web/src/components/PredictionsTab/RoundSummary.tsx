@@ -119,7 +119,6 @@ interface RoundStandingRow {
   exact_hits?: number
   exact_milestones_crossed?: number[]
   unlikely_exact?: boolean
-  unlikely_exact_percent?: number | null
 }
 
 /** Marcos e placar improvável na rodada de referência; vazio fora dela. */
@@ -132,14 +131,13 @@ function selfExactCrossing(input: {
   crossed: ExactMilestone[]
   exactHits: number
   unlikelyExact: boolean
-  unlikelyExactPercent: number | null
 } {
   if (
     !input.selfUserId ||
     input.referenceRound === null ||
     input.selectedRound !== input.referenceRound
   ) {
-    return { crossed: [], exactHits: 0, unlikelyExact: false, unlikelyExactPercent: null }
+    return { crossed: [], exactHits: 0, unlikelyExact: false }
   }
   const row = input.standings.find((s) => s.user_id === input.selfUserId)
   const crossed = asExactMilestones(row?.exact_milestones_crossed)
@@ -148,7 +146,6 @@ function selfExactCrossing(input: {
     crossed,
     exactHits,
     unlikelyExact: row?.unlikely_exact === true,
-    unlikelyExactPercent: row?.unlikely_exact_percent ?? null,
   }
 }
 
@@ -194,16 +191,14 @@ export default function RoundSummary({
   const self = standings?.find((s) => s.isYou)
   const highlight = standings ? highlightText(roundLeaders(standings)) : null
   const notice = postponedNotice(scope.postponed)
-  const { crossed, exactHits, unlikelyExact, unlikelyExactPercent } = selfExactCrossing({
+  const { crossed, exactHits, unlikelyExact } = selfExactCrossing({
     selfUserId: groupData?.selfUserId,
     referenceRound,
     selectedRound,
     standings: roundStandings,
   })
   const milestoneHighlight = exactMilestoneHighlightText(crossed)
-  const unlikelyHighlight = unlikelyExact
-    ? unlikelyExactHighlightText(unlikelyExactPercent)
-    : null
+  const unlikelyHighlight = unlikelyExactHighlightText(unlikelyExact)
   const shareLink = groupShareLink({ isOwner, inviteCode, publicId })
 
   return (
@@ -232,7 +227,6 @@ export default function RoundSummary({
         crossed={crossed}
         exactHits={exactHits}
         unlikelyExact={unlikelyExact}
-        unlikelyExactPercent={unlikelyExactPercent}
         shareLink={shareLink}
       />
     </section>

@@ -3,10 +3,8 @@ import { isKnockoutPhase } from '../matches/rounds'
 import { EXACT_HIT_SQL, PREDICTION_POINTS_SQL } from '../matches/scoring'
 import { notBannedSql } from './ranking'
 import {
-  recordUnlikelyExacts,
-  UNLIKELY_EXACT_CANDIDATES_SQL,
+  loadUnlikelyExactStandings,
   UNLIKELY_EXACTS_FOR_ROUND_SQL,
-  type UnlikelyExactCandidate,
   type UnlikelyExactRow,
   type UnlikelyExactStanding,
 } from './unlikelyExacts'
@@ -47,8 +45,6 @@ export interface RoundStanding {
   exact_milestones_crossed: ExactMilestone[]
   /** Placar exato raro na competição, na rodada de referência. */
   unlikely_exact: boolean
-  /** Menor percentual arredondado entre os placares raros da rodada. `null` sem raro. */
-  unlikely_exact_percent: number | null
 }
 
 export interface RoundStandingsResponse {
@@ -159,7 +155,6 @@ export function computeRoundStandings(
       exact_milestone: highestExactMilestone(row.exact_hits),
       exact_milestones_crossed: crossedByUser.get(row.user_id) ?? [],
       unlikely_exact: unlikely?.unlikely_exact ?? false,
-      unlikely_exact_percent: unlikely?.unlikely_exact_percent ?? null,
     }
   })
 }
@@ -336,10 +331,12 @@ async function fetchRoundMembers(
 }
 
 /**
- * Lê fases, membros, palpites e candidatos a placar improvável no mesmo
- * `db.batch`, para as consultas verem o mesmo estado do D1. O `round` do bind
- * vem de uma leitura prévia; se a referência no lote divergir, a chamada
- * refetcha membros e a raridade com a referência sincronizada.
+ * Lê fases, membros, palpites e linhas já gravadas de placar improvável no
+ * mesmo `db.batch`, para as consultas verem o mesmo estado do D1. O agregado
+ * por jogo (`match_score_rarity`) e os candidatos novos vêm depois, só para a
+ * rodada de referência. O `round` do bind vem de uma leitura prévia; se a
+ * referência no lote divergir, a chamada refetcha membros e as linhas gravadas
+ * com a referência sincronizada.
  */
 async function fetchStandingsSnapshot(
   db: D1Database,
@@ -349,18 +346,15 @@ async function fetchStandingsSnapshot(
   phases: RoundPhaseRow[]
   members: RoundMemberRow[]
   picks: MemberRoundPicks[]
-  unlikelyCandidates: UnlikelyExactCandidate[]
   unlikelyExisting: UnlikelyExactRow[]
   round: string | null
 }> {
-  const [phasesResult, membersResult, picksResult, candidatesResult, awardsResult] =
-    await db.batch([
-      db.prepare(ROUND_PHASES_SQL).bind(groupId),
-      db.prepare(ROUND_MEMBERS_SQL).bind(round, round, groupId, round, groupId),
-      db.prepare(MEMBER_ROUND_PICKS_SQL).bind(groupId),
-      db.prepare(UNLIKELY_EXACT_CANDIDATES_SQL).bind(groupId, round, groupId),
-      db.prepare(UNLIKELY_EXACTS_FOR_ROUND_SQL).bind(groupId, round),
-    ])
+  const [phasesResult, membersResult, picksResult, awardsResult] = await db.batch([
+    db.prepare(ROUND_PHASES_SQL).bind(groupId),
+    db.prepare(ROUND_MEMBERS_SQL).bind(round, round, groupId, round, groupId),
+    db.prepare(MEMBER_ROUND_PICKS_SQL).bind(groupId),
+    db.prepare(UNLIKELY_EXACTS_FOR_ROUND_SQL).bind(groupId, round),
+  ])
   const phases = (phasesResult.results ?? []) as RoundPhaseRow[]
   const syncedRound = pickReferenceRound(phases)
   if (syncedRound === null) {
@@ -368,7 +362,6 @@ async function fetchStandingsSnapshot(
       phases,
       members: [],
       picks: [],
-      unlikelyCandidates: [],
       unlikelyExisting: [],
       round: null,
     }
@@ -376,16 +369,15 @@ async function fetchStandingsSnapshot(
   if (syncedRound !== round) {
     const members = await fetchRoundMembers(db, groupId, syncedRound)
     const picks = (picksResult.results ?? []) as MemberRoundPicks[]
-    const [candidatesResync, awardsResync] = await db.batch([
-      db.prepare(UNLIKELY_EXACT_CANDIDATES_SQL).bind(groupId, syncedRound, groupId),
-      db.prepare(UNLIKELY_EXACTS_FOR_ROUND_SQL).bind(groupId, syncedRound),
-    ])
+    const awardsResync = await db
+      .prepare(UNLIKELY_EXACTS_FOR_ROUND_SQL)
+      .bind(groupId, syncedRound)
+      .all<UnlikelyExactRow>()
     return {
       phases,
       members,
       picks,
-      unlikelyCandidates: (candidatesResync.results ?? []) as UnlikelyExactCandidate[],
-      unlikelyExisting: (awardsResync.results ?? []) as UnlikelyExactRow[],
+      unlikelyExisting: awardsResync.results ?? [],
       round: syncedRound,
     }
   }
@@ -393,7 +385,6 @@ async function fetchStandingsSnapshot(
     phases,
     members: (membersResult.results ?? []) as RoundMemberRow[],
     picks: (picksResult.results ?? []) as MemberRoundPicks[],
-    unlikelyCandidates: (candidatesResult.results ?? []) as UnlikelyExactCandidate[],
     unlikelyExisting: (awardsResult.results ?? []) as UnlikelyExactRow[],
     round: syncedRound,
   }
@@ -602,11 +593,10 @@ export async function getRoundStandings(
     snapshot.round,
     snapshot.members,
   )
-  const unlikelyByUser = await recordUnlikelyExacts(
+  const unlikelyByUser = await loadUnlikelyExactStandings(
     db,
     groupId,
     snapshot.round,
-    snapshot.unlikelyCandidates,
     snapshot.unlikelyExisting,
     memberIds,
   )

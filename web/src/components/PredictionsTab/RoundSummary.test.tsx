@@ -79,7 +79,6 @@ function mockGroupApi(
       exact_milestone?: number | null
       exact_milestones_crossed?: number[]
       unlikely_exact?: boolean
-      unlikely_exact_percent?: number | null
     }[]
   } = { round: '34', standings: [] },
 ) {
@@ -298,7 +297,6 @@ describe('RoundSummary', () => {
           round_points: 3,
           position_change: null,
           unlikely_exact: true,
-          unlikely_exact_percent: 10,
         },
       ],
     })
@@ -310,7 +308,7 @@ describe('RoundSummary', () => {
 
     expect(
       await screen.findByText(
-        'Você cravou um placar improvável: só 10% dos palpiteiros da competição acertaram.',
+        'Você cravou um placar improvável: menos de 10% dos palpiteiros da competição acertaram.',
       ),
     ).toBeInTheDocument()
     expect(
@@ -327,7 +325,6 @@ describe('RoundSummary', () => {
           round_points: 3,
           position_change: null,
           unlikely_exact: true,
-          unlikely_exact_percent: 5,
         },
       ],
     })
@@ -349,7 +346,6 @@ describe('RoundSummary', () => {
           round_points: 3,
           position_change: null,
           unlikely_exact: true,
-          unlikely_exact_percent: 10,
         },
       ],
     })
@@ -368,7 +364,7 @@ describe('RoundSummary', () => {
 
     await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
     const arg = share.mock.calls[0][0] as { files: File[]; text: string }
-    expect(arg.files[0].name).toBe('palpitae-placar-improvavel-10.png')
+    expect(arg.files[0].name).toBe('palpitae-placar-improvavel.png')
     const inviteUrl = `${window.location.origin}/convite/AAAA-BBBB`
     expect(arg.text).toContain(inviteUrl)
     expect(arg.text).toMatch(/^Cravei um placar improvável/)
@@ -387,7 +383,6 @@ describe('RoundSummary', () => {
           round_points: 3,
           position_change: null,
           unlikely_exact: true,
-          unlikely_exact_percent: 5,
         },
       ],
     })
@@ -431,7 +426,6 @@ describe('RoundSummary', () => {
           round_points: 3,
           position_change: null,
           unlikely_exact: true,
-          unlikely_exact_percent: 10,
         },
       ],
     })
@@ -488,6 +482,47 @@ describe('RoundSummary', () => {
     expect(arg.text).toContain(inviteUrl)
     expect(arg.text).toMatch(/^Cruzei o marco/)
     expect(mockMilestoneRender.mock.calls[0][0]).toMatchObject({ groupLink: inviteUrl })
+
+    Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })
+  })
+
+  it('membro comum compartilha o placar improvável pelo link público /grupo/:publicId', async () => {
+    const publicId = 'abcdef0123456789abcdef0123456789'
+    mockGroupApi([groupPick('me', 'a', 2, 1, 3)], true, {
+      round: '34',
+      standings: [
+        {
+          user_id: 'me',
+          round_points: 3,
+          position_change: null,
+          unlikely_exact: true,
+        },
+      ],
+    })
+    mockUnlikelyRender.mockResolvedValue(new Blob(['u'], { type: 'image/png' }))
+    const share = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'canShare', { value: () => true, configurable: true })
+    Object.defineProperty(navigator, 'share', { value: share, configurable: true })
+
+    renderSummary([done('a', 2, 1)], [own('a', 2, 1, 3)], {
+      inviteCode: 'AAAA-BBBB',
+      publicId,
+      isOwner: false,
+    })
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Compartilhar placar improvável' }),
+    )
+
+    await waitFor(() => expect(share).toHaveBeenCalledTimes(1))
+    const arg = share.mock.calls[0][0] as { files: File[]; text: string }
+    const groupUrl = `${window.location.origin}/grupo/${publicId}`
+    expect(arg.files[0].name).toBe('palpitae-placar-improvavel.png')
+    expect(arg.text).toContain(groupUrl)
+    expect(arg.text).toContain('menos de 10%')
+    expect(arg.text).not.toContain('AAAA-BBBB')
+    expect(arg.text).not.toContain('/convite/')
+    expect(mockUnlikelyRender.mock.calls[0][0]).toMatchObject({ groupLink: groupUrl })
 
     Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
     Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })

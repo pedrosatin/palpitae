@@ -1,23 +1,22 @@
-/** Limiares da API (auditoria 01 / ADR-029): no máximo 10% com pelo menos 10 palpiteiros. */
+/** Limiares públicos da API (auditoria 01 / ADR-029): no máximo 10% com pelo menos 10 palpiteiros. */
 
 export const UNLIKELY_EXACT_BADGE_LABEL = 'improvável'
 
+export const UNLIKELY_EXACT_THRESHOLD_PERCENT = 10
+
 /** Title e texto para leitor de tela do selo no ranking. */
-export function unlikelyExactBadgeTitle(percent: number | null | undefined): string {
-  if (percent == null) {
-    return 'Placar exato improvável na competição nesta rodada'
-  }
-  return `Placar exato que só ${percent}% dos palpiteiros da competição cravaram nesta rodada`
+export function unlikelyExactBadgeTitle(): string {
+  return `Placar exato que menos de ${UNLIKELY_EXACT_THRESHOLD_PERCENT}% dos palpiteiros da competição cravaram nesta rodada`
 }
 
 /** Frase do resumo (segunda pessoa) quando a rodada de referência tem placar raro. */
-export function unlikelyExactHighlightText(percent: number | null | undefined): string | null {
-  if (percent == null) return null
-  return `Você cravou um placar improvável: só ${percent}% dos palpiteiros da competição acertaram`
+export function unlikelyExactHighlightText(hasUnlikelyExact: boolean): string | null {
+  if (!hasUnlikelyExact) return null
+  return `Você cravou um placar improvável: menos de ${UNLIKELY_EXACT_THRESHOLD_PERCENT}% dos palpiteiros da competição acertaram`
 }
 
 /** Frase do texto compartilhado em primeira pessoa. */
-export function unlikelyExactShareHighlightText(percent: number | null | undefined): string | null {
-  if (percent == null) return null
-  return `Cravei um placar improvável: só ${percent}% dos palpiteiros da competição acertaram`
+export function unlikelyExactShareHighlightText(hasUnlikelyExact: boolean): string | null {
+  if (!hasUnlikelyExact) return null
+  return `Cravei um placar improvável: menos de ${UNLIKELY_EXACT_THRESHOLD_PERCENT}% dos palpiteiros da competição acertaram`
 }

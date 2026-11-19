@@ -33,7 +33,6 @@ function noMilestone(exactHits = 0) {
     exact_milestone: null as ExactMilestone | null,
     exact_milestones_crossed: [] as ExactMilestone[],
     unlikely_exact: false,
-    unlikely_exact_percent: null as number | null,
   }
 }
 
@@ -575,7 +574,6 @@ async function createFixture(wrapDb?: (db: D1Database) => D1Database) {
         exact_milestone: number | null
         exact_milestones_crossed: number[]
         unlikely_exact: boolean
-        unlikely_exact_percent: number | null
       }[]
     }
   }
@@ -1949,18 +1947,16 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
   it('marca placar raro no limiar de 10% com pelo menos 10 palpiteiros', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const match = addMatch({ round: '1' })
-    seedCompetitionTipsters(sqlite, match, 9)
+    seedCompetitionTipsters(sqlite, match, 10)
     addPick('alice', match, { awarded: 3 })
     setBoard('alice', 3, 1)
 
     const body = await standings()
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: true,
-      unlikely_exact_percent: 10,
     })
     expect(body.standings.find((s) => s.user_id === 'bob')).toMatchObject({
       unlikely_exact: false,
-      unlikely_exact_percent: null,
     })
   })
 
@@ -1988,7 +1984,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     const body = await standings()
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: false,
-      unlikely_exact_percent: null,
     })
   })
 
@@ -2005,18 +2000,16 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     // 2/20 = 10%.
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: true,
-      unlikely_exact_percent: 10,
     })
     expect(body.standings.find((s) => s.user_id === 'bob')).toMatchObject({
       unlikely_exact: true,
-      unlikely_exact_percent: 10,
     })
   })
 
   it('mesmo usuário em dois grupos conta uma vez no denominador', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const match = addMatch({ round: '1' })
-    seedCompetitionTipsters(sqlite, match, 9)
+    seedCompetitionTipsters(sqlite, match, 10)
     addPick('alice', match, { awarded: 3 })
     setBoard('alice', 3, 1)
 
@@ -2031,10 +2024,9 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     `)
 
     const body = await standings()
-    // 9 tipsters + alice = 10 distintos, não 11.
+    // 10 tipsters + alice = 11 distintos, não 12.
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: true,
-      unlikely_exact_percent: 10,
     })
     expect(
       sqlite
@@ -2043,14 +2035,14 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
            WHERE group_id = 'group-a' AND user_id = 'alice' AND match_id = ?`,
         )
         .get(match),
-    ).toEqual({ tipster_count: 10 })
+    ).toEqual({ tipster_count: 11 })
   })
 
   it('grupo solo recebe o selo quando a competição tem massa', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     sqlite.exec(`DELETE FROM group_members WHERE user_id IN ('bob', 'carol')`)
     const match = addMatch({ round: '1' })
-    seedCompetitionTipsters(sqlite, match, 9)
+    seedCompetitionTipsters(sqlite, match, 10)
     addPick('alice', match, { awarded: 3 })
     setBoard('alice', 3, 1)
 
@@ -2058,7 +2050,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     expect(body.standings).toHaveLength(1)
     expect(body.standings[0]).toMatchObject({
       unlikely_exact: true,
-      unlikely_exact_percent: 10,
     })
   })
 
@@ -2085,7 +2076,7 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
   it('releitura da mesma rodada mantém o selo e não duplica a linha', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const match = addMatch({ round: '1' })
-    seedCompetitionTipsters(sqlite, match, 9)
+    seedCompetitionTipsters(sqlite, match, 10)
     addPick('alice', match, { awarded: 3 })
     setBoard('alice', 3, 1)
 
@@ -2106,13 +2097,13 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
   it('não redispara o selo numa rodada seguinte após correção de placar', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const first = addMatch({ round: '1', start: BEFORE, scoredAt: '2026-04-02T00:00:00Z' })
-    seedCompetitionTipsters(sqlite, first, 9)
+    seedCompetitionTipsters(sqlite, first, 10)
     addPick('alice', first, { awarded: 3 })
     setBoard('alice', 3, 1)
     await standings()
 
     const second = addMatch({ round: '2', start: ROUND_START, scoredAt: '2026-05-02T00:00:00Z' })
-    seedCompetitionTipsters(sqlite, second, 9)
+    seedCompetitionTipsters(sqlite, second, 10)
     addPick('alice', second, { awarded: 0 })
     sqlite
       .prepare(
@@ -2126,7 +2117,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     expect(next.round).toBe('2')
     expect(next.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: false,
-      unlikely_exact_percent: null,
     })
 
     // Correção no jogo antigo: a linha da rodada 1 permanece; a 2 não ganha selo novo.
@@ -2165,7 +2155,7 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
       }),
     )
     const match = addMatch({ round: '1' })
-    seedCompetitionTipsters(sqlite, match, 9)
+    seedCompetitionTipsters(sqlite, match, 10)
     addPick('alice', match, { awarded: 3 })
     setBoard('alice', 3, 1)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -2174,7 +2164,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     expect(body.round).toBe('1')
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: false,
-      unlikely_exact_percent: null,
     })
     expect(error).toHaveBeenCalled()
     error.mockRestore()
@@ -2182,8 +2171,99 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     const recovered = await standings()
     expect(recovered.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: true,
-      unlikely_exact_percent: 10,
     })
+  })
+
+  it('não reconhece com 19 tipsters no grupo e 1 de fora (privacidade)', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
+    const match = addMatch({ round: '1' })
+    // 1 tipster privado fora do grupo.
+    seedCompetitionTipsters(sqlite, match, 1)
+    // 18 membros extras no grupo-a (alice já é membro) → 19 no grupo + 1 fora.
+    for (let i = 0; i < 18; i++) {
+      const userId = `in-${i}`
+      sqlite
+        .prepare(
+          `INSERT INTO users (id, email, provider, provider_id, user_name)
+           VALUES (?, ?, 'google', ?, ?)`,
+        )
+        .run(userId, `${userId}@example.com`, `g-${userId}`, userId)
+      sqlite
+        .prepare(
+          `INSERT INTO group_members (id, group_id, user_id, joined_at)
+           VALUES (?, 'group-a', ?, '2026-01-01T00:00:00Z')`,
+        )
+        .run(`gm-${userId}`, userId)
+      sqlite
+        .prepare(
+          `INSERT INTO predictions (
+             id, user_id, group_id, match_id, predicted_home_score, predicted_away_score,
+             points_awarded
+           ) VALUES (?, ?, 'group-a', ?, 0, 0, 0)`,
+        )
+        .run(`p-${userId}-${match}`, userId, match)
+    }
+    addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 3, 1)
+
+    const body = await standings()
+    // tipster_count = 20, exact = 1 (5%), outside = 1 → bloqueado.
+    expect(body.standings.find((s) => s.user_id === 'alice')?.unlikely_exact).toBe(false)
+    expect(
+      sqlite.prepare(`SELECT COUNT(*) AS n FROM unlikely_exacts WHERE group_id = 'group-a'`).get(),
+    ).toEqual({ n: 0 })
+  })
+
+  it('não reconhece com 9 tipsters fora do grupo no limiar de raridade', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
+    const match = addMatch({ round: '1' })
+    seedCompetitionTipsters(sqlite, match, 9)
+    addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 3, 1)
+
+    const body = await standings()
+    // 9 fora + alice = 10 tipsters e 10% de raridade, mas fora < 10.
+    expect(body.standings.find((s) => s.user_id === 'alice')?.unlikely_exact).toBe(false)
+  })
+
+  it('reconhece no limiar de 10 tipsters fora do grupo', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
+    const match = addMatch({ round: '1' })
+    seedCompetitionTipsters(sqlite, match, 10)
+    addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 3, 1)
+
+    const body = await standings()
+    expect(body.standings.find((s) => s.user_id === 'alice')?.unlikely_exact).toBe(true)
+    expect(
+      sqlite
+        .prepare(
+          `SELECT outside_tipster_count FROM unlikely_exacts
+           WHERE group_id = 'group-a' AND user_id = 'alice' AND match_id = ?`,
+        )
+        .get(match),
+    ).toEqual({ outside_tipster_count: 10 })
+  })
+
+  it('reusa match_score_rarity na segunda leitura da mesma rodada', async () => {
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
+    const match = addMatch({ round: '1' })
+    seedCompetitionTipsters(sqlite, match, 10)
+    addPick('alice', match, { awarded: 3 })
+    setBoard('alice', 3, 1)
+
+    await standings()
+    const first = sqlite
+      .prepare(`SELECT tipster_count, exact_count, scored_at_snapshot FROM match_score_rarity WHERE match_id = ?`)
+      .get(match) as { tipster_count: number; exact_count: number; scored_at_snapshot: string }
+    expect(first.tipster_count).toBe(11)
+    expect(first.exact_count).toBe(1)
+
+    await standings()
+    const second = sqlite
+      .prepare(`SELECT tipster_count, exact_count, scored_at_snapshot FROM match_score_rarity WHERE match_id = ?`)
+      .get(match)
+    expect(second).toEqual(first)
   })
 })
 
