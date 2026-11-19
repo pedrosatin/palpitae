@@ -197,6 +197,8 @@ export const EVENT_ALLOWED_PARAMS: Record<string, readonly string[]> = {
   login: ['method', 'origem'],
   share_invite: ['method', 'context'],
   join_group: ['entry_method'],
+  join_request: [],
+  approve_join_request: [],
   submit_criar_grupo: ['origem'],
   click_create_group_preset_selecionado: ['preset'],
   click_create_group_ajuda_pontuacao: ['campo'],

@@ -43,6 +43,7 @@ import type { User } from './types'
  */
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const InvitePage = lazy(() => import('./pages/InvitePage'))
+const GroupJoinPage = lazy(() => import('./pages/GroupJoinPage/GroupJoinPage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const GroupDetailPage = lazy(() => import('./pages/GroupDetailPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
@@ -281,10 +282,12 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
   // demais rotas continuam esperando, porque dependem de saber quem é o usuário.
   const paintLandingEarly = status === 'loading' && landingPrerenderizada
   const isInviteRoute = matchPath('/convite/:code', location.pathname) !== null
+  const isGroupJoinRoute = matchPath('/grupo/:publicId', location.pathname) !== null
 
-  // O convite também não espera o auth, porque o visitante decide nessa tela se entra.
-  // Quem tem sessão conhecida já saiu de `/convite/` no script do index.html.
-  const paintInviteEarly = status === 'loading' && isInviteRoute
+  // O convite e o link de pedido também não esperam o auth: o visitante decide
+  // nessa tela se entra. Quem tem sessão conhecida já saiu de `/convite/` no
+  // script do index.html.
+  const paintInviteEarly = status === 'loading' && (isInviteRoute || isGroupJoinRoute)
 
   // Sem pintura antecipada, seguimos com a tela escura pintada inline no
   // index.html até a rota aparecer — nada de flash branco.
@@ -294,7 +297,7 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
   // teve sessão neste dispositivo. As rotas privadas e quem tem a marca de sessão
   // veem o aviso. A URL fica como está: com a API de volta, "Tentar novamente"
   // abre a mesma rota.
-  const publicRoute = location.pathname === '/' || isInviteRoute
+  const publicRoute = location.pathname === '/' || isInviteRoute || isGroupJoinRoute
   if (status === 'unavailable' && (!publicRoute || hasKnownSession()))
     return (
       <Suspense fallback={null}>
@@ -308,6 +311,7 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
         <Routes>
           <Route path="/" element={<VisitorHome authResolved={status !== 'loading'} />} />
           <Route path="/convite/:code" element={<InvitePage />} />
+          <Route path="/grupo/:publicId" element={<GroupJoinPage />} />
           {/* Durante o loading não sabemos ainda se estas rotas são do
               visitante ou de um usuário logado, então elas não pintam nada. */}
           <Route path="/entrar" element={paintLandingEarly ? null : <LoginPage />} />
@@ -321,6 +325,7 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
       <Routes>
         <Route path="/" element={<DashboardPage user={user!} onLogout={handleLogout} />} />
         <Route path="/convite/:code" element={<InviteRedirect />} />
+        <Route path="/grupo/:publicId" element={<GroupJoinPage user={user} />} />
         <Route
           path="/grupos/:groupId"
           element={<GroupDetailPage user={user!} onLogout={handleLogout} />}

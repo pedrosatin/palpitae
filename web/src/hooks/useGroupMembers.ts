@@ -25,7 +25,7 @@ export function parseGroupMembers(body: unknown): GroupMember[] | null {
 }
 
 /** Shared loader for GET /groups/:id/members (LeaderboardTab + MembersTab). */
-export function useGroupMembers(groupId: string) {
+export function useGroupMembers(groupId: string, reloadToken = 0) {
   const [members, setMembers] = useState<GroupMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +45,7 @@ export function useGroupMembers(groupId: string) {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [groupId])
+  }, [groupId, reloadToken])
 
   return { members, setMembers, loading, error }
 }

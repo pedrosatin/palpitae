@@ -15,7 +15,13 @@ export interface InviteFunnelResponse {
   days: number
   opens: number
   joins: number
-  joinsByMethod: { convite_link: number; convite_antigo: number; codigo: number; unknown: number }
+  joinsByMethod: {
+    convite_link: number
+    convite_antigo: number
+    codigo: number
+    request?: number
+    unknown: number
+  }
   newMembers: number
   existingMembers: number
   unclassifiedJoins: number

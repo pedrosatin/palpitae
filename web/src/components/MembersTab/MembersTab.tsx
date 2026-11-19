@@ -8,16 +8,22 @@ import Avatar from '../Avatar'
 import Button from '../Button'
 import ErrorState from '../ErrorState'
 import MemberBadge from '../MemberBadge'
+import JoinRequestsList from './JoinRequestsList'
 import styles from './MembersTab.module.css'
 
 interface MembersTabProps {
   groupId: string
   currentUserId: string
   onMemberRemoved?: (userId: string) => void
+  onJoinRequestDecided?: (action: 'approve' | 'reject') => void
 }
 
-function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void) {
-  const { members, setMembers, loading, error } = useGroupMembers(groupId)
+function useMembers(
+  groupId: string,
+  onMemberRemoved?: (userId: string) => void,
+  membersReloadToken = 0,
+) {
+  const { members, setMembers, loading, error } = useGroupMembers(groupId, membersReloadToken)
   const [removing, setRemoving] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
@@ -89,13 +95,25 @@ function MemberItem({ member, currentUserId, removing, onRemove }: MemberItemPro
   )
 }
 
-export default function MembersTab({ groupId, currentUserId, onMemberRemoved }: MembersTabProps) {
+export default function MembersTab({
+  groupId,
+  currentUserId,
+  onMemberRemoved,
+  onJoinRequestDecided,
+}: MembersTabProps) {
+  const [membersReloadToken, setMembersReloadToken] = useState(0)
   const { members, loading, error, removing, confirmDialog, removeMember } = useMembers(
     groupId,
     onMemberRemoved,
+    membersReloadToken,
   )
 
-  if (loading) {
+  function handleDecided(action: 'approve' | 'reject') {
+    if (action === 'approve') setMembersReloadToken((n) => n + 1)
+    onJoinRequestDecided?.(action)
+  }
+
+  if (loading && membersReloadToken === 0) {
     return <p className={styles.loading}>Carregando membros...</p>
   }
 
@@ -105,6 +123,7 @@ export default function MembersTab({ groupId, currentUserId, onMemberRemoved }: 
 
   return (
     <div className={styles.root}>
+      <JoinRequestsList groupId={groupId} onDecided={handleDecided} />
       <p className={styles.hint}>
         {members.length} {members.length === 1 ? 'membro' : 'membros'} neste grupo
       </p>

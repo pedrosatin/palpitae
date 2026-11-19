@@ -6,6 +6,8 @@ interface GroupTabsProps {
   activeTab: Tab
   showStandings: boolean
   isAdmin: boolean
+  /** Contador de pedidos pendentes (só dono). */
+  pendingJoinRequestCount?: number
   tabsOffset: number
   tabHref: (tab: Tab) => string
   onTabClick: (e: React.MouseEvent<HTMLAnchorElement>, tab: Tab) => void
@@ -52,6 +54,7 @@ export default function GroupTabs({
   activeTab,
   showStandings,
   isAdmin,
+  pendingJoinRequestCount = 0,
   tabsOffset,
   tabHref,
   onTabClick,
@@ -123,6 +126,16 @@ export default function GroupTabs({
           onClick={(e) => onTabClick(e, 'members')}
         >
           Membros
+          {pendingJoinRequestCount > 0 && (
+            <span className={styles.tabBadge}>
+              <span aria-hidden="true">{pendingJoinRequestCount}</span>
+              <span className="sr-only">
+                {pendingJoinRequestCount === 1
+                  ? '1 pedido pendente'
+                  : `${pendingJoinRequestCount} pedidos pendentes`}
+              </span>
+            </span>
+          )}
         </a>
       )}
     </div>
