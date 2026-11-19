@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS exact_milestones (
 CREATE INDEX IF NOT EXISTS idx_exact_milestones_group
   ON exact_milestones(group_id);
 
+-- Cascata da exclusão de conta (ADR-026) localiza as linhas pelo user_id.
+CREATE INDEX IF NOT EXISTS idx_exact_milestones_user
+  ON exact_milestones(user_id);
+
 -- Grupo já passou pela primeira leitura com rodada de referência após o deploy.
 -- Sem esta marca, um grupo novo lido com 0 exatos e depois com 5 seria tratado
 -- como backfill e perderia o destaque do primeiro cruzamento.

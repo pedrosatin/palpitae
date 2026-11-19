@@ -243,17 +243,7 @@ export function computeStreaks(
   return streaks
 }
 
-/**
- * Agregados dos jogos da competição do grupo, por rodada e fase.
- *
- * `pending` conta jogo aberto e não adiado e jogo encerrado sem `scored_at`. O
- * segundo caso vale mesmo com `postponed = 1`: até o fallback da ESPN passar a
- * zerar a flag ao encerrar o jogo, ele gravava `finished` com `postponed = 1`.
- */
-async function fetchRoundPhases(db: D1Database, groupId: string): Promise<RoundPhaseRow[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT
+const ROUND_PHASES_SQL = `SELECT
          m.round,
          m.phase,
          SUM(m.status = 'finished' AND m.scored_at IS NOT NULL) AS finished,
@@ -263,22 +253,9 @@ async function fetchRoundPhases(db: D1Database, groupId: string): Promise<RoundP
        FROM groups g
        JOIN matches m ON m.competition_id = g.competition_id
        WHERE g.id = ?
-       GROUP BY m.round, m.phase`,
-    )
-    .bind(groupId)
-    .all<RoundPhaseRow>()
-  return results
-}
+       GROUP BY m.round, m.phase`
 
-/** Membros elegíveis com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
-async function fetchRoundMembers(
-  db: D1Database,
-  groupId: string,
-  round: string,
-): Promise<RoundMemberRow[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT
+const ROUND_MEMBERS_SQL = `SELECT
          gm.user_id,
          gm.joined_at,
          COALESCE(l.total_points, 0) AS total_points,
@@ -305,32 +282,78 @@ async function fetchRoundMembers(
            AND CAST(m.round AS INTEGER) >= CAST(? AS INTEGER)
          GROUP BY p.user_id
        ) r ON gm.user_id = r.user_id
-       WHERE gm.group_id = ? AND ${notBannedSql('gm')}`,
-    )
-    .bind(round, round, groupId, round, groupId)
-    .all<RoundMemberRow>()
-  return results
-}
+       WHERE gm.group_id = ? AND ${notBannedSql('gm')}`
 
-/**
- * Palpites do grupo nos jogos encerrados e pontuados, por membro e rodada numerada.
- * Palpite em jogo adiado fica de fora, para não cobrir a falta de outro jogo da rodada.
- */
-async function fetchMemberRoundPicks(db: D1Database, groupId: string): Promise<MemberRoundPicks[]> {
-  const { results } = await db
-    .prepare(
-      `SELECT p.user_id, m.round, COUNT(*) AS picks
+const MEMBER_ROUND_PICKS_SQL = `SELECT p.user_id, m.round, COUNT(*) AS picks
        FROM predictions p
        JOIN groups g ON g.id = p.group_id
        JOIN matches m ON m.id = p.match_id AND m.competition_id = g.competition_id
        WHERE p.group_id = ?
          AND m.status = 'finished' AND m.scored_at IS NOT NULL
          AND m.round GLOB '[0-9]*' AND m.round NOT GLOB '*[^0-9]*'
-       GROUP BY p.user_id, m.round`,
-    )
-    .bind(groupId)
-    .all<MemberRoundPicks>()
+       GROUP BY p.user_id, m.round`
+
+/**
+ * Agregados dos jogos da competição do grupo, por rodada e fase.
+ *
+ * `pending` conta jogo aberto e não adiado e jogo encerrado sem `scored_at`. O
+ * segundo caso vale mesmo com `postponed = 1`: até o fallback da ESPN passar a
+ * zerar a flag ao encerrar o jogo, ele gravava `finished` com `postponed = 1`.
+ */
+async function fetchRoundPhases(db: D1Database, groupId: string): Promise<RoundPhaseRow[]> {
+  const { results } = await db.prepare(ROUND_PHASES_SQL).bind(groupId).all<RoundPhaseRow>()
   return results
+}
+
+/** Membros elegíveis com os totais e as somas da rodada e da rodada em diante. Sem palpite, 0. */
+async function fetchRoundMembers(
+  db: D1Database,
+  groupId: string,
+  round: string,
+): Promise<RoundMemberRow[]> {
+  const { results } = await db
+    .prepare(ROUND_MEMBERS_SQL)
+    .bind(round, round, groupId, round, groupId)
+    .all<RoundMemberRow>()
+  return results
+}
+
+/**
+ * Lê fases, membros e palpites no mesmo `db.batch`, para as três consultas
+ * verem o mesmo estado do D1. O `round` do bind vem de uma leitura prévia;
+ * se a referência no lote divergir, a chamada refetcha os membros.
+ */
+async function fetchStandingsSnapshot(
+  db: D1Database,
+  groupId: string,
+  round: string,
+): Promise<{
+  phases: RoundPhaseRow[]
+  members: RoundMemberRow[]
+  picks: MemberRoundPicks[]
+  round: string | null
+}> {
+  const [phasesResult, membersResult, picksResult] = await db.batch([
+    db.prepare(ROUND_PHASES_SQL).bind(groupId),
+    db.prepare(ROUND_MEMBERS_SQL).bind(round, round, groupId, round, groupId),
+    db.prepare(MEMBER_ROUND_PICKS_SQL).bind(groupId),
+  ])
+  const phases = (phasesResult.results ?? []) as RoundPhaseRow[]
+  const syncedRound = pickReferenceRound(phases)
+  if (syncedRound === null) {
+    return { phases, members: [], picks: [], round: null }
+  }
+  if (syncedRound !== round) {
+    const members = await fetchRoundMembers(db, groupId, syncedRound)
+    const picks = (picksResult.results ?? []) as MemberRoundPicks[]
+    return { phases, members, picks, round: syncedRound }
+  }
+  return {
+    phases,
+    members: (membersResult.results ?? []) as RoundMemberRow[],
+    picks: (picksResult.results ?? []) as MemberRoundPicks[],
+    round: syncedRound,
+  }
 }
 
 async function fetchExactMilestones(db: D1Database, groupId: string): Promise<ExactMilestoneRow[]> {
@@ -345,16 +368,59 @@ async function fetchExactMilestones(db: D1Database, groupId: string): Promise<Ex
   return results
 }
 
-async function isExactMilestonesInitialized(db: D1Database, groupId: string): Promise<boolean> {
-  const row = await db
-    .prepare(`SELECT 1 AS ok FROM exact_milestones_initialized WHERE group_id = ?`)
+/**
+ * Tenta marcar o grupo como inicializado. Só quem recebe `changes > 0` faz o
+ * backfill com `round` nulo; quem perde segue o caminho de grupo já inicializado.
+ */
+async function tryAcquireExactMilestonesInit(db: D1Database, groupId: string): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `INSERT INTO exact_milestones_initialized (group_id) VALUES (?)
+       ON CONFLICT (group_id) DO NOTHING`,
+    )
     .bind(groupId)
-    .first<{ ok: number }>()
-  return row !== null
+    .run()
+  return (result.meta?.changes ?? 0) > 0
+}
+
+async function releaseExactMilestonesInit(db: D1Database, groupId: string): Promise<void> {
+  await db
+    .prepare(`DELETE FROM exact_milestones_initialized WHERE group_id = ?`)
+    .bind(groupId)
+    .run()
 }
 
 function milestoneKey(userId: string, threshold: number): string {
   return `${userId}:${threshold}`
+}
+
+function backfillStatements(db: D1Database, groupId: string, members: RoundMemberRow[]) {
+  return backfillMilestoneInserts(members).map((row) =>
+    db
+      .prepare(
+        `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
+         VALUES (?, ?, ?, NULL)
+         ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
+      )
+      .bind(groupId, row.user_id, row.threshold),
+  )
+}
+
+function newMilestoneStatements(
+  db: D1Database,
+  groupId: string,
+  referenceRound: string,
+  pending: { user_id: string; threshold: ExactMilestone }[],
+) {
+  return pending.map((row) =>
+    db
+      .prepare(
+        `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
+      )
+      .bind(groupId, row.user_id, row.threshold, referenceRound),
+  )
 }
 
 /** Linhas a gravar no backfill da primeira leitura: limiares já atingidos, sem destaque. */
@@ -402,12 +468,14 @@ function crossedMap(
 /**
  * Grava marcos na primeira observação e devolve o mapa de destaque da rodada.
  *
- * Sem rodada de referência o chamador não entra aqui. Na primeira leitura do
- * grupo, grava os limiares já atingidos com `round` nulo (backfill, sem
- * destaque) e marca o grupo como inicializado. Depois disso, cada limiar novo
- * recebe a rodada de referência atual. A chave primária com `ON CONFLICT DO
- * NOTHING` evita duas leituras concorrentes gravarem o mesmo marco com rodadas
- * diferentes; a releitura decide o que destacar.
+ * Sem rodada de referência o chamador não entra aqui. A inicialização é
+ * adquirida com `INSERT ... ON CONFLICT DO NOTHING` no marcador do grupo: só
+ * quem recebe `changes > 0` faz o backfill com `round` nulo. Quem perde segue
+ * o caminho de grupo já inicializado e grava limiares novos com a rodada de
+ * referência. A chave primária com `ON CONFLICT DO NOTHING` evita duas
+ * leituras concorrentes gravarem o mesmo marco com rodadas diferentes; a
+ * releitura decide o que destacar. Falha de escrita no D1 é registrada e a
+ * resposta usa só as linhas já confirmadas no banco.
  */
 export async function recordExactMilestones(
   db: D1Database,
@@ -415,45 +483,58 @@ export async function recordExactMilestones(
   referenceRound: string,
   members: RoundMemberRow[],
 ): Promise<Map<string, ExactMilestone[]>> {
-  const initialized = await isExactMilestonesInitialized(db, groupId)
+  try {
+    return await writeExactMilestones(db, groupId, referenceRound, members)
+  } catch (error) {
+    console.error('[groups] Falha ao gravar exact_milestones do grupo %s:', groupId, error)
+    try {
+      const existing = await fetchExactMilestones(db, groupId)
+      return crossedMap(existing, members, referenceRound)
+    } catch (readError) {
+      console.error(
+        '[groups] Falha ao reler exact_milestones do grupo %s após erro de gravação:',
+        groupId,
+        readError,
+      )
+      return crossedMap([], members, referenceRound)
+    }
+  }
+}
+
+async function writeExactMilestones(
+  db: D1Database,
+  groupId: string,
+  referenceRound: string,
+  members: RoundMemberRow[],
+): Promise<Map<string, ExactMilestone[]>> {
+  const acquired = await tryAcquireExactMilestonesInit(db, groupId)
   let existing = await fetchExactMilestones(db, groupId)
 
-  if (!initialized) {
-    const statements = [
-      db
-        .prepare(
-          `INSERT INTO exact_milestones_initialized (group_id) VALUES (?)
-           ON CONFLICT (group_id) DO NOTHING`,
-        )
-        .bind(groupId),
-      ...backfillMilestoneInserts(members).map((row) =>
-        db
-          .prepare(
-            `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
-             VALUES (?, ?, ?, NULL)
-             ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
+  if (acquired) {
+    const statements = backfillStatements(db, groupId, members)
+    if (statements.length > 0) {
+      try {
+        await db.batch(statements)
+      } catch (error) {
+        try {
+          await releaseExactMilestonesInit(db, groupId)
+        } catch (releaseError) {
+          console.error(
+            '[groups] Falha ao liberar exact_milestones_initialized do grupo %s:',
+            groupId,
+            releaseError,
           )
-          .bind(groupId, row.user_id, row.threshold),
-      ),
-    ]
-    await db.batch(statements)
-    existing = await fetchExactMilestones(db, groupId)
+        }
+        throw error
+      }
+      existing = await fetchExactMilestones(db, groupId)
+    }
     return crossedMap(existing, members, referenceRound)
   }
 
   const pending = newMilestoneInserts(members, existing)
   if (pending.length > 0) {
-    await db.batch(
-      pending.map((row) =>
-        db
-          .prepare(
-            `INSERT INTO exact_milestones (group_id, user_id, threshold, round)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT (group_id, user_id, threshold) DO NOTHING`,
-          )
-          .bind(groupId, row.user_id, row.threshold, referenceRound),
-      ),
-    )
+    await db.batch(newMilestoneStatements(db, groupId, referenceRound, pending))
     existing = await fetchExactMilestones(db, groupId)
   }
 
@@ -464,16 +545,25 @@ export async function getRoundStandings(
   db: D1Database,
   groupId: string,
 ): Promise<RoundStandingsResponse> {
-  const phases = await fetchRoundPhases(db, groupId)
-  const round = pickReferenceRound(phases)
-  if (round === null) return { round: null, standings: [] }
-  const [members, picks] = await Promise.all([
-    fetchRoundMembers(db, groupId, round),
-    fetchMemberRoundPicks(db, groupId),
-  ])
-  const crossedByUser = await recordExactMilestones(db, groupId, round, members)
+  const preliminary = await fetchRoundPhases(db, groupId)
+  const preliminaryRound = pickReferenceRound(preliminary)
+  if (preliminaryRound === null) return { round: null, standings: [] }
+
+  const snapshot = await fetchStandingsSnapshot(db, groupId, preliminaryRound)
+  if (snapshot.round === null) return { round: null, standings: [] }
+
+  const crossedByUser = await recordExactMilestones(
+    db,
+    groupId,
+    snapshot.round,
+    snapshot.members,
+  )
   return {
-    round,
-    standings: computeRoundStandings(members, computeStreaks(phases, picks), crossedByUser),
+    round: snapshot.round,
+    standings: computeRoundStandings(
+      snapshot.members,
+      computeStreaks(snapshot.phases, snapshot.picks),
+      crossedByUser,
+    ),
   }
 }

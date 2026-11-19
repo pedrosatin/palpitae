@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import worker from '../index'
 import { signJwt } from '../auth/jwt'
+import { flakyD1 } from '../testing/flakyD1'
 import { finalScore } from '../testing/matchFixtures'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
@@ -15,6 +16,7 @@ import {
   highestExactMilestone,
   newMilestoneInserts,
   pickReferenceRound,
+  recordExactMilestones,
   thresholdsReached,
   type ExactMilestone,
   type ExactMilestoneRow,
@@ -428,9 +430,74 @@ interface MatchSeed {
   scoredAt?: string
 }
 
-async function createFixture() {
-  const { sqlite, db } = createSqliteD1()
+type Barrier = { ready: Promise<void>; release: () => void }
+
+function createBarrierControl() {
+  let pause: { reached: () => void; resume: Promise<void> } | undefined
+  function arm(): Barrier {
+    let release!: () => void
+    let reached!: () => void
+    const ready = new Promise<void>((resolve) => {
+      reached = resolve
+    })
+    const resume = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    pause = { reached, resume }
+    return { ready, release }
+  }
+  async function hit() {
+    const barrier = pause
+    pause = undefined
+    if (!barrier) return
+    barrier.reached()
+    await barrier.resume
+  }
+  return { arm, hit }
+}
+
+/** D1 que pausa depois de adquirir o marcador de inicialização. */
+function pauseAfterInitAcquire(db: D1Database, control: ReturnType<typeof createBarrierControl>) {
+  return {
+    prepare(sql: string) {
+      const statement = db.prepare(sql)
+      if (!sql.includes('INSERT INTO exact_milestones_initialized')) return statement
+      return {
+        bind(...values: unknown[]) {
+          const bound = statement.bind(...values)
+          return {
+            ...bound,
+            async run() {
+              const result = await bound.run()
+              await control.hit()
+              return result
+            },
+          }
+        },
+      }
+    },
+    batch: db.batch.bind(db),
+  } as D1Database
+}
+
+/**
+ * D1 que pausa na entrada do primeiro `batch`. Em `getRoundStandings` esse
+ * lote é a leitura conjunta de fases, membros e palpites.
+ */
+function pauseBeforeFirstBatch(db: D1Database, control: ReturnType<typeof createBarrierControl>) {
+  return {
+    prepare: db.prepare.bind(db),
+    async batch(statements: Parameters<D1Database['batch']>[0]) {
+      await control.hit()
+      return db.batch(statements)
+    },
+  } as D1Database
+}
+
+async function createFixture(wrapDb?: (db: D1Database) => D1Database) {
+  const { sqlite, db: rawDb } = createSqliteD1()
   handles.push(sqlite)
+  const db = wrapDb ? wrapDb(rawDb) : rawDb
 
   sqlite.exec(`
     INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
@@ -581,7 +648,7 @@ async function createFixture() {
       .run(user, total, exact)
   }
 
-  return { sqlite, get, standings, addMatch, addPick, setBoard, setScoredAt }
+  return { sqlite, db, get, standings, addMatch, addPick, setBoard, setScoredAt }
 }
 
 describe('computeStreaks', () => {
@@ -1435,6 +1502,291 @@ describe('GET /groups/:id/round-standings', () => {
         .prepare(`SELECT COUNT(*) AS n FROM exact_milestones_initialized WHERE group_id = 'group-a'`)
         .get(),
     ).toEqual({ n: 0 })
+  })
+
+  it('inicialização concorrente: quem perde o marcador grava o marco com a rodada', async () => {
+    const control = createBarrierControl()
+    const { sqlite, db, addMatch } = await createFixture((raw) =>
+      pauseAfterInitAcquire(raw, control),
+    )
+    addMatch({ round: '1' })
+    const membersZero = [
+      member({ user_id: 'alice', exact_hits: 0 }),
+      member({ user_id: 'bob', exact_hits: 0 }),
+      member({ user_id: 'carol', exact_hits: 0 }),
+    ]
+    const membersFive = [
+      member({ user_id: 'alice', exact_hits: 5 }),
+      member({ user_id: 'bob', exact_hits: 0 }),
+      member({ user_id: 'carol', exact_hits: 0 }),
+    ]
+
+    const gate = control.arm()
+    const first = recordExactMilestones(db, 'group-a', '1', membersZero)
+    await gate.ready
+    const second = await recordExactMilestones(db, 'group-a', '1', membersFive)
+    gate.release()
+    await first
+
+    expect(second.get('alice')).toEqual([5])
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: '1' }])
+  })
+
+  it('falha na primeira inicialização responde 200 e a leitura seguinte grava', async () => {
+    let failInit = true
+    const { sqlite, standings, addMatch, setBoard } = await createFixture((raw) =>
+      flakyD1(raw, {
+        failStatement: (sql) => {
+          if (!failInit) return false
+          if (!sql.includes('INSERT INTO exact_milestones_initialized')) return false
+          failInit = false
+          return true
+        },
+      }),
+    )
+    addMatch({ round: '1' })
+    setBoard('alice', 15, 5)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const failed = await standings()
+    expect(failed.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [],
+    })
+    expect(
+      sqlite
+        .prepare(`SELECT COUNT(*) AS n FROM exact_milestones_initialized WHERE group_id = 'group-a'`)
+        .get(),
+    ).toEqual({ n: 0 })
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+
+    const ok = await standings()
+    expect(ok.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: null }])
+  })
+
+  it('falha no backfill libera o marcador e a leitura seguinte reinicializa', async () => {
+    let failBackfill = true
+    const { sqlite, standings, addMatch, setBoard } = await createFixture((raw) =>
+      flakyD1(raw, {
+        failBatch: (sqls) => {
+          if (!failBackfill) return false
+          if (!sqls.some((sql) => sql.includes('INSERT INTO exact_milestones'))) return false
+          failBackfill = false
+          return true
+        },
+      }),
+    )
+    addMatch({ round: '1' })
+    setBoard('alice', 15, 5)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const failed = await standings()
+    expect(failed.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestones_crossed: [],
+    })
+    expect(
+      sqlite
+        .prepare(`SELECT COUNT(*) AS n FROM exact_milestones_initialized WHERE group_id = 'group-a'`)
+        .get(),
+    ).toEqual({ n: 0 })
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+
+    const ok = await standings()
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: null }])
+    expect(ok.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestones_crossed: [],
+    })
+  })
+
+  it('falha ao gravar marco posterior responde 200 e a leitura seguinte grava', async () => {
+    let failMilestone = false
+    const { sqlite, standings, addMatch, setBoard } = await createFixture((raw) =>
+      flakyD1(raw, {
+        failBatch: (sqls) => {
+          if (!failMilestone) return false
+          if (!sqls.some((sql) => sql.includes('INSERT INTO exact_milestones'))) return false
+          failMilestone = false
+          return true
+        },
+      }),
+    )
+    addMatch({ round: '1' })
+    await standings()
+    setBoard('alice', 15, 5)
+    addMatch({ round: '2', start: ROUND_START })
+    failMilestone = true
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const failed = await standings()
+    expect(failed.round).toBe('2')
+    expect(failed.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        )
+        .get(),
+    ).toEqual({ n: 0 })
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
+
+    const ok = await standings()
+    expect(ok.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: '2' }])
+  })
+
+  it('leitura conjunta de fases e membros usa a referência do mesmo snapshot', async () => {
+    const control = createBarrierControl()
+    const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture((raw) =>
+      pauseBeforeFirstBatch(raw, control),
+    )
+    const prior = [1, 2, 3, 4].map(() =>
+      addMatch({ round: '33', start: BEFORE, scoredAt: '2026-03-02T00:00:00Z' }),
+    )
+    for (const match of prior) addPick('alice', match, { awarded: 3 })
+    addMatch({ round: '34', start: ROUND_START, scoredAt: '2026-05-01T20:00:00Z' })
+    setBoard('alice', 12, 4)
+    // Primeira leitura (sem barreira) inicializa o grupo.
+    await standings()
+
+    const gate = control.arm()
+    const pending = standings()
+    await gate.ready
+    // Entre a leitura preliminar (34) e o batch, a 35 fecha e o total já reflete o 5º exato.
+    const late = addMatch({
+      round: '33',
+      start: BEFORE,
+      scoredAt: '2026-05-10T12:00:00Z',
+    })
+    addPick('alice', late, { awarded: 3 })
+    setBoard('alice', 15, 5)
+    addMatch({ round: '35', start: AFTER, scoredAt: '2026-06-02T00:00:00Z' })
+    gate.release()
+
+    const body = await pending
+    expect(body.round).toBe('35')
+    expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice' AND threshold = 5`,
+        )
+        .get(),
+    ).toEqual({ round: '35' })
+  })
+
+  it('membro que sai e volta ao grupo mantém o registro do marco', async () => {
+    const { sqlite, standings, addMatch, setBoard } = await createFixture()
+    addMatch({ round: '1' })
+    await standings()
+    setBoard('bob', 15, 5)
+    addMatch({ round: '2', start: ROUND_START })
+    await standings()
+
+    sqlite.exec(`DELETE FROM group_members WHERE user_id = 'bob' AND group_id = 'group-a'`)
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'bob'`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: '2' }])
+
+    sqlite
+      .prepare(
+        `INSERT INTO group_members (id, group_id, user_id, joined_at)
+         VALUES ('gm-bob-2', 'group-a', 'bob', '2026-07-01T00:00:00Z')`,
+      )
+      .run()
+
+    const body = await standings()
+    expect(body.standings.find((s) => s.user_id === 'bob')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT COUNT(*) AS n FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'bob' AND threshold = 5`,
+        )
+        .get(),
+    ).toEqual({ n: 1 })
+  })
+
+  it('correção de placar que tira e devolve o exato não recria nem muda a rodada', async () => {
+    const { sqlite, standings, addMatch, setBoard } = await createFixture()
+    addMatch({ round: '1' })
+    await standings()
+    setBoard('alice', 15, 5)
+    addMatch({ round: '2', start: ROUND_START })
+    await standings()
+
+    setBoard('alice', 12, 4)
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: null,
+      exact_milestones_crossed: [5],
+    })
+
+    setBoard('alice', 15, 5)
+    expect((await standings()).standings.find((s) => s.user_id === 'alice')).toMatchObject({
+      exact_milestone: 5,
+      exact_milestones_crossed: [5],
+    })
+    expect(
+      sqlite
+        .prepare(
+          `SELECT threshold, round FROM exact_milestones
+           WHERE group_id = 'group-a' AND user_id = 'alice'`,
+        )
+        .all(),
+    ).toEqual([{ threshold: 5, round: '2' }])
   })
 })
 

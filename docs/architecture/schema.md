@@ -543,6 +543,7 @@ CREATE TABLE IF NOT EXISTS exact_milestones (
 );
 
 CREATE INDEX IF NOT EXISTS idx_exact_milestones_group ON exact_milestones(group_id);
+CREATE INDEX IF NOT EXISTS idx_exact_milestones_user ON exact_milestones(user_id);
 
 CREATE TABLE IF NOT EXISTS exact_milestones_initialized (
   group_id TEXT PRIMARY KEY REFERENCES groups(id) ON DELETE CASCADE,
