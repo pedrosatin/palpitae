@@ -7,7 +7,13 @@ import type { ProviderDrain } from './drainCoordinator'
 import { ESPN_REQUEST_CALLS, isEspnRefusal } from './espnAccess'
 import { ESPN_MAX_CONCURRENT_COMPETITIONS } from './espnQuota'
 import { espnWriteCalls } from './espnSync'
-import { httpContextOf, logPostSyncFailures, scoreWithinBudget } from './fdWork'
+import {
+  advanceCompetitionStatus,
+  RECONCILE_CALLS,
+  httpContextOf,
+  logPostSyncFailures,
+  scoreWithinBudget,
+} from './fdWork'
 import { readProviderState } from './providerBudget'
 import {
   deferralOf,
@@ -20,6 +26,7 @@ import {
   type SyncedHandler,
   type WorkOutcome,
 } from './providerWork'
+import { ESPN_DISCOVERY_DATE_COUNT } from './matchPollingWindow'
 import { MIN_SCORING_CALLS } from './scoring'
 import { syncFixtures } from './sync'
 
@@ -96,8 +103,7 @@ export async function deferEspnWork(
  *   jogos e 100 times), só quando a data traz eventos;
  * - pontuação do sync manual e da descoberta: o mínimo para planejar e gravar
  *   uma vez (`MIN_SCORING_CALLS`), o resto retoma no tick seguinte. O status da
- *   competição não avança aqui, ao contrário da football-data: depende da
- *   descoberta completa, que só o produtor vê.
+ *   competição usa a evidência agregada das nove datas (mais 3 chamadas).
  */
 const DATE_EVENTS = 20
 const DATE_TEAMS = 40
@@ -113,9 +119,20 @@ export function espnSyncCost(dateCount: number): number {
   return ESPN_REQUEST_CALLS * dates + espnWriteCalls(DATE_EVENTS * dates, DATE_TEAMS * dates)
 }
 
+export function espnDiscoveryCost(dateCount: number): number {
+  return espnSyncCost(dateCount) + MIN_SCORING_CALLS + RECONCILE_CALLS
+}
+
 export function espnItemCost(item: ProviderWorkItem): number {
   const sync = espnSyncCost(1)
-  return item.kind === 'manual' || item.kind === 'discovery' ? sync + MIN_SCORING_CALLS : sync
+  return (
+    sync +
+    (item.kind === 'discovery'
+      ? MIN_SCORING_CALLS + 3
+      : item.kind === 'manual'
+        ? MIN_SCORING_CALLS
+        : 0)
+  )
 }
 
 /** O item mais barato da ESPN: um `result` ou `late` de uma data. */
@@ -184,9 +201,8 @@ export function runEspnWorkItem(
  * Pós-sync: o sync administrativo e a descoberta repontuam os jogos que o sync
  * deixou encerrados sem `scored_at`, com o saldo que sobra ao item. Pontuação
  * que não termina devolve o item sem tentativa, e o dreno seguinte retoma. O
- * status da competição não avança aqui: um item cobre uma data, e o status
- * depende da descoberta completa (jogos futuros, times a definir), que só o
- * produtor vê. Resultado do poller é pontuado no tick seguinte, que lê as
+ * status usa os descartes agregados das nove datas da janela durável; evidência
+ * incompleta impede encerrar a competição. Resultado do poller é pontuado no tick seguinte, que lê as
  * pendências no D1.
  */
 export function espnSyncedHandler(): SyncedHandler {
@@ -194,7 +210,46 @@ export function espnSyncedHandler(): SyncedHandler {
     if (item.kind !== 'manual' && item.kind !== 'discovery') return
     const competitionId = result?.competitionId || item.competitionId
     if (!competitionId) return
-    return scoreWithinBudget(competitionId, budget)
+    const scoring = await scoreWithinBudget(
+      competitionId,
+      budget,
+      item.kind === 'discovery' ? 3 : 0,
+    )
+    if (scoring || item.kind !== 'discovery') return scoring
+    // Só o dono do lease registra a evidência da data, inclusive nas janelas sobrepostas.
+    await budget.db
+      .prepare(`UPDATE discovery_dates SET discarded_tbd = ?1
+      WHERE competition_id = ?2 AND date = ?3 AND EXISTS (
+        SELECT 1 FROM provider_work WHERE provider = 'espn' AND kind = 'discovery'
+          AND competition_code = ?4 AND season = ?5 AND round = ?3
+          AND lease_owner = ?6 AND status = 'running')`)
+      .bind(
+        result?.discardedTbd ?? 0,
+        competitionId,
+        item.round,
+        item.competitionCode,
+        item.season,
+        item.leaseOwner,
+      )
+      .run()
+    const evidence = await budget.db
+      .prepare(`SELECT SUM(discarded_tbd) AS tbd
+      FROM discovery_dates WHERE competition_id = ?1
+        AND window_start = (SELECT MAX(window_start) FROM discovery_dates WHERE competition_id = ?1)
+      HAVING COUNT(*) = ?2 AND COUNT(discarded_tbd) = ?2
+        AND NOT EXISTS (SELECT 1 FROM discovery_dates WHERE competition_id = ?1 AND discarded_tbd IS NULL)`)
+      .bind(competitionId, ESPN_DISCOVERY_DATE_COUNT)
+      .first<{ tbd: number }>()
+    if (evidence) {
+      const advanced = await advanceCompetitionStatus(
+        budget.db,
+        undefined,
+        competitionId,
+        Date.now(),
+        evidence.tbd,
+      )
+      if (!advanced) return { incomplete: true }
+    }
   }
 }
 

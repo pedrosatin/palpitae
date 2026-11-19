@@ -1,12 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { logError, tryLogError, tryLogEvent } from '../observability/events'
-import {
-  createProviderHttpObserver,
-  type ProviderHttpContext,
-} from '../observability/providerHttp'
+import { createProviderHttpObserver, type ProviderHttpContext } from '../observability/providerHttp'
 import { CallBudgetExhaustedError } from './callBudget'
 import { isEspnRefusal } from './espnAccess'
-import { reconcileCompetitionStatus } from './competitionLifecycle'
+import { reconcileCompetitionStatus, type DiscoveryQueueGuard } from './competitionLifecycle'
 import type { ProviderDrain } from './drainCoordinator'
 import { CYCLE_FIXED_CALLS, type DrainBudget, type ItemBudget } from './drainBudget'
 import { FootballDataQuotaError } from './footballDataQuota'
@@ -75,7 +72,7 @@ const REQUEST_CALLS = 2
 const ROUND_MATCHES = 10
 const SEASON_MATCHES = 380
 const TEAMS = 20
-const RECONCILE_CALLS = 1
+export const RECONCILE_CALLS = 1
 
 /**
  * Custo estimado só do sync do item (requisição e gravação de uma rodada ou do
@@ -196,9 +193,10 @@ export async function advanceCompetitionStatus(
   competitionId: string,
   now: number,
   tbdDiscarded: number,
+  queue?: DiscoveryQueueGuard,
 ): Promise<boolean> {
   try {
-    const status = await reconcileCompetitionStatus(db, competitionId, now, tbdDiscarded)
+    const status = await reconcileCompetitionStatus(db, competitionId, now, tbdDiscarded, queue)
     if (status === 'finished') {
       console.info(`[discovery] Competição ${competitionId} encerrada; sai da descoberta diária.`)
     }

@@ -342,13 +342,13 @@ describe('custo de um item da ESPN', () => {
     ).toEqual({ n: 0 })
   })
 
-  it('descoberta de uma data com jogos a pontuar: dentro da estimativa de 13', async () => {
+  it('descoberta de uma data com jogos a pontuar: dentro da estimativa de 16', async () => {
     const work = item({ kind: 'discovery' })
 
     const { cost } = await measuredCost(work, board(10, 20, true))
 
     expect(cost).toBeLessThanOrEqual(espnItemCost(work))
-    expect(espnItemCost(work)).toBe(13)
+    expect(espnItemCost(work)).toBe(16)
   })
 })
 
