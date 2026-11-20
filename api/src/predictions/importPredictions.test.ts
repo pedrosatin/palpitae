@@ -143,13 +143,15 @@ describe('importPredictions, sucesso e only_missing', () => {
     const { run, predict, stored, marker } = setup()
     predict('exato', 'm1', 3, 1)
     predict('exato', 'm2', 1, 1)
+    predict('exato', 'past', 2, 0)
     predict('exato2', 'm1', 0, 0)
 
     const result = await run('exato', 'exato2', { onlyMissing: true })
 
-    expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 0 })
+    expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 1 })
     expect(stored('exato2', 'm1')).toMatchObject({ h: 0, a: 0 })
     expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
+    expect(stored('exato2', 'past')).toBeUndefined()
     expect(marker('exato2')).toBe(1)
   })
 })
@@ -161,6 +163,21 @@ describe('importPredictions, origem incompatível e membership', () => {
     predict('exato', 'm1', 2, 1)
 
     const result = await run('vencedor', 'exato')
+
+    expect(result).toMatchObject({
+      status: 422,
+      error: expect.stringMatching(/só o vencedor/),
+    })
+    expect(stored('exato', 'm1')).toMatchObject({ h: 2, a: 1 })
+    expect(marker('exato')).toBe(0)
+  })
+
+  it('origem só vencedor com only_missing responde 422', async () => {
+    const { run, predict, stored, marker } = setup()
+    predict('vencedor', 'm1', 1, 0)
+    predict('exato', 'm1', 2, 1)
+
+    const result = await run('vencedor', 'exato', { onlyMissing: true })
 
     expect(result).toMatchObject({
       status: 422,
@@ -228,23 +245,72 @@ describe('importPredictions, trava entre plano e escrita', () => {
       if (!onlyMissing) predict('exato2', 'm1', 0, 0)
       hooks.beforeBatch = () => sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
 
-      await run('exato', 'exato2', { onlyMissing })
+      const result = await run('exato', 'exato2', { onlyMissing })
 
+      expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 1 })
       if (onlyMissing) expect(stored('exato2', 'm1')).toBeUndefined()
       else expect(stored('exato2', 'm1')).toMatchObject({ h: 0, a: 0 })
       expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
     },
   )
 
-  it('responde zero e não marca quando o único jogo trava antes da escrita', async () => {
-    const { run, predict, stored, marker, sqlite, hooks } = setup()
+  it.each([false, true])(
+    'responde zero e não marca quando o único jogo trava antes da escrita (only_missing: %s)',
+    async (onlyMissing) => {
+      const { run, predict, stored, marker, sqlite, hooks } = setup()
+      predict('exato', 'm1', 3, 1)
+      hooks.beforeBatch = () => sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
+
+      const result = await run('exato', 'exato2', { onlyMissing })
+
+      expect(result).toMatchObject({ ok: true, imported: 0, locked_skipped: 1 })
+      expect(stored('exato2', 'm1')).toBeUndefined()
+      expect(marker('exato2')).toBe(0)
+    },
+  )
+
+  it('relógio do handler 10 s atrás do banco: jogo recusado na escrita conta como locked_skipped', async () => {
+    const { run, predict, stored, sqlite } = setup()
+    // Plano com now 10 s atrás: m1 ainda aberto. Na escrita, SQL_NOW vê o início passado.
+    const real = Date.now()
+    const startTime = new Date(real - 5_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+    const planNow = new Date(real - 10_000).toISOString()
+    sqlite.prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`).run(startTime)
     predict('exato', 'm1', 3, 1)
-    hooks.beforeBatch = () => sqlite.exec(`UPDATE matches SET status = 'live' WHERE id = 'm1'`)
+    predict('exato', 'm2', 1, 1)
+
+    const result = await run('exato', 'exato2', { now: planNow })
+
+    expect(stored('exato2', 'm1')).toBeUndefined()
+    expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
+    expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 1 })
+  })
+
+  it('jogo que começa no mesmo segundo da escrita conta como locked_skipped', async () => {
+    const { run, predict, stored, sqlite, hooks } = setup()
+    predict('exato', 'm1', 3, 1)
+    predict('exato', 'm2', 1, 1)
+    hooks.beforeBatch = () =>
+      sqlite.exec(
+        `UPDATE matches SET start_time = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = 'm1'`,
+      )
 
     const result = await run('exato', 'exato2')
 
-    expect(result).toMatchObject({ ok: true, imported: 0, locked_skipped: 1 })
     expect(stored('exato2', 'm1')).toBeUndefined()
+    expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
+    expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 1 })
+  })
+
+  it('com only_missing, palpite salvo no destino depois do plano não conta como importado nem bloqueado', async () => {
+    const { run, predict, stored, marker, hooks } = setup()
+    predict('exato', 'm1', 3, 1)
+    hooks.beforeBatch = () => predict('exato2', 'm1', 0, 0)
+
+    const result = await run('exato', 'exato2', { onlyMissing: true })
+
+    expect(result).toMatchObject({ ok: true, imported: 0, locked_skipped: 0 })
+    expect(stored('exato2', 'm1')).toMatchObject({ h: 0, a: 0 })
     expect(marker('exato2')).toBe(0)
   })
 })
@@ -301,7 +367,7 @@ describe('importPredictions, marcador e atomicidade', () => {
   })
 
   it('emite telemetria só quando imported > 0', async () => {
-    const { run, predict } = setup()
+    const { run, predict, sqlite } = setup()
     predict('exato', 'm1', 3, 1)
     const logPredictionSaved = vi.fn()
 
@@ -323,5 +389,28 @@ describe('importPredictions, marcador e atomicidade', () => {
       },
     })
     expect(logPredictionSaved).not.toHaveBeenCalled()
+
+    logPredictionSaved.mockClear()
+    sqlite.exec(`UPDATE matches SET status = 'live'`)
+    const empty = await run('exato', 'vencedor', { deps: { logPredictionSaved } })
+    expect(empty).toMatchObject({ ok: true, imported: 0 })
+    expect(logPredictionSaved).not.toHaveBeenCalled()
+  })
+})
+
+describe('importPredictions, pênaltis na volta', () => {
+  it('com only_missing, descarta o pick da origem quando a ida do destino não empata o agregado', async () => {
+    const { run, predict, stored } = setup()
+    // Origem: 1x0 na ida e 1x0 na volta com mando invertido, agregado 1x1, pick "home".
+    predict('exato', 'ida', 1, 0)
+    predict('exato', 'volta', 1, 0, 'home')
+    // Destino já tem outra ida: com a mesma volta o agregado fica 2x1 e não vai aos pênaltis.
+    predict('exato2', 'ida', 2, 0)
+
+    const result = await run('exato', 'exato2', { onlyMissing: true })
+
+    expect(result).toMatchObject({ ok: true, imported: 1 })
+    expect(stored('exato2', 'ida')).toMatchObject({ h: 2, a: 0 })
+    expect(stored('exato2', 'volta')).toMatchObject({ h: 1, a: 0, pen: null })
   })
 })

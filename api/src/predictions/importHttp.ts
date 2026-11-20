@@ -2,7 +2,7 @@ import type { Context } from 'hono'
 import { isPilotGroupBlocked } from '../groups/membership'
 import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
 import { hashUserId, logEvent } from '../observability'
-import { dailyBudgetRetryAfter, enforceDailyWriteBudget } from '../security/limits'
+import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
 import {
   importPredictions,
@@ -37,6 +37,7 @@ import {
  *   404 — grupo não encontrado
  *   422 — grupos de campeonatos diferentes, ou origem "só vencedor" com destino de placar exato
  *   429 — orçamento diário de escrita excedido
+ *   503 — controle de requisições indisponível
  */
 export async function handleImportPost(c: Context<AppContext>) {
   const userId = c.get('userId')
@@ -86,9 +87,7 @@ export async function handleImportPost(c: Context<AppContext>) {
   )
 
   if ('error' in result) {
-    if (result.status === 429) {
-      c.header('Retry-After', String(dailyBudgetRetryAfter()))
-    }
+    // 429: `dailyBudgetExceededResponse` já gravou Retry-After em `c`.
     return c.json({ error: result.error }, result.status)
   }
 

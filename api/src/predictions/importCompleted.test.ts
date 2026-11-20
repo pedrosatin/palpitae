@@ -117,29 +117,6 @@ describe('Conclusão da importação por membro', () => {
     expect(await sources()).toEqual({})
   })
 
-  it('only_missing preenche só os jogos sem palpite e preserva os existentes', async () => {
-    const { sqlite, request } = setup()
-    sqlite.exec(`
-      INSERT INTO matches (id,competition_id,external_id,provider,home_team_id,away_team_id,start_time,status,round,home_score,away_score)
-        VALUES ('m2','c','test-m2','test','h','v','2099-01-01T00:00:00Z','scheduled','2',NULL,NULL),
-               ('done','c','test-done','test','h','v','2000-01-01T00:00:00Z','finished','1',1,0);
-      INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
-        VALUES ('p2','a','source','m2',4,4), ('p3','a','source','done',1,1), ('mine','a','target','m',0,0);
-    `)
-    const res = await (await request('a', 'target', true, true)).json()
-    expect(res).toMatchObject({ imported: 1, locked_skipped: 1 })
-    expect(
-      sqlite
-        .prepare(
-          "SELECT match_id, predicted_home_score AS h FROM predictions WHERE group_id = 'target' ORDER BY match_id",
-        )
-        .all(),
-    ).toEqual([
-      { match_id: 'm', h: 0 },
-      { match_id: 'm2', h: 4 },
-    ])
-  })
-
   it('não marca importação vazia ou com todos os jogos bloqueados', async () => {
     const { sqlite, request } = setup()
     sqlite.exec("UPDATE matches SET status = 'live'")
@@ -156,17 +133,6 @@ describe('Conclusão da importação por membro', () => {
     expect((await request('b', 'source')).status).toBe(403)
     expect(
       sqlite.prepare('SELECT SUM(predictions_import_completed) AS n FROM group_members').get()?.n,
-    ).toBe(0)
-  })
-
-  it('reverte palpites e marcador se o batch falhar', async () => {
-    const { sqlite, request } = setup()
-    sqlite.exec(`CREATE TRIGGER fail_marker BEFORE UPDATE OF predictions_import_completed ON group_members
-      BEGIN SELECT RAISE(ABORT, 'falha simulada'); END;`)
-    expect((await request('a', 'target', true)).status).toBe(500)
-    expect((await (await request()).json()).import_completed).toBe(false)
-    expect(
-      sqlite.prepare("SELECT COUNT(*) AS n FROM predictions WHERE group_id = 'target'").get()?.n,
     ).toBe(0)
   })
 

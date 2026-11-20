@@ -37,21 +37,24 @@ function setup() {
   `)
   const app = new Hono<AppContext>()
   app.route('/predictions', predictionsRouter)
-  async function importFrom(source: string, target: string, onlyMissing = false) {
+  async function importPost(body: Record<string, unknown>) {
     const token = await signJwt({ sub: 'a', email: 'a@test.com' }, 'secret', 3600)
     const response = await app.fetch(
       new Request('https://test/predictions/import', {
         method: 'POST',
         headers: { Cookie: `session=${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_group_id: source,
-          target_group_id: target,
-          ...(onlyMissing ? { only_missing: true } : {}),
-        }),
+        body: JSON.stringify(body),
       }),
       { DB: db, JWT_SECRET: 'secret' } as AppContext['Bindings'],
     )
     return { status: response.status, body: (await response.json()) as ImportBody }
+  }
+  async function importFrom(source: string, target: string, onlyMissing = false) {
+    return importPost({
+      source_group_id: source,
+      target_group_id: target,
+      ...(onlyMissing ? { only_missing: true } : {}),
+    })
   }
   function predict(group: string, match: string, home: number, away: number) {
     sqlite
@@ -68,10 +71,27 @@ function setup() {
          FROM predictions WHERE user_id = 'a' AND group_id = ? AND match_id = ?`,
       )
       .get(group, match) as { h: number; a: number } | undefined
-  return { importFrom, predict, stored }
+  return { importFrom, importPost, predict, stored }
 }
 
 describe('POST /predictions/import, smoke HTTP', () => {
+  it('campos obrigatórios ausentes respondem 400', async () => {
+    const { importPost } = setup()
+    const { status, body } = await importPost({ source_group_id: 'exato' })
+    expect(status).toBe(400)
+    expect(body.error).toBe('source_group_id e target_group_id são obrigatórios')
+  })
+
+  it('grupos iguais respondem 400', async () => {
+    const { importPost } = setup()
+    const { status, body } = await importPost({
+      source_group_id: 'exato',
+      target_group_id: 'exato',
+    })
+    expect(status).toBe(400)
+    expect(body.error).toBe('source_group_id e target_group_id devem ser diferentes')
+  })
+
   it('origem só vencedor não converte um 2x1 do destino em 1x0', async () => {
     const { importFrom, predict, stored } = setup()
     predict('vencedor', 'm1', 1, 0)
