@@ -1,13 +1,21 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { hasFeatureAccess, hasPilotAccess } from '../auth/permissions'
-import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
+import { validateJson } from '../http/validateJson'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { parseClientEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership, isPilotGroupBlocked, memberDisplaySql } from './membership'
 import { parseGroupName } from './groupName'
+import {
+  createGroupSchema,
+  joinGroupSchema,
+  mapCreateGroupError,
+  mapJoinGroupError,
+  mapPatchGroupError,
+  patchGroupSchema,
+} from './writeSchemas'
 import {
   ACTIVE_GROUPS_OWNED_COUNT_SQL,
   ACTIVE_MEMBERSHIPS_COUNT_SQL,
@@ -59,11 +67,6 @@ type PodiumEntry = {
   display: string
   points: number
   is_you: boolean
-}
-
-/** Texto sem espaços nas pontas, ou `undefined` quando o campo não é texto. */
-function trimmedString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value.trim() : undefined
 }
 
 /**
@@ -187,11 +190,6 @@ async function findVisibleGroup<K extends keyof VisibleGroupColumns>(
     return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
   }
   return { group }
-}
-
-/** Pontuação de regra do grupo: inteiro de 0 a 10. */
-function isPointValue(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10
 }
 
 /**
@@ -475,146 +473,113 @@ router.get('/', requireAuth, async (c) => {
  * Response 409: o usuário já está no teto de grupos criados ou de participações
  * (`groupCaps.ts`).
  */
-router.post('/', requireAuth, async (c) => {
-  const userId = c.get('userId')
-  const userEmail = c.get('userEmail')
+router.post(
+  '/',
+  requireAuth,
+  async (c, next) => {
+    if (!hasFeatureAccess(c.get('userEmail'), 'create_group')) {
+      return c.json({ error: 'Você não tem permissão para criar grupos' }, 403)
+    }
+    return next()
+  },
+  validateJson(createGroupSchema, mapCreateGroupError),
+  async (c) => {
+    const userId = c.get('userId')
+    const body = c.req.valid('json')
+    const {
+      name,
+      competition_id,
+      points_exact,
+      points_winner,
+      points_penalty,
+      points_classified,
+      predictions_visibility,
+    } = body
 
-  if (!hasFeatureAccess(userEmail, 'create_group')) {
-    return c.json({ error: 'Você não tem permissão para criar grupos' }, 403)
-  }
+    const db = c.env.DB
 
-  const body = await readJsonObject<{
-    name?: string
-    competition_id?: string
-    points_exact?: number
-    points_winner?: number
-    points_penalty?: number
-    points_classified?: number
-    predictions_visibility?: string
-  }>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
+    // Valida que a competição existe e que o usuário tem acesso caso esteja em piloto
+    const competition = await db
+      .prepare('SELECT id, visibility FROM competitions WHERE id = ?')
+      .bind(competition_id)
+      .first<{ id: string; visibility?: string | null }>()
 
-  const competition_id = trimmedString(body.competition_id)
+    if (
+      !competition ||
+      (competition.visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env))
+    ) {
+      return c.json({ error: 'Competição não encontrada' }, 404)
+    }
 
-  if (!trimmedString(body.name) || !competition_id) {
-    return c.json({ error: 'Nome e competição são obrigatórios' }, 400)
-  }
+    const groupId = crypto.randomUUID()
+    const memberId = crypto.randomUUID()
+    const public_id = generatePublicId()
 
-  const parsedName = parseGroupName(body.name)
-  if ('error' in parsedName) return c.json({ error: parsedName.error }, 400)
-  const { name } = parsedName
-
-  // Scoring rules & visibility — set at creation, immutable afterwards.
-  const points_exact = body.points_exact ?? 3
-  const points_winner = body.points_winner ?? 1
-  // Penalty-shootout bonus — additive and independent of the exact>=winner rule.
-  const points_penalty = body.points_penalty ?? 1
-  const points_classified = body.points_classified ?? 0
-  const predictions_visibility = body.predictions_visibility ?? 'hidden'
-
-  if (![points_exact, points_winner, points_penalty, points_classified].every(isPointValue)) {
-    return c.json({ error: 'Pontuação deve ser inteiro entre 0 e 10' }, 400)
-  }
-  // points_exact === 0 enables the "só vencedor" (1X2) mode and is always allowed.
-  // Otherwise an exact hit must be worth at least as much as a plain winner hit.
-  if (points_exact > 0 && points_exact < points_winner) {
-    return c.json(
-      {
-        error: 'Pontos por placar exato deve ser maior ou igual a pontos por vencedor',
-      },
-      400,
-    )
-  }
-  if (points_exact + points_winner === 0) {
-    return c.json({ error: 'Pelo menos um tipo de pontuação deve ser maior que zero' }, 400)
-  }
-  if (!['hidden', 'public'].includes(predictions_visibility)) {
-    return c.json({ error: 'Visibilidade inválida' }, 400)
-  }
-
-  const db = c.env.DB
-
-  // Valida que a competição existe e que o usuário tem acesso caso esteja em piloto
-  const competition = await db
-    .prepare('SELECT id, visibility FROM competitions WHERE id = ?')
-    .bind(competition_id)
-    .first<{ id: string; visibility?: string | null }>()
-
-  if (
-    !competition ||
-    (competition.visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env))
-  ) {
-    return c.json({ error: 'Competição não encontrada' }, 404)
-  }
-
-  const groupId = crypto.randomUUID()
-  const memberId = crypto.randomUUID()
-  const public_id = generatePublicId()
-
-  try {
-    // Os tetos por usuário são conferidos no próprio INSERT do grupo. Um SELECT COUNT
-    // separado deixaria duas criações simultâneas passarem do teto. O dono vira
-    // participante, então a criação também respeita o teto de participações. Com o
-    // grupo recusado, o INSERT do dono não encontra o grupo e não grava nada.
-    let created = false
-    const invite_code = await writeWithUniqueInviteCode(db, async (inviteCode) => {
-      const [group] = await db.batch([
-        db
-          .prepare(
-            `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, public_id, points_exact, points_winner, points_penalty, points_classified, predictions_visibility)
+    try {
+      // Os tetos por usuário são conferidos no próprio INSERT do grupo. Um SELECT COUNT
+      // separado deixaria duas criações simultâneas passarem do teto. O dono vira
+      // participante, então a criação também respeita o teto de participações. Com o
+      // grupo recusado, o INSERT do dono não encontra o grupo e não grava nada.
+      let created = false
+      const invite_code = await writeWithUniqueInviteCode(db, async (inviteCode) => {
+        const [group] = await db.batch([
+          db
+            .prepare(
+              `INSERT INTO groups (id, name, competition_id, owner_user_id, invite_code, public_id, points_exact, points_winner, points_penalty, points_classified, predictions_visibility)
              SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
               WHERE ${ACTIVE_GROUPS_OWNED_COUNT_SQL} < ?
                 AND ${ACTIVE_MEMBERSHIPS_COUNT_SQL} < ?`,
-          )
-          .bind(
-            groupId,
-            name,
-            competition_id,
-            userId,
-            inviteCode,
-            public_id,
-            points_exact,
-            points_winner,
-            points_penalty,
-            points_classified,
-            predictions_visibility,
-            userId,
-            MAX_ACTIVE_GROUPS_OWNED,
-            userId,
-            MAX_ACTIVE_MEMBERSHIPS,
-          ),
-        db
-          .prepare(
-            `INSERT INTO group_members (id, group_id, user_id, role)
+            )
+            .bind(
+              groupId,
+              name,
+              competition_id,
+              userId,
+              inviteCode,
+              public_id,
+              points_exact,
+              points_winner,
+              points_penalty,
+              points_classified,
+              predictions_visibility,
+              userId,
+              MAX_ACTIVE_GROUPS_OWNED,
+              userId,
+              MAX_ACTIVE_MEMBERSHIPS,
+            ),
+          db
+            .prepare(
+              `INSERT INTO group_members (id, group_id, user_id, role)
              SELECT ?, ?, ?, 'owner'
               WHERE EXISTS (SELECT 1 FROM groups WHERE id = ?)`,
-          )
-          .bind(memberId, groupId, userId, groupId),
-      ])
-      created = group.meta.changes > 0
-    })
-    if (!invite_code) return c.json({ error: 'Erro interno ao gerar convite' }, 503)
-    if (!created) {
-      // Só para escolher a mensagem. A recusa já aconteceu no INSERT.
-      const owned = await db
-        .prepare(`SELECT ${ACTIVE_GROUPS_OWNED_COUNT_SQL} AS n`)
-        .bind(userId)
-        .first<{ n: number }>()
-      const ownedCapReached = (owned?.n ?? 0) >= MAX_ACTIVE_GROUPS_OWNED
-      return c.json({ error: ownedCapReached ? OWNED_CAP_ERROR : CREATE_MEMBERSHIP_CAP_ERROR }, 409)
+            )
+            .bind(memberId, groupId, userId, groupId),
+        ])
+        created = group.meta.changes > 0
+      })
+      if (!invite_code) return c.json({ error: 'Erro interno ao gerar convite' }, 503)
+      if (!created) {
+        // Só para escolher a mensagem. A recusa já aconteceu no INSERT.
+        const owned = await db
+          .prepare(`SELECT ${ACTIVE_GROUPS_OWNED_COUNT_SQL} AS n`)
+          .bind(userId)
+          .first<{ n: number }>()
+        const ownedCapReached = (owned?.n ?? 0) >= MAX_ACTIVE_GROUPS_OWNED
+        return c.json({ error: ownedCapReached ? OWNED_CAP_ERROR : CREATE_MEMBERSHIP_CAP_ERROR }, 409)
+      }
+
+      logEvent(c.env.AE, 'group_created', {
+        blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
+        doubles: [points_exact, points_winner, points_penalty],
+      })
+
+      return c.json({ group: { id: groupId, name, competition_id, invite_code, public_id } }, 201)
+    } catch (error) {
+      console.error('[groups] Error creating group for user %s:', userId, error)
+      return c.json({ error: 'Erro ao criar grupo' }, 500)
     }
-
-    logEvent(c.env.AE, 'group_created', {
-      blobs: [groupId, competition_id, await hashUserId(userId), predictions_visibility],
-      doubles: [points_exact, points_winner, points_penalty],
-    })
-
-    return c.json({ group: { id: groupId, name, competition_id, invite_code, public_id } }, 201)
-  } catch (error) {
-    console.error('[groups] Error creating group for user %s:', userId, error)
-    return c.json({ error: 'Erro ao criar grupo' }, 500)
-  }
-})
+  },
+)
 
 /**
  * POST /groups/join
@@ -630,62 +595,61 @@ router.post('/', requireAuth, async (c) => {
  * Response 409: já é membro, grupo lotado ou usuário no teto de participações
  * (`groupCaps.ts`).
  */
-router.post('/join', requireAuth, async (c) => {
-  const userId = c.get('userId')
-  const body = await readJsonObject<{ invite_code?: string; entry_method?: unknown }>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
+router.post(
+  '/join',
+  requireAuth,
+  validateJson(joinGroupSchema, mapJoinGroupError),
+  async (c) => {
+    const userId = c.get('userId')
+    const body = c.req.valid('json')
+    const invite_code = body.invite_code.toUpperCase()
 
-  const invite_code = trimmedString(body.invite_code)?.toUpperCase()
+    const db = c.env.DB
 
-  if (!invite_code) {
-    return c.json({ error: 'Código de convite é obrigatório' }, 400)
-  }
-
-  const db = c.env.DB
-
-  const group = await db
-    .prepare(
-      `SELECT g.id, g.name, g.max_members, c.visibility AS competition_visibility
+    const group = await db
+      .prepare(
+        `SELECT g.id, g.name, g.max_members, c.visibility AS competition_visibility
        FROM groups g
        LEFT JOIN competitions c ON g.competition_id = c.id
        WHERE g.invite_code = ? AND g.deleted_at IS NULL`,
-    )
-    .bind(invite_code)
-    .first<{
-      id: string
-      name: string
-      max_members: number
-      competition_visibility?: string | null
-    }>()
+      )
+      .bind(invite_code)
+      .first<{
+        id: string
+        name: string
+        max_members: number
+        competition_visibility?: string | null
+      }>()
 
-  if (
-    !group ||
-    (group.competition_visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env))
-  ) {
-    return c.json({ error: 'Código de convite inválido' }, 404)
-  }
+    if (
+      !group ||
+      (group.competition_visibility === 'pilot' && !hasPilotAccess(c.get('userIdentity'), c.env))
+    ) {
+      return c.json({ error: 'Código de convite inválido' }, 404)
+    }
 
-  const conflict = await joinConflict(db, group.id, userId)
-  if (conflict) return c.json({ error: conflict.error }, conflict.status)
+    const conflict = await joinConflict(db, group.id, userId)
+    if (conflict) return c.json({ error: conflict.error }, conflict.status)
 
-  // Limite, banimento, convite atual e teto de participações no mesmo INSERT
-  // (ver tryInsertGroupMember). Aprovação de pedido reutiliza o mesmo caminho.
-  const inserted = await tryInsertGroupMember(db, group, userId, invite_code)
-  if (!inserted.ok) {
-    return c.json({ error: inserted.error }, inserted.status)
-  }
+    // Limite, banimento, convite atual e teto de participações no mesmo INSERT
+    // (ver tryInsertGroupMember). Aprovação de pedido reutiliza o mesmo caminho.
+    const inserted = await tryInsertGroupMember(db, group, userId, invite_code)
+    if (!inserted.ok) {
+      return c.json({ error: inserted.error }, inserted.status)
+    }
 
-  logEvent(c.env.AE, 'group_joined', {
-    blobs: [
-      group.id,
-      await hashUserId(userId),
-      parseClientEntryMethod(body.entry_method),
-      await readRecentSignupFlag(db, inserted.memberId),
-    ],
-  })
+    logEvent(c.env.AE, 'group_joined', {
+      blobs: [
+        group.id,
+        await hashUserId(userId),
+        parseClientEntryMethod(body.entry_method),
+        await readRecentSignupFlag(db, inserted.memberId),
+      ],
+    })
 
-  return c.json({ group: { id: group.id, name: group.name } })
-})
+    return c.json({ group: { id: group.id, name: group.name } })
+  },
+)
 
 // Pedidos pelo link público: /join-requests antes de /:id para o segmento
 // estático não ser lido como id de grupo.
@@ -798,110 +762,92 @@ router.get('/:id', requireAuth, async (c) => {
  * Body: { name?: string, points_classified?: number, join_requests_enabled?: boolean }
  * Response 200: { group: { id, name?, points_classified?, join_requests_enabled? } }
  */
-router.patch('/:id', requireAuth, async (c) => {
-  const userId = c.get('userId')
-  const groupId = c.req.param('id')
-  const db = c.env.DB
+router.patch(
+  '/:id',
+  requireAuth,
+  validateJson(patchGroupSchema, mapPatchGroupError),
+  async (c) => {
+    const userId = c.get('userId')
+    const groupId = c.req.param('id')
+    const db = c.env.DB
+    const body = c.req.valid('json')
+    const pointsClassified = body.points_classified
 
-  const body = await readJsonObject<{
-    name?: string
-    points_classified?: number
-    join_requests_enabled?: boolean
-  }>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
-  const pointsClassified = body.points_classified
-  if (pointsClassified !== undefined && !isPointValue(pointsClassified)) {
-    return c.json({ error: 'Pontos de classificado devem ser um inteiro entre 0 e 10' }, 400)
-  }
-  if (
-    body.join_requests_enabled !== undefined &&
-    typeof body.join_requests_enabled !== 'boolean'
-  ) {
-    return c.json({ error: 'join_requests_enabled deve ser boolean' }, 400)
-  }
+    const parsedName = body.name === undefined ? undefined : parseGroupName(body.name)
+    if (parsedName && 'error' in parsedName) return c.json({ error: parsedName.error }, 400)
+    const name = parsedName?.name
 
-  if (
-    body.name === undefined &&
-    pointsClassified === undefined &&
-    body.join_requests_enabled === undefined
-  ) {
-    return c.json({ error: 'Informe nome, pontos de classificado ou pedidos pelo link' }, 400)
-  }
+    const found = await findVisibleGroup(c, db, groupId, [
+      'owner_user_id',
+      'competition_id',
+      'points_classified',
+    ])
+    if ('error' in found) return found.error
+    const { group } = found
 
-  const parsedName = body.name === undefined ? undefined : parseGroupName(body.name)
-  if (parsedName && 'error' in parsedName) return c.json({ error: parsedName.error }, 400)
-  const name = parsedName?.name
-
-  const found = await findVisibleGroup(c, db, groupId, [
-    'owner_user_id',
-    'competition_id',
-    'points_classified',
-  ])
-  if ('error' in found) return found.error
-  const { group } = found
-
-  if (group.owner_user_id !== userId) {
-    return c.json({ error: 'Apenas o administrador pode editar o grupo' }, 403)
-  }
-
-  const updates: string[] = []
-  const values: (string | number)[] = []
-  if (name !== undefined) {
-    updates.push('name = ?')
-    values.push(name)
-  }
-  if (pointsClassified !== undefined) {
-    updates.push('points_classified = ?')
-    values.push(pointsClassified)
-  }
-  if (body.join_requests_enabled !== undefined) {
-    updates.push('join_requests_enabled = ?')
-    values.push(body.join_requests_enabled ? 1 : 0)
-  }
-  const updateGroup = db
-    .prepare(`UPDATE groups SET ${updates.join(', ')} WHERE id = ?`)
-    .bind(...values, groupId)
-  if (pointsClassified !== undefined) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const [snapshotGuard, ...scoringUpdates] = await classifiedRuleChangeStatements(
-        db,
-        groupId,
-        group.competition_id,
-        pointsClassified,
-      )
-      try {
-        await db.batch([snapshotGuard!, updateGroup, ...scoringUpdates])
-        break
-      } catch (error) {
-        const detail = String(error) + String(error instanceof Error ? error.cause : '')
-        if (!detail.includes('classified_snapshot_changed')) throw error
-        if (attempt === 2)
-          return c.json({ error: 'Os resultados mudaram durante a edição. Tente novamente.' }, 409)
-      }
+    if (group.owner_user_id !== userId) {
+      return c.json({ error: 'Apenas o administrador pode editar o grupo' }, 403)
     }
-  } else {
-    await updateGroup.run()
-  }
 
-  // Só registra rename quando o nome (ou a pontuação, que recalcula) mudou.
-  // Ligar/desligar pedidos pelo link não é rename.
-  if (name !== undefined || pointsClassified !== undefined) {
-    logEvent(c.env.AE, 'group_renamed', {
-      blobs: [groupId, await hashUserId(userId)],
+    const updates: string[] = []
+    const values: (string | number)[] = []
+    if (name !== undefined) {
+      updates.push('name = ?')
+      values.push(name)
+    }
+    if (pointsClassified !== undefined) {
+      updates.push('points_classified = ?')
+      values.push(pointsClassified)
+    }
+    if (body.join_requests_enabled !== undefined) {
+      updates.push('join_requests_enabled = ?')
+      values.push(body.join_requests_enabled ? 1 : 0)
+    }
+    const updateGroup = db
+      .prepare(`UPDATE groups SET ${updates.join(', ')} WHERE id = ?`)
+      .bind(...values, groupId)
+    if (pointsClassified !== undefined) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const [snapshotGuard, ...scoringUpdates] = await classifiedRuleChangeStatements(
+          db,
+          groupId,
+          group.competition_id,
+          pointsClassified,
+        )
+        try {
+          await db.batch([snapshotGuard!, updateGroup, ...scoringUpdates])
+          break
+        } catch (error) {
+          const detail = String(error) + String(error instanceof Error ? error.cause : '')
+          if (!detail.includes('classified_snapshot_changed')) throw error
+          if (attempt === 2)
+            return c.json({ error: 'Os resultados mudaram durante a edição. Tente novamente.' }, 409)
+        }
+      }
+    } else {
+      await updateGroup.run()
+    }
+
+    // Só registra rename quando o nome (ou a pontuação, que recalcula) mudou.
+    // Ligar/desligar pedidos pelo link não é rename.
+    if (name !== undefined || pointsClassified !== undefined) {
+      logEvent(c.env.AE, 'group_renamed', {
+        blobs: [groupId, await hashUserId(userId)],
+      })
+    }
+
+    return c.json({
+      group: {
+        id: groupId,
+        ...(name !== undefined ? { name } : {}),
+        ...(pointsClassified !== undefined ? { points_classified: pointsClassified } : {}),
+        ...(body.join_requests_enabled !== undefined
+          ? { join_requests_enabled: body.join_requests_enabled }
+          : {}),
+      },
     })
-  }
-
-  return c.json({
-    group: {
-      id: groupId,
-      ...(name !== undefined ? { name } : {}),
-      ...(pointsClassified !== undefined ? { points_classified: pointsClassified } : {}),
-      ...(body.join_requests_enabled !== undefined
-        ? { join_requests_enabled: body.join_requests_enabled }
-        : {}),
-    },
-  })
-})
+  },
+)
 
 /**
  * POST /groups/:id/invite/rotate
