@@ -1281,7 +1281,7 @@ describe('bootstrap evidence and CLI parsing', () => {
   })
 })
 
-describe('round-5 public logs, sqlite -safe, preflight fail-closed', () => {
+describe('public logs, sqlite -safe, preflight fail-closed', () => {
   const PII_EMAIL = 'pii-syntax@secret-domain.test'
   const PII_TOKEN = 'leak-me'
 
@@ -1722,6 +1722,18 @@ describe('round-5 public logs, sqlite -safe, preflight fail-closed', () => {
 
 const PII_SENTINEL = 'alice.synthetic@example.test'
 const AGE_MAGIC = 'age-encryption.org/v1'
+
+
+  it('ci.yml Backup job installs age with PATH export and requires age in tests', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const yml = await readFile(join(__dirname, '../../.github/workflows/ci.yml'), 'utf8')
+    assert.match(yml, /name: Backup \(age \+ sqlite3\)/)
+    assert.match(yml, /PALPITAE_BACKUP_REQUIRE_AGE: '1'/)
+    assert.match(yml, /npm run test:backup/)
+    assert.match(yml, /npm run test:backup:rehearsal/)
+    assert.match(yml, /export PATH="\$PWD\/age:\$PATH"/)
+    assert.match(yml, /AGE_SHA256="7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50"/)
+  })
 
 describe('ciphertext never leaves plaintext on the sink', () => {
   it(

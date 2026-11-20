@@ -100,7 +100,9 @@ jobs:
           curl -fsSL -o "$AGE_TGZ" "$AGE_URL"
           echo "${AGE_SHA256}  ${AGE_TGZ}" | sha256sum -c -
           tar -xzf "$AGE_TGZ"
+          # GITHUB_PATH applies to subsequent steps; export PATH here for this step.
           echo "$PWD/age" >> "$GITHUB_PATH"
+          export PATH="$PWD/age:$PATH"
           rm -f "$AGE_TGZ"
           age --version
 
