@@ -295,6 +295,9 @@ describe('importPredictions, trava entre plano e escrita', () => {
 
       expect(stored('exato2', 'm1')).toBeUndefined()
       expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
+      // A escrita grava updated_at com o relógio do plano: prova que input.now
+      // (ou o Date falso) foi usado, e não o relógio real.
+      expect(stored('exato2', 'm2')!.updated_at).toBe(planNow)
       expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 1 })
     },
   )
