@@ -64,6 +64,8 @@ describe('sendMailjetEmail', () => {
     expect(body.Messages[0].To[0].Email).toBe('a@example.com')
     expect(body.Messages[0].From.Email).toBe('lembretes@palpitae.com.br')
     expect(body.Messages[0].Headers['List-Unsubscribe']).toContain('unsub')
+    expect(body.Messages[0].TrackOpens).toBe('disabled')
+    expect(body.Messages[0].TrackClicks).toBe('disabled')
   })
 
   it('lança MailjetError em HTTP de erro sem o corpo na mensagem', async () => {

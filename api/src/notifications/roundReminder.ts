@@ -207,11 +207,29 @@ function isTransientEmailError(err: unknown): boolean {
 }
 
 /**
+ * Erro do Resend depois de ao menos uma falha passageira na mesma chamada.
+ * A tentativa anterior pode ter sido aceita (timeout/5xx/rede); o status final
+ * não autoriza fallback nem reenvio às cegas.
+ */
+export class UncertainResendError extends Error {
+  readonly cause: unknown
+
+  constructor(cause: unknown) {
+    super('Resend incerto após tentativa passageira')
+    this.name = 'UncertainResendError'
+    this.cause = cause
+  }
+}
+
+/**
  * Envia um e-mail, repetindo em 429 de limite por segundo e em 5xx ou erro de rede,
  * com espera exponencial que respeita o Retry-After do Resend. Cota esgotada e
  * outros 4xx falham na primeira tentativa. Cada tentativa gasta o saldo de `fetch` da
  * execução, e sem saldo lança `SubrequestBudgetError`. Lança o erro quando as tentativas acabam,
  * e quem chama contabiliza a falha e segue.
+ *
+ * Se alguma tentativa passageira precedeu o erro final, lança `UncertainResendError`
+ * envolvendo a causa: o Resend pode ter aceitado antes da falha visível.
  *
  * `beforeAttempt` roda antes de cada tentativa, inclusive dos reenvios, e cancela o
  * envio lançando erro. É o último ponto em que o descadastro ainda impede o e-mail.
@@ -225,17 +243,25 @@ async function sendWithRetry(
   budget: FetchBudget,
   beforeAttempt: () => Promise<void>,
 ): Promise<void> {
+  let hadTransient = false
   for (let attempt = 1; ; attempt++) {
     // Cada tentativa é um `fetch`. Sem saldo, para antes de chamar a rede.
-    if (budget.used >= budget.max) throw new SubrequestBudgetError()
+    if (budget.used >= budget.max) {
+      if (hadTransient) throw new UncertainResendError(new SubrequestBudgetError())
+      throw new SubrequestBudgetError()
+    }
     await beforeAttempt()
     budget.used++
     try {
       await sendEmail(apiKey, msg)
       return
     } catch (err) {
-      if (!isTransientEmailError(err) || attempt >= MAX_SEND_ATTEMPTS) throw err
-      if (budget.used >= budget.max) throw new SubrequestBudgetError()
+      if (!isTransientEmailError(err) || attempt >= MAX_SEND_ATTEMPTS) {
+        if (hadTransient) throw new UncertainResendError(err)
+        throw err
+      }
+      hadTransient = true
+      if (budget.used >= budget.max) throw new UncertainResendError(new SubrequestBudgetError())
       const retryAfterMs = err instanceof EmailError ? err.retryAfterMs : undefined
       await sleep(retryAfterMs ?? 500 * 2 ** (attempt - 1))
     }
@@ -579,6 +605,14 @@ function failureReason(err: unknown): string {
   if (err instanceof SubrequestBudgetError) return 'subrequest_budget'
   if (err instanceof UnsubCheckError) return 'unsub_check_failed'
   if (err instanceof MailjetError) return `mailjet_http_${err.status}`
+  if (err instanceof UncertainResendError) {
+    const cause = err.cause
+    if (cause instanceof EmailError) {
+      return cause.quotaExceeded ? 'quota_exceeded' : `http_${cause.status}`
+    }
+    if (cause instanceof SubrequestBudgetError) return 'subrequest_budget'
+    return 'unknown'
+  }
   if (!(err instanceof EmailError)) return 'unknown'
   return err.quotaExceeded ? 'quota_exceeded' : `http_${err.status}`
 }
@@ -591,6 +625,9 @@ function failureReason(err: unknown): string {
  * fallback cobre o restante.
  */
 function stopReason(err: unknown, mailjetConfigured: boolean): string | null {
+  if (err instanceof UncertainResendError) {
+    return stopReason(err.cause, mailjetConfigured)
+  }
   if (err instanceof EmailError && err.quotaExceeded) {
     return mailjetConfigured ? null : 'quota_exceeded'
   }
@@ -606,11 +643,21 @@ function reminderCorrelationId(userId: string, reminderDate: string): string {
 }
 
 /**
- * Recusa definitiva do Resend: 4xx de validação/conta ou cota esgotada. Timeout,
- * 5xx e rede não entram — o Resend pode ter aceitado.
+ * Recusa definitiva do Resend: 4xx de validação/conta ou cota esgotada, na primeira
+ * tentativa sem falha passageira antes. 409 (idempotência concorrente ou corpo
+ * diferente na reexecução) nunca é definitivo: o Resend pode ter aceitado, ou a
+ * chave do dia já foi usada. Timeout, 5xx, rede e `UncertainResendError` também
+ * ficam de fora.
  */
 function isDefinitiveResendRefusal(err: unknown): err is EmailError {
-  return err instanceof EmailError && !isTransientEmailError(err)
+  if (!(err instanceof EmailError)) return false
+  if (err.status === 409) return false
+  return !isTransientEmailError(err)
+}
+
+/** Conta Resend indisponível para o restante do lote (cota ou credencial). */
+function marksResendUnavailable(err: EmailError): boolean {
+  return err.quotaExceeded || err.status === 401 || err.status === 403
 }
 
 type DispatchOptions = {
@@ -814,6 +861,19 @@ async function dispatchDigests(
         await sendWithRetry(resendApiKey, msg, budget, beforeAttempt)
         recordSent()
       } catch (err) {
+        if (err instanceof UncertainResendError) {
+          // Houve falha passageira antes: o Resend pode ter aceitado. Nunca Mailjet.
+          attempted.add(digest.userId)
+          const cause = err.cause
+          if (
+            cause instanceof UnsubscribedError ||
+            cause instanceof SubrequestBudgetError ||
+            cause instanceof UnsubCheckError
+          ) {
+            throw cause
+          }
+          throw err
+        }
         if (
           err instanceof UnsubscribedError ||
           err instanceof SubrequestBudgetError ||
@@ -822,13 +882,14 @@ async function dispatchDigests(
           throw err
         }
 
-        // Timeout/5xx/rede: como na main (libera a reserva). Nunca Mailjet.
+        // Timeout/5xx/rede/409: como na main (libera a reserva). Nunca Mailjet.
         if (!isDefinitiveResendRefusal(err)) {
           attempted.add(digest.userId)
           throw err
         }
 
-        if (err.quotaExceeded) resendUnavailable = true
+        // Só chega aqui com recusa definitiva na 1ª tentativa (sem passageiro antes).
+        if (marksResendUnavailable(err)) resendUnavailable = true
 
         if (!mailjet || attempted.has(digest.userId)) throw err
 
@@ -877,9 +938,10 @@ export type ReminderOptions = {
  * rodada. Quem palpitou todos os jogos do dia ou cancelou os lembretes não recebe.
  * Vale no máximo um e-mail por usuário por dia (`email_reminder_sends`, ADR-020).
  *
- * Com `mailjet`, recusa definitiva do Resend (4xx/cota) desvia ao Mailjet uma
- * vez, só para quem ainda não teve tentativa no dia. Timeout do Resend nunca
- * cai no fallback. Sem credenciais, o comportamento é o da main.
+ * Com `mailjet`, recusa definitiva do Resend na 1ª tentativa (4xx/cota/401/403,
+ * sem passageiro antes) desvia ao Mailjet uma vez, só para quem ainda não teve
+ * tentativa nesta execução. Timeout, 5xx, rede, 409 e falha após passageiro
+ * nunca caem no fallback. Sem credenciais, o comportamento é o da main.
  *
  * `nowMs` existe para os testes fixarem o dia.
  */

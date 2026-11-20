@@ -69,6 +69,10 @@ export async function sendMailjetEmail(
           ...(msg.text ? { TextPart: msg.text } : {}),
           ...(msg.headers ? { Headers: msg.headers } : {}),
           CustomID: customId,
+          // Sem rastreio de abertura/clique: a página de privacidade lista só o
+          // que a Mailjet recebe para entregar o lembrete.
+          TrackOpens: 'disabled',
+          TrackClicks: 'disabled',
         },
       ],
     }),
