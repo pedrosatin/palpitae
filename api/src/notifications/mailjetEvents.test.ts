@@ -228,6 +228,40 @@ describe('POST /notifications/mailjet-events', () => {
     expect(unsubscribedAt('ana')).toBeNull()
   })
 
+  it('falha do banco num unsub responde 500 para a Mailjet reenviar', async () => {
+    const { sqlite, post } = createFixture()
+    // A consulta do usuário passa a falhar (D1 indisponível); o limitador usa outra tabela.
+    sqlite.exec('ALTER TABLE users RENAME TO users_fora')
+    const res = await post({
+      event: 'unsub',
+      email: 'ana@example.com',
+      CustomID: 'lembrete-diario/ana/2026-11-18',
+    })
+    expect(res.status).toBe(500)
+  })
+
+  it('item malformado no lote não descarta os eventos válidos', async () => {
+    const { post, unsubscribedAt } = createFixture()
+    const res = await post([
+      'lixo',
+      { event: 'unsub', email: 'bia@example.com', CustomID: 'lembrete-diario/bia/2026-11-18' },
+    ])
+    expect(res.status).toBe(200)
+    expect(unsubscribedAt('bia')).not.toBeNull()
+  })
+
+  it('CustomID prevalece sobre o e-mail do evento', async () => {
+    const { post, unsubscribedAt } = createFixture()
+    const res = await post({
+      event: 'unsub',
+      email: 'bia@example.com',
+      CustomID: 'lembrete-diario/ana/2026-11-18',
+    })
+    expect(res.status).toBe(200)
+    expect(unsubscribedAt('ana')).not.toBeNull()
+    expect(unsubscribedAt('bia')).toBeNull()
+  })
+
   it('ignora tipos de evento que não são unsub nem spam', async () => {
     const { post, unsubscribedAt } = createFixture()
     const res = await post({

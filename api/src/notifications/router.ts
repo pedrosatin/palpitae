@@ -158,7 +158,9 @@ router.post('/mailjet-events', async (c) => {
     return c.text('ok', 200)
   }
 
-  await applyMailjetUnsubscribeEvents(c.env.DB, c.env.AE, events)
+  const { failed } = await applyMailjetUnsubscribeEvents(c.env.DB, c.env.AE, events)
+  // Falha interna (D1) num unsub/spam: 500 para a Mailjet reenviar o lote.
+  if (failed > 0) return c.text('retry', 500)
   return c.text('ok', 200)
 })
 

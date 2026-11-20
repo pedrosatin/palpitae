@@ -64,8 +64,9 @@ export async function mailjetWebhookAuthorized(
 export function normalizeMailjetEvents(payload: unknown): MailjetEvent[] | null {
   if (payload == null) return null
   if (Array.isArray(payload)) {
-    if (!payload.every((item) => item !== null && typeof item === 'object')) return null
-    return payload as MailjetEvent[]
+    // Um item malformado não derruba os válidos do mesmo lote.
+    const valid = payload.filter((item) => item !== null && typeof item === 'object')
+    return valid.length > 0 ? (valid as MailjetEvent[]) : null
   }
   if (typeof payload === 'object') return [payload as MailjetEvent]
   return null
@@ -97,15 +98,17 @@ async function resolveUserId(db: D1Database, event: MailjetEvent): Promise<strin
 
 /**
  * Aplica unsub/spam. Outros tipos são ignorados. Falha de um evento não impede
- * os demais. Não lança: erros internos vão ao log sem dado pessoal.
+ * os demais. Não lança: erros internos vão ao log sem dado pessoal e contam em
+ * `failed`, para a rota responder 500 e a Mailjet reenviar (o efeito é idempotente).
  */
 export async function applyMailjetUnsubscribeEvents(
   db: D1Database,
   ae: AnalyticsEngineDataset | undefined,
   events: MailjetEvent[],
-): Promise<{ handled: number; changed: number }> {
+): Promise<{ handled: number; changed: number; failed: number }> {
   let handled = 0
   let changed = 0
+  let failed = 0
   for (const event of events) {
     if (typeof event.event !== 'string' || !HANDLED_EVENTS.has(event.event)) continue
     handled++
@@ -114,8 +117,9 @@ export async function applyMailjetUnsubscribeEvents(
       if (!userId) continue
       if (await markEmailUnsubscribed(db, ae, userId, 'mailjet')) changed++
     } catch (error) {
+      failed++
       console.error('[mailjet-events] falha ao aplicar evento', error)
     }
   }
-  return { handled, changed }
+  return { handled, changed, failed }
 }
