@@ -43,7 +43,12 @@ export type ImportPredictionsDeps = {
   }) => void | Promise<void>
 }
 
-/** Jogos abertos palpitados pelo usuário em outros grupos ativos do mesmo campeonato. */
+/**
+ * Jogos abertos palpitados pelo usuário em outros grupos ativos do mesmo
+ * campeonato. Exclui origens que `acceptsFrom` recusa para o grupo alvo (origem
+ * só vencedor → destino de placar exato), alinhado ao filtro do web. Alvo
+ * inexistente ou com `deleted_at` devolve mapa vazio (JOIN no próprio SELECT).
+ */
 export async function fetchImportSources(
   db: D1Database,
   userId: string,
@@ -52,20 +57,42 @@ export async function fetchImportSources(
 ): Promise<Record<string, string[]>> {
   const rows = await db
     .prepare(
-      `SELECT p.group_id, p.match_id
+      `SELECT p.group_id, p.match_id, g.competition_id, g.points_exact,
+              t.competition_id AS target_competition_id, t.points_exact AS target_points_exact
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
        JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL
+       JOIN groups t ON t.id = ? AND t.deleted_at IS NULL
        JOIN group_members gm ON gm.group_id = p.group_id AND gm.user_id = p.user_id
        WHERE p.user_id = ? AND p.group_id != ?
-         AND g.competition_id = (SELECT competition_id FROM groups WHERE id = ?)
+         AND g.competition_id = t.competition_id
          AND ${notBannedSql('p')}
          AND NOT ${lockedSql()}`,
     )
-    .bind(userId, groupId, groupId, now)
-    .all<{ group_id: string; match_id: string }>()
+    .bind(groupId, userId, groupId, now)
+    .all<{
+      group_id: string
+      match_id: string
+      competition_id: string
+      points_exact: number
+      target_competition_id: string
+      target_points_exact: number
+    }>()
   const sources: Record<string, string[]> = {}
-  for (const r of rows.results) (sources[r.group_id] ??= []).push(r.match_id)
+  for (const r of rows.results) {
+    const source: CopyGroup = {
+      id: r.group_id,
+      competition_id: r.competition_id,
+      points_exact: r.points_exact,
+    }
+    const target: CopyGroup = {
+      id: groupId,
+      competition_id: r.target_competition_id,
+      points_exact: r.target_points_exact,
+    }
+    if (!acceptsFrom(source, target)) continue
+    ;(sources[r.group_id] ??= []).push(r.match_id)
+  }
   return sources
 }
 

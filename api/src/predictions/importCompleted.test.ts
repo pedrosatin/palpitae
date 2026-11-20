@@ -117,6 +117,21 @@ describe('Conclusão da importação por membro', () => {
     expect(await sources()).toEqual({})
   })
 
+  it('GET de palpites omite origem só vencedor quando o destino pontua placar exato', async () => {
+    const { sqlite, request } = setup()
+    sqlite.exec(`
+      UPDATE groups SET points_exact = 3 WHERE id = 'target';
+      INSERT INTO groups (id,name,competition_id,owner_user_id,invite_code,points_exact,points_winner)
+        VALUES ('winner','Só vencedor','c','a','winner',0,1);
+      INSERT INTO group_members (id,group_id,user_id) VALUES ('aw','winner','a');
+      INSERT INTO predictions (id,user_id,group_id,match_id,predicted_home_score,predicted_away_score)
+        VALUES ('pw','a','winner','m',1,0);
+    `)
+    const sources = (await (await request()).json()).import_sources
+    expect(sources).toEqual({ source: ['m'] })
+    expect(sources).not.toHaveProperty('winner')
+  })
+
   it('não marca importação vazia ou com todos os jogos bloqueados', async () => {
     const { sqlite, request } = setup()
     sqlite.exec("UPDATE matches SET status = 'live'")
