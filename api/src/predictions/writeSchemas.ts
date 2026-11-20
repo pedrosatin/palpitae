@@ -72,7 +72,7 @@ const bulkItemSchema = v.object({
 /** Body de `PUT /predictions/bulk`. */
 export const bulkPredictionSchema = v.object({
   group_id: nonEmptyString,
-  predictions: v.pipe(v.array(bulkItemSchema), v.minLength(1), v.maxLength(100)),
+  predictions: v.pipe(v.array(v.unknown()), v.minLength(1), v.maxLength(100), v.array(bulkItemSchema)),
 })
 
 export type BulkPredictionBody = v.InferOutput<typeof bulkPredictionSchema>

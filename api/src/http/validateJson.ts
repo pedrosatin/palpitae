@@ -18,7 +18,7 @@ type JsonValidated<Schema extends StandardSchemaV1> = {
   out: { json: StandardSchemaV1.InferOutput<Schema> }
 }
 
-/** Mesma regex do validator JSON do Hono (gate de Content-Type). */
+/** Mesma regex que o validator JSON do Hono usa para aceitar o Content-Type. */
 const JSON_CONTENT_TYPE =
   /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i
 
@@ -26,8 +26,7 @@ const JSON_CONTENT_TYPE =
  * Valida o corpo JSON com `@hono/standard-validator` e um schema Standard Schema
  * (Valibot). Corpo malformado, `null`, lista ou valor solto responde 400 com
  * `Body JSON inválido`, como o `readJsonObject`. O Content-Type não restringe a
- * leitura: JSON válido sem cabeçalho ou com outro tipo segue para o schema, como
- * antes do adapter. Falha de schema responde 400 com a mensagem do mapper.
+ * leitura: JSON válido sem cabeçalho ou com outro tipo segue para o schema. Falha de schema responde 400 com a mensagem do mapper.
  *
  * O valor validado fica em `c.req.valid('json')` para o handler.
  */
@@ -45,8 +44,8 @@ export function validateJson<Schema extends StandardSchemaV1>(
     const body = await readJsonObject(c)
     if (!body) return c.json({ error: INVALID_BODY }, 400)
     // O validator JSON do Hono ignora o corpo e valida `{}` quando o Content-Type
-    // falta ou não é JSON. Reconstroi o Request localmente para o sValidator ler
-    // o objeto já obtido por `readJsonObject`.
+    // falta ou não é JSON. Por isso o Request é recriado com `application/json`
+    // e o corpo já lido por `readJsonObject`.
     ensureJsonContentTypeForValidator(c, body)
     // O cast contorna o Env genérico do sValidator. `readJsonObject` já garantiu
     // que o corpo é um objeto JSON.
@@ -56,7 +55,8 @@ export function validateJson<Schema extends StandardSchemaV1>(
 
 /**
  * Garante Content-Type JSON no Request atual para o gate do sValidator.
- * Só reescreve o Request desta requisição; não altera Headers globais.
+ * Troca `c.req.raw` por uma cópia com Content-Type JSON e o corpo serializado.
+ * A cópia não leva `cf` nem `signal`; nenhum código da API lê esses campos.
  */
 function ensureJsonContentTypeForValidator(
   c: Context<AppContext>,

@@ -156,7 +156,7 @@ describe('validação de escrita PUT /predictions', () => {
     }
   })
 
-  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+  it('JSON válido passa da validação de formato com qualquer Content-Type', async () => {
     const request = await setup()
     for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
       const res = await request('PUT', '/predictions', PUT_VALID, contentType)
@@ -200,6 +200,21 @@ describe('validação de escrita PUT /predictions/bulk', () => {
     expect(res).toEqual({ status: 400, body: BULK_MAX })
   })
 
+  it('teto de 100 tem prioridade sobre item malformado', async () => {
+    const request = await setup()
+    const valid = Array.from({ length: 100 }, (_, i) => ({
+      match_id: `m${i}`,
+      predicted_home_score: 1,
+      predicted_away_score: 0,
+    }))
+    for (const invalid of [null, { match_id: 1 }, {}]) {
+      const res = await request('PUT', '/predictions/bulk', {
+        group_id: 'g1', predictions: [...valid, invalid],
+      })
+      expect(res).toEqual({ status: 400, body: BULK_MAX })
+    }
+  })
+
   it('item com match_id ou placar inválido responde 400', async () => {
     const request = await setup()
     const cases = [
@@ -240,7 +255,7 @@ describe('validação de escrita PUT /predictions/bulk', () => {
     }
   })
 
-  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+  it('JSON válido passa da validação de formato com qualquer Content-Type', async () => {
     const request = await setup()
     for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
       const res = await request('PUT', '/predictions/bulk', BULK_VALID, contentType)
@@ -293,7 +308,7 @@ describe('validação de escrita POST /predictions/import', () => {
     }
   })
 
-  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+  it('JSON válido passa da validação de formato com qualquer Content-Type', async () => {
     const request = await setup()
     for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
       const res = await request('POST', '/predictions/import', IMPORT_VALID, contentType)
@@ -397,7 +412,7 @@ describe('validação de escrita POST /predictions/replicate', () => {
     }
   })
 
-  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+  it('JSON válido passa da validação de formato com qualquer Content-Type', async () => {
     const request = await setup()
     for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
       const res = await request('POST', '/predictions/replicate', REPLICATE_VALID, contentType)
