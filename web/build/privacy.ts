@@ -39,7 +39,7 @@ export const privacyPolicy: PrivacyPolicy = {
     'Quais dados o Palpitae trata, para que servem, com quem são compartilhados, por quanto tempo ficam guardados e como pedir acesso ou exclusão pela LGPD.',
   intro:
     'Esta página explica quais dados o Palpitae trata, para que servem, com quem são compartilhados, por quanto tempo ficam guardados e como exercer os direitos previstos na Lei Geral de Proteção de Dados (LGPD, Lei nº 13.709/2018).',
-  updated: '2026-11-14',
+  updated: '2026-11-20',
   sections: [
     {
       heading: 'Responsável e contato',
@@ -79,7 +79,7 @@ export const privacyPolicy: PrivacyPolicy = {
     {
       heading: 'Lembretes por e-mail e descadastro',
       body: [
-        'Na manhã de um dia com jogo sem o seu palpite, o Palpitae envia um e-mail com os jogos pendentes de cada grupo. O envio passa pela Resend, que recebe o seu endereço de e-mail e o conteúdo da mensagem.',
+        'Na manhã de um dia com jogo sem o seu palpite, o Palpitae envia um e-mail com os jogos pendentes de cada grupo. O envio passa pela Resend, que recebe o seu endereço de e-mail e o conteúdo da mensagem. Se a Resend recusar o envio de forma definitiva, o mesmo e-mail sai pela Mailjet, que recebe os mesmos dados.',
         'A Resend recebe também um identificador interno da sua conta. Ele vai no cabeçalho de controle de repetição do envio (idempotência), junto com a data, e no link de cancelamento de cada e-mail. No link, o identificador está codificado em base64url e assinado, sem prazo de validade. A codificação não esconde o identificador: quem tem o e-mail consegue lê-lo.',
         'Cada e-mail tem um link para cancelar os lembretes. Também dá para desligar e religar os lembretes em Configurações. O Palpitae guarda a data do cancelamento e, por 7 dias, o registro de cada envio, para não repetir o lembrete no mesmo dia.',
         'Finalidade: avisar sobre palpites pendentes. Base legal: legítimo interesse (art. 7º, IX), com cancelamento a qualquer momento.',
@@ -92,6 +92,7 @@ export const privacyPolicy: PrivacyPolicy = {
         'Google: login com a conta Google e Google Analytics, nas condições descritas acima. As fotos de perfil são carregadas dos servidores do Google.',
         'Cloudflare: hospedagem do site e da API, banco de dados, eventos de uso e contagem de visitas. Passam pela Cloudflare os dados que o site e a API do Palpitae tratam. Vão direto do seu navegador para o destino, sem passar pela API do Palpitae, a resposta à pergunta sobre o salvamento de palpites (TBBC), as medições do Google Analytics e as imagens de fotos de perfil e escudos de times.',
         'Resend: envio dos lembretes por e-mail. Recebe o seu e-mail, o conteúdo da mensagem e o identificador interno da conta, no cabeçalho de idempotência e no link de cancelamento.',
+        'Mailjet: envio de reserva dos lembretes, usado só quando a Resend recusa um envio de forma definitiva. Recebe o seu e-mail, o conteúdo da mensagem e o identificador interno da conta, no campo de correlação da mensagem e no link de cancelamento. Os dados ficam em servidores na União Europeia.',
         'TBBC: recebe as respostas da pergunta opcional sobre o salvamento de palpites, quando você responde. A resposta vai sem nome, e-mail ou identificador da conta. A TBBC recebe a conexão direta do seu navegador, com o endereço IP. Não escreva dados pessoais no comentário.',
         'Os escudos dos times vêm dos servidores da football-data.org e da ESPN, que recebem a conexão do seu navegador.',
       ],
@@ -105,7 +106,7 @@ export const privacyPolicy: PrivacyPolicy = {
         'Registros técnicos do servidor, usados para investigar falhas: 3 dias.',
         'Rascunhos de palpite no navegador: 7 dias, ou até você sair da conta. Ficam só no seu aparelho.',
         `Eventos de uso no Cloudflare Analytics Engine: cerca de 3 meses. Cópia diária no Cloudflare R2: 13 meses.`,
-        'Google Analytics: 14 meses. Na Resend e na TBBC valem os prazos de cada serviço.',
+        'Google Analytics: 14 meses. Na Resend, na Mailjet e na TBBC valem os prazos de cada serviço.',
       ],
     },
     {
