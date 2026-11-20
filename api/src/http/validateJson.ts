@@ -1,11 +1,11 @@
 import { sValidator } from '@hono/standard-validator'
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import type { Input, MiddlewareHandler } from 'hono'
+import type { Context, Input, MiddlewareHandler } from 'hono'
 import type { AppContext } from '../types'
 import { INVALID_BODY, readJsonObject } from './jsonBody'
 
 /**
- * Converte a falha do schema na mensagem `{ error }` que a rota já devolveia.
+ * Converte a falha do schema na mensagem `{ error }` da rota.
  * Recebe o corpo bruto (já objeto) e as issues do Standard Schema.
  */
 export type JsonErrorMapper = (
@@ -18,11 +18,16 @@ type JsonValidated<Schema extends StandardSchemaV1> = {
   out: { json: StandardSchemaV1.InferOutput<Schema> }
 }
 
+/** Mesma regex do validator JSON do Hono (gate de Content-Type). */
+const JSON_CONTENT_TYPE =
+  /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i
+
 /**
  * Valida o corpo JSON com `@hono/standard-validator` e um schema Standard Schema
  * (Valibot). Corpo malformado, `null`, lista ou valor solto responde 400 com
- * `Body JSON inválido`, como o `readJsonObject`. Falha de schema responde 400
- * com a mensagem do mapper, para o contrato atual da rota.
+ * `Body JSON inválido`, como o `readJsonObject`. O Content-Type não restringe a
+ * leitura: JSON válido sem cabeçalho ou com outro tipo segue para o schema, como
+ * antes do adapter. Falha de schema responde 400 com a mensagem do mapper.
  *
  * O valor validado fica em `c.req.valid('json')` para o handler.
  */
@@ -39,7 +44,34 @@ export function validateJson<Schema extends StandardSchemaV1>(
   return async (c, next) => {
     const body = await readJsonObject(c)
     if (!body) return c.json({ error: INVALID_BODY }, 400)
-    // sValidator tipa o Env genérico; o corpo e o contrato HTTP já foram conferidos acima.
+    // O validator JSON do Hono ignora o corpo e valida `{}` quando o Content-Type
+    // falta ou não é JSON. Reconstroi o Request localmente para o sValidator ler
+    // o objeto já obtido por `readJsonObject`.
+    ensureJsonContentTypeForValidator(c, body)
+    // O cast contorna o Env genérico do sValidator. `readJsonObject` já garantiu
+    // que o corpo é um objeto JSON.
     return validate(c as never, next)
   }
+}
+
+/**
+ * Garante Content-Type JSON no Request atual para o gate do sValidator.
+ * Só reescreve o Request desta requisição; não altera Headers globais.
+ */
+function ensureJsonContentTypeForValidator(
+  c: Context<AppContext>,
+  body: object,
+): void {
+  const contentType = c.req.header('Content-Type')
+  if (contentType && JSON_CONTENT_TYPE.test(contentType)) return
+
+  const headers = new Headers(c.req.raw.headers)
+  headers.set('Content-Type', 'application/json')
+  c.req.raw = new Request(c.req.url, {
+    method: c.req.raw.method,
+    headers,
+    body: JSON.stringify(body),
+  })
+  // Limpa o cache do corpo consumido para o sValidator ler o Request novo.
+  c.req.bodyCache = {}
 }

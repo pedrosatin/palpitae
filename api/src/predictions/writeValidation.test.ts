@@ -33,16 +33,22 @@ async function setup() {
     passThroughOnException: () => {},
     props: {},
   } as unknown as ExecutionContext
-  return async (method: string, path: string, body: unknown) => {
+  return async (
+    method: string,
+    path: string,
+    body: unknown,
+    contentType: string | null = 'application/json',
+  ) => {
     const rawBody = typeof body === 'string' ? body : JSON.stringify(body)
+    const headers: Record<string, string> = {
+      Cookie: `session=${token}`,
+      'CF-Connecting-IP': '192.0.2.1',
+    }
+    if (contentType !== null) headers['Content-Type'] = contentType
     const response = await worker.fetch(
       new Request(`https://api.palpitae.com.br${path}`, {
         method,
-        headers: {
-          Cookie: `session=${token}`,
-          'Content-Type': 'application/json',
-          'CF-Connecting-IP': '192.0.2.1',
-        },
+        headers,
         body: rawBody,
       }),
       env,
@@ -75,8 +81,25 @@ const REPLICATE_DIFF = {
   error: 'target_group_ids deve ter ao menos um grupo diferente da origem',
 }
 
+const PUT_VALID = {
+  group_id: 'g1',
+  match_id: 'm1',
+  predicted_home_score: 1,
+  predicted_away_score: 0,
+}
+const BULK_VALID = {
+  group_id: 'g1',
+  predictions: [{ match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0 }],
+}
+const IMPORT_VALID = { source_group_id: 'src', target_group_id: 'tgt' }
+const REPLICATE_VALID = {
+  source_group_id: 'src',
+  target_group_ids: ['g2'],
+  match_ids: ['m1'],
+}
+
 describe('validação de escrita PUT /predictions', () => {
-  it('campo ausente responde 400 com a mensagem atual', async () => {
+  it('campo ausente responde 400 com a mensagem de obrigatórios', async () => {
     const request = await setup()
     const cases = [
       {},
@@ -113,11 +136,32 @@ describe('validação de escrita PUT /predictions', () => {
     }
   })
 
+  it('ID que não é string responde 400 com a mensagem de obrigatórios', async () => {
+    const request = await setup()
+    for (const body of [
+      { ...PUT_VALID, group_id: 123 },
+      { ...PUT_VALID, match_id: 7 },
+      { ...PUT_VALID, group_id: {} },
+    ]) {
+      const res = await request('PUT', '/predictions', body)
+      expect(res).toEqual({ status: 400, body: PUT_REQUIRED })
+    }
+  })
+
   it('corpo que não é objeto responde 400', async () => {
     const request = await setup()
     for (const raw of ['null', '[]', '42', '{']) {
       const res = await request('PUT', '/predictions', raw)
       expect(res).toEqual({ status: 400, body: INVALID_BODY })
+    }
+  })
+
+  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+    const request = await setup()
+    for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
+      const res = await request('PUT', '/predictions', PUT_VALID, contentType)
+      expect(res.status).toBe(403)
+      expect(res.body.error).toMatch(/Acesso negado/)
     }
   })
 })
@@ -179,11 +223,29 @@ describe('validação de escrita PUT /predictions/bulk', () => {
     }
   })
 
+  it('group_id que não é string responde 400', async () => {
+    const request = await setup()
+    const res = await request('PUT', '/predictions/bulk', {
+      group_id: 1,
+      predictions: [{ match_id: 'm1', predicted_home_score: 1, predicted_away_score: 0 }],
+    })
+    expect(res).toEqual({ status: 400, body: BULK_GROUP })
+  })
+
   it('corpo que não é objeto responde 400', async () => {
     const request = await setup()
     for (const raw of ['null', '[]', '42', '{']) {
       const res = await request('PUT', '/predictions/bulk', raw)
       expect(res).toEqual({ status: 400, body: INVALID_BODY })
+    }
+  })
+
+  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+    const request = await setup()
+    for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
+      const res = await request('PUT', '/predictions/bulk', BULK_VALID, contentType)
+      expect(res.status).toBe(403)
+      expect(res.body.error).toMatch(/Acesso negado/)
     }
   })
 })
@@ -214,11 +276,29 @@ describe('validação de escrita POST /predictions/import', () => {
     expect(res).toEqual({ status: 400, body: IMPORT_DIFF })
   })
 
+  it('ID que não é string responde 400 com a mensagem de obrigatórios', async () => {
+    const request = await setup()
+    const res = await request('POST', '/predictions/import', {
+      source_group_id: 5,
+      target_group_id: 6,
+    })
+    expect(res).toEqual({ status: 400, body: IMPORT_REQUIRED })
+  })
+
   it('corpo que não é objeto responde 400', async () => {
     const request = await setup()
     for (const raw of ['null', '[]', '42', '{']) {
       const res = await request('POST', '/predictions/import', raw)
       expect(res).toEqual({ status: 400, body: INVALID_BODY })
+    }
+  })
+
+  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+    const request = await setup()
+    for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
+      const res = await request('POST', '/predictions/import', IMPORT_VALID, contentType)
+      expect(res.status).toBe(403)
+      expect(res.body.error).toMatch(/Acesso negado/)
     }
   })
 })
@@ -267,11 +347,62 @@ describe('validação de escrita POST /predictions/replicate', () => {
     }
   })
 
+  it('dedupe de destinos roda antes do teto de 10', async () => {
+    const request = await setup()
+    const twelveToTen = {
+      source_group_id: 'src',
+      target_group_ids: ['a', 'a', 'b', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+      match_ids: ['m1'],
+    }
+    const ok = await request('POST', '/predictions/replicate', twelveToTen)
+    expect(ok.status).toBe(403)
+    expect(ok.body.error).toMatch(/Acesso negado/)
+
+    const elevenUniqueIncludingSource = {
+      source_group_id: 'src',
+      target_group_ids: [
+        'src',
+        'g1',
+        'g2',
+        'g3',
+        'g4',
+        'g5',
+        'g6',
+        'g7',
+        'g8',
+        'g9',
+        'g10',
+      ],
+      match_ids: ['m1'],
+    }
+    const fail = await request('POST', '/predictions/replicate', elevenUniqueIncludingSource)
+    expect(fail).toEqual({ status: 400, body: REPLICATE_REQUIRED })
+  })
+
+  it('source_group_id que não é string responde 400', async () => {
+    const request = await setup()
+    const res = await request('POST', '/predictions/replicate', {
+      source_group_id: 9,
+      target_group_ids: ['g2'],
+      match_ids: ['m1'],
+    })
+    expect(res).toEqual({ status: 400, body: REPLICATE_REQUIRED })
+  })
+
   it('corpo que não é objeto responde 400', async () => {
     const request = await setup()
     for (const raw of ['null', '[]', '42', '{']) {
       const res = await request('POST', '/predictions/replicate', raw)
       expect(res).toEqual({ status: 400, body: INVALID_BODY })
+    }
+  })
+
+  it('JSON válido sem Content-Type JSON passa da validação de formato', async () => {
+    const request = await setup()
+    for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
+      const res = await request('POST', '/predictions/replicate', REPLICATE_VALID, contentType)
+      expect(res.status).toBe(403)
+      expect(res.body.error).toMatch(/Acesso negado/)
     }
   })
 })

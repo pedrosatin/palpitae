@@ -1,5 +1,6 @@
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 import * as v from 'valibot'
-import { isValidScore, MAX_SCORE } from './scores'
+import { MAX_SCORE } from './scores'
 
 export const PUT_REQUIRED_MSG =
   'group_id, match_id, predicted_home_score e predicted_away_score são obrigatórios'
@@ -14,6 +15,8 @@ export const REPLICATE_MAX_TARGETS = 10
 export const REPLICATE_MAX_MATCHES = 100
 export const REPLICATE_REQUIRED_MSG = `source_group_id, target_group_ids (até ${REPLICATE_MAX_TARGETS}) e match_ids (1 a ${REPLICATE_MAX_MATCHES}) são obrigatórios`
 export const REPLICATE_DIFF_MSG = 'target_group_ids deve ter ao menos um grupo diferente da origem'
+
+type Issue = StandardSchemaV1.Issue
 
 const scoreSchema = v.pipe(
   v.number(),
@@ -35,20 +38,26 @@ export const putPredictionSchema = v.object({
 
 export type PutPredictionBody = v.InferOutput<typeof putPredictionSchema>
 
-/** Mensagem de 400 do PUT singular, na mesma ordem das checagens antigas. */
-export function mapPutPredictionError(data: unknown): string {
-  const body = asRecord(data)
-  if (
-    !body ||
-    !body.group_id ||
-    !body.match_id ||
-    body.predicted_home_score === undefined ||
-    body.predicted_away_score === undefined
-  ) {
-    return PUT_REQUIRED_MSG
+/** Mensagem de 400 do PUT singular. Campo ausente tem prioridade sobre placar fora da faixa. */
+export function mapPutPredictionError(
+  _data: unknown,
+  issues: readonly Issue[],
+): string {
+  for (const issue of issues) {
+    const key = pathKey(issue)
+    if (key === 'group_id' || key === 'match_id') return PUT_REQUIRED_MSG
+    if (
+      (key === 'predicted_home_score' || key === 'predicted_away_score') &&
+      issueInput(issue) === undefined
+    ) {
+      return PUT_REQUIRED_MSG
+    }
   }
-  if (!isValidScore(body.predicted_home_score) || !isValidScore(body.predicted_away_score)) {
-    return SCORE_RANGE_MSG
+  for (const issue of issues) {
+    const key = pathKey(issue)
+    if (key === 'predicted_home_score' || key === 'predicted_away_score') {
+      return SCORE_RANGE_MSG
+    }
   }
   return PUT_REQUIRED_MSG
 }
@@ -68,20 +77,28 @@ export const bulkPredictionSchema = v.object({
 
 export type BulkPredictionBody = v.InferOutput<typeof bulkPredictionSchema>
 
-/** Mensagem de 400 do bulk, na mesma ordem de `validateBulkPutPayload`. */
-export function mapBulkPredictionError(data: unknown): string {
-  const body = asRecord(data)
-  if (!body?.group_id) return BULK_GROUP_MSG
-  if (!Array.isArray(body.predictions) || body.predictions.length === 0) return BULK_EMPTY_MSG
-  if (body.predictions.length > 100) return BULK_MAX_MSG
-  for (const p of body.predictions) {
-    const item = asRecord(p)
-    if (
-      !item ||
-      typeof item.match_id !== 'string' ||
-      !isValidScore(item.predicted_home_score) ||
-      !isValidScore(item.predicted_away_score)
-    ) {
+/** Mensagem de 400 do bulk. Ordem: group_id, lista vazia, teto de 100, item inválido. */
+export function mapBulkPredictionError(
+  _data: unknown,
+  issues: readonly Issue[],
+): string {
+  for (const issue of issues) {
+    if (pathKey(issue) === 'group_id') return BULK_GROUP_MSG
+  }
+  for (const issue of issues) {
+    if (pathKey(issue) !== 'predictions') continue
+    if ((issue.path?.length ?? 0) > 1) continue
+    if (issueType(issue) === 'max_length') continue
+    // Ausente, tipo errado ou lista vazia (array / min_length / object).
+    return BULK_EMPTY_MSG
+  }
+  for (const issue of issues) {
+    if (pathKey(issue) === 'predictions' && issueType(issue) === 'max_length') {
+      return BULK_MAX_MSG
+    }
+  }
+  for (const issue of issues) {
+    if (pathKey(issue) === 'predictions' && (issue.path?.length ?? 0) > 1) {
       return BULK_ITEM_MSG
     }
   }
@@ -100,10 +117,13 @@ export const importPredictionSchema = v.pipe(
 
 export type ImportPredictionBody = v.InferOutput<typeof importPredictionSchema>
 
-export function mapImportPredictionError(data: unknown): string {
-  const body = asRecord(data)
-  if (!body?.source_group_id || !body?.target_group_id) return IMPORT_REQUIRED_MSG
-  if (body.source_group_id === body.target_group_id) return IMPORT_DIFF_MSG
+export function mapImportPredictionError(
+  _data: unknown,
+  issues: readonly Issue[],
+): string {
+  if (issues.length === 1 && issues[0]?.message === IMPORT_DIFF_MSG) {
+    return IMPORT_DIFF_MSG
+  }
   return IMPORT_REQUIRED_MSG
 }
 
@@ -138,40 +158,30 @@ export const replicatePredictionSchema = v.pipe(
 
 export type ReplicatePredictionBody = v.InferOutput<typeof replicatePredictionSchema>
 
-export function mapReplicatePredictionError(data: unknown): string {
-  const body = asRecord(data)
-  if (!body) return REPLICATE_REQUIRED_MSG
-
-  const sourceGroupId = body.source_group_id
-  const targetIds = stringList(body.target_group_ids, REPLICATE_MAX_TARGETS)
-  const matchIds = stringList(body.match_ids, REPLICATE_MAX_MATCHES)
-  if (
-    typeof sourceGroupId !== 'string' ||
-    sourceGroupId.length === 0 ||
-    !targetIds ||
-    !matchIds ||
-    matchIds.length === 0
-  ) {
-    return REPLICATE_REQUIRED_MSG
-  }
-  if (targetIds.filter((id) => id !== sourceGroupId).length === 0) {
+export function mapReplicatePredictionError(
+  _data: unknown,
+  issues: readonly Issue[],
+): string {
+  if (issues.length === 1 && issues[0]?.message === REPLICATE_DIFF_MSG) {
     return REPLICATE_DIFF_MSG
   }
   return REPLICATE_REQUIRED_MSG
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
+function pathKey(issue: Issue, index = 0): string | number | undefined {
+  const segment = issue.path?.[index]
+  if (segment == null) return undefined
+  if (typeof segment === 'object' && segment !== null && 'key' in segment) {
+    return segment.key as string | number
+  }
+  return segment as string | number
 }
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0
+function issueType(issue: Issue): string | undefined {
+  const type = (issue as unknown as { type?: unknown }).type
+  return typeof type === 'string' ? type : undefined
 }
 
-function stringList(value: unknown, max: number): string[] | null {
-  if (!Array.isArray(value) || !value.every(isNonEmptyString)) return null
-  const unique = Array.from(new Set(value))
-  return unique.length > max ? null : unique
+function issueInput(issue: Issue): unknown {
+  return (issue as unknown as { input?: unknown }).input
 }

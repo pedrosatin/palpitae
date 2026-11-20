@@ -44,8 +44,9 @@ import {
  *   429 — orçamento diário de escrita excedido
  *   503 — controle de requisições indisponível
  */
-export const importJsonValidator = validateJson(importPredictionSchema, (data) =>
-  mapImportPredictionError(data),
+export const importJsonValidator = validateJson(
+  importPredictionSchema,
+  mapImportPredictionError,
 )
 
 export async function handleImportPost(

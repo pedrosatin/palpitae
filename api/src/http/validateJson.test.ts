@@ -13,10 +13,14 @@ describe('validateJson', () => {
     (c) => c.json(c.req.valid('json')),
   )
 
-  async function post(rawBody: string) {
+  async function post(rawBody: string, contentType?: string | null) {
+    const headers: Record<string, string> = {}
+    if (contentType !== null) {
+      headers['Content-Type'] = contentType ?? 'application/json'
+    }
     return app.request('http://test/x', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: rawBody,
     })
   }
@@ -35,9 +39,35 @@ describe('validateJson', () => {
     }
   })
 
-  it('schema inválido usa a mensagem do mapper', async () => {
+  it('corpo fora do schema usa a mensagem do mapper', async () => {
     const res = await post('{"name":""}')
     expect(res.status).toBe(400)
     expect(await res.json()).toEqual({ error: 'nome inválido' })
+  })
+
+  it('JSON válido sem Content-Type ou com text/plain segue para o schema', async () => {
+    for (const contentType of [null, 'text/plain'] as const) {
+      const ok = await post('{"name":"ok"}', contentType)
+      expect(ok.status).toBe(200)
+      expect(await ok.json()).toEqual({ name: 'ok' })
+
+      const bad = await post('{"name":""}', contentType)
+      expect(bad.status).toBe(400)
+      expect(await bad.json()).toEqual({ error: 'nome inválido' })
+    }
+  })
+
+  it('application/json;charset=UTF-8 aceita o corpo', async () => {
+    const res = await post('{"name":"ok"}', 'application/json;charset=UTF-8')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ name: 'ok' })
+  })
+
+  it('JSON malformado responde Body JSON inválido independentemente do Content-Type', async () => {
+    for (const contentType of ['application/json', 'text/plain', null] as const) {
+      const res = await post('{', contentType)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Body JSON inválido' })
+    }
   })
 })

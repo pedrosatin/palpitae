@@ -370,8 +370,9 @@ export async function planCopy(
   return { ...plan, lockedMatches, missingMatches }
 }
 
-export const replicateJsonValidator = validateJson(replicatePredictionSchema, (data) =>
-  mapReplicatePredictionError(data),
+export const replicateJsonValidator = validateJson(
+  replicatePredictionSchema,
+  mapReplicatePredictionError,
 )
 
 /**

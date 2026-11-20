@@ -85,7 +85,7 @@ type BulkMatchInfo = {
   penalty_phases: string
 }
 
-type BulkPick = { home: number; away: number; penaltyWinner?: 'home' | 'away' | null }
+type BulkPick = { home: number; away: number; rawPenaltyWinner?: unknown }
 
 type BulkTieContext = {
   roleByMatch: Map<string, TieRole>
@@ -742,7 +742,7 @@ router.get('/group', requireAuth, async (c) => {
 router.put(
   '/',
   requireAuth,
-  validateJson(putPredictionSchema, (data) => mapPutPredictionError(data)),
+  validateJson(putPredictionSchema, mapPutPredictionError),
   async (c) => {
     const userId = c.get('userId')
     const {
@@ -934,7 +934,7 @@ function buildBulkPutStatements(
       continue
     }
 
-    const { home, away, penaltyWinner: rawPenaltyWinner } = matchData
+    const { home, away, rawPenaltyWinner } = matchData
 
     // Same penalty validation as PUT /: required for a draw in an eligible phase
     // (except on a leg 1), kept on a leg 2 aggregate tie, nulled out otherwise.
@@ -1021,10 +1021,7 @@ async function handleBulkPut(
     byMatch.set(p.match_id, {
       home: p.predicted_home_score,
       away: p.predicted_away_score,
-      penaltyWinner:
-        p.predicted_penalty_winner === 'home' || p.predicted_penalty_winner === 'away'
-          ? p.predicted_penalty_winner
-          : null,
+      rawPenaltyWinner: p.predicted_penalty_winner,
     })
   }
   const matchIds = Array.from(byMatch.keys())
@@ -1101,7 +1098,7 @@ async function handleBulkPut(
 router.put(
   '/bulk',
   requireAuth,
-  validateJson(bulkPredictionSchema, (data) => mapBulkPredictionError(data)),
+  validateJson(bulkPredictionSchema, mapBulkPredictionError),
   handleBulkPut,
 )
 router.post('/import', requireAuth, importJsonValidator, handleImportPost)
