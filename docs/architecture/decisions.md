@@ -311,7 +311,7 @@ Accepted tradeoff: if the daily cron fails and Cloudflare re-invokes it, a re-se
 
 **CTA attribution.** The CTA link carries `utm_source=email&utm_medium=email&utm_campaign=round_reminder` so GA4 (auto-captures `utm_*`) attributes site visits opened from the e-mail. Server-side, each send logs `email_reminder_sent` (with `user_hash`, not the e-mail) and the run logs `cron_round_reminder` (`rounds`, `sent`, `failed`) to Analytics Engine.
 
-**Opt-out (LGPD).** Default is opt-in. Suppression is controlled in-app, not by Resend (Resend auto-manages unsubscribes only for its Broadcasts product, not API/transactional sends). `users.email_unsubscribed_at` (NULL = subscribed; migration 0007). The reminder query adds `AND u.email_unsubscribed_at IS NULL`. Each e-mail carries a footer "Cancelar inscrição" link plus RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post: One-Click` headers (Gmail/Apple native button). The link/header point at `GET|POST /notifications/unsubscribe?token=…`. The token is a **dedicated HMAC** (`notifications/unsubscribeToken.ts`), **not** a JWT — reusing the session JWT would turn an unsubscribe URL into a bearer credential; the token carries only the user id, no expiry. Users re-subscribe from the in-app settings page (`/configuracoes` → `GET|PATCH /notifications/preferences`). Events: `email_unsubscribed` / `email_resubscribed` (with `source` = `link`|`settings`).
+**Opt-out (LGPD).** Default is opt-in. Suppression is controlled in-app, not by Resend (Resend auto-manages unsubscribes only for its Broadcasts product, not API/transactional sends). `users.email_unsubscribed_at` (NULL = subscribed; migration 0007). The reminder query adds `AND u.email_unsubscribed_at IS NULL`. Each e-mail carries a footer "Cancelar inscrição" link plus RFC 8058 `List-Unsubscribe` / `List-Unsubscribe-Post: One-Click` headers (Gmail/Apple native button). The link/header point at `GET|POST /notifications/unsubscribe?token=…`. The token is a **dedicated HMAC** (`notifications/unsubscribeToken.ts`), **not** a JWT — reusing the session JWT would turn an unsubscribe URL into a bearer credential; the token carries only the user id, no expiry. Users re-subscribe from the in-app settings page (`/configuracoes` → `GET|PATCH /notifications/preferences`). Events: `email_unsubscribed` / `email_resubscribed` (with `source` = `link`|`settings`|`mailjet`).
 
 ### Alternatives Considered
 
@@ -805,6 +805,30 @@ O ponto sem volta é o início do `fetch` ao Resend. Descadastro depois disso n�
 #### Adendo (2026-11-20): fallback Mailjet enxuto
 
 Com `MAILJET_API_KEY` e `MAILJET_API_SECRET`, recusa definitiva do Resend na **primeira** tentativa daquele destinatário na execução (4xx de validação/conta, 401/403 ou cota esgotada, sem falha passageira antes) desvia uma vez à Mailjet, só para quem ainda não teve tentativa nesta execução. Timeout, 5xx, rede e qualquer 409 do Resend **não** acionam o fallback: o Resend pode ter aceitado, ou a chave do dia já foi usada (reexecução com corpo diferente → `invalid_idempotent_request`). Se `sendWithRetry` viu um erro passageiro e depois um status que pareceria definitivo (por exemplo timeout → 409, ou 5xx → `daily_quota_exceeded`), marca a falha como incerta e também fica sem Mailjet. 401/403 do Resend tratam a conta como indisponível no restante do lote (mesmo desvio da cota, sem novo `fetch` à Resend por pessoa). Sem os dois segredos o cron é idêntico ao da main. Cada `fetch` da Mailjet conta no mesmo teto de `REMINDER_FETCH_BUDGET`. Não há migration, reconciliação por CustomID nem estados novos: timeout ou 429 da Mailjet mantém a reserva (sem idempotência, não reenvia naquele dia; evita duplicata); recusa definitiva da Mailjet libera a reserva e registra a falha. O envio Mailjet desliga `TrackOpens` e `TrackClicks`. `List-Unsubscribe` e preferências locais seguem iguais aos do Resend. Operação: com a Mailjet ativa, não reexecute o lembrete no mesmo dia depois de falhas incertas (timeout, 5xx ou `UncertainResendError`). A reserva dessas pessoas foi liberada, e uma segunda execução que receba cota esgotada ou 401/403 antes de a Resend checar a idempotência mandaria pela Mailjet um e-mail que a 1ª tentativa pode já ter entregue.
+
+#### Adendo (2026-11-20): sincronização do descadastro via Event API
+
+Em envio real, a Mailjet **substitui** o `List-Unsubscribe` / `List-Unsubscribe-Post` que o Palpitae manda em `Headers` pelos dela (`mailto` em `bnc3.mailjet.com` e `https` em `mjt.lu/unsub2`, com One-Click). Quem cancela pelo botão nativo do Gmail num e-mail de reserva entra só na lista de exclusão da Mailjet e seguiria recebendo pela Resend. O link de cancelamento no corpo do e-mail continua sendo o do Palpitae.
+
+Por isso o Worker expõe `POST /notifications/mailjet-events`, que recebe a Event API da Mailjet para `unsub` e `spam` (objeto ou array agrupado). Para cada evento, resolve o usuário pelo `CustomID` (`lembrete-diario/<userId>/<YYYY-MM-DD>`, a mesma chave de idempotência do lembrete) e, se não achar conta, pelo e-mail; aplica o mesmo efeito do link de cancelamento / Configurações (`users.email_unsubscribed_at`, evento `email_unsubscribed` com `source = mailjet`). Outros tipos de evento são ignorados. Idempotente. Payload inválido responde 200 com log, sem dado pessoal, para a Mailjet não reenviar em loop.
+
+Autenticação: Basic Auth na URL do callback (suportado pela Mailjet). A senha é o segredo `MAILJET_WEBHOOK_SECRET` (usuário livre, ex. `mailjet`), comparado em tempo constante. Sem o segredo no Worker a rota responde 404. URL de cadastro:
+
+`https://mailjet:<MAILJET_WEBHOOK_SECRET>@api.palpitae.com.br/notifications/mailjet-events`
+
+Configuração na Mailjet (depois do deploy e do `secret put`), um `POST` por tipo:
+
+```bash
+curl -X POST "https://api.mailjet.com/v3/REST/eventcallbackurl" \
+  -u "$MAILJET_API_KEY:$MAILJET_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"EventType":"unsub","Url":"https://mailjet:'"$MAILJET_WEBHOOK_SECRET"'@api.palpitae.com.br/notifications/mailjet-events","Version":2,"Status":"alive"}'
+
+curl -X POST "https://api.mailjet.com/v3/REST/eventcallbackurl" \
+  -u "$MAILJET_API_KEY:$MAILJET_API_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"EventType":"spam","Url":"https://mailjet:'"$MAILJET_WEBHOOK_SECRET"'@api.palpitae.com.br/notifications/mailjet-events","Version":2,"Status":"alive"}'
+```
 
 ### Consequences
 

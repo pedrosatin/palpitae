@@ -35,6 +35,9 @@ export type Env = {
   // fallback fica desligado e o comportamento do Resend não muda.
   MAILJET_API_KEY?: string
   MAILJET_API_SECRET?: string
+  // Senha do Basic Auth do webhook Event API (unsub/spam). Sem ela a rota
+  // /notifications/mailjet-events responde 404. Ver ADR-020.
+  MAILJET_WEBHOOK_SECRET?: string
   // Teto de chamadas ao Resend/Mailjet por execução do lembrete diário. Padrão 45 (plano Free).
   REMINDER_FETCH_BUDGET?: string
   // Limiar em horas para resultado atrasado sem placar (padrão 3). Ver resultOverdue.ts.
