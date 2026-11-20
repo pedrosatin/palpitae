@@ -204,10 +204,10 @@ describe('workflows do GitHub Actions', () => {
     const text = workflows.find((w) => w.name === 'deploy-web.yml')?.text ?? ''
     const teste = jobsDe(text).get('test') ?? ''
 
-    // O workflow roda quando a web ou ele mesmo mudam, no PR e no push.
+    // O workflow roda quando a web, os vetores de ouro ou ele mesmo mudam, no PR e no push.
     for (const evento of ['pull_request', 'push']) {
       const paths = pathsDe(text, evento)
-      for (const path of ['web/**', '.github/workflows/deploy-web.yml']) {
+      for (const path of ['web/**', 'test-vectors/**', '.github/workflows/deploy-web.yml']) {
         assert.ok(paths.includes(path), `${evento} sem o path ${path}`)
       }
     }
@@ -236,6 +236,7 @@ describe('workflows do GitHub Actions', () => {
     const triggers = [...lista.matchAll(/'([^']+)'/g)].map(([, path]) => path)
     assert.ok(triggers.includes('scripts/test-changed.sh'), 'falta scripts/test-changed.sh')
     assert.ok(triggers.includes('../.github/workflows/deploy-web.yml'), 'falta deploy-web.yml')
+    assert.ok(triggers.includes('../test-vectors/mata-mata.json'), 'falta test-vectors/mata-mata.json')
     // Um gatilho fora de web/ precisa existir: arquivo renomeado deixa de valer em silêncio.
     for (const path of triggers.filter((p) => p.startsWith('../'))) {
       assert.ok(existsSync(join(ROOT, 'web', path)), `gatilho ${path} não existe`)
