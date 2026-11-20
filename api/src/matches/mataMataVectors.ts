@@ -14,11 +14,20 @@ export type MataMataRole = 'leg1' | 'leg2' | 'single' | null
 
 export type MataMataVectorInput = {
   role: MataMataRole
-  /** Equivalente a `decides_on_penalties` / `eligible` de `penaltyPickNeeded`. */
+  /**
+   * Equivalente a `decides_on_penalties` / `eligible` de `penaltyPickNeeded`.
+   * Na volta o produto usa `true`; na ida o card nunca pede pênalti (mesmo com
+   * `true`, coberto por `ida-com-empate-ainda-nao-pede-penalti`).
+   */
   decidesOnPenalties: boolean
   home: number
   away: number
-  /** Palpite da ida no referencial da ida; `null` quando ausente ou não se aplica. */
+  /**
+   * Palpite da ida no referencial da ida.
+   * Usado só quando `role` é `leg2`; `null` quando ausente.
+   * Nos demais papéis o campo não entra no cálculo (pode vir preenchido só para
+   * provar que a ida o ignora).
+   */
   leg1: MataMataScorePair | null
   penaltyWinner: MataMataSide | null
 }

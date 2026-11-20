@@ -11,7 +11,6 @@ on:
       - main
     paths:
       - 'web/**'
-      - 'test-vectors/**'
       - '.github/workflows/deploy-web.yml'
   # Verificacao manual da web (typecheck, suite inteira, build e CSP), que o CI
   # fazia antes; nao publica, porque o deploy so roda no push.
@@ -23,10 +22,10 @@ on:
 # Este workflow e o unico que verifica a web (typecheck, testes, build e CSP); o
 # CI (ci.yml) fica com lint, API e scripts. A web nao importa codigo nem
 # configuracao da raiz ou da API; o package.json e o lockfile da raiz so servem
-# ao lint, que fica no CI. Os vetores em test-vectors/ entram no filtro porque
-# os testes de paridade os leem por fs; sem o path, uma mudanca so no JSON nao
-# rodaria a web. O build consulta o historico do git e a selecao de testes
-# considera este workflow.
+# ao lint, que fica no CI. Os vetores em test-vectors/ entram só no filtro do
+# pull_request: uma mudanca so no JSON precisa rodar a web no PR, mas no push
+# para main nao dispara deploy (nao ha artefato de produto a publicar). O build
+# consulta o historico do git e a selecao de testes considera este workflow.
 # Travado no versionamento: nenhum job aqui escreve no repositorio.
 permissions:
   contents: read

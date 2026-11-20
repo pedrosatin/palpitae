@@ -32,8 +32,8 @@ const config: UserConfig = {
     // O Vitest compara caminhos absolutos do repositório inteiro, então os
     // padrões ficam presos à web: o padrão `**/package.json` rodaria tudo a cada
     // mudança em api/package.json. Os vetores de ouro ficam fora de web/ e o
-    // teste os lê por fs (fora do grafo de imports); o gatilho abaixo cobre
-    // mudança só no JSON.
+    // teste os lê por readFileSync/import.meta.url; o test-changed.sh já inclui
+    // esses testes na seleção, sem precisar de gatilho aqui.
     forceRerunTriggers: [
       'package.json',
       'package-lock.json',
@@ -45,7 +45,6 @@ const config: UserConfig = {
       'src/styles/variables.css',
       'scripts/test-changed.sh',
       '../.github/workflows/deploy-web.yml',
-      '../test-vectors/mata-mata.json',
     ].map((path) => resolve(webRoot, path)),
     testTimeout: 10000,
     css: {

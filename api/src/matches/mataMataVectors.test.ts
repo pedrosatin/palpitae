@@ -27,7 +27,13 @@ function leg1Score(leg1: MataMataScorePair | null) {
   return leg1 ? { homeScore: leg1.home, awayScore: leg1.away } : null
 }
 
-/** Agregado da volta no referencial do jogo de volta (mandante da volta = visitante da ida). */
+/**
+ * Agregado da volta no referencial do jogo de volta (mandante da volta =
+ * visitante da ida). A soma e o roteamento por papel são reimplementados aqui
+ * para espelhar o contrato do web (`predictedTieScore`); a regra oficial de
+ * classificado fica em `resolveTwoLegClassified` / `resolveSingleMatchClassified`
+ * (abaixo) e o pedido de pênalti em `penaltyPickNeeded`.
+ */
 function predictedTieScoreFromApi(input: MataMataVectorInput): MataMataScorePair | null {
   const { role, home, away, leg1 } = input
   if (role === 'leg2') {
@@ -69,6 +75,11 @@ function apiOutputs(input: MataMataVectorInput): MataMataVectorExpected {
 describe('vetores de ouro do mata-mata (API)', () => {
   it('carrega pelo menos os casos do ticket', () => {
     expect(vectors.cases.length).toBeGreaterThanOrEqual(8)
+  })
+
+  it('usa nomes únicos em cada caso', () => {
+    const names = vectors.cases.map((c) => c.name)
+    expect(new Set(names).size).toBe(names.length)
   })
 
   it.each(vectors.cases.map((c: MataMataVectorCase) => [c.name, c] as const))(

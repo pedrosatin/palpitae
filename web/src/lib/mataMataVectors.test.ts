@@ -59,6 +59,11 @@ describe('vetores de ouro do mata-mata (web)', () => {
     expect(vectors.cases.length).toBeGreaterThanOrEqual(8)
   })
 
+  it('usa nomes únicos em cada caso', () => {
+    const names = vectors.cases.map((c) => c.name)
+    expect(new Set(names).size).toBe(names.length)
+  })
+
   it.each(vectors.cases.map((c: MataMataVectorCase) => [c.name, c] as const))(
     '%s',
     (_name, vectorCase) => {

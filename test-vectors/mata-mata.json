@@ -23,7 +23,7 @@
       "name": "ida-com-empate-ainda-nao-pede-penalti",
       "input": {
         "role": "leg1",
-        "decidesOnPenalties": false,
+        "decidesOnPenalties": true,
         "home": 1,
         "away": 1,
         "leg1": null,
@@ -33,6 +33,28 @@
         "predictedClassified": null,
         "predictedTieScore": {
           "home": 1,
+          "away": 1
+        },
+        "penaltyPickNeeded": false
+      }
+    },
+    {
+      "name": "ida-com-palpite-da-ida-ignora-esse-palpite",
+      "input": {
+        "role": "leg1",
+        "decidesOnPenalties": false,
+        "home": 2,
+        "away": 1,
+        "leg1": {
+          "home": 3,
+          "away": 0
+        },
+        "penaltyWinner": null
+      },
+      "expected": {
+        "predictedClassified": null,
+        "predictedTieScore": {
+          "home": 2,
           "away": 1
         },
         "penaltyPickNeeded": false
@@ -258,6 +280,25 @@
         "predictedTieScore": {
           "home": 0,
           "away": 0
+        },
+        "penaltyPickNeeded": true
+      }
+    },
+    {
+      "name": "jogo-unico-empate-com-vencedor-away",
+      "input": {
+        "role": "single",
+        "decidesOnPenalties": true,
+        "home": 1,
+        "away": 1,
+        "leg1": null,
+        "penaltyWinner": "away"
+      },
+      "expected": {
+        "predictedClassified": "away",
+        "predictedTieScore": {
+          "home": 1,
+          "away": 1
         },
         "penaltyPickNeeded": true
       }

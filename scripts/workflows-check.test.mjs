@@ -204,13 +204,18 @@ describe('workflows do GitHub Actions', () => {
     const text = workflows.find((w) => w.name === 'deploy-web.yml')?.text ?? ''
     const teste = jobsDe(text).get('test') ?? ''
 
-    // O workflow roda quando a web, os vetores de ouro ou ele mesmo mudam, no PR e no push.
-    for (const evento of ['pull_request', 'push']) {
-      const paths = pathsDe(text, evento)
-      for (const path of ['web/**', 'test-vectors/**', '.github/workflows/deploy-web.yml']) {
-        assert.ok(paths.includes(path), `${evento} sem o path ${path}`)
-      }
+    // No PR: web, vetores de ouro e o próprio workflow. No push: só web e workflow
+    // (mudança só em test-vectors/ não dispara deploy).
+    const pathsPr = pathsDe(text, 'pull_request')
+    for (const path of ['web/**', 'test-vectors/**', '.github/workflows/deploy-web.yml']) {
+      assert.ok(pathsPr.includes(path), `pull_request sem o path ${path}`)
     }
+    const pathsPush = pathsDe(text, 'push')
+    for (const path of ['web/**', '.github/workflows/deploy-web.yml']) {
+      assert.ok(pathsPush.includes(path), `push sem o path ${path}`)
+    }
+    assert.ok(!pathsPush.includes('test-vectors/**'), 'push não deve filtrar test-vectors/**')
+
 
     // Type check antes dos testes, e a seleção só dentro do ramo de pull_request.
     assert.match(teste, /^\s+run: npm run type-check\s*$/m)
@@ -236,7 +241,8 @@ describe('workflows do GitHub Actions', () => {
     const triggers = [...lista.matchAll(/'([^']+)'/g)].map(([, path]) => path)
     assert.ok(triggers.includes('scripts/test-changed.sh'), 'falta scripts/test-changed.sh')
     assert.ok(triggers.includes('../.github/workflows/deploy-web.yml'), 'falta deploy-web.yml')
-    assert.ok(triggers.includes('../test-vectors/mata-mata.json'), 'falta test-vectors/mata-mata.json')
+    // Vetores ficam de fora: test-changed.sh já inclui testes com readFileSync/import.meta.url.
+    assert.ok(!triggers.includes('../test-vectors/mata-mata.json'), 'test-vectors não deve estar em forceRerunTriggers')
     // Um gatilho fora de web/ precisa existir: arquivo renomeado deixa de valer em silêncio.
     for (const path of triggers.filter((p) => p.startsWith('../'))) {
       assert.ok(existsSync(join(ROOT, 'web', path)), `gatilho ${path} não existe`)
