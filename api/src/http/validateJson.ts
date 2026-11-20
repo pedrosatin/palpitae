@@ -22,18 +22,39 @@ type JsonValidated<Schema extends StandardSchemaV1> = {
 const JSON_CONTENT_TYPE =
   /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i
 
+export type ValidateJsonOptions = {
+  /**
+   * Mensagem de 400 quando a leitura do corpo falha no modo escolhido.
+   * Padrão: `Body JSON inválido`.
+   */
+  invalidBodyError?: string
+  /**
+   * `object` (padrão): só objeto JSON segue ao schema; `null`, lista, valor
+   * solto ou JSON malformado respondem com `invalidBodyError`.
+   * `value`: qualquer JSON parseado segue ao schema; só malformado responde com
+   * `invalidBodyError`. Use quando a rota base tratava lista ou número pelo
+   * schema e não como corpo inválido.
+   */
+  body?: 'object' | 'value'
+}
+
 /**
  * Valida o corpo JSON com `@hono/standard-validator` e um schema Standard Schema
- * (Valibot). Corpo malformado, `null`, lista ou valor solto responde 400 com
- * `Body JSON inválido`, como o `readJsonObject`. O Content-Type não restringe a
- * leitura: JSON válido sem cabeçalho ou com outro tipo segue para o schema. Falha de schema responde 400 com a mensagem do mapper.
+ * (Valibot). No modo `object`, corpo malformado, `null`, lista ou valor solto
+ * responde 400 com `Body JSON inválido`, como o `readJsonObject`. O Content-Type
+ * não restringe a leitura: JSON válido sem cabeçalho ou com outro tipo segue
+ * para o schema. Falha de schema responde 400 com a mensagem do mapper.
  *
  * O valor validado fica em `c.req.valid('json')` para o handler.
  */
 export function validateJson<Schema extends StandardSchemaV1>(
   schema: Schema,
   mapError: JsonErrorMapper,
+  options?: ValidateJsonOptions,
 ): MiddlewareHandler<AppContext, string, JsonValidated<Schema> & Input> {
+  const invalidBodyError = options?.invalidBodyError ?? INVALID_BODY
+  const bodyMode = options?.body ?? 'object'
+
   const validate = sValidator('json', schema, (result, c) => {
     if (!result.success) {
       return c.json({ error: mapError(result.data, result.error) }, 400)
@@ -41,14 +62,21 @@ export function validateJson<Schema extends StandardSchemaV1>(
   })
 
   return async (c, next) => {
-    const body = await readJsonObject(c)
-    if (!body) return c.json({ error: INVALID_BODY }, 400)
+    let body: unknown
+    if (bodyMode === 'object') {
+      body = await readJsonObject(c)
+      if (!body) return c.json({ error: invalidBodyError }, 400)
+    } else {
+      const sentinel = Symbol('invalid-json')
+      const parsed: unknown = await c.req.json().catch(() => sentinel)
+      if (parsed === sentinel) return c.json({ error: invalidBodyError }, 400)
+      body = parsed
+    }
     // O validator JSON do Hono ignora o corpo e valida `{}` quando o Content-Type
     // falta ou não é JSON. Por isso o Request é recriado com `application/json`
-    // e o corpo já lido por `readJsonObject`.
+    // e o corpo já lido.
     ensureJsonContentTypeForValidator(c, body)
-    // O cast contorna o Env genérico do sValidator. `readJsonObject` já garantiu
-    // que o corpo é um objeto JSON.
+    // O cast contorna o Env genérico do sValidator.
     return validate(c as never, next)
   }
 }
@@ -60,7 +88,7 @@ export function validateJson<Schema extends StandardSchemaV1>(
  */
 function ensureJsonContentTypeForValidator(
   c: Context<AppContext>,
-  body: object,
+  body: unknown,
 ): void {
   const contentType = c.req.header('Content-Type')
   if (contentType && JSON_CONTENT_TYPE.test(contentType)) return

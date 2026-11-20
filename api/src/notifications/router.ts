@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 import { html } from 'hono/html'
+import * as v from 'valibot'
 import { requireAuth } from '../auth/middleware'
+import { validateJson } from '../http/validateJson'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
 import {
@@ -10,6 +12,12 @@ import {
 } from './mailjetEvents'
 import { markEmailUnsubscribed } from './optOut'
 import { verifyUnsubTokenForEnv } from './unsubscribeToken'
+import {
+  mailjetPayloadSchema,
+  mapPatchPreferencesError,
+  patchPreferencesSchema,
+  PREFERENCES_ROUND_REMINDERS_MSG,
+} from './writeSchemas'
 
 const router = new Hono<AppContext>()
 
@@ -144,6 +152,9 @@ router.post('/mailjet-events', async (c) => {
   if (auth === 'missing_config') return c.text('Not Found', 404)
   if (auth === 'unauthorized') return c.text('Unauthorized', 401)
 
+  // O validateJson responderia 400 e a Mailjet reenviaria em loop. Aqui o schema
+  // Valibot (lista ou objeto com campos extras) só classifica o payload; falha
+  // de parse ou de schema responde 200 com log.
   let payload: unknown
   try {
     payload = await c.req.json()
@@ -152,7 +163,13 @@ router.post('/mailjet-events', async (c) => {
     return c.text('ok', 200)
   }
 
-  const events = normalizeMailjetEvents(payload)
+  const parsed = v.safeParse(mailjetPayloadSchema, payload)
+  if (!parsed.success) {
+    console.error('[mailjet-events] payload inválido')
+    return c.text('ok', 200)
+  }
+
+  const events = normalizeMailjetEvents(parsed.output)
   if (!events) {
     console.error('[mailjet-events] payload inválido')
     return c.text('ok', 200)
@@ -181,34 +198,36 @@ router.get('/preferences', requireAuth, async (c) => {
 /**
  * PATCH /notifications/preferences (auth)
  * Body: { round_reminders: boolean }. true → subscribed (NULL), false → opted out.
+ *
+ * Corpo malformado, `null`, lista ou valor solto responde a mesma mensagem de
+ * campo obrigatório da base, não `Body JSON inválido`.
  */
-router.patch('/preferences', requireAuth, async (c) => {
-  const userId = c.get('userId')
-  const body = (await c.req.json().catch(() => ({}))) as {
-    round_reminders?: unknown
-  }
-
-  if (typeof body.round_reminders !== 'boolean') {
-    return c.json({ error: 'round_reminders (boolean) é obrigatório' }, 400)
-  }
-
-  const subscribe = body.round_reminders
-  if (subscribe) {
-    const result = await c.env.DB.prepare(
-      `UPDATE users SET email_unsubscribed_at = NULL WHERE id = ? AND email_unsubscribed_at IS NOT NULL`,
-    )
-      .bind(userId)
-      .run()
-    if (result.meta.changes > 0) {
-      logEvent(c.env.AE, 'email_resubscribed', {
-        blobs: [await hashUserId(userId), 'settings'],
-      })
+router.patch(
+  '/preferences',
+  requireAuth,
+  validateJson(patchPreferencesSchema, mapPatchPreferencesError, {
+    invalidBodyError: PREFERENCES_ROUND_REMINDERS_MSG,
+  }),
+  async (c) => {
+    const userId = c.get('userId')
+    const { round_reminders: subscribe } = c.req.valid('json')
+    if (subscribe) {
+      const result = await c.env.DB.prepare(
+        `UPDATE users SET email_unsubscribed_at = NULL WHERE id = ? AND email_unsubscribed_at IS NOT NULL`,
+      )
+        .bind(userId)
+        .run()
+      if (result.meta.changes > 0) {
+        logEvent(c.env.AE, 'email_resubscribed', {
+          blobs: [await hashUserId(userId), 'settings'],
+        })
+      }
+    } else {
+      await markEmailUnsubscribed(c.env.DB, c.env.AE, userId, 'settings')
     }
-  } else {
-    await markEmailUnsubscribed(c.env.DB, c.env.AE, userId, 'settings')
-  }
 
-  return c.json({ round_reminders: subscribe })
-})
+    return c.json({ round_reminders: subscribe })
+  },
+)
 
 export { router as notificationsRouter }
