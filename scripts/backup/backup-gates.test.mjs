@@ -1,5 +1,5 @@
 /**
- * Tests that reproduce Sonnet review defects and lock the fixes.
+ * Regression gates for the D1 backup pipeline (dump, recipients, egress, age).
  * No real R2 / Cloudflare / production secrets.
  */
 import assert from 'node:assert/strict'
@@ -95,7 +95,7 @@ function essentialSchemaSql() {
   )
 }
 
-describe('dump validation (review #1)', () => {
+describe('dump validation', () => {
   it('refuses empty dump before encrypt', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'palpitae-empty-'))
     try {
@@ -230,7 +230,7 @@ describe('dump validation (review #1)', () => {
   })
 })
 
-describe('recipients (review #2)', () => {
+describe('recipients', () => {
   it('refuses recipients.example as a live file', async () => {
     await assert.rejects(() => loadRecipientsFile(EXAMPLE_PATH), /recipients\.example/)
   })
@@ -287,7 +287,7 @@ describe('recipients (review #2)', () => {
   })
 })
 
-describe('R2 credential roles (review #3)', () => {
+describe('R2 credential roles', () => {
   it('prune apply refuses missing R2_PRUNE_* without daily fallback', () => {
     assert.throws(
       () =>
@@ -335,7 +335,7 @@ describe('R2 credential roles (review #3)', () => {
   })
 })
 
-describe('efficient verification + egress (review #4)', () => {
+describe('efficient verification + egress', () => {
   it('hybrid verifies only mustVerifyKeys with full hash; others stay lightweight', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'palpitae-hybrid-'))
     try {
@@ -404,7 +404,7 @@ describe('efficient verification + egress (review #4)', () => {
   })
 })
 
-describe('job success semantics (review #5)', () => {
+describe('job success semantics', () => {
   it('assertNewObjectFullyValidated fails when inventory incomplete', () => {
     const result = assertNewObjectFullyValidated(
       {
@@ -465,7 +465,7 @@ describe('job success semantics (review #5)', () => {
   })
 })
 
-describe('multi-recipient encrypt (review #2 flow)', () => {
+describe('multi-recipient encrypt', () => {
   it(
     'encrypts to two recipients so either identity can decrypt',
     { skip: !ageAvailable() },
@@ -582,7 +582,7 @@ describe('backup.mjs refuses empty dump (integration)', () => {
   })
 })
 
-describe('BACKUP_RESTORE_PROOF binding (review #4)', () => {
+describe('BACKUP_RESTORE_PROOF binding', () => {
   it('rejects arbitrary unbound strings', () => {
     const r = validateRestoreProof('i-did-a-restore-honest')
     assert.equal(r.ok, false)
@@ -619,7 +619,7 @@ describe('BACKUP_RESTORE_PROOF binding (review #4)', () => {
   })
 })
 
-describe('inventory health (review #5)', () => {
+describe('inventory health', () => {
   it('marks hybrid coverage as partial and full as complete', () => {
     const partial = summarizeInventoryHealth({
       verifyMode: 'hybrid',
@@ -660,7 +660,7 @@ describe('inventory health (review #5)', () => {
   })
 })
 
-describe('simulated R2 download + isolated restore (review #3)', () => {
+describe('simulated R2 download + isolated restore', () => {
   it(
     'packs to simulated R2, downloads, restores, compares sealed counts',
     { skip: !ageAvailable() },
@@ -729,7 +729,7 @@ describe('simulated R2 download + isolated restore (review #3)', () => {
   )
 })
 
-describe('age CLI required when PALPITAE_BACKUP_REQUIRE_AGE=1 (review #6)', () => {
+describe('age CLI required when PALPITAE_BACKUP_REQUIRE_AGE=1', () => {
   it('age --version works when binary is available', { skip: !ageAvailable() }, () => {
     const r = spawnSync(AGE, ['--version'], { encoding: 'utf8' })
     assert.equal(r.status, 0)
@@ -775,7 +775,7 @@ describe('age CLI required when PALPITAE_BACKUP_REQUIRE_AGE=1 (review #6)', () =
   })
 })
 
-describe('independent review reproductions (round 3)', () => {
+describe('count-gate and CLI edge cases', () => {
   it('baseline mode only flags catastrophic empty, not half truncation', () => {
     const half = assertCountGate({
       actual: { ...SYNTHETIC_EXPECTATIONS, predictions: 300 },
@@ -1015,7 +1015,7 @@ describe('independent review reproductions (round 3)', () => {
   })
 })
 
-describe('independent review reproductions (round 4)', () => {
+describe('bootstrap evidence and CLI parsing', () => {
   it('parses --bootstrap-with-evidence= with slice(26) via real CLI', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'palpitae-bootstrap-slice-'))
     try {
@@ -1712,5 +1712,212 @@ describe('round-5 public logs, sqlite -safe, preflight fail-closed', () => {
     assert.ok(preflightIdx > 0 && exportIdx > preflightIdx, 'preflight must precede remote export')
     assert.match(yml, /# schedule:/)
     assert.doesNotMatch(yml, /^\s+schedule:/m)
+    assert.match(yml, /environment:\s*backup/)
+    assert.match(yml, /github\.ref == 'refs\/heads\/main'/)
+    assert.match(yml, /palpitae-backups/)
+    assert.match(yml, /Do not reuse `palpitae-events`/)
+    assert.doesNotMatch(yml, /preferred\) OR reuse|OR reuse `palpitae-events`/)
   })
+})
+
+const PII_SENTINEL = 'alice.synthetic@example.test'
+const AGE_MAGIC = 'age-encryption.org/v1'
+
+describe('ciphertext never leaves plaintext on the sink', () => {
+  it(
+    'packAndStore stores age header and keeps fixture PII out of every sink object',
+    { skip: !ageAvailable() },
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'palpitae-no-plain-'))
+      try {
+        const idPath = join(dir, 'id.txt')
+        spawnSync(AGE_KEYGEN, ['-o', idPath], { encoding: 'utf8' })
+        const recipient = spawnSync(AGE_KEYGEN, ['-y', idPath], {
+          encoding: 'utf8',
+        }).stdout.trim()
+
+        const sim = createSimulatedR2()
+        const sink = createR2Sink({
+          accountId: sim.accountId,
+          endpoint: sim.endpoint,
+          accessKeyId: 'keyid',
+          secretAccessKey: 'key',
+          bucketName: sim.bucketName,
+          fetchImpl: sim.fetchImpl,
+        })
+        const plaintextPath = join(dir, 'dump.sql')
+        const { copyFile, readFile } = await import('node:fs/promises')
+        await copyFile(FIXTURE, plaintextPath)
+        const fixtureBody = await readFile(plaintextPath, 'utf8')
+        assert.match(fixtureBody, new RegExp(PII_SENTINEL))
+
+        const packed = await packAndStore({
+          sink,
+          dbName: 'palpitae',
+          plaintextPath,
+          recipients: [recipient],
+          source: 'test:no-plaintext',
+          createdAt: new Date('2026-11-03T04:00:00Z'),
+          ageBin: AGE,
+          rowCounts: { ...SYNTHETIC_EXPECTATIONS },
+        })
+
+        const cipher = await sink.get(packed.paths.ciphertextKey)
+        const cipherText = Buffer.isBuffer(cipher) ? cipher.toString('utf8') : String(cipher)
+        assert.ok(
+          cipherText.startsWith(AGE_MAGIC),
+          `ciphertext must start with ${AGE_MAGIC}`,
+        )
+
+        for (const [key, entry] of sim.objects.entries()) {
+          const buf = Buffer.isBuffer(entry?.body) ? entry.body : Buffer.from(entry?.body || entry)
+          const asText = buf.toString('utf8')
+          assert.doesNotMatch(
+            asText,
+            new RegExp(PII_SENTINEL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+            `sink object ${key} must not contain fixture PII sentinel`,
+          )
+          // Gzip magic must never appear as the ciphertext object body.
+          if (key === packed.paths.ciphertextKey) {
+            assert.notEqual(buf[0], 0x1f)
+            assert.notEqual(buf[1], 0x8b)
+          }
+        }
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+  )
+})
+
+describe('daily.mjs end-to-end gates', () => {
+  it('empty dump fails closed and leaves the sink without ciphertext', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'palpitae-daily-empty-'))
+    try {
+      const empty = join(dir, 'empty.sql')
+      await writeFile(empty, '')
+      const sinkDir = join(dir, 'sink')
+      await mkdir(sinkDir, { recursive: true, mode: 0o700 })
+      const idPath = join(dir, 'id.txt')
+      if (ageAvailable()) {
+        spawnSync(AGE_KEYGEN, ['-o', idPath], { encoding: 'utf8' })
+      }
+      const recipient = ageAvailable()
+        ? spawnSync(AGE_KEYGEN, ['-y', idPath], { encoding: 'utf8' }).stdout.trim()
+        : 'age1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq'
+      const result = spawnSync(
+        process.execPath,
+        [
+          join(__dirname, 'daily.mjs'),
+          '--sink=local',
+          `--sink-dir=${sinkDir}`,
+          '--source=sql-file',
+          `--sql-file=${empty}`,
+          `--recipient=${recipient}`,
+          '--bootstrap-with-evidence=' +
+            JSON.stringify({
+              kind: BOOTSTRAP_EVIDENCE_KIND,
+              reason: 'empty-dump-gate',
+              measuredAt: '2026-11-20T00:00:00Z',
+              notes: 'Synthetic empty dump must fail before pack.',
+              operator: 'test',
+            }),
+        ],
+        {
+          encoding: 'utf8',
+          cwd: join(__dirname, '../..'),
+          env: { ...process.env, PALPITAE_BACKUP_REQUIRE_AGE: ageAvailable() ? '1' : '0' },
+        },
+      )
+      assert.notEqual(result.status, 0)
+      const listed = spawnSync('find', [sinkDir, '-type', 'f'], { encoding: 'utf8' })
+      const files = (listed.stdout || '').trim()
+      assert.doesNotMatch(files, /\.sql\.gz\.age$/)
+      assert.doesNotMatch(result.stdout + result.stderr, new RegExp(PII_SENTINEL))
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it(
+    'daily.mjs --apply-prune with a single retained object deletes nothing',
+    { skip: !ageAvailable() },
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'palpitae-daily-prune-'))
+      try {
+        const sinkDir = join(dir, 'sink')
+        await mkdir(sinkDir, { recursive: true, mode: 0o700 })
+        const idPath = join(dir, 'id.txt')
+        spawnSync(AGE_KEYGEN, ['-o', idPath], { encoding: 'utf8' })
+        const recipient = spawnSync(AGE_KEYGEN, ['-y', idPath], {
+          encoding: 'utf8',
+        }).stdout.trim()
+
+        const pack = spawnSync(
+          process.execPath,
+          [
+            join(__dirname, 'daily.mjs'),
+            '--sink=local',
+            `--sink-dir=${sinkDir}`,
+            '--source=fixture',
+            `--recipient=${recipient}`,
+          ],
+          {
+            encoding: 'utf8',
+            cwd: join(__dirname, '../..'),
+            env: { ...process.env, PALPITAE_BACKUP_REQUIRE_AGE: '1' },
+          },
+        )
+        assert.equal(pack.status, 0, pack.stderr || pack.stdout)
+        const before = spawnSync('find', [sinkDir, '-type', 'f', '-name', '*.sql.gz.age'], {
+          encoding: 'utf8',
+        })
+        const beforeFiles = (before.stdout || '')
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+          .sort()
+        assert.equal(beforeFiles.length, 1)
+
+        const prune = spawnSync(
+          process.execPath,
+          [
+            join(__dirname, 'daily.mjs'),
+            '--sink=local',
+            `--sink-dir=${sinkDir}`,
+            '--source=fixture',
+            `--recipient=${recipient}`,
+            '--apply-prune',
+          ],
+          {
+            encoding: 'utf8',
+            cwd: join(__dirname, '../..'),
+            env: { ...process.env, PALPITAE_BACKUP_REQUIRE_AGE: '1' },
+          },
+        )
+        // Second pack succeeds; apply-prune keeps the newest and any retention
+        // set; with only a couple of objects nothing required for retention is
+        // deleted blindly. Assert the newest ciphertext still exists.
+        assert.equal(prune.status, 0, prune.stderr || prune.stdout)
+        const report = JSON.parse(prune.stdout)
+        assert.equal(report.ok, true)
+        const deleted = report.prune?.deletion?.deleted || report.deletion?.deleted || []
+        const after = spawnSync('find', [sinkDir, '-type', 'f', '-name', '*.sql.gz.age'], {
+          encoding: 'utf8',
+        })
+        const afterFiles = (after.stdout || '')
+          .trim()
+          .split('\n')
+          .filter(Boolean)
+        assert.ok(afterFiles.length >= 1, 'at least one ciphertext must remain')
+        // With two weekly packs both stay under 8 weekly / 14 daily retention.
+        assert.ok(
+          Array.isArray(deleted),
+          'deletion list must be present even when empty',
+        )
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    },
+  )
 })

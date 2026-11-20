@@ -1,19 +1,21 @@
-# Backup independente do D1
+# Backup do D1 (R2 privado + age)
 
-Cópia criptografada do banco D1 fora da Cloudflare, com retenção definida e ensaio de restauração isolado. Este documento registra a comparação de opções, o processo, o runbook e o que ainda depende de configuração real do operador.
+Cópia criptografada do banco D1 para um bucket R2 privado na mesma conta Cloudflare, com retenção definida e ensaio de restauração isolado. Este documento registra a comparação de opções, o processo, o runbook e o que ainda depende de configuração real do operador.
 
-Pesquisa consultada em 2026-11-03: [Cloudflare R2 pricing](https://www.backblaze.com/cloud-storage/pricing), [age](https://github.com/FiloSottile/age) **v1.2.1** (pinado no CI/workflow; não use a menção genérica “v1.3.x” como versão instalada), [Cloudflare D1 export](https://developers.cloudflare.com/d1/best-practices/import-export-data/), [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/), [D1 legacy backups](https://developers.cloudflare.com/d1/reference/backups/), exemplo [Workflows → R2](https://developers.cloudflare.com/workflows/examples/backup-d1/), [R2 S3 API](https://www.backblaze.com/apidocs/introduction-to-the-b2-native-api). Preços e limites mudam; confirme no painel antes de operar.
+**Escopo desta fatia:** cobre erro operacional no D1 (migration ruim, `DELETE` acidental, dump corrompido) e retenção além da janela do Time Travel, com ciphertext age e identity offline. **Não cobre** perda da conta Cloudflare nem indisponibilidade prolongada da plataforma Cloudflare. Cópia fora da Cloudflare (ex.: B2) fica como evolução futura.
+
+Pesquisa consultada em 2026-11-03 / 2026-11-20: [Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/), [R2 S3 API](https://developers.cloudflare.com/r2/api/s3/api/), [R2 bucket locks](https://developers.cloudflare.com/r2/buckets/bucket-locks/), [age](https://github.com/FiloSottile/age) **v1.2.1** (pinado no CI/workflow; não use a menção genérica “v1.3.x” como versão instalada), [Cloudflare D1 export](https://developers.cloudflare.com/d1/best-practices/import-export-data/), [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/), [D1 legacy backups](https://developers.cloudflare.com/d1/reference/backups/), exemplo [Workflows → R2](https://developers.cloudflare.com/workflows/examples/backup-d1/). Preços e limites mudam; confirme no painel antes de operar.
 
 ## O que este backup é e o que não é
 
 | Mecanismo | Função | Independência |
 |---|---|---|
-| Este processo (`scripts/backup`) | Dump SQL do D1, gzip, criptografia age, objeto no sink local ou R2 | Cópia fora da conta Cloudflare quando o sink é R2 |
+| Este processo (`scripts/backup`) | Dump SQL do D1, gzip, criptografia age, objeto no sink local ou R2 | Mesma conta Cloudflare (R2); identity age offline; **não** cobre perda da conta/plataforma CF |
 | D1 Time Travel | PITR nativo (7 dias no Free, 30 dias no Paid, conforme docs CF) | Mesma conta e infraestrutura Cloudflare |
 | Export AE → R2 (`palpitae-events`) | Cold path de eventos de observabilidade em NDJSON | Arquivo de telemetria; cobre eventos AE, deixa de fora o estado do D1 de palpites/grupos |
-| Failover multi-provedor | Fora do escopo desta fatia | Não há troca automática de provedor |
+| Failover multi-provedor / cópia fora da CF | Fora do escopo desta fatia (evolução futura, ex.: B2) | Não há troca automática de provedor nem segundo provedor nesta entrega |
 
-Time Travel continua útil para erro operacional recente (migration ruim, `DELETE` acidental). Não substitui cópia independente nem retenção além da janela Cloudflare.
+Time Travel continua útil para erro operacional recente. Este processo estende retenção e exige identity age offline; a disponibilidade do ciphertext ainda depende da conta R2/Cloudflare.
 
 ## Decisão (20/11/2026)
 
@@ -22,9 +24,9 @@ Opção escolhida (menor custo e risco no plano grátis da Cloudflare, sem conta
 Motivos:
 
 - R2 free tier: **10 GB** de armazenamento, operações Class A/B no free, **egress zero** para a internet no modelo R2 — cabe um acervo pequeno de dumps cifrados.
-- Bucket/prefixo **privado** na conta Cloudflare. O repositório é público: artefatos do GitHub Actions seriam baixáveis por qualquer um; mesmo cifrados, metadados e ciphertext não ficam em lugar público.
+- Bucket **privado dedicado** `palpitae-backups` na conta Cloudflare. O repositório é público: artefatos do GitHub Actions seriam baixáveis por qualquer um; mesmo cifrados, metadados e ciphertext não ficam em lugar público.
 - Sem conta nova (B2 exigiria Backblaze). Sem Worker cron novo: o job roda no GitHub Actions e **não consome** o teto de subrequests dos crons do Worker (poller, lembretes, cold path AE→R2).
-- Independência: menor que B2 (mesma conta CF). Mitigação: age com identity offline; Time Travel cobre erro operacional recente na mesma infra; B2 permanece evolução futura se a conta CF for risco único inaceitável.
+- Independência: menor que um segundo provedor (mesma conta CF). Mitigação nesta fatia: age com identity offline; Time Travel para erro operacional recente; bucket lock rules no R2 contra delete/overwrite prematuro. B2 (ou outro sink fora da CF) permanece evolução futura se a perda da conta CF for risco único inaceitável.
 - Export AE→R2 (`palpitae-events`) **não** é backup do D1 — só telemetria.
 
 ### Comparativo resumido
@@ -37,27 +39,29 @@ Motivos:
 | Só Time Travel | Incluído no D1 | 7d Free / 30d Paid | Controle Cloudflare | Nenhuma cópia externa |
 | Snapshot legacy `d1 backup` | Legacy | Histórico curto | Nativo CF | Não usar em DB production |
 
-**Viabilidade free R2:** dump D1 de produto pequeno (MB a poucas dezenas de MB comprimidos) com ~34 objetos retidos tende a caber em 10 GB. Tamanho real do export remoto **não foi medido nesta entrega**. Preferir bucket dedicado `palpitae-backups`; alternativa: prefixo `backups/` em `palpitae-events`. Criar bucket/token é passo do orquestrador — esta PR não cria recursos nem grava secrets.
+**Viabilidade free R2:** dump D1 de produto pequeno (MB a poucas dezenas de MB comprimidos) com ~34 objetos retidos tende a caber em 10 GB. Tamanho real do export remoto **não foi medido nesta entrega**. Bucket dedicado `palpitae-backups` é **obrigatório** (não reutilizar `palpitae-events` nem compartilhar prefixo com outro workload). Criar bucket/token/environment é passo do orquestrador — esta PR não cria recursos nem grava secrets.
 
 ## Artefatos no repositório
 
 ```
 scripts/backup/
-  backup.mjs              # valida dump + gate de contagens → gzip → age → sink local|b2
-  daily.mjs               # pack + verify híbrido do objeto novo + retenção (fail-closed)
+  backup.mjs              # valida dump + gate de contagens → gzip → age → sink local|r2
+  daily.mjs               # pack + verify híbrido do objeto novo + retenção (fail-closed);
+                          # nome histórico; a cadência pretendida do Actions é semanal
   restore.mjs             # download local|R2 + restore isolado + compare contagens seladas
   restore-rehearsal.mjs   # atalho local de restore.mjs
   prune.mjs               # retenção; --apply no R2 exige R2_PRUNE_*
   run-rehearsal.mjs       # ensaio ponta a ponta com dados sintéticos (local)
   retention.test.mjs      # naming / retenção / manifesto
   r2-sink.test.mjs        # cliente R2 + prune safety com R2 simulado
-  review-fixes.test.mjs   # regressão dos achados de revisão (dump/recipients/egress/…)
+  backup-gates.test.mjs   # regressão de gates (dump/recipients/egress/cifra/…)
   fixtures/synthetic.sql  # dump falso, sem dados reais
   recipients.example      # template sem chave funcional (recusado como arquivo vivo)
   lib/                    # naming, retention, integrity, inventory, pipeline, recipients,
                           # verify-sqlite, sealed-meta, restore-proof, sinks, r2-client, prune-guard
 
-.github/workflows/backup-d1.yml  # workflow_dispatch guardado; timeout 30m; schedule comentado
+.github/workflows/backup-d1.yml  # workflow_dispatch guardado; environment backup; só main; schedule comentado
+.github/workflows/ci.yml         # job Backup (age + sqlite3) com PALPITAE_BACKUP_REQUIRE_AGE=1
 ```
 
 Nenhum secret, identity age, token R2 ou dump de produção entra no git.
@@ -68,7 +72,7 @@ Nenhum secret, identity age, token R2 ou dump de produção entra no git.
 2. **Resolver baseline (fail closed):** se não houver `--baseline-counts` / `--source-counts` / bootstrap / fixture, o `daily.mjs` escolhe o objeto anterior mais novo **somente depois** de validar o manifesto + companions/hashes (sidecar selado + `.counts.json`). `.counts.json` modificado (SHA-256 ≠ manifesto) é recusado — não vira baseline.
 3. **Validar o dump antes de cifrar:** importar em SQLite isolado; exigir `PRAGMA integrity_check` = `ok` e `PRAGMA foreign_key_check` sem linhas (com `foreign_keys=ON` após o import); exigir o schema essencial (`users`, `competitions`, `teams`, `matches`, `groups`, `predictions`); se o baseline/public counts trouxer `tables`, exigir essas tabelas também (detecta perda de tabelas, ex.: dump cortado após `predictions` sem `leaderboard`); registrar `COUNT(*)` por tabela essencial e aplicar o **gate de contagens**. Dump vazio, truncado em fronteira SQL, schema-only sem evidência, violações de FK/integridade, ou queda catastrófica a zero frente a baseline falha fechado. Com `--source-counts`, a comparação é exata. **O modo baseline não detecta truncamento parcial** que deixa COUNTs > 0 — isso não é fingido no código. Sem baseline/source: falha fechado, salvo `--source=fixture` ou o primeiro pack real com `--bootstrap-with-evidence=@arquivo`.
 4. Empacotar com `backup.mjs` ou `daily.mjs` (`gzip` → `age` → `sink.put` do ciphertext, do manifesto público **sem** `rowCounts` em claro, do sidecar cifrado `.meta.json.age` com COUNTs exatos, e do companion público `.counts.json` v2 com `nonEmpty` booleano + `tables` para o baseline do dia seguinte sem chave privada). Se o ciphertext subir e um companion falhar, o objeto órfão fica não-validado (preservado) e o job **não** reporta sucesso. Logs públicos (stdout/stderr do Actions) **não** imprimem `rowCounts` / `countGate.actual`.
-5. Com `--sink=r2`, o upload usa a API nativan R2 com a API token **diária** (sem `object-delete`). Objetos usam o mesmo layout de chaves do sink local.
+5. Com `--sink=r2`, o upload usa a API S3-compatível do R2 com o token Object RW do bucket dedicado. Objetos usam o mesmo layout de chaves do sink local.
 6. Listar o inventário **no mesmo sink**. Classificação em modo `hybrid` (padrão): SHA-256 completo só do objeto novo; demais objetos só manifesto + `contentLength` vs tamanho do manifesto (menos egress). **Companions** (`.meta.json.age` e `.counts.json`) têm presença + SHA-256 conferidos sempre; falha de parse do counts (`counts-parse-*`) conta como **corrupção**. Modo `full` baixa todos os ciphertexts.
 7. `daily.mjs` falha (`ok: false`, exit ≠ 0) se o inventário estiver incompleto/corrupto ou o objeto novo não tiver hash completo (`manifest-hash-ok`). Sucesso só depois dessa prova. Workdirs temporários são limpos no `finally` mesmo em falha (não usar `process.exit` dentro do `try`).
 8. Calcular retenção 14/8/12. Prune em dry-run por padrão. `--apply` / `--apply-prune` no R2 exige `R2_PRUNE_*`, revalida em modo `full` e **falha fechado se a reclassificação full achar corrupção** (não engole hash-mismatch nem `counts-parse-*`), se a validação estiver incompleta, se não houver âncora validada, se o inventário mudar entre plano e apply, ou se o plano apagaria o único/mais novo backup validado. No R2, o apply remove todas as versões do nome.
@@ -95,24 +99,23 @@ age-keygen -y ~/secure/palpitae-backup.identity > scripts/backup/recipients.loca
 chmod 600 ~/secure/palpitae-backup.identity
 ```
 
-## Credenciais R2 (mínimas, separadas)
+## Credenciais R2 (bucket dedicado, Object RW)
 
-Variáveis (nunca commitadas). **Separe a chave diária da chave de prune.**
+Variáveis (nunca commitadas). Tokens R2 da Cloudflare oferecem só Admin Read & Write, Admin Read only, Object Read & Write e Object Read only, com escopo por **bucket** (não por prefixo). **Object Read & Write inclui delete.**
 
 | Variável | Uso |
 |---|---|
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Pack/daily CI: `listFiles` + `readFiles` + `writeFiles` **sem** `object-delete` |
-| `R2_PRUNE_ACCESS_KEY_ID` / `R2_PRUNE_APPLICATION_KEY` | Só no host do operador para `--apply`: inclui `object-delete` no mesmo bucket+prefixo |
-| `R2_BUCKET` | Nome do bucket privado |
-| `R2_BUCKET_ID` | Opcional se a key já for restrita ao bucket |
-| `R2_NAME_PREFIX` | Prefixo opcional de objetos (também `--prefix`) |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Pack/CI semanal: Object Read & Write no bucket dedicado `palpitae-backups` (write **e** delete) |
+| `R2_PRUNE_ACCESS_KEY_ID` / `R2_PRUNE_SECRET_ACCESS_KEY` | Só no host do operador para `--apply` (também Object RW no mesmo bucket; o código lê exatamente estes nomes em `lib/r2-client.mjs`) |
+| `R2_BUCKET` | Nome do bucket privado dedicado (`palpitae-backups`) |
+| `R2_NAME_PREFIX` | Prefixo opcional de objetos dentro do bucket dedicado (também `--prefix`) |
 | `BACKUP_RESTORE_PROOF` | Secret de CI **vinculado** aos fingerprints dos recipients do ensaio: `palpitae-restore-proof:v1:<fps-ordenados>:<token-operador>` (não string arbitrária, não `TODO`/`example`). Gate operacional de formato + fingerprints apenas: **não** prova posse da identity age, **não** prova que cada destinatário descriptografou, **não** substitui o ensaio real. |
 
-Uma única key de CI com `object-delete` permitiria apagar o acervo se o secret vazasse. O workflow diário **não** recebe `R2_PRUNE_*`. `prune.mjs --apply` / `daily.mjs --apply-prune` no R2 exigem as variáveis de prune.
+O workflow de backup **não** recebe `R2_PRUNE_*`. `prune.mjs --apply` / `daily.mjs --apply-prune` no R2 exigem as variáveis de prune no host do operador.
 
-**Limite da key diária:** omitir `object-delete` impede apagar via API de delete, mas `writeFiles` ainda pode **sobrescrever** objetos ou criar versões que ocultam o conteúdo anterior. Não há Object Lock / lifecycle imutável configurado neste repositório. Trate a key diária como capaz de forjar backups novos, não como read-only.
+**Limite real da key de CI:** com Object RW ela **pode apagar** e sobrescrever objetos no bucket. Separar “daily” e “prune” em dois tokens Object RW reduz blast radius operacional (só o host do operador aplica prune), mas **não** impede delete via a key de CI. A mitigação real de retenção imutável é configurar **[R2 bucket lock rules](https://developers.cloudflare.com/r2/buckets/bucket-locks/)** no bucket `palpitae-backups`, com janela maior que a do prune (ex.: retenção 14/8/12 ⇒ lock ≥ maior idade retida, tipicamente > 12 meses se mensais forem o piso). Bucket locks bloqueiam delete e overwrite enquanto a regra valer. Isso é passo do orquestrador; esta PR **não** aplica locks.
 
-Sem `listAllBucketNames` / `writeBuckets` / keys de conta master em qualquer uma das keys.
+Sem tokens Admin nem keys de conta master nas variáveis de backup.
 
 ## Verificação de integridade e custo de egress
 
@@ -173,12 +176,14 @@ Ambiente isolado: máquina ou diretório sem apontar `wrangler` para o D1 de pro
 
 ### Acesso ao R2 no desastre
 
-Se a Cloudflare estiver indisponível, o restore depende só do R2 + identity age:
+O R2 vive na conta Cloudflare. Se a **plataforma Cloudflare** estiver indisponível ou a **conta** for perdida, o ciphertext desta fatia também fica inacessível. Esta fatia **não** entrega cópia fora da Cloudflare; isso fica como evolução futura (ex.: B2).
 
-1. Credenciais R2 de **leitura** (podem ser a key diária ou uma key `readFiles`+`listFiles` dedicada) guardadas fora da Cloudflare — cofre do operador / gerenciador de senhas, não só secrets do GitHub Actions.
-2. Nome do bucket, `R2_NAME_PREFIX` e o `ciphertextKey` / `stamp` do manifesto a restaurar (inventário recente impresso pelo daily ou listagem `b2`).
+Para desastre operacional no D1 (com R2 ainda acessível) o restore precisa de:
+
+1. Credenciais R2 de leitura (Object Read only ou a key Object RW do CI) guardadas no cofre do operador / gerenciador de senhas, não só nos secrets do GitHub Actions.
+2. Nome do bucket dedicado, `R2_NAME_PREFIX` e o `ciphertextKey` / `stamp` do manifesto a restaurar (inventário recente impresso pelo `daily.mjs` ou listagem S3-compatível do R2).
 3. Identity age offline (`~/secure/palpitae-backup.identity` + cópia de recuperação). Sem identity, o acervo R2 é inútil.
-4. Não dependa do wrangler nem do checkout de produção para **baixar** o objeto; o download é API R2 / CLI na máquina de restore.
+4. Não dependa do wrangler nem do checkout de produção para **baixar** o objeto; o download é API S3-compatível do R2 / CLI na máquina de restore.
 
 ### Passos de restore
 
@@ -250,7 +255,7 @@ Procedimento seguro de descarte manual (operador, sem apagar às cegas):
 
 1. Rodar inventário em modo `full` no mesmo `--sink` / prefixo e anotar as chaves `unvalidated` + `reason` (companions públicos não precisam de identity age; sealed meta só confirma presença/hash).
 2. **Não** passar `--apply` de novo até haver pelo menos um objeto **validado** mais novo que sirva de âncora, ou até o objeto corrompido ser tratado.
-3. Se o objeto corrompido for o mais novo: investigar upload parcial / overwrite (key diária com `writeFiles`). Preferir um novo pack bem-sucedido a partir de dump fresco **só depois** de o baseline do stamp ruim deixar de ser o candidato mais novo completo (ver passo 4). Enquanto o mais novo estiver adulterado, o job continua falhando de propósito.
+3. Se o objeto corrompido for o mais novo: investigar upload parcial / overwrite (key Object RW do CI). Preferir um novo pack bem-sucedido a partir de dump fresco **só depois** de o baseline do stamp ruim deixar de ser o candidato mais novo completo (ver passo 4). Enquanto o mais novo estiver adulterado, o job continua falhando de propósito.
 4. Se um `.counts.json` foi alterado fora do manifesto (`baseline-counts-modified`): **não** edite o arquivo “na mão” para bater com um hash antigo. Opções seguras:
    - Restaurar o companion a partir de uma cópia íntegra (mesmo conteúdo que o `countsSha256` do manifesto), **ou**
    - Remover **manualmente no R2** (console ou API com chave de prune) o **conjunto** do stamp corrompido: `.sql.gz.age` + `.manifest.json` + `.meta.json.age` + `.counts.json` (todas as versões do nome, se versioning estiver ativo). Dry-run mental: confirme o prefixo e o stamp antes de apagar. O `prune --apply` do repo **não** faz esse descarte enquanto a corrupção existir — isso é intencional.
@@ -263,7 +268,7 @@ Derivadas só do ensaio sintético local. **Não são SLO de produção.**
 
 | Meta | Proposta inicial | Base |
 |---|---|---|
-| RPO | 24 h | Backup diário; perda máxima nominal de um dia de escritas |
+| RPO | 7 dias | Cadência pretendida do Actions é **semanal** (`daily.mjs` é nome histórico do orquestrador local); perda máxima nominal de uma semana de escritas |
 | RTO (restore local sintético) | minutos baixos (ver `durationMs` do último `run-rehearsal.mjs`) | Medido no laptop; não inclui export remoto nem download R2 |
 | RTO produção | pendente | Soma de: export/download, decrypt, provisionar D1 isolado ou swap, validação, DNS/app |
 
@@ -275,33 +280,37 @@ Lacunas que impedem fechar as metas:
 - Confirmação do plano Cloudflare (janela Time Travel 7d vs 30d).
 - Confirmação de que o volume retido permanece ≤ 10 GB free R2 após meses de operação.
 
-## Configuração real pendente (operador)
+## Configuração real pendente (operador / orquestrador)
 
-1. Conta Cloudflare, bucket privado; **duas** API tokens (daily sem delete; prune com delete) no mesmo prefixo.
-2. Par de chaves age; identity só com o operador; `recipients.local` (nunca `recipients.example`).
-3. Medir um export remoto controlado (horário de baixo uso) e registrar tamanho/duração/impacto de bloqueio e `S` (tamanho do ciphertext) para a estimativa de egress.
-4. Primeiro upload real ao R2 (`--sink=r2`) e download com verificação SHA-256 do manifesto.
-5. Ensaio de restore isolado bem-sucedido → gravar `BACKUP_RESTORE_PROOF` no CI no formato `palpitae-restore-proof:v1:<fingerprints-ordenados-dos-recipients-do-ensaio>:<token-operador>` (gere com o helper em `scripts/backup/lib/restore-proof.mjs` / saída do `run-rehearsal.mjs`). String arbitrária **não** basta. Isso **não** é prova criptográfica autenticada de posse da identity e **não** substitui o ensaio.
-6. Só então considerar `schedule` no workflow (caminho abaixo) ou cron no host.
-7. Ensaiar restore em D1 isolado (database novo), ainda sem tocar produção.
-8. Documentar contato/procedimento se a identity age for perdida (sem identity, o acervo R2 é inútil).
+1. Conta Cloudflare, bucket privado **dedicado** `palpitae-backups` (obrigatório; sem reutilizar `palpitae-events`).
+2. Dois tokens R2 Object Read & Write no mesmo bucket (CI e prune). Ambos podem apagar; a mitigação de retenção imutável é configurar **bucket lock rules** com janela maior que a do prune ([docs](https://developers.cloudflare.com/r2/buckets/bucket-locks/)). Esta PR não aplica locks.
+3. Criar o GitHub Environment `backup` com política de branch só `main` e mover os secrets `BACKUP_*` / `R2_*` / token de export D1 para esse environment.
+4. Token Cloudflare **só de D1** (export) para o workflow. Não reaproveitar o `CLOUDFLARE_API_TOKEN` de deploy.
+5. Par de chaves age; identity só com o operador; `recipients.local` (nunca `recipients.example`).
+6. Medir um export remoto controlado (horário de baixo uso) e registrar tamanho/duração/impacto de bloqueio e `S` (tamanho do ciphertext) para a estimativa de egress.
+7. Primeiro upload real ao R2 (`--sink=r2`) e download com verificação SHA-256 do manifesto.
+8. Ensaio de restore isolado bem-sucedido → gravar `BACKUP_RESTORE_PROOF` no environment `backup` no formato `palpitae-restore-proof:v1:<fingerprints-ordenados-dos-recipients-do-ensaio>:<token-operador>` (gere com o helper em `scripts/backup/lib/restore-proof.mjs` / saída do `run-rehearsal.mjs`). String arbitrária **não** basta. Isso **não** é prova criptográfica autenticada de posse da identity e **não** substitui o ensaio.
+9. Só então considerar `schedule` no workflow (caminho abaixo) ou cron no host.
+10. Ensaiar restore em D1 isolado (database novo), ainda sem tocar produção.
+11. Documentar contato/procedimento se a identity age for perdida (sem identity, o acervo R2 é inútil).
 
 ## Ativar o schedule (caminho documentado)
 
 O cron **permanece desligado** (`schedule:` comentado). Quando a medição, os secrets e a prova de restore existirem, o caminho correto é:
 
-1. Confirmar secrets: `BACKUP_AGE_RECIPIENT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (**sem** object-delete), `R2_BUCKET`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `BACKUP_RESTORE_PROOF` (e opcional `R2_NAME_PREFIX`). `R2_PRUNE_*` **fora** deste workflow.
-2. Escolher a expressão cron a partir da janela de baixo uso medida.
-3. Em `.github/workflows/backup-d1.yml`, **descomentar** o bloco `schedule:` sob `on:`.
-4. **Manter** o `if:` do job exatamente como está:
+1. Confirmar que o Environment `backup` existe, restringe a branch `main`, e contém: `BACKUP_AGE_RECIPIENT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` (Object RW no bucket dedicado; **pode apagar**), `R2_BUCKET=palpitae-backups`, token Cloudflare **só de D1**, `CLOUDFLARE_ACCOUNT_ID`, `BACKUP_RESTORE_PROOF` (e opcional `R2_NAME_PREFIX`). `R2_PRUNE_*` **fora** deste workflow.
+2. Confirmar bucket lock rules ativas com retenção ≥ janela do prune (passo do orquestrador).
+3. Escolher a expressão cron semanal a partir da janela de baixo uso medida.
+4. Em `.github/workflows/backup-d1.yml`, **descomentar** o bloco `schedule:` sob `on:`.
+5. **Manter** o `if:` do job exatamente como está:
 
    ```yaml
-   if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.confirm == 'ENABLE') }}
+   if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.confirm == 'ENABLE')) }}
    ```
 
-   Um `if` que exige só `workflow_dispatch && inputs.confirm == 'ENABLE'` impede o schedule mesmo depois de descomentar o cron (runs agendados não têm `inputs.confirm`).
-5. O workflow continua com `timeout-minutes: 30`, `npm ci` em `api/` (wrangler do lockfile), `age` com SHA-256 pinado, instalação de `sqlite3`, e step **Preflight tools + R2 baseline** (`--preflight-only`) antes do export. Ajuste o timeout depois de medir o export remoto.
-6. Prune em CI permanece dry-run; apply fica com o operador + `R2_PRUNE_*` após verificar o objeto novo.
+   Um `if` que exige só `workflow_dispatch && inputs.confirm == 'ENABLE'` impede o schedule mesmo depois de descomentar o cron (runs agendados não têm `inputs.confirm`). Sem `github.ref == 'refs/heads/main'`, o environment `backup` poderia ser acionado fora da política pretendida.
+6. O workflow continua com `environment: backup`, `timeout-minutes: 30`, `npm ci` em `api/` (wrangler do lockfile), `age` com SHA-256 pinado, instalação de `sqlite3`, e step **Preflight tools + R2 baseline** (`--preflight-only`) antes do export. Ajuste o timeout depois de medir o export remoto.
+7. Prune em CI permanece dry-run; apply fica com o operador + `R2_PRUNE_ACCESS_KEY_ID` / `R2_PRUNE_SECRET_ACCESS_KEY` após verificar o objeto novo.
 
 ## Segurança operacional
 
@@ -309,25 +318,25 @@ O cron **permanece desligado** (`schedule:` comentado). Quando a medição, os s
 - Dump validado (SQLite isolado + `integrity_check` + `foreign_key_check` + schema essencial + gate de contagens com evidência) **antes** de cifrar; vazio/lixo/schema-only sem evidência/truncado em fronteira SQL/FK quebrada falha fechado. Contagens essenciais vão no sidecar `.meta.json.age` (mesmos recipients) e no `.counts.json` público (baseline do próximo pack). Limites honestos do snapshot: COUNTs pós-import não provam truncamento parcial com COUNTs > 0, consistência transacional entre tabelas, autenticidade do publisher nem igualdade com um live DB num instante diferente.
 - `prune.mjs` / `daily.mjs` só removem chaves que passam no parser de nome **e** na validação; dry-run é o padrão. Cópias não validadas são preservadas.
 - Gates recusam `--apply` se a validação estiver incompleta, não houver backup validado, o keep set estiver vazio, o mais novo validado estiver no prune set, existir um único validado, o inventário mudar entre plano e apply, ou um não-validado entrar no prune set.
-- No R2, delete remove todas as versões do nome; o cliente limita retry de reautenticação a **uma** tentativa (sem recursão ilimitada). Upload parcial (ciphertext sem manifesto) não marca o job como sucesso.
+- No R2, delete remove o objeto (e versões, se versioning estiver ativo); o cliente limita retry de reautenticação a **uma** tentativa (sem recursão ilimitada). Upload parcial (ciphertext sem manifesto) não marca o job como sucesso. Bucket lock rules, quando configuradas pelo orquestrador, bloqueiam delete/overwrite na janela de retenção.
 - Falha no pack **ou** na verificação pós-pack do objeto novo (`daily.mjs`) **não** executa prune e sai com código ≠ 0 (`ok: false`).
 - `--source=d1-remote` exige `--i-understand-remote-export`.
 - Identity dentro do checkout é recusada pelo restore. `recipients.example` é recusado como arquivo vivo.
 - Logs públicos usam códigos fixos em falhas de sqlite (`sqlite-import-failed`, `sqlite-foreign-key-violations:N`, …) e sanitizam COUNTs, fragmentos SQL, rowids, números de linha e tamanhos exatos (`plaintextBytes` / `gzipBytes` / `ciphertextBytes` / `dumpValidation.bytes`). Detalhe privado só com `PALPITAE_BACKUP_PRIVATE_ERRORS=1` em host do operador.
 - Import do dump usa `sqlite3 -safe` com ambiente mínimo (sem herdar secrets R2/Cloudflare).
 - O workflow instala `sqlite3`, valida age+sqlite, e roda `--preflight-only` (baseline+R2) **antes** do export remoto.
-- Credenciais R2 diárias e de prune ficam separadas; Cloudflare e R2 fora do repositório.
+- Credenciais R2 de CI e de prune ficam em tokens separados; secrets no Environment `backup` (branch `main`); token de export D1 separado do token de deploy.
 - O workflow faz overwrite+unlink do `dump.sql` (`scrubFile`); não confie em `rm` sozinho para plaintext.
-- Ameaça residual: manifesto não assinado + age sem autenticação de remetente + key diária comprometida pode **escrever** backups falsos (não apagar, se `object-delete` estiver ausente). Detectar exige processo operacional (restore rehearsal + inspeção do exit code do `daily.mjs`), não só o hash do manifesto no próprio bucket.
-- **Monitoramento (estado real):** corrupção de inventário (hash/size/manifest inválido) faz o job falhar (`ok: false`, exit ≠ 0). Cobertura `hybrid` = **parcial**; `full` = **completa**. **Não há** alerta push/Slack/PagerDuty no repositório. **Frescor** (aviso quando o backup validado mais novo passa do RPO) ainda está **pendente**.
+- Ameaça residual: manifesto não assinado + age sem autenticação de remetente + key Object RW comprometida pode **escrever e apagar** backups. Bucket lock rules mitiga delete/overwrite prematuro; detectar ciphertext forjado exige processo operacional (restore rehearsal + inspeção do exit code do `daily.mjs`), não só o hash do manifesto no próprio bucket.
+- **Monitoramento (estado real):** corrupção de inventário (hash/size/manifest inválido) faz o job falhar (`ok: false`, exit ≠ 0). Cobertura `hybrid` = **parcial**; `full` = **completa**. **Não há** alerta push/Slack/PagerDuty no repositório. **Frescor** (aviso quando o backup validado mais novo passa do RPO de 7 dias) ainda está **pendente**.
 
 ## Tradeoffs
 
-- Export D1 bloqueia o banco durante a operação: backup diário precisa de janela consciente (por isso o schedule segue desligado).
-- Cópia diária completa (não incremental) simplifica restore e retenção; cresce com o banco.
+- Export D1 bloqueia o banco durante a operação: o schedule semanal precisa de janela consciente (por isso permanece desligado).
+- Cópia completa (não incremental) simplifica restore e retenção; cresce com o banco.
 - age com recipient pública no CI permite encrypt sem private key no CI; restore exige o operador.
 - R2 free de 10 GB pode deixar de bastar; aí há custo ou outra decisão de retenção/compressão.
-- Independêncian R2 não cobre perda da identity age nem erro de prune com `--apply` mal usado (mitigado pelos gates, não eliminado).
+- R2 na mesma conta CF não cobre perda da conta/plataforma Cloudflare, perda da identity age, nem erro de prune com `--apply` mal usado (gates e bucket locks mitiga, não eliminam).
 
 ## Comandos úteis
 

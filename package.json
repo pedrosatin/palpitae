@@ -10,7 +10,7 @@
     "test:api": "npm --prefix api test",
     "test:web": "npm --prefix web test",
     "test:scripts": "node --test \"scripts/*.test.mjs\"",
-    "test:backup": "node --test scripts/backup/retention.test.mjs scripts/backup/r2-sink.test.mjs scripts/backup/review-fixes.test.mjs",
+    "test:backup": "node --test scripts/backup/retention.test.mjs scripts/backup/r2-sink.test.mjs scripts/backup/backup-gates.test.mjs",
     "test:backup:rehearsal": "node scripts/backup/run-rehearsal.mjs",
     "test": "npm run test:api && npm run test:web && npm run test:scripts && npm run test:backup",
     "check:personal-data": "node scripts/personal-data-check.mjs",

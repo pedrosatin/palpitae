@@ -585,7 +585,7 @@ async function main() {
         unsignedManifest:
           'Manifests and .counts.json are unsigned; age provides confidentiality to recipients, not publisher authentication. An actor who can rewrite the bucket can rewrite manifests, counts, and ciphertext together.',
         credentials:
-          'Daily CI keys must omit object-delete. writeFiles alone can still overwrite/hide object versions. Prune apply requires R2_PRUNE_ACCESS_KEY_ID / R2_PRUNE_SECRET_ACCESS_KEY.',
+          'R2 Object Read & Write tokens are bucket-scoped and include delete. A compromised CI key can overwrite and delete objects in the dedicated backups bucket; mitigate with R2 bucket lock rules whose retention exceeds prune. Prune apply uses R2_PRUNE_ACCESS_KEY_ID / R2_PRUNE_SECRET_ACCESS_KEY on an operator host.',
         monitoring:
           'Inventory corruption fails the job (non-zero exit). No push/alert integration exists in-repo. Freshness monitoring (newest validated stamp vs RPO) is still pending.',
         schedulingNote:

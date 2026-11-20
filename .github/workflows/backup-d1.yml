@@ -1,13 +1,14 @@
 name: Backup D1 (disabled)
 
-# Encrypted D1 backup → Cloudflare R2 (private bucket/prefix). Intentionally NOT
-# on a schedule yet.
+# Encrypted D1 backup → Cloudflare R2 (dedicated private bucket). Intentionally
+# NOT on a schedule yet.
 #
 # Reasons the cron stays off:
 # 1. wrangler d1 export --remote blocks other queries on the database while it
 #    runs. Duration and impact on production must be measured first.
-# 2. Secrets (R2 API token for the backups prefix, age recipients, Cloudflare
-#    token, restore proof) are not configured for this workflow by default.
+# 2. Secrets (R2 API token for the dedicated backups bucket, age recipients,
+#    D1-scoped Cloudflare token, restore proof) are not configured for this
+#    workflow by default.
 # 3. Enabling a schedule without those would fail noisily or export at an
 #    unsafe time.
 # 4. This job runs in GitHub Actions — it does NOT use the Worker cron, so it
@@ -15,26 +16,38 @@ name: Backup D1 (disabled)
 #
 # When ready (orchestrator / operator — do all of these together; this PR does
 # not create the bucket, set secrets, or deploy):
-#   a) Create private R2 bucket `palpitae-backups` (preferred) OR reuse
-#      `palpitae-events` with R2_NAME_PREFIX=backups/. Never put ciphertext in
-#      a public place (repo is public; GHA artifacts would be downloadable).
-#   b) Create an R2 API token scoped to that bucket/prefix (Object Read & Write
-#      for CI). Prefer a separate prune token; keep prune apply off this workflow.
-#   c) Generate age keypair: identity only in ~/.config/palpitae-backup/ (mode
-#      600, outside the repo); publish recipient as BACKUP_AGE_RECIPIENT secret.
-#   d) Measure wrangler d1 export --remote blocking; pick a low-traffic weekly
+#   a) Create private R2 bucket `palpitae-backups` dedicated to D1 backups.
+#      Do not reuse `palpitae-events` or share a prefix with other workloads.
+#      Never put ciphertext in a public place (repo is public; GHA artifacts
+#      would be downloadable).
+#   b) Create an R2 API token with Object Read & Write scoped to that bucket.
+#      R2 tokens are bucket-scoped (not prefix-scoped). Object RW includes
+#      delete: a compromised CI key can overwrite and delete objects. Mitigate
+#      with R2 bucket lock rules whose retention window is longer than prune
+#      (orchestrator step; not applied by this PR). Prefer a separate Object RW
+#      token for operator prune; keep prune apply off this workflow.
+#   c) Create a GitHub Environment named `backup` restricted to branch `main`,
+#      and move BACKUP_* / R2_* / D1 export secrets into that environment
+#      (not repository-wide secrets).
+#   d) Generate age keypair: identity only in ~/.config/palpitae-backup/ (mode
+#      600, outside the repo); publish recipient as BACKUP_AGE_RECIPIENT secret
+#      on the `backup` environment.
+#   e) Create a Cloudflare API token scoped only to D1 export for this account
+#      / database. Do not reuse the deploy CLOUDFLARE_API_TOKEN.
+#   f) Measure wrangler d1 export --remote blocking; pick a low-traffic weekly
 #      cron (example below).
-#   e) Complete an isolated restore rehearsal and set BACKUP_RESTORE_PROOF.
-#   f) Uncomment the schedule: block under `on:`.
-#   g) Keep the job `if:` below as-is — it already allows schedule OR a manual
-#      ENABLE dispatch.
-#   h) Leave prune as dry-run in CI. Apply prune from an operator host with
+#   g) Complete an isolated restore rehearsal and set BACKUP_RESTORE_PROOF.
+#   h) Uncomment the schedule: block under `on:`.
+#   i) Keep the job `if:` below as-is — it already allows schedule OR a manual
+#      ENABLE dispatch, and requires refs/heads/main.
+#   j) Leave prune as dry-run in CI. Apply prune from an operator host with
 #      R2_PRUNE_* after verifying the new object.
 #
 # Credential split (required):
-#   - Daily/weekly CI: R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY for the backups
-#     bucket/prefix. Compromised CI can overwrite objects; it must not be the
-#     only copy of the age identity.
+#   - Weekly CI: R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY for the dedicated
+#     backups bucket (Object RW = write + delete). Compromised CI can overwrite
+#     and delete objects; bucket lock rules are the real retention mitigation.
+#     The age identity must never live only in CI.
 #   - Prune (operator host only): R2_PRUNE_ACCESS_KEY_ID /
 #     R2_PRUNE_SECRET_ACCESS_KEY. Never put prune keys in this workflow.
 
@@ -63,9 +76,13 @@ jobs:
     # Bound runtime so a stuck export/upload fails closed instead of hanging.
     # Adjust after measuring real remote export duration; keep headroom.
     timeout-minutes: 30
+    # Environment `backup` must be created by the orchestrator with a branch
+    # policy that allows only `main`, and must hold the R2/D1/age secrets.
+    environment: backup
     # Correct path for when schedule is later uncommented:
     # schedule runs without inputs; manual runs still require ENABLE.
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.confirm == 'ENABLE') }}
+    # Restrict to main so environment secrets are not usable from other refs.
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.confirm == 'ENABLE')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

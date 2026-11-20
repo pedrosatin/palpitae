@@ -169,7 +169,7 @@ async function main() {
         measuredRestoreDurationMs: restore.durationMs,
         measuredPlaintextBytes: restore.sizes.plaintextBytes,
         measuredCiphertextBytes: restore.sizes.ciphertextBytes,
-        suggestedRpoHours: 24,
+        suggestedRpoHours: 168,
         suggestedRtoMinutesLocal: Math.max(5, Math.ceil(restore.durationMs / 60000) + 5),
         pendingProductionValidation: [
           'Timed wrangler d1 export --remote of production size (export blocks D1 while running).',
@@ -182,7 +182,8 @@ async function main() {
       distinctions: {
         d1TimeTravel: 'Cloudflare-native PITR; same account/infrastructure; limited retention window.',
         r2EventsExport: 'Analytics Engine cold path (NDJSON events); not a database backup.',
-        thisBackup: 'Independent encrypted SQL dump copy intended for private account storage (R2).',
+        thisBackup:
+          'Encrypted SQL dump in a dedicated private R2 bucket on the same Cloudflare account; age identity offline. Does not cover loss of the Cloudflare account/platform (off-CF copy is future work).',
         failover: 'Out of scope; this process does not provide automatic multi-provider availability.',
       },
     }
