@@ -3,11 +3,12 @@ import {
   calculateClassifiedBonus,
   calculatePenaltyBonus,
   calculatePoints,
-  resolveSingleMatchClassified,
-  resolveTwoLegClassified,
   scoreUnprocessedMatches,
   classifiedRuleChangeStatements,
 } from './scoring'
+
+// Casos de resolveSingleMatchClassified / resolveTwoLegClassified: ver
+// mataMataVectors.test.ts (vetores em test-vectors/mata-mata.json).
 
 // ---------------------------------------------------------------------------
 // calculatePoints — pure function, no mocks needed
@@ -1080,60 +1081,6 @@ describe('scoreUnprocessedMatches — penalty bonus', () => {
     expect(db._updatedPredictions['p1']?.points_awarded).toBe(1) // correct outcome (draw)
     expect(db._updatedPredictions['p1']?.penalty_points).toBe(1)
     expect(db._leaderboardUpserts.find((r) => r.user_id === 'u1')?.total_points).toBe(2)
-  })
-})
-
-describe('resolveSingleMatchClassified', () => {
-  it('devolve home quando o mandante vence no tempo normal', () => {
-    expect(resolveSingleMatchClassified(2, 1, null)).toBe('home')
-  })
-
-  it('devolve away quando o visitante vence no tempo normal', () => {
-    expect(resolveSingleMatchClassified(0, 1, null)).toBe('away')
-  })
-
-  it('usa o vencedor dos pênaltis quando há empate', () => {
-    expect(resolveSingleMatchClassified(1, 1, 'away')).toBe('away')
-    expect(resolveSingleMatchClassified(0, 0, 'home')).toBe('home')
-    expect(resolveSingleMatchClassified(1, 1, null)).toBeNull()
-  })
-})
-
-describe('resolveTwoLegClassified', () => {
-  it('calcula o agregado invertendo mandante e visitante entre ida e volta', () => {
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 2, awayScore: 0 },
-        { homeScore: 1, awayScore: 0, penaltyWinner: null },
-      ),
-    ).toBe('away')
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 0, awayScore: 2 },
-        { homeScore: 0, awayScore: 1, penaltyWinner: null },
-      ),
-    ).toBe('home')
-  })
-
-  it('desempata pelos pênaltis da volta quando o agregado empata', () => {
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 2, awayScore: 0 },
-        { homeScore: 2, awayScore: 0, penaltyWinner: 'home' },
-      ),
-    ).toBe('home')
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 1, awayScore: 1 },
-        { homeScore: 1, awayScore: 1, penaltyWinner: 'away' },
-      ),
-    ).toBe('away')
-    expect(
-      resolveTwoLegClassified(
-        { homeScore: 2, awayScore: 0 },
-        { homeScore: 2, awayScore: 0, penaltyWinner: null },
-      ),
-    ).toBeNull()
   })
 })
 

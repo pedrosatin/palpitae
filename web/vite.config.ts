@@ -21,12 +21,19 @@ const config: UserConfig = {
     // sabe executá-los e quebraria o `npm test`.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
     setupFiles: ['./src/test-setup.ts'],
+    // Node >= 25 liga Web Storage por padrão; sem arquivo o localStorage global
+    // fica quebrado e o jsdom não o substitui. Desliga o experimental para o
+    // jsdom instalar o Storage de verdade (spies em Storage.prototype seguem
+    // funcionando).
+    execArgv: ['--no-experimental-webstorage'],
     // No PR, o Deploy Web roda só os testes que alcançam o diff pelo grafo de
     // imports (scripts/test-changed.sh). Uma mudança nestes arquivos, entre eles
     // o próprio script de seleção e o workflow que o chama, roda a suíte inteira.
     // O Vitest compara caminhos absolutos do repositório inteiro, então os
     // padrões ficam presos à web: o padrão `**/package.json` rodaria tudo a cada
-    // mudança em api/package.json.
+    // mudança em api/package.json. Os vetores de ouro ficam fora de web/ e o
+    // teste os lê por readFileSync/import.meta.url; o test-changed.sh já inclui
+    // esses testes na seleção, sem precisar de gatilho aqui.
     forceRerunTriggers: [
       'package.json',
       'package-lock.json',
