@@ -48,3 +48,8 @@ docs/bolao-migration/sql/03-import-predictions.sql
 # Relatórios gerados pelo Playwright e pelos testes
 playwright-report/
 test-results/
+
+# Backup ops (never commit secrets or ciphertext)
+scripts/backup/recipients.local
+*.ageidentity
+*.sql.gz.age

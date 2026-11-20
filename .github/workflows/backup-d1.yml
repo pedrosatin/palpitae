@@ -1,0 +1,246 @@
+name: Backup D1 (disabled)
+
+# Encrypted D1 backup → Cloudflare R2 (private bucket/prefix). Intentionally NOT
+# on a schedule yet.
+#
+# Reasons the cron stays off:
+# 1. wrangler d1 export --remote blocks other queries on the database while it
+#    runs. Duration and impact on production must be measured first.
+# 2. Secrets (R2 API token for the backups prefix, age recipients, Cloudflare
+#    token, restore proof) are not configured for this workflow by default.
+# 3. Enabling a schedule without those would fail noisily or export at an
+#    unsafe time.
+# 4. This job runs in GitHub Actions — it does NOT use the Worker cron, so it
+#    does not consume the Worker subrequest budget used by poller/reminders.
+#
+# When ready (orchestrator / operator — do all of these together; this PR does
+# not create the bucket, set secrets, or deploy):
+#   a) Create private R2 bucket `palpitae-backups` (preferred) OR reuse
+#      `palpitae-events` with R2_NAME_PREFIX=backups/. Never put ciphertext in
+#      a public place (repo is public; GHA artifacts would be downloadable).
+#   b) Create an R2 API token scoped to that bucket/prefix (Object Read & Write
+#      for CI). Prefer a separate prune token; keep prune apply off this workflow.
+#   c) Generate age keypair: identity only in ~/.config/palpitae-backup/ (mode
+#      600, outside the repo); publish recipient as BACKUP_AGE_RECIPIENT secret.
+#   d) Measure wrangler d1 export --remote blocking; pick a low-traffic weekly
+#      cron (example below).
+#   e) Complete an isolated restore rehearsal and set BACKUP_RESTORE_PROOF.
+#   f) Uncomment the schedule: block under `on:`.
+#   g) Keep the job `if:` below as-is — it already allows schedule OR a manual
+#      ENABLE dispatch.
+#   h) Leave prune as dry-run in CI. Apply prune from an operator host with
+#      R2_PRUNE_* after verifying the new object.
+#
+# Credential split (required):
+#   - Daily/weekly CI: R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY for the backups
+#     bucket/prefix. Compromised CI can overwrite objects; it must not be the
+#     only copy of the age identity.
+#   - Prune (operator host only): R2_PRUNE_ACCESS_KEY_ID /
+#     R2_PRUNE_SECRET_ACCESS_KEY. Never put prune keys in this workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type ENABLE after secrets, restore proof, and D1-block measurement are done'
+        required: true
+        type: string
+  # schedule:
+  #   # Weekly example — do not enable until export blocking is measured.
+  #   - cron: '15 5 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Pack and upload (guarded)
+    runs-on: ubuntu-latest
+    # Bound runtime so a stuck export/upload fails closed instead of hanging.
+    # Adjust after measuring real remote export duration; keep headroom.
+    timeout-minutes: 30
+    # Correct path for when schedule is later uncommented:
+    # schedule runs without inputs; manual runs still require ENABLE.
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.confirm == 'ENABLE') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - name: Install API tooling (lockfile-pinned wrangler)
+        working-directory: api
+        run: npm ci
+
+      - name: Install age (checksum-pinned release)
+        run: |
+          set -euo pipefail
+          AGE_VERSION=v1.2.1
+          AGE_TGZ="age-${AGE_VERSION}-linux-amd64.tar.gz"
+          AGE_URL="https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/${AGE_TGZ}"
+          # SHA-256 of the official GitHub release asset (size 5194720).
+          # Recompute and update this pin when bumping AGE_VERSION.
+          AGE_SHA256="7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50"
+          curl -fsSL -o "$AGE_TGZ" "$AGE_URL"
+          echo "${AGE_SHA256}  ${AGE_TGZ}" | sha256sum -c -
+          tar -xzf "$AGE_TGZ"
+          echo "$PWD/age" >> "$GITHUB_PATH"
+          rm -f "$AGE_TGZ"
+          age --version
+
+      - name: Install sqlite3 (required before remote D1 export)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y sqlite3
+          sqlite3 -version
+          # -safe must reject .shell (dump hardening); probe must not execute.
+          if printf '%s\n' '.shell echo PWNED' | sqlite3 -safe ':memory:' 2>/dev/null; then
+            echo "sqlite3 -safe allowed .shell; refusing to continue"
+            exit 1
+          fi
+          sqlite3 -safe ':memory:' 'select 1;'
+
+      - name: Refuse without required secrets and restore proof
+        env:
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BACKUP_RESTORE_PROOF: ${{ secrets.BACKUP_RESTORE_PROOF }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in AGE_RECIPIENT R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID BACKUP_RESTORE_PROOF; do
+            if [ -z "${!name}" ]; then
+              echo "missing secret: $name"
+              missing=1
+            fi
+          done
+          # Restore proof must be bound to the rehearsal recipient fingerprints.
+          # Arbitrary strings are not proof of possession. Format:
+          #   palpitae-restore-proof:v1:<sorted-fps>:<operator-token>
+          # This is an operational CI gate, not an authenticated cryptographic proof.
+          case "${BACKUP_RESTORE_PROOF}" in
+            ''|TODO|todo|example|EXAMPLE|replace-me|REPLACE-ME)
+              echo "BACKUP_RESTORE_PROOF is missing or still a placeholder"
+              missing=1
+              ;;
+            palpitae-restore-proof:v1:*)
+              ;;
+            *)
+              echo "BACKUP_RESTORE_PROOF must use palpitae-restore-proof:v1:<fps>:<token> (not an arbitrary string)"
+              missing=1
+              ;;
+          esac
+          if [ "$missing" -eq 0 ]; then
+            node --input-type=module -e "
+              import { validateRestoreProof } from './scripts/backup/lib/restore-proof.mjs';
+              const proof = process.env.BACKUP_RESTORE_PROOF;
+              const recipient = process.env.AGE_RECIPIENT || '';
+              const recipients = recipient
+                .split(/[,\s]+/)
+                .map((s) => s.trim().replace(/,+$/, ''))
+                .filter((s) => s.startsWith('age1'));
+              if (recipients.length === 0) {
+                console.error('BACKUP_AGE_RECIPIENT / AGE_RECIPIENT must contain at least one age1… public key');
+                process.exit(1);
+              }
+              const r = validateRestoreProof(proof, { expectedRecipients: recipients });
+              if (!r.ok) {
+                console.error('BACKUP_RESTORE_PROOF invalid:', r.reason, r.detail || '');
+                process.exit(1);
+              }
+              console.log('BACKUP_RESTORE_PROOF format ok; limitations:', (r.limitations || []).join(' | '));
+              console.log('This gate checks format + recipient fingerprints only — it does not prove age identity possession or a successful restore.');
+            "
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Configure secrets (including restore proof) before ENABLE. Schedule remains commented out."
+            echo "CI R2 token can overwrite objects. Prune keys stay off this workflow."
+            exit 1
+          fi
+
+      - name: Preflight tools + R2 baseline (no D1 export)
+        env:
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_NAME_PREFIX: ${{ secrets.R2_NAME_PREFIX }}
+        run: |
+          set -euo pipefail
+          # Fail closed BEFORE wrangler d1 export --remote (which blocks production D1).
+          # Checks: age + sqlite3 -safe, R2 list, validated prior baseline.
+          # Adulterated newest baseline or transient R2 errors (e.g. 503) abort here
+          # without falling back to an older baseline and without starting export.
+          # First production pack must already exist (operator bootstrap); empty
+          # inventory fails this step on purpose.
+          node scripts/backup/daily.mjs \
+            --preflight-only \
+            --sink=r2 \
+            --source=sql-file \
+            --recipient="$AGE_RECIPIENT"
+
+      - name: Export D1 (remote) into private cache workdir
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          PALPITAE_BACKUP_TMP: ${{ runner.temp }}/palpitae-backup-tmp
+        run: |
+          set -euo pipefail
+          mkdir -m 700 -p "$PALPITAE_BACKUP_TMP"
+          # Use the wrangler binary installed by npm ci from api/package-lock.json.
+          ./api/node_modules/.bin/wrangler d1 export palpitae --remote \
+            --output="$PALPITAE_BACKUP_TMP/dump.sql" \
+            --config ./api/wrangler.toml
+          chmod 600 "$PALPITAE_BACKUP_TMP/dump.sql"
+
+      - name: Pack, upload to R2, plan prune (no apply)
+        env:
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_NAME_PREFIX: ${{ secrets.R2_NAME_PREFIX }}
+          PALPITAE_BACKUP_TMP: ${{ runner.temp }}/palpitae-backup-tmp
+        run: |
+          set -euo pipefail
+          # daily.mjs fails closed if dump validation, pack, inventory, companion
+          # checks, or post-pack full-hash of the new object fails.
+          # Baseline: auto-loads prior public .counts.json from the same sink
+          # (no age identity in CI). First production pack must be bootstrapped
+          # once on an operator host with --bootstrap-with-evidence=@file before
+          # enabling this workflow — do NOT pass --allow-unbaselined-counts here.
+          node scripts/backup/daily.mjs \
+            --sink=r2 \
+            --source=sql-file \
+            --sql-file="$PALPITAE_BACKUP_TMP/dump.sql" \
+            --recipient="$AGE_RECIPIENT"
+          # Retention deletes stay dry-run here. Operator applies prune from a
+          # host with R2_PRUNE_* + --apply only after verifying the new object.
+
+      - name: Scrub plaintext dump
+        if: always()
+        env:
+          PALPITAE_BACKUP_TMP: ${{ runner.temp }}/palpitae-backup-tmp
+        run: |
+          set -euo pipefail
+          # Overwrite then unlink (best-effort). Plain `rm` leaves recoverable bytes.
+          node --input-type=module -e "
+            import { scrubFile } from './scripts/backup/lib/pipeline.mjs';
+            const p = process.env.PALPITAE_BACKUP_TMP + '/dump.sql';
+            await scrubFile(p);
+          "
