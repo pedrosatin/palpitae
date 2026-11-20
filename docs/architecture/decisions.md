@@ -802,11 +802,15 @@ O descadastro é conferido de novo durante o envio. A gravação da reserva só 
 
 O ponto sem volta é o início do `fetch` ao Resend. Descadastro depois disso não desfaz o e-mail aceito. Um reenvio cancelado por descadastro depois de 5xx ou erro de rede pode ter sido precedido de um aceite que a resposta não confirmou.
 
+#### Adendo (2026-11-20): fallback Mailjet enxuto
+
+Com `MAILJET_API_KEY` e `MAILJET_API_SECRET`, recusa definitiva do Resend (4xx de validação/conta ou cota esgotada) desvia uma vez à Mailjet, só para destinatário sem tentativa anterior no dia nesta execução. Timeout, 5xx e rede no Resend **não** acionam o fallback (o Resend pode ter aceitado). Sem os dois segredos o cron é idêntico ao da main. Cada `fetch` da Mailjet conta no mesmo teto de `REMINDER_FETCH_BUDGET`. Não há migration, reconciliação por CustomID nem estados novos: timeout da Mailjet mantém a reserva (sem idempotência, não reenvia); recusa definitiva da Mailjet libera a reserva e registra a falha. `List-Unsubscribe` e preferências locais seguem iguais aos do Resend.
+
 ### Consequences
 
 - O `finally` libera as reservas quando a execução termina por retorno ou exceção. Um encerramento forçado do runtime que impeça o `finally`, ou uma falha do próprio D1 na liberação, ainda pode deixar reservas até o fim do dia. A falha de liberação vai para o log.
-- Quem nunca palpita recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`.
-- Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. A fila por último envio reveza o excedente entre os dias. Se o excedente passar do teto, alguém fica de fora dois dias seguidos, sempre quem recebeu mais recentemente.
+- Quem nunca palpita recebe um e-mail por dia com jogo, em vez de um por rodada. O volume sobe e consome a cota do Resend. Cota esgotada sem Mailjet encerra a fila e registra `email_reminder_failed` com `reason = quota_exceeded`. Com Mailjet, a cota desvia o restante ao fallback.
+- Risco aceito: com o teto de 45 `fetch`, uma base com mais de 45 destinatários no dia deixa o excedente sem e-mail enquanto houver uma execução diária só. A fila por último envio reveza o excedente entre os dias. Se o excedente passar do teto, alguém fica de fora dois dias seguidos, sempre quem recebeu mais recentemente. O desvio à Mailjet também consome o teto.
 - O revezamento olha os 7 dias guardados em `email_reminder_sends`. Quem não recebeu nesse período é tratado como quem nunca recebeu.
 - `email_reminder_sent` deixa de ter campeonato e rodada, porque um e-mail reúne vários. O evento traz o dia e o número de jogos listados.
 
