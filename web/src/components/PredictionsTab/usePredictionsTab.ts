@@ -10,6 +10,7 @@ import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib
 import { fetchGroupsList } from '../../lib/groupsList'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
+import { acceptsFrom } from '../../lib/predictionCopy'
 import type { Match, Prediction } from '../MatchCard'
 import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
@@ -284,8 +285,12 @@ function usePredictionsImport({
   const scope = useRef({ active: true })
   const siblings = useSiblingGroups(groupId, competitionId, userId)
   // Grupo "só vencedor" não é origem para grupo de placar exato: a API recusa, porque
-  // o 1x0 do botão não é um placar palpitado.
-  const otherGroups = siblings.filter((g) => !(pointsExact > 0 && g.points_exact === 0))
+  // o 1x0 do botão não é um placar palpitado. Ausência de `points_exact` no irmão
+  // (lista incompleta) conta como placar exato — o default de criação do grupo —,
+  // para não esconder uma origem só porque o campo faltou no payload.
+  const otherGroups = siblings.filter((g) =>
+    acceptsFrom({ points_exact: g.points_exact ?? 3 }, { points_exact: pointsExact }),
+  )
   // Jogos salvos enquanto a listagem pedida depois da importação não chega.
   const savedDuringRefresh = useRef<Set<string> | null>(null)
   function noteSaved(matchIds: string[]) {
