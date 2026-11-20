@@ -1,8 +1,11 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, it } from 'vitest'
+import { JOIN_REQUEST_INVALID_LINK } from './joinRequests'
 import {
+  CREATE_EXACT_GE_WINNER_MSG,
   CREATE_POINTS_MSG,
   CREATE_REQUIRED_MSG,
+  CREATE_SUM_ZERO_MSG,
   CREATE_VISIBILITY_MSG,
   createGroupSchema,
   createJoinRequestSchema,
@@ -29,19 +32,25 @@ function issuesOf(
 }
 
 describe('mapCreateGroupError', () => {
-  it('prioriza obrigatórios, depois pontuação e visibilidade', () => {
+  it('prioriza obrigatórios, regra do nome, pontuação, exato≥vencedor, soma zero e visibilidade', () => {
     expect(mapCreateGroupError({}, issuesOf(createGroupSchema, {}))).toBe(CREATE_REQUIRED_MSG)
     expect(
       mapCreateGroupError(
-        { name: 'G', competition_id: 'c', points_exact: 11 },
-        issuesOf(createGroupSchema, { name: 'G', competition_id: 'c', points_exact: 11 }),
+        { name: 'Grupo', competition_id: 'c', points_exact: 11 },
+        issuesOf(createGroupSchema, { name: 'Grupo', competition_id: 'c', points_exact: 11 }),
       ),
     ).toBe(CREATE_POINTS_MSG)
     expect(
       mapCreateGroupError(
-        { name: 'G', competition_id: 'c', predictions_visibility: 'x' },
+        { name: 'A', competition_id: 'c', points_exact: 11 },
+        issuesOf(createGroupSchema, { name: 'A', competition_id: 'c', points_exact: 11 }),
+      ),
+    ).toBe('Nome deve ter entre 2 e 30 caracteres')
+    expect(
+      mapCreateGroupError(
+        { name: 'Grupo', competition_id: 'c', predictions_visibility: 'x' },
         issuesOf(createGroupSchema, {
-          name: 'G',
+          name: 'Grupo',
           competition_id: 'c',
           predictions_visibility: 'x',
         }),
@@ -57,6 +66,42 @@ describe('mapCreateGroupError', () => {
         }),
       ),
     ).toBe(CREATE_REQUIRED_MSG)
+    expect(
+      mapCreateGroupError(
+        {
+          name: 'Grupo',
+          competition_id: 'c',
+          points_exact: 1,
+          points_winner: 2,
+          predictions_visibility: 'x',
+        },
+        issuesOf(createGroupSchema, {
+          name: 'Grupo',
+          competition_id: 'c',
+          points_exact: 1,
+          points_winner: 2,
+          predictions_visibility: 'x',
+        }),
+      ),
+    ).toBe(CREATE_EXACT_GE_WINNER_MSG)
+    expect(
+      mapCreateGroupError(
+        {
+          name: 'Grupo',
+          competition_id: 'c',
+          points_exact: 0,
+          points_winner: 0,
+          predictions_visibility: 'x',
+        },
+        issuesOf(createGroupSchema, {
+          name: 'Grupo',
+          competition_id: 'c',
+          points_exact: 0,
+          points_winner: 0,
+          predictions_visibility: 'x',
+        }),
+      ),
+    ).toBe(CREATE_SUM_ZERO_MSG)
   })
 })
 
@@ -100,10 +145,9 @@ describe('mapPatchGroupError', () => {
 })
 
 describe('mapCreateJoinRequestError', () => {
-  it('devolve a mensagem de link (schema só exige objeto)', () => {
-    // Objeto válido não gera issues; o mapper só existe para o contrato do validateJson.
+  it('devolve a mensagem de link inválido para o contrato do validateJson', () => {
     expect(mapCreateJoinRequestError({}, issuesOf(createJoinRequestSchema, 1))).toBe(
-      'Link do grupo inválido',
+      JOIN_REQUEST_INVALID_LINK,
     )
   })
 })

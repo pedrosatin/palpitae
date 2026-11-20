@@ -28,6 +28,7 @@ import {
   JOIN_REQUEST_DAILY_LIMIT,
   JOIN_REQUEST_GROUP_FULL,
   JOIN_REQUEST_GROUP_PENDING_CAP,
+  JOIN_REQUEST_INVALID_LINK,
   JOIN_REQUEST_OWNER_ONLY,
   JOIN_REQUEST_REFUSED,
   JOIN_REQUEST_REJECT_COOLDOWN_DAYS,
@@ -130,7 +131,7 @@ async function finalizeClaimAsRejected(
  */
 async function getMyJoinRequestStatus(c: AppC) {
   const publicId = normalizePublicId(c.req.query('public_id'))
-  if (!publicId) return c.json({ error: 'Link do grupo inválido' }, 404)
+  if (!publicId) return c.json({ error: JOIN_REQUEST_INVALID_LINK }, 404)
 
   const userId = c.get('userId')
   const db = c.env.DB
@@ -174,15 +175,14 @@ async function getMyJoinRequestStatus(c: AppC) {
  * Cria um pedido de entrada pelo `public_id` do grupo. Exige conta.
  * Body: { public_id: string }
  */
-async function createJoinRequest(c: AppC) {
+async function createJoinRequest(
+  c: Context<AppContext, string, { in: { json: CreateJoinRequestBody }; out: { json: CreateJoinRequestBody } }>,
+) {
   const userId = c.get('userId')
-  // Tipagem do valid('json') some ao extrair o handler; o validateJson já garantiu o shape.
-  const body = c.req.valid('json' as never) as CreateJoinRequestBody
+  const body = c.req.valid('json')
 
-  const publicId = normalizePublicId(
-    typeof body.public_id === 'string' ? body.public_id : undefined,
-  )
-  if (!publicId) return c.json({ error: 'Link do grupo inválido' }, 404)
+  const publicId = normalizePublicId(body.public_id)
+  if (!publicId) return c.json({ error: JOIN_REQUEST_INVALID_LINK }, 404)
 
   const db = c.env.DB
   const group = await db

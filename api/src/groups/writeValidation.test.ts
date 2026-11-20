@@ -162,6 +162,77 @@ describe('validação de escrita POST /groups', () => {
     expect(res).toEqual({ status: 400, body: CREATE_POINTS })
   })
 
+  it('regra do nome tem prioridade sobre pontuação fora da faixa', async () => {
+    const request = await setup()
+    const res = await request('POST', '/groups', {
+      name: 'A',
+      competition_id: 'comp-1',
+      points_exact: 11,
+    })
+    expect(res).toEqual({
+      status: 400,
+      body: { error: 'Nome deve ter entre 2 e 30 caracteres' },
+    })
+  })
+
+  it('caractere invisível no nome tem prioridade sobre pontuação com tipo errado', async () => {
+    const request = await setup()
+    const res = await request('POST', '/groups', {
+      name: 'A\u200B',
+      competition_id: 'comp-1',
+      points_exact: 'x',
+    })
+    expect(res).toEqual({
+      status: 400,
+      body: { error: 'Nome não pode ter caracteres invisíveis' },
+    })
+  })
+
+  it('regra do nome tem prioridade sobre visibilidade inválida', async () => {
+    const request = await setup()
+    const res = await request('POST', '/groups', {
+      name: 'A',
+      competition_id: 'comp-1',
+      predictions_visibility: 'x',
+    })
+    expect(res).toEqual({
+      status: 400,
+      body: { error: 'Nome deve ter entre 2 e 30 caracteres' },
+    })
+  })
+
+  it('exato menor que vencedor tem prioridade sobre visibilidade inválida', async () => {
+    const request = await setup()
+    const res = await request('POST', '/groups', {
+      name: 'Grupo',
+      competition_id: 'comp-1',
+      points_exact: 1,
+      points_winner: 2,
+      predictions_visibility: 'x',
+    })
+    expect(res).toEqual({
+      status: 400,
+      body: {
+        error: 'Pontos por placar exato deve ser maior ou igual a pontos por vencedor',
+      },
+    })
+  })
+
+  it('soma zero de pontuação tem prioridade sobre visibilidade inválida', async () => {
+    const request = await setup()
+    const res = await request('POST', '/groups', {
+      name: 'Grupo',
+      competition_id: 'comp-1',
+      points_exact: 0,
+      points_winner: 0,
+      predictions_visibility: 'x',
+    })
+    expect(res).toEqual({
+      status: 400,
+      body: { error: 'Pelo menos um tipo de pontuação deve ser maior que zero' },
+    })
+  })
+
   it('JSON válido passa da validação de formato com qualquer Content-Type', async () => {
     const request = await setup()
     for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
@@ -283,7 +354,7 @@ describe('validação de escrita POST /groups/join-requests', () => {
     const public_id = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     for (const contentType of [null, 'text/plain', 'application/json;charset=UTF-8'] as const) {
       const res = await request('POST', '/groups/join-requests', { public_id }, contentType)
-      // Link com formato válido e grupo inexistente: recusa genérica (não vaza existência).
+      // Link com formato válido para grupo inexistente recebe a recusa genérica, que não revela se o grupo existe.
       expect(res.status).toBe(404)
       expect(res.body.error).toBeTruthy()
     }

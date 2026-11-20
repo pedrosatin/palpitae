@@ -35,6 +35,9 @@ export function generatePublicId(): string {
 
 export type JoinRequestStatus = 'pending' | 'approved' | 'rejected'
 
+/** `public_id` ausente, com tipo errado ou fora do formato. */
+export const JOIN_REQUEST_INVALID_LINK = 'Link do grupo inválido'
+
 /** Mensagem genérica quando o pedido não pode seguir (banido, link off, etc.). */
 export const JOIN_REQUEST_REFUSED = 'Não é possível pedir entrada neste grupo'
 
