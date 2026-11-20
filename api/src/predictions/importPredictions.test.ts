@@ -271,24 +271,33 @@ describe('importPredictions, trava entre plano e escrita', () => {
     },
   )
 
-  it('relógio do handler 10 s atrás do banco: jogo recusado na escrita conta como locked_skipped', async () => {
-    const { run, predict, stored, sqlite } = setup()
-    // Plano com Date.now 10 s atrás (caminho input.now ?? new Date()): m1 ainda aberto.
-    // Na escrita, SQL_NOW vê o início passado. Sem passar `now` no input.
-    const real = Date.now()
-    const startTime = new Date(real - 5_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
-    sqlite.prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`).run(startTime)
-    predict('exato', 'm1', 3, 1)
-    predict('exato', 'm2', 1, 1)
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(real - 10_000)
+  it.each([
+    { label: 'fake timers no caminho padrão Date', mode: 'fake' as const },
+    { label: 'now explícito no input', mode: 'now' as const },
+  ])(
+    'relógio do handler 10 s atrás do banco ($label): jogo recusado na escrita conta como locked_skipped',
+    async ({ mode }) => {
+      const { run, predict, stored, sqlite } = setup()
+      // Kickoff entre o relógio do plano (10 s atrás) e o do banco: m1 aberto no
+      // plano e travado na escrita (SQL_NOW). Cobre input.now e input.now ?? new Date().
+      const real = Date.now()
+      const startTime = new Date(real - 5_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+      const planNow = new Date(real - 10_000).toISOString()
+      sqlite.prepare(`UPDATE matches SET start_time = ? WHERE id = 'm1'`).run(startTime)
+      predict('exato', 'm1', 3, 1)
+      predict('exato', 'm2', 1, 1)
+      if (mode === 'fake') {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(real - 10_000)
+      }
 
-    const result = await run('exato', 'exato2')
+      const result = await run('exato', 'exato2', mode === 'now' ? { now: planNow } : {})
 
-    expect(stored('exato2', 'm1')).toBeUndefined()
-    expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
-    expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 1 })
-  })
+      expect(stored('exato2', 'm1')).toBeUndefined()
+      expect(stored('exato2', 'm2')).toMatchObject({ h: 1, a: 1 })
+      expect(result).toMatchObject({ ok: true, imported: 1, locked_skipped: 1 })
+    },
+  )
 
   it('jogo que começa no mesmo segundo da escrita conta como locked_skipped', async () => {
     const { run, predict, stored, sqlite, hooks } = setup()
@@ -431,15 +440,19 @@ describe('fetchImportSources', () => {
 
     const forExact = await fetchImportSources(db, 'a', 'exato2', '2026-06-01T00:00:00.000Z')
     expect(forExact).toEqual({ exato: ['m1'] })
-    expect(forExact).not.toHaveProperty('vencedor')
 
     const forWinner = await fetchImportSources(db, 'a', 'vencedor2', '2026-06-01T00:00:00.000Z')
-    expect(forWinner.exato).toEqual(['m1'])
-    expect(forWinner.vencedor?.sort()).toEqual(['m1', 'm2'])
+    expect({ ...forWinner, vencedor: forWinner.vencedor?.sort() }).toEqual({
+      exato: ['m1'],
+      vencedor: ['m1', 'm2'],
+    })
   })
 
-  it('grupo alvo inexistente devolve mapa vazio', async () => {
-    const { db } = setup()
+  it('grupo alvo inexistente ou com deleted_at devolve mapa vazio', async () => {
+    const { predict, db, sqlite } = setup()
+    predict('exato', 'm1', 3, 1)
     expect(await fetchImportSources(db, 'a', 'sumiu', '2026-06-01T00:00:00.000Z')).toEqual({})
+    sqlite.exec(`UPDATE groups SET deleted_at = '2026-01-01' WHERE id = 'exato2'`)
+    expect(await fetchImportSources(db, 'a', 'exato2', '2026-06-01T00:00:00.000Z')).toEqual({})
   })
 })

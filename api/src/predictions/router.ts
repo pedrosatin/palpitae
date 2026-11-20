@@ -303,10 +303,10 @@ const router = new Hono<AppContext>()
  * `classified_points` os pontos de classificado já creditados.
  *
  * Sem `match_id`, `import_sources` lista, por grupo do mesmo campeonato em que o
- * usuário também é membro, os jogos ainda abertos que ele já palpitou lá. O front
- * cruza com os palpites deste grupo para oferecer importação só quando há
- * palpite faltando. O marcador `import_completed` sozinho fica velho quando a
- * rodada vira.
+ * usuário também é membro, os jogos ainda abertos que ele já palpitou lá, exceto
+ * grupos só vencedor quando este grupo pontua placar exato. O front cruza com os
+ * palpites deste grupo para oferecer importação só quando há palpite faltando. O
+ * marcador `import_completed` sozinho fica velho quando a rodada vira.
  *
  * Response:
  * {
