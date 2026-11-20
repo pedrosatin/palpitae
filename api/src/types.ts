@@ -31,7 +31,14 @@ export type Env = {
   FRONTEND_URL: string
   FOOTBALL_API_KEY: string
   RESEND_API_KEY: string
-  // Teto de chamadas ao Resend por execução do lembrete diário. Padrão 45 (plano Free).
+  // Fallback do lembrete diário (Mailjet). As duas precisam existir; sem elas o
+  // fallback fica desligado e o comportamento do Resend não muda.
+  MAILJET_API_KEY?: string
+  MAILJET_API_SECRET?: string
+  // Senha do Basic Auth do webhook Event API (unsub/spam). Sem ela a rota
+  // /notifications/mailjet-events responde 404. Ver ADR-020.
+  MAILJET_WEBHOOK_SECRET?: string
+  // Teto de chamadas ao Resend/Mailjet por execução do lembrete diário. Padrão 45 (plano Free).
   REMINDER_FETCH_BUDGET?: string
   // Limiar em horas para resultado atrasado sem placar (padrão 3). Ver resultOverdue.ts.
   RESULT_OVERDUE_HOURS?: string

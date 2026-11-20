@@ -3,6 +3,12 @@ import { html } from 'hono/html'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
+import {
+  applyMailjetUnsubscribeEvents,
+  mailjetWebhookAuthorized,
+  normalizeMailjetEvents,
+} from './mailjetEvents'
+import { markEmailUnsubscribed } from './optOut'
 import { verifyUnsubTokenForEnv } from './unsubscribeToken'
 
 const router = new Hono<AppContext>()
@@ -116,22 +122,46 @@ router.post('/unsubscribe', async (c) => {
     return c.text('invalid token', 400)
   }
 
-  const result = await c.env.DB.prepare(
-    `UPDATE users SET email_unsubscribed_at = datetime('now')
-     WHERE id = ? AND email_unsubscribed_at IS NULL`,
-  )
-    .bind(userId)
-    .run()
-
-  // Only log when the row actually changed — a repeated one-click POST (some mail
-  // clients retry) is a no-op and must not inflate the unsubscribe metric.
-  if (result.meta.changes > 0) {
-    logEvent(c.env.AE, 'email_unsubscribed', {
-      blobs: [await hashUserId(userId), 'link'],
-    })
-  }
+  // Só registra o evento quando a linha muda — POST one-click repetido é no-op.
+  await markEmailUnsubscribed(c.env.DB, c.env.AE, userId, 'link')
 
   return c.text('unsubscribed', 200)
+})
+
+/**
+ * POST /notifications/mailjet-events
+ *
+ * Event API da Mailjet (unsub e spam). Autenticação Basic: a senha é o segredo
+ * `MAILJET_WEBHOOK_SECRET` (usuário livre, ex. `mailjet`). Sem o segredo no
+ * Worker a rota responde 404. Payload inválido e erros de aplicação respondem
+ * 200 com log, para a Mailjet não reenviar em loop. Ver ADR-020.
+ */
+router.post('/mailjet-events', async (c) => {
+  const auth = await mailjetWebhookAuthorized(
+    c.req.header('Authorization'),
+    c.env.MAILJET_WEBHOOK_SECRET,
+  )
+  if (auth === 'missing_config') return c.text('Not Found', 404)
+  if (auth === 'unauthorized') return c.text('Unauthorized', 401)
+
+  let payload: unknown
+  try {
+    payload = await c.req.json()
+  } catch {
+    console.error('[mailjet-events] payload inválido')
+    return c.text('ok', 200)
+  }
+
+  const events = normalizeMailjetEvents(payload)
+  if (!events) {
+    console.error('[mailjet-events] payload inválido')
+    return c.text('ok', 200)
+  }
+
+  const { failed } = await applyMailjetUnsubscribeEvents(c.env.DB, c.env.AE, events)
+  // Falha interna (D1) num unsub/spam: 500 para a Mailjet reenviar o lote.
+  if (failed > 0) return c.text('retry', 500)
+  return c.text('ok', 200)
 })
 
 /**
@@ -163,18 +193,19 @@ router.patch('/preferences', requireAuth, async (c) => {
   }
 
   const subscribe = body.round_reminders
-  const result = await c.env.DB.prepare(
-    subscribe
-      ? `UPDATE users SET email_unsubscribed_at = NULL WHERE id = ? AND email_unsubscribed_at IS NOT NULL`
-      : `UPDATE users SET email_unsubscribed_at = datetime('now') WHERE id = ? AND email_unsubscribed_at IS NULL`,
-  )
-    .bind(userId)
-    .run()
-
-  if (result.meta.changes > 0) {
-    logEvent(c.env.AE, subscribe ? 'email_resubscribed' : 'email_unsubscribed', {
-      blobs: [await hashUserId(userId), 'settings'],
-    })
+  if (subscribe) {
+    const result = await c.env.DB.prepare(
+      `UPDATE users SET email_unsubscribed_at = NULL WHERE id = ? AND email_unsubscribed_at IS NOT NULL`,
+    )
+      .bind(userId)
+      .run()
+    if (result.meta.changes > 0) {
+      logEvent(c.env.AE, 'email_resubscribed', {
+        blobs: [await hashUserId(userId), 'settings'],
+      })
+    }
+  } else {
+    await markEmailUnsubscribed(c.env.DB, c.env.AE, userId, 'settings')
   }
 
   return c.json({ round_reminders: subscribe })

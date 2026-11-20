@@ -139,7 +139,7 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 45, pilotAccess: env },
+      { fetchBudget: 45, pilotAccess: env, mailjet: undefined },
     )
     expect(exportRecentDays).not.toHaveBeenCalled()
     expect(pollActiveMatches).not.toHaveBeenCalled()
@@ -163,7 +163,7 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 120, pilotAccess: reminderEnv },
+      { fetchBudget: 120, pilotAccess: reminderEnv, mailjet: undefined },
     )
   })
 
@@ -179,7 +179,7 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'unsub-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 45, pilotAccess: reminderEnv },
+      { fetchBudget: 45, pilotAccess: reminderEnv, mailjet: undefined },
     )
   })
 
@@ -195,7 +195,47 @@ describe('scheduled handler routing', () => {
       'http://localhost:5173',
       { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
       undefined,
-      { fetchBudget: 45, pilotAccess: reminderEnv },
+      { fetchBudget: 45, pilotAccess: reminderEnv, mailjet: undefined },
+    )
+  })
+
+  it('passa as credenciais Mailjet ao lembrete quando as duas existem', async () => {
+    const reminderEnv = {
+      ...env,
+      MAILJET_API_KEY: 'mj-public',
+      MAILJET_API_SECRET: 'mj-private',
+    } as Env
+
+    await run('0 10 * * *', Date.now(), reminderEnv)
+
+    expect(sendRoundReminders).toHaveBeenCalledWith(
+      env.DB,
+      'rk',
+      env.AE,
+      'http://localhost:5173',
+      { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
+      undefined,
+      {
+        fetchBudget: 45,
+        pilotAccess: reminderEnv,
+        mailjet: { apiKey: 'mj-public', apiSecret: 'mj-private' },
+      },
+    )
+  })
+
+  it('sem MAILJET_API_SECRET o fallback fica desligado', async () => {
+    const reminderEnv = { ...env, MAILJET_API_KEY: 'mj-public' } as Env
+
+    await run('0 10 * * *', Date.now(), reminderEnv)
+
+    expect(sendRoundReminders).toHaveBeenCalledWith(
+      env.DB,
+      'rk',
+      env.AE,
+      'http://localhost:5173',
+      { secret: 'jwt-secret', apiBaseUrl: 'https://api.palpitae.com.br' },
+      undefined,
+      { fetchBudget: 45, pilotAccess: reminderEnv, mailjet: undefined },
     )
   })
 

@@ -234,7 +234,7 @@ sentido com ela. Ao adicionar/alterar um evento, atualize aqui.
 | `email_reminder_failed` | `user_hash` | `reminder_date` | `reason` (`quota_exceeded`, `subrequest_budget`, `unsub_check_failed`, `http_<status>`, `unknown`) | `double1`=jogos que o e-mail listaria |
 | `cron_round_reminder` | — | — | — | `double1`=rodadas com jogo listado, `double2`=sent, `double3`=failed, `double4`=jogos listados nos e-mails enviados |
 | `cron_round_reminder_misconfig` | `reason` (`no_api_key`) | — | — | — |
-| `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app) | — | — |
+| `email_unsubscribed` | `user_hash` | `source` (`link`=via e-mail / `settings`=no app / `mailjet`=Event API unsub ou spam) | — | — |
 | `email_resubscribed` | `user_hash` | `source` (`settings`) | — | — |
 
 Nos eventos `poller_run` e `fixture_discovery_run`, `api_calls` conta requests

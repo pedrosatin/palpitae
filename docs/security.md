@@ -567,6 +567,13 @@ antigo no painel. Uma medição que coincida com a troca grava `cloudflare_usage
 no cron do dia seguinte. Criação do token em
 [Observabilidade](observability.md#token-de-analytics-passos-do-operador).
 
+`MAILJET_WEBHOOK_SECRET` é a senha do Basic Auth de `POST /notifications/mailjet-events`
+(Event API unsub/spam). Sem ele a rota responde 404. Trocar o valor exige atualizar o
+`Url` dos `eventcallbackurl` na Mailjet (usuário livre, ex. `mailjet`; a senha é o
+segredo). Grave com
+`cd api && npx wrangler secret put MAILJET_WEBHOOK_SECRET --config ./wrangler.toml`.
+Passos de cadastro do callback: ADR-020.
+
 ## Tokens da Cloudflare no CI
 
 Hoje os workflows `deploy-api`, `deploy-web` e `radar-sync` leem o mesmo secret
