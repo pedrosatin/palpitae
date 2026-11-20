@@ -18,8 +18,9 @@
  * essential counts vs baseline/source evidence.
  *
  * R2 credentials (never committed): R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
- * (optional R2_ACCOUNT_ID, R2_NAME_PREFIX). Daily keys should NOT include
- * object-delete. Prune apply uses R2_PRUNE_* separately.
+ * (optional R2_ACCOUNT_ID, R2_NAME_PREFIX). R2 has no write-without-delete token:
+ * Object Read & Write on the dedicated bucket can also delete. Bucket lock rules
+ * are the mitigation (docs/operations/backup.md). Prune apply uses R2_PRUNE_*.
  *
  * Workdirs default to ~/.cache/scratch/palpitae-backup-tmp (not /tmp) to avoid
  * filling a tmpfs with dumps. Override with PALPITAE_BACKUP_TMP.

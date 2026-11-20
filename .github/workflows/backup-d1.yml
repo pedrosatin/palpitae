@@ -33,7 +33,9 @@ name: Backup D1 (disabled)
 #      600, outside the repo); publish recipient as BACKUP_AGE_RECIPIENT secret
 #      on the `backup` environment.
 #   e) Create a Cloudflare API token scoped only to D1 export for this account
-#      / database. Do not reuse the deploy CLOUDFLARE_API_TOKEN.
+#      / database and save it as BACKUP_D1_API_TOKEN on the `backup` environment.
+#      The distinct name makes a missing token fail the secrets gate instead of
+#      silently falling back to the deploy CLOUDFLARE_API_TOKEN.
 #   f) Measure wrangler d1 export --remote blocking; pick a low-traffic weekly
 #      cron (example below).
 #   g) Complete an isolated restore rehearsal and set BACKUP_RESTORE_PROOF.
@@ -134,7 +136,7 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BACKUP_D1_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           BACKUP_RESTORE_PROOF: ${{ secrets.BACKUP_RESTORE_PROOF }}
         run: |
@@ -214,7 +216,7 @@ jobs:
 
       - name: Export D1 (remote) into private cache workdir
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BACKUP_D1_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PALPITAE_BACKUP_TMP: ${{ runner.temp }}/palpitae-backup-tmp
         run: |

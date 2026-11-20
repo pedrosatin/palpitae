@@ -10,7 +10,7 @@
  *   enough for the catastrophic-empty baseline gate — plus `tables` for
  *   schema-loss detection. Exact COUNTs stay in age-sealed `.meta.json.age`.
  *
- * Threat model (honest): `.counts.json` is unsigned. An actor with writeFiles
+ * Threat model (honest): `.counts.json` is unsigned. An actor with Object RW
  * can forge counts and a matching dump. This artifact only enables fail-closed
  * comparison against a prior pack; it is not publisher authentication and not
  * a restore proof. Authoritative restore comparison uses decrypted sealed meta.

@@ -285,7 +285,7 @@ Lacunas que impedem fechar as metas:
 1. Conta Cloudflare, bucket privado **dedicado** `palpitae-backups` (obrigatório; sem reutilizar `palpitae-events`).
 2. Dois tokens R2 Object Read & Write no mesmo bucket (CI e prune). Ambos podem apagar; a mitigação de retenção imutável é configurar **bucket lock rules** com janela maior que a do prune ([docs](https://developers.cloudflare.com/r2/buckets/bucket-locks/)). Esta PR não aplica locks.
 3. Criar o GitHub Environment `backup` com política de branch só `main` e mover os secrets `BACKUP_*` / `R2_*` / token de export D1 para esse environment.
-4. Token Cloudflare **só de D1** (export) para o workflow. Não reaproveitar o `CLOUDFLARE_API_TOKEN` de deploy.
+4. Token Cloudflare **só de D1** (export) para o workflow, salvo como `BACKUP_D1_API_TOKEN` no environment `backup`. O workflow o entrega ao wrangler como `CLOUDFLARE_API_TOKEN`; o nome próprio faz a falta dele barrar o job em vez de cair no token de deploy do repositório.
 5. Par de chaves age; identity só com o operador; `recipients.local` (nunca `recipients.example`).
 6. Medir um export remoto controlado (horário de baixo uso) e registrar tamanho/duração/impacto de bloqueio e `S` (tamanho do ciphertext) para a estimativa de egress.
 7. Primeiro upload real ao R2 (`--sink=r2`) e download com verificação SHA-256 do manifesto.

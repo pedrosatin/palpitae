@@ -382,7 +382,9 @@ function decodeXml(s) {
  *
  * Roles:
  * - `daily` (default): R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY — Object Read & Write
- *   on the backups bucket/prefix. Used by pack/CI. Compromised CI can overwrite objects.
+ *   on the dedicated backups bucket (R2 scopes tokens per bucket, not prefix). Used by
+ *   pack/CI. A compromised key can overwrite and delete objects; bucket lock rules
+ *   are the mitigation.
  * - `prune`: prefers R2_PRUNE_ACCESS_KEY_ID / R2_PRUNE_SECRET_ACCESS_KEY for apply deletes.
  *
  * @param {NodeJS.ProcessEnv} [env]
