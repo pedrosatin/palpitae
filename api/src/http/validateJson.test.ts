@@ -1,0 +1,73 @@
+import { Hono } from 'hono'
+import * as v from 'valibot'
+import { describe, expect, it } from 'vitest'
+import type { AppContext } from '../types'
+import { validateJson } from './validateJson'
+
+describe('validateJson', () => {
+  const schema = v.object({ name: v.pipe(v.string(), v.minLength(1)) })
+  const app = new Hono<AppContext>()
+  app.post(
+    '/x',
+    validateJson(schema, () => 'nome inválido'),
+    (c) => c.json(c.req.valid('json')),
+  )
+
+  async function post(rawBody: string, contentType?: string | null) {
+    const headers: Record<string, string> = {}
+    if (contentType !== null) {
+      headers['Content-Type'] = contentType ?? 'application/json'
+    }
+    return app.request('http://test/x', {
+      method: 'POST',
+      headers,
+      body: rawBody,
+    })
+  }
+
+  it('aceita objeto válido e grava em req.valid', async () => {
+    const res = await post('{"name":"ok"}')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ name: 'ok' })
+  })
+
+  it('corpo que não é objeto responde Body JSON inválido', async () => {
+    for (const raw of ['null', '[]', '1', '{']) {
+      const res = await post(raw)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Body JSON inválido' })
+    }
+  })
+
+  it('corpo fora do schema usa a mensagem do mapper', async () => {
+    const res = await post('{"name":""}')
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'nome inválido' })
+  })
+
+  it('JSON válido sem Content-Type ou com text/plain segue para o schema', async () => {
+    for (const contentType of [null, 'text/plain'] as const) {
+      const ok = await post('{"name":"ok"}', contentType)
+      expect(ok.status).toBe(200)
+      expect(await ok.json()).toEqual({ name: 'ok' })
+
+      const bad = await post('{"name":""}', contentType)
+      expect(bad.status).toBe(400)
+      expect(await bad.json()).toEqual({ error: 'nome inválido' })
+    }
+  })
+
+  it('application/json;charset=UTF-8 aceita o corpo', async () => {
+    const res = await post('{"name":"ok"}', 'application/json;charset=UTF-8')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ name: 'ok' })
+  })
+
+  it('JSON malformado responde Body JSON inválido independentemente do Content-Type', async () => {
+    for (const contentType of ['application/json', 'text/plain', null] as const) {
+      const res = await post('{', contentType)
+      expect(res.status).toBe(400)
+      expect(await res.json()).toEqual({ error: 'Body JSON inválido' })
+    }
+  })
+})

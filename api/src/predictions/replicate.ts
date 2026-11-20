@@ -2,7 +2,7 @@ import type { Context } from 'hono'
 import { hasPilotAccess } from '../auth/permissions'
 import { runInBatches } from '../d1Batch'
 import { competitionStatusSql } from '../groups/competitionStatus'
-import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
+import { validateJson } from '../http/validateJson'
 import { isMatchLocked } from '../matches/locking'
 import { resolveTwoLegClassified } from '../matches/scoring'
 import { matchGoesToPenalties, parsePenaltyPhases } from '../matches/penalties'
@@ -12,11 +12,16 @@ import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
 import { guardedUpsertParams, prepareGuardedUpsert } from './guardedUpsert'
 import { type Leg1ScorePair, resolvePenaltyPick } from './penaltyPick'
+import {
+  mapReplicatePredictionError,
+  REPLICATE_MAX_MATCHES,
+  REPLICATE_MAX_TARGETS,
+  type ReplicatePredictionBody,
+  replicatePredictionSchema,
+} from './writeSchemas'
 
 /** Grupos de destino e jogos por requisição. O lote de escrita cresce com o produto dos dois. */
-const MAX_TARGET_GROUPS = 10
-const MAX_MATCHES = 100
-export const MAX_BATCH_STATEMENTS = MAX_TARGET_GROUPS * MAX_MATCHES
+export const MAX_BATCH_STATEMENTS = REPLICATE_MAX_TARGETS * REPLICATE_MAX_MATCHES
 
 /** O que a cópia de palpites precisa saber de um grupo. */
 export type CopyGroup = {
@@ -81,16 +86,6 @@ function scoreFor(group: CopyGroup, source: SourceRow): { home: number; away: nu
   const home = source.predicted_home_score
   const away = source.predicted_away_score
   return group.points_exact === 0 ? outcomeScore(home, away) : { home, away }
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0
-}
-
-function stringList(value: unknown, max: number): string[] | null {
-  if (!Array.isArray(value) || !value.every(isString)) return null
-  const unique = Array.from(new Set(value))
-  return unique.length > max ? null : unique
 }
 
 /** Grupos de que o usuário é membro (sem banimento) entre `groupIds`, numa única consulta. */
@@ -375,34 +370,10 @@ export async function planCopy(
   return { ...plan, lockedMatches, missingMatches }
 }
 
-type ReplicateRequest = {
-  sourceGroupId: string
-  targetGroupIds: string[]
-  matchIds: string[]
-}
-
-/** Lê e valida o corpo de `POST /predictions/replicate`. Corpo inválido vira resposta 400. */
-async function readReplicateBody(c: Context<AppContext>): Promise<ReplicateRequest | Response> {
-  const body = await readJsonObject<Record<string, unknown>>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
-
-  const sourceGroupId = body.source_group_id
-  const targetIds = stringList(body.target_group_ids, MAX_TARGET_GROUPS)
-  const matchIds = stringList(body.match_ids, MAX_MATCHES)
-  if (!isString(sourceGroupId) || !targetIds || !matchIds || matchIds.length === 0) {
-    return c.json(
-      {
-        error: `source_group_id, target_group_ids (até ${MAX_TARGET_GROUPS}) e match_ids (1 a ${MAX_MATCHES}) são obrigatórios`,
-      },
-      400,
-    )
-  }
-  const targetGroupIds = targetIds.filter((id) => id !== sourceGroupId)
-  if (targetGroupIds.length === 0) {
-    return c.json({ error: 'target_group_ids deve ter ao menos um grupo diferente da origem' }, 400)
-  }
-  return { sourceGroupId, targetGroupIds, matchIds }
-}
+export const replicateJsonValidator = validateJson(
+  replicatePredictionSchema,
+  mapReplicatePredictionError,
+)
 
 /**
  * Separa os destinos que recebem a cópia dos que ficam de fora: outro campeonato,
@@ -455,12 +426,14 @@ function partitionTargets(
  *   400 corpo inválido; 403 usuário fora da origem ou de algum destino; 404 grupo piloto;
  *   429 orçamento diário de escrita excedido.
  */
-export async function handleReplicatePost(c: Context<AppContext>) {
+export async function handleReplicatePost(
+  c: Context<AppContext, string, { out: { json: ReplicatePredictionBody } }>,
+) {
   const userId = c.get('userId')
-
-  const request = await readReplicateBody(c)
-  if (request instanceof Response) return request
-  const { sourceGroupId, targetGroupIds, matchIds } = request
+  const body = c.req.valid('json')
+  const sourceGroupId = body.source_group_id
+  const targetGroupIds = body.target_group_ids
+  const matchIds = body.match_ids
 
   const db = c.env.DB
   const groups = await fetchMemberGroups(db, userId, [sourceGroupId, ...targetGroupIds])

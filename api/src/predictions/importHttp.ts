@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 import { isPilotGroupBlocked } from '../groups/membership'
-import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
+import { validateJson } from '../http/validateJson'
 import { hashUserId, logEvent } from '../observability'
 import { enforceDailyWriteBudget } from '../security/limits'
 import type { AppContext } from '../types'
@@ -9,6 +9,11 @@ import {
   type ImportErrorStatus,
   type ImportPredictionsError,
 } from './importPredictions'
+import {
+  type ImportPredictionBody,
+  importPredictionSchema,
+  mapImportPredictionError,
+} from './writeSchemas'
 
 /**
  * POST /predictions/import
@@ -39,23 +44,18 @@ import {
  *   429 — orçamento diário de escrita excedido
  *   503 — controle de requisições indisponível
  */
-export async function handleImportPost(c: Context<AppContext>) {
+export const importJsonValidator = validateJson(
+  importPredictionSchema,
+  mapImportPredictionError,
+)
+
+export async function handleImportPost(
+  c: Context<AppContext, string, { out: { json: ImportPredictionBody } }>,
+) {
   const userId = c.get('userId')
-
-  type ImportBody = { source_group_id?: string; target_group_id?: string; only_missing?: boolean }
-  const body = await readJsonObject<ImportBody>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
-
+  const body = c.req.valid('json')
   const { source_group_id, target_group_id } = body
   const onlyMissing = body.only_missing === true
-
-  if (!source_group_id || !target_group_id) {
-    return c.json({ error: 'source_group_id e target_group_id são obrigatórios' }, 400)
-  }
-
-  if (source_group_id === target_group_id) {
-    return c.json({ error: 'source_group_id e target_group_id devem ser diferentes' }, 400)
-  }
 
   const db = c.env.DB
   const result = await importPredictions(
