@@ -20,7 +20,10 @@ const pointSchema = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(10
 
 const trimmedNonEmpty = v.pipe(v.string(), v.transform((s) => s.trim()), v.minLength(1))
 
-/** Nome obrigatório e depois a regra de `parseGroupName` (comprimento e invisíveis). */
+/**
+ * Exige nome não vazio e aplica `parseGroupName`, que normaliza para NFC, tira os
+ * espaços das pontas e recusa caractere invisível ou comprimento fora de 2 a 30.
+ */
 const groupNameSchema = v.pipe(
   v.string(),
   v.check((s) => s.trim().length >= 1),
@@ -36,8 +39,7 @@ const groupNameSchema = v.pipe(
 
 /**
  * Corpo de `POST /groups`. Com pontos ou visibilidade `null` ou ausentes, o
- * schema aplica o valor padrão. A ordem das falhas segue a base: obrigatórios,
- * regra do nome, pontuação 0-10, exato≥vencedor, soma zero e visibilidade.
+ * schema aplica o valor padrão.
  */
 export const createGroupSchema = v.pipe(
   v.object({
@@ -49,6 +51,9 @@ export const createGroupSchema = v.pipe(
     points_classified: v.nullish(pointSchema),
     predictions_visibility: v.nullish(v.unknown()),
   }),
+  // Exato, vencedor, pênaltis e visibilidade só se definem na criação; o PATCH muda
+  // apenas points_classified. points_penalty é bônus somado e fica fora da regra
+  // exato≥vencedor.
   v.transform((body) => ({
     ...body,
     points_exact: body.points_exact ?? 3,
@@ -57,6 +62,8 @@ export const createGroupSchema = v.pipe(
     points_classified: body.points_classified ?? 0,
     predictions_visibility: body.predictions_visibility ?? 'hidden',
   })),
+  // points_exact === 0 liga o modo só vencedor (1X2) e sempre passa. Com exato > 0,
+  // o placar exato vale pelo menos o mesmo que o vencedor.
   v.check(
     (body) => !(body.points_exact > 0 && body.points_exact < body.points_winner),
     CREATE_EXACT_GE_WINNER_MSG,
@@ -76,8 +83,9 @@ export const createGroupSchema = v.pipe(
 export type CreateGroupBody = v.InferOutput<typeof createGroupSchema>
 
 /**
- * Mensagem de 400 do POST /groups. A ordem é obrigatórios, regra do nome,
- * pontuação 0-10, exato≥vencedor, soma zero e visibilidade.
+ * Mensagem de 400 do POST /groups. Responde a primeira falha nesta ordem:
+ * obrigatórios, regra do nome, pontuação 0-10, exato≥vencedor, soma zero e
+ * visibilidade.
  */
 export function mapCreateGroupError(_data: unknown, issues: readonly Issue[]): string {
   for (const issue of issues) {
@@ -124,8 +132,9 @@ export function mapJoinGroupError(_data: unknown, _issues: readonly Issue[]): st
 }
 
 /**
- * Corpo de `PATCH /groups/:id`. `name` fica `unknown` para o `parseGroupName` do
- * handler preservar a mensagem de comprimento/tipo.
+ * Corpo de `PATCH /groups/:id`. `name` fica `unknown` porque o handler passa o
+ * valor a `parseGroupName`, que responde com a mensagem de comprimento também
+ * quando o tipo é errado.
  */
 export const patchGroupSchema = v.pipe(
   v.object({
@@ -144,7 +153,10 @@ export const patchGroupSchema = v.pipe(
 
 export type PatchGroupBody = v.InferOutput<typeof patchGroupSchema>
 
-/** Ordem: pontuação, flag booleana, corpo vazio. */
+/**
+ * Responde a primeira falha nesta ordem: `points_classified`,
+ * `join_requests_enabled` e corpo sem campo editável.
+ */
 export function mapPatchGroupError(_data: unknown, issues: readonly Issue[]): string {
   for (const issue of issues) {
     if (pathKey(issue) === 'points_classified') return PATCH_POINTS_MSG
