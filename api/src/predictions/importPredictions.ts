@@ -43,29 +43,49 @@ export type ImportPredictionsDeps = {
   }) => void | Promise<void>
 }
 
-/** Jogos abertos palpitados pelo usuário em outros grupos ativos do mesmo campeonato. */
+/**
+ * Jogos abertos palpitados pelo usuário em outros grupos ativos do mesmo
+ * campeonato. Exclui origens que `acceptsFrom` recusa para o grupo alvo (origem
+ * só vencedor → destino de placar exato), alinhado ao filtro do web.
+ */
 export async function fetchImportSources(
   db: D1Database,
   userId: string,
   groupId: string,
   now: string,
 ): Promise<Record<string, string[]>> {
+  const target = await db
+    .prepare(
+      `SELECT id, competition_id, points_exact FROM groups WHERE id = ? AND deleted_at IS NULL`,
+    )
+    .bind(groupId)
+    .first<CopyGroup>()
+  if (!target) return {}
+
   const rows = await db
     .prepare(
-      `SELECT p.group_id, p.match_id
+      `SELECT p.group_id, p.match_id, g.competition_id, g.points_exact
        FROM predictions p
        JOIN matches m ON m.id = p.match_id
        JOIN groups g ON g.id = p.group_id AND g.deleted_at IS NULL
        JOIN group_members gm ON gm.group_id = p.group_id AND gm.user_id = p.user_id
        WHERE p.user_id = ? AND p.group_id != ?
-         AND g.competition_id = (SELECT competition_id FROM groups WHERE id = ?)
+         AND g.competition_id = ?
          AND ${notBannedSql('p')}
          AND NOT ${lockedSql()}`,
     )
-    .bind(userId, groupId, groupId, now)
-    .all<{ group_id: string; match_id: string }>()
+    .bind(userId, groupId, target.competition_id, now)
+    .all<{ group_id: string; match_id: string; competition_id: string; points_exact: number }>()
   const sources: Record<string, string[]> = {}
-  for (const r of rows.results) (sources[r.group_id] ??= []).push(r.match_id)
+  for (const r of rows.results) {
+    const source: CopyGroup = {
+      id: r.group_id,
+      competition_id: r.competition_id,
+      points_exact: r.points_exact,
+    }
+    if (!acceptsFrom(source, target)) continue
+    ;(sources[r.group_id] ??= []).push(r.match_id)
+  }
   return sources
 }
 
