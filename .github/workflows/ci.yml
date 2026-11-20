@@ -77,6 +77,55 @@ jobs:
       - name: Test
         run: npm run test:scripts
 
+  backup:
+    name: Backup (age + sqlite3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install age (checksum-pinned release)
+        run: |
+          set -euo pipefail
+          AGE_VERSION=v1.2.1
+          AGE_TGZ="age-${AGE_VERSION}-linux-amd64.tar.gz"
+          AGE_URL="https://github.com/FiloSottile/age/releases/download/${AGE_VERSION}/${AGE_TGZ}"
+          # SHA-256 of the official GitHub release asset (size 5194720).
+          # Recompute and update this pin when bumping AGE_VERSION.
+          AGE_SHA256="7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50"
+          curl -fsSL -o "$AGE_TGZ" "$AGE_URL"
+          echo "${AGE_SHA256}  ${AGE_TGZ}" | sha256sum -c -
+          tar -xzf "$AGE_TGZ"
+          # GITHUB_PATH applies to subsequent steps; export PATH here for this step.
+          echo "$PWD/age" >> "$GITHUB_PATH"
+          export PATH="$PWD/age:$PATH"
+          rm -f "$AGE_TGZ"
+          age --version
+
+      - name: Install sqlite3
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y sqlite3
+          sqlite3 -version
+          if printf '%s\n' '.shell echo PWNED' | sqlite3 -safe ':memory:' 2>/dev/null; then
+            echo "sqlite3 -safe allowed .shell; refusing to continue"
+            exit 1
+          fi
+          sqlite3 -safe ':memory:' 'select 1;'
+
+      - name: Test backup suite (age required)
+        env:
+          PALPITAE_BACKUP_REQUIRE_AGE: '1'
+        run: |
+          set -euo pipefail
+          npm run test:backup
+          npm run test:backup:rehearsal
+
   # Mantém o nome do job único anterior para quem o procura. Falha se qualquer
   # um dos jobs acima falhar, for cancelado ou for pulado. Typecheck, testes,
   # build e CSP da web ficam no job Test do Deploy Web (deploy-web.yml), que
@@ -87,7 +136,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: ${{ always() }}
-    needs: [lint, api, scripts]
+    needs: [lint, api, scripts, backup]
     steps:
       - name: Verificar o resultado dos jobs
         env:

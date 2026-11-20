@@ -10,10 +10,13 @@
     "test:api": "npm --prefix api test",
     "test:web": "npm --prefix web test",
     "test:scripts": "node --test \"scripts/*.test.mjs\"",
-    "test": "npm run test:api && npm run test:web && npm run test:scripts",
+    "test:backup": "node --test scripts/backup/retention.test.mjs scripts/backup/r2-sink.test.mjs scripts/backup/backup-gates.test.mjs",
+    "test:backup:rehearsal": "node scripts/backup/run-rehearsal.mjs",
+    "test": "npm run test:api && npm run test:web && npm run test:scripts && npm run test:backup",
     "check:personal-data": "node scripts/personal-data-check.mjs",
     "typecheck": "npm --prefix api run typecheck && npm --prefix web run type-check",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test",
+    "backup:restore": "node scripts/backup/restore.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
