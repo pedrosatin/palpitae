@@ -1,13 +1,21 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { hasFeatureAccess, hasPilotAccess } from '../auth/permissions'
-import { INVALID_BODY, readJsonObject } from '../http/jsonBody'
+import { validateJson } from '../http/validateJson'
 import { requireAuth } from '../auth/middleware'
 import { hashUserId, logEvent, logRequestPerf } from '../observability'
 import { parseClientEntryMethod, readRecentSignupFlag } from '../observability/inviteFunnel'
 import type { AppContext } from '../types'
 import { getGroupMembership, isPilotGroupBlocked, memberDisplaySql } from './membership'
 import { parseGroupName } from './groupName'
+import {
+  createGroupSchema,
+  joinGroupSchema,
+  mapCreateGroupError,
+  mapJoinGroupError,
+  mapPatchGroupError,
+  patchGroupSchema,
+} from './writeSchemas'
 import {
   ACTIVE_GROUPS_OWNED_COUNT_SQL,
   ACTIVE_MEMBERSHIPS_COUNT_SQL,
@@ -62,10 +70,6 @@ type PodiumEntry = {
 }
 
 /** Texto sem espaços nas pontas, ou `undefined` quando o campo não é texto. */
-function trimmedString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value.trim() : undefined
-}
-
 /**
  * Generates a readable invite code in the format XXXX-XXXX (uppercase alphanumeric).
  */
@@ -187,11 +191,6 @@ async function findVisibleGroup<K extends keyof VisibleGroupColumns>(
     return { error: c.json({ error: 'Grupo não encontrado' }, 404) }
   }
   return { group }
-}
-
-/** Pontuação de regra do grupo: inteiro de 0 a 10. */
-function isPointValue(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10
 }
 
 /**
@@ -475,30 +474,20 @@ router.get('/', requireAuth, async (c) => {
  * Response 409: o usuário já está no teto de grupos criados ou de participações
  * (`groupCaps.ts`).
  */
-router.post('/', requireAuth, async (c) => {
+router.post(
+  '/',
+  requireAuth,
+  async (c, next) => {
+    if (!hasFeatureAccess(c.get('userEmail'), 'create_group')) {
+      return c.json({ error: 'Você não tem permissão para criar grupos' }, 403)
+    }
+    return next()
+  },
+  validateJson(createGroupSchema, mapCreateGroupError),
+  async (c) => {
   const userId = c.get('userId')
-  const userEmail = c.get('userEmail')
-
-  if (!hasFeatureAccess(userEmail, 'create_group')) {
-    return c.json({ error: 'Você não tem permissão para criar grupos' }, 403)
-  }
-
-  const body = await readJsonObject<{
-    name?: string
-    competition_id?: string
-    points_exact?: number
-    points_winner?: number
-    points_penalty?: number
-    points_classified?: number
-    predictions_visibility?: string
-  }>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
-
-  const competition_id = trimmedString(body.competition_id)
-
-  if (!trimmedString(body.name) || !competition_id) {
-    return c.json({ error: 'Nome e competição são obrigatórios' }, 400)
-  }
+  const body = c.req.valid('json')
+  const competition_id = body.competition_id
 
   const parsedName = parseGroupName(body.name)
   if ('error' in parsedName) return c.json({ error: parsedName.error }, 400)
@@ -512,9 +501,6 @@ router.post('/', requireAuth, async (c) => {
   const points_classified = body.points_classified ?? 0
   const predictions_visibility = body.predictions_visibility ?? 'hidden'
 
-  if (![points_exact, points_winner, points_penalty, points_classified].every(isPointValue)) {
-    return c.json({ error: 'Pontuação deve ser inteiro entre 0 e 10' }, 400)
-  }
   // points_exact === 0 enables the "só vencedor" (1X2) mode and is always allowed.
   // Otherwise an exact hit must be worth at least as much as a plain winner hit.
   if (points_exact > 0 && points_exact < points_winner) {
@@ -527,9 +513,6 @@ router.post('/', requireAuth, async (c) => {
   }
   if (points_exact + points_winner === 0) {
     return c.json({ error: 'Pelo menos um tipo de pontuação deve ser maior que zero' }, 400)
-  }
-  if (!['hidden', 'public'].includes(predictions_visibility)) {
-    return c.json({ error: 'Visibilidade inválida' }, 400)
   }
 
   const db = c.env.DB
@@ -630,16 +613,14 @@ router.post('/', requireAuth, async (c) => {
  * Response 409: já é membro, grupo lotado ou usuário no teto de participações
  * (`groupCaps.ts`).
  */
-router.post('/join', requireAuth, async (c) => {
+router.post(
+  '/join',
+  requireAuth,
+  validateJson(joinGroupSchema, mapJoinGroupError),
+  async (c) => {
   const userId = c.get('userId')
-  const body = await readJsonObject<{ invite_code?: string; entry_method?: unknown }>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
-
-  const invite_code = trimmedString(body.invite_code)?.toUpperCase()
-
-  if (!invite_code) {
-    return c.json({ error: 'Código de convite é obrigatório' }, 400)
-  }
+  const body = c.req.valid('json')
+  const invite_code = body.invite_code.toUpperCase()
 
   const db = c.env.DB
 
@@ -798,35 +779,16 @@ router.get('/:id', requireAuth, async (c) => {
  * Body: { name?: string, points_classified?: number, join_requests_enabled?: boolean }
  * Response 200: { group: { id, name?, points_classified?, join_requests_enabled? } }
  */
-router.patch('/:id', requireAuth, async (c) => {
+router.patch(
+  '/:id',
+  requireAuth,
+  validateJson(patchGroupSchema, mapPatchGroupError),
+  async (c) => {
   const userId = c.get('userId')
   const groupId = c.req.param('id')
   const db = c.env.DB
-
-  const body = await readJsonObject<{
-    name?: string
-    points_classified?: number
-    join_requests_enabled?: boolean
-  }>(c)
-  if (!body) return c.json({ error: INVALID_BODY }, 400)
+  const body = c.req.valid('json')
   const pointsClassified = body.points_classified
-  if (pointsClassified !== undefined && !isPointValue(pointsClassified)) {
-    return c.json({ error: 'Pontos de classificado devem ser um inteiro entre 0 e 10' }, 400)
-  }
-  if (
-    body.join_requests_enabled !== undefined &&
-    typeof body.join_requests_enabled !== 'boolean'
-  ) {
-    return c.json({ error: 'join_requests_enabled deve ser boolean' }, 400)
-  }
-
-  if (
-    body.name === undefined &&
-    pointsClassified === undefined &&
-    body.join_requests_enabled === undefined
-  ) {
-    return c.json({ error: 'Informe nome, pontos de classificado ou pedidos pelo link' }, 400)
-  }
 
   const parsedName = body.name === undefined ? undefined : parseGroupName(body.name)
   if (parsedName && 'error' in parsedName) return c.json({ error: parsedName.error }, 400)
