@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { signJwt } from '../auth/jwt'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { AppContext } from '../types'
-import { outcomeScore } from './replicate'
 import { predictionsRouter } from './router'
 
 const handles: ReturnType<typeof createSqliteD1>['sqlite'][] = []
@@ -96,13 +95,7 @@ function setup() {
   return { replicate, stored, selects, sqlite, hooks }
 }
 
-describe('outcomeScore', () => {
-  it('reduz o placar ao resultado dos botões Casa, Empate e Fora', () => {
-    expect(outcomeScore(3, 1)).toEqual({ home: 1, away: 0 })
-    expect(outcomeScore(2, 2)).toEqual({ home: 0, away: 0 })
-    expect(outcomeScore(0, 4)).toEqual({ home: 0, away: 1 })
-  })
-})
+// Vitória, empate e derrota de outcomeScore: copiaVectors.test.ts (test-vectors/copia.json).
 
 describe('POST /predictions/replicate', () => {
   it('grava o placar da origem nos outros grupos e conta o palpite substituído', async () => {

@@ -12,6 +12,7 @@ import {
   subscribeReplicateStatus,
   viewReplicateContext,
 } from '../../lib/replicateStatus'
+import { acceptsFrom } from '../../lib/predictionCopy'
 import {
   describeReplicate,
   MAX_REPLICATE_TARGETS,
@@ -49,7 +50,8 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
   const { groupId, competitionId, userId, round, pointsExact } = scope
   const usable = siblings.filter(
     (g) =>
-      g.competition_status !== 'finished' && (pointsExact !== 0 || !((g.points_exact ?? 0) > 0)),
+      g.competition_status !== 'finished' &&
+      acceptsFrom({ points_exact: pointsExact }, { points_exact: g.points_exact ?? 0 }),
   )
   const targets = usable.slice(0, MAX_REPLICATE_TARGETS)
   const overflow = usable.length - targets.length

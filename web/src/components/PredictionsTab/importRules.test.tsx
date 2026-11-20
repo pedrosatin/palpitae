@@ -148,6 +148,15 @@ describe('Barra de importação, modo do grupo', () => {
     expect(await screen.findByRole('option', { name: /Só vencedor/ })).toBeInTheDocument()
   })
 
+  it('irmão sem points_exact conta como placar e aparece na importação', async () => {
+    setup([{ id: 'source', name: 'Origem', competition_id: 'c' }])
+    const { result } = renderHook(() =>
+      usePredictionsTab('target', 'c', undefined, null, undefined, 3),
+    )
+    act(() => result.current.setImportExpanded(true))
+    await waitFor(() => expect(result.current.importOptions.map((g) => g.id)).toEqual(['source']))
+  })
+
   it('sem grupo compatível, não mostra o link de importação', async () => {
     setup([siblings[0]])
     const view = renderHook(() => usePredictionsTab('target', 'c', undefined, null, undefined, 3))
