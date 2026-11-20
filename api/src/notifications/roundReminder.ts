@@ -768,8 +768,9 @@ async function dispatchDigests(
   /** Cota do Resend já recusou nesta execução: o restante vai direto ao Mailjet. */
   let resendUnavailable = false
   /**
-   * Quem já teve tentativa nesta execução (Resend incerto ou Mailjet). Não recebe
-   * Mailjet de novo no desvio por cota.
+   * Quem já teve tentativa nesta execução. Cada destinatário passa uma vez pelo
+   * laço, então isto é só defesa contra mudança futura no laço: quem impede o
+   * segundo e-mail do dia é a reserva em `email_reminder_sends`.
    */
   const attempted = new Set<string>()
   const failedUserIds: string[] = []
