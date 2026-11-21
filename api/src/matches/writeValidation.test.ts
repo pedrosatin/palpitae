@@ -149,7 +149,7 @@ describe('validação de escrita POST /matches/sync', () => {
     expect(res).toEqual({ status: 400, body: SYNC_SEASON })
   })
 
-  it('JSON válido sem Content-Type ainda valida o schema', async () => {
+  it('JSON válido com Content-Type text/plain valida o schema', async () => {
     const request = await setup()
     expect(await request({}, { contentType: null })).toEqual({
       status: 400,
@@ -162,7 +162,7 @@ describe('validação de escrita POST /matches/sync', () => {
     expect(await request('null')).toEqual({ status: 400, body: SYNC_REQUIRED })
   })
 
-  it('null com Content-Type ausente ou text/plain responde mensagem de obrigatórios', async () => {
+  it('null com Content-Type text/plain responde a mensagem de obrigatórios', async () => {
     const request = await setup()
     for (const contentType of [null, 'text/plain'] as const) {
       expect(await request('null', { contentType })).toEqual({

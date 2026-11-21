@@ -129,7 +129,7 @@ describe('validação de escrita PATCH /notifications/preferences', () => {
     }
   })
 
-  it('JSON válido sem Content-Type ainda valida o schema', async () => {
+  it('JSON válido com Content-Type text/plain valida o schema', async () => {
     const request = await setupPreferences()
     expect(await request({}, null)).toEqual({ status: 400, body: PREFS_ERROR })
     expect(await request('{', null)).toEqual({ status: 400, body: PREFS_ERROR })
@@ -184,8 +184,8 @@ describe('validação de escrita POST /notifications/mailjet-events', () => {
     expect(unsubscribedAt('ana')).not.toBeNull()
   })
 
-  it('JSON válido sem Content-Type ainda aceita o payload', async () => {
-    const { post } = setupMailjet()
+  it('JSON válido com Content-Type text/plain aplica o unsub', async () => {
+    const { post, unsubscribedAt } = setupMailjet()
     const res = await post(
       {
         event: 'unsub',
@@ -195,5 +195,6 @@ describe('validação de escrita POST /notifications/mailjet-events', () => {
       null,
     )
     expect(res).toEqual({ status: 200, text: 'ok' })
+    expect(unsubscribedAt('ana')).not.toBeNull()
   })
 })

@@ -12,8 +12,9 @@ type Issue = StandardSchemaV1.Issue
  * `{ competition, season, matchday?, dates? }`.
  * `matchday` é a rodada na football-data; `dates` são YYYYMMDD do scoreboard ESPN.
  *
- * Os obrigatórios usam truthiness, então `season: 0` e `competition: ''` falham
- * nessa checagem; depois vêm o tipo de `season` e o formato de `dates`.
+ * Os campos obrigatórios usam truthiness, então `season: 0` e `competition: ''`
+ * recebem a mensagem de obrigatórios. `mapSyncBodyError` define a prioridade
+ * entre as mensagens.
  */
 const required = v.check((x: unknown) => Boolean(x), SYNC_REQUIRED_MSG)
 
@@ -36,8 +37,8 @@ export type SyncBody = v.InferOutput<typeof syncBodySchema>
 
 /**
  * Mensagem de 400 do POST /matches/sync. Responde a primeira falha nesta ordem:
- * obrigatórios, season numérico e dates YYYYMMDD. Sem match, cai em obrigatórios
- * (cobre chave ausente).
+ * obrigatórios, season numérico e dates YYYYMMDD. Issue sem mensagem conhecida
+ * também responde a mensagem de obrigatórios.
  */
 export function mapSyncBodyError(_data: unknown, issues: readonly Issue[]): string {
   for (const issue of issues) {

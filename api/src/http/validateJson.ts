@@ -6,8 +6,8 @@ import { INVALID_BODY, readJsonObject } from './jsonBody'
 
 /**
  * Converte a falha do schema na mensagem `{ error }` da rota.
- * Recebe o corpo lido, que no modo `object` é sempre objeto e no modo `value`
- * pode ser qualquer valor JSON, e as issues do Standard Schema.
+ * Recebe as issues do Standard Schema e o corpo lido, que é objeto no modo
+ * `object` e qualquer valor JSON no modo `value`.
  */
 export type JsonErrorMapper = (
   data: unknown,
@@ -30,9 +30,9 @@ export type ValidateJsonOptions = {
    */
   invalidBodyError?: string
   /**
-   * `object` (padrão): só objeto JSON segue ao schema; `null`, lista, valor
+   * `object` (padrão): só objeto JSON segue para o schema; `null`, lista, valor
    * solto ou JSON malformado respondem com `invalidBodyError`.
-   * `value`: qualquer JSON parseado segue ao schema; só malformado responde com
+   * `value`: qualquer JSON parseado segue para o schema; só malformado responde com
    * `invalidBodyError`. Use quando lista, número ou `null` devem chegar ao
    * schema e receber a mensagem do mapper.
    */

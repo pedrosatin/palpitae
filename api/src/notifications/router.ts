@@ -137,8 +137,9 @@ router.post('/unsubscribe', async (c) => {
  *
  * Event API da Mailjet (unsub e spam). Autenticação Basic: a senha é o segredo
  * `MAILJET_WEBHOOK_SECRET` (usuário livre, ex. `mailjet`). Sem o segredo no
- * Worker a rota responde 404. Payload inválido e erros de aplicação respondem
- * 200 com log, para a Mailjet não reenviar em loop. Ver ADR-020.
+ * Worker a rota responde 404. Payload inválido responde 200 com log, para a
+ * Mailjet não reenviar em loop; falha no D1 responde 500 para ela reenviar o
+ * lote. Ver ADR-020.
  */
 router.post('/mailjet-events', async (c) => {
   const auth = await mailjetWebhookAuthorized(

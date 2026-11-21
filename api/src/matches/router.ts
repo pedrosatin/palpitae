@@ -403,7 +403,7 @@ router.post(
   '/sync',
   requireAuth,
   async (c, next) => {
-    // Ferramenta manual de seed/backfill — só o admin. A atualização normal de
+    // Ferramenta manual de seed e backfill, restrita ao admin. A atualização normal de
     // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
     // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts). Sem
     // ADMIN_EMAIL configurado, responde 403, então a rota fica fechada por

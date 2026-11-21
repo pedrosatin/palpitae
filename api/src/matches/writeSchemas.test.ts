@@ -19,7 +19,7 @@ function issuesOf(
 }
 
 describe('syncBodySchema', () => {
-  it('aceita competition truthy não-string e matchday solto', () => {
+  it('aceita competition truthy de outro tipo e matchday sem validação', () => {
     expect(
       syncBodySchema['~standard'].validate({
         competition: { a: 1 },

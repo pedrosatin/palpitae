@@ -22,8 +22,8 @@ export function mapPatchPreferencesError(_data: unknown, _issues: readonly Issue
 }
 
 /**
- * Payload do webhook Mailjet (Event API). Aceita lista ou objeto único (com
- * campos extras), embrulha o objeto em lista, descarta itens que não são objeto
+ * Payload do webhook Mailjet (Event API). Aceita lista ou objeto único e
+ * preserva campos extras; embrulha o objeto em lista, descarta itens que não são objeto
  * e exige pelo menos um evento. Valores soltos no topo (string, número, null)
  * e lista vazia após o filtro falham; a rota trata a falha como 200 `ok`.
  */
