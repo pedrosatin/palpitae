@@ -1,15 +1,19 @@
 import { Hono } from 'hono'
 import { html } from 'hono/html'
+import * as v from 'valibot'
 import { requireAuth } from '../auth/middleware'
+import { validateJson } from '../http/validateJson'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
-import {
-  applyMailjetUnsubscribeEvents,
-  mailjetWebhookAuthorized,
-  normalizeMailjetEvents,
-} from './mailjetEvents'
+import { applyMailjetUnsubscribeEvents, mailjetWebhookAuthorized } from './mailjetEvents'
 import { markEmailUnsubscribed } from './optOut'
 import { verifyUnsubTokenForEnv } from './unsubscribeToken'
+import {
+  mailjetPayloadSchema,
+  mapPatchPreferencesError,
+  patchPreferencesSchema,
+  PREFERENCES_ROUND_REMINDERS_MSG,
+} from './writeSchemas'
 
 const router = new Hono<AppContext>()
 
@@ -133,8 +137,9 @@ router.post('/unsubscribe', async (c) => {
  *
  * Event API da Mailjet (unsub e spam). Autenticação Basic: a senha é o segredo
  * `MAILJET_WEBHOOK_SECRET` (usuário livre, ex. `mailjet`). Sem o segredo no
- * Worker a rota responde 404. Payload inválido e erros de aplicação respondem
- * 200 com log, para a Mailjet não reenviar em loop. Ver ADR-020.
+ * Worker a rota responde 404. Payload inválido responde 200 com log, para a
+ * Mailjet não reenviar em loop; falha no D1 responde 500 para ela reenviar o
+ * lote. Ver ADR-020.
  */
 router.post('/mailjet-events', async (c) => {
   const auth = await mailjetWebhookAuthorized(
@@ -144,6 +149,8 @@ router.post('/mailjet-events', async (c) => {
   if (auth === 'missing_config') return c.text('Not Found', 404)
   if (auth === 'unauthorized') return c.text('Unauthorized', 401)
 
+  // Esta rota não usa o validateJson porque um 400 faria a Mailjet reenviar o
+  // lote; JSON malformado ou payload fora do formato responde 200 com log.
   let payload: unknown
   try {
     payload = await c.req.json()
@@ -152,13 +159,17 @@ router.post('/mailjet-events', async (c) => {
     return c.text('ok', 200)
   }
 
-  const events = normalizeMailjetEvents(payload)
-  if (!events) {
+  const parsed = v.safeParse(mailjetPayloadSchema, payload)
+  if (!parsed.success) {
     console.error('[mailjet-events] payload inválido')
     return c.text('ok', 200)
   }
 
-  const { failed } = await applyMailjetUnsubscribeEvents(c.env.DB, c.env.AE, events)
+  const { failed } = await applyMailjetUnsubscribeEvents(
+    c.env.DB,
+    c.env.AE,
+    parsed.output,
+  )
   // Falha interna (D1) num unsub/spam: 500 para a Mailjet reenviar o lote.
   if (failed > 0) return c.text('retry', 500)
   return c.text('ok', 200)
@@ -181,34 +192,36 @@ router.get('/preferences', requireAuth, async (c) => {
 /**
  * PATCH /notifications/preferences (auth)
  * Body: { round_reminders: boolean }. true → subscribed (NULL), false → opted out.
+ *
+ * Corpo malformado, `null`, lista ou valor solto responde 400 com
+ * `round_reminders (boolean) é obrigatório`.
  */
-router.patch('/preferences', requireAuth, async (c) => {
-  const userId = c.get('userId')
-  const body = (await c.req.json().catch(() => ({}))) as {
-    round_reminders?: unknown
-  }
-
-  if (typeof body.round_reminders !== 'boolean') {
-    return c.json({ error: 'round_reminders (boolean) é obrigatório' }, 400)
-  }
-
-  const subscribe = body.round_reminders
-  if (subscribe) {
-    const result = await c.env.DB.prepare(
-      `UPDATE users SET email_unsubscribed_at = NULL WHERE id = ? AND email_unsubscribed_at IS NOT NULL`,
-    )
-      .bind(userId)
-      .run()
-    if (result.meta.changes > 0) {
-      logEvent(c.env.AE, 'email_resubscribed', {
-        blobs: [await hashUserId(userId), 'settings'],
-      })
+router.patch(
+  '/preferences',
+  requireAuth,
+  validateJson(patchPreferencesSchema, mapPatchPreferencesError, {
+    invalidBodyError: PREFERENCES_ROUND_REMINDERS_MSG,
+  }),
+  async (c) => {
+    const userId = c.get('userId')
+    const { round_reminders: subscribe } = c.req.valid('json')
+    if (subscribe) {
+      const result = await c.env.DB.prepare(
+        `UPDATE users SET email_unsubscribed_at = NULL WHERE id = ? AND email_unsubscribed_at IS NOT NULL`,
+      )
+        .bind(userId)
+        .run()
+      if (result.meta.changes > 0) {
+        logEvent(c.env.AE, 'email_resubscribed', {
+          blobs: [await hashUserId(userId), 'settings'],
+        })
+      }
+    } else {
+      await markEmailUnsubscribed(c.env.DB, c.env.AE, userId, 'settings')
     }
-  } else {
-    await markEmailUnsubscribed(c.env.DB, c.env.AE, userId, 'settings')
-  }
 
-  return c.json({ round_reminders: subscribe })
-})
+    return c.json({ round_reminders: subscribe })
+  },
+)
 
 export { router as notificationsRouter }

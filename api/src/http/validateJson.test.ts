@@ -70,4 +70,48 @@ describe('validateJson', () => {
       expect(await res.json()).toEqual({ error: 'Body JSON inválido' })
     }
   })
+
+  it('invalidBodyError substitui a mensagem de corpo inválido', async () => {
+    const custom = new Hono<AppContext>()
+    custom.post(
+      '/x',
+      validateJson(schema, () => 'nome inválido', { invalidBodyError: 'campo obrigatório' }),
+      (c) => c.json(c.req.valid('json')),
+    )
+    const res = await custom.request('http://test/x', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '[1]',
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'campo obrigatório' })
+  })
+
+  it('modo value envia lista ao schema em vez de corpo inválido', async () => {
+    const listSchema = v.pipe(
+      v.unknown(),
+      v.check((value) => Array.isArray(value), 'precisa ser lista'),
+    )
+    const valueApp = new Hono<AppContext>()
+    valueApp.post(
+      '/x',
+      validateJson(listSchema, () => 'precisa ser lista', { body: 'value' }),
+      (c) => c.json({ ok: true, body: c.req.valid('json') }),
+    )
+    const ok = await valueApp.request('http://test/x', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '[1,2]',
+    })
+    expect(ok.status).toBe(200)
+    expect(await ok.json()).toEqual({ ok: true, body: [1, 2] })
+
+    const bad = await valueApp.request('http://test/x', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{',
+    })
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({ error: 'Body JSON inválido' })
+  })
 })

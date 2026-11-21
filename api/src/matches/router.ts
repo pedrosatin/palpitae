@@ -3,9 +3,11 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { requireAuth } from '../auth/middleware'
 import { hasPilotAccess, isAdminUser } from '../auth/permissions'
+import { validateJson } from '../http/validateJson'
 import { logError, logEvent, logRequestPerf } from '../observability'
 import { createProviderHttpObserver } from '../observability/providerHttp'
 import type { AppContext } from '../types'
+import { mapSyncBodyError, syncBodySchema } from './writeSchemas'
 import { defaultRoundSql, roundRuleBinds } from './defaultRound'
 import { isEspnRefusal } from './espnAccess'
 import { isEspnPrimaryCompetition } from './espnSync'
@@ -379,29 +381,6 @@ async function handleGetMatches(c: Context<AppContext>) {
 
 router.get('/', requireAuth, handleGetMatches)
 
-type SyncBody = {
-  competition?: string
-  season?: number
-  matchday?: number
-  dates?: unknown
-}
-
-function isValidDatesList(dates: unknown): dates is string[] {
-  return (
-    Array.isArray(dates) &&
-    dates.every((d): d is string => typeof d === 'string' && /^\d{8}$/.test(d))
-  )
-}
-
-function validateSyncParams(body: SyncBody): string | null {
-  if (!body.competition || !body.season) return 'competition e season são obrigatórios'
-  if (typeof body.season !== 'number') return 'season deve ser um número'
-  if (body.dates !== undefined && !isValidDatesList(body.dates)) {
-    return 'dates deve ser uma lista de datas YYYYMMDD'
-  }
-  return null
-}
-
 /**
  * POST /matches/sync
  *
@@ -420,121 +399,123 @@ function validateSyncParams(body: SyncBody): string | null {
  * Exemplo para todos os jogos de uma competição:
  *   { "competition": "WC", "season": 2026 }
  */
-router.post('/sync', requireAuth, async (c) => {
-  // Ferramenta manual de seed/backfill — só o admin. A atualização normal de
-  // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
-  // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts). Sem
-  // ADMIN_EMAIL configurado, responde 403 — fechado por padrão.
-  if (!isAdminUser(c.get('userIdentity'), c.env)) {
-    return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
-  }
-
-  let body: SyncBody
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Body JSON inválido' }, 400)
-  }
-
-  const validationError = validateSyncParams(body)
-  if (validationError) {
-    return c.json({ error: validationError }, 400)
-  }
-
-  const competition = body.competition as string
-  const season = body.season as number
-  const { matchday } = body
-  const dates = body.dates as string[] | undefined
-
-  const apiKey = c.env.FOOTBALL_API_KEY
-  if (!isEspnPrimaryCompetition(competition) && !apiKey) {
-    return c.json({ error: 'FOOTBALL_API_KEY não configurada no servidor' }, 500)
-  }
-
-  try {
-    const result = await syncFixtures({
-      competitionCode: competition,
-      season,
-      matchday,
-      dates,
-      apiKey,
-      db: c.env.DB,
-      // O sync administrativo conta no orçamento compartilhado (ADR-027).
-      coordinate: true,
-      onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
-      ae: c.env.AE,
-    })
-    await scoreUnprocessedMatches(result.competitionId, c.env.DB)
-    const { pending, ...synced } = result
-    if (pending) {
-      // ESPN: o que chegou foi gravado e pontuado; as datas que a ESPN não
-      // entregou ficam pendentes na fila e o dreno as retoma.
-      await deferEspnWork(
-        c.env.DB,
-        {
-          kind: 'manual',
-          competitionCode: competition,
-          season: String(season),
-          competitionId: result.competitionId,
-        },
-        pending.dates,
-        pending.error,
-      )
-      return c.json({
-        ok: true,
-        pending: true,
-        pendingDates: pending.dates,
-        synced,
-        message: 'Sync parcial: as datas pendentes ficam na fila e voltam quando a ESPN responder.',
-      })
+router.post(
+  '/sync',
+  requireAuth,
+  async (c, next) => {
+    // Ferramenta manual de seed e backfill, restrita ao admin. A atualização normal de
+    // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
+    // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts). Sem
+    // ADMIN_EMAIL configurado, responde 403, então a rota fica fechada por
+    // padrão. O gate roda antes de ler o corpo.
+    if (!isAdminUser(c.get('userIdentity'), c.env)) {
+      return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
     }
-    return c.json({ ok: true, synced })
-  } catch (error) {
-    // ESPN sem vaga, bloqueada ou suspensa: o trabalho fica pendente na fila.
-    if (isEspnRefusal(error)) {
-      await deferEspnWork(
-        c.env.DB,
-        { kind: 'manual', competitionCode: competition, season: String(season), competitionId: '' },
+    return next()
+  },
+  // Com `body: 'value'`, lista, número e `null` chegam ao schema e recebem a
+  // mensagem de obrigatórios; só JSON malformado responde `Body JSON inválido`.
+  validateJson(syncBodySchema, mapSyncBodyError, { body: 'value' }),
+  async (c) => {
+    const body = c.req.valid('json')
+    const { competition, season, matchday, dates } = body
+
+    const apiKey = c.env.FOOTBALL_API_KEY
+    if (!isEspnPrimaryCompetition(competition) && !apiKey) {
+      return c.json({ error: 'FOOTBALL_API_KEY não configurada no servidor' }, 500)
+    }
+
+    try {
+      const result = await syncFixtures({
+        competitionCode: competition,
+        season,
+        matchday: matchday as number | undefined,
         dates,
-        error,
-      )
-      return c.json({
-        ok: true,
-        pending: true,
-        message:
-          error.reason === 'suspended'
-            ? 'Sync agendado: a coleta da ESPN está suspensa até o operador retomá-la.'
-            : 'Sync agendado: a ESPN está bloqueada ou sem vaga no orçamento e a coleta volta mais tarde.',
+        apiKey,
+        db: c.env.DB,
+        // O sync administrativo conta no orçamento compartilhado (ADR-027).
+        coordinate: true,
+        onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
+        ae: c.env.AE,
       })
-    }
-    // Sem vaga no orçamento, o trabalho não se perde: fica pendente na fila
-    // durável e o cron drenador executa com o orçamento, na sua vez.
-    if (error instanceof FootballDataSlotBusyError || error instanceof FootballDataQuotaError) {
-      const quota = error instanceof FootballDataQuotaError
-      await enqueueProviderWork(c.env.DB, [
-        {
-          kind: 'manual',
-          competitionCode: competition,
-          season: String(season),
-          round: matchday !== undefined ? String(matchday) : '',
-          // Cota esgotada informa quando a football-data volta; vaga cheia só espera a próxima janela.
-          ...(quota ? { notBefore: error.retryAt, lastError: error.message } : {}),
-        },
-      ])
-      return c.json({
-        ok: true,
-        pending: true,
-        message: quota
-          ? 'Sync agendado: a cota da football-data está esgotada e volta mais tarde.'
-          : 'Sync agendado: o orçamento de chamadas está cheio neste minuto.',
+      await scoreUnprocessedMatches(result.competitionId, c.env.DB)
+      const { pending, ...synced } = result
+      if (pending) {
+        // ESPN: o que chegou foi gravado e pontuado; as datas que a ESPN não
+        // entregou ficam pendentes na fila e o dreno as retoma.
+        await deferEspnWork(
+          c.env.DB,
+          {
+            kind: 'manual',
+            competitionCode: competition,
+            season: String(season),
+            competitionId: result.competitionId,
+          },
+          pending.dates,
+          pending.error,
+        )
+        return c.json({
+          ok: true,
+          pending: true,
+          pendingDates: pending.dates,
+          synced,
+          message:
+            'Sync parcial: as datas pendentes ficam na fila e voltam quando a ESPN responder.',
+        })
+      }
+      return c.json({ ok: true, synced })
+    } catch (error) {
+      // ESPN sem vaga, bloqueada ou suspensa: o trabalho fica pendente na fila.
+      if (isEspnRefusal(error)) {
+        await deferEspnWork(
+          c.env.DB,
+          {
+            kind: 'manual',
+            competitionCode: competition,
+            season: String(season),
+            competitionId: '',
+          },
+          dates,
+          error,
+        )
+        return c.json({
+          ok: true,
+          pending: true,
+          message:
+            error.reason === 'suspended'
+              ? 'Sync agendado: a coleta da ESPN está suspensa até o operador retomá-la.'
+              : 'Sync agendado: a ESPN está bloqueada ou sem vaga no orçamento e a coleta volta mais tarde.',
+        })
+      }
+      // Sem vaga no orçamento, o trabalho não se perde: fica pendente na fila
+      // durável e o cron drenador executa com o orçamento, na sua vez.
+      if (error instanceof FootballDataSlotBusyError || error instanceof FootballDataQuotaError) {
+        const quota = error instanceof FootballDataQuotaError
+        await enqueueProviderWork(c.env.DB, [
+          {
+            kind: 'manual',
+            competitionCode: competition,
+            season: String(season),
+            round: matchday !== undefined ? String(matchday) : '',
+            // Cota esgotada informa quando a football-data volta; vaga cheia só espera a próxima janela.
+            ...(quota ? { notBefore: error.retryAt, lastError: error.message } : {}),
+          },
+        ])
+        return c.json({
+          ok: true,
+          pending: true,
+          message: quota
+            ? 'Sync agendado: a cota da football-data está esgotada e volta mais tarde.'
+            : 'Sync agendado: o orçamento de chamadas está cheio neste minuto.',
+        })
+      }
+      const message = error instanceof Error ? error.message : String(error)
+      logError(c.env.AE, 'football_api_error', 'Erro no sync:', error, {
+        blobs: ['sync_endpoint'],
       })
+      return c.json({ error: `Erro ao sincronizar: ${message}` }, 500)
     }
-    const message = error instanceof Error ? error.message : String(error)
-    logError(c.env.AE, 'football_api_error', 'Erro no sync:', error, {
-      blobs: ['sync_endpoint'],
-    })
-    return c.json({ error: `Erro ao sincronizar: ${message}` }, 500)
-  }
-})
+  },
+)
 
 export { router as matchesRouter }

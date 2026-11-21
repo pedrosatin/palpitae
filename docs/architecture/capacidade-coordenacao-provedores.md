@@ -74,7 +74,7 @@ Cliente: `fetchEspnScoreboard` em `api/src/providers/espn.ts`. Sem credencial. M
 | Discovery ESPN-primária | `0 6 * * *` | 9 datas × E competições (ontem UTC … hoje+7) |
 | Poller ESPN-primária | `0,30 * * * *` | até 3 datas por competição quando jogos pendentes abrangem dois dias UTC (dia do jogo e o anterior); a varredura de atrasados consulta 2 datas, no máximo a cada 3 h |
 | Fallback (`scoreWindowFromEspn`) | após sync do poller em competições FD | até 3 datas por competição FD elegível |
-| `POST /matches/sync` (código ESPN) | admin | lista `dates` validada só como `YYYYMMDD[]`; **sem teto de nove** em `validateSyncParams` / `isValidDatesList` |
+| `POST /matches/sync` (código ESPN) | admin | lista `dates` validada só como `YYYYMMDD[]`; **sem teto de nove** em `syncBodySchema` (`api/src/matches/writeSchemas.ts`) |
 | Radar (`radar-sync.yml` + `radarSync.ts`) | GitHub Actions `0 7 * * *` | ~40 slugs (`ESPN_LEAGUES`, contados no código) + Wikimedia pageviews; pool de tarefas 5, HTTP ESPN serializado com pacing (ver §6.4) |
 
 O radar grava no D1 via `wrangler d1 execute --remote` e **não** emite `provider_http_attempt`. Um orçamento só no isolate do Worker **não** cobre o radar em Actions até haver integração explícita (reserva remota, rota HTTP ou migração para o Worker).
