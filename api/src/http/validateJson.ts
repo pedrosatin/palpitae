@@ -6,7 +6,8 @@ import { INVALID_BODY, readJsonObject } from './jsonBody'
 
 /**
  * Converte a falha do schema na mensagem `{ error }` da rota.
- * Recebe o corpo bruto (já objeto) e as issues do Standard Schema.
+ * Recebe o corpo lido, que no modo `object` é sempre objeto e no modo `value`
+ * pode ser qualquer valor JSON, e as issues do Standard Schema.
  */
 export type JsonErrorMapper = (
   data: unknown,
@@ -32,8 +33,8 @@ export type ValidateJsonOptions = {
    * `object` (padrão): só objeto JSON segue ao schema; `null`, lista, valor
    * solto ou JSON malformado respondem com `invalidBodyError`.
    * `value`: qualquer JSON parseado segue ao schema; só malformado responde com
-   * `invalidBodyError`. Use quando a rota base tratava lista ou número pelo
-   * schema e não como corpo inválido.
+   * `invalidBodyError`. Use quando lista, número ou `null` devem chegar ao
+   * schema e receber a mensagem do mapper.
    */
   body?: 'object' | 'value'
 }
@@ -41,9 +42,10 @@ export type ValidateJsonOptions = {
 /**
  * Valida o corpo JSON com `@hono/standard-validator` e um schema Standard Schema
  * (Valibot). No modo `object`, corpo malformado, `null`, lista ou valor solto
- * responde 400 com `Body JSON inválido`, como o `readJsonObject`. O Content-Type
- * não restringe a leitura: JSON válido sem cabeçalho ou com outro tipo segue
- * para o schema. Falha de schema responde 400 com a mensagem do mapper.
+ * responde 400 com `invalidBodyError`, que por padrão é `Body JSON inválido`.
+ * O Content-Type não restringe a leitura: JSON válido sem cabeçalho ou com
+ * outro tipo segue para o schema. Falha de schema responde 400 com a mensagem
+ * do mapper.
  *
  * O valor validado fica em `c.req.valid('json')` para o handler.
  */

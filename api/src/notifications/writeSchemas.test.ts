@@ -32,20 +32,34 @@ describe('mapPatchPreferencesError', () => {
 })
 
 describe('mailjetPayloadSchema', () => {
-  it('aceita objeto ou lista com campos extras e item solto', () => {
+  it('normaliza objeto único e lista, filtrando itens que não são objeto', () => {
+    expect(mailjetPayloadSchema['~standard'].validate({ event: 'unsub' })).toMatchObject({
+      value: [{ event: 'unsub' }],
+    })
     expect(
-      mailjetPayloadSchema['~standard'].validate({ event: 'unsub', extra: 1 }),
-    ).toMatchObject({ value: { event: 'unsub', extra: 1 } })
+      mailjetPayloadSchema['~standard'].validate({
+        event: 'unsub',
+        extra: 1,
+      }),
+    ).toMatchObject({ value: [{ event: 'unsub', extra: 1 }] })
+    expect(
+      mailjetPayloadSchema['~standard'].validate([
+        { event: 'unsub' },
+        { event: 'spam' },
+      ]),
+    ).toMatchObject({
+      value: [{ event: 'unsub' }, { event: 'spam' }],
+    })
     expect(
       mailjetPayloadSchema['~standard'].validate([
         'lixo',
         { event: 'spam', foo: 'bar' },
       ]),
-    ).toMatchObject({ value: ['lixo', { event: 'spam', foo: 'bar' }] })
+    ).toMatchObject({ value: [{ event: 'spam', foo: 'bar' }] })
   })
 
-  it('recusa valor solto e null', () => {
-    for (const data of [null, 42, 'x', true]) {
+  it('recusa valor solto, null e lista sem objetos', () => {
+    for (const data of [null, 42, 'x', true, [], ['lixo', 1]]) {
       expect(issuesOf(mailjetPayloadSchema, data).length).toBeGreaterThan(0)
     }
   })

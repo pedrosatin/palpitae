@@ -18,6 +18,20 @@ function issuesOf(
   return result.issues ?? []
 }
 
+describe('syncBodySchema', () => {
+  it('aceita competition truthy não-string e matchday solto', () => {
+    expect(
+      syncBodySchema['~standard'].validate({
+        competition: { a: 1 },
+        season: 2026,
+        matchday: 'abc',
+      }),
+    ).toMatchObject({
+      value: { competition: { a: 1 }, season: 2026, matchday: 'abc' },
+    })
+  })
+})
+
 describe('mapSyncBodyError', () => {
   it('prioriza obrigatórios, season numérico e dates', () => {
     expect(mapSyncBodyError({}, issuesOf(syncBodySchema, {}))).toBe(SYNC_REQUIRED_MSG)

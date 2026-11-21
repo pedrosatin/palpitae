@@ -5,11 +5,7 @@ import { requireAuth } from '../auth/middleware'
 import { validateJson } from '../http/validateJson'
 import { hashUserId, logEvent } from '../observability'
 import type { AppContext } from '../types'
-import {
-  applyMailjetUnsubscribeEvents,
-  mailjetWebhookAuthorized,
-  normalizeMailjetEvents,
-} from './mailjetEvents'
+import { applyMailjetUnsubscribeEvents, mailjetWebhookAuthorized } from './mailjetEvents'
 import { markEmailUnsubscribed } from './optOut'
 import { verifyUnsubTokenForEnv } from './unsubscribeToken'
 import {
@@ -152,9 +148,8 @@ router.post('/mailjet-events', async (c) => {
   if (auth === 'missing_config') return c.text('Not Found', 404)
   if (auth === 'unauthorized') return c.text('Unauthorized', 401)
 
-  // O validateJson responderia 400 e a Mailjet reenviaria em loop. Aqui o schema
-  // Valibot (lista ou objeto com campos extras) só classifica o payload; falha
-  // de parse ou de schema responde 200 com log.
+  // Esta rota não usa o validateJson porque um 400 faria a Mailjet reenviar o
+  // lote; JSON malformado ou payload fora do formato responde 200 com log.
   let payload: unknown
   try {
     payload = await c.req.json()
@@ -169,13 +164,11 @@ router.post('/mailjet-events', async (c) => {
     return c.text('ok', 200)
   }
 
-  const events = normalizeMailjetEvents(parsed.output)
-  if (!events) {
-    console.error('[mailjet-events] payload inválido')
-    return c.text('ok', 200)
-  }
-
-  const { failed } = await applyMailjetUnsubscribeEvents(c.env.DB, c.env.AE, events)
+  const { failed } = await applyMailjetUnsubscribeEvents(
+    c.env.DB,
+    c.env.AE,
+    parsed.output,
+  )
   // Falha interna (D1) num unsub/spam: 500 para a Mailjet reenviar o lote.
   if (failed > 0) return c.text('retry', 500)
   return c.text('ok', 200)
@@ -199,8 +192,8 @@ router.get('/preferences', requireAuth, async (c) => {
  * PATCH /notifications/preferences (auth)
  * Body: { round_reminders: boolean }. true → subscribed (NULL), false → opted out.
  *
- * Corpo malformado, `null`, lista ou valor solto responde a mesma mensagem de
- * campo obrigatório da base, não `Body JSON inválido`.
+ * Corpo malformado, `null`, lista ou valor solto responde 400 com
+ * `round_reminders (boolean) é obrigatório`.
  */
 router.patch(
   '/preferences',

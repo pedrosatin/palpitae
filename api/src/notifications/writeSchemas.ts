@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import * as v from 'valibot'
+import type { MailjetEvent } from './mailjetEvents'
 
 export const PREFERENCES_ROUND_REMINDERS_MSG = 'round_reminders (boolean) é obrigatório'
 
@@ -15,20 +16,28 @@ export const patchPreferencesSchema = v.object({
 
 export type PatchPreferencesBody = v.InferOutput<typeof patchPreferencesSchema>
 
-/** Qualquer falha de schema desta rota responde a mesma mensagem da base. */
+/** Toda falha de schema desta rota responde `round_reminders (boolean) é obrigatório`. */
 export function mapPatchPreferencesError(_data: unknown, _issues: readonly Issue[]): string {
   return PREFERENCES_ROUND_REMINDERS_MSG
 }
 
 /**
- * Payload do webhook Mailjet (Event API). Aceita um objeto ou uma lista, e
- * preserva campos extras que o provedor manda. Itens soltos na lista passam;
- * `normalizeMailjetEvents` descarta o que não for objeto. Valores soltos no
- * topo (string, número, null) falham; a rota trata a falha como 200 `ok`.
+ * Payload do webhook Mailjet (Event API). Aceita lista ou objeto único (com
+ * campos extras), embrulha o objeto em lista, descarta itens que não são objeto
+ * e exige pelo menos um evento. Valores soltos no topo (string, número, null)
+ * e lista vazia após o filtro falham; a rota trata a falha como 200 `ok`.
  */
-export const mailjetPayloadSchema = v.union([
-  v.array(v.unknown()),
-  v.looseObject({}),
-])
+export const mailjetPayloadSchema = v.pipe(
+  v.union([v.array(v.unknown()), v.looseObject({})]),
+  v.transform((payload): MailjetEvent[] => {
+    if (Array.isArray(payload)) {
+      return payload.filter(
+        (item): item is MailjetEvent => item !== null && typeof item === 'object',
+      )
+    }
+    return [payload as MailjetEvent]
+  }),
+  v.check((events) => events.length > 0),
+)
 
 export type MailjetPayloadBody = v.InferOutput<typeof mailjetPayloadSchema>

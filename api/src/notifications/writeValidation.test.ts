@@ -79,7 +79,7 @@ function setupMailjet() {
     passThroughOnException: vi.fn(),
     props: {},
   } as unknown as ExecutionContext
-  return async (body: unknown, contentType: string | null = 'application/json') => {
+  async function post(body: unknown, contentType: string | null = 'application/json') {
     const headers: Record<string, string> = {
       Authorization: `Basic ${btoa(`mailjet:${WEBHOOK_SECRET}`)}`,
       'CF-Connecting-IP': '192.0.2.10',
@@ -96,6 +96,13 @@ function setupMailjet() {
     )
     return { status: response.status, text: await response.text() }
   }
+  function unsubscribedAt(userId: string) {
+    const row = sqlite
+      .prepare(`SELECT email_unsubscribed_at FROM users WHERE id = ?`)
+      .get(userId) as { email_unsubscribed_at: string | null }
+    return row.email_unsubscribed_at
+  }
+  return { post, unsubscribedAt }
 }
 
 describe('validação de escrita PATCH /notifications/preferences', () => {
@@ -137,7 +144,6 @@ describe('validação de escrita PATCH /notifications/preferences', () => {
   })
 
   it('corpo JSON null responde 400 com a mensagem de round_reminders', async () => {
-    // Na base, `null` gerava TypeError → 500. Correção intencional para 400.
     const request = await setupPreferences()
     expect(await request('null')).toEqual({ status: 400, body: PREFS_ERROR })
   })
@@ -145,7 +151,7 @@ describe('validação de escrita PATCH /notifications/preferences', () => {
 
 describe('validação de escrita POST /notifications/mailjet-events', () => {
   it('JSON inválido ou valor solto responde 200 ok', async () => {
-    const post = setupMailjet()
+    const { post } = setupMailjet()
     for (const raw of ['{', 'null', '42', '"x"', '[]']) {
       const res = await post(raw)
       expect(res).toEqual({ status: 200, text: 'ok' })
@@ -153,7 +159,7 @@ describe('validação de escrita POST /notifications/mailjet-events', () => {
   })
 
   it('objeto único com campo extra aplica unsub', async () => {
-    const post = setupMailjet()
+    const { post, unsubscribedAt } = setupMailjet()
     const res = await post({
       event: 'unsub',
       email: 'ana@example.com',
@@ -161,10 +167,11 @@ describe('validação de escrita POST /notifications/mailjet-events', () => {
       mj_campaign_id: 99,
     })
     expect(res).toEqual({ status: 200, text: 'ok' })
+    expect(unsubscribedAt('ana')).not.toBeNull()
   })
 
   it('lista com campo extra aplica unsub', async () => {
-    const post = setupMailjet()
+    const { post, unsubscribedAt } = setupMailjet()
     const res = await post([
       {
         event: 'unsub',
@@ -174,10 +181,11 @@ describe('validação de escrita POST /notifications/mailjet-events', () => {
       },
     ])
     expect(res).toEqual({ status: 200, text: 'ok' })
+    expect(unsubscribedAt('ana')).not.toBeNull()
   })
 
   it('JSON válido sem Content-Type ainda aceita o payload', async () => {
-    const post = setupMailjet()
+    const { post } = setupMailjet()
     const res = await post(
       {
         event: 'unsub',

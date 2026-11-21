@@ -6,7 +6,6 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import {
   mailjetWebhookAuthorized,
-  normalizeMailjetEvents,
   passwordFromBasicAuth,
   userIdFromMailjetCustomId,
 } from './mailjetEvents'
@@ -97,13 +96,6 @@ describe('mailjetEvents helpers', () => {
     expect(passwordFromBasicAuth(basicAuth('', 'só-senha'))).toBe('só-senha')
     expect(passwordFromBasicAuth('Bearer x')).toBeNull()
     expect(passwordFromBasicAuth(undefined)).toBeNull()
-  })
-
-  it('normaliza objeto ou array agrupado', () => {
-    expect(normalizeMailjetEvents({ event: 'unsub' })).toEqual([{ event: 'unsub' }])
-    expect(normalizeMailjetEvents([{ event: 'unsub' }, { event: 'spam' }])).toHaveLength(2)
-    expect(normalizeMailjetEvents('x')).toBeNull()
-    expect(normalizeMailjetEvents(null)).toBeNull()
   })
 
   it('autoriza só com o segredo configurado e a senha certa', async () => {

@@ -406,15 +406,15 @@ router.post(
     // Ferramenta manual de seed/backfill — só o admin. A atualização normal de
     // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
     // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts). Sem
-    // ADMIN_EMAIL configurado, responde 403 — fechado por padrão. O gate roda
-    // antes de ler o corpo.
+    // ADMIN_EMAIL configurado, responde 403, então a rota fica fechada por
+    // padrão. O gate roda antes de ler o corpo.
     if (!isAdminUser(c.get('userIdentity'), c.env)) {
       return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
     }
     return next()
   },
-  // `body: 'value'` preserva lista/número → mensagem de obrigatórios da base;
-  // só JSON malformado vira `Body JSON inválido`.
+  // Com `body: 'value'`, lista, número e `null` chegam ao schema e recebem a
+  // mensagem de obrigatórios; só JSON malformado responde `Body JSON inválido`.
   validateJson(syncBodySchema, mapSyncBodyError, { body: 'value' }),
   async (c) => {
     const body = c.req.valid('json')
@@ -429,7 +429,7 @@ router.post(
       const result = await syncFixtures({
         competitionCode: competition,
         season,
-        matchday,
+        matchday: matchday as number | undefined,
         dates,
         apiKey,
         db: c.env.DB,

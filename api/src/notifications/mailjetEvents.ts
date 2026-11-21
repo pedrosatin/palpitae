@@ -60,18 +60,6 @@ export async function mailjetWebhookAuthorized(
   return 'ok'
 }
 
-/** Aceita um objeto ou um array agrupado (Version 2 do eventcallbackurl). */
-export function normalizeMailjetEvents(payload: unknown): MailjetEvent[] | null {
-  if (payload == null) return null
-  if (Array.isArray(payload)) {
-    // Um item malformado não derruba os válidos do mesmo lote.
-    const valid = payload.filter((item) => item !== null && typeof item === 'object')
-    return valid.length > 0 ? (valid as MailjetEvent[]) : null
-  }
-  if (typeof payload === 'object') return [payload as MailjetEvent]
-  return null
-}
-
 function eventCustomId(event: MailjetEvent): unknown {
   return event.CustomID ?? event.customID
 }
