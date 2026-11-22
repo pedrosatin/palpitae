@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { act, screen } from '@testing-library/react'
 import { renderWithQuery as render } from '../../test-utils'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
@@ -1234,6 +1234,13 @@ describe('MatchCard – falha no salvamento', () => {
       await fillOneToZero(user)
 
       await user.click(screen.getByRole('button', { name: 'Salvar' }))
+      const card = screen.getByRole('group', { name: /^Brasil contra Argentina/ })
+      expect(card).toHaveAttribute('aria-busy', 'true')
+      const liveAnnouncement = screen.getByText('Salvando palpite...')
+      expect(liveAnnouncement).toHaveAttribute('aria-live', 'polite')
+      expect(liveAnnouncement).toHaveClass('sr-only')
+      expect(screen.getByRole('spinbutton', { name: /Placar Brasil/i })).toBeEnabled()
+      expect(screen.getByRole('spinbutton', { name: /Placar Argentina/i })).toBeEnabled()
       expect(screen.getByText('palpite salvo')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Salvo' })).toHaveAttribute('aria-disabled', 'true')
       expect(invalidateSpy).not.toHaveBeenCalled()
@@ -1245,6 +1252,8 @@ describe('MatchCard – falha no salvamento', () => {
 
       respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
       await screen.findByRole('button', { name: 'Atualizar' })
+      expect(card).toHaveAttribute('aria-busy', 'false')
+      expect(screen.queryByText('Salvando palpite...')).not.toBeInTheDocument()
       expect(scoreValues()).toEqual(['2', '3'])
       expect(screen.getByText('alterado, não salvo')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Atualizar' })).toBeEnabled()
@@ -1261,4 +1270,80 @@ describe('MatchCard – falha no salvamento', () => {
       fetchMock.mockRestore()
     }
   })
+
+  it('envios concorrentes em ordem invertida abortam o anterior, não sobrescrevem o último e mantêm o rollback em 2×0', async () => {
+    const puts: Array<{
+      resolve: (res: Response) => void
+      reject: (err: unknown) => void
+      signal?: AbortSignal
+    }> = []
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((resolve, reject) => {
+          puts.push({ resolve, reject, signal: init?.signal ?? undefined })
+        }),
+    )
+    const onSaved = vi.fn()
+    const user = userEvent.setup()
+    try {
+      function ControlledParent() {
+        const [prediction, setPrediction] = useState<Prediction | undefined>(undefined)
+        return (
+          <MatchCard
+            match={makeMatch()}
+            prediction={prediction}
+            groupId="group-1"
+            onSaved={(_id, home, away, penalty) => {
+              onSaved(home, away, penalty)
+              setPrediction(
+                makePrediction({
+                  predicted_home_score: home,
+                  predicted_away_score: away,
+                  predicted_penalty_winner: penalty,
+                }),
+              )
+            }}
+          />
+        )
+      }
+
+      render(<ControlledParent />)
+      await fillOneToZero(user)
+      await user.click(screen.getByRole('button', { name: 'Salvar' }))
+      expect(puts).toHaveLength(1)
+      expect(puts[0].signal?.aborted).toBe(false)
+
+      await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+      await user.click(screen.getByRole('button', { name: 'Atualizar' }))
+      expect(puts).toHaveLength(2)
+      expect(puts[0].signal?.aborted).toBe(true)
+
+      await act(async () => {
+        puts[1].resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      })
+      expect(onSaved).toHaveBeenCalledTimes(1)
+      expect(onSaved).toHaveBeenLastCalledWith(2, 0, null)
+
+      await act(async () => {
+        puts[0].resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      })
+      expect(onSaved).toHaveBeenCalledTimes(1)
+      expect(scoreValues()).toEqual(['2', '0'])
+
+      await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
+      await user.click(screen.getByRole('button', { name: 'Atualizar' }))
+      expect(puts).toHaveLength(3)
+
+      await act(async () => {
+        puts[2].resolve(
+          new Response(JSON.stringify({ error: 'Jogo já começou' }), { status: 409 }),
+        )
+      })
+      expect(await screen.findByRole('alert')).toHaveTextContent('Jogo já começou')
+      expect(scoreValues()).toEqual(['2', '0'])
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
 })
+

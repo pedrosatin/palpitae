@@ -58,6 +58,7 @@ export default function MatchCard(props: MatchCardProps) {
     isPostponed,
     isFinished,
     hasPrediction,
+    saving,
     saved,
     error,
     effectivePrediction,
@@ -98,9 +99,12 @@ export default function MatchCard(props: MatchCardProps) {
     <div
       role="group"
       aria-label={groupLabel}
-      aria-busy={false}
+      aria-busy={saving}
       className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}
     >
+      <span className="sr-only" aria-live="polite">
+        {saving ? 'Salvando palpite...' : ''}
+      </span>
       <div className={styles.meta}>
         <span className={styles.date}>
           {isPostponed ? 'data a definir' : formatMatchDate(match.start_time)}

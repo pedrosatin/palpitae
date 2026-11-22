@@ -646,4 +646,54 @@ describe('useMatchCard', () => {
     expect(result.current.penaltyWinner).toBeNull()
     expect(onPenaltyDraftChange).toHaveBeenCalledWith('match-1', null)
   })
+
+  it('falha de um envio onSave antigo não encerra saving nem dispara rollback do envio vigente', async () => {
+    const resolvers: Array<(ok: boolean) => void> = []
+    const onSave = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolvers.push(resolve)
+        }),
+    )
+    const { result } = renderHook(() =>
+      useMatchCard({
+        match: makeMatch(),
+        prediction: undefined,
+        groupId: 'group-1',
+        onSaved: vi.fn(),
+        onSave,
+      }),
+    )
+
+    act(() => {
+      result.current.updateHome('1')
+      result.current.updateAway('0')
+    })
+    act(() => {
+      void result.current.handleSave()
+    })
+    expect(result.current.saving).toBe(true)
+
+    act(() => {
+      result.current.updateHome('2')
+    })
+    act(() => {
+      void result.current.handleSave()
+    })
+    expect(resolvers).toHaveLength(2)
+
+    await act(async () => {
+      resolvers[0](false)
+    })
+    expect(result.current.saving).toBe(true)
+    expect(result.current.home).toBe('2')
+    expect(result.current.away).toBe('0')
+
+    await act(async () => {
+      resolvers[1](true)
+    })
+    expect(result.current.saving).toBe(false)
+    expect(result.current.saved).toBe(true)
+  })
 })
+

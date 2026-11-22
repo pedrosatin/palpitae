@@ -202,6 +202,7 @@ function useMatchPersistence({
   const [optimisticPrediction, setOptimisticPrediction] = useState<Prediction | undefined>(undefined)
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const request = useRef<AbortController | null>(null)
+  const saveSeq = useRef(0)
   const mounted = useRef(true)
   const lastPropPrediction = useRef(prediction)
 
@@ -221,6 +222,7 @@ function useMatchPersistence({
   }, [prediction, saving])
 
   async function persist(homeScore: number, awayScore: number, penWinner: 'home' | 'away' | null) {
+    const seq = ++saveSeq.current
     clearTimeout(savedTimer.current)
     submittedRef.current = {
       home: String(homeScore),
@@ -231,9 +233,11 @@ function useMatchPersistence({
     if (outcomeOnly) setSaved(true)
 
     if (onSave) {
+      request.current?.abort()
+      request.current = null
       setSaving(true)
       const ok = await onSave(match.id, homeScore, awayScore, penWinner)
-      if (!mounted.current) return
+      if (!mounted.current || saveSeq.current !== seq) return
       setSaving(false)
       if (!ok) {
         setSaved(false)
@@ -245,6 +249,7 @@ function useMatchPersistence({
       return
     }
 
+    request.current?.abort()
     const controller = new AbortController()
     request.current = controller
     const timeout = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
@@ -292,6 +297,7 @@ function useMatchPersistence({
 
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string }
+      if (request.current !== controller) return
       setOptimisticPrediction(undefined)
       setSaved(false)
       setRollbackSeq((n) => n + 1)

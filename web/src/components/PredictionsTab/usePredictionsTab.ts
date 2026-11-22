@@ -394,6 +394,7 @@ export function usePredictionsTab(
   const queryClient = useQueryClient()
   const confirmedRef = useRef<PredictionMap>(new Map())
   const saveSeqRef = useRef<Map<string, number>>(new Map())
+  const cardControllersRef = useRef<Map<string, AbortController>>(new Map())
   const scopeSeqRef = useRef(0)
   const [cardErrors, setCardErrors] = useState<Map<string, string>>(new Map())
 
@@ -401,9 +402,13 @@ export function usePredictionsTab(
     scopeSeqRef.current += 1
     confirmedRef.current = new Map()
     saveSeqRef.current.clear()
+    for (const controller of cardControllersRef.current.values()) controller.abort()
+    cardControllersRef.current.clear()
     setCardErrors(new Map())
     return () => {
       scopeSeqRef.current += 1
+      for (const controller of cardControllersRef.current.values()) controller.abort()
+      cardControllersRef.current.clear()
     }
   }, [groupId])
 
@@ -572,7 +577,9 @@ export function usePredictionsTab(
     const update = [{ matchId, home: homeScore, away: awayScore, penaltyWinner: penWinner }]
     setPredictions((prev) => applyPredictionUpdates(prev, update, allMatchesRef.current))
 
+    cardControllersRef.current.get(matchId)?.abort()
     const controller = new AbortController()
+    cardControllersRef.current.set(matchId, controller)
     const timeout = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
     let res: Response | null = null
     try {
@@ -591,6 +598,9 @@ export function usePredictionsTab(
     } catch {
     } finally {
       clearTimeout(timeout)
+      if (cardControllersRef.current.get(matchId) === controller) {
+        cardControllersRef.current.delete(matchId)
+      }
     }
 
     if (scopeSeqRef.current !== scopeSeq) return false
@@ -600,6 +610,7 @@ export function usePredictionsTab(
         ? CONNECTION_ERROR
         : (((await res.json().catch(() => ({}))) as { error?: string }).error ??
           'Erro ao salvar palpite')
+      if (scopeSeqRef.current !== scopeSeq) return false
       if (saveSeqRef.current.get(matchId) === seq) {
         rebaseDrafts([
           {
@@ -615,6 +626,8 @@ export function usePredictionsTab(
       }
       return false
     }
+
+    if (saveSeqRef.current.get(matchId) !== seq) return false
 
     confirmedRef.current = applyPredictionUpdates(confirmedRef.current, update, allMatchesRef.current)
     void invalidateGroupsList(queryClient)
