@@ -1,9 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { needsPenaltyPick } from '../../lib/predictedTie'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { invalidateGroupPredictions } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 import { predictionStatus } from './predictionStatus'
@@ -110,6 +112,7 @@ function useMatchPersistence(
     penaltyWinner: 'home' | 'away' | null,
   ) => void,
 ) {
+  const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -166,7 +169,8 @@ function useMatchPersistence(
       return
     }
 
-    invalidateApiCache('groups:')
+    void invalidateGroupsList(queryClient)
+    void invalidateGroupPredictions(queryClient)
     setSaved(true)
     onSaved(matchId, homeScore, awayScore, penWinner)
     savedTimer.current = setTimeout(() => setSaved(false), 2500)

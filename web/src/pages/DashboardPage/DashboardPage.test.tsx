@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
+import { renderWithQuery as render } from '../../test-utils'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import {
@@ -11,7 +12,6 @@ import {
 } from 'react-router-dom'
 import * as ga from '../../analytics/ga'
 import { config } from '../../config'
-import { invalidateApiCache } from '../../lib/api-cache'
 import { markInviteAccepted, rememberInviteDocument } from '../../lib/invite'
 import DashboardPage from './DashboardPage'
 
@@ -176,7 +176,6 @@ describe('DashboardPage na volta do login com convite', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     sessionStorage.clear()
-    invalidateApiCache()
     Object.assign(config as { apiUrl: string; authUrl: string }, {
       apiUrl: 'http://localhost:8787',
       authUrl: 'http://localhost:8787',
@@ -578,7 +577,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
-    invalidateApiCache('groups:')
     const kickoff = { ...deadline, start_time: '2026-11-12T16:00:00Z' }
     let resolveRefresh: (value: Response) => void = () => {}
     const fetchSpy = vi
@@ -639,7 +637,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
   })
 
   function renderWithGroups(groups: unknown[]) {
-    invalidateApiCache('groups:')
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async () => mockGroupsResponse(groups))
@@ -743,7 +740,6 @@ describe('DashboardPage com a competição pedida pelo guia', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     sessionStorage.clear()
-    invalidateApiCache()
     Object.assign(config as { apiUrl: string; authUrl: string }, {
       apiUrl: 'http://localhost:8787',
       authUrl: 'http://localhost:8787',
@@ -862,7 +858,6 @@ describe('DashboardPage, recuperação da carga e convite dispensado', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     sessionStorage.clear()
-    invalidateApiCache()
     Object.assign(config as { apiUrl: string; authUrl: string }, {
       apiUrl: 'http://localhost:8787',
       authUrl: 'http://localhost:8787',

@@ -1,18 +1,18 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
-import { invalidateApiCache } from '../../lib/api-cache'
 import { isListOf, isRecord, UNEXPECTED_RESPONSE } from '../../lib/responseShape'
 import {
   applyDefaultRoundFromMatches,
   competitionMatchesQueryOptions,
   matchesQueryErrorMessage,
 } from '../../lib/competitionMatches'
-import { fetchGroupsList } from '../../lib/groupsList'
+import { invalidateGroupPredictions } from '../../lib/groupPredictions'
+import { groupsListQueryOptions, invalidateGroupsList } from '../../lib/groupsList'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import { acceptsFrom } from '../../lib/predictionCopy'
@@ -218,25 +218,10 @@ function useSiblingGroups(
   competitionId: string,
   userId: string | undefined,
 ): SiblingGroup[] {
-  const [siblings, setSiblings] = useState<SiblingGroup[]>([])
-
-  useEffect(() => {
-    let active = true
-    setSiblings([])
-    fetchGroupsList(userId)
-      .then((data) => {
-        if (!active) return
-        setSiblings(
-          data.groups.filter((g) => g.competition_id === competitionId && g.id !== groupId),
-        )
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [groupId, competitionId, userId])
-
-  return siblings
+  const groupsQuery = useQuery(groupsListQueryOptions(userId))
+  return (groupsQuery.data?.groups ?? []).filter(
+    (g) => g.competition_id === competitionId && g.id !== groupId,
+  )
 }
 
 type ImportInput = {
@@ -266,6 +251,7 @@ function usePredictionsImport({
   setImportSources,
   pointsExact,
 }: ImportInput) {
+  const queryClient = useQueryClient()
   const scope = useRef({ active: true })
   const siblings = useSiblingGroups(groupId, competitionId, userId)
   const otherGroups = siblings.filter((g) =>
@@ -324,7 +310,8 @@ function usePredictionsImport({
         setImportCompleted(true)
         setImportedFromName(otherGroups.find((g) => g.id === sourceId)?.name ?? null)
         setImportExpanded(false)
-        invalidateApiCache('groups:')
+        invalidateGroupsList(queryClient)
+        invalidateGroupPredictions(queryClient)
       }
       if (msg) setImportFeedback({ ok: true, message: msg })
       const savedSince = new Set<string>()

@@ -1,6 +1,8 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { trackEvent } from '../../analytics/ga'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { invalidateGroupPredictions } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { readReplicatePreference, writeReplicatePreference } from '../../lib/replicatePreference'
 import {
   clearReplicateFeedback,
@@ -47,6 +49,7 @@ type Scope = {
  * sai quando a pessoa deixa o contexto em que a viu.
  */
 export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
+  const queryClient = useQueryClient()
   const { groupId, competitionId, userId, round, pointsExact } = scope
   const usable = siblings.filter(
     (g) =>
@@ -99,7 +102,8 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
         current.map((g) => g.id),
         matchIds,
       )
-      invalidateApiCache('groups:')
+      invalidateGroupsList(queryClient)
+      invalidateGroupPredictions(queryClient)
       trackEvent('click_predictions_aplicar_outros_grupos', {
         groups: result.groups.filter((g) => g.saved > 0).length,
       })
@@ -114,7 +118,7 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
         matchIds,
       })
     }
-  }, [])
+  }, [queryClient])
 
   const canRetry =
     enabled && targets.length > 0 && inFlight === 0 && feedback.some((f) => !f.ok)

@@ -21,7 +21,6 @@ import { useGaPageView } from './analytics/useGaPageView'
 import { RouteErrorBoundary } from './components/ErrorBoundary'
 import { buildApiUrl } from './config'
 import { clearSessionExpired, notifyLogoutUnconfirmed, SESSION_EXPIRED_EVENT } from './lib/api'
-import { invalidateApiCache } from './lib/api-cache'
 import { appQueryClient } from './lib/queryClient'
 import { INVITE_PATH_PREFIX } from './lib/invite'
 import { loggedInLoginTarget, pageLoadedFromHistory } from './lib/loginRedirect'
@@ -119,7 +118,6 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
   useEffect(() => captureEntryOrigin(), [])
 
   const checkSession = useCallback(() => {
-    invalidateApiCache()
     appQueryClient.clear()
     fetch(buildApiUrl('/auth/me'), { credentials: 'include' })
       .then((res) => {
@@ -165,7 +163,6 @@ function AppRoutes({ landingPrerenderizada }: { landingPrerenderizada: boolean }
         clearStoredDrafts()
         clearSessionExpired()
       }
-      invalidateApiCache()
       appQueryClient.clear()
       beforeLeave?.()
       setUser(null)

@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { buildApiUrl } from '../../config'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { useConfirm } from '../../components/ConfirmModal'
 import { trackEvent } from '../../analytics/ga'
 import { isStandingsTabEligible } from '../../lib/standings'
@@ -27,30 +29,55 @@ function paramsForTab(params: URLSearchParams, tab: Tab): URLSearchParams {
   return next
 }
 
+export function groupDetailQueryKey(groupId: string) {
+  return ['groups', 'detail', groupId] as const
+}
+
+export function fetchGroupDetail(groupId: string): Promise<GroupDetail> {
+  return apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`))
+    .then((r) => {
+      if (!r.ok) throw new Error('Grupo não encontrado')
+      return r.json() as Promise<unknown>
+    })
+    .then((body) => {
+      const detail = parseGroupDetail(body)
+      if (!detail) throw new Error(UNEXPECTED_RESPONSE)
+      return detail
+    })
+}
+
+export function groupDetailQueryOptions(groupId: string) {
+  return queryOptions({
+    queryKey: groupDetailQueryKey(groupId),
+    queryFn: () => fetchGroupDetail(groupId),
+  })
+}
+
 export function useGroupDetail(groupId: string | undefined) {
-  const [group, setGroup] = useState<GroupDetail | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    ...groupDetailQueryOptions(groupId ?? ''),
+    enabled: Boolean(groupId),
+  })
 
-  useEffect(() => {
-    if (!groupId) return
-    setLoading(true)
-    setError(null)
-    apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}`))
-      .then((r) => {
-        if (!r.ok) throw new Error('Grupo não encontrado')
-        return r.json() as Promise<unknown>
+  const setGroup = useCallback(
+    (updater: GroupDetail | null | ((prev: GroupDetail | null) => GroupDetail | null)) => {
+      if (!groupId) return
+      queryClient.setQueryData<GroupDetail | undefined>(groupDetailQueryKey(groupId), (prev) => {
+        const current = prev ?? null
+        const next = typeof updater === 'function' ? updater(current) : updater
+        return next ?? undefined
       })
-      .then((body) => {
-        const detail = parseGroupDetail(body)
-        if (!detail) throw new Error(UNEXPECTED_RESPONSE)
-        setGroup(detail)
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [groupId])
+    },
+    [groupId, queryClient],
+  )
 
-  return { group, setGroup, loading, error }
+  return {
+    group: groupId ? (query.data ?? null) : null,
+    setGroup,
+    loading: groupId ? query.isPending : true,
+    error: query.error instanceof Error ? query.error.message : query.isError ? 'Grupo não encontrado' : null,
+  }
 }
 
 export function useGroupTabs(group: GroupDetail | null) {
@@ -120,6 +147,7 @@ export function useTabsOffset() {
 
 export function useGroupActions(groupId: string | undefined, user: User) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [leaving, setLeaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [rotatingInvite, setRotatingInvite] = useState(false)
@@ -154,7 +182,9 @@ export function useGroupActions(groupId: string | undefined, user: User) {
         return
       }
 
-      invalidateApiCache('groups:')
+      queryClient.removeQueries({ queryKey: groupDetailQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupPredictionsQueryKey(groupId) })
+      void invalidateGroupsList(queryClient)
       navigate('/', { replace: true })
     } catch {
       window.alert(CONNECTION_ERROR)
@@ -188,7 +218,9 @@ export function useGroupActions(groupId: string | undefined, user: User) {
         return
       }
 
-      invalidateApiCache('groups:')
+      queryClient.removeQueries({ queryKey: groupDetailQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupPredictionsQueryKey(groupId) })
+      void invalidateGroupsList(queryClient)
       navigate('/', { replace: true, state: { refreshGroups: true } })
     } catch {
       window.alert(CONNECTION_ERROR)
@@ -229,7 +261,7 @@ export function useGroupActions(groupId: string | undefined, user: User) {
         return
       }
 
-      invalidateApiCache('groups:')
+      void invalidateGroupsList(queryClient)
       onRotated(body.invite_code)
     } catch {
       window.alert(CONNECTION_ERROR)

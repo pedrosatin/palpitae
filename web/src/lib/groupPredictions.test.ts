@@ -1,5 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { invalidateApiCache } from './api-cache'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetchGroupPredictions } from './groupPredictions'
 
 function respond(body: unknown) {
@@ -11,7 +10,6 @@ function respond(body: unknown) {
 }
 
 describe('fetchGroupPredictions', () => {
-  beforeEach(() => invalidateApiCache())
   afterEach(() => vi.restoreAllMocks())
 
   it('devolve a resposta no formato da API', async () => {

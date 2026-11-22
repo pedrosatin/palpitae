@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams, Navigate } from 'react-router-dom'
 import CreateGroupModal from '../../components/CreateGroupModal'
@@ -12,7 +13,7 @@ import ErrorState from '../../components/ErrorState'
 import ErrorBoundary, { TabError } from '../../components/ErrorBoundary'
 import { apiFetch } from '../../lib/api'
 import { buildApiUrl } from '../../config'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { groupsQueryKey } from '../../lib/groupsList'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import styles from './GroupDetailPage.module.css'
 import { type User, TAB_LABELS, isGroupId, parseGroupDetail } from './types'
@@ -35,11 +36,12 @@ interface GroupPageFrameProps extends GroupDetailPageProps {
 
 function GroupPageFrame({ user, onLogout, modals, children }: GroupPageFrameProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
   const [joinOpen, setJoinOpen] = useState(false)
 
   function openGroup(nextGroup: { id: string }) {
-    invalidateApiCache('groups:')
+    void queryClient.invalidateQueries({ queryKey: groupsQueryKey, refetchType: 'none' })
     navigate(`/grupos/${nextGroup.id}`)
   }
 

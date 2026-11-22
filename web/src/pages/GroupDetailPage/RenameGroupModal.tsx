@@ -1,9 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import Modal from '../../components/Modal'
 import Button from '../../components/Button'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { buildApiUrl } from '../../config'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { trackEvent } from '../../analytics/ga'
 import styles from './GroupDetailPage.module.css'
 
@@ -30,6 +31,7 @@ export function RenameGroupModal({
   onPointsClassifiedChanged,
   onJoinRequestsEnabledChanged,
 }: RenameGroupModalProps) {
+  const queryClient = useQueryClient()
   const [pointsClassified, setPointsClassified] = useState(currentPointsClassified ?? 0)
   const [joinRequestsEnabled, setJoinRequestsEnabled] = useState(
     currentJoinRequestsEnabled ?? true,
@@ -86,11 +88,14 @@ export function RenameGroupModal({
       if (!res.ok) throw new Error(await readApiError(res, 'Erro ao renomear grupo'))
 
       trackEvent('submit_renomear_grupo')
-      invalidateApiCache('groups:')
+      void invalidateGroupsList(queryClient)
       onRenamed(name)
       if (joinRequestsChanged) onJoinRequestsEnabledChanged?.(joinRequestsEnabled)
       if (currentPointsClassified !== undefined && currentPointsClassified !== pointsClassified) {
-        invalidateApiCache()
+        void queryClient.invalidateQueries({
+          predicate: (query) => query.queryKey[0] !== 'groups' || query.queryKey[1] !== 'detail',
+          refetchType: 'none',
+        })
         await onPointsClassifiedChanged?.(pointsClassified)
       }
       onClose()

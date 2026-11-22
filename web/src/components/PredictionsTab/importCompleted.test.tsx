@@ -3,11 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import GroupTabContent from '../../pages/GroupDetailPage/GroupTabContent'
 import type { GroupDetail } from '../../pages/GroupDetailPage/types'
-import { fetchGroupsList } from '../../lib/groupsList'
+import { groupsListQueryOptions } from '../../lib/groupsList'
 import { makeMatch } from '../matchFixtures'
 import PredictionsTab from './PredictionsTab'
 import { usePredictionsTab } from './usePredictionsTab'
-import { renderWithQuery as render, renderHookWithQuery as renderHook } from '../../test-utils'
+import { createTestQueryClient, renderWithQuery as render, renderHookWithQuery as renderHook } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => vi.restoreAllMocks())
@@ -81,10 +81,11 @@ describe('Barra de importação', () => {
         const path = String(url)
         return path.includes('/groups') && !path.includes('/round-standings')
       }).length
-    await fetchGroupsList('u1')
+    const queryClient = createTestQueryClient()
+    await queryClient.fetchQuery(groupsListQueryOptions('u1'))
     expect(groupsCalls()).toBe(1)
 
-    render(<PredictionsTab groupId="target" competitionId="c" userId="u1" />)
+    render(<PredictionsTab groupId="target" competitionId="c" userId="u1" />, { queryClient })
 
     expect(await screen.findByText('Importar palpites de:')).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /Origem/ })).toBeInTheDocument()

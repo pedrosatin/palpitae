@@ -1,8 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useState, useRef, useEffect, Dispatch, SetStateAction } from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { invalidateGroupPredictions } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { predictedClassified } from '../../lib/predictedTie'
 import { collectRoundDrafts, type UnsavedDrafts } from '../../lib/predictionDrafts'
 import { plural } from '../../lib/replicateToGroups'
@@ -154,6 +156,7 @@ export function usePredictionsBulkSave({
   unsavedDrafts: { drafts, penaltyDrafts },
   onBulkSaved,
 }: BulkSaveInput) {
+  const queryClient = useQueryClient()
   const {
     savingAll,
     setSavingAll,
@@ -231,7 +234,8 @@ export function usePredictionsBulkSave({
         )
       }
 
-      invalidateApiCache('groups:')
+      invalidateGroupsList(queryClient)
+      invalidateGroupPredictions(queryClient)
       if (data.saved.length > 0) onBulkSaved?.(data.saved)
 
       if (roundViewRef.current !== roundView) return
