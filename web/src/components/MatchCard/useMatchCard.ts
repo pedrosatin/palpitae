@@ -6,6 +6,7 @@ import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateGroupPredictions } from '../../lib/groupPredictions'
 import { invalidateGroupsList } from '../../lib/groupsList'
+import { buildOptimisticPrediction } from '../../lib/predictionOptimistic'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 import { predictionStatus } from './predictionStatus'
@@ -25,11 +26,25 @@ export interface UseMatchCardProps {
     away: number,
     penaltyWinner: 'home' | 'away' | null,
   ) => void
+  onSave?: (
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) => Promise<boolean>
   onDraftChange?: (matchId: string, home: string, away: string) => void
   onPenaltyDraftChange?: (matchId: string, winner: 'home' | 'away' | null) => void
   draft?: { home: string; away: string }
   penaltyDraft?: 'home' | 'away' | null
+  hasDraft?: boolean
+  externalError?: string | null
   now?: number
+}
+
+type SubmittedSnapshot = {
+  home: string
+  away: string
+  penaltyWinner: 'home' | 'away' | null
 }
 
 function useMatchStatus(match: Match, prediction: Prediction | undefined, now?: number) {
@@ -45,16 +60,13 @@ function outcomeOf(home: number, away: number): Outcome {
   return home > away ? 'home' : home < away ? 'away' : 'draw'
 }
 
-/**
- * Estado dos campos do card. Começa pelo rascunho guardado (`draft`,
- * `penaltyDraft`), se houver, senão pelo palpite salvo; depois segue o palpite
- * salvo sempre que ele muda (salvar, importar). Jogo sem palpite começa com os
- * dois campos vazios, e um 0×0 só aparece quando o usuário escolhe.
- */
 function useMatchDraft(
   prediction: Prediction | undefined,
   draft?: { home: string; away: string },
   penaltyDraft?: 'home' | 'away' | null,
+  hasDraft?: boolean,
+  submittedRef?: React.MutableRefObject<SubmittedSnapshot | null>,
+  rollbackSeq = 0,
 ) {
   const [home, setHome] = useState<string>(
     draft?.home ?? (prediction !== undefined ? String(prediction.predicted_home_score) : ''),
@@ -76,17 +88,68 @@ function useMatchDraft(
   const persistedAway = prediction?.predicted_away_score
   const persistedPenalty = prediction?.predicted_penalty_winner ?? null
   const persistedKey = `${persistedHome}:${persistedAway}:${persistedPenalty}`
-  const lastPersistedKey = useRef(persistedKey)
+  const lastPersisted = useRef({
+    key: persistedKey,
+    home: persistedHome !== undefined ? String(persistedHome) : '',
+    away: persistedAway !== undefined ? String(persistedAway) : '',
+    penaltyWinner: persistedPenalty,
+  })
+  const lastRollbackSeq = useRef(rollbackSeq)
+  const activeDraft = hasDraft ?? (draft !== undefined || penaltyDraft !== undefined)
   useEffect(() => {
-    if (lastPersistedKey.current === persistedKey) return
-    lastPersistedKey.current = persistedKey
+    const rolledBack = lastRollbackSeq.current !== rollbackSeq
+    lastRollbackSeq.current = rollbackSeq
+    const prev = lastPersisted.current
+    if (prev.key === persistedKey && !rolledBack) return
+    lastPersisted.current = {
+      key: persistedKey,
+      home: persistedHome !== undefined ? String(persistedHome) : '',
+      away: persistedAway !== undefined ? String(persistedAway) : '',
+      penaltyWinner: persistedPenalty,
+    }
+    const submitted = submittedRef?.current
+    if (submittedRef) submittedRef.current = null
+    if (activeDraft) return
+    const matchesSubmitted =
+      submitted !== null &&
+      submitted !== undefined &&
+      home === submitted.home &&
+      away === submitted.away &&
+      penaltyWinner === submitted.penaltyWinner
+    if (
+      submitted &&
+      !matchesSubmitted
+    ) {
+      return
+    }
+    const matchesPrev =
+      home === prev.home && away === prev.away && penaltyWinner === prev.penaltyWinner
+    if (hasDraft === undefined && !matchesSubmitted && !matchesPrev) {
+      return
+    }
     if (persistedHome !== undefined && persistedAway !== undefined) {
       setHome(String(persistedHome))
       setAway(String(persistedAway))
       setPenaltyWinner(persistedPenalty)
       setPendingOutcome(null)
+    } else {
+      setHome('')
+      setAway('')
+      setPenaltyWinner(null)
+      setPendingOutcome(null)
     }
-  }, [persistedKey, persistedHome, persistedAway, persistedPenalty])
+  }, [
+    persistedKey,
+    persistedHome,
+    persistedAway,
+    persistedPenalty,
+    activeDraft,
+    home,
+    away,
+    penaltyWinner,
+    submittedRef,
+    rollbackSeq,
+  ])
 
   return {
     home,
@@ -102,38 +165,100 @@ function useMatchDraft(
   }
 }
 
-function useMatchPersistence(
-  groupId: string,
-  matchId: string,
+function useMatchPersistence({
+  groupId,
+  match,
+  prediction,
+  leg1Prediction,
+  outcomeOnly,
+  onSaved,
+  onSave,
+  submittedRef,
+}: {
+  groupId: string
+  match: Match
+  prediction: Prediction | undefined
+  leg1Prediction: Prediction | undefined
+  outcomeOnly: boolean
   onSaved: (
     matchId: string,
     home: number,
     away: number,
     penaltyWinner: 'home' | 'away' | null,
-  ) => void,
-) {
+  ) => void
+  onSave?: (
+    matchId: string,
+    home: number,
+    away: number,
+    penaltyWinner: 'home' | 'away' | null,
+  ) => Promise<boolean>
+  submittedRef: React.MutableRefObject<SubmittedSnapshot | null>
+}) {
   const queryClient = useQueryClient()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [rollbackSeq, setRollbackSeq] = useState(0)
+  const [optimisticPrediction, setOptimisticPrediction] = useState<Prediction | undefined>(undefined)
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const request = useRef<AbortController | null>(null)
-  useEffect(
-    () => () => {
+  const mounted = useRef(true)
+  const lastPropPrediction = useRef(prediction)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
       clearTimeout(savedTimer.current)
       request.current = null
-    },
-    [],
-  )
+    }
+  }, [])
+
+  useEffect(() => {
+    if (lastPropPrediction.current === prediction) return
+    lastPropPrediction.current = prediction
+    if (!saving) setOptimisticPrediction(undefined)
+  }, [prediction, saving])
 
   async function persist(homeScore: number, awayScore: number, penWinner: 'home' | 'away' | null) {
     clearTimeout(savedTimer.current)
+    submittedRef.current = {
+      home: String(homeScore),
+      away: String(awayScore),
+      penaltyWinner: penWinner,
+    }
+    setError(null)
+    if (outcomeOnly) setSaved(true)
+
+    if (onSave) {
+      setSaving(true)
+      const ok = await onSave(match.id, homeScore, awayScore, penWinner)
+      if (!mounted.current) return
+      setSaving(false)
+      if (!ok) {
+        setSaved(false)
+        setRollbackSeq((n) => n + 1)
+        return
+      }
+      setSaved(true)
+      savedTimer.current = setTimeout(() => setSaved(false), 2500)
+      return
+    }
+
     const controller = new AbortController()
     request.current = controller
     const timeout = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
     setSaving(true)
-    setError(null)
-    setSaved(false)
+    setOptimisticPrediction(
+      buildOptimisticPrediction(
+        prediction,
+        match,
+        homeScore,
+        awayScore,
+        penWinner,
+        leg1Prediction,
+      ),
+    )
 
     let res: Response | null = null
     try {
@@ -142,7 +267,7 @@ function useMatchPersistence(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           group_id: groupId,
-          match_id: matchId,
+          match_id: match.id,
           predicted_home_score: homeScore,
           predicted_away_score: awayScore,
           predicted_penalty_winner: penWinner,
@@ -150,7 +275,6 @@ function useMatchPersistence(
         signal: controller.signal,
       })
     } catch {
-      // Rede fora ou prazo esgotado. Segue sem resposta.
     } finally {
       clearTimeout(timeout)
     }
@@ -159,12 +283,18 @@ function useMatchPersistence(
     setSaving(false)
 
     if (!res) {
+      setOptimisticPrediction(undefined)
+      setSaved(false)
+      setRollbackSeq((n) => n + 1)
       setError('Erro de conexão. Tente novamente.')
       return
     }
 
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string }
+      setOptimisticPrediction(undefined)
+      setSaved(false)
+      setRollbackSeq((n) => n + 1)
       setError(data.error ?? 'Erro ao salvar palpite')
       return
     }
@@ -172,11 +302,18 @@ function useMatchPersistence(
     void invalidateGroupsList(queryClient)
     void invalidateGroupPredictions(queryClient)
     setSaved(true)
-    onSaved(matchId, homeScore, awayScore, penWinner)
+    onSaved(match.id, homeScore, awayScore, penWinner)
     savedTimer.current = setTimeout(() => setSaved(false), 2500)
   }
 
-  return { saving, error, saved, persist }
+  return {
+    saving,
+    error,
+    saved,
+    rollbackSeq,
+    optimisticPrediction,
+    persist,
+  }
 }
 
 function matchControls({
@@ -189,7 +326,6 @@ function matchControls({
   penaltyWinner,
   pendingOutcome,
   locked,
-  saving,
 }: {
   match: Match
   prediction?: Prediction
@@ -200,7 +336,6 @@ function matchControls({
   penaltyWinner: 'home' | 'away' | null
   pendingOutcome: Outcome | null
   locked: boolean
-  saving: boolean
 }) {
   const selectedOutcome: Outcome | null =
     pendingOutcome ??
@@ -221,10 +356,9 @@ function matchControls({
     !locked &&
     home !== '' &&
     away !== '' &&
-    !saving &&
     status !== 'saved' &&
     penaltyReady
-  const saveDone = status === 'saved' && !saving
+  const saveDone = status === 'saved'
   return { selectedOutcome, showPenaltyPicker, canSave, status, saveDone }
 }
 
@@ -236,13 +370,34 @@ export function useMatchCard({
   groupId,
   outcomeOnly = false,
   onSaved,
+  onSave,
   onDraftChange,
   onPenaltyDraftChange,
   draft,
   penaltyDraft,
+  hasDraft,
+  externalError,
   now,
 }: UseMatchCardProps) {
-  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(match, prediction, now)
+  const submittedRef = useRef<SubmittedSnapshot | null>(null)
+  const { saving, saved, rollbackSeq, error: localError, optimisticPrediction, persist } =
+    useMatchPersistence({
+      groupId,
+      match,
+      prediction,
+      leg1Prediction,
+      outcomeOnly,
+      onSaved,
+      onSave,
+      submittedRef,
+    })
+
+  const effectivePrediction = onSave ? prediction : (optimisticPrediction ?? prediction)
+  const { isPostponed, locked, isFinished, hasPrediction } = useMatchStatus(
+    match,
+    effectivePrediction,
+    now,
+  )
 
   const {
     home,
@@ -255,13 +410,11 @@ export function useMatchCard({
     setPendingOutcome,
     reopenPenalty,
     setReopenPenalty,
-  } = useMatchDraft(prediction, draft, penaltyDraft)
-
-  const { saving, saved, error, persist } = useMatchPersistence(groupId, match.id, onSaved)
+  } = useMatchDraft(effectivePrediction, draft, penaltyDraft, hasDraft, submittedRef, rollbackSeq)
 
   const { selectedOutcome, showPenaltyPicker, canSave, status, saveDone } = matchControls({
     match,
-    prediction,
+    prediction: effectivePrediction,
     leg1Prediction,
     leg1Pending,
     home,
@@ -269,7 +422,6 @@ export function useMatchCard({
     penaltyWinner,
     pendingOutcome,
     locked,
-    saving,
   })
 
   async function handleSave() {
@@ -279,7 +431,7 @@ export function useMatchCard({
   }
 
   async function selectOutcome(outcome: Outcome) {
-    if (locked || saving) return
+    if (locked) return
     if (outcome === selectedOutcome && status === 'saved') return
     trackEvent('click_matchcard_resultado', { match_id: match.id, outcome })
     const { home: h, away: a } = OUTCOMES[outcome]
@@ -299,7 +451,7 @@ export function useMatchCard({
   }
 
   async function selectPenaltyWinner(winner: 'home' | 'away') {
-    if (locked || saving) return
+    if (locked) return
     trackEvent('click_prediction_penalty_winner', {
       match_id: match.id,
       winner,
@@ -347,7 +499,8 @@ export function useMatchCard({
     hasPrediction,
     saving,
     saved,
-    error,
+    error: onSave ? (externalError ?? null) : localError,
+    effectivePrediction,
     canSave,
     status,
     saveDone,

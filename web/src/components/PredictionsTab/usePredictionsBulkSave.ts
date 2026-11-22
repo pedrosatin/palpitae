@@ -1,65 +1,20 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useState, useRef, useEffect, Dispatch, SetStateAction } from 'react'
+import { useState, useRef, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { apiFetch } from '../../lib/api'
 import { invalidateGroupPredictions } from '../../lib/groupPredictions'
 import { invalidateGroupsList } from '../../lib/groupsList'
-import { predictedClassified } from '../../lib/predictedTie'
-import { collectRoundDrafts, type UnsavedDrafts } from '../../lib/predictionDrafts'
+import { collectRoundDrafts, savedBase, type UnsavedDrafts } from '../../lib/predictionDrafts'
+import {
+  applyPredictionUpdates,
+  predictionBase,
+  rollbackPredictions,
+  type PredictionMap,
+  type PredictionUpdate,
+} from '../../lib/predictionOptimistic'
 import { plural } from '../../lib/replicateToGroups'
-import type { Match, Prediction } from '../MatchCard'
-
-type PredictionMap = Map<string, Prediction>
-
-function applyPredictionUpdate(
-  prev: PredictionMap,
-  matchId: string,
-  home: number,
-  away: number,
-  penaltyWinner: 'home' | 'away' | null,
-  allMatches: Match[],
-): PredictionMap {
-  const next = new Map(prev)
-  const existing = prev.get(matchId)
-  const match = allMatches.find((m) => m.id === matchId)
-  next.set(matchId, {
-    id: existing?.id ?? '',
-    match_id: matchId,
-    predicted_home_score: home,
-    predicted_away_score: away,
-    predicted_penalty_winner: penaltyWinner,
-    classified_points: existing?.classified_points ?? 0,
-    predicted_classified: match
-      ? predictedClassified(
-          match,
-          home,
-          away,
-          penaltyWinner,
-          match.leg1_match_id ? prev.get(match.leg1_match_id) : undefined,
-        )
-      : null,
-    points_awarded: existing?.points_awarded ?? 0,
-    penalty_points: existing?.penalty_points ?? 0,
-    locked: 0,
-    updated_at: new Date().toISOString(),
-  })
-  for (const context of allMatches) {
-    const pick = next.get(context.id)
-    if (!pick) continue
-    next.set(context.id, {
-      ...pick,
-      predicted_classified: predictedClassified(
-        context,
-        pick.predicted_home_score,
-        pick.predicted_away_score,
-        pick.predicted_penalty_winner ?? null,
-        context.leg1_match_id ? next.get(context.leg1_match_id) : undefined,
-      ),
-    })
-  }
-  return next
-}
+import type { Match } from '../MatchCard'
 
 type BulkSaveResponse = { saved: string[]; locked?: string[]; not_found?: string[] }
 
@@ -140,9 +95,15 @@ type BulkSaveInput = {
   roundMatches: Match[]
   predictions: PredictionMap
   setPredictions: Dispatch<SetStateAction<PredictionMap>>
+  confirmedRef: MutableRefObject<PredictionMap>
+  saveSeqRef: MutableRefObject<Map<string, number>>
+  scopeSeqRef: MutableRefObject<number>
   selectedRound: string | undefined
   allMatches: Match[]
   unsavedDrafts: UnsavedDrafts
+  clearSubmittedDrafts: (submitted: Array<{ matchId: string; nextBase: string }>) => void
+  rebaseDrafts: (rebases: Array<{ matchId: string; fromBase: string; toBase: string }>) => void
+  onClearCardErrors?: (matchIds: string[]) => void
   onBulkSaved?: (matchIds: string[]) => void
 }
 
@@ -151,9 +112,15 @@ export function usePredictionsBulkSave({
   roundMatches,
   predictions,
   setPredictions,
+  confirmedRef,
+  saveSeqRef,
+  scopeSeqRef,
   selectedRound,
   allMatches,
   unsavedDrafts: { drafts, penaltyDrafts },
+  clearSubmittedDrafts,
+  rebaseDrafts,
+  onClearCardErrors,
   onBulkSaved,
 }: BulkSaveInput) {
   const queryClient = useQueryClient()
@@ -171,15 +138,8 @@ export function usePredictionsBulkSave({
     roundViewRef,
   } = useBulkSaveStatus(selectedRound)
 
-  function applySaved(
-    matchId: string,
-    home: number,
-    away: number,
-    penaltyWinner: 'home' | 'away' | null,
-  ) {
-    setPredictions((prev) =>
-      applyPredictionUpdate(prev, matchId, home, away, penaltyWinner, allMatches)
-    )
+  function markHasSaved() {
+    setHasSavedPredictions(true)
   }
 
   function handleSaved(
@@ -189,11 +149,39 @@ export function usePredictionsBulkSave({
     penaltyWinner: 'home' | 'away' | null,
   ) {
     setHasSavedPredictions(true)
-    applySaved(matchId, home, away, penaltyWinner)
+    setPredictions((prev) =>
+      applyPredictionUpdates(prev, [{ matchId, home, away, penaltyWinner }], allMatches),
+    )
   }
 
   function pendingDrafts() {
     return collectRoundDrafts({ roundMatches, drafts, penaltyDrafts, predictions })
+  }
+
+  function revertItems(
+    items: PredictionUpdate[],
+    tokens: Map<string, number>,
+    bases: Map<string, string>,
+  ) {
+    const active = items.filter(
+      (u) => saveSeqRef.current.get(u.matchId) === tokens.get(u.matchId),
+    )
+    if (active.length === 0) return
+    rebaseDrafts(
+      active.map((u) => ({
+        matchId: u.matchId,
+        fromBase: bases.get(u.matchId)!,
+        toBase: savedBase(confirmedRef.current.get(u.matchId)),
+      })),
+    )
+    setPredictions((prev) =>
+      rollbackPredictions(
+        prev,
+        active.map((u) => u.matchId),
+        confirmedRef.current,
+        allMatches,
+      ),
+    )
   }
 
   async function handleSaveAll() {
@@ -209,6 +197,29 @@ export function usePredictionsBulkSave({
     setSavedAll(false)
     setBulkError(null)
     const roundView = roundViewRef.current
+    const scopeSeq = scopeSeqRef.current
+
+    const updates: PredictionUpdate[] = toSave.map((p) => ({
+      matchId: p.match_id,
+      home: p.predicted_home_score,
+      away: p.predicted_away_score,
+      penaltyWinner: p.predicted_penalty_winner ?? null,
+    }))
+    const tokens = new Map<string, number>()
+    const bases = new Map<string, string>()
+    const submitted: Array<{ matchId: string; nextBase: string }> = []
+    for (const u of updates) {
+      const seq = (saveSeqRef.current.get(u.matchId) ?? 0) + 1
+      saveSeqRef.current.set(u.matchId, seq)
+      tokens.set(u.matchId, seq)
+      const nextBase = predictionBase(u.home, u.away, u.penaltyWinner)
+      bases.set(u.matchId, nextBase)
+      submitted.push({ matchId: u.matchId, nextBase })
+    }
+
+    clearSubmittedDrafts(submitted)
+    onClearCardErrors?.(updates.map((u) => u.matchId))
+    setPredictions((prev) => applyPredictionUpdates(prev, updates, allMatches))
 
     try {
       const res = await apiFetch(buildApiUrl('/predictions/bulk'), {
@@ -216,6 +227,7 @@ export function usePredictionsBulkSave({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ group_id: groupId, predictions: toSave }),
       })
+      if (scopeSeqRef.current !== scopeSeq) return
 
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
@@ -223,16 +235,15 @@ export function usePredictionsBulkSave({
       }
 
       const data = (await res.json()) as BulkSaveResponse
+      if (scopeSeqRef.current !== scopeSeq) return
       const savedSet = new Set(data.saved)
-      const accepted = toSave.filter((p) => savedSet.has(p.match_id))
-      for (const p of accepted) {
-        applySaved(
-          p.match_id,
-          p.predicted_home_score,
-          p.predicted_away_score,
-          p.predicted_penalty_winner ?? null,
-        )
+      const accepted = updates.filter((u) => savedSet.has(u.matchId))
+      const rejectedItems = updates.filter((u) => !savedSet.has(u.matchId))
+
+      if (accepted.length > 0) {
+        confirmedRef.current = applyPredictionUpdates(confirmedRef.current, accepted, allMatches)
       }
+      revertItems(rejectedItems, tokens, bases)
 
       invalidateGroupsList(queryClient)
       invalidateGroupPredictions(queryClient)
@@ -244,6 +255,8 @@ export function usePredictionsBulkSave({
       if (rejected) setBulkError(rejected)
       else startSavedAllTimer()
     } catch (e) {
+      if (scopeSeqRef.current !== scopeSeq) return
+      revertItems(updates, tokens, bases)
       if (roundViewRef.current === roundView) setBulkError((e as Error).message)
     } finally {
       setSavingAll(false)
@@ -260,5 +273,6 @@ export function usePredictionsBulkSave({
     pendingCount,
     handleSaveAll,
     handleSaved,
+    markHasSaved,
   }
 }

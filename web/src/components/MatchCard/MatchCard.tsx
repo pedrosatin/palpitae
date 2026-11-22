@@ -37,8 +37,7 @@ function stateLabel(
   return 'bloqueado'
 }
 
-function saveButtonLabel(saving: boolean, saveDone: boolean, hasPrediction: boolean) {
-  if (saving) return '...'
+function saveButtonLabel(saveDone: boolean, hasPrediction: boolean) {
   if (saveDone) {
     return (
       <>
@@ -52,16 +51,16 @@ function saveButtonLabel(saving: boolean, saveDone: boolean, hasPrediction: bool
 }
 
 export default function MatchCard(props: MatchCardProps) {
-  const { match, prediction, outcomeOnly = false } = props
+  const { match, outcomeOnly = false } = props
 
   const {
     locked,
     isPostponed,
     isFinished,
     hasPrediction,
-    saving,
     saved,
     error,
+    effectivePrediction,
     canSave,
     status,
     saveDone,
@@ -88,7 +87,6 @@ export default function MatchCard(props: MatchCardProps) {
       show={showPenaltyPicker}
       penaltyWinner={penaltyWinner}
       reopenPenalty={reopenPenalty}
-      saving={saving}
       onReopen={() => setReopenPenalty(true)}
       onSelect={selectPenaltyWinner}
     />
@@ -100,7 +98,7 @@ export default function MatchCard(props: MatchCardProps) {
     <div
       role="group"
       aria-label={groupLabel}
-      aria-busy={saving}
+      aria-busy={false}
       className={`${styles.card} ${locked && !isFinished ? styles.lockedCard : ''}`}
     >
       <div className={styles.meta}>
@@ -146,7 +144,7 @@ export default function MatchCard(props: MatchCardProps) {
         {locked ? (
           <LockedPredictionView
             hasPrediction={hasPrediction}
-            prediction={prediction}
+            prediction={effectivePrediction}
             match={match}
             outcomeOnly={outcomeOnly}
             selectedOutcome={selectedOutcome}
@@ -155,7 +153,6 @@ export default function MatchCard(props: MatchCardProps) {
         ) : outcomeOnly ? (
           <OutcomePickerView
             selectedOutcome={selectedOutcome}
-            saving={saving}
             saved={saved}
             penaltyInline={penaltyInline}
             selectOutcome={selectOutcome}
@@ -165,7 +162,6 @@ export default function MatchCard(props: MatchCardProps) {
             home={home}
             away={away}
             match={match}
-            saving={saving}
             canSave={canSave}
             saveDone={saveDone}
             hasPrediction={hasPrediction}
@@ -180,7 +176,7 @@ export default function MatchCard(props: MatchCardProps) {
           <PickedTeamLine
             label="classificado"
             match={match}
-            side={prediction?.predicted_classified}
+            side={effectivePrediction?.predicted_classified}
           />
         )}
         {props.leg1Pending && (
@@ -221,7 +217,6 @@ function PenaltyPicker({
   show,
   penaltyWinner,
   reopenPenalty,
-  saving,
   onReopen,
   onSelect,
 }: {
@@ -229,7 +224,6 @@ function PenaltyPicker({
   show: boolean
   penaltyWinner: 'home' | 'away' | null
   reopenPenalty: boolean
-  saving: boolean
   onReopen: () => void
   onSelect: (winner: 'home' | 'away') => void
 }) {
@@ -243,7 +237,6 @@ function PenaltyPicker({
         tooltip="Vencedor nos pênaltis. Toque para trocar"
         variant="accent"
         onActivate={onReopen}
-        disabled={saving}
         className={styles.penaltyChipSlot}
       />
     )
@@ -258,7 +251,6 @@ function PenaltyPicker({
             role="radio"
             className={`${styles.penaltyBtn} ${penaltyWinner === side ? styles.penaltyBtnActive : ''}`}
             onClick={() => onSelect(side)}
-            disabled={saving}
             aria-checked={penaltyWinner === side}
           >
             {teamShortName(match, side)}
@@ -371,13 +363,11 @@ function LockedPredictionView({
 
 function OutcomePickerView({
   selectedOutcome,
-  saving,
   saved,
   penaltyInline,
   selectOutcome,
 }: {
   selectedOutcome: Outcome | null
-  saving: boolean
   saved: boolean
   penaltyInline: React.ReactNode
   selectOutcome: (outcome: Outcome) => void
@@ -392,7 +382,6 @@ function OutcomePickerView({
             role="radio"
             className={`${styles.outcomeBtn} ${selectedOutcome === outcome ? styles.outcomeBtnActive : ''}`}
             onClick={() => selectOutcome(outcome)}
-            disabled={saving}
             aria-checked={selectedOutcome === outcome}
           >
             {OUTCOMES[outcome].label}
@@ -410,7 +399,6 @@ function ScoreStepper({
   matchId,
   teamName,
   value,
-  saving,
   onUpdate,
   onScoreInput,
 }: {
@@ -418,7 +406,6 @@ function ScoreStepper({
   matchId: string
   teamName: string
   value: string
-  saving: boolean
   onUpdate: (v: string) => void
   onScoreInput: (value: string, update: (v: string) => void) => void
 }) {
@@ -433,7 +420,6 @@ function ScoreStepper({
       <button
         className={`${styles.stepBtn} ${styles.stepBtnDec}`}
         onClick={() => step(-1)}
-        disabled={saving}
         type="button"
         tabIndex={-1}
         aria-label={`Diminuir placar ${teamName}`}
@@ -449,14 +435,12 @@ function ScoreStepper({
         max={99}
         placeholder="–"
         value={value}
-        readOnly={saving}
         onChange={(e) => onScoreInput(e.target.value, onUpdate)}
         aria-label={`Placar ${teamName}`}
       />
       <button
         className={`${styles.stepBtn} ${styles.stepBtnInc}`}
         onClick={() => step(1)}
-        disabled={saving}
         type="button"
         tabIndex={-1}
         aria-label={`Aumentar placar ${teamName}`}
@@ -471,7 +455,6 @@ function ScoreInputView({
   home,
   away,
   match,
-  saving,
   canSave,
   saveDone,
   hasPrediction,
@@ -484,7 +467,6 @@ function ScoreInputView({
   home: string
   away: string
   match: Match
-  saving: boolean
   canSave: boolean
   saveDone: boolean
   hasPrediction: boolean
@@ -501,7 +483,6 @@ function ScoreInputView({
         matchId={match.id}
         teamName={match.home_team_name}
         value={home}
-        saving={saving}
         onUpdate={updateHome}
         onScoreInput={handleScoreInput}
       />
@@ -511,7 +492,6 @@ function ScoreInputView({
         matchId={match.id}
         teamName={match.away_team_name}
         value={away}
-        saving={saving}
         onUpdate={updateAway}
         onScoreInput={handleScoreInput}
       />
@@ -520,10 +500,10 @@ function ScoreInputView({
         type="button"
         className={`${styles.saveBtn} ${saveDone ? styles.saveBtnDone : ''}`}
         onClick={handleSave}
-        disabled={!canSave && !saveDone && !saving}
-        aria-disabled={saveDone || saving || undefined}
+        disabled={!canSave && !saveDone}
+        aria-disabled={saveDone || undefined}
       >
-        {saveButtonLabel(saving, saveDone, hasPrediction)}
+        {saveButtonLabel(saveDone, hasPrediction)}
       </button>
     </div>
   )

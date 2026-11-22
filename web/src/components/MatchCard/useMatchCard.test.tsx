@@ -546,8 +546,8 @@ describe('useMatchCard', () => {
     await act(() => vi.advanceTimersByTimeAsync(1))
     expect(result.current.saving).toBe(false)
     expect(result.current.error).toBe('Erro de conexão. Tente novamente.')
-    expect([result.current.home, result.current.away]).toEqual(['2', '1'])
-    expect(result.current.canSave).toBe(true)
+    expect([result.current.home, result.current.away]).toEqual(['', ''])
+    expect(result.current.canSave).toBe(false)
     vi.useRealTimers()
   })
 

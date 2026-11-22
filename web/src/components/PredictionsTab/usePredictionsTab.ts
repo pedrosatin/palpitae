@@ -1,5 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
@@ -13,7 +20,13 @@ import {
 } from '../../lib/competitionMatches'
 import { invalidateGroupPredictions } from '../../lib/groupPredictions'
 import { groupsListQueryOptions, invalidateGroupsList } from '../../lib/groupsList'
-import { isMatchLocked } from '../../lib/predictionDrafts'
+import { isMatchLocked, savedBase } from '../../lib/predictionDrafts'
+import {
+  applyPredictionUpdates,
+  predictionBase,
+  rollbackPredictions,
+  type PredictionMap,
+} from '../../lib/predictionOptimistic'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import { acceptsFrom } from '../../lib/predictionCopy'
 import type { Match, Prediction } from '../MatchCard'
@@ -21,9 +34,8 @@ import { usePredictionDrafts } from './usePredictionDrafts'
 import { usePredictionsBulkSave } from './usePredictionsBulkSave'
 import { usePredictionsReplicate } from './usePredictionsReplicate'
 
-type PredictionMap = Map<string, Prediction>
-
 const TICK_MS = 30_000
+const SAVE_TIMEOUT_MS = 10_000
 
 type ImportSources = Record<string, string[]> | null
 type PredictionsResponse = {
@@ -100,6 +112,7 @@ function usePredictionsFetch(
   competitionId: string,
   requestedRound: string | null | undefined,
   onRequestedRoundApplied: (() => void) | undefined,
+  confirmedRef: MutableRefObject<PredictionMap>,
 ) {
   const matchesQuery = useQuery(competitionMatchesQueryOptions(competitionId))
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
@@ -126,6 +139,7 @@ function usePredictionsFetch(
         if (!active) return
         setImportCompleted(predictionsData.importCompleted)
         setImportSources(predictionsData.importSources)
+        confirmedRef.current = predictionsData.predictions
         setPredictions(predictionsData.predictions)
       })
       .catch((e: Error) => {
@@ -137,7 +151,7 @@ function usePredictionsFetch(
     return () => {
       active = false
     }
-  }, [groupId])
+  }, [groupId, confirmedRef])
 
   useEffect(() => {
     if (!matchesQuery.data || matchesQuery.isFetching) return
@@ -231,6 +245,7 @@ type ImportInput = {
   matches: Match[]
   predictions: PredictionMap
   setPredictions: Dispatch<SetStateAction<PredictionMap>>
+  confirmedRef: MutableRefObject<PredictionMap>
   importCompleted: boolean
   setImportCompleted: Dispatch<SetStateAction<boolean>>
   importSources: ImportSources
@@ -245,6 +260,7 @@ function usePredictionsImport({
   matches,
   predictions,
   setPredictions,
+  confirmedRef,
   importCompleted,
   setImportCompleted,
   importSources,
@@ -319,6 +335,11 @@ function usePredictionsImport({
       try {
         const refreshed = await fetchOwnPredictions(groupId)
         if (current.active) {
+          confirmedRef.current = mergeFetchedPredictions(
+            refreshed.predictions,
+            confirmedRef.current,
+            savedSince,
+          )
           setPredictions((prev) => mergeFetchedPredictions(refreshed.predictions, prev, savedSince))
           if (refreshed.importSources) setImportSources(refreshed.importSources)
         }
@@ -370,6 +391,22 @@ export function usePredictionsTab(
   onRequestedRoundApplied?: () => void,
   pointsExact = 3,
 ) {
+  const queryClient = useQueryClient()
+  const confirmedRef = useRef<PredictionMap>(new Map())
+  const saveSeqRef = useRef<Map<string, number>>(new Map())
+  const scopeSeqRef = useRef(0)
+  const [cardErrors, setCardErrors] = useState<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    scopeSeqRef.current += 1
+    confirmedRef.current = new Map()
+    saveSeqRef.current.clear()
+    setCardErrors(new Map())
+    return () => {
+      scopeSeqRef.current += 1
+    }
+  }, [groupId])
+
   const {
     matches,
     predictions,
@@ -383,15 +420,31 @@ export function usePredictionsTab(
     setImportCompleted,
     importSources,
     setImportSources,
-  } = usePredictionsFetch(groupId, competitionId, requestedRound, onRequestedRoundApplied)
+  } = usePredictionsFetch(
+    groupId,
+    competitionId,
+    requestedRound,
+    onRequestedRoundApplied,
+    confirmedRef,
+  )
+
+  const allMatchesRef = useRef(matches)
+  allMatchesRef.current = matches
 
   const now = useNow(
     TICK_MS,
     matches.map((m) => m.start_time),
   )
 
-  const { unsavedDrafts, unsavedRounds, handleDraftChange, handlePenaltyDraftChange } =
-    usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions, now)
+  const {
+    unsavedDrafts,
+    unsavedRounds,
+    handleDraftChange,
+    handlePenaltyDraftChange,
+    clearSubmittedDrafts,
+    rebaseDrafts,
+    hasRawDraft,
+  } = usePredictionDrafts(userId ? draftStorageKey(userId, groupId) : null, matches, predictions, now)
 
   const {
     importExpanded,
@@ -414,6 +467,7 @@ export function usePredictionsTab(
     matches,
     predictions,
     setPredictions,
+    confirmedRef,
     importCompleted,
     setImportCompleted,
     importSources,
@@ -461,6 +515,19 @@ export function usePredictionsTab(
     void replicate(matchIds, matches.find((m) => m.id === matchIds[0])?.round ?? selectedRound)
   }
 
+  function clearCardErrors(matchIds: string[]) {
+    if (matchIds.length === 0) return
+    setCardErrors((prev) => {
+      let nextMap: Map<string, string> | null = null
+      for (const id of matchIds) {
+        if (!prev.has(id)) continue
+        nextMap ??= new Map(prev)
+        nextMap.delete(id)
+      }
+      return nextMap ?? prev
+    })
+  }
+
   const {
     savingAll,
     savedAll,
@@ -469,19 +536,94 @@ export function usePredictionsTab(
     pendingCount,
     handleSaveAll,
     handleSaved,
+    markHasSaved,
   } = usePredictionsBulkSave({
     groupId,
     roundMatches,
     predictions,
     setPredictions,
+    confirmedRef,
+    saveSeqRef,
+    scopeSeqRef,
     selectedRound,
     allMatches: matches,
     unsavedDrafts,
+    clearSubmittedDrafts,
+    rebaseDrafts,
+    onClearCardErrors: clearCardErrors,
     onBulkSaved: (matchIds) => {
       noteSaved(matchIds)
       replicateSaved(matchIds)
     },
   })
+
+  async function handleCardSave(
+    matchId: string,
+    homeScore: number,
+    awayScore: number,
+    penWinner: 'home' | 'away' | null,
+  ): Promise<boolean> {
+    const scopeSeq = scopeSeqRef.current
+    const seq = (saveSeqRef.current.get(matchId) ?? 0) + 1
+    saveSeqRef.current.set(matchId, seq)
+    const nextBase = predictionBase(homeScore, awayScore, penWinner)
+    clearCardErrors([matchId])
+    clearSubmittedDrafts([{ matchId, nextBase }])
+    const update = [{ matchId, home: homeScore, away: awayScore, penaltyWinner: penWinner }]
+    setPredictions((prev) => applyPredictionUpdates(prev, update, allMatchesRef.current))
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
+    let res: Response | null = null
+    try {
+      res = await apiFetch(buildApiUrl('/predictions'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group_id: groupId,
+          match_id: matchId,
+          predicted_home_score: homeScore,
+          predicted_away_score: awayScore,
+          predicted_penalty_winner: penWinner,
+        }),
+        signal: controller.signal,
+      })
+    } catch {
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    if (scopeSeqRef.current !== scopeSeq) return false
+
+    if (!res || !res.ok) {
+      const message = !res
+        ? CONNECTION_ERROR
+        : (((await res.json().catch(() => ({}))) as { error?: string }).error ??
+          'Erro ao salvar palpite')
+      if (saveSeqRef.current.get(matchId) === seq) {
+        rebaseDrafts([
+          {
+            matchId,
+            fromBase: nextBase,
+            toBase: savedBase(confirmedRef.current.get(matchId)),
+          },
+        ])
+        setPredictions((prev) =>
+          rollbackPredictions(prev, [matchId], confirmedRef.current, allMatchesRef.current),
+        )
+        setCardErrors((prev) => new Map(prev).set(matchId, message))
+      }
+      return false
+    }
+
+    confirmedRef.current = applyPredictionUpdates(confirmedRef.current, update, allMatchesRef.current)
+    void invalidateGroupsList(queryClient)
+    void invalidateGroupPredictions(queryClient)
+    noteSaved([matchId])
+    markHasSaved()
+    replicateSaved([matchId])
+    return true
+  }
 
   function handleSavedAndReplicate(
     matchId: string,
@@ -489,6 +631,11 @@ export function usePredictionsTab(
     away: number,
     penaltyWinner: 'home' | 'away' | null,
   ) {
+    confirmedRef.current = applyPredictionUpdates(
+      confirmedRef.current,
+      [{ matchId, home, away, penaltyWinner }],
+      allMatchesRef.current,
+    )
     noteSaved([matchId])
     handleSaved(matchId, home, away, penaltyWinner)
     replicateSaved([matchId])
@@ -538,6 +685,9 @@ export function usePredictionsTab(
     importedFromName,
     handleImport,
     handleSaved: handleSavedAndReplicate,
+    handleCardSave,
+    hasRawDraft,
+    cardErrors,
     replicateTargets,
     replicateOverflow,
     replicateEnabled,
