@@ -1,14 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useMatchRounds } from '../../hooks/useMatchRounds'
 import { useNow } from '../../hooks/useNow'
-import { invalidateApiCache } from '../../lib/api-cache'
 import {
   applyDefaultRoundFromMatches,
   competitionMatchesQueryOptions,
   matchesQueryErrorMessage,
 } from '../../lib/competitionMatches'
-import { fetchGroupPredictions } from '../../lib/groupPredictions'
+import { groupPredictionsQueryKey, groupPredictionsQueryOptions } from '../../lib/groupPredictions'
 import type { GroupMember, OpenPickers } from '../../lib/groupReminder'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import type { Match } from '../MatchCard/types'
@@ -115,8 +114,8 @@ function useRevealRetry(
   roundMatches: Match[],
   picks: GroupPicksResponse | null,
   now: number,
-  setPicks: (data: GroupPicksResponse) => void,
 ) {
+  const queryClient = useQueryClient()
   const firstRevealFetch = useRef(new Map<string, number>())
   const unrevealed =
     predictionsVisibility === 'hidden' ? unrevealedStarts(roundMatches, picks, now).join(',') : ''
@@ -129,17 +128,8 @@ function useRevealRetry(
       .filter((key) => now - (firstFetch.get(key) ?? now) < REVEAL_RETRY_MS)
     if (due.length === 0) return
     for (const key of due) if (!firstFetch.has(key)) firstFetch.set(key, now)
-    let active = true
-    invalidateApiCache(`groups:predictions:${groupId}`)
-    fetchGroupPredictions<GroupPicksResponse>(groupId)
-      .then((data) => {
-        if (active) setPicks(data)
-      })
-      .catch(() => {})
-    return () => {
-      active = false
-    }
-  }, [unrevealed, now, groupId, setPicks])
+    queryClient.invalidateQueries({ queryKey: groupPredictionsQueryKey(groupId) })
+  }, [unrevealed, now, groupId, queryClient])
 }
 
 export function useGroupPicksTab(
@@ -148,33 +138,9 @@ export function useGroupPicksTab(
   predictionsVisibility: string,
 ) {
   const matchesQuery = useQuery(competitionMatchesQueryOptions(competitionId))
-  const [picks, setPicks] = useState<GroupPicksResponse | null>(null)
-  const [picksLoading, setPicksLoading] = useState(true)
-  const [picksError, setPicksError] = useState<string | null>(null)
+  const picksQuery = useQuery(groupPredictionsQueryOptions<GroupPicksResponse>(groupId))
   const [roundIndex, setRoundIndex] = useState(0)
   const appliedDefaultRoundKey = useRef<string | null>(null)
-
-  useEffect(() => {
-    let active = true
-    setPicks(null)
-    setPicksLoading(true)
-    setPicksError(null)
-
-    fetchGroupPredictions<GroupPicksResponse>(groupId)
-      .then((picksData) => {
-        if (!active) return
-        setPicks(picksData)
-      })
-      .catch((e: Error) => {
-        if (active) setPicksError(e.message)
-      })
-      .finally(() => {
-        if (active) setPicksLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [groupId])
 
   useEffect(() => {
     if (!matchesQuery.data || matchesQuery.isFetching) return
@@ -188,9 +154,11 @@ export function useGroupPicksTab(
     )
   }, [groupId, competitionId, matchesQuery.data, matchesQuery.isFetching])
 
+  const picks = picksQuery.data ?? null
   const matches = matchesQuery.data?.matches ?? []
   const matchesError = matchesQueryErrorMessage(matchesQuery.error, matchesQuery.isError)
-  const loading = matchesQuery.isPending || picksLoading
+  const picksError = !picks && picksQuery.isError ? picksQuery.error.message : null
+  const loading = matchesQuery.isPending || picksQuery.isPending
   const error = matchesError ?? picksError
 
   const {
@@ -212,7 +180,7 @@ export function useGroupPicksTab(
     roundMatches.map((m) => m.start_time),
   )
 
-  useRevealRetry(groupId, predictionsVisibility, roundMatches, picks, now, setPicks)
+  useRevealRetry(groupId, predictionsVisibility, roundMatches, picks, now)
 
   return {
     picks,

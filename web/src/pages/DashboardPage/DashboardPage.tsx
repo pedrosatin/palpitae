@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import Button from '../../components/Button'
@@ -6,7 +7,7 @@ import GroupCard, { type GroupWithStats } from '../../components/GroupCard'
 import Header from '../../components/Header'
 import JoinGroupModal from '../../components/JoinGroupModal'
 import ErrorState from '../../components/ErrorState'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { groupsQueryKey } from '../../lib/groupsList'
 import { consumeAcceptedInvite } from '../../lib/invite'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import { trackEvent } from '../../analytics/ga'
@@ -217,6 +218,7 @@ function DashboardContent({
 export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   useDocumentTitle('Meus grupos')
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const pendingInvite = searchParams.get('convite') ?? undefined
   const normalizedPendingInvite = pendingInvite?.trim().toUpperCase()
@@ -276,7 +278,7 @@ export default function DashboardPage({ user, onLogout }: DashboardPageProps) {
   }
 
   function handleGroupJoined(group: { id: string; name: string }) {
-    invalidateApiCache('groups:')
+    void queryClient.invalidateQueries({ queryKey: groupsQueryKey, refetchType: 'none' })
     openGroupFromInvite(group.id, { joinedGroupName: group.name })
   }
 

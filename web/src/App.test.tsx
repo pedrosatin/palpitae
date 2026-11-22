@@ -9,7 +9,8 @@ import { getSignupOrigin } from './analytics/signupOrigin'
 import * as ga from './analytics/ga'
 import { config } from './config'
 import { SESSION_EXPIRED_EVENT } from './lib/api'
-import { fetchCachedJson, invalidateApiCache } from './lib/api-cache'
+import { groupsListQueryKey } from './lib/groupsList'
+import { appQueryClient } from './lib/queryClient'
 import { draftStorageKey } from './lib/predictionDraftStorage'
 
 vi.mock('./analytics/ga', () => ({ trackEvent: vi.fn(), trackPageView: vi.fn() }))
@@ -68,7 +69,6 @@ describe('App', () => {
     vi.stubGlobal('fetch', fetchMock)
     localStorage.clear()
     sessionStorage.clear()
-    invalidateApiCache()
     mockTrackEvent.mockClear()
   })
 
@@ -692,7 +692,10 @@ describe('App', () => {
         </MemoryRouter>,
       )
       await screen.findByTestId(reason === 'logout-all' ? 'settings-page' : 'dashboard-page')
-      await fetchCachedJson('groups:list', async () => ({ groups: ['old-account-group'] }))
+      appQueryClient.setQueryData(groupsListQueryKey('1'), {
+        groups: ['old-account-group'],
+        matched_invite_group_id: null,
+      })
 
       if (reason === 'expired') {
         await waitFor(() => window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)))
@@ -706,8 +709,8 @@ describe('App', () => {
           )
       }
       await screen.findByTestId(reason === 'logout-all' ? 'login-page' : 'landing-page')
-      const nextAccount = await fetchCachedJson('groups:list', async () => ({ groups: [] }))
-      expect(nextAccount.groups).toEqual([])
+      expect(appQueryClient.getQueryData(groupsListQueryKey('1'))).toBeUndefined()
+      expect(appQueryClient.getQueryCache().getAll()).toHaveLength(0)
     },
   )
 

@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { invalidateApiCache } from '../../lib/api-cache'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { renderWithQuery as render } from '../../test-utils'
 import { makeMatch } from '../matchFixtures'
 import type { Match, Prediction } from '../MatchCard'
 import RoundSummary from './RoundSummary'
@@ -23,8 +23,6 @@ vi.mock('../../lib/unlikelyExactShareCard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/unlikelyExactShareCard')>()),
   renderUnlikelyExactShareCardBlob: (...args: unknown[]) => mockUnlikelyRender(...args),
 }))
-
-beforeEach(() => invalidateApiCache())
 
 afterEach(() => {
   vi.restoreAllMocks()

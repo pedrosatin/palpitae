@@ -1,17 +1,15 @@
-import { renderHook, act } from '@testing-library/react'
+import { act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { groupsListQueryKey } from '../../lib/groupsList'
+import { createTestQueryClient, renderHookWithQuery as renderHook } from '../../test-utils'
 import { useMatchCard } from './useMatchCard'
 import type { Match, Prediction } from './MatchCard'
-import { invalidateApiCache } from '../../lib/api-cache'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 vi.mock('../../config', () => ({ buildApiUrl: (path: string) => `mockApiUrl${path}` }))
-vi.mock('../../lib/api-cache', () => ({
-  invalidateApiCache: vi.fn(),
-}))
 
 const mockFetch = vi.spyOn(globalThis, 'fetch')
-const mockInvalidate = vi.mocked(invalidateApiCache)
 
 function makeMatch(overrides: Partial<Match> = {}): Match {
   return {
@@ -52,7 +50,6 @@ function makePrediction(overrides: Partial<Prediction> = {}): Prediction {
 describe('useMatchCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockInvalidate.mockClear()
     mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({}),
@@ -219,13 +216,22 @@ describe('useMatchCard', () => {
 
   it('handleSave calls persist API and updates states', async () => {
     const onSaved = vi.fn()
-    const { result } = renderHook(() =>
-      useMatchCard({
-        match: makeMatch(),
-        prediction: undefined,
-        groupId: 'group-1',
-        onSaved,
-      }),
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    queryClient.setQueryData(groupPredictionsQueryKey('group-1'), {
+      self_user_id: 'u1',
+      members: [],
+      predictions: [],
+    })
+    const { result } = renderHook(
+      () =>
+        useMatchCard({
+          match: makeMatch(),
+          prediction: undefined,
+          groupId: 'group-1',
+          onSaved,
+        }),
+      { queryClient },
     )
 
     act(() => {
@@ -256,7 +262,8 @@ describe('useMatchCard', () => {
     )
 
     expect(onSaved).toHaveBeenCalledWith('match-1', 1, 0, null)
-    expect(mockInvalidate).toHaveBeenCalledWith('groups:')
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(groupPredictionsQueryKey('group-1'))?.isInvalidated).toBe(true)
   })
 
   it('selectOutcome logic for home', async () => {
@@ -381,13 +388,17 @@ describe('useMatchCard', () => {
 
   it('sets error when save fails', async () => {
     const onSaved = vi.fn()
-    const { result } = renderHook(() =>
-      useMatchCard({
-        match: makeMatch(),
-        prediction: undefined,
-        groupId: 'group-1',
-        onSaved,
-      }),
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(groupsListQueryKey('u1'), { groups: [], matched_invite_group_id: null })
+    const { result } = renderHook(
+      () =>
+        useMatchCard({
+          match: makeMatch(),
+          prediction: undefined,
+          groupId: 'group-1',
+          onSaved,
+        }),
+      { queryClient },
     )
 
     mockFetch.mockResolvedValueOnce({
@@ -409,7 +420,7 @@ describe('useMatchCard', () => {
     expect(result.current.error).toBe('Mock error message')
     expect(result.current.saved).toBe(false)
     expect(onSaved).not.toHaveBeenCalled()
-    expect(mockInvalidate).not.toHaveBeenCalled()
+    expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(false)
   })
 
   it('reverts saved state after timeout', async () => {
@@ -550,14 +561,18 @@ describe('useMatchCard', () => {
         }),
     )
     const onSaved = vi.fn()
-    const { result, unmount } = renderHook(() =>
-      useMatchCard({
-        match: makeMatch(),
-        prediction: undefined,
-        groupId: 'group-1',
-        outcomeOnly: true,
-        onSaved,
-      }),
+    const queryClient = createTestQueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result, unmount } = renderHook(
+      () =>
+        useMatchCard({
+          match: makeMatch(),
+          prediction: undefined,
+          groupId: 'group-1',
+          outcomeOnly: true,
+          onSaved,
+        }),
+      { queryClient },
     )
 
     act(() => {
@@ -569,7 +584,7 @@ describe('useMatchCard', () => {
     })
 
     expect(onSaved).not.toHaveBeenCalled()
-    expect(mockInvalidate).not.toHaveBeenCalled()
+    expect(invalidateSpy).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
     vi.useRealTimers()
   })

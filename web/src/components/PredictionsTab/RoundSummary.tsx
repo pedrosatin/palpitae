@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useRoundStandings } from '../../hooks/useRoundStandings'
-import { fetchGroupPredictions } from '../../lib/groupPredictions'
+import { groupPredictionsQueryOptions } from '../../lib/groupPredictions'
 import type { GroupMember } from '../../lib/groupReminder'
 import {
   EXACT_MILESTONES,
@@ -25,13 +25,6 @@ import { RoundShareActions } from './RoundShareActions'
 import { RoundSummaryStats } from './RoundSummaryStats'
 import styles from './RoundSummary.module.css'
 
-interface GroupRoundData {
-  key: string
-  selfUserId: string
-  members: GroupMember[]
-  picks: GroupRoundPick[]
-}
-
 interface RoundSummaryProps {
   groupId: string
   groupName?: string
@@ -52,42 +45,29 @@ function asExactMilestones(values: number[] | undefined): ExactMilestone[] {
 }
 
 function useGroupRoundData(groupId: string, enabled: boolean, finishedKey: string) {
-  const [data, setData] = useState<GroupRoundData | null>(null)
-
-  useEffect(() => {
-    if (!enabled) return
-    let active = true
-    fetchGroupPredictions<{
+  const query = useQuery({
+    ...groupPredictionsQueryOptions<{
       self_user_id?: string
       members?: GroupMember[]
       predictions?: GroupRoundPick[]
-    }>(groupId)
-      .then((body) => {
-        if (
-          !body.self_user_id ||
-          !Array.isArray(body.members) ||
-          !Array.isArray(body.predictions)
-        ) {
-          throw new Error('resposta sem membros')
-        }
-        if (active) {
-          setData({
-            key: finishedKey,
-            selfUserId: body.self_user_id,
-            members: body.members,
-            picks: body.predictions,
-          })
-        }
-      })
-      .catch(() => {
-        if (active) setData(null)
-      })
-    return () => {
-      active = false
-    }
-  }, [groupId, enabled, finishedKey])
-
-  return data?.key === finishedKey ? data : null
+    }>(groupId),
+    enabled,
+  })
+  const body = query.data
+  if (
+    !enabled ||
+    !body?.self_user_id ||
+    !Array.isArray(body.members) ||
+    !Array.isArray(body.predictions)
+  ) {
+    return null
+  }
+  return {
+    key: finishedKey,
+    selfUserId: body.self_user_id,
+    members: body.members,
+    picks: body.predictions,
+  }
 }
 
 function groupShareLink(input: {
