@@ -2,6 +2,7 @@ import { act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { apiFetch } from '../lib/api'
 import { renderHookWithQuery } from '../test-utils'
+import { groupMembersQueryKey } from '../lib/groupMembers'
 import { useGroupMembers, type GroupMember } from './useGroupMembers'
 
 vi.mock('../lib/api', () => ({
@@ -90,7 +91,7 @@ describe('useGroupMembers', () => {
       .mockResolvedValueOnce(mockResponse({ members }))
       .mockResolvedValueOnce(mockResponse({}, false))
 
-    const { result } = renderHookWithQuery(() => useGroupMembers('g1'))
+    const { result, queryClient } = renderHookWithQuery(() => useGroupMembers('g1'))
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false)
@@ -101,7 +102,11 @@ describe('useGroupMembers', () => {
     await act(async () => {
       await result.current.refetch()
     })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
 
+    expect(queryClient.getQueryState(groupMembersQueryKey('g1'))?.status).toBe('error')
     expect(result.current.members).toEqual(members)
     expect(result.current.error).toBeNull()
   })

@@ -155,9 +155,11 @@ describe('useMemberPredictions', () => {
         queryKey: ['predictions', 'user', mockGroupId, mockUserId],
       })
     })
-
-    await waitFor(() => {
-      expect(result.current.modalRoundIndex).toBe(1)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
     })
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+    expect(result.current.modalRoundIndex).toBe(1)
   })
 })
