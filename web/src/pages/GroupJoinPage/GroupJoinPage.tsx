@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { trackJoinRequest } from '../../analytics/funnel'
@@ -58,10 +59,14 @@ async function lookupGroup(publicId: string): Promise<State> {
   }
 }
 
-async function lookupMembership(publicId: string): Promise<Membership | null> {
+async function lookupMembership(
+  publicId: string,
+  signal?: AbortSignal,
+): Promise<Membership | null> {
   try {
     const res = await apiFetch(
       buildApiUrl(`/groups/join-requests/me?public_id=${encodeURIComponent(publicId)}`),
+      { signal },
     )
     if (!res.ok) return null
     const body = (await res.json()) as { status?: string; group_id?: string }
@@ -105,7 +110,7 @@ function GroupJoinContent({
   user: User | null
 }) {
   const [state, setState] = useState<State>(publicId ? { status: 'loading' } : { status: 'invalid' })
-  const [membership, setMembership] = useState<Membership | null>(null)
+  const [membershipOverride, setMembershipOverride] = useState<Membership | null>(null)
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -124,19 +129,12 @@ function GroupJoinContent({
     }
   }, [publicId])
 
-  useEffect(() => {
-    if (!publicId || !user) {
-      setMembership(null)
-      return
-    }
-    let cancelled = false
-    void lookupMembership(publicId).then((result) => {
-      if (!cancelled) setMembership(result)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [publicId, user])
+  const membershipQuery = useQuery({
+    queryKey: ['groups', 'join-requests', 'me', publicId, user?.id ?? null] as const,
+    enabled: Boolean(publicId && user),
+    queryFn: ({ signal }) => lookupMembership(publicId!, signal),
+  })
+  const membership = membershipOverride ?? (user ? (membershipQuery.data ?? null) : null)
 
   async function requestJoin() {
     if (!publicId) return
@@ -155,7 +153,7 @@ function GroupJoinContent({
           group_id?: string
         }
         if (res.status === 409 && body.group_id && /já é membro/i.test(body.error ?? '')) {
-          setMembership({ status: 'member', groupId: body.group_id })
+          setMembershipOverride({ status: 'member', groupId: body.group_id })
           return
         }
         throw new Error(await readApiError(res, 'Não foi possível pedir entrada'))

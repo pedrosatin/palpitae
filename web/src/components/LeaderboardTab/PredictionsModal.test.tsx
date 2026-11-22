@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderWithQuery } from '../../test-utils'
 import * as ga from '../../analytics/ga'
 import PredictionsModal, { groupedByGroupName } from './PredictionsModal'
 import { UserPrediction } from './types'
@@ -83,13 +84,13 @@ describe('PredictionsModal', () => {
 
   it('renders loading state initially', () => {
     mockFetch()
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
     expect(screen.getByText('Carregando palpites...')).toBeInTheDocument()
   })
 
   it('renders error state on fetch failure', async () => {
     mockFetch('error')
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
     await waitFor(() => {
       expect(screen.getByText('Erro ao carregar palpites')).toBeInTheDocument()
     })
@@ -97,7 +98,7 @@ describe('PredictionsModal', () => {
 
   it('renders empty state when no predictions are returned', async () => {
     mockFetch('empty')
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
     await waitFor(() => {
       expect(screen.getByText('Nenhum jogo encontrado.')).toBeInTheDocument()
     })
@@ -105,7 +106,7 @@ describe('PredictionsModal', () => {
 
   it('renders predictions and handles analytics on round navigation', async () => {
     mockFetch()
-    render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
+    renderWithQuery(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
 
     await waitFor(() => {
       expect(screen.getByText('TMA')).toBeInTheDocument()

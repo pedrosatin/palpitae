@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
+import { renderWithQuery } from '../../test-utils'
 import MembersTab from './MembersTab'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -40,7 +41,7 @@ describe('MembersTab – analytics', () => {
       json: async () => ({ members }),
     } as Response)
 
-    render(<MembersTab groupId="g1" currentUserId="u-admin" />)
+    renderWithQuery(<MembersTab groupId="g1" currentUserId="u-admin" />)
 
     await waitFor(() => screen.getByText('Outro'))
     await userEvent.click(screen.getByRole('button', { name: 'Remover' }))

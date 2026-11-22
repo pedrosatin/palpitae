@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
+import { renderWithQuery } from '../../test-utils'
 import LeaderboardTab from './LeaderboardTab'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -74,7 +75,7 @@ describe('LeaderboardTab header and badges', () => {
 
   it('names the numeric columns in full for screen readers, with short visible labels', async () => {
     mockFetch()
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     const exact = screen.getByRole('columnheader', { name: 'Placares exatos' })
@@ -88,7 +89,7 @@ describe('LeaderboardTab header and badges', () => {
 
   it('groups the admin and você badges under the member name', async () => {
     mockFetch()
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Pedro'))
     const badges = screen.getByText('admin').parentElement as HTMLElement
@@ -116,7 +117,7 @@ describe('LeaderboardTab rodada', () => {
 
   it('mostra a coluna da rodada entre Jogador e Pontos, com nome completo para leitor de tela', async () => {
     mockFetch(round34)
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
@@ -131,7 +132,7 @@ describe('LeaderboardTab rodada', () => {
 
   it('mostra +N para pontos positivos e 0 para zero', async () => {
     mockFetch(round34)
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(within(rowOf('Pedro')).getByText('+7')).toBeInTheDocument()
@@ -143,7 +144,7 @@ describe('LeaderboardTab rodada', () => {
       round: '34',
       standings: [{ user_id: 'u1', round_points: 7, position_change: 0 }],
     })
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     const ana = within(rowOf('Ana'))
@@ -153,7 +154,7 @@ describe('LeaderboardTab rodada', () => {
 
   it('mostra as setas com a variação em texto para leitor de tela', async () => {
     mockFetch(round34)
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     const pedro = within(rowOf('Pedro'))
@@ -172,7 +173,7 @@ describe('LeaderboardTab rodada', () => {
         { user_id: 'u2', round_points: 3, position_change: null },
       ],
     })
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(screen.queryByText(/[▲▼]/)).not.toBeInTheDocument()
@@ -181,7 +182,7 @@ describe('LeaderboardTab rodada', () => {
 
   it('não mostra a coluna nem o aviso com round null', async () => {
     mockFetch(noRound)
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(screen.getAllByRole('columnheader')).toHaveLength(4)
@@ -190,7 +191,7 @@ describe('LeaderboardTab rodada', () => {
 
   it('mostra o aviso das setas quando há ao menos uma variação', async () => {
     mockFetch(round34)
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(
@@ -206,7 +207,7 @@ describe('LeaderboardTab rodada', () => {
         { user_id: 'u2', round_points: 3, position_change: 0 },
       ],
     })
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(screen.getByRole('columnheader', { name: 'Pontos na rodada 34' })).toBeInTheDocument()
@@ -221,7 +222,7 @@ describe('LeaderboardTab rodada', () => {
         { user_id: 'u2', round_points: 3, position_change: null },
       ],
     })
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(screen.getByRole('columnheader', { name: 'Pontos na rodada 1' })).toBeInTheDocument()
@@ -230,7 +231,7 @@ describe('LeaderboardTab rodada', () => {
 
   it('segue sem erro de tela e sem coluna quando o endpoint da rodada falha', async () => {
     mockFetch(new Error('falhou'))
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(screen.getAllByRole('columnheader')).toHaveLength(4)
@@ -241,7 +242,7 @@ describe('LeaderboardTab rodada', () => {
   it('só desenha a tabela depois da resposta da rodada', async () => {
     let finish: (r: Response) => void = () => {}
     mockFetch(new Promise<Response>((resolve) => (finish = resolve)))
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() =>
       expect(vi.mocked(globalThis.fetch).mock.calls.map((c) => c[0].toString())).toEqual(
@@ -263,7 +264,7 @@ describe('LeaderboardTab rodada', () => {
       if (url.toString().includes('/round-standings')) return new Promise<Response>(() => {})
       return Promise.resolve({ ok: false, json: async () => ({}) } as Response)
     })
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Erro ao carregar membros'))
   })
@@ -280,7 +281,7 @@ describe('LeaderboardTab selos da rodada', () => {
 
   async function renderWith(...rows: ReturnType<typeof standing>[]) {
     mockFetch({ round: '34', standings: rows })
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
     await waitFor(() => screen.getByText('Ana'))
   }
 
@@ -309,7 +310,7 @@ describe('LeaderboardTab selos da rodada', () => {
 
   it('não coroa ninguém sem rodada de referência', async () => {
     mockFetch(noRound)
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
     await waitFor(() => screen.getByText('Ana'))
 
     expect(screen.queryByText('rei da rodada')).not.toBeInTheDocument()
@@ -383,7 +384,7 @@ describe('LeaderboardTab selos da rodada', () => {
       }
       return Promise.reject(new Error(`Unexpected fetch: ${u}`))
     })
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
     await waitFor(() => screen.getByText('Ana'))
 
     const pedro = rowOf('Pedro')
@@ -396,7 +397,7 @@ describe('LeaderboardTab selos da rodada', () => {
 
   it('não inventa selo de marco com zero exatos', async () => {
     mockFetch(noRound)
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
     await waitFor(() => screen.getByText('Ana'))
 
     expect(screen.queryByText('5 exatos')).not.toBeInTheDocument()
@@ -448,7 +449,7 @@ describe('LeaderboardTab selos da rodada', () => {
       return Promise.reject(new Error(`Unexpected fetch: ${u}`))
     })
 
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
     await waitFor(() => screen.getByText(longName))
 
     const pedro = rowOf(longName)
@@ -471,7 +472,7 @@ describe('LeaderboardTab – analytics', () => {
 
   it('fires click_leaderboard_ver_palpites when a member row is clicked', async () => {
     mockFetch()
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     await userEvent.click(screen.getByText('Ana'))
@@ -488,7 +489,7 @@ describe('LeaderboardTab regras', () => {
   it('mostra o desempate sob a tabela e abre as regras pelo link', async () => {
     mockFetch()
     const onOpenRules = vi.fn()
-    render(
+    renderWithQuery(
       <LeaderboardTab
         groupId="g1"
         currentUserId="u1"
@@ -508,7 +509,7 @@ describe('LeaderboardTab regras', () => {
 
   it('não mostra a linha de regras sem as props', async () => {
     mockFetch()
-    render(<LeaderboardTab groupId="g1" currentUserId="u1" />)
+    renderWithQuery(<LeaderboardTab groupId="g1" currentUserId="u1" />)
 
     await waitFor(() => screen.getByText('Ana'))
     expect(screen.queryByRole('button', { name: 'Como pontua' })).not.toBeInTheDocument()

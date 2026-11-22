@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderWithQuery } from '../../test-utils'
 import JoinRequestsList from './JoinRequestsList'
 
 vi.mock('../../analytics/funnel', () => ({
@@ -42,7 +43,7 @@ describe('JoinRequestsList', () => {
       )
       .mockResolvedValueOnce(Response.json({ group: { id: 'g1', name: 'Firma' } }))
 
-    render(<JoinRequestsList groupId="g1" />)
+    renderWithQuery(<JoinRequestsList groupId="g1" />)
     expect(await screen.findByText('Carla')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Aprovar' }))
     await waitFor(() => expect(trackApproveJoinRequest).toHaveBeenCalled())

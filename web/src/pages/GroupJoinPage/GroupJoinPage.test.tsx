@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderWithQuery } from '../../test-utils'
 import GroupJoinPage from './GroupJoinPage'
 
 const PUBLIC_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -50,7 +51,7 @@ describe('GroupJoinPage', () => {
   })
 
   it('mostra prévia sem nomes de membros', async () => {
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route path="/grupo/:publicId" element={<GroupJoinPage />} />
@@ -74,7 +75,7 @@ describe('GroupJoinPage', () => {
         Response.json({ request: { id: 'r1', status: 'pending' } }, { status: 201 }),
       )
 
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route
@@ -96,7 +97,7 @@ describe('GroupJoinPage', () => {
       Response.json({ status: 'member', group_id: 'g1' }),
     )
 
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route
@@ -118,7 +119,7 @@ describe('GroupJoinPage', () => {
   it('pedido pendente: status sem group_id mostra aviso', async () => {
     vi.mocked(apiFetch).mockResolvedValue(Response.json({ status: 'pending' }))
 
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route

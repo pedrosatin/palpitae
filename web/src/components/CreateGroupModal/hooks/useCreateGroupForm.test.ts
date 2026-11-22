@@ -1,5 +1,6 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHookWithQuery } from '../../../test-utils'
 import { useCreateGroupForm } from './useCreateGroupForm'
 import { apiFetch } from '../../../lib/api'
 import { trackEvent } from '../../../analytics/ga'
@@ -38,7 +39,7 @@ describe('useCreateGroupForm', () => {
       new Response(JSON.stringify({ competitions: [] })),
     )
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.loadingCompetitions).toBe(false)
@@ -66,7 +67,7 @@ describe('useCreateGroupForm', () => {
       new Response(JSON.stringify({ competitions })),
     )
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     expect(result.current.loadingCompetitions).toBe(true)
 
@@ -89,7 +90,7 @@ describe('useCreateGroupForm', () => {
       new Response(JSON.stringify({ competitions })),
     )
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.loadingCompetitions).toBe(false)
@@ -108,7 +109,7 @@ describe('useCreateGroupForm', () => {
       new Response(JSON.stringify({ competitions })),
     )
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.competitions.length).toBe(1)
@@ -145,7 +146,7 @@ describe('useCreateGroupForm', () => {
     it('escolhe a competição do slug mesmo quando ela não é a primeira', async () => {
       mockCompetitions([serieA2027, serieA2026])
 
-      const { result } = renderHook(() =>
+      const { result } = renderHookWithQuery(() =>
         useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
       )
 
@@ -158,7 +159,7 @@ describe('useCreateGroupForm', () => {
     it('fica na primeira e sinaliza o aviso quando o slug não está na lista', async () => {
       mockCompetitions([serieA2026, { ...serieA2027, status: 'finished' }])
 
-      const { result } = renderHook(() =>
+      const { result } = renderHookWithQuery(() =>
         useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
       )
 
@@ -170,7 +171,7 @@ describe('useCreateGroupForm', () => {
     it('não sinaliza aviso sem slug', async () => {
       mockCompetitions([serieA2026])
 
-      const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+      const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
       await waitFor(() => expect(result.current.loadingCompetitions).toBe(false))
       expect(result.current.competitionId).toBe('bsa-2026')
@@ -180,7 +181,7 @@ describe('useCreateGroupForm', () => {
     it('não sinaliza aviso antes de a lista chegar', () => {
       vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(new Promise(() => {}))
 
-      const { result } = renderHook(() =>
+      const { result } = renderHookWithQuery(() =>
         useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
       )
 
@@ -191,7 +192,7 @@ describe('useCreateGroupForm', () => {
     it('deixa a pessoa trocar a competição escolhida pelo link', async () => {
       mockCompetitions([serieA2026, serieA2027])
 
-      const { result } = renderHook(() =>
+      const { result } = renderHookWithQuery(() =>
         useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
       )
 
@@ -204,7 +205,7 @@ describe('useCreateGroupForm', () => {
       mockCompetitions([serieA2026, serieA2027])
       let props = { ...defaultProps, preferredCompetitionSlug: slug2027 as string | undefined }
 
-      const { result, rerender } = renderHook(() => useCreateGroupForm(props))
+      const { result, rerender } = renderHookWithQuery(() => useCreateGroupForm(props))
 
       await waitFor(() => expect(result.current.competitionId).toBe('bsa-2027'))
       act(() => result.current.handleClose())
@@ -221,7 +222,7 @@ describe('useCreateGroupForm', () => {
       mockCompetitions([serieA2026])
       let props = { ...defaultProps, preferredCompetitionSlug: slug2027 as string | undefined }
 
-      const { result, rerender } = renderHook(() => useCreateGroupForm(props))
+      const { result, rerender } = renderHookWithQuery(() => useCreateGroupForm(props))
 
       await waitFor(() => expect(result.current.preferredCompetitionUnavailable).toBe(true))
       act(() => result.current.handleClose())
@@ -245,7 +246,7 @@ describe('useCreateGroupForm', () => {
           json: async () => ({ group: { id: 'g1', name: 'Bolão 2027', invite_code: 'INV' } }),
         } as Response)
 
-      const { result } = renderHook(() =>
+      const { result } = renderHookWithQuery(() =>
         useCreateGroupForm({ ...defaultProps, preferredCompetitionSlug: slug2027 }),
       )
 
@@ -272,7 +273,7 @@ describe('useCreateGroupForm', () => {
       new Response(JSON.stringify({ competitions })),
     )
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.competitions).toEqual(competitions)
@@ -288,7 +289,7 @@ describe('useCreateGroupForm', () => {
   it('handles competitions fetch error', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Fetch failed'))
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.loadingCompetitions).toBe(false)
@@ -302,7 +303,7 @@ describe('useCreateGroupForm', () => {
       new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.competitions.length).toBe(1)
@@ -347,7 +348,7 @@ describe('useCreateGroupForm', () => {
         json: async () => ({ group: createdGroup }),
       } as Response)
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.competitions.length).toBe(1)
@@ -396,7 +397,7 @@ describe('useCreateGroupForm', () => {
         json: async () => ({ error: 'Nome já existe' }),
       } as Response)
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.competitions.length).toBe(1)
@@ -419,7 +420,7 @@ describe('useCreateGroupForm', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })))
       .mockRejectedValueOnce(new Error('Network offline'))
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.competitions.length).toBe(1)
@@ -441,7 +442,7 @@ describe('useCreateGroupForm', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })))
       .mockResolvedValueOnce(new Response('<html><h1>502 Bad Gateway</h1></html>', { status: 502 }))
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
     await waitFor(() => expect(result.current.competitions.length).toBe(1))
 
     await act(async () => {
@@ -457,7 +458,7 @@ describe('useCreateGroupForm', () => {
       new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),
     )
 
-    const { result } = renderHook(() => useCreateGroupForm(defaultProps))
+    const { result } = renderHookWithQuery(() => useCreateGroupForm(defaultProps))
 
     await waitFor(() => {
       expect(result.current.competitions.length).toBe(1)

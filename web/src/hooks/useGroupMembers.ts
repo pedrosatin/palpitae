@@ -1,51 +1,39 @@
-import { useEffect, useState } from 'react'
-import { buildApiUrl } from '../config'
-import { apiFetch } from '../lib/api'
-import { isListOf, isRecord, UNEXPECTED_RESPONSE } from '../lib/responseShape'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
+import {
+  groupMembersQueryKey,
+  groupMembersQueryOptions,
+  type GroupMember,
+} from '../lib/groupMembers'
 
-export interface GroupMember {
-  user_id: string
-  display_name: string
-  avatar_url: string | null
-  role: string
-  joined_at: string
-  total_points: number
-  exact_hits: number
-}
-
-/** Lê `{ members }`. Lista ausente ou membro sem id, nome ou pontos devolve null. */
-export function parseGroupMembers(body: unknown): GroupMember[] | null {
-  const members = isRecord(body) ? body.members : null
-  const ok = isListOf(members, {
-    user_id: 'string',
-    display_name: 'string',
-    total_points: 'number',
-  })
-  return ok ? (members as unknown as GroupMember[]) : null
-}
+export type { GroupMember }
+export { parseGroupMembers } from '../lib/groupMembers'
 
 /** Shared loader for GET /groups/:id/members (LeaderboardTab + MembersTab). */
-export function useGroupMembers(groupId: string, reloadToken = 0) {
-  const [members, setMembers] = useState<GroupMember[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+export function useGroupMembers(groupId: string) {
+  const queryClient = useQueryClient()
+  const query = useQuery(groupMembersQueryOptions(groupId))
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    apiFetch(buildApiUrl(`/groups/${encodeURIComponent(groupId)}/members`))
-      .then((r) => {
-        if (!r.ok) throw new Error('Erro ao carregar membros')
-        return r.json() as Promise<unknown>
+  const setMembers = useCallback(
+    (updater: GroupMember[] | ((prev: GroupMember[]) => GroupMember[])) => {
+      queryClient.setQueryData<GroupMember[]>(groupMembersQueryKey(groupId), (prev) => {
+        const current = prev ?? []
+        return typeof updater === 'function' ? updater(current) : updater
       })
-      .then((body) => {
-        const list = parseGroupMembers(body)
-        if (!list) throw new Error(UNEXPECTED_RESPONSE)
-        setMembers(list)
-      })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [groupId, reloadToken])
+    },
+    [groupId, queryClient],
+  )
 
-  return { members, setMembers, loading, error }
+  return {
+    members: query.data ?? [],
+    setMembers,
+    loading: query.isPending,
+    error:
+      query.error instanceof Error
+        ? query.error.message
+        : query.isError
+          ? 'Erro ao carregar membros'
+          : null,
+    refetch: query.refetch,
+  }
 }

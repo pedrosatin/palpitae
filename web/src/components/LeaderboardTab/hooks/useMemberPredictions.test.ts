@@ -1,5 +1,6 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderHookWithQuery } from '../../../test-utils'
 import { useMemberPredictions } from './useMemberPredictions'
 import { config } from '../../../config'
 import type { UserPrediction } from '../types'
@@ -39,7 +40,7 @@ describe('useMemberPredictions', () => {
 
   it('initializes with loading state and default values', () => {
     const fetchMock = vi.mocked(fetch).mockImplementation(() => new Promise(() => {}))
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     expect(result.current.modalLoading).toBe(true)
     expect(result.current.modalPredictions).toEqual([])
@@ -47,7 +48,7 @@ describe('useMemberPredictions', () => {
     expect(result.current.modalRoundIndex).toBe(0)
     expect(fetchMock).toHaveBeenCalledWith(
       `${config.apiUrl}/predictions/user?group_id=${mockGroupId}&user_id=${mockUserId}`,
-      { credentials: 'include' },
+      expect.objectContaining({ credentials: 'include' }),
     )
   })
 
@@ -62,7 +63,7 @@ describe('useMemberPredictions', () => {
       json: () => Promise.resolve(mockResponse),
     } as Response)
 
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     await waitFor(() => {
       expect(result.current.modalLoading).toBe(false)
@@ -78,7 +79,7 @@ describe('useMemberPredictions', () => {
       ok: false,
     } as Response)
 
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     await waitFor(() => {
       expect(result.current.modalLoading).toBe(false)
@@ -91,7 +92,7 @@ describe('useMemberPredictions', () => {
   it('handles network error', async () => {
     vi.mocked(fetch).mockRejectedValue(new Error('Network error'))
 
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     await waitFor(() => {
       expect(result.current.modalLoading).toBe(false)
@@ -109,7 +110,7 @@ describe('useMemberPredictions', () => {
 
     vi.mocked(fetch).mockReturnValue(fetchPromise as Promise<Response>)
 
-    const { result, unmount } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result, unmount } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     expect(result.current.modalLoading).toBe(true)
 

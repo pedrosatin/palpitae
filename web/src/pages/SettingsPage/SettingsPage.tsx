@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { trackEvent } from '../../analytics/ga'
@@ -8,6 +9,11 @@ import Header from '../../components/Header'
 import Modal from '../../components/Modal'
 import { buildApiUrl } from '../../config'
 import { apiFetch } from '../../lib/api'
+import {
+  notificationPreferencesQueryOptions,
+  patchNotificationPreferences,
+  setNotificationPreferencesCache,
+} from '../../lib/notificationPreferences'
 import { useDocumentTitle } from '../../hooks/useDocumentTitle'
 import type { User } from '../../types'
 import styles from './SettingsPage.module.css'
@@ -16,10 +22,10 @@ const REMINDER_RULE =
   'Nos dias em que você tem jogo sem palpite, enviamos um e-mail às 7h, horário de Brasília, com os jogos daquele dia e o horário em que cada um fecha. Se já palpitou todos, você não recebe nada.'
 
 function useNotificationPreferences() {
-  const [roundReminders, setRoundReminders] = useState<boolean | null>(null)
+  const queryClient = useQueryClient()
+  const query = useQuery(notificationPreferencesQueryOptions())
   const [pending, setPending] = useState<boolean | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
@@ -28,20 +34,34 @@ function useNotificationPreferences() {
     return () => clearTimeout(id)
   }, [success])
 
-  function loadPreferences() {
-    setError(null)
-    apiFetch(buildApiUrl('/notifications/preferences'))
-      .then((res) => {
-        if (!res.ok) throw new Error('Falha ao carregar preferências')
-        return res.json() as Promise<{ round_reminders: boolean }>
-      })
-      .then((data) => setRoundReminders(data.round_reminders))
-      .catch((err) => setError(err.message))
-  }
+  const saveMutation = useMutation({
+    mutationFn: patchNotificationPreferences,
+    onMutate: async (next) => {
+      setSaveError(null)
+      setSuccess(false)
+      const previous = query.data?.round_reminders ?? null
+      setNotificationPreferencesCache(queryClient, next)
+      return { previous }
+    },
+    onSuccess: () => {
+      setSuccess(true)
+    },
+    onError: (err, _next, context) => {
+      if (context?.previous !== null && context?.previous !== undefined) {
+        setNotificationPreferencesCache(queryClient, context.previous)
+      }
+      setSaveError(err instanceof Error ? err.message : 'Falha ao salvar preferência')
+    },
+  })
 
-  useEffect(() => {
-    loadPreferences()
-  }, [])
+  const roundReminders = query.data?.round_reminders ?? null
+  const loadError =
+    roundReminders === null && query.isError
+      ? query.error instanceof Error
+        ? query.error.message
+        : 'Falha ao carregar preferências'
+      : null
+  const error = saveError ?? loadError
 
   function handleOpenModal(next: boolean) {
     trackEvent('click_settings_toggle_lembretes', { enabled: next })
@@ -54,44 +74,23 @@ function useNotificationPreferences() {
   }
 
   function handleConfirm() {
-    if (pending === null || saving) return
+    if (pending === null || saveMutation.isPending) return
     const next = pending
     setPending(null)
     trackEvent('click_settings_confirmar_lembretes', { enabled: next })
-
-    const previous = roundReminders
-    savePreference(next, previous)
-  }
-
-  function savePreference(next: boolean, previous: boolean | null) {
-    setRoundReminders(next)
-    setSaving(true)
-    setError(null)
-    setSuccess(false)
-
-    apiFetch(buildApiUrl('/notifications/preferences'), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ round_reminders: next }),
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Falha ao salvar preferência')
-        setSuccess(true)
-      })
-      .catch((err) => {
-        setRoundReminders(previous)
-        setError(err.message)
-      })
-      .finally(() => setSaving(false))
+    saveMutation.mutate(next)
   }
 
   return {
     roundReminders,
     pending,
-    saving,
+    saving: saveMutation.isPending,
     error,
     success,
-    loadPreferences,
+    loadPreferences: () => {
+      setSaveError(null)
+      void query.refetch()
+    },
     handleOpenModal,
     handleCancel,
     handleConfirm,
@@ -101,12 +100,30 @@ function useNotificationPreferences() {
 const LOGOUT_ALL_ERROR = 'Não foi possível sair de todos os dispositivos. Tente de novo.'
 
 function useLogoutAll(onLoggedOut: () => void) {
-  const [loggingOut, setLoggingOut] = useState(false)
+  const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch(buildApiUrl('/auth/logout-all'), { method: 'POST' })
+      if (res.status === 401) return { expired: true as const }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return { expired: false as const }
+    },
+    onSuccess: (result) => {
+      queryClient.clear()
+      if (result.expired) return
+      trackEvent('settings_sair_todos_concluido')
+      onLoggedOut()
+    },
+    onError: () => {
+      setError(LOGOUT_ALL_ERROR)
+    },
+  })
+
   async function logoutAll() {
-    if (loggingOut) return
+    if (logoutMutation.isPending) return
     trackEvent('click_settings_sair_todos')
     const ok = await confirm({
       title: 'Sair de todos os dispositivos',
@@ -116,22 +133,16 @@ function useLogoutAll(onLoggedOut: () => void) {
       danger: true,
     })
     if (!ok) return
-    setLoggingOut(true)
     setError(null)
-    try {
-      const res = await apiFetch(buildApiUrl('/auth/logout-all'), { method: 'POST' })
-      if (res.status === 401) return
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      trackEvent('settings_sair_todos_concluido')
-      onLoggedOut()
-    } catch {
-      setError(LOGOUT_ALL_ERROR)
-    } finally {
-      setLoggingOut(false)
-    }
+    logoutMutation.mutate()
   }
 
-  return { loggingOut, error, logoutAll, confirmDialog }
+  return {
+    loggingOut: logoutMutation.isPending,
+    error,
+    logoutAll,
+    confirmDialog,
+  }
 }
 
 interface SettingsPageProps {

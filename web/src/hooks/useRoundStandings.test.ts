@@ -1,6 +1,7 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { apiFetch } from '../lib/api'
+import { renderHookWithQuery } from '../test-utils'
 import { useRoundStandings } from './useRoundStandings'
 
 vi.mock('../lib/api', () => ({
@@ -22,20 +23,23 @@ describe('useRoundStandings', () => {
     const standings = [{ user_id: 'u1', round_points: 7, position_change: 2, streak: 4 }]
     mockApiFetch.mockResolvedValueOnce(mockResponse({ round: '34', standings }))
 
-    const { result } = renderHook(() => useRoundStandings('g1'))
+    const { result } = renderHookWithQuery(() => useRoundStandings('g1'))
 
     expect(result.current.loading).toBe(true)
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.round).toBe('34')
     expect(result.current.standings).toEqual(standings)
-    expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups/g1/round-standings'))
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/groups/g1/round-standings'),
+      expect.anything(),
+    )
   })
 
   it('trata resposta de erro como grupo sem rodada', async () => {
     mockApiFetch.mockResolvedValueOnce(mockResponse({ error: 'x' }, false))
 
-    const { result } = renderHook(() => useRoundStandings('g1'))
+    const { result } = renderHookWithQuery(() => useRoundStandings('g1'))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.round).toBeNull()
@@ -45,7 +49,7 @@ describe('useRoundStandings', () => {
   it('trata falha de rede como grupo sem rodada', async () => {
     mockApiFetch.mockRejectedValueOnce(new Error('offline'))
 
-    const { result } = renderHook(() => useRoundStandings('g1'))
+    const { result } = renderHookWithQuery(() => useRoundStandings('g1'))
     await waitFor(() => expect(result.current.loading).toBe(false))
 
     expect(result.current.round).toBeNull()
@@ -56,9 +60,10 @@ describe('useRoundStandings', () => {
     mockApiFetch.mockReturnValueOnce(new Promise((resolve) => (resolveOld = resolve)))
     mockApiFetch.mockReturnValueOnce(new Promise(() => {}))
 
-    const { result, rerender } = renderHook(({ id }) => useRoundStandings(id), {
-      initialProps: { id: 'antigo' },
-    })
+    const { result, rerender } = renderHookWithQuery(
+      ({ id }: { id: string }) => useRoundStandings(id),
+      { initialProps: { id: 'antigo' } },
+    )
     rerender({ id: 'novo' })
 
     await act(async () => {

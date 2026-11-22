@@ -497,20 +497,23 @@ const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
   quota: null,
 }
 
-async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
+async function loadMetrics(
+  days: number,
+  signal: AbortSignal,
+): Promise<AdminLoad<MetricsSnapshot>> {
   const params = new URLSearchParams({ days: String(days) })
   try {
     const [ovRes, bizRes, arRes, opsRes, activityRes, heatmapRes, funnelRes, originsRes, quotaRes] =
       await Promise.all([
-        apiFetch(buildApiUrl('/metrics/overview', params)),
-        apiFetch(buildApiUrl('/metrics/business', params)),
-        apiFetch(buildApiUrl('/metrics/archive')),
-        apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/signup-origins', params)).catch(() => null),
-        apiFetch(buildApiUrl('/metrics/quota')).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/overview', params), { signal }),
+        apiFetch(buildApiUrl('/metrics/business', params), { signal }),
+        apiFetch(buildApiUrl('/metrics/archive'), { signal }),
+        apiFetch(buildApiUrl('/metrics/ops', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/competition-activity', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/heatmap', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/invite-funnel', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/signup-origins', params), { signal }).catch(() => null),
+        apiFetch(buildApiUrl('/metrics/quota'), { signal }).catch(() => null),
       ])
     if (ovRes.status === 403) return { kind: 'forbidden' }
     if (!ovRes.ok) return { kind: 'failed' }
@@ -537,7 +540,7 @@ export default function AdminMetricsPage() {
   useDocumentTitle('Métricas')
 
   const [days, setDays] = useState<number>(30)
-  const { data, error, loading, retry } = useAdminLoad(days, loadMetrics)
+  const { data, error, loading, retry } = useAdminLoad('metrics', days, loadMetrics)
   const {
     overview,
     business,
