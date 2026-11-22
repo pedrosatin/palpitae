@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest'
 import { renderHook as rtlRenderHook, waitFor, act } from '@testing-library/react'
 import { groupDetailQueryKey, useGroupActions, useGroupDetail, useGroupTabs, useTabsOffset } from './hooks'
 import { useNavigate, NavigateFunction, MemoryRouter, useLocation } from 'react-router-dom'
+import { roundStandingsQueryKey } from '../../hooks/useRoundStandings'
 import { apiFetch } from '../../lib/api'
+import { groupMembersQueryKey } from '../../lib/groupMembers'
 import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
 import { groupsListQueryKey } from '../../lib/groupsList'
 import { trackEvent } from '../../analytics/ga'
@@ -104,6 +106,9 @@ describe('useGroupActions', () => {
         members: [],
         predictions: [],
       })
+      queryClient.setQueryData(groupMembersQueryKey('g1'), [])
+      queryClient.setQueryData(roundStandingsQueryKey('g1'), { round: '1', standings: [] })
+      queryClient.setQueryData(['groups', 'join-requests', 'g1'], [])
       const { result } = renderHook(() => useGroupActions('g1', mockUser), { queryClient })
 
       let leavePromise: Promise<void>
@@ -130,6 +135,9 @@ describe('useGroupActions', () => {
       expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
       expect(queryClient.getQueryData(groupDetailQueryKey('g1'))).toBeUndefined()
       expect(queryClient.getQueryData(groupPredictionsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(groupMembersQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(roundStandingsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(['groups', 'join-requests', 'g1'])).toBeUndefined()
       expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true })
       expect(result.current.leaving).toBe(false)
     })
@@ -261,6 +269,9 @@ describe('useGroupActions', () => {
         members: [],
         predictions: [],
       })
+      queryClient.setQueryData(groupMembersQueryKey('g1'), [])
+      queryClient.setQueryData(roundStandingsQueryKey('g1'), { round: '1', standings: [] })
+      queryClient.setQueryData(['groups', 'join-requests', 'g1'], [])
       const { result } = renderHook(() => useGroupActions('g1', mockUser), { queryClient })
 
       let deletePromise: Promise<void>
@@ -287,6 +298,9 @@ describe('useGroupActions', () => {
       expect(queryClient.getQueryState(groupsListQueryKey('u1'))?.isInvalidated).toBe(true)
       expect(queryClient.getQueryData(groupDetailQueryKey('g1'))).toBeUndefined()
       expect(queryClient.getQueryData(groupPredictionsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(groupMembersQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(roundStandingsQueryKey('g1'))).toBeUndefined()
+      expect(queryClient.getQueryData(['groups', 'join-requests', 'g1'])).toBeUndefined()
       expect(mockNavigate).toHaveBeenCalledWith('/', {
         replace: true,
         state: { refreshGroups: true },

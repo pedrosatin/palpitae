@@ -1,5 +1,6 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderHookWithQuery } from '../../../test-utils'
 import { useMemberPredictions } from './useMemberPredictions'
 import { config } from '../../../config'
 import type { UserPrediction } from '../types'
@@ -39,7 +40,7 @@ describe('useMemberPredictions', () => {
 
   it('initializes with loading state and default values', () => {
     const fetchMock = vi.mocked(fetch).mockImplementation(() => new Promise(() => {}))
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     expect(result.current.modalLoading).toBe(true)
     expect(result.current.modalPredictions).toEqual([])
@@ -47,7 +48,7 @@ describe('useMemberPredictions', () => {
     expect(result.current.modalRoundIndex).toBe(0)
     expect(fetchMock).toHaveBeenCalledWith(
       `${config.apiUrl}/predictions/user?group_id=${mockGroupId}&user_id=${mockUserId}`,
-      { credentials: 'include' },
+      expect.objectContaining({ credentials: 'include' }),
     )
   })
 
@@ -62,7 +63,7 @@ describe('useMemberPredictions', () => {
       json: () => Promise.resolve(mockResponse),
     } as Response)
 
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     await waitFor(() => {
       expect(result.current.modalLoading).toBe(false)
@@ -78,7 +79,7 @@ describe('useMemberPredictions', () => {
       ok: false,
     } as Response)
 
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     await waitFor(() => {
       expect(result.current.modalLoading).toBe(false)
@@ -91,7 +92,7 @@ describe('useMemberPredictions', () => {
   it('handles network error', async () => {
     vi.mocked(fetch).mockRejectedValue(new Error('Network error'))
 
-    const { result } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     await waitFor(() => {
       expect(result.current.modalLoading).toBe(false)
@@ -109,7 +110,7 @@ describe('useMemberPredictions', () => {
 
     vi.mocked(fetch).mockReturnValue(fetchPromise as Promise<Response>)
 
-    const { result, unmount } = renderHook(() => useMemberPredictions(mockGroupId, mockUserId))
+    const { result, unmount } = renderHookWithQuery(() => useMemberPredictions(mockGroupId, mockUserId))
 
     expect(result.current.modalLoading).toBe(true)
 
@@ -123,5 +124,42 @@ describe('useMemberPredictions', () => {
     await new Promise((r) => setTimeout(r, 0))
 
     expect(result.current.modalPredictions).toEqual([])
+  })
+
+  it('mantém a rodada escolhida após refetch em segundo plano', async () => {
+    const round1 = { ...mockPrediction, round: '1', round_label: 'Rodada 1' }
+    const round2 = { ...mockPrediction, match_id: 'm2', round: '2', round_label: 'Rodada 2' }
+    const payload = { predictions: [round1, round2], default_round: '1' }
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(payload),
+    } as Response)
+
+    const { result, queryClient } = renderHookWithQuery(() =>
+      useMemberPredictions(mockGroupId, mockUserId),
+    )
+
+    await waitFor(() => {
+      expect(result.current.modalLoading).toBe(false)
+    })
+    expect(result.current.modalRoundIndex).toBe(0)
+
+    act(() => {
+      result.current.setModalRoundIndex(1)
+    })
+    expect(result.current.modalRoundIndex).toBe(1)
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: ['predictions', 'user', mockGroupId, mockUserId],
+      })
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+    expect(result.current.modalRoundIndex).toBe(1)
   })
 })

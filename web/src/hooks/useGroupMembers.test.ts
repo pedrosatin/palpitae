@@ -1,6 +1,8 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { apiFetch } from '../lib/api'
+import { renderHookWithQuery } from '../test-utils'
+import { groupMembersQueryKey } from '../lib/groupMembers'
 import { useGroupMembers, type GroupMember } from './useGroupMembers'
 
 vi.mock('../lib/api', () => ({
@@ -36,7 +38,7 @@ describe('useGroupMembers', () => {
   it('fetches members for the given group', async () => {
     mockApiFetch.mockResolvedValueOnce(mockResponse({ members }))
 
-    const { result } = renderHook(() => useGroupMembers('g1'))
+    const { result } = renderHookWithQuery(() => useGroupMembers('g1'))
 
     expect(result.current.loading).toBe(true)
     expect(result.current.members).toEqual([])
@@ -47,13 +49,16 @@ describe('useGroupMembers', () => {
 
     expect(result.current.members).toEqual(members)
     expect(result.current.error).toBeNull()
-    expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining('/groups/g1/members'))
+    expect(mockApiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/groups/g1/members'),
+      expect.anything(),
+    )
   })
 
   it('surfaces API failures as error', async () => {
     mockApiFetch.mockResolvedValueOnce(mockResponse({}, false))
 
-    const { result } = renderHook(() => useGroupMembers('g1'))
+    const { result } = renderHookWithQuery(() => useGroupMembers('g1'))
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false)
@@ -66,7 +71,7 @@ describe('useGroupMembers', () => {
   it('exposes setMembers for local list updates', async () => {
     mockApiFetch.mockResolvedValueOnce(mockResponse({ members }))
 
-    const { result } = renderHook(() => useGroupMembers('g1'))
+    const { result } = renderHookWithQuery(() => useGroupMembers('g1'))
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false)
@@ -76,7 +81,34 @@ describe('useGroupMembers', () => {
       result.current.setMembers((prev) => prev.filter((m) => m.user_id !== 'u1'))
     })
 
-    expect(result.current.members).toEqual([])
+    await waitFor(() => {
+      expect(result.current.members).toEqual([])
+    })
+  })
+
+  it('refetch falho mantém a lista e não expõe erro', async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(mockResponse({ members }))
+      .mockResolvedValueOnce(mockResponse({}, false))
+
+    const { result, queryClient } = renderHookWithQuery(() => useGroupMembers('g1'))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+    })
+    expect(result.current.members).toEqual(members)
+    expect(result.current.error).toBeNull()
+
+    await act(async () => {
+      await result.current.refetch()
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(queryClient.getQueryState(groupMembersQueryKey('g1'))?.status).toBe('error')
+    expect(result.current.members).toEqual(members)
+    expect(result.current.error).toBeNull()
   })
 })
 
@@ -92,7 +124,7 @@ describe('useGroupMembers, resposta fora do formato', () => {
   ])('%s vira erro e mantém a lista vazia', async (_case, body) => {
     mockApiFetch.mockResolvedValueOnce(mockResponse(body))
 
-    const { result } = renderHook(() => useGroupMembers('g1'))
+    const { result } = renderHookWithQuery(() => useGroupMembers('g1'))
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false)

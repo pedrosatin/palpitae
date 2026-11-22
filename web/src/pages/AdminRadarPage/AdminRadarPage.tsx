@@ -150,10 +150,11 @@ function isSyncStale(lastSync: string | null | undefined): boolean {
   return Date.now() - at > STALE_AFTER_HOURS * 3_600_000
 }
 
-async function loadRadar(days: number): Promise<AdminLoad<RadarResponse>> {
+async function loadRadar(days: number, signal: AbortSignal): Promise<AdminLoad<RadarResponse>> {
   try {
     const res = await apiFetch(
       buildApiUrl('/metrics/radar', new URLSearchParams({ days: String(days) })),
+      { signal },
     )
     if (res.status === 403) return { kind: 'forbidden' }
     if (!res.ok) return { kind: 'failed' }
@@ -167,7 +168,7 @@ export default function AdminRadarPage() {
   useDocumentTitle('Radar de competições')
 
   const [days, setDays] = useState<number>(30)
-  const { data, error, loading, retry } = useAdminLoad(days, loadRadar)
+  const { data, error, loading, retry } = useAdminLoad('radar', days, loadRadar)
   const [sort, setSort] = useState<SortKey>('interest')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ongoing')
   const [onlyUnsupported, setOnlyUnsupported] = useState(false)

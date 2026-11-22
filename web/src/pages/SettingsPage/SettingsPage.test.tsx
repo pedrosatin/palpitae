@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as ga from '../../analytics/ga'
 import { config } from '../../config'
+import { renderWithQuery } from '../../test-utils'
 import SettingsPage from './SettingsPage'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -16,7 +17,7 @@ function mockResponse(body: unknown, ok = true) {
 }
 
 function renderPage(onLogoutAll = vi.fn()) {
-  return render(
+  return renderWithQuery(
     <MemoryRouter>
       <SettingsPage user={user} onLogout={vi.fn()} onLogoutAll={onLogoutAll} />
     </MemoryRouter>,

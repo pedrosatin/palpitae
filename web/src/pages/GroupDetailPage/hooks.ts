@@ -1,12 +1,14 @@
 import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
-import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
+import { trackEvent } from '../../analytics/ga'
+import { useConfirm } from '../../components/ConfirmModal'
 import { buildApiUrl } from '../../config'
+import { roundStandingsQueryKey } from '../../hooks/useRoundStandings'
+import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
+import { groupMembersQueryKey } from '../../lib/groupMembers'
 import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
 import { invalidateGroupsList } from '../../lib/groupsList'
-import { useConfirm } from '../../components/ConfirmModal'
-import { trackEvent } from '../../analytics/ga'
 import { isStandingsTabEligible } from '../../lib/standings'
 import { UNEXPECTED_RESPONSE } from '../../lib/responseShape'
 import { withoutParam } from '../../lib/searchParams'
@@ -184,6 +186,9 @@ export function useGroupActions(groupId: string | undefined, user: User) {
 
       queryClient.removeQueries({ queryKey: groupDetailQueryKey(groupId) })
       queryClient.removeQueries({ queryKey: groupPredictionsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupMembersQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: roundStandingsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: ['groups', 'join-requests', groupId] })
       void invalidateGroupsList(queryClient)
       navigate('/', { replace: true })
     } catch {
@@ -220,6 +225,9 @@ export function useGroupActions(groupId: string | undefined, user: User) {
 
       queryClient.removeQueries({ queryKey: groupDetailQueryKey(groupId) })
       queryClient.removeQueries({ queryKey: groupPredictionsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupMembersQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: roundStandingsQueryKey(groupId) })
+      queryClient.removeQueries({ queryKey: ['groups', 'join-requests', groupId] })
       void invalidateGroupsList(queryClient)
       navigate('/', { replace: true, state: { refreshGroups: true } })
     } catch {

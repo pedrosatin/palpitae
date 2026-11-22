@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
 import { buildApiUrl } from '../../../config'
 import { trackEvent } from '../../../analytics/ga'
 import { getGuideOrigin } from '../../../analytics/guideOrigin'
@@ -15,18 +16,39 @@ interface UseCreateGroupFormProps {
   preferredCompetitionSlug?: string
 }
 
+type CompetitionsPayload = {
+  list: Competition[]
+  groups: CompetitionSelectGroups
+}
+
+const EMPTY_GROUPS: CompetitionSelectGroups = { ongoing: [], upcoming: [] }
+
+function competitionsQueryOptions(enabled: boolean) {
+  return {
+    queryKey: ['competitions', 'selectable'] as const,
+    enabled,
+    staleTime: 60_000,
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<CompetitionsPayload> => {
+      const r = await apiFetch(buildApiUrl('/competitions'), { signal })
+      if (!r.ok) throw new Error('Não foi possível carregar as competições')
+      const data = (await r.json()) as { competitions: Competition[] }
+      return selectableCompetitions(data.competitions)
+    },
+  }
+}
+
 export function useCreateGroupForm({
   isOpen,
   onClose,
   onCreated,
   preferredCompetitionSlug,
 }: UseCreateGroupFormProps) {
-  const [competitions, setCompetitions] = useState<Competition[]>([])
-  const [competitionGroups, setCompetitionGroups] = useState<CompetitionSelectGroups>({
-    ongoing: [],
-    upcoming: [],
-  })
-  const [loadingCompetitions, setLoadingCompetitions] = useState(false)
+  const competitionsQuery = useQuery(competitionsQueryOptions(isOpen))
+  const competitions = competitionsQuery.data?.list ?? []
+  const competitionGroups = competitionsQuery.data?.groups ?? EMPTY_GROUPS
+  const loadingCompetitions =
+    isOpen &&
+    (competitionsQuery.isPending || (competitions.length === 0 && competitionsQuery.isFetching))
 
   const [name, setName] = useState('')
   const [chosenCompetitionId, setCompetitionId] = useState('')
@@ -54,19 +76,11 @@ export function useCreateGroupForm({
   const showPenaltyField =
     competitions.find((c) => c.id === competitionId)?.has_penalty_phases === true
 
-  useEffect(() => {
-    if (!isOpen || competitions.length > 0) return
-    setLoadingCompetitions(true)
-    apiFetch(buildApiUrl('/competitions'))
-      .then((r) => r.json() as Promise<{ competitions: Competition[] }>)
-      .then((data) => {
-        const { list, groups } = selectableCompetitions(data.competitions)
-        setCompetitions(list)
-        setCompetitionGroups(groups)
-      })
-      .catch(() => setError('Não foi possível carregar as competições'))
-      .finally(() => setLoadingCompetitions(false))
-  }, [isOpen, competitions.length])
+  const competitionsError =
+    isOpen && competitionsQuery.isError && !competitionsQuery.isFetching
+      ? 'Não foi possível carregar as competições'
+      : null
+  const displayError = error ?? competitionsError
 
   function reset() {
     formInstanceRef.current += 1
@@ -168,7 +182,7 @@ export function useCreateGroupForm({
     predictionsVisibility,
     setPredictionsVisibility,
     submitting,
-    error,
+    error: displayError,
     created,
     showPenaltyField,
     handleClose,

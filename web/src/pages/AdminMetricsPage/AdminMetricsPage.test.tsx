@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { trackEvent } from '../../analytics/ga'
+import { renderWithQuery } from '../../test-utils'
 import AdminMetricsPage from './AdminMetricsPage'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
@@ -155,7 +156,7 @@ describe('AdminMetricsPage: cadastros por origem', () => {
       'fetch',
       mockFetch(200, overview, business, null, null, null, null, signupOrigins),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     const table = await screen.findByRole('table', { name: 'Cadastros por origem' })
     expect(within(table).getByText('convite')).toBeInTheDocument()
@@ -165,7 +166,7 @@ describe('AdminMetricsPage: cadastros por origem', () => {
 
   it('não derruba a página numa API sem a rota', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText('Indisponível: a API ainda não envia a origem dos cadastros.'),
@@ -193,7 +194,7 @@ describe('AdminMetricsPage: cotas do plano Free', () => {
       url.includes('/metrics/quota') ? { ok: true, status: 200, json: async () => quota } : base(url),
     )
     vi.stubGlobal('fetch', fetchFake)
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     const table = await screen.findByRole('table', { name: 'Uso das cotas do plano Free' })
     expect(within(table).getByText('85% · a partir de 80%')).toBeInTheDocument()
@@ -204,7 +205,7 @@ describe('AdminMetricsPage: cotas do plano Free', () => {
 
   it('não derruba a página numa API sem a rota', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText('Indisponível: a API ainda não envia o uso das cotas.'),
@@ -230,7 +231,7 @@ describe('AdminMetricsPage: funil de convite', () => {
 
   it('mostra aberturas, entradas, convidados novos e existentes', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, business, null, null, null, funnel))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     const table = await screen.findByRole('table', { name: 'Funil de convite' })
     expect(within(table).getByText('aberturas do convite')).toBeInTheDocument()
@@ -242,7 +243,7 @@ describe('AdminMetricsPage: funil de convite', () => {
 
   it('não derruba a página numa API sem a rota do funil', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText('Indisponível: a API ainda não envia o funil de convite.'),
@@ -254,7 +255,7 @@ describe('AdminMetricsPage: funil de convite', () => {
 describe('AdminMetricsPage', () => {
   it('renderiza KPIs, totais, poller, falhas, erros, whales e arquivo R2', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('usuários palpitando')).toBeInTheDocument()
     expect(screen.getByText('7')).toBeInTheDocument()
@@ -324,7 +325,7 @@ describe('AdminMetricsPage', () => {
               : gappyArchive,
       })),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText(dayKey(2))
     expect(screen.getAllByText('faltando')).toHaveLength(2)
@@ -336,7 +337,7 @@ describe('AdminMetricsPage', () => {
       'fetch',
       mockFetch(200, { ...overview, sampling: { avg_sample_interval: '2.5' } }),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText(/amostrando/)).toBeInTheDocument()
     expect(screen.getByText(/2\.50/)).toBeInTheDocument()
@@ -346,7 +347,7 @@ describe('AdminMetricsPage', () => {
     const fetchFake = mockFetch()
     vi.stubGlobal('fetch', fetchFake)
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     const month = yesterday.slice(0, 7)
     await screen.findByText('Análise do arquivo (além da janela do AE)')
@@ -362,7 +363,7 @@ describe('AdminMetricsPage', () => {
 
   it('mostra acesso restrito quando a API responde 403', async () => {
     vi.stubGlobal('fetch', mockFetch(403))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Acesso restrito ao administrador.')).toBeInTheDocument()
   })
@@ -371,7 +372,7 @@ describe('AdminMetricsPage', () => {
     const fetchFake = mockFetch()
     vi.stubGlobal('fetch', fetchFake)
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findAllByText('Login')
     await user.click(screen.getByRole('button', { name: '7d' }))
@@ -470,7 +471,7 @@ function competitionCells(name: RegExp) {
 describe('AdminMetricsPage · grupos por campeonato', () => {
   it('lista todas as temporadas, inclusive as sem grupo, com ativos 14d', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Grupos por campeonato')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'ativos 14d' })).toBeInTheDocument()
@@ -513,7 +514,7 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
   it('filtra por visibilidade e status', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Grupos por campeonato')
     const visibility = screen.getByRole('group', { name: 'Visibilidade' })
@@ -557,7 +558,7 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
     }
     vi.stubGlobal('fetch', mockFetch(200, overview, onlyPublic))
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Grupos por campeonato')
     await user.click(screen.getByRole('button', { name: 'Piloto' }))
@@ -566,7 +567,7 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
 
   it('mantém o top 10 quando a API ainda não manda a lista completa', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Campeonatos com mais grupos ativos')).toBeInTheDocument()
     expect(screen.getByText('Brasileirão')).toBeInTheDocument()
@@ -577,7 +578,7 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
 describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
   it('mostra atrasados e encerrados sem pontuação por temporada, pendências primeiro', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Saúde dos resultados por campeonato')).toBeInTheDocument()
     const table = healthTable()
@@ -633,7 +634,7 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
   it('não é afetada pelos filtros da lista de grupos', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Saúde dos resultados por campeonato')
     await user.click(screen.getByRole('button', { name: 'Piloto' }))
@@ -654,7 +655,7 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
       })),
     }
     vi.stubGlobal('fetch', mockFetch(200, overview, clean))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Saúde dos resultados por campeonato')
     expect(
@@ -671,7 +672,7 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
       ),
     }
     vi.stubGlobal('fetch', mockFetch(200, overview, withoutHealth))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Saúde dos resultados por campeonato')).toBeInTheDocument()
     expect(
@@ -690,7 +691,7 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
       'fetch',
       mockFetch(200, overview, { ...businessWithCompetitions, competitions: [legacyRow, ...rest] }),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Saúde dos resultados por campeonato')
     expect(rowCells(healthTable(), /Brasileirão Série A 2026/).slice(3)).toEqual(['—', '—'])
@@ -699,7 +700,7 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
 
   it('não mostra a seção na API antiga (só top 10) nem sem temporadas cadastradas', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    const { unmount } = render(<AdminMetricsPage />)
+    const { unmount } = renderWithQuery(<AdminMetricsPage />)
     await screen.findByText('Campeonatos com mais grupos ativos')
     expect(screen.queryByText('Saúde dos resultados por campeonato')).not.toBeInTheDocument()
     unmount()
@@ -708,7 +709,7 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
       'fetch',
       mockFetch(200, overview, { ...businessWithCompetitions, competitions: [] }),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     await screen.findByText('Grupos por campeonato')
     expect(screen.queryByText('Saúde dos resultados por campeonato')).not.toBeInTheDocument()
   })
@@ -756,7 +757,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
   it('busca /metrics/ops com o período e mostra falhas por provedor, processo e campeonato', async () => {
     const fetchFake = mockFetch(200, overview, businessWithCompetitions, opsBody)
     vi.stubGlobal('fetch', fetchFake)
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Provedores de partidas · falhas e carga')).toBeInTheDocument()
     const opsCall = fetchFake.mock.calls.map(([url]) => url).find((u) => u.includes('/metrics/ops'))
@@ -779,7 +780,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
 
   it('falhas HTTP acendem um alerta no topo', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions, opsBody))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText(/7 falha\(s\) HTTP de provedor/)).toBeInTheDocument()
   })
@@ -790,7 +791,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
       httpByProvider: opsBody.httpByProvider.filter((r) => r.status === '200'),
     }
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions, calm))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Provedores de partidas · falhas e carga')
     expect(screen.queryByText(/falha\(s\) HTTP de provedor/)).not.toBeInTheDocument()
@@ -798,7 +799,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
 
   it('alerta de login proporcional acende com volume e taxa elevados', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, business))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText(/3 falha\(s\) de login \(20% de 15\)/)).toBeInTheDocument()
     expect(screen.queryByText(/erro\(s\) recente\(s\)/)).not.toBeInTheDocument()
@@ -828,7 +829,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
       ],
     }
     vi.stubGlobal('fetch', mockFetch(200, lowVolume, business))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Falhas de login por motivo')
     expect(screen.getAllByText('session_expired').length).toBeGreaterThanOrEqual(1)
@@ -870,7 +871,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
       ],
     }
     vi.stubGlobal('fetch', mockFetch(200, mixed, business))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText(/1 erro\(s\) recente\(s\)/)).toBeInTheDocument()
     expect(screen.queryByText(/falha\(s\) de login \(/)).not.toBeInTheDocument()
@@ -891,7 +892,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
       sampling: { avg_sample_interval: '1.15' },
     }
     vi.stubGlobal('fetch', mockFetch(200, sampled, business))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText(/≈2 falha\(s\) de login \(16% de ≈15\)/),
@@ -927,7 +928,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
     })
     vi.stubGlobal('fetch', fetchFake)
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText(/3 falha\(s\) de login \(20% de 15\)/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '7d' }))
@@ -940,7 +941,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
 
   it('API sem /metrics/ops: o restante da página carrega e a seção diz "indisponível"', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Provedores de partidas · falhas e carga')).toBeInTheDocument()
     expect(screen.getByText(/Indisponível: a API não enviou a telemetria/)).toBeInTheDocument()
@@ -957,7 +958,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
         return base(url)
       }),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText(/Indisponível: a API não enviou a telemetria/),
@@ -968,7 +969,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
   it('sem nenhum evento HTTP gravado avisa falta de dado em vez de zero falhas', async () => {
     const empty = { ...opsBody, httpFirstSeenAt: null, httpByProvider: [], httpByCompetition: [] }
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions, empty))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText(/Nenhuma tentativa HTTP foi registrada ainda/),
@@ -989,7 +990,7 @@ describe('AdminMetricsPage · provedores de partidas', () => {
       ],
     }
     vi.stubGlobal('fetch', mockFetch(200, withErrors, businessWithCompetitions, opsBody))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Erro de sync de provedor')).toBeInTheDocument()
     expect(screen.queryByText('Erro da API Football')).not.toBeInTheDocument()
@@ -1023,7 +1024,7 @@ describe('AdminMetricsPage · atividade por campeonato', () => {
   it('busca /metrics/competition-activity com o período e mostra a tabela, com "sem liga"', async () => {
     const fetchFake = mockFetch(200, overview, business, null, activityBody)
     vi.stubGlobal('fetch', fetchFake)
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     const table = await screen.findByRole('table', {
       name: 'Atividade por campeonato',
@@ -1039,7 +1040,7 @@ describe('AdminMetricsPage · atividade por campeonato', () => {
 
   it('API sem a rota: a página carrega e a seção diz "indisponível"', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Atividade por campeonato')).toBeInTheDocument()
     expect(screen.getByText(/Indisponível: a API não enviou a atividade/)).toBeInTheDocument()
@@ -1055,7 +1056,7 @@ describe('AdminMetricsPage · atividade por campeonato', () => {
         return base(url)
       }),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText(/Indisponível: a API não enviou a atividade/),
@@ -1088,7 +1089,7 @@ describe('AdminMetricsPage · série diária de criações por campeonato', () =
       })
       vi.stubGlobal('fetch', fetchFake)
       const user = userEvent.setup()
-      render(<AdminMetricsPage />)
+      renderWithQuery(<AdminMetricsPage />)
 
       const chartName = 'Grupos criados por dia, por campeonato'
       let chart = await screen.findByRole('img', { name: chartName })
@@ -1144,7 +1145,7 @@ describe('AdminMetricsPage · mapa de calor', () => {
   it('busca /metrics/heatmap com o período e mostra a grade em BRT', async () => {
     const fetchFake = mockFetch(200, overview, business, null, null, heatmapBody)
     vi.stubGlobal('fetch', fetchFake)
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     const table = await screen.findByRole('table', {
       name: 'Mapa de calor de palpites salvos por dia da semana e hora (BRT)',
@@ -1160,7 +1161,7 @@ describe('AdminMetricsPage · mapa de calor', () => {
 
   it('API sem a rota (web antes da API): a página carrega e a seção diz "indisponível"', async () => {
     vi.stubGlobal('fetch', mockFetch())
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText('Mapa de calor · palpites e logins')).toBeInTheDocument()
     expect(screen.getByText(/Indisponível: a API não enviou o mapa de calor/)).toBeInTheDocument()
@@ -1176,7 +1177,7 @@ describe('AdminMetricsPage · mapa de calor', () => {
         return base(url)
       }),
     )
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(
       await screen.findByText(/Indisponível: a API não enviou o mapa de calor/),
@@ -1193,7 +1194,7 @@ describe('AdminMetricsPage · mapa de calor', () => {
     })
     vi.stubGlobal('fetch', fetchFake)
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     expect(await screen.findByText(/ao longo dos últimos 30 dias/)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '7d' }))
@@ -1272,7 +1273,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
       }),
     )
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await user.click(screen.getByRole('button', { name: '7d' }))
     expect(await screen.findByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
@@ -1295,7 +1296,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
       }),
     )
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await user.click(screen.getByRole('button', { name: '7d' }))
     expect(await screen.findByText(/Eventos por dia · últimos 7/)).toBeInTheDocument()
@@ -1314,7 +1315,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
       vi.fn(async (url: string) => (daysOf(url) === '7' ? failedResponse() : base(url))),
     )
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     expect(await screen.findByText(/Eventos por dia · últimos 30/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '7d' }))
@@ -1335,7 +1336,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
       }),
     )
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     expect(await screen.findByText('Visão geral do produto')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '7d' }))
@@ -1354,7 +1355,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
     })
     vi.stubGlobal('fetch', fetchFake)
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     await screen.findByText(/Eventos por dia · últimos 30/)
     await user.click(screen.getByRole('button', { name: '7d' }))
     await screen.findByText(/Falha ao carregar as métricas/)
@@ -1379,7 +1380,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
       ),
     )
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const { unmount } = render(<AdminMetricsPage />)
+    const { unmount } = renderWithQuery(<AdminMetricsPage />)
     await waitFor(() => expect(fetch).toHaveBeenCalled())
 
     unmount()
@@ -1395,7 +1396,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
     const junho = Promise.resolve(monthQuery('2026-06', '30'))
     vi.stubGlobal('fetch', archiveQueryFetch({ '2026-05': maio.promise, '2026-06': junho }))
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     await screen.findByText('Análise do arquivo (além da janela do AE)')
 
     await user.click(screen.getByRole('button', { name: '2026-05' }))
@@ -1414,7 +1415,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
     const junho = deferred<unknown>()
     vi.stubGlobal('fetch', archiveQueryFetch({ '2026-05': maio.promise, '2026-06': junho.promise }))
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     await screen.findByText('Análise do arquivo (além da janela do AE)')
 
     await user.click(screen.getByRole('button', { name: '2026-05' }))
@@ -1438,7 +1439,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
     })
     vi.stubGlobal('fetch', archiveQueryFetch({ '2026-06': parcial }))
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     await screen.findByText('Análise do arquivo (além da janela do AE)')
 
     await user.click(screen.getByRole('button', { name: '2026-06' }))
@@ -1464,7 +1465,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
     })
     vi.stubGlobal('fetch', archiveQueryFetch({ '2026-06': vazio }))
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     await screen.findByText('Análise do arquivo (além da janela do AE)')
 
     await user.click(screen.getByRole('button', { name: '2026-06' }))
@@ -1480,7 +1481,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
       archiveQueryFetch({ '2026-06': Promise.resolve(monthQuery('2026-06', '30')) }),
     )
     const user = userEvent.setup()
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
     await screen.findByText('Análise do arquivo (além da janela do AE)')
 
     await user.click(screen.getByRole('button', { name: '2026-06' }))
@@ -1494,7 +1495,7 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
 describe('AdminMetricsPage · acessibilidade das pílulas e legenda', () => {
   it('anuncia o grupo e a opção ativa em cada grupo de pílulas', async () => {
     vi.stubGlobal('fetch', mockFetch(200, overview, businessWithCompetitions))
-    render(<AdminMetricsPage />)
+    renderWithQuery(<AdminMetricsPage />)
 
     await screen.findByText('Grupos por campeonato')
 

@@ -1,8 +1,12 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers, type GroupMember } from '../../hooks/useGroupMembers'
 import { apiFetch } from '../../lib/api'
+import { invalidateGroupMembers } from '../../lib/groupMembers'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { useConfirm } from '../ConfirmModal'
 import Avatar from '../Avatar'
 import Button from '../Button'
@@ -18,12 +22,20 @@ interface MembersTabProps {
   onJoinRequestDecided?: (action: 'approve' | 'reject') => void
 }
 
-function useMembers(
+function invalidateAfterMembershipChange(
+  queryClient: ReturnType<typeof useQueryClient>,
   groupId: string,
-  onMemberRemoved?: (userId: string) => void,
-  membersReloadToken = 0,
 ) {
-  const { members, setMembers, loading, error } = useGroupMembers(groupId, membersReloadToken)
+  void queryClient.invalidateQueries({
+    queryKey: groupPredictionsQueryKey(groupId),
+    refetchType: 'none',
+  })
+  void invalidateGroupsList(queryClient)
+}
+
+function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void) {
+  const queryClient = useQueryClient()
+  const { members, setMembers, loading, error } = useGroupMembers(groupId)
   const [removing, setRemoving] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
@@ -49,6 +61,7 @@ function useMembers(
         throw new Error(body.error ?? 'Erro ao remover membro')
       }
       setMembers((prev) => prev.filter((m) => m.user_id !== targetUserId))
+      invalidateAfterMembershipChange(queryClient, groupId)
       onMemberRemoved?.(targetUserId)
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Erro ao remover membro')
@@ -101,19 +114,21 @@ export default function MembersTab({
   onMemberRemoved,
   onJoinRequestDecided,
 }: MembersTabProps) {
-  const [membersReloadToken, setMembersReloadToken] = useState(0)
+  const queryClient = useQueryClient()
   const { members, loading, error, removing, confirmDialog, removeMember } = useMembers(
     groupId,
     onMemberRemoved,
-    membersReloadToken,
   )
 
   function handleDecided(action: 'approve' | 'reject') {
-    if (action === 'approve') setMembersReloadToken((n) => n + 1)
+    if (action === 'approve') {
+      void invalidateGroupMembers(queryClient, groupId)
+      invalidateAfterMembershipChange(queryClient, groupId)
+    }
     onJoinRequestDecided?.(action)
   }
 
-  if (loading && membersReloadToken === 0) {
+  if (loading) {
     return <p className={styles.loading}>Carregando membros...</p>
   }
 

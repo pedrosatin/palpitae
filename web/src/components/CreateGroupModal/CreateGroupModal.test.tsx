@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderWithQuery } from '../../test-utils'
 import * as ga from '../../analytics/ga'
 import CreateGroupModal from './CreateGroupModal'
 
@@ -39,20 +40,20 @@ describe('CreateGroupModal', () => {
   })
 
   it('does not render when isOpen is false', () => {
-    render(<CreateGroupModal {...defaultProps} isOpen={false} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} isOpen={false} />)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('renders the form when open', async () => {
     mockFetchCompetitions()
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByLabelText('Nome do grupo')).toBeInTheDocument()
   })
 
   it('loads and displays competitions', async () => {
     mockFetchCompetitions()
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Copa 2026/ })).toBeInTheDocument()
     })
@@ -70,7 +71,7 @@ describe('CreateGroupModal', () => {
       }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
 
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Brasileirão/ })).toBeInTheDocument()
@@ -85,7 +86,7 @@ describe('CreateGroupModal', () => {
 
   it('renders a flat list when there is only one status', async () => {
     mockFetchCompetitions()
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Copa 2026/ })).toBeInTheDocument()
     })
@@ -102,7 +103,7 @@ describe('CreateGroupModal', () => {
         ],
       }),
     } as Response)
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Liga dos Campeões/ })).toBeInTheDocument()
     })
@@ -120,7 +121,7 @@ describe('CreateGroupModal', () => {
         ],
       }),
     } as Response)
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
 
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Zebra Cup/ })).toBeInTheDocument()
@@ -137,7 +138,7 @@ describe('CreateGroupModal', () => {
         competitions: [{ id: 'a', name: 'Brasileirão', status: 'ongoing' }],
       }),
     } as Response)
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent(/já começou/)
     })
@@ -151,7 +152,7 @@ describe('CreateGroupModal', () => {
       json: async () => ({ group: createdGroup }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
@@ -171,7 +172,7 @@ describe('CreateGroupModal', () => {
       json: async () => ({ error: 'Nome já em uso' }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Grupo X')
@@ -189,7 +190,7 @@ describe('CreateGroupModal', () => {
       Response.json({ error: capError }, { status: 409 }),
     )
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Grupo 21')
@@ -206,7 +207,7 @@ describe('CreateGroupModal', () => {
     mockFetchCompetitions()
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network error'))
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Grupo X')
@@ -271,7 +272,7 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
 
   it('abre com a competição do link escolhida, mesmo fora da primeira posição', async () => {
     mockList([serieA2026, serieA2027])
-    render(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
 
     const select = await screen.findByLabelText('Competição')
     expect(select).toHaveValue('bsa-2027')
@@ -281,7 +282,7 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
 
   it('fica na primeira e mostra o aviso junto do select quando a competição não está na lista', async () => {
     mockList([serieA2026])
-    render(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
 
     const select = await screen.findByLabelText('Competição')
     expect(select).toHaveValue('bsa-2026')
@@ -291,7 +292,7 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
 
   it('não mostra aviso sem competição pedida', async () => {
     mockList([serieA2026])
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
 
     expect(await screen.findByLabelText('Competição')).toHaveValue('bsa-2026')
     expect(screen.queryByText(warning)).not.toBeInTheDocument()
@@ -299,7 +300,7 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
 
   it('não mostra aviso quando nenhuma competição está disponível', async () => {
     mockList([])
-    render(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} preferredCompetitionSlug={slug2027} />)
 
     expect(await screen.findByText('Nenhuma competição disponível no momento.')).toBeInTheDocument()
     expect(screen.queryByText(warning)).not.toBeInTheDocument()
@@ -312,7 +313,7 @@ describe('CreateGroupModal – competição pedida pelo link', () => {
     'com a competição %s na lista, fechar e reabrir volta ao padrão sem aviso',
     async (_caso, list) => {
       mockList(list)
-      render(<Host initialSlug={slug2027} />)
+      renderWithQuery(<Host initialSlug={slug2027} />)
       await screen.findByLabelText('Competição')
 
       await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
@@ -342,7 +343,7 @@ describe('CreateGroupModal – analytics', () => {
       }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
     await userEvent.click(screen.getByRole('button', { name: /criar/i }))
@@ -363,7 +364,7 @@ describe('CreateGroupModal – analytics', () => {
       }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
     await userEvent.click(screen.getByRole('button', { name: /criar/i }))
@@ -385,7 +386,7 @@ describe('CreateGroupModal – analytics', () => {
       }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Os Craques')
     await userEvent.click(screen.getByRole('button', { name: /criar/i }))
@@ -397,7 +398,7 @@ describe('CreateGroupModal – analytics', () => {
 
   it('fires preset and visibility analytics on selection', async () => {
     mockFetchCompetitions()
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
     await userEvent.click(screen.getByRole('button', { name: 'Personalizado' }))
@@ -430,7 +431,7 @@ describe('CreateGroupModal – scoring config', () => {
       }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Grupo')
     await userEvent.click(screen.getByRole('button', { name: /criar/i }))
@@ -444,7 +445,7 @@ describe('CreateGroupModal – scoring config', () => {
 
   it('toggles the scoring help text on tap (works without hover) and tracks it', async () => {
     mockFetchCompetitions()
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
     const infoBtn = screen.getByRole('button', { name: 'Vencedor' })
@@ -462,7 +463,7 @@ describe('CreateGroupModal – scoring config', () => {
 
   it('keeps points inputs disabled unless "Personalizado" is selected', async () => {
     mockFetchCompetitions()
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
 
     expect(screen.getByLabelText(/placar exato/i, { selector: 'input' })).toBeDisabled()
@@ -480,7 +481,7 @@ describe('CreateGroupModal – scoring config', () => {
       }),
     } as Response)
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Grupo')
     await userEvent.click(screen.getByRole('button', { name: 'Só vencedor' }))
@@ -496,7 +497,7 @@ describe('CreateGroupModal – scoring config', () => {
     mockFetchCompetitions()
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
-    render(<CreateGroupModal {...defaultProps} />)
+    renderWithQuery(<CreateGroupModal {...defaultProps} />)
     await waitFor(() => screen.getByLabelText('Nome do grupo'))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Grupo')
     await userEvent.click(screen.getByRole('button', { name: 'Personalizado' }))
@@ -564,7 +565,7 @@ describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
   it('sucesso de um envio antigo não troca o formulário reaberto pela tela de pronto', async () => {
     const onCreated = vi.fn()
     const post = mockPendingPost()
-    render(<Host onCreated={onCreated} />)
+    renderWithQuery(<Host onCreated={onCreated} />)
 
     await submitThenCloseAndReopen()
     await act(async () => {
@@ -581,7 +582,7 @@ describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const onCreated = vi.fn()
     const post = mockPendingPost()
-    render(<Host onCreated={onCreated} />)
+    renderWithQuery(<Host onCreated={onCreated} />)
 
     await submitThenCloseAndReopen()
     await act(async () => {
@@ -597,7 +598,7 @@ describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
   it('segundo envio antes da resposta não cria outro grupo', async () => {
     const onCreated = vi.fn()
     const post = mockPendingPost()
-    render(<Host onCreated={onCreated} />)
+    renderWithQuery(<Host onCreated={onCreated} />)
 
     await waitFor(() => screen.getByRole('option', { name: /Copa 2026/ }))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Primeiro')
@@ -622,7 +623,7 @@ describe('CreateGroupModal – cada abertura tem o próprio envio', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ competitions }) } as Response)
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Falhou' }), { status: 500 }))
       .mockResolvedValueOnce({ ok: true, json: async () => ({ group: createdGroup }) } as Response)
-    render(<Host onCreated={onCreated} />)
+    renderWithQuery(<Host onCreated={onCreated} />)
 
     await waitFor(() => screen.getByRole('option', { name: /Copa 2026/ }))
     await userEvent.type(screen.getByLabelText('Nome do grupo'), 'Primeiro')

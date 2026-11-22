@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { trackApproveJoinRequest } from '../../analytics/funnel'
 import { trackEvent } from '../../analytics/ga'
 import { buildApiUrl } from '../../config'
@@ -20,37 +21,36 @@ interface JoinRequestsListProps {
   onDecided?: (action: 'approve' | 'reject') => void
 }
 
+function joinRequestsQueryKey(groupId: string) {
+  return ['groups', 'join-requests', groupId] as const
+}
+
+async function fetchJoinRequests(groupId: string, signal?: AbortSignal): Promise<JoinRequestItem[]> {
+  const res = await apiFetch(
+    buildApiUrl(`/groups/${encodeURIComponent(groupId)}/join-requests`),
+    { signal },
+  )
+  if (!res.ok) throw new Error(await readApiError(res, 'Erro ao carregar pedidos'))
+  const body = (await res.json()) as { requests?: JoinRequestItem[] }
+  return body.requests ?? []
+}
+
 export default function JoinRequestsList({ groupId, onDecided }: JoinRequestsListProps) {
-  const [requests, setRequests] = useState<JoinRequestItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    queryKey: joinRequestsQueryKey(groupId),
+    queryFn: ({ signal }) => fetchJoinRequests(groupId, signal),
+  })
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await apiFetch(
-        buildApiUrl(`/groups/${encodeURIComponent(groupId)}/join-requests`),
-      )
-      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao carregar pedidos'))
-      const body = (await res.json()) as { requests?: JoinRequestItem[] }
-      setRequests(body.requests ?? [])
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao carregar pedidos')
-    } finally {
-      setLoading(false)
-    }
-  }, [groupId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  async function decide(requestId: string, action: 'approve' | 'reject') {
-    trackEvent(action === 'approve' ? 'click_members_aprovar_pedido' : 'click_members_recusar_pedido')
-    setBusyId(requestId)
-    try {
+  const decideMutation = useMutation({
+    mutationFn: async ({
+      requestId,
+      action,
+    }: {
+      requestId: string
+      action: 'approve' | 'reject'
+    }) => {
       const res = await apiFetch(
         buildApiUrl(
           `/groups/${encodeURIComponent(groupId)}/join-requests/${encodeURIComponent(requestId)}/${action}`,
@@ -58,15 +58,37 @@ export default function JoinRequestsList({ groupId, onDecided }: JoinRequestsLis
         { method: 'POST' },
       )
       if (!res.ok) throw new Error(await readApiError(res, 'Não foi possível decidir o pedido'))
+      return { requestId, action }
+    },
+    onSuccess: ({ requestId, action }) => {
       if (action === 'approve') trackApproveJoinRequest()
-      setRequests((prev) => prev.filter((r) => r.id !== requestId))
+      queryClient.setQueryData<JoinRequestItem[]>(joinRequestsQueryKey(groupId), (prev) =>
+        (prev ?? []).filter((r) => r.id !== requestId),
+      )
       onDecided?.(action)
-    } catch (e: unknown) {
+    },
+    onError: (e: unknown) => {
       alert(e instanceof Error ? e.message : 'Não foi possível decidir o pedido')
-    } finally {
+    },
+    onSettled: () => {
       setBusyId(null)
-    }
+    },
+  })
+
+  function decide(requestId: string, action: 'approve' | 'reject') {
+    trackEvent(action === 'approve' ? 'click_members_aprovar_pedido' : 'click_members_recusar_pedido')
+    setBusyId(requestId)
+    decideMutation.mutate({ requestId, action })
   }
+
+  const requests = query.data ?? []
+  const loading = query.isPending
+  const error =
+    !query.data && query.isError
+      ? query.error instanceof Error
+        ? query.error.message
+        : 'Erro ao carregar pedidos'
+      : null
 
   if (loading) return <p className={styles.loading}>Carregando pedidos...</p>
   if (error) return <p className={styles.hint}>{error}</p>

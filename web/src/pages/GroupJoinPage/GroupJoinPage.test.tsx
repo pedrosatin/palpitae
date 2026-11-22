@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderWithQuery } from '../../test-utils'
 import GroupJoinPage from './GroupJoinPage'
 
 const PUBLIC_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -50,7 +51,7 @@ describe('GroupJoinPage', () => {
   })
 
   it('mostra prévia sem nomes de membros', async () => {
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route path="/grupo/:publicId" element={<GroupJoinPage />} />
@@ -74,7 +75,7 @@ describe('GroupJoinPage', () => {
         Response.json({ request: { id: 'r1', status: 'pending' } }, { status: 201 }),
       )
 
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route
@@ -96,7 +97,7 @@ describe('GroupJoinPage', () => {
       Response.json({ status: 'member', group_id: 'g1' }),
     )
 
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route
@@ -118,7 +119,7 @@ describe('GroupJoinPage', () => {
   it('pedido pendente: status sem group_id mostra aviso', async () => {
     vi.mocked(apiFetch).mockResolvedValue(Response.json({ status: 'pending' }))
 
-    render(
+    renderWithQuery(
       <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
         <Routes>
           <Route
@@ -133,5 +134,72 @@ describe('GroupJoinPage', () => {
       await screen.findByText(/Você já pediu entrada neste grupo/i),
     ).toBeInTheDocument()
     expect(screen.queryByTestId('pedir-entrada')).not.toBeInTheDocument()
+  })
+
+  it('após enviar o pedido, remontar a página não mostra o botão de novo', async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce(Response.json({ status: 'none' }))
+      .mockResolvedValueOnce(
+        Response.json({ request: { id: 'r1', status: 'pending' } }, { status: 201 }),
+      )
+
+    const user = { id: 'u1', email: 'a@b.com', nickname: 'Ana' }
+    const { queryClient, unmount } = renderWithQuery(
+      <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
+        <Routes>
+          <Route path="/grupo/:publicId" element={<GroupJoinPage user={user} />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: 'Bolão da Firma' })
+    await userEvent.click(await screen.findByTestId('pedir-entrada'))
+    await waitFor(() => expect(trackJoinRequest).toHaveBeenCalled())
+    expect(
+      queryClient.getQueryData(['groups', 'join-requests', 'me', PUBLIC_ID, user.id]),
+    ).toEqual({ status: 'pending' })
+
+    unmount()
+
+    vi.mocked(apiFetch).mockImplementationOnce(() => new Promise(() => {}))
+
+    renderWithQuery(
+      <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
+        <Routes>
+          <Route path="/grupo/:publicId" element={<GroupJoinPage user={user} />} />
+        </Routes>
+      </MemoryRouter>,
+      { queryClient },
+    )
+
+    expect(
+      await screen.findByText(/Você já pediu entrada neste grupo/i),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('pedir-entrada')).not.toBeInTheDocument()
+  })
+
+  it('409 já é membro atualiza o cache de membership', async () => {
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce(Response.json({ status: 'none' }))
+      .mockResolvedValueOnce(
+        Response.json({ error: 'Você já é membro deste grupo', group_id: 'g1' }, { status: 409 }),
+      )
+
+    const user = { id: 'u1', email: 'a@b.com', nickname: 'Ana' }
+    const { queryClient } = renderWithQuery(
+      <MemoryRouter initialEntries={[`/grupo/${PUBLIC_ID}`]}>
+        <Routes>
+          <Route path="/grupo/:publicId" element={<GroupJoinPage user={user} />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: 'Bolão da Firma' })
+    await userEvent.click(await screen.findByTestId('pedir-entrada'))
+
+    expect(await screen.findByText('Você já participa')).toBeInTheDocument()
+    expect(
+      queryClient.getQueryData(['groups', 'join-requests', 'me', PUBLIC_ID, user.id]),
+    ).toEqual({ status: 'member', groupId: 'g1' })
   })
 })
