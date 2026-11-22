@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-test.describe('Guia do Brasileirão - competição escolhida na criação', () => {
+test.describe('Guia do Brasileirão com a competição escolhida na criação', () => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': 'http://localhost:5173',
     'Access-Control-Allow-Credentials': 'true',
@@ -107,6 +107,7 @@ test.describe('Guia do Brasileirão - competição escolhida na criação', () =
     const select = dialog.getByLabel('Competição')
     await expect(select).toHaveValue('bsa-2026')
     await expect(dialog.getByText(warning)).toBeVisible()
-    await expect(select).toHaveAccessibleDescription(warning)
+    await expect(select).toHaveAccessibleDescription(/A competição do link ainda não está disponível/)
+    await expect(select).toHaveAccessibleDescription(/Esse campeonato já começou/)
   })
 })

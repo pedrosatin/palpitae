@@ -17,6 +17,7 @@ interface CreateGroupModalProps {
 }
 
 const UNAVAILABLE_HINT_ID = 'group-competition-unavailable'
+const ONGOING_HINT_ID = 'group-competition-ongoing'
 
 export default function CreateGroupModal({
   isOpen,
@@ -57,6 +58,13 @@ export default function CreateGroupModal({
   const hasBothGroups = ongoing.length > 0 && upcoming.length > 0
   const selected = competitions.find((c) => c.id === competitionId)
   const selectedOngoing = selected?.status === 'ongoing'
+  const describedBy =
+    [
+      preferredCompetitionUnavailable && UNAVAILABLE_HINT_ID,
+      selectedOngoing && ONGOING_HINT_ID,
+    ]
+      .filter(Boolean)
+      .join(' ') || undefined
 
   function renderOptions(list: Competition[]) {
     return list.map((c) => (
@@ -79,7 +87,7 @@ export default function CreateGroupModal({
         id="group-competition"
         value={competitionId}
         onChange={(e) => setCompetitionId(e.target.value)}
-        aria-describedby={preferredCompetitionUnavailable ? UNAVAILABLE_HINT_ID : undefined}
+        aria-describedby={describedBy}
         required
       >
         {hasBothGroups ? (
@@ -130,7 +138,7 @@ export default function CreateGroupModal({
               </p>
             )}
             {selectedOngoing && (
-              <p role="status" className={styles.statusHint}>
+              <p id={ONGOING_HINT_ID} role="status" className={styles.statusHint}>
                 Esse campeonato já começou — dá para criar o grupo e palpitar as rodadas que
                 faltam.
               </p>
