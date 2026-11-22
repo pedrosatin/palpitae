@@ -1,9 +1,10 @@
-import { renderHook, waitFor, act } from '@testing-library/react'
+import { waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { usePredictionsTab } from './usePredictionsTab'
 import * as ga from '../../analytics/ga'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { makeMatch } from '../matchFixtures'
+import { renderHookWithQuery as renderHook } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({
   trackEvent: vi.fn(),

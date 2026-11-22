@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { trackEvent } from '../../analytics/ga'
-import { fetchCompetitionMatches } from '../../lib/competitionMatches'
+import {
+  competitionMatchesQueryOptions,
+  matchesQueryErrorMessage,
+} from '../../lib/competitionMatches'
 import {
   type CompetitionType,
   type TeamStanding,
@@ -228,28 +232,22 @@ export default function StandingsTab({
   competitionType,
   competitionCode,
 }: StandingsTabProps) {
-  const [matches, setMatches] = useState<Match[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const matchesQuery = useQuery(competitionMatchesQueryOptions(competitionId))
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetchCompetitionMatches(competitionId)
-      .then((data) => setMatches(data.matches))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [competitionId])
-
-  if (loading) {
+  if (matchesQuery.isPending) {
     return <p className={styles.loading}>Carregando classificação...</p>
   }
 
-  if (error) {
-    return <ErrorState message={error} />
+  if (matchesQuery.isError) {
+    return (
+      <ErrorState
+        message={matchesQueryErrorMessage(matchesQuery.error, true) ?? 'Erro ao carregar jogos'}
+      />
+    )
   }
 
+  const matches = matchesQuery.data.matches
   const standings = computeStandings(matches, competitionCode)
 
   if (standings.size === 0) {

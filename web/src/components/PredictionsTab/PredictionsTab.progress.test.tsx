@@ -1,10 +1,11 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatClosingDate } from '../../lib/matchTime'
 import { makeMatch } from '../matchFixtures'
 import type { Match, Prediction } from '../MatchCard'
 import PredictionsTab from './PredictionsTab'
+import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 afterEach(() => {

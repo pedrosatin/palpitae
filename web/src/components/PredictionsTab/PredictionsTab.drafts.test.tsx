@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PredictionsTab from './PredictionsTab'
@@ -6,6 +6,7 @@ import { makeMatch } from '../matchFixtures'
 import type { Match, Prediction } from '../MatchCard'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
 import { savedBase, type PenaltyWinner } from '../../lib/predictionDrafts'
+import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 

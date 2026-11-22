@@ -1,9 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { fetchCompetitionMatches, applyDefaultRoundFromMatches } from './competitionMatches'
+import {
+  fetchCompetitionMatches,
+  applyDefaultRoundFromMatches,
+  competitionMatchesQueryOptions,
+} from './competitionMatches'
 import { apiFetch } from './api'
-import { invalidateApiCache } from './api-cache'
 import { applyDefaultRound } from './rounds'
 import { config } from '../config'
+import { createTestQueryClient } from '../test-utils'
 
 vi.mock('./api', () => ({
   apiFetch: vi.fn(),
@@ -16,7 +20,6 @@ vi.mock('./rounds', () => ({
 describe('competitionMatches', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    invalidateApiCache()
   })
 
   describe('fetchCompetitionMatches', () => {
@@ -31,6 +34,7 @@ describe('competitionMatches', () => {
 
       expect(apiFetch).toHaveBeenCalledWith(
         `${config.apiUrl}/matches?competition_id=comp-1&round_order=1`,
+        undefined,
       )
       expect(result).toEqual(mockResponse)
     })
@@ -43,21 +47,41 @@ describe('competitionMatches', () => {
       await expect(fetchCompetitionMatches('comp-2')).rejects.toThrow('Erro ao carregar jogos')
       expect(apiFetch).toHaveBeenCalledWith(
         `${config.apiUrl}/matches?competition_id=comp-2&round_order=1`,
+        undefined,
       )
     })
 
-    it('uses the cache key matches:competitionId', async () => {
+    it('repassa o signal ao apiFetch', async () => {
+      vi.mocked(apiFetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ matches: [], default_round: '1' }),
+      } as Response)
+      const controller = new AbortController()
+
+      await fetchCompetitionMatches('comp-signal', controller.signal)
+
+      expect(apiFetch).toHaveBeenCalledWith(
+        `${config.apiUrl}/matches?competition_id=comp-signal&round_order=1`,
+        { signal: controller.signal },
+      )
+    })
+  })
+
+  describe('competitionMatchesQueryOptions', () => {
+    it('reutiliza a query com a mesma chave dentro do staleTime', async () => {
       vi.mocked(apiFetch).mockResolvedValue({
         ok: true,
         json: async () => ({ matches: [], default_round: '1' }),
       } as Response)
 
-      await fetchCompetitionMatches('comp-3')
-      await fetchCompetitionMatches('comp-3')
+      const client = createTestQueryClient()
+      await client.fetchQuery(competitionMatchesQueryOptions('comp-3'))
+      await client.fetchQuery(competitionMatchesQueryOptions('comp-3'))
 
       expect(apiFetch).toHaveBeenCalledTimes(1)
       expect(apiFetch).toHaveBeenCalledWith(
         `${config.apiUrl}/matches?competition_id=comp-3&round_order=1`,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       )
     })
   })
@@ -77,7 +101,7 @@ describe('competitionMatches', () => {
       expect(applyDefaultRound).toHaveBeenCalledWith(
         'Round 2',
         ['Round 1', 'Round 2'],
-        setRoundIndex
+        setRoundIndex,
       )
     })
 
@@ -97,11 +121,7 @@ describe('competitionMatches', () => {
 
       applyDefaultRoundFromMatches([], null, setRoundIndex)
 
-      expect(applyDefaultRound).toHaveBeenCalledWith(
-        null,
-        [],
-        setRoundIndex
-      )
+      expect(applyDefaultRound).toHaveBeenCalledWith(null, [], setRoundIndex)
     })
   })
 })

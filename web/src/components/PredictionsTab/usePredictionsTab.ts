@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { buildApiUrl } from '../../config'
 import { trackEvent } from '../../analytics/ga'
@@ -6,7 +7,11 @@ import { useNow } from '../../hooks/useNow'
 import { apiFetch, CONNECTION_ERROR, readApiError } from '../../lib/api'
 import { invalidateApiCache } from '../../lib/api-cache'
 import { isListOf, isRecord, UNEXPECTED_RESPONSE } from '../../lib/responseShape'
-import { applyDefaultRoundFromMatches, fetchCompetitionMatches } from '../../lib/competitionMatches'
+import {
+  applyDefaultRoundFromMatches,
+  competitionMatchesQueryOptions,
+  matchesQueryErrorMessage,
+} from '../../lib/competitionMatches'
 import { fetchGroupsList } from '../../lib/groupsList'
 import { isMatchLocked } from '../../lib/predictionDrafts'
 import { draftStorageKey } from '../../lib/predictionDraftStorage'
@@ -111,14 +116,13 @@ function usePredictionsFetch(
   requestedRound: string | null | undefined,
   onRequestedRoundApplied: (() => void) | undefined,
 ) {
-  const [matches, setMatches] = useState<Match[]>([])
+  const matchesQuery = useQuery(competitionMatchesQueryOptions(competitionId))
   const [predictions, setPredictions] = useState<PredictionMap>(new Map())
   const [importCompleted, setImportCompleted] = useState(false)
   const [importSources, setImportSources] = useState<ImportSources>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [predictionsLoading, setPredictionsLoading] = useState(true)
+  const [predictionsError, setPredictionsError] = useState<string | null>(null)
   const [roundIndex, setRoundIndex] = useState(0)
-  const [defaultRound, setDefaultRound] = useState<string | null>(null)
   // A rodada do link fica fora das dependências da busca. Quando o `?rodada=` sai
   // da URL, a aba não busca de novo nem volta para a rodada padrão.
   const requested = useRef({ round: requestedRound, onApplied: onRequestedRoundApplied })
@@ -130,47 +134,50 @@ function usePredictionsFetch(
     let active = true
     setImportCompleted(false)
     setImportSources(null)
-    setLoading(true)
-    setError(null)
+    setPredictionsLoading(true)
+    setPredictionsError(null)
 
-    Promise.all([fetchCompetitionMatches(competitionId), fetchOwnPredictions(groupId)])
-      .then(([matchesData, predictionsData]) => {
+    fetchOwnPredictions(groupId)
+      .then((predictionsData) => {
         if (!active) return
         setImportCompleted(predictionsData.importCompleted)
         setImportSources(predictionsData.importSources)
-        setMatches(matchesData.matches)
-        setDefaultRound(matchesData.default_round ?? null)
         setPredictions(predictionsData.predictions)
-
-        const { round, onApplied } = requested.current
-        applyDefaultRoundFromMatches(
-          matchesData.matches,
-          matchesData.default_round,
-          setRoundIndex,
-          round,
-        )
-        if (round) onApplied?.()
       })
       .catch((e: Error) => {
-        if (active) setError(e.message)
+        if (active) setPredictionsError(e.message)
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active) setPredictionsLoading(false)
       })
     return () => {
       active = false
     }
-  }, [groupId, competitionId])
+  }, [groupId])
+
+  useEffect(() => {
+    if (!matchesQuery.data) return
+    const { round, onApplied } = requested.current
+    applyDefaultRoundFromMatches(
+      matchesQuery.data.matches,
+      matchesQuery.data.default_round,
+      setRoundIndex,
+      round,
+    )
+    if (round) onApplied?.()
+  }, [groupId, competitionId, matchesQuery.dataUpdatedAt, matchesQuery.data])
+
+  const matchesError = matchesQueryErrorMessage(matchesQuery.error, matchesQuery.isError)
 
   return {
-    matches,
+    matches: matchesQuery.data?.matches ?? [],
     predictions,
     setPredictions,
-    loading,
-    error,
+    loading: matchesQuery.isPending || predictionsLoading,
+    error: matchesError ?? predictionsError,
     roundIndex,
     setRoundIndex,
-    defaultRound,
+    defaultRound: matchesQuery.data?.default_round ?? null,
     importCompleted,
     setImportCompleted,
     importSources,

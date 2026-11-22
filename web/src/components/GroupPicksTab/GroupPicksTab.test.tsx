@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest'
 import * as ga from '../../analytics/ga'
@@ -6,6 +6,7 @@ import { invalidateApiCache } from '../../lib/api-cache'
 import GroupPicksTab from './GroupPicksTab'
 import { makeMatch } from '../matchFixtures'
 import { type Match } from '../MatchCard'
+import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)

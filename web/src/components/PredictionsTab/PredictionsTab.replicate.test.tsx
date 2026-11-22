@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { StrictMode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -7,6 +7,7 @@ import { resetReplicateStatus } from '../../lib/replicateStatus'
 import { makeMatch } from '../matchFixtures'
 import type { Prediction } from '../MatchCard'
 import PredictionsTab from './PredictionsTab'
+import { renderWithQuery as render } from '../../test-utils'
 
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 

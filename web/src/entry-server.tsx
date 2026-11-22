@@ -11,6 +11,10 @@
  * entre esta árvore e a de `main.tsx` vira erro de hidratação, então as duas
  * precisam ser alteradas juntas.
  *
+ * O `QueryClientProvider` fica só no `main.tsx`: a landing não usa partidas nem
+ * outras queries, e o provider não altera o HTML (só o contexto). Assim o
+ * prerender não dispara busca.
+ *
  * Só a rota "/" é pré-renderizada: é a única pública, a única indexada e a
  * única que não depende da sessão.
  */
