@@ -1,6 +1,3 @@
-// O rótulo de exibição (`round_label`) vem pronto da API (`GET /matches`) — a fonte
-// única é o back (`api/src/matches/rounds.ts`). Aqui fica só a lógica client-side
-// que deriva do `round` cru e não tem por que ir ao servidor.
 
 export function isGroupStageRound(round: string): boolean {
   return /^\d+$/.test(round)
@@ -12,8 +9,6 @@ export function predictionsPath(groupId: string, round: string | null): string {
   return round ? `${base}?rodada=${encodeURIComponent(round)}` : base
 }
 
-// null = no future round; undefined = pre-deploy cache without the field.
-// Both cases fall back to the last round (preserves old behaviour).
 export function applyDefaultRound(
   defaultRound: string | null | undefined,
   rounds: string[],

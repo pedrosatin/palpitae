@@ -8,8 +8,6 @@ import { reportD1Rows, type ReportedRows } from '../testing/d1RowsReported'
 import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 
-// Testa pela API inteira, via worker.fetch, a cobrança das escritas em lote antes de gravar.
-
 const handles: DatabaseSync[] = []
 afterEach(() => {
   for (const sqlite of handles.splice(0)) sqlite.close()
@@ -180,7 +178,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     f.seedPredictions('srcA', 100, 2, 1)
     f.seedPredictions('srcB', 100, 0, 3)
 
-    // 1.000 instruções planejadas > saldo 500 -> 429 sem gravar nada.
     const over = await f.request('POST', '/predictions/replicate', {
       source_group_id: 'srcA',
       target_group_ids: targets,
@@ -192,7 +189,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     for (const t of targets) expect(f.countGroupPredictions(t)).toBe(0)
     expect(await f.dailyHits('written')).toBeUndefined()
 
-    // 400 instruções planejadas <= saldo 500 -> grava e desconta uma única vez.
     const ok = await f.request('POST', '/predictions/replicate', {
       source_group_id: 'srcA',
       target_group_ids: targets.slice(0, 4),
@@ -203,7 +199,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     const chargedAfter400 = await f.dailyHits('written')
     expect(chargedAfter400).toBe(400 + 2 * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW)
 
-    // Fonte alternada (srcB com outro placar) sobre os mesmos ou outros destinos passa do saldo restante (96).
     const altSameTargets = await f.request('POST', '/predictions/replicate', {
       source_group_id: 'srcB',
       target_group_ids: targets.slice(0, 4),
@@ -226,7 +221,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     expect(f.countGroupPredictions(targets[4]!)).toBe(0)
     expect(await f.dailyHits('written')).toBe(chargedAfter400)
 
-    // O que cabe no saldo restante (90 <= 96) continua gravando.
     const withinRemaining = await f.request('POST', '/predictions/replicate', {
       source_group_id: 'srcB',
       target_group_ids: [targets[4]!],
@@ -247,7 +241,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     f.seedPredictions('src400a', 400, 2, 0)
     f.seedPredictions('src400b', 400, 0, 2)
 
-    // 600 instruções > saldo 500 -> 429 sem gravar nem marcar importação concluída.
     const over = await f.request('POST', '/predictions/import', {
       source_group_id: 'src600',
       target_group_id: 'tgt',
@@ -258,7 +251,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     expect(f.countGroupPredictions('tgt')).toBe(0)
     expect(await f.dailyHits('written')).toBeUndefined()
 
-    // 400 instruções <= saldo 500 -> grava e desconta (400 palpites + 1 marcador + custo do balde).
     const ok = await f.request('POST', '/predictions/import', {
       source_group_id: 'src400a',
       target_group_id: 'tgt',
@@ -268,7 +260,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     const charged = await f.dailyHits('written')
     expect(charged).toBe(401 + 2 * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW)
 
-    // Fonte alternada (400 > restante 95) -> 429 sem sobrescrever.
     const alt = await f.request('POST', '/predictions/import', {
       source_group_id: 'src400b',
       target_group_id: 'tgt',
@@ -277,7 +268,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     expect(f.groupScores('tgt').every((s) => s.h === 2 && s.a === 0)).toBe(true)
     expect(await f.dailyHits('written')).toBe(charged)
 
-    // Teto de 1.000 instruções por requisição no import (mesmo com saldo alto).
     const capFixture = await setupBatchFixture({
       matchCount: 1001,
       groupIds: ['src1001', 'src1000', 'tgtCap'],
@@ -310,7 +300,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     })
     f.seedPredictions('src400', 400, 1, 0)
 
-    // 400 palpites mais 1 marcador passam do saldo de 400.
     const refused = await f.request('POST', '/predictions/import', {
       source_group_id: 'src400',
       target_group_id: 'tgt',
@@ -329,7 +318,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     })
     await f.seedWrittenHits(450)
 
-    // 80 palpites planejados > saldo restante 50 -> 429 sem gravar.
     const over = await f.request('PUT', '/predictions/bulk', {
       group_id: 'g1',
       predictions: f.matchIds.slice(0, 80).map((match_id) => ({
@@ -344,7 +332,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     expect(f.countGroupPredictions('g1')).toBe(0)
     expect(await f.dailyHits('written')).toBe(450)
 
-    // 40 palpites planejados <= saldo restante 50 -> grava e desconta.
     const ok = await f.request('PUT', '/predictions/bulk', {
       group_id: 'g1',
       predictions: f.matchIds.slice(0, 40).map((match_id) => ({
@@ -357,7 +344,6 @@ describe('cobrança antecipada do orçamento diário em escritas em lote', () =>
     expect(f.countGroupPredictions('g1')).toBe(40)
     expect(await f.dailyHits('written')).toBe(450 + 40 + 2 * DAILY_BUCKET_ROWS_WRITTEN_PER_ROW)
 
-    // 20 palpites > saldo restante 6 -> 429 sem gravar.
     const nextOver = await f.request('PUT', '/predictions/bulk', {
       group_id: 'g1',
       predictions: f.matchIds.slice(40, 60).map((match_id) => ({

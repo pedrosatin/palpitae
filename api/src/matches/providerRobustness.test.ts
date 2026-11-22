@@ -7,8 +7,6 @@ import { isKnockoutPhase, KNOCKOUT_PHASES, LABELED_ROUNDS } from './rounds'
 import { syncFixtures } from './sync'
 import { scoreUnprocessedMatches } from './scoring'
 
-// Sync e pontuação reais sobre o SQLite com todas as migrations aplicadas.
-
 const KICKOFF = '2026-08-01T19:00:00Z'
 const BEFORE = '2026-08-01T18:00:00Z'
 const DURING = '2026-08-01T20:10:00Z'

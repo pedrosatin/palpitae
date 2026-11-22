@@ -141,7 +141,6 @@ describe('drawRoundShareCard', () => {
     const { ctx, draws } = recordingContext()
     drawRoundShareCard(ctx, build(leaderInput))
 
-    // O divisor fica em y 158 e o nome da rodada, em 34 px, tem a base em y 280. O título tem 40 px.
     const band = draws.filter((d) => d.y > 158 + 40 && d.y < 280 - 34)
     expect(band.map((d) => d.text).join('')).toBe('REI DA RODADA')
     expect(band.every((d) => d.color === LIME)).toBe(true)

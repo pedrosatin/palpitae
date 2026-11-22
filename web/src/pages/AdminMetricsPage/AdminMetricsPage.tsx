@@ -48,21 +48,18 @@ import type {
  */
 
 function formatTimestamp(ts: string): string {
-  // SQL API devolve "YYYY-MM-DD hh:mm:ss" (UTC) — encurta pra dd/mm hh:mm.
   const [date, time] = ts.split(' ')
   if (!date || !time) return ts
   const [, m, d] = date.split('-')
   return `${d}/${m} ${time.slice(0, 5)}`
 }
 
-/** Duração legível: ms cru até 1 s, segundos até 1 min, depois minutos. */
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)} ms`
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
   return `${(ms / 60_000).toFixed(1)} min`
 }
 
-/** "há X min/h/dias" a partir de um timestamp UTC da SQL API. */
 function formatAgo(ts: string): string {
   const time = parseSqlUtc(ts)
   if (Number.isNaN(time)) return ts
@@ -94,7 +91,6 @@ function useMetricsData(
     [overview],
   )
 
-  // DAU: usuários distintos palpitando por dia.
   const dauSeries = useMemo(
     () =>
       overview ? dailyTotals(overview.predictionsDaily, (r) => Number(r.users), overview.days) : [],
@@ -103,7 +99,6 @@ function useMetricsData(
 
   const kpis = useMemo(() => (overview ? buildKpis(overview) : null), [overview])
 
-  // Sampling do AE: média > 1 significa amostragem — números viram estimativa.
   const avgSample = overview ? Number(overview.sampling.avg_sample_interval ?? 1) : 1
   const isSampling = avgSample > 1.01
 
@@ -220,8 +215,6 @@ function EventsSection({
             <tbody>
               {overview.totals.map((t) => (
                 <tr key={t.event_type}>
-                  {/* title mantém o event_type cru — é a chave do esquema
-                      posicional em docs/observability.md */}
                   <td title={t.event_type}>{eventLabel(t.event_type)}</td>
                   <td className={styles.num}>{formatNumber(Number(t.count))}</td>
                 </tr>
@@ -464,7 +457,6 @@ function RecentErrorsSection({ overview }: { overview: OverviewResponse }) {
                 <td className={styles.nowrap} title={e.event_type}>
                   {eventLabel(e.event_type)}
                 </td>
-                {/* blobs posicionais variam por tipo de evento — mostra cru */}
                 <td className={styles.detail}>
                   {[e.blob2, e.blob3, e.blob4].filter(Boolean).join(' · ')}
                 </td>
@@ -477,12 +469,10 @@ function RecentErrorsSection({ overview }: { overview: OverviewResponse }) {
   )
 }
 
-/** Corpo de uma seção opcional: rede, status de erro ou JSON inválido viram null. */
 async function optionalJson<T>(res: Response | null): Promise<T | null> {
   return res?.ok ? ((await res.json().catch(() => null)) as T | null) : null
 }
 
-/** Tudo o que a página mostra para um período, lido de uma vez. */
 interface MetricsSnapshot {
   overview: OverviewResponse
   business: BusinessResponse | null
@@ -495,7 +485,6 @@ interface MetricsSnapshot {
   quota: QuotaUsageResponse | null
 }
 
-/** Nada carregado: período em carga, com falha ou sem acesso. */
 const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
   overview: null,
   business: null,
@@ -508,11 +497,6 @@ const NO_METRICS: { [K in keyof MetricsSnapshot]: null } = {
   quota: null,
 }
 
-/**
- * Lê todas as seções do período. Não lança: 403 do overview vira `forbidden`,
- * qualquer outra falha do overview (ou corpo inválido de negócio/arquivo) vira
- * `failed`. Seção secundária que falha fica null, nunca com o dado de outro período.
- */
 async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
   const params = new URLSearchParams({ days: String(days) })
   try {
@@ -521,13 +505,11 @@ async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
         apiFetch(buildApiUrl('/metrics/overview', params)),
         apiFetch(buildApiUrl('/metrics/business', params)),
         apiFetch(buildApiUrl('/metrics/archive')),
-        // Provedores: falha ou API antiga não derruba a página (cai em "indisponível").
         apiFetch(buildApiUrl('/metrics/ops', params)).catch(() => null),
         apiFetch(buildApiUrl('/metrics/competition-activity', params)).catch(() => null),
         apiFetch(buildApiUrl('/metrics/heatmap', params)).catch(() => null),
         apiFetch(buildApiUrl('/metrics/invite-funnel', params)).catch(() => null),
         apiFetch(buildApiUrl('/metrics/signup-origins', params)).catch(() => null),
-        // Última medição das cotas, independente do período.
         apiFetch(buildApiUrl('/metrics/quota')).catch(() => null),
       ])
     if (ovRes.status === 403) return { kind: 'forbidden' }
@@ -536,7 +518,6 @@ async function loadMetrics(days: number): Promise<AdminLoad<MetricsSnapshot>> {
       kind: 'ok',
       data: {
         overview: (await ovRes.json()) as OverviewResponse,
-        // Negócio e arquivo são secundários — falha neles não derruba a página inteira.
         business: bizRes.ok ? ((await bizRes.json()) as BusinessResponse) : null,
         archive: arRes.ok ? ((await arRes.json()) as ArchiveResponse) : null,
         ops: await optionalJson<OpsResponse>(opsRes),
@@ -569,8 +550,6 @@ export default function AdminMetricsPage() {
     quota,
   } = data ?? NO_METRICS
 
-  // Análise do arquivo frio, sob demanda (um mês por vez) — independente do período.
-  // Só o último mês pedido grava resultado e encerra o "Lendo arquivos…".
   const [queryMonth, setQueryMonth] = useState<string | null>(null)
   const [queryResult, setQueryResult] = useState<ArchiveQueryResponse | null>(null)
   const [queryLoading, setQueryLoading] = useState(false)
@@ -578,7 +557,6 @@ export default function AdminMetricsPage() {
   useEffect(() => {
     const queries = latestQuery
     return () => {
-      // Desmontou: nenhum pedido em voo é o último.
       queries.current += 1
     }
   }, [])

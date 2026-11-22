@@ -9,7 +9,6 @@ interface UseDashboardGroupsParams {
   normalizedPendingInvite?: string
 }
 
-/** Carregando, erro e lista se excluem: um erro antigo não sobrevive à carga seguinte. */
 type GroupsLoad =
   | { status: 'loading' }
   | { status: 'error'; message: string }
@@ -19,11 +18,8 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
   const location = useLocation()
   const [load, setLoad] = useState<GroupsLoad>({ status: 'loading' })
   const [joinOpen, setJoinOpen] = useState(false)
-  // Grupo do convite em que o usuário já está. A página navega direto para ele.
   const [matchedInviteGroupId, setMatchedInviteGroupId] = useState<string | null>(null)
-  // Só a carga mais recente aplica a resposta. Uma anterior que chega depois é descartada.
   const requestIdRef = useRef(0)
-  // Convite na URL agora. Se ele saiu enquanto a lista carregava, a resposta não abre o modal.
   const pendingInviteRef = useRef(normalizedPendingInvite)
   pendingInviteRef.current = normalizedPendingInvite
 
@@ -56,12 +52,6 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
     [userId, normalizedPendingInvite],
   )
 
-  /**
-   * Busca a lista de novo sem a tela de carregamento, para os números que mudam com
-   * o relógio. A lista atual fica na tela até a nova chegar. Devolve a lista nova,
-   * ou null quando a busca falha ou uma carga pedida depois descarta a resposta.
-   * Na falha, a lista atual continua.
-   */
   const refreshGroups = useCallback((): Promise<GroupWithStats[] | null> => {
     const requestId = ++requestIdRef.current
     invalidateApiCache('groups:')
@@ -76,14 +66,12 @@ export function useDashboardGroups({ userId, normalizedPendingInvite }: UseDashb
       .catch(() => null)
   }, [userId])
 
-  // Parâmetros da última busca disparada pelo efeito.
   const lastRequestRef = useRef<{ userId: string; state: unknown } | null>(null)
 
   useEffect(() => {
     const state = location.state
     const previous = lastRequestRef.current
     lastRequestRef.current = { userId, state }
-    // Convite que sai da URL (dispensado ou aceito) não muda a lista: nada a buscar.
     if (!normalizedPendingInvite && previous?.userId === userId && previous.state === state) return
     const needsRefresh = (state as { refreshGroups?: boolean } | null)?.refreshGroups === true
     fetchGroups(needsRefresh)

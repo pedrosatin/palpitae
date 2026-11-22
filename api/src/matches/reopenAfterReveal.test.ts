@@ -9,7 +9,7 @@ import { syncFixtures } from './sync'
 
 const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
 const T0 = Date.now()
-const KICKOFF = iso(T0 - 30 * 60_000) // O horário já revelou os palpites, sem confirmação de início pelo provedor.
+const KICKOFF = iso(T0 - 30 * 60_000)
 const SEED_NOW = iso(T0 - 26 * 3600_000)
 const SYNC_NOW = iso(T0)
 const PLACEHOLDER = iso(T0 + 5 * 86400_000).slice(0, 10) + 'T00:00:00Z'

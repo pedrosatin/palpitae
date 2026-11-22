@@ -1,8 +1,6 @@
 /// <reference types="node" />
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Só a ESPN é simulada: a Wikipedia passa pelo `fetchPageviews` de verdade, com
-// um `fetch` que nunca responde, como no job do Actions.
 vi.mock('./espnRadar', () => ({ fetchEspnLeaguesAndCounts: vi.fn() }))
 
 import { createSqliteD1 } from '../testing/sqliteD1'
@@ -23,7 +21,6 @@ const LIBERTADORES: ProviderLeague = {
   endsOn: '2026-11-28',
 }
 
-/** Mesmo caminho do workflow: o syncRadar gera o SQL no coletor e o arquivo é aplicado inteiro. */
 async function runSync(sqlite: ReturnType<typeof createSqliteD1>['sqlite'], day: string) {
   const collector = new SqlCollector()
   const result = await syncRadar(collector as never, undefined, new Date(`${day}T07:00:00Z`))
@@ -53,8 +50,6 @@ describe('radar: Wikipedia que não responde preserva os pageviews do snapshot a
       )
       expect((await runSync(sqlite, '2026-08-17')).status).toBe('ok')
 
-      // Dia seguinte: a Wikipedia pendura. O timeout de produção é de segundos;
-      // aqui `AbortSignal.timeout` vence em 20 ms.
       const realTimeout = AbortSignal.timeout.bind(AbortSignal)
       vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => realTimeout(20))
       vi.stubGlobal(

@@ -88,7 +88,6 @@ describe('ga', () => {
       const result = getStoredConsent()
 
       expect(result).toBeNull()
-      // Clean up the spies
       consoleErrorSpy.mockRestore()
       getItemSpy.mockRestore()
     })
@@ -122,7 +121,6 @@ describe('ga', () => {
 
       expect(() => setConsent('denied')).not.toThrow()
 
-      // 'denied' é persistido com timestamp (denied:<ms>) para reexibir o banner após 30 dias
       expect(setItemMock).toHaveBeenCalledWith(
         'palpitae:analytics-consent',
         expect.stringMatching(/^denied:\d+$/),
@@ -166,10 +164,8 @@ describe('ga', () => {
 
       expect((window as any).dataLayer).toBeDefined()
       expect((window as any).gtag).toBeDefined()
-      expect((window as any).dataLayer.length).toBe(4) // js, set, config, and 1 for default consent
+      expect((window as any).dataLayer.length).toBe(4)
 
-      // O script real é adiado (load/idle) para não competir com o carregamento
-      // inicial da página — aguarda o macrotask que injeta a tag no <head>.
       await new Promise((resolve) => setTimeout(resolve, 0))
 
       const script = document.head.querySelector('script')
@@ -189,7 +185,7 @@ describe('ga', () => {
 
       expect((window as any).dataLayer).toBeDefined()
       expect((window as any).gtag).toBeDefined()
-      expect((window as any).dataLayer.length).toBe(5) // js, set, config, 1 for default consent, 1 for update consent
+      expect((window as any).dataLayer.length).toBe(5)
     })
 
     it('pushes arguments to dataLayer when gtag is called', async () => {
@@ -200,10 +196,8 @@ describe('ga', () => {
       const { initGa } = await import('./ga')
       initGa()
 
-      // Reset dataLayer for clean check of gtag call arguments
       ;(window as any).dataLayer = []
 
-      // Simulate a gtag call
       window.gtag('event', 'test_event', { value: 1 })
 
       expect((window as any).dataLayer.length).toBe(1)

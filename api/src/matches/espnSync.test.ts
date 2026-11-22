@@ -9,7 +9,6 @@ import { ESPN_PRIMARY_COMPETITIONS, isEspnPrimaryCompetition, syncEspnFixtures }
 
 const handles: DatabaseSync[] = []
 
-/** Todas as colunas de `competitions`, menos o contador do cache, que sobe a cada gravação de jogo. */
 function competitionRows(sqlite: DatabaseSync, where = '') {
   return sqlite
     .prepare(`SELECT * FROM competitions ${where} ORDER BY id`)
@@ -59,7 +58,6 @@ function realEvent(id = 'real-event'): EspnScoreboardEvent {
   return event
 }
 
-/** Competição de teste para sync de liga sem registrar bra.2 em produção. */
 const TEST_LEAGUE_CODE = 'test.bra.2'
 
 function withTestLeague(run: () => Promise<void>): Promise<void> {
@@ -79,7 +77,6 @@ function leagueEvent(id = 'serie-b-event'): EspnScoreboardEvent {
   return event
 }
 
-// Campos consumidos pelo sync nas finais dos scoreboards de 21/11 e 06/12/2026.
 function finalEvent(id = '401913961'): EspnScoreboardEvent {
   return {
     id,

@@ -89,7 +89,6 @@ describe('GET /matches: tie_role em mata-mata', () => {
     })
     expect(byId.get('group')).not.toHaveProperty('tie_role')
 
-    // Quartas: mata-mata fora de penalty_phases → sem pênaltis, com tie_role.
     expect(byId.get('qf')).toMatchObject({
       is_knockout: true,
       decides_on_penalties: false,

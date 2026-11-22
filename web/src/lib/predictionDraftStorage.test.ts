@@ -78,7 +78,6 @@ describe('serializeDrafts / parseDrafts', () => {
           num: { value: { home: 1, away: 0 }, base: 'sem palpite', at: now },
           noBase: { value: { home: '1', away: '0' }, at: now },
           noAt: { value: { home: '1', away: '0' }, base: 'sem palpite' },
-          // Formato sem base nem hora por entrada.
           flat: { home: '1', away: '0' },
         },
         penalties: {
@@ -115,7 +114,6 @@ describe('readStoredDrafts / writeStoredDrafts', () => {
 
   it('regravar não renova o prazo da entrada', () => {
     writeStoredDrafts(key, entries({ m1: { home: '2', away: '1', at: now - 6 * DAY } }))
-    // Carregar e gravar de novo no dia seguinte mantém a hora da digitação.
     writeStoredDrafts(key, readStoredDrafts(key, now + DAY))
     expect(readStoredDrafts(key, now + DAY).drafts.get('m1')?.at).toBe(now - 6 * DAY)
     expect(readStoredDrafts(key, now + 2 * DAY).drafts.size).toBe(0)

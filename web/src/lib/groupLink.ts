@@ -7,7 +7,6 @@
 
 export const GROUP_LINK_PATH_PREFIX = '/grupo/'
 
-/** Formato do identificador público (32 hex). */
 const PUBLIC_ID_RE = /^[a-f0-9]{32}$/
 
 export function normalizePublicId(raw: string | null | undefined): string | null {

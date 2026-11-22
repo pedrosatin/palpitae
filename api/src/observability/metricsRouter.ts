@@ -14,26 +14,11 @@ import { countInviteJoinsInD1, summarizeInviteEvents } from './inviteFunnel'
 import { FREE_DAILY_QUOTAS, QUOTA_METRICS, quotaPercent, quotaThreshold } from './quotaUsage'
 import { countSignupsInD1, summarizeSignupOrigins } from './signupOrigin'
 
-/**
- * Métricas para o dashboard admin — proxy autenticado da SQL API do Analytics
- * Engine + listagem do arquivo frio (R2). Ver `docs/observability.md`.
- *
- * Por que um proxy: a SQL API exige um token de CONTA Cloudflare
- * (Account Analytics:Read), que nunca pode ir pro cliente. O token fica em
- * secret do Worker; o navegador autentica com o cookie de sessão normal.
- *
- * Acesso: só o admin (e-mail em ADMIN_EMAIL, secret, e o `sub` do Google em
- * ADMIN_GOOGLE_SUB quando definido). Sem ADMIN_EMAIL configurado, tudo responde
- * 403 — fechado por padrão.
- *
- * São endpoints de LEITURA — sem logEvent, conforme a regra de instrumentação.
- */
 
 const DATASET = 'palpitae_events'
 
-const MAX_DAYS = 90 // janela de retenção do Analytics Engine (~3 meses)
+const MAX_DAYS = 90
 
-/** Janela em dias vinda da query string, saneada (1..MAX_DAYS; default 30). */
 function parseDays(raw: string | undefined): number {
   const n = Number(raw ?? '30')
   if (!Number.isInteger(n) || n < 1) return 30
@@ -63,12 +48,10 @@ function aeWindow(c: Context<AppContext>): Response | { days: number; since: str
 
 type AeRow = Record<string, unknown>
 
-/** `first_at` da primeira linha (consulta com MIN(timestamp)), ou null sem linhas. */
 function firstAt(rows: AeRow[]): string | null {
   return (rows[0]?.first_at as string | null | undefined) ?? null
 }
 
-/** `avg_sample_interval` da primeira linha; ausente ou inválido (< 1) vale 1. */
 function sampleInterval(rows: AeRow[]): number {
   const avg = Number(rows[0]?.avg_sample_interval ?? 1)
   return Number.isFinite(avg) && avg >= 1 ? avg : 1
@@ -79,15 +62,12 @@ export const metricsRouter = new Hono<AppContext>()
 metricsRouter.use('*', requireAuth)
 
 metricsRouter.use('*', async (c, next) => {
-  // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts).
   if (!isAdminUser(c.get('userIdentity'), c.env)) {
     return c.json({ error: 'Forbidden' }, 403)
   }
   await next()
 })
 
-// Radar de competições (/metrics/radar) — inteligência de produto, mesmo gate
-// de admin. Ver api/src/radar/router.ts.
 metricsRouter.route('/radar', radarRouter)
 
 /**
@@ -166,7 +146,6 @@ metricsRouter.get('/overview', async (c) => {
           `FROM ${DATASET} WHERE blob1 = 'login_failure' AND ${since} ` +
           `GROUP BY reason ORDER BY count DESC`,
       ),
-      // Quota da API Football: chamadas/dia feitas pelo poller.
       runAeSql(
         c.env,
         `SELECT toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day, ` +
@@ -261,28 +240,21 @@ metricsRouter.get('/overview', async (c) => {
   }
 })
 
-/** Dia UTC `YYYY-MM-DD` (também valida o `from`/`to` do arquivo frio). */
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
-/** Teto de linhas (dia × campeonato) da série diária; ver `groupsDailyTruncated`. */
 const GROUP_DAILY_LIMIT = 5000
 
-/** UUID de competição; qualquer outra coisa em blob de competição é lixo legado. */
 const COMPETITION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Identificador do provedor (slug, código, id): letras, dígitos, `.`, `_` e `-`. */
 const PROVIDER_TOKEN_RE = /^[\w.-]{1,80}$/
 
-/** Horário no formato de `matches.start_time`. */
 const ISO_SECONDS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/
 
-/** Identificador do provedor ou vazio: texto livre no blob não sai no payload. */
 function providerToken(raw: unknown): string {
   const value = String(raw ?? '')
   return PROVIDER_TOKEN_RE.test(value) ? value : ''
 }
 
-/** Id válido ou vazio ("sem liga"): nunca devolve texto livre de blob antigo. */
 function competitionIdOrEmpty(raw: unknown): string {
   const id = String(raw ?? '')
   return COMPETITION_ID_RE.test(id) ? id : ''
@@ -417,10 +389,6 @@ metricsRouter.get('/ops', async (c) => {
           `FROM ${DATASET} WHERE blob1 = 'match_unscored' AND ${since} ` +
           `GROUP BY competition_id ORDER BY last_seen DESC LIMIT 200`,
       ),
-      // Fila durável: estado real do D1 (não AE). Só itens abertos ou falhos.
-      // Envolve em Promise.resolve para um stub sem `.all` não lançar ao montar
-      // o Promise.all (senão as consultas AE já disparadas ficam órfãs).
-      // Falha do D1 marca `pendingWorkError` em vez de lista vazia (vazio ≠ indisponível).
       Promise.resolve()
         .then(async () => {
           const rows = await c.env.DB.prepare(
@@ -537,7 +505,6 @@ metricsRouter.get('/ops', async (c) => {
         cycles: Number(r.cycles ?? 0),
         last_seen: String(r.last_seen ?? ''),
       })),
-      // Idade = now - created_at do item mais antigo do grupo (fila D1, não AE).
       ...(pendingWorkRows.ok
         ? {
             pendingWork: (pendingWorkRows.rows?.results ?? []).map((r) => {
@@ -562,33 +529,6 @@ metricsRouter.get('/ops', async (c) => {
   }
 })
 
-/**
- * Criações de grupo e atividade de palpites por campeonato no período, a
- * partir do Analytics Engine. Endpoint próprio (como `/ops`) para que uma
- * falha aqui não derrube a página e para o front novo conviver com uma API
- * ainda sem a rota.
- *
- * Posições: group_created → blob3 competition_id; prediction_saved → blob6
- * competition_id (só em eventos gravados depois do deploy do enriquecimento),
- * double1 = nº de palpites do evento. Evento antigo sem a dimensão chega com
- * blob6 vazio e vira a linha "sem liga" (`competition_id: ''`); não há backfill.
- *
- * Contagens ponderadas pelo sampling: eventos = SUM(_sample_interval),
- * palpites = SUM(double1 * _sample_interval). A SQL API não faz join com o D1:
- * o Worker resolve nome e temporada dos ids que vieram do AE. Id sem linha em
- * `competitions` sai com `name` e `season` nulos. `predictionsDimensionSince`
- * (sem filtro de janela) é o primeiro evento com a dimensão, para o painel
- * distinguir "sem palpites" de "dimensão ainda não coletada".
- *
- * `groupsDaily` é a série de criações de grupo por dia (UTC, `YYYY-MM-DD`) ×
- * competition_id, com o mesmo SUM(_sample_interval). Só existem linhas de dias
- * com criação: o preenchimento dos dias zerados é do cliente. A consulta tem
- * teto de GROUP_DAILY_LIMIT linhas (ordem do dia mais recente para o mais
- * antigo); se bater no teto, `groupsDailyTruncated` é true e o painel avisa em
- * vez de mostrar uma série cortada como completa. O payload não carrega nome
- * de grupo, código de convite nem user_hash: só ids de campeonato (UUID
- * validado), dia e contagem; nome e temporada saem de `competitions`.
- */
 metricsRouter.get('/competition-activity', async (c) => {
   const ae = aeWindow(c)
   if (ae instanceof Response) return ae
@@ -716,7 +656,6 @@ metricsRouter.get('/competition-activity', async (c) => {
   }
 })
 
-/** Eventos do mapa de calor: palpites salvos e logins bem-sucedidos. */
 const HEATMAP_EVENTS = `('prediction_saved', 'login_success')`
 
 /**
@@ -726,7 +665,6 @@ const HEATMAP_EVENTS = `('prediction_saved', 'login_success')`
  */
 const HEATMAP_LIMIT = 5000
 
-/** Hora UTC da SQL API (`YYYY-MM-DD HH:MM:SS`) → ISO `YYYY-MM-DDTHH:00:00Z`; inválida vira ''. */
 function normalizeHour(raw: unknown): string {
   const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):/.exec(String(raw ?? ''))
   if (!m) return ''
@@ -821,7 +759,6 @@ metricsRouter.get('/heatmap', async (c) => {
   }
 })
 
-/** Eventos do funil de convite (`invite_opened` e `group_joined`). */
 const INVITE_FUNNEL_EVENTS = `('invite_opened', 'group_joined')`
 
 /**
@@ -932,36 +869,8 @@ metricsRouter.get('/signup-origins', async (c) => {
   }
 })
 
-/** Janela de "grupo ativo" no snapshot por campeonato (palpite recente). */
 const ACTIVE_GROUP_DAYS = 14
 
-/**
- * KPIs de negócio a partir do D1 (estado real, não amostrado) — complementa o
- * /overview (Analytics Engine, eventos). "Ativos" aqui é lifetime (toda a
- * base), não a janela de `days`; só contagens "criados no período" respeitam
- * `days`. `datetime(created_at)` normaliza o ISO com `Z` que o login grava em
- * `users` antes de comparar com `datetime('now')`; o texto cru contava o dia do
- * limite inteiro. Ignora grupos soft-deleted (deleted_at) em todas as contagens que
- * passam por grupo, inclusive usuários em grupo e usuários que palpitaram.
- *
- * `competitions` é o snapshot por temporada: TODAS as linhas de competitions,
- * inclusive as sem grupo (contagens zeradas). Cada métrica vem de uma
- * subquery agregada por competition_id antes do LEFT JOIN — juntar grupos,
- * membros e palpites numa query só multiplicaria as contagens.
- *   groups_current    → grupos não excluídos
- *   members           → usuários distintos nesses grupos
- *   active_groups_14d → grupos com palpite salvo/editado (updated_at) nos
- *                       últimos ACTIVE_GROUP_DAYS dias, relógio UTC do D1
- *   overdue_no_score  → jogos scheduled/live, não adiados, sem placar completo
- *                       (home_score ou away_score nulo) e com início há mais de
- *                       `RESULT_OVERDUE_HOURS` (padrão 3): buraco de feed
- *   finished_unscored → jogos finished com scored_at nulo: backlog de pontuação
- *                       (inclui finished sem placar, que o scoring não alcança)
- *                       Os dois contam só jogos, nunca ids nem times.
- *
- * `topCompetitions` continua no payload para o front antigo (deploys de API e
- * web não são atômicos); o front novo usa `competitions`.
- */
 metricsRouter.get('/business', async (c) => {
   const days = parseDays(c.req.query('days'))
   const db = c.env.DB
@@ -987,7 +896,6 @@ metricsRouter.get('/business', async (c) => {
         usersCreated: number
         groupsCreated: number
       }>(),
-    // Quantos grupos cada usuário integra — distribuição (média + mediana aprox via percentil).
     db
       .prepare(
         `SELECT gm.user_id AS user_id, COUNT(*) AS groups ` +
@@ -996,9 +904,6 @@ metricsRouter.get('/business', async (c) => {
           `GROUP BY gm.user_id`,
       )
       .all(),
-    // Snapshot por temporada. datetime(p.updated_at) normaliza o ISO com "Z"
-    // gravado pelo app para o formato do datetime('now') antes de comparar;
-    // datetime(m.start_time) faz o mesmo (aceita "Z", milissegundos e offset).
     db
       .prepare(
         `SELECT c.id AS id, c.name AS name, c.slug AS slug, c.season AS season, ` +
@@ -1050,7 +955,6 @@ metricsRouter.get('/business', async (c) => {
     groupCounts.length > 0 ? groupCounts[Math.floor(groupCounts.length / 2)] : 0
 
   const competitionRows = competitions.results
-  // Formato legado: só campeonatos com grupo, top 10 (já vem ordenado por grupos).
   const topCompetitions = competitionRows
     .filter((r) => r.groups_current > 0)
     .slice(0, 10)
@@ -1072,7 +976,6 @@ metricsRouter.get('/business', async (c) => {
     avgGroupsPerUser,
     medianGroupsPerUser,
     activeGroupDays: ACTIVE_GROUP_DAYS,
-    /** Limiar em horas usado em `overdue_no_score` nesta resposta. */
     overdueResultHours: overdueHours,
     overdueTotal,
     finishedUnscoredTotal,
@@ -1158,8 +1061,6 @@ metricsRouter.get('/archive', async (c) => {
   }[] = []
   let cursor: string | undefined
   do {
-    // customMetadata vem por padrão no list() (compatibility_date ≥ 2022-08-04
-    // — a opção `include` nem existe mais no runtime atual).
     const listed = await bucket.list({ prefix: 'events/', limit: 1000, cursor })
     for (const o of listed.objects) {
       const raw = o.customMetadata?.events

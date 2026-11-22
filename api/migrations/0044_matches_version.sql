@@ -1,20 +1,3 @@
--- Versão da lista de jogos, recusa de times iguais e repontuação por contexto.
---
--- `competitions.matches_version` sobe na mesma transação de cada alteração que a
--- lista de `GET /matches` exibe, e a chave do cache de borda passa a usá-la no lugar
--- do MAX(scored_at). Os gatilhos `matches_distinct_teams_*` recusam time igual nos
--- dois lados do confronto. O `matches_rescore_context` devolve à fila de pontuação
--- os jogos de mata-mata cuja ida ou volta mudou.
---
--- Deploy. A migration é aplicada antes do Worker. O Worker anterior segue
--- funcionando contra o banco novo. O Worker novo sem a migration faz `/matches`
--- responder 500.
---
--- Reversão. Reverter o código mantém a coluna e os gatilhos ativos. Desligá-los
--- exige uma migration com `DROP TRIGGER`.
---
--- Contagem de produção lida em 14/11/2026, só para leitura. 4.050 jogos, 0 com
--- mandante igual ao visitante, 15 competições e 4.270 palpites.
 
 ALTER TABLE competitions ADD COLUMN matches_version INTEGER NOT NULL DEFAULT 0;
 
@@ -51,7 +34,6 @@ BEGIN
   UPDATE competitions SET matches_version = matches_version + 1 WHERE id = OLD.competition_id;
 END;
 
--- O JOIN da lista também mostra nomes e escudos dos times.
 CREATE TRIGGER IF NOT EXISTS matches_version_team AFTER UPDATE ON teams
 WHEN NEW.name IS NOT OLD.name OR NEW.short_name IS NOT OLD.short_name OR NEW.logo_url IS NOT OLD.logo_url
 BEGIN
@@ -66,8 +48,6 @@ BEGIN
   UPDATE competitions SET matches_version = matches_version + 1 WHERE id = NEW.id;
 END;
 
--- O gatilho BEFORE roda antes do `matches_swap_predictions` (0039, AFTER), então um
--- confronto com times iguais aborta antes de inverter palpites.
 CREATE TRIGGER IF NOT EXISTS matches_distinct_teams_insert BEFORE INSERT ON matches
 WHEN NEW.home_team_id = NEW.away_team_id
 BEGIN
@@ -80,12 +60,6 @@ BEGIN
   SELECT RAISE(ABORT, 'matches: mandante igual ao visitante');
 END;
 
--- Mudar a composição ou a ordem do confronto pode mudar o jogo decisivo. O próprio
--- jogo volta à fila em qualquer fase. O par antigo e o novo só voltam em fase
--- eliminatória, porque `indexTies` (ties.ts) só monta confronto nelas. Em liga e
--- fase de grupos a repontuação daria o mesmo resultado e reescreveria todos os
--- palpites do jogo e o ranking dos grupos. A lista de fases é a de
--- `KNOCKOUT_PHASES` (rounds.ts), e um teste confere as duas.
 CREATE TRIGGER IF NOT EXISTS matches_rescore_context AFTER UPDATE OF home_team_id, away_team_id, phase, leg, start_time ON matches
 WHEN NEW.home_team_id IS NOT OLD.home_team_id OR NEW.away_team_id IS NOT OLD.away_team_id
   OR NEW.phase IS NOT OLD.phase OR NEW.leg IS NOT OLD.leg OR NEW.start_time IS NOT OLD.start_time

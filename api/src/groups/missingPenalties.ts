@@ -17,7 +17,6 @@ type SavedPick = {
   penaltyWinner: 'home' | 'away' | null
 }
 
-/** Papel e par de cada jogo de mata-mata das competições, uma consulta por competição. */
 async function tiesByCompetition(
   db: D1Database,
   groups: readonly PenaltyCheckGroup[],
@@ -37,7 +36,6 @@ async function tiesByCompetition(
   return new Map(entries)
 }
 
-/** Palpites do usuário nos jogos dos grupos, pela chave `grupo|jogo`, numa consulta só. */
 async function fetchSavedPicks(
   db: D1Database,
   userId: string,

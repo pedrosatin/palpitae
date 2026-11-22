@@ -1,20 +1,3 @@
-/**
- * Coletor de SQL — implementa o mínimo da interface do D1 (`prepare`/`bind`/
- * `batch`) e, em vez de executar, serializa os statements num script `.sql`.
- *
- * Nasceu de um rate limit: a API-Football (provedor original do radar,
- * ADR-014) limita **por IP**, e os IPs de saída dos Cloudflare Workers são
- * compartilhados por milhares de clientes — a primeira chamada do dia já
- * voltava 429 mesmo com a quota intacta. Do IP de um runner do GitHub a mesma
- * chamada devolvia 200.
- *
- * O provedor hoje é a ESPN (ADR-015), sem chave e sem política por IP, então
- * esse motivo específico não existe mais — mas o desenho permanece **por
- * escolha de arquitetura**: `syncRadar` roda sem alteração dentro ou fora do
- * Worker, e o snapshot inteiro vira uma única chamada
- * `wrangler d1 execute --remote --file`. Um `INSERT` por linha seria ~1.500
- * requisições HTTP na REST API do D1; um arquivo é uma chamada só.
- */
 
 type Bound = { sql: string; params: unknown[] }
 
@@ -71,21 +54,6 @@ export class SqlCollector {
     return this.collected.length
   }
 
-  /**
-   * Script pronto para `wrangler d1 execute --file`.
-   *
-   * **Sem `BEGIN TRANSACTION`/`COMMIT`**, por dois motivos que se somam:
-   * o D1 remoto rejeita transação explícita em SQL ("please use the
-   * state.storage.transaction() APIs instead of the SQL BEGIN TRANSACTION"),
-   * e ela seria redundante — o próprio `d1 execute --file` é atômico: "if the
-   * execution fails to complete, your DB will return to its original state".
-   *
-   * A atomicidade importa aqui: o `UPDATE is_current = 0` sem os `INSERT`s
-   * seguintes deixaria a dashboard sem nenhuma competição corrente.
-   *
-   * Cuidado ao testar: o D1 **local** aceita `BEGIN TRANSACTION` e o remoto
-   * não — validar só no local não pega esse erro.
-   */
   toSql(): string {
     return `${this.collected.map((s) => `${inlineParams(s.sql, s.params)};`).join('\n')}\n`
   }

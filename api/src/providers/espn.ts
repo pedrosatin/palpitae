@@ -1,18 +1,3 @@
-/**
- * Cliente da API pública da ESPN (site.api.espn.com) — sem chave, sem quota
- * conhecida, estável há anos. Não é uma API documentada/oficial: é a que
- * alimenta o site da ESPN, e por isso cada consumidor deve tratar respostas
- * malformadas como erro (ver ADR-015).
- *
- * Compartilhado entre o radar em `api/src/radar/` e o sync primário de copas da
- * ESPN em `api/src/matches/espnSync.ts`.
- *
- * A ESPN exige o parâmetro `dates=YYYYMMDD` no plural. O parâmetro `date=` no
- * singular é ignorado e devolve a rodada corrente. Para uma data sem jogos a
- * ESPN devolve a rodada vizinha, e para uma liga fora de temporada devolve os
- * últimos jogos. Quem conta "jogos do dia" tem que filtrar pelo campo `date` de
- * cada evento.
- */
 
 import { notifyHttpAttempt, type ProviderHttpObserver } from '../observability/providerHttp'
 
@@ -30,20 +15,15 @@ export const ESPN_RETRY_BACKOFF_MS = 500
  */
 export const ESPN_MIN_INTERVAL_MS = 1_300
 
-/** Cadeia que serializa todas as chamadas `fetchEspnScoreboard` do isolate. */
 let espnGate: Promise<void> = Promise.resolve()
 
-/** Timestamp do último início de request (0 = nenhuma ainda neste isolate). */
 let lastEspnRequestStartedAt = 0
 
-/** Em Vitest o delay parte de 0 (exclusão mútua permanece); o Worker usa 1,3s. */
 const DEFAULT_MIN_INTERVAL_MS =
   typeof process !== 'undefined' && process.env.VITEST ? 0 : ESPN_MIN_INTERVAL_MS
 
-/** Intervalo efetivo; testes de pacing restauram `ESPN_MIN_INTERVAL_MS`. */
 let espnMinIntervalMs = DEFAULT_MIN_INTERVAL_MS
 
-/** Timeout efetivo por tentativa; testes de abort podem encurtar. */
 let espnTimeoutMs = ESPN_TIMEOUT_MS
 
 /**
@@ -232,7 +212,6 @@ export type EspnScoreboardEvent = {
   id?: string
   date?: unknown
   season?: { year?: number; type?: number; slug?: string }
-  /** Rodada numérica em algumas ligas; Série B costuma omitir. */
   week?: number | { number?: number }
   matchday?: number
   status?: { type?: EspnCompetitionStatusType }
@@ -277,7 +256,6 @@ export function espnScoreboardUrl(slug: string, yyyymmdd?: string): string {
   return `${SCOREBOARD_URL}/${slug}/scoreboard`
 }
 
-/** Status que vale uma segunda tentativa: rate limit e erros de servidor. */
 function isRetryable(status: number): boolean {
   return status === 429 || status >= 500
 }
@@ -313,7 +291,6 @@ export async function fetchEspnScoreboard(
 
     for (let attempt = 0; attempt < 2; attempt++) {
       await awaitEspnRequestSlot(attempt > 0 ? ESPN_RETRY_BACKOFF_MS : 0)
-      // Sem vaga não há request: `EspnUnavailableError` sobe para o chamador.
       if (gate) await gate.reserve()
 
       const startedAt = Date.now()
@@ -335,7 +312,6 @@ export async function fetchEspnScoreboard(
         status: res.status,
         durationMs: Date.now() - startedAt,
       })
-      // O bloqueio que esta resposta impõe vale para todos os isolates.
       const block = gate ? await gate.note(res.status, res.headers) : null
       if (res.ok) return (await res.json()) as EspnScoreboard
 

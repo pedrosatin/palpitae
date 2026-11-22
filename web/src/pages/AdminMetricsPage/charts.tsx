@@ -1,21 +1,17 @@
 import styles from './AdminMetricsPage.module.css'
 import { eventLabel } from './labels'
 
-/**
- * Gráficos SVG do dashboard admin — sem lib de chart de propósito (página de
- * 1 usuário não justifica dependência no bundle).
- */
 
 /** Paleta para séries por tipo de evento (contraste ok no fundo escuro). */
 export const SERIES_COLORS = [
-  '#49f21b', // verde (brand)
-  '#4dabf7', // azul
-  '#ffd43b', // amarelo
-  '#ff8787', // vermelho
-  '#b197fc', // roxo
-  '#63e6be', // teal
-  '#ffa94d', // laranja
-  '#f783ac', // rosa
+  '#49f21b',
+  '#4dabf7',
+  '#ffd43b',
+  '#ff8787',
+  '#b197fc',
+  '#63e6be',
+  '#ffa94d',
+  '#f783ac',
 ] as const
 
 /** Cor do agrupamento "outros" quando há mais tipos que cores. */
@@ -28,22 +24,16 @@ export interface StackedDay {
 
 const WIDTH = 720
 const HEIGHT = 180
-const AXIS_HEIGHT = 16 // faixa extra abaixo das barras pros rótulos do eixo X
+const AXIS_HEIGHT = 16
 
-/** "YYYY-MM-DD" → "dd/mm" (formato padrão dos rótulos do eixo). */
 function shortDate(label: string): string {
   return `${label.slice(8, 10)}/${label.slice(5, 7)}`
 }
 
-/**
- * Índices dos rótulos do eixo X: todos até 10 barras; acima disso, ~7 rótulos
- * espaçados + sempre o último (o mais recente é o que mais interessa).
- */
 function tickIndexes(count: number): Set<number> {
   const step = count <= 10 ? 1 : Math.ceil(count / 7)
   const ticks = new Set<number>()
   for (let i = 0; i < count; i += step) ticks.add(i)
-  // Último dia sempre rotulado; tira o vizinho se ficar colado (< meio passo).
   const last = count - 1
   for (const t of ticks) {
     if (t !== last && last - t < step / 2) ticks.delete(t)
@@ -52,7 +42,6 @@ function tickIndexes(count: number): Set<number> {
   return ticks
 }
 
-/** Rótulos de data sob as barras — compartilhado pelos dois gráficos. */
 function XAxis({ labels, format }: { labels: string[]; format: (label: string) => string }) {
   const barW = WIDTH / Math.max(1, labels.length)
   const ticks = tickIndexes(labels.length)
@@ -83,7 +72,6 @@ export function StackedBarChart({
 }: {
   days: StackedDay[]
   ariaLabel: string
-  /** Nome do segmento no tooltip (default: rótulo de tipo de evento). */
   segmentLabel?: (type: string) => string
 }) {
   const max = Math.max(1, ...days.map((d) => d.segments.reduce((sum, s) => sum + s.value, 0)))
@@ -135,7 +123,6 @@ export function BarChart({
   series: { label: string; total: number }[]
   ariaLabel: string
   unit?: string
-  /** Formato dos rótulos do eixo X (default: dd/mm de um "YYYY-MM-DD"). */
   tickLabel?: (label: string) => string
 }) {
   const max = Math.max(1, ...series.map((s) => s.total))

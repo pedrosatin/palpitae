@@ -134,8 +134,6 @@ describe('useCreateGroupForm', () => {
     }
     const slug2027 = serieA2027.slug
 
-    // As chamadas de apiFetch se acumulam entre os testes; o POST daqui não pode
-    // aparecer no teste de validação mais abaixo.
     afterEach(() => mockApiFetch.mockClear())
 
     function mockCompetitions(competitions: unknown[]) {
@@ -210,7 +208,6 @@ describe('useCreateGroupForm', () => {
 
       await waitFor(() => expect(result.current.competitionId).toBe('bsa-2027'))
       act(() => result.current.handleClose())
-      // O painel fecha o modal e descarta a competição do link.
       props = { ...props, isOpen: false, preferredCompetitionSlug: undefined }
       rerender()
       props = { ...props, isOpen: true }
@@ -313,7 +310,6 @@ describe('useCreateGroupForm', () => {
 
     const e = { preventDefault: vi.fn() } as unknown as React.FormEvent
 
-    // pointsExact < pointsWinner
     act(() => {
       result.current.setPointsExact(1)
       result.current.setPointsWinner(2)
@@ -326,7 +322,6 @@ describe('useCreateGroupForm', () => {
       'Pontos por placar exato deve ser maior ou igual a pontos por vencedor',
     )
 
-    // pointsExact + pointsWinner === 0
     act(() => {
       result.current.setPointsExact(0)
       result.current.setPointsWinner(0)
@@ -337,8 +332,6 @@ describe('useCreateGroupForm', () => {
     })
     expect(result.current.error).toBe('Pelo menos um tipo de pontuação deve ser maior que zero')
 
-    // A listagem de competições agora passa por apiFetch; o POST /groups é que
-    // não pode acontecer.
     expect(
       mockApiFetch.mock.calls.filter((call) => String(call[0]).includes('/groups')),
     ).toHaveLength(0)

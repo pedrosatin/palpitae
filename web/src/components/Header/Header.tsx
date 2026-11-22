@@ -35,7 +35,6 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
         </a>
 
         <div className={styles.actions}>
-          {/* No celular os botões viram ícones; o texto fica só para leitor de tela. */}
           <Button
             variant="secondary"
             className={styles.actionButton}
@@ -72,7 +71,6 @@ export default function Header({ user, onCreateGroup, onJoinGroup, onLogout }: H
               aria-haspopup="true"
               aria-label={`Menu de ${displayName}`}
             >
-              {/* A inicial só aparece no celular, onde o nome some e sobra o avatar. */}
               <Avatar
                 name={displayName}
                 src={user.avatar_url}

@@ -30,13 +30,11 @@ type Score = { home: number; away: number; penalties?: { home: number; away: num
 const IDA = '2027-02-17T20:00:00Z'
 const VOLTA = '2027-02-25T20:00:00Z'
 const FINAL = '2027-05-29T19:00:00Z'
-/** Instante dentro da janela ativa do poller, entre 115 e 200 min após o início. */
 const afterKickoff = (kickoff: string) => Date.parse(kickoff) + 120 * 60_000
 const DISCOVERY_FEB_10 = Date.parse('2027-02-10T06:00:00Z')
 const DISCOVERY_FEB_18 = Date.parse('2027-02-18T06:00:00Z')
 const DISCOVERY_MAY_20 = Date.parse('2027-05-20T06:00:00Z')
 
-/** A football-data manda `matchday` 2 na volta do mata-mata e 1 nos outros jogos, como em tieClassified.test.ts. */
 function fdMatch(
   id: number,
   utcDate: string,
@@ -83,7 +81,6 @@ function fdMatch(
   }
 }
 
-/** A football-data responde `provider.matches` para a Liga dos Campeões e nada para o resto. */
 function stubProvider() {
   const provider = { matches: [] as ReturnType<typeof fdMatch>[] }
   vi.stubGlobal(
@@ -123,7 +120,6 @@ function setup() {
   return { sqlite, db, provider: stubProvider() }
 }
 
-/** Grava o palpite pelo id externo da football-data. */
 function predict(
   sqlite: DatabaseSync,
   userId: string,
@@ -141,7 +137,6 @@ function predict(
     .run(`${userId}-${externalId}`, userId, home, away, penaltyWinner, String(externalId))
 }
 
-/** Pontos de cada palpite no formato placar+pênaltis+classificado, e o total de cada usuário no ranking. */
 function readState(sqlite: DatabaseSync) {
   const points = sqlite
     .prepare(
@@ -162,9 +157,6 @@ function readState(sqlite: DatabaseSync) {
 describe('pontos de classificado por confronto no mata-mata da football-data', () => {
   it('ida, pontuação, descoberta da volta e fim do confronto creditam o classificado uma vez, e reprocessar não muda os totais', async () => {
     const { sqlite, db, provider } = setup()
-    // No confronto A, decidido no agregado, a football-data ainda não definiu os
-    // times da volta. O confronto B, decidido nos pênaltis, tem ida e volta
-    // publicadas juntas. A final é jogo único.
     const idaA = (r?: Score) => fdMatch(5001, IDA, 'PLAYOFFS', BRUGGE, ATALANTA, r)
     const voltaA = (home: Team, away: Team, r?: Score) =>
       fdMatch(5002, VOLTA, 'PLAYOFFS', home, away, r, 2)
@@ -173,8 +165,6 @@ describe('pontos de classificado por confronto no mata-mata da football-data', (
     const final = (home: Team, away: Team, r?: Score) =>
       fdMatch(5005, FINAL, 'FINAL', home, away, r)
 
-    // Etapa 1: o discovery carrega as idas e a volta B. A volta A e a final vêm
-    // sem times e ficam de fora.
     provider.matches = [idaA(), voltaA(TBD, TBD), idaB(), voltaB(), final(TBD, TBD)]
     await discoverFixtures(db, 'test', undefined, DISCOVERY_FEB_10)
     expect(sqlite.prepare('SELECT external_id FROM matches ORDER BY 1').all()).toEqual([
@@ -189,9 +179,6 @@ describe('pontos de classificado por confronto no mata-mata da football-data', (
     predict(sqlite, 'u-ana', 5004, 1, 0, 'away')
     predict(sqlite, 'u-beto', 5004, 2, 0)
 
-    // Etapa 2: as idas terminam e o poller pontua. Sem a volta no banco, a ida A
-    // não se distingue de um jogo único e recebe o classificado de jogo único.
-    // A ida B já tem a volta no banco e não recebe.
     provider.matches = [
       idaA({ home: 2, away: 1 }),
       voltaA(TBD, TBD),
@@ -216,8 +203,6 @@ describe('pontos de classificado por confronto no mata-mata da football-data', (
     await discoverFixtures(db, 'test', undefined, afterKickoff(IDA))
     expect(readState(sqlite)).toEqual(afterLeg1)
 
-    // Etapa 3: o discovery encontra a volta A. A ida A deixa de ser jogo único e
-    // perde o classificado; o confronto ainda não foi decidido.
     provider.matches[1] = voltaA(ATALANTA, BRUGGE)
     await discoverFixtures(db, 'test', undefined, DISCOVERY_FEB_18)
     const leg2Found = {
@@ -228,9 +213,6 @@ describe('pontos de classificado por confronto no mata-mata da football-data', (
     await discoverFixtures(db, 'test', undefined, DISCOVERY_FEB_18)
     expect(readState(sqlite)).toEqual(leg2Found)
 
-    // Etapa 4: as voltas terminam. No A, o 1x1 classifica o Brugge por 3x2 no
-    // agregado. No B, a Juventus vence por 1x0, empata o agregado e o Benfica
-    // avança nos pênaltis.
     predict(sqlite, 'u-ana', 5002, 1, 1)
     predict(sqlite, 'u-beto', 5002, 4, 0)
     provider.matches[1] = voltaA(ATALANTA, BRUGGE, { home: 1, away: 1 })
@@ -251,7 +233,6 @@ describe('pontos de classificado por confronto no mata-mata da football-data', (
     await discoverFixtures(db, 'test', undefined, afterKickoff(VOLTA))
     expect(readState(sqlite)).toEqual(tiesDecided)
 
-    // Etapa 5: a final, jogo único, termina 2x2 e o Brugge vence nos pênaltis.
     provider.matches[4] = final(BRUGGE, BENFICA)
     await discoverFixtures(db, 'test', undefined, DISCOVERY_MAY_20)
     predict(sqlite, 'u-ana', 5005, 1, 1, 'home')

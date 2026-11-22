@@ -10,14 +10,12 @@ export type SyncResult = {
   competitionId: string
   matches: number
   teams: number
-  /** Eventos do provedor que o sync não importou (motivos em `sync_event_discarded`). */
   discarded: number
   /**
    * Dos descartados, os jogos com time ainda indefinido (`missing_competitor`/`tbd`):
    * o calendário tem jogo que ainda não pode ser gravado.
    */
   discardedTbd: number
-  /** Jogos pendentes que o calendário completo não trouxe (`match_missing_from_feed`). */
   missing: number
   /**
    * Datas do scoreboard que a ESPN não entregou (ADR-027): o sync gravou o que
@@ -34,7 +32,6 @@ export type SyncResult = {
  */
 export type SyncDiscard = {
   reason: 'unknown_stage' | 'season_mismatch' | 'missing_competitor' | 'invalid_event'
-  /** Slug da fase, ano da edição recebida, `tbd` ou o campo inválido; vazio se não há. */
   detail: string
 }
 
@@ -65,7 +62,6 @@ export function slugify(str: string): string {
     .replace(/^-|-$/g, '')
 }
 
-/** Competição pela chave do provedor, ou vazio. Falha de leitura também vira vazio. */
 async function findCompetitionId(
   db: D1Database,
   provider: string,
@@ -352,7 +348,6 @@ export async function writeMatchUpserts(
       row.postponed,
       row.lockedAt,
       row.leg,
-      // Parâmetro 21: instante do sync, usado também na trava por horário da linha anterior.
       scope.now,
     ),
   )

@@ -110,8 +110,6 @@ async function shareMilestoneImage(input: {
     }
     if (result === 'cancelled') return { ok: true, notice: null }
 
-    // Desktop / falha do menu: a imagem baixou; o link vai no clipboard (e já
-    // está no rodapé do PNG).
     if (input.shareLink) {
       const copied = await copyShareText(text)
       if (copied) {

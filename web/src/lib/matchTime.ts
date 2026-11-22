@@ -1,7 +1,3 @@
-/**
- * Datas de jogo no fuso de Brasília, no formato do card e do cabeçalho da rodada
- * na aba Palpitar.
- */
 const partsFormat = new Intl.DateTimeFormat('pt-BR', {
   weekday: 'short',
   day: '2-digit',
@@ -21,7 +17,6 @@ export const RELATIVE_CLOSING_MS = 24 * HOUR_MS
 function dateParts(iso: string) {
   const parts = new Map(partsFormat.formatToParts(new Date(iso)).map((p) => [p.type, p.value]))
   return {
-    // O Intl abrevia com ponto ("sáb."). O card usa a forma curta sem ponto.
     weekday: (parts.get('weekday') ?? '').replace('.', ''),
     date: `${parts.get('day')}/${parts.get('month')}`,
     time: `${parts.get('hour')}:${parts.get('minute')}`,

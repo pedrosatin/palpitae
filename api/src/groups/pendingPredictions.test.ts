@@ -174,17 +174,12 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
       const aliceA = body.groups.find((g) => g.id === 'group-a')
       const aliceEmpty = body.groups.find((g) => g.id === 'group-empty')
 
-      // Alice no group-a: 3 abertos futuros + 1 adiado aberto na rodada 2 = 4.
-      // Travado e rodada 3 não entram. Sem palpites ainda.
       expect(aliceA?.pending_predictions).toBe(4)
       expect(aliceA?.user_points).toBe(30)
       expect(aliceA?.user_position).toBe(1)
-      // Grupo sem jogos: 0, sem falso "concluído" no front (só some o hint).
       expect(aliceEmpty?.pending_predictions).toBe(0)
       expect(aliceEmpty?.user_points).toBe(0)
-      // Sem linha no leaderboard não há posição.
       expect(aliceEmpty?.user_position).toBeNull()
-      // Pilot some da lista para usuário sem acesso (alice não é admin/pilot).
       expect(body.groups.some((g) => g.id === 'group-pilot')).toBe(false)
       expect(body.groups.some((g) => g.id === 'group-b')).toBe(false)
     } finally {
@@ -217,7 +212,6 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
       const aliceRes = await request('alice')
       const aliceBody = (await aliceRes.json()) as GroupsBody
       const aliceA = aliceBody.groups.find((g) => g.id === 'group-a')
-      // Restam open-3 + postponed (0x0 e 1x2 já preenchidos).
       expect(aliceA?.pending_predictions).toBe(2)
       expect(aliceA?.user_points).toBe(30)
       expect(aliceA?.user_position).toBe(1)
@@ -226,16 +220,13 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
       const bobBody = (await bobRes.json()) as GroupsBody
       const bobA = bobBody.groups.find((g) => g.id === 'group-a')
       const bobB = bobBody.groups.find((g) => g.id === 'group-b')
-      // Bob preencheu só open-3 em group-a → open-1, open-2 e postponed = 3.
       expect(bobA?.pending_predictions).toBe(3)
       expect(bobA?.user_points).toBe(10)
       expect(bobA?.user_position).toBe(2)
-      // group-b: mesmos jogos da competição, Bob sem palpites → 4.
       expect(bobB?.pending_predictions).toBe(4)
       expect(bobB?.user_points).toBe(7)
       expect(bobB?.user_position).toBe(1)
 
-      // Carol sem membership → lista vazia (não vaza grupos).
       const carolRes = await request('carol')
       const carolBody = (await carolRes.json()) as GroupsBody
       expect(carolBody.groups).toEqual([])
@@ -249,7 +240,6 @@ describe('GET /groups pending_predictions (SQLite D1)', () => {
     vi.setSystemTime(new Date('2026-06-15T12:00:00Z'))
     try {
       const { sqlite, request } = await createFixture()
-      // Trava todos os abertos da rodada 2 (inclui o adiado).
       sqlite.exec(`
         UPDATE matches
         SET locked_at = '2026-06-15T11:00:00Z'
@@ -312,7 +302,6 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
     expect(groupA?.next_match_at).toBe('2026-06-20T19:00:00Z')
     expect(groupA?.current_round_label).toBe('Rodada 2')
     expect(groupA?.current_round_agreement).toBe('fs')
-    // O jogo travado de 23/06 não conta. A rodada fecha no último jogo aberto.
     expect(groupA?.round_ends_at).toBe('2026-06-22T19:00:00Z')
     expect(groupA?.live_matches).toBe(0)
   })
@@ -340,8 +329,6 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
     )
     const groupA = groups.find((g) => g.id === 'group-a')
 
-    // A rodada 1 ficou para trás e segue fora da rodada padrão. O remarcado conta
-    // como pendente e vira o prazo, com a rodada dele para o link do painel.
     expect(groupA?.pending_predictions).toBe(5)
     expect(groupA?.current_round_label).toBe('Rodada 2')
     expect(groupA?.next_deadline).toMatchObject({
@@ -366,7 +353,6 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
   })
 
   it('deixa o adiado de horário futuro fora do prazo e do próximo jogo', async () => {
-    // Adiado antes do apito: o sync guarda o horário original, 18/06, ainda futuro.
     const groups = await groupsFor((sqlite) =>
       sqlite.exec(`
         UPDATE matches SET start_time = '2026-06-18T19:00:00Z' WHERE id = 'm-r2-postponed';
@@ -381,7 +367,6 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
   })
 
   it('no empate de horário prefere o jogo da rodada padrão ao remarcado', async () => {
-    // O remarcado da rodada 1 tem o id menor e o mesmo horário do primeiro jogo da 2.
     const groups = await groupsFor((sqlite) =>
       sqlite.exec(`
         INSERT INTO matches (
@@ -527,7 +512,6 @@ describe('GET /groups resumo da rodada para o painel (SQLite D1)', () => {
     expect(groupA?.pending_predictions).toBe(4)
     expect(groupA?.current_round_label).toBeNull()
     expect(groupA?.current_round_agreement).toBeNull()
-    // O código cru segue em `round` para o link da aba Palpitar.
     expect(groupA?.next_deadline).toMatchObject({
       round: 'LEAGUE_STAGE_2',
       round_agreement: null,
@@ -597,12 +581,9 @@ describe('GET /groups pendência de pênalti, como o contador da aba Palpitar (S
     }
   }
 
-  // Mesmos palpites nos dois modos. No só vencedor o card grava 1x0, 0x0 ou 0x1.
   const placar: Pick[] = [
     ['q1-ida', 2, 1],
-    // Palmeiras 1 + 1 da ida = 2; Flamengo 0 + 2 = 2. Agregado empata, sem pênalti.
     ['q1-volta', 1, 0],
-    // Empate no jogo único sem pênalti: palpite gravado antes de a fase ir aos pênaltis.
     ['q2-unico', 1, 1],
     ['q3-ida', 2, 0],
     ['q3-volta', 0, 1],
@@ -622,8 +603,6 @@ describe('GET /groups pendência de pênalti, como o contador da aba Palpitar (S
     const groups = await cupGroups((sqlite) => predictIn(sqlite, groupId, picks))
     const group = groups.find((g) => g.id === groupId)
 
-    // A aba conta 3 de 5 palpitados: as duas idas travadas e a volta do q3.
-    // Faltam a volta do q1 e o jogo único, os mesmos 2 do painel.
     expect(group?.pending_predictions).toBe(2)
     expect(group?.next_deadline).toMatchObject({ match_id: 'q1-volta', round: 'QUARTER_FINALS' })
     expect(group?.next_deadline?.start_time).toBe('2026-06-17T19:00:00Z')
@@ -647,7 +626,6 @@ describe('GET /groups pendência de pênalti, como o contador da aba Palpitar (S
   it('volta sem palpite da ida e volta sem empate no agregado contam como palpitadas', async () => {
     const groups = await cupGroups((sqlite) =>
       predictIn(sqlite, 'cup-placar', [
-        // Sem a ida não há agregado, e o card não pede o pênalti.
         ['q1-volta', 1, 1],
         ['q2-unico', 2, 1],
         ['q3-ida', 2, 0],
@@ -662,7 +640,6 @@ describe('GET /groups pendência de pênalti, como o contador da aba Palpitar (S
 
   it('volta adiada sem pênalti segue pendente, sem prazo', async () => {
     const groups = await cupGroups((sqlite) => {
-      // Adiada antes do apito: o horário original já passou e o jogo segue aberto.
       sqlite.exec(`
         UPDATE matches SET postponed = 1, start_time = '2026-06-14T19:00:00Z' WHERE id = 'q1-volta';
       `)
@@ -687,8 +664,6 @@ describe('GET /groups pendência de pênalti, como o contador da aba Palpitar (S
     })
     const group = groups.find((g) => g.id === 'cup-placar')
 
-    // Sem fase de pênaltis válida, o empate no jogo único fica completo, como no card.
-    // A volta empatada no agregado segue pedindo o pênalti.
     expect(group?.pending_predictions).toBe(1)
     expect(group?.next_deadline?.match_id).toBe('q1-volta')
   })

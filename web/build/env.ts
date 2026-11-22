@@ -1,21 +1,3 @@
-/**
- * Variáveis de ambiente que o build de produção exige.
- *
- * O Vite troca `import.meta.env.VITE_*` pelo valor no momento do build. Uma
- * variável ausente cai no padrão de desenvolvimento (`http://localhost:8787`) e
- * uma malformada só aparece no navegador: `VITE_AUTH_URL=/api` faz o botão
- * "Entrar com Google" lançar TypeError no clique. O `vite.config.ts` chama
- * `assertBuildEnv` no `vite build` de produção, e o build para com a lista de
- * problemas.
- *
- * - `VITE_API_URL`: caminho na mesma origem (`/api`, servido pela Pages Function
- *   de proxy) ou URL absoluta http(s).
- * - `VITE_AUTH_URL`: URL absoluta http(s), porque o login com Google roda na
- *   origem da API.
- *
- * Nas duas, barra no fim é aceita (`buildApiUrl` e `buildAuthUrl` a removem);
- * query e fragmento não.
- */
 
 type Env = Record<string, string | undefined>
 

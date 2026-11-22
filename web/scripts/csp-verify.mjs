@@ -30,7 +30,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 export const CSP_HEADERS = ['Content-Security-Policy', 'Content-Security-Policy-Report-Only']
 export const MAX_HEADER_LENGTH = 2000
 
-/** Tipos de `<script>` que o navegador executa. Os demais são blocos de dados. */
 const EXECUTABLE_TYPES = new Set(['', 'text/javascript', 'application/javascript', 'module'])
 
 export function sha256(content) {
@@ -94,12 +93,6 @@ export function originAllowed(url, sources, selfOrigin) {
   })
 }
 
-/**
- * Comentários HTML e blocos `<script>`/`<style>` numa única passada. Comentar
- * antes das tags evita o falso positivo de capturar um `<style>` (ou um
- * `<script>`) que aparece dentro de um comentário — ex.: `<!-- <style>… -->` —
- * como se fosse conteúdo real da página.
- */
 const SCAN_TOKENS = /<!--[\s\S]*?(?:-->|$)|<(script|style)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi
 
 /** Scripts, estilos e atributos inline de um HTML. */
@@ -113,7 +106,7 @@ export function scanHtml(html) {
     markup += html.slice(last, match.index)
     last = match.index + match[0].length
     const [, tag, attrs, body] = match
-    if (!tag) continue // comentário HTML: nada roda, não entra na conferência
+    if (!tag) continue
     if (tag.toLowerCase() === 'script') {
       const src = /(?:^|\s)src\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)
       const type = (/(?:^|\s)type\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1] ?? '').toLowerCase()

@@ -1,8 +1,3 @@
-/**
- * HS256 JWT implementation using Web Crypto API.
- * Compatible with Cloudflare Workers and Node.js 18+.
- */
-
 import { base64UrlEncode, base64UrlDecodeCanonical } from './encoding'
 import { HMAC_SHA256, importHmacKey } from './crypto'
 
@@ -50,8 +45,6 @@ export async function verifyJwt(token: string, secret: string): Promise<JwtPaylo
   const [header, body, sig] = parts as [string, string, string]
   const signingInput = `${header}.${body}`
 
-  // Cada token tem uma única escrita aceita. A revogação do logout guarda o hash
-  // do texto do token, e uma segunda escrita da mesma assinatura escaparia dela.
   let bodyBytes: ArrayBuffer
   let sigBytes: ArrayBuffer
   try {

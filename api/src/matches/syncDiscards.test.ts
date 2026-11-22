@@ -10,13 +10,6 @@ import { discoverFixtures } from './fixtureDiscovery'
 import { pollActiveMatches } from './poller'
 import { syncFixtures } from './sync'
 
-/**
- * O sync descarta eventos do provedor que não consegue importar (fase fora do
- * mapa, outra temporada, competidor ausente) e a football-data pode deixar de
- * trazer um jogo pendente. As rotinas rodam sobre o SQLite das migrations, com
- * os provedores simulados, e o resultado se lê no D1 e nos eventos gravados.
- */
-
 type WrittenPoint = { indexes: string[]; blobs: string[]; doubles: number[] }
 
 const handles: DatabaseSync[] = []
@@ -46,10 +39,6 @@ function analytics() {
   return { ae, dataset: ae as unknown as AnalyticsEngineDataset, of }
 }
 
-// ---------------------------------------------------------------------------
-// ESPN
-// ---------------------------------------------------------------------------
-
 const CUP_ID = '0c0c0c0c-0000-4000-8000-000000002026'
 
 function espnEvent(id: string, date: string, finished = false): EspnScoreboardEvent {
@@ -68,7 +57,6 @@ function espnEvent(id: string, date: string, finished = false): EspnScoreboardEv
   return ev
 }
 
-/** Um evento com fase fora do mapa, um de outra edição e um com time ainda indefinido. */
 function rejectedEspnEvents(date: string): EspnScoreboardEvent[] {
   const unknownStage = espnEvent('unknown-stage', date)
   unknownStage.season!.slug = 'round-of-32'
@@ -79,7 +67,6 @@ function rejectedEspnEvents(date: string): EspnScoreboardEvent[] {
   return [unknownStage, otherSeason, tbd]
 }
 
-/** O scoreboard da ESPN responde por data; datas sem entrada vêm vazias. */
 function espnFeed(boards: Record<string, EspnScoreboardEvent[]>) {
   vi.stubGlobal(
     'fetch',
@@ -123,7 +110,6 @@ describe('descoberta ESPN com eventos que o sync não importa', () => {
     ])
     const [run] = of('fixture_discovery_run')
     expect(run.blobs).toEqual(['fixture_discovery_run', 'ok'])
-    // doubles = [competitions, fixtures_updated, api_calls, duration_ms, events_discarded]
     expect(run.doubles[1]).toBe(1)
     expect(run.doubles[4]).toBe(3)
     expect(of('sync_event_discarded').map((point) => point.blobs)).toEqual(ESPN_DISCARDS)
@@ -200,7 +186,6 @@ describe('poller ESPN com eventos que o sync não importa', () => {
     const kickoff = '2026-10-14T22:00:00Z'
     espnFeed({ '20261014': [espnEvent('valid', kickoff)] })
     await discoverFixtures(db, '', undefined, Date.parse('2026-10-14T04:00:00Z'))
-    // Três horas depois do início, o scoreboard traz o placar e os eventos rejeitados.
     espnFeed({
       '20261014': [
         espnEvent('valid', kickoff, true),
@@ -218,15 +203,10 @@ describe('poller ESPN com eventos que o sync não importa', () => {
     ).toEqual([{ external_id: 'valid', status: 'finished', scored: 1 }])
     const [run] = of('poller_run')
     expect(run.blobs).toEqual(['poller_run', 'ok'])
-    // doubles = [matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded]
     expect(run.doubles[4]).toBe(3)
     expect(of('sync_event_discarded').map((point) => point.blobs)).toEqual(ESPN_DISCARDS)
   })
 })
-
-// ---------------------------------------------------------------------------
-// football-data
-// ---------------------------------------------------------------------------
 
 const PL_ID = '20210000-0000-4000-8000-000000002026'
 const ARSENAL = {
@@ -277,7 +257,6 @@ function fdMatch(
   }
 }
 
-/** A football-data responde o calendário inteiro da Premier League; a ESPN, nada. */
 function premierLeagueFeed() {
   const provider = { matches: [] as ReturnType<typeof fdMatch>[] }
   vi.stubGlobal(
@@ -307,7 +286,6 @@ function premierLeague() {
   return { sqlite, db }
 }
 
-/** Jogos pendentes gravados que o calendário do provedor não traz. */
 function insertPendingMatches(
   sqlite: DatabaseSync,
   competitionId: string,
@@ -347,7 +325,6 @@ describe('descoberta da football-data quando um jogo pendente some do calendári
       SELECT 'p-' || external_id, 'u-ana', 'g-pl', id, 2, 1 FROM matches;
     `)
 
-    // O provedor reemite o jogo de dezembro com outro id.
     provider.matches = [
       fdMatch(9001, NOVEMBER, ARSENAL, CHELSEA),
       fdMatch(9102, DECEMBER, CHELSEA, ARSENAL),
@@ -373,7 +350,6 @@ describe('descoberta da football-data quando um jogo pendente some do calendári
     ])
     const [run] = of('fixture_discovery_run')
     expect(run.blobs).toEqual(['fixture_discovery_run', 'ok'])
-    // doubles[5] = jogos pendentes ausentes do calendário
     expect(run.doubles[5]).toBe(1)
   })
 
@@ -489,7 +465,6 @@ describe('descoberta da football-data quando um jogo pendente some do calendári
     const [run] = of('fixture_discovery_run')
     expect(run.blobs[1]).toBe('ok')
     expect(run.doubles[4]).toBe(1)
-    // O jogo sem time foi visto no calendário: não é ausente.
     expect(of('match_missing_from_feed')).toEqual([])
   })
 })
@@ -523,7 +498,6 @@ describe('horário e rodada da football-data no formato que o banco aceita', () 
       fdMatch(9002, '2026-12-06T13:30:00-03:00', CHELSEA, ARSENAL),
       fdMatch(9003, '2026-12-13T16:30:00+00:00', ARSENAL, CHELSEA),
     ]
-    // O segundo tick passa pelo ON CONFLICT do upsert com os mesmos valores.
     await sync(matches)
     const { result } = await sync(matches)
 

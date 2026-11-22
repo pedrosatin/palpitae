@@ -53,7 +53,6 @@ afterEach(() => {
   resetEspnClientForTests()
 })
 
-/** Jogo de uma competição da ESPN: o dia dele em relação a hoje. */
 type EspnGame = { key: string; dayOffset: number }
 
 const SEEDED: EspnGame = { key: 'semente', dayOffset: 1 }
@@ -84,7 +83,6 @@ function espnEvent(slug: string, game: EspnGame): EspnScoreboardEvent {
   return ev
 }
 
-/** Calendário da football-data: o jogo que o banco já tem e um novo. */
 function fdCalendar(discovering: boolean) {
   const team = (n: number) => ({
     id: 2000 + n,
@@ -110,11 +108,8 @@ function fdCalendar(discovering: boolean) {
 }
 
 type WorldOptions = {
-  /** Competições da ESPN com jogos a descobrir (9 datas cada). */
   espn: number
-  /** Liga uma competição da football-data (1 request). */
   fd?: boolean
-  /** Envolve o D1 do Worker (depois da semente) para observar as instruções. */
   wrap?: (db: D1Database) => D1Database
 }
 
@@ -184,7 +179,6 @@ async function setupWorld({ espn, fd = false, wrap = (raw) => raw }: WorldOption
 
 type World = Awaited<ReturnType<typeof setupWorld>>
 
-/** A descoberta pelo `scheduled`, no cron e instante dados. Devolve as falhas das rotinas. */
 async function runDiscovery(
   h: Pick<World, 'limited' | 'env'>,
   at = DISCOVERY_AT,
@@ -225,10 +219,8 @@ describe('descoberta com a ESPN suspensa ou bloqueada', () => {
 
     expect(failures).toEqual([])
     expect(h.fetches.espn).toBe(0)
-    // A football-data é descoberta como antes: o jogo novo dela foi gravado.
     expect(h.fetches.fd).toBe(1)
     expect(matchCount(h.sqlite)).toBe(before + 1)
-    // Sem erro de provedor falso e sem fila: a descoberta seguinte tenta de novo.
     expect(h.events('football_api_error')).toEqual([])
     expect(h.events('fixture_discovery_run')[0].blobs[1]).toBe('ok')
     expect(queueCount(h.sqlite)).toBe(0)
@@ -281,18 +273,15 @@ describe('descoberta alimenta o controle de acesso com as respostas de erro', ()
 
     expect(await runDiscovery(h)).toEqual([])
 
-    // O 403 valeu para o provedor inteiro, dentro da invocação e para as próximas: um só request.
     expect(h.fetches.espn).toBe(1)
     expect(await readProviderState(h.db, 'espn')).toMatchObject({
       forbiddenStreak: 1,
       blockedUntil: DISCOVERY_AT + 15 * MIN,
     })
     expect(h.events('provider_access_blocked')).toHaveLength(1)
-    // A recusa adia as datas, sem erro de provedor falso.
     expect(h.events('football_api_error')).toEqual([])
     expect(queueCount(h.sqlite)).toBe(18)
 
-    // A descoberta seguinte, dentro do bloqueio, pula a ESPN sem nenhum fetch.
     expect(await runDiscovery(h, DISCOVERY_AT + 5 * MIN)).toEqual([])
     expect(h.fetches.espn).toBe(1)
   })
@@ -376,5 +365,4 @@ describe('descoberta com a ESPN liberada: o caso comum', () => {
   })
 })
 
-/** As chamadas da descoberta de 1 competição da ESPN na `main`, medidas com o mesmo cenário. */
 const MAIN_CALLS_ONE_COMPETITION = 19

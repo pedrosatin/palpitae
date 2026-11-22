@@ -39,12 +39,10 @@ describe('api-cache', () => {
 
     await fetchCachedJson('ttl-test', loader, 500)
 
-    // Within TTL
     dateSpy.mockReturnValue(1400)
     await fetchCachedJson('ttl-test', loader, 500)
     expect(loader).toHaveBeenCalledTimes(1)
 
-    // After TTL
     dateSpy.mockReturnValue(1600)
     await fetchCachedJson('ttl-test', loader, 500)
     expect(loader).toHaveBeenCalledTimes(2)
@@ -56,12 +54,10 @@ describe('api-cache', () => {
 
     await fetchCachedJson('default-ttl-test', loader)
 
-    // Within default 30s TTL
     dateSpy.mockReturnValue(30000)
     await fetchCachedJson('default-ttl-test', loader)
     expect(loader).toHaveBeenCalledTimes(1)
 
-    // After default 30s TTL
     dateSpy.mockReturnValue(32000)
     await fetchCachedJson('default-ttl-test', loader)
     expect(loader).toHaveBeenCalledTimes(2)
@@ -79,7 +75,6 @@ describe('api-cache', () => {
 
     await expect(fetchCachedJson('error-test', loader)).rejects.toThrow('Network error')
 
-    // Next call should retry because the cache entry was removed
     const result = await fetchCachedJson('error-test', loader)
     expect(result).toEqual({ success: true })
     expect(loader).toHaveBeenCalledTimes(2)
@@ -93,7 +88,6 @@ describe('api-cache', () => {
 
     const firstCall = fetchCachedJson('overwrite-test', slowLoader)
 
-    // Simulate another request taking over the cache key before the first one fails
     invalidateApiCache('overwrite-test')
     const secondLoader = vi.fn(async () => ({ success: true }))
     const secondCall = fetchCachedJson('overwrite-test', secondLoader)
@@ -103,7 +97,6 @@ describe('api-cache', () => {
     await expect(firstCall).rejects.toThrow('First call failed')
     await expect(secondCall).resolves.toEqual({ success: true })
 
-    // Third call should still use the second call's cached result
     const thirdCall = await fetchCachedJson('overwrite-test', secondLoader)
     expect(thirdCall).toEqual({ success: true })
     expect(secondLoader).toHaveBeenCalledTimes(1)
@@ -133,10 +126,10 @@ describe('api-cache', () => {
 
     invalidateApiCache('user:1')
 
-    await fetchCachedJson('user:1', loader) // refetches
-    await fetchCachedJson('user:1:profile', loader) // refetches
-    await fetchCachedJson('user:10', loader) // refetches
-    await fetchCachedJson('user:2', loader) // cached
+    await fetchCachedJson('user:1', loader)
+    await fetchCachedJson('user:1:profile', loader)
+    await fetchCachedJson('user:10', loader)
+    await fetchCachedJson('user:2', loader)
 
     expect(loader).toHaveBeenCalledTimes(7)
   })

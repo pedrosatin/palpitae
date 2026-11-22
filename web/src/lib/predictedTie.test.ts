@@ -8,11 +8,6 @@ import {
 } from './predictedTie'
 import type { Prediction } from '../components/MatchCard'
 
-// Casos com tie_role (ida, volta, single) e fase com role null nos vetores:
-// mataMataVectors.test.ts (test-vectors/mata-mata.json).
-// Os casos abaixo cobrem jogo sem tie_role no payload do card: o formato dos
-// vetores não expressa isso (role null na API classifica como fora do mata-mata).
-
 describe('salvar ida e volta no mesmo lote', () => {
   it('usa a ida em edição mesmo quando a volta vem antes no lote', () => {
     const ida = makeMatch({ id: 'ida', tie_role: 'leg1', decides_on_penalties: false })

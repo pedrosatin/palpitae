@@ -15,7 +15,6 @@ export type CopiaAcceptsCase = {
 }
 
 export type CopiaScoreInput = {
-  /** `points_exact` do grupo de destino. */
   targetPointsExact: number
   home: number
   away: number

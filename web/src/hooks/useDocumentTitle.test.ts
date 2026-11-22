@@ -6,12 +6,10 @@ describe('useDocumentTitle', () => {
   const originalTitle = document.title
 
   beforeEach(() => {
-    // Reset document.title to a known state before each test
     document.title = 'Original Title'
   })
 
   afterEach(() => {
-    // Restore the very original title just in case
     document.title = originalTitle
   })
 

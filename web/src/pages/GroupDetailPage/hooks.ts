@@ -57,9 +57,6 @@ export function useGroupTabs(group: GroupDetail | null) {
   const [searchParams, setSearchParams] = useSearchParams()
   const { pathname } = useLocation()
   const rawTab = parseTab(searchParams.get('tab'))
-  // Rodada pedida pela faixa "Próximo prazo" do painel. Ela vale uma vez. A aba
-  // Palpitar chama `clearRequestedRound` depois de abrir nela, e a troca de aba
-  // também tira o parâmetro. Recarregar ou voltar à aba abre a rodada padrão.
   const requestedRound = searchParams.get('rodada')
   const showStandings = isStandingsTabEligible(group?.competition_type, group?.competition_code)
   const activeTab =
@@ -200,7 +197,6 @@ export function useGroupActions(groupId: string | undefined, user: User) {
     }
   }
 
-  /** Troca o código de convite (só o dono). O código antigo para de funcionar. */
   async function rotateInvite(onRotated: (inviteCode: string) => void) {
     if (!groupId) return
     trackEvent('click_group_detail_trocar_convite')

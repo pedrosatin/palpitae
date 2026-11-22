@@ -1,12 +1,6 @@
 import { formatCount, formatSince } from './format'
 import styles from './AdminMetricsPage.module.css'
 
-/**
- * Uso das cotas diárias do plano Free (ADR-022). Consome GET /metrics/quota: a
- * última medição do cron das 00:05 UTC, que soma o uso do dia UTC anterior na conta
- * inteira. Acima de 50% de uma cota por 3 dias seguidos é o gatilho de migração ao
- * Workers Paid.
- */
 
 type QuotaMetric = 'd1_rows_read' | 'd1_rows_written' | 'worker_requests'
 

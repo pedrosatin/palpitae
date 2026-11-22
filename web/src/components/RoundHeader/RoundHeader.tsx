@@ -12,21 +12,8 @@ interface RoundHeaderProps {
   onPrev: () => void
   onNext: () => void
   onSelect: (round: string) => void
-  /**
-   * round -> nº de jogos adiados. Marca a opção no seletor, senão a rodada
-   * some da vista: ela não é o default (o adiado guarda o horário original,
-   * já passado) mas ainda tem palpite aberto. Ver ADR-013.
-   */
   postponedByRound?: Map<string, number>
-  /**
-   * round -> nº de jogos remarcados para o futuro numa rodada que ficou para
-   * trás (fora do default_round, ver api/src/matches/defaultRound.ts).
-   */
   rescheduledByRound?: Map<string, number>
-  /**
-   * Rodadas com rascunho de palpite não salvo. O aviso de saída conta todas as
-   * rodadas, e o marcador mostra onde está cada rascunho.
-   */
   unsavedRounds?: Set<string>
   id?: string
   className?: string
@@ -47,7 +34,6 @@ export default function RoundHeader({
   id = 'round-select',
   className,
 }: RoundHeaderProps) {
-  // `<option>` só renderiza texto — nada de badge aqui, o marcador vai no rótulo.
   const optionLabel = (r: string) => {
     const markers = [
       leftoverMatchesMarker(postponedByRound?.get(r) ?? 0, rescheduledByRound?.get(r) ?? 0),

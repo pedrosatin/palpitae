@@ -49,7 +49,6 @@ async function enqueue(db: D1Database, count: number, kind: Kind = 'result') {
   )
 }
 
-/** Gasta `calls` consultas do saldo do item e conclui. */
 function spending(calls: number | ((item: ProviderWorkItem) => number)) {
   return async (item: ProviderWorkItem, span: ItemBudget): Promise<WorkOutcome> => {
     const total = typeof calls === 'number' ? calls : calls(item)
@@ -91,7 +90,6 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
 
     const run = await drain(budget, { runItem: spending(4), ...constantCost(4) })
 
-    // 20 − 2 (reclamar e gravar o estado) = 18 chamadas de trabalho: 4 itens de 4.
     expect(run).toMatchObject({ claimed: 4, done: 4, released: 0, stoppedBy: 'budget' })
     expect(statuses(sqlite)).toEqual({ done: 4, pending: 12 })
     expect(attempts(sqlite).every((n) => n === 0)).toBe(true)
@@ -108,7 +106,6 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
 
     expect(run.done).toBe(6)
     expect(statuses(sqlite)).toEqual({ done: 6 })
-    // 1 claim + 1 batch com as 6 conclusões; antes eram 1 + 6 + 1 (claim vazio).
     expect(budget.used).toBe(2)
   })
 
@@ -140,7 +137,6 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
 
     expect(run).toMatchObject({ claimed: 7, done: 7 })
     expect(statuses(sqlite)).toEqual({ done: 7 })
-    // 3 ciclos (3 + 3 + 1), cada um com a reclamação e a gravação do estado.
     expect(budget.used).toBe(6)
   })
 
@@ -151,13 +147,11 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
     const budget = new DrainBudget(db, 16)
 
     const run = await drain(budget, {
-      // Resultado custa 2 e descoberta 10, e cada um gasta o que estimou.
       runItem: spending((item) => (item.kind === 'discovery' ? 10 : 0)),
       itemCost: (item) => (item.kind === 'discovery' ? 10 : 2),
       minItemCost: 2,
     })
 
-    // Os 3 resultados e a primeira descoberta cabem. As outras duas voltam intactas.
     expect(run).toMatchObject({ claimed: 6, done: 4, released: 2, stoppedBy: 'budget' })
     expect(statuses(sqlite)).toEqual({ done: 4, pending: 2 })
     expect(
@@ -176,8 +170,6 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
   it('estimativa abaixo do custo real: o que passa do saldo volta sem tentativa e nada fica running', async () => {
     const { sqlite, db } = setup()
     await enqueue(db, 8)
-    // Estimativa de 4 e custo real de 6, com saldo de 30: cabem 4 itens de 6, e o quinto
-    // é cortado pelo saldo no meio do trabalho.
     const budget = new DrainBudget(db, 30)
 
     const run = await drain(budget, {
@@ -281,7 +273,6 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
       },
     })
 
-    // Os 4 primeiros já estavam em voo; os outros 4 não gastam nem a reserva recusada.
     expect(run).toMatchObject({
       claimed: 8,
       requeued: 1,
@@ -301,8 +292,6 @@ describe('dreno da fila dentro do saldo de subrequests', () => {
 
     const run = await drain(budget, { runItem: spending(10) })
 
-    // 6 − 1 (reclamar) − 3 (reserva do estado) = 2 consultas do item; a terceira é
-    // recusada sem chamar. O estado se grava em 1 chamada, e as 2 de recuperação sobram.
     expect(run).toMatchObject({ released: 1, done: 0 })
     expect(budget.used).toBe(1 + 2 + 1)
     expect(statuses(sqlite)).toEqual({ pending: 1 })

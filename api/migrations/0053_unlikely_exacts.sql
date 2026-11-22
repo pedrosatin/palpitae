@@ -1,19 +1,3 @@
--- Placares exatos improváveis (raridade na competição inteira).
---
--- `match_score_rarity` guarda o agregado por jogo (palpiteiros distintos e
--- exatos), compartilhado entre todos os grupos. Calculado na primeira leitura
--- de round-standings que precisa dele, ou de novo quando `matches.scored_at`
--- diverge de `scored_at_snapshot` (correção de placar / repontuação). Leituras
--- concorrentes disputam uma reserva `status = 'computing'` (TTL 60 s); só quem
--- obtém a reserva calcula. A gravação `ready` exige que o snapshot ainda seja o
--- `scored_at` atual do jogo. Exclusão de grupo ou usuário fica defasada até a
--- próxima repontuação do jogo (ADR-029).
---
--- `unlikely_exacts` grava o reconhecimento do membro na primeira leitura em que
--- o placar é raro na rodada de referência (X = 10%, M = 10 tipsters no total e
--- M = 10 tipsters fora do grupo). A linha congela as contagens; correção de
--- placar não redispara nem apaga o reconhecimento. Cascata com exclusão de
--- conta, grupo ou jogo.
 
 CREATE TABLE IF NOT EXISTS match_score_rarity (
   match_id TEXT PRIMARY KEY REFERENCES matches(id) ON DELETE CASCADE,

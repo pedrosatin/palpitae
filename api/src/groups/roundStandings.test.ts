@@ -94,7 +94,6 @@ describe('computeRoundStandings', () => {
       member({ user_id: 'b', total_points: 10, exact_hits: 2, round_points: 3 }),
     ]
 
-    // Antes da rodada, os dois tinham 7 pontos, com 0 e 2 exatos. Passa `a` à frente.
     expect(changes(rows)).toEqual({ a: 1, b: -1 })
   })
 
@@ -109,7 +108,6 @@ describe('computeRoundStandings', () => {
       }),
     ]
 
-    // Antes da rodada, `novo` tinha 10 e `antigo` tinha 6. Com o empate, `antigo` fica à frente.
     expect(computeRoundStandings(rows, NO_STREAKS).map((s) => s.user_id)).toEqual([
       'antigo',
       'novo',
@@ -152,7 +150,6 @@ describe('computeRoundStandings', () => {
       member({ user_id: 'bob', total_points: 18, round_points: 5, since_points: 5 }),
     ]
 
-    // Antes da referência, alice tinha 8 e bob tinha 13. Descontando só a referência, seria 17 a 13.
     expect(computeRoundStandings(rows, NO_STREAKS)).toEqual([
       { user_id: 'alice', round_points: 3, position_change: 1, streak: 0, ...noMilestone() },
       { user_id: 'bob', round_points: 5, position_change: -1, streak: 0, ...noMilestone() },
@@ -165,7 +162,6 @@ describe('computeRoundStandings', () => {
       member({ user_id: 'b', total_points: 10, exact_hits: 1, since_points: 4 }),
     ]
 
-    // Antes da referência, os dois tinham 6 pontos, com 0 e 1 exato. Passa `a` à frente.
     expect(changes(rows)).toEqual({ a: 1, b: -1 })
   })
 
@@ -992,7 +988,6 @@ describe('GET /groups/:id/round-standings', () => {
     const reference = addMatch({ round: '2', start: ROUND_START })
     const next = addMatch({ round: '3', start: AFTER })
     addMatch({ round: '3', status: 'scheduled', start: LATER })
-    // Na rodada 1, os dois fazem 3 pontos e só bob crava. Na rodada 3, só alice crava.
     addPick('alice', earlier, { awarded: 1, penalty: 2 })
     addPick('bob', earlier, { awarded: 3 })
     addPick('alice', reference, { awarded: 1 })
@@ -1013,7 +1008,6 @@ describe('GET /groups/:id/round-standings', () => {
 
   it('não soma rodada sem número ao que veio da referência em diante', async () => {
     const { standings, addMatch, addPick, setBoard } = await createFixture()
-    // Rodada 0 existe na ESPN. `CAST` de uma fase sem número também dá 0.
     const zero = addMatch({ round: '0', start: BEFORE })
     const loose = addMatch({ round: 'REGULAR_SEASON', start: AFTER })
     addPick('alice', zero, { awarded: 1 })
@@ -1259,7 +1253,6 @@ describe('GET /groups/:id/round-standings', () => {
     addPick('alice', late, { awarded: 3 })
     setBoard('alice', 15, 5)
 
-    // Ainda na 34: a próxima leitura observa o 5º e destaca nela.
     const on34 = await standings()
     expect(on34.round).toBe('34')
     expect(on34.standings.find((s) => s.user_id === 'alice')).toMatchObject({
@@ -1429,7 +1422,6 @@ describe('GET /groups/:id/round-standings', () => {
         .all(),
     ).toEqual([{ threshold: 5, round: '34' }])
 
-    // A referência atual é 2; a linha vencedora tem round 34, então não destaca aqui.
     const body = await standings()
     expect(body.round).toBe('2')
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
@@ -1690,13 +1682,11 @@ describe('GET /groups/:id/round-standings', () => {
     for (const match of prior) addPick('alice', match, { awarded: 3 })
     addMatch({ round: '34', start: ROUND_START, scoredAt: '2026-05-01T20:00:00Z' })
     setBoard('alice', 12, 4)
-    // Primeira leitura (sem barreira) inicializa o grupo.
     await standings()
 
     const gate = control.arm()
     const pending = standings()
     await gate.ready
-    // Entre a leitura preliminar (34) e o batch, a 35 fecha e o total já reflete o 5º exato.
     const late = addMatch({
       round: '33',
       start: BEFORE,
@@ -1948,7 +1938,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
   it('marca placar raro no limiar de 10% (2/20 com 10 de fora)', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const match = addMatch({ round: '1' })
-    // 18 de fora + alice e bob no grupo = 20 tipsters; 2 exatos = 10%.
     seedCompetitionTipsters(sqlite, match, 18)
     addPick('alice', match, { awarded: 3 })
     addPick('bob', match, { awarded: 3 })
@@ -1967,7 +1956,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
   it('não marca quando a fração passa de 10% com massa de fora', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const match = addMatch({ round: '1' })
-    // 17 de fora (1 exato) + alice e bob = 20 tipsters; 3 exatos = 15%.
     seedCompetitionTipsters(sqlite, match, 17, { exactUsers: ['tip-0'] })
     addPick('alice', match, { awarded: 3 })
     addPick('bob', match, { awarded: 3 })
@@ -2001,7 +1989,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     setBoard('bob', 3, 1)
 
     const body = await standings()
-    // 2/20 = 10%.
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: true,
     })
@@ -2028,7 +2015,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     `)
 
     const body = await standings()
-    // 10 tipsters + alice = 11 distintos, não 12.
     expect(body.standings.find((s) => s.user_id === 'alice')).toMatchObject({
       unlikely_exact: true,
     })
@@ -2123,7 +2109,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
       unlikely_exact: false,
     })
 
-    // Correção no jogo antigo: a linha da rodada 1 permanece; a 2 não ganha selo novo.
     sqlite.prepare(`UPDATE matches SET home_score = 2, away_score = 2 WHERE id = ?`).run(first)
     const afterFix = await standings()
     expect(afterFix.round).toBe('2')
@@ -2181,9 +2166,7 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
   it('não reconhece com 19 tipsters no grupo e 1 de fora (privacidade)', async () => {
     const { sqlite, standings, addMatch, addPick, setBoard } = await createFixture()
     const match = addMatch({ round: '1' })
-    // 1 tipster privado fora do grupo.
     seedCompetitionTipsters(sqlite, match, 1)
-    // 18 membros extras no grupo-a (alice já é membro) → 19 no grupo + 1 fora.
     for (let i = 0; i < 18; i++) {
       const userId = `in-${i}`
       sqlite
@@ -2211,7 +2194,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     setBoard('alice', 3, 1)
 
     const body = await standings()
-    // tipster_count = 20, exact = 1 (5%), outside = 1 → bloqueado.
     expect(body.standings.find((s) => s.user_id === 'alice')?.unlikely_exact).toBe(false)
     expect(
       sqlite.prepare(`SELECT COUNT(*) AS n FROM unlikely_exacts WHERE group_id = 'group-a'`).get(),
@@ -2226,7 +2208,6 @@ describe('GET /groups/:id/round-standings placar improvável', () => {
     setBoard('alice', 3, 1)
 
     const body = await standings()
-    // 9 fora + alice = 10 tipsters e 10% de raridade, mas fora < 10.
     expect(body.standings.find((s) => s.user_id === 'alice')?.unlikely_exact).toBe(false)
   })
 
@@ -2393,7 +2374,6 @@ describe('GET /groups pódio', () => {
   it('desempata por user_id quando pontos, exatos e entrada empatam', async () => {
     const { sqlite, get, addMatch } = await createFixture()
     addMatch({ round: '1' })
-    // `aaron` entra por último, para o desempate não coincidir com a ordem de inserção.
     sqlite.exec(`
       INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
         ('aaron', 'aaron@example.com', 'google', 'g-aaron', 'Aaron');
@@ -2417,7 +2397,6 @@ describe('GET /groups pódio', () => {
 describe('GET /groups/:id/members', () => {
   it('desempata por user_id quando pontos, exatos e entrada empatam', async () => {
     const { sqlite, get } = await createFixture()
-    // `aaron` entra por último, para o desempate não coincidir com a ordem de inserção.
     sqlite.exec(`
       INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
         ('aaron', 'aaron@example.com', 'google', 'g-aaron', 'Aaron');

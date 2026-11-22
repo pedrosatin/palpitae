@@ -118,7 +118,6 @@ describe('visibilidade de piloto no grupo fechado', () => {
   it('mantém competição em pilot invisível e inacessível para usuário comum inclusive por link direto', async () => {
     const { sqlite, request, anonymousRequest } = await createPilotFixture()
 
-    // Admin cria um grupo na competição em modo piloto para gerar código de convite real
     const createdRes = await request('/groups', 'admin', 'POST', {
       name: 'Bolão Piloto',
       competition_id: 'comp-pilot',
@@ -128,7 +127,6 @@ describe('visibilidade de piloto no grupo fechado', () => {
       group: { id: string; invite_code: string }
     }
 
-    // 1. GET /competitions não lista a competição em pilot para usuário comum
     const compRes = await request('/competitions', 'ordinary')
     expect(compRes.status).toBe(200)
     const compBody = (await compRes.json()) as {
@@ -136,24 +134,20 @@ describe('visibilidade de piloto no grupo fechado', () => {
     }
     expect(compBody.competitions.map((c) => c.id)).toEqual(['comp-public'])
 
-    // 2. POST /groups com competition_id em pilot falha com 404 para usuário comum
     const createAttempt = await request('/groups', 'ordinary', 'POST', {
       name: 'Tentativa Comum',
       competition_id: 'comp-pilot',
     })
     expect(createAttempt.status).toBe(404)
 
-    // 3. GET /public/invites/:code oculta o preview do link direto enquanto a competição está em pilot
     const previewRes = await anonymousRequest(`/public/invites/${pilotGroup.invite_code}`)
     expect(previewRes.status).toBe(404)
 
-    // 4. POST /groups/join recusa entrada por código de convite direto para usuário comum
     const joinAttempt = await request('/groups/join', 'ordinary', 'POST', {
       invite_code: pilotGroup.invite_code,
     })
     expect(joinAttempt.status).toBe(404)
 
-    // 5. GET /matches?competition_id=comp-pilot retorna 404 para usuário comum
     const matchesAttempt = await request('/matches?competition_id=comp-pilot', 'ordinary')
     expect(matchesAttempt.status).toBe(404)
 
@@ -210,7 +204,6 @@ describe('visibilidade de piloto no grupo fechado', () => {
   it('permite que admin e convidado vejam a competição em pilot, criem grupo, entrem, palpitem e pontuem', async () => {
     const { sqlite, db, request } = await createPilotFixture()
 
-    // Admin e convidado enxergam a competição em pilot na listagem
     for (const user of ['admin', 'guest'] as const) {
       const res = await request('/competitions', user)
       expect(res.status).toBe(200)
@@ -218,7 +211,6 @@ describe('visibilidade de piloto no grupo fechado', () => {
       expect(body.competitions.map((c) => c.id)).toContain('comp-pilot')
     }
 
-    // Admin cria o grupo na competição em pilot
     const createRes = await request('/groups', 'admin', 'POST', {
       name: 'Grupo Fechado',
       competition_id: 'comp-pilot',
@@ -228,20 +220,17 @@ describe('visibilidade de piloto no grupo fechado', () => {
       group: { id: string; invite_code: string }
     }
 
-    // Convidado entra pelo código de convite
     const joinRes = await request('/groups/join', 'guest', 'POST', {
       invite_code: group.invite_code,
     })
     expect(joinRes.status).toBe(200)
 
-    // Convidado lista as partidas da competição em pilot com Cache-Control privado
     const matchesRes = await request('/matches?competition_id=comp-pilot', 'guest')
     expect(matchesRes.status).toBe(200)
     expect(matchesRes.headers.get('Cache-Control')).toBe('private, no-store')
     const matchesBody = (await matchesRes.json()) as { matches: Array<{ id: string }> }
     expect(matchesBody.matches.map((m) => m.id)).toEqual(['m-pilot-1', 'm-pilot-2'])
 
-    // Admin envia palpite individual e convidado envia palpite em lote
     const adminPickRes = await request('/predictions', 'admin', 'PUT', {
       group_id: group.id,
       match_id: 'm-pilot-1',
@@ -259,7 +248,6 @@ describe('visibilidade de piloto no grupo fechado', () => {
     })
     expect(guestBulkRes.status).toBe(200)
 
-    // Encerra a partida m-pilot-1 por 2x1 e processa a pontuação
     sqlite
       .prepare(
         "UPDATE matches SET status = 'finished', home_score = 2, away_score = 1 WHERE id = 'm-pilot-1'",
@@ -267,7 +255,6 @@ describe('visibilidade de piloto no grupo fechado', () => {
       .run()
     await scoreUnprocessedMatches('comp-pilot', db)
 
-    // Verifica o ranking do grupo fechado
     const membersRes = await request(`/groups/${group.id}/members`, 'guest')
     expect(membersRes.status).toBe(200)
     const { members } = (await membersRes.json()) as {
@@ -290,11 +277,9 @@ describe('visibilidade de piloto no grupo fechado', () => {
       group: { id: string; invite_code: string }
     }
 
-    // Convidado e usuário comum não podem promover
     expect((await request('/competitions/comp-pilot/promote', 'guest', 'POST')).status).toBe(403)
     expect((await request('/competitions/comp-pilot/promote', 'ordinary', 'POST')).status).toBe(403)
 
-    // Admin promove a competição para public
     const promoteRes = await request('/competitions/comp-pilot/promote', 'admin', 'POST')
     expect(promoteRes.status).toBe(200)
     expect(await promoteRes.json()).toEqual({
@@ -306,7 +291,6 @@ describe('visibilidade de piloto no grupo fechado', () => {
       },
     })
 
-    // Após a promoção, usuário comum vê a competição, visualiza o preview do convite, entra no grupo e palpita
     const compRes = await request('/competitions', 'ordinary')
     const compBody = (await compRes.json()) as { competitions: Array<{ id: string }> }
     expect(compBody.competitions.map((c) => c.id)).toContain('comp-pilot')

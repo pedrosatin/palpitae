@@ -1,10 +1,4 @@
-/**
- * Tradução dos event_type do Analytics Engine para linguagem de negócio.
- * O nome cru continua sendo a chave do esquema posicional em
- * docs/observability.md — a UI mostra o rótulo e mantém o cru no tooltip.
- */
 const EVENT_LABELS: Record<string, string> = {
-  // Negócio
   prediction_saved: 'Palpite salvo',
   group_created: 'Grupo criado',
   group_joined: 'Entrada em grupo',
@@ -17,7 +11,6 @@ const EVENT_LABELS: Record<string, string> = {
   account_created: 'Conta criada',
   oauth_error: 'Erro de OAuth',
   matches_cache: 'Cache de jogos',
-  // Saúde do cron / API Football
   poller_run: 'Poller de resultados',
   fixture_discovery_run: 'Descoberta de jogos',
   scheduled_unknown_cron: 'Cron sem rotina',
@@ -25,7 +18,6 @@ const EVENT_LABELS: Record<string, string> = {
   cloudflare_usage: 'Medição das cotas',
   cloudflare_quota_alert: 'Alerta de cota',
   cloudflare_usage_error: 'Falha na medição das cotas',
-  // Poller, descoberta e sync manual cobrem football-data e ESPN.
   football_api_error: 'Erro de sync de provedor',
   match_results_fallback: 'Fallback de resultados (ESPN)',
   provider_http_attempt: 'Tentativa HTTP a provedor',
@@ -37,7 +29,6 @@ const EVENT_LABELS: Record<string, string> = {
   radar_sync_error: 'Erro do radar',
   security_storage_error: 'Falha de armazenamento de segurança',
   request_perf: 'Latência de request',
-  // Notificações por e-mail
   email_reminder_sent: 'Lembrete enviado',
   email_reminder_failed: 'Falha no lembrete',
   cron_round_reminder: 'Cron de lembrete',
@@ -58,14 +49,12 @@ const HTTP_CONTEXT_LABELS: Record<string, string> = {
   sync: 'Sincronização manual',
 }
 
-/** Forma de chamada de `football_api_error` (blob2 do evento) → processo. */
 const SYNC_ERROR_ORIGIN_LABELS: Record<string, string> = {
   poller: 'Poller de resultados',
   fixture_discovery: 'Descoberta de jogos',
   sync_endpoint: 'Sincronização manual',
 }
 
-/** Motivo de `sync_event_discarded` (blob4 do evento). */
 const DISCARD_REASON_LABELS: Record<string, string> = {
   unknown_stage: 'Fase desconhecida',
   season_mismatch: 'Outra temporada',
@@ -73,7 +62,6 @@ const DISCARD_REASON_LABELS: Record<string, string> = {
   invalid_event: 'Evento inválido',
 }
 
-/** Detalhe fixo do descarte; slug de fase e ano chegam crus. */
 const DISCARD_DETAIL_LABELS: Record<string, string> = {
   tbd: 'time a definir',
   same_team: 'mesmo time dos dois lados',

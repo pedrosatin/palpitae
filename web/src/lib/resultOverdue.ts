@@ -1,11 +1,3 @@
-/**
- * Resultado atrasado no cliente: mesma regra do painel e do alerta
- * (`api/src/matches/resultOverdue.ts`). Limiar padrão de 3 h; a UI usa a
- * constante local porque o bundle não lê o env do Worker. Se o operador
- * alterar `RESULT_OVERDUE_HOURS` na API, o painel e o e-mail acompanham; o
- * badge do participante continua no padrão documentado até o front receber
- * o limiar por payload (fora deste ticket).
- */
 
 /** Horas após o kickoff antes de sinalizar resultado pendente. */
 export const DEFAULT_OVERDUE_RESULT_HOURS = 3

@@ -13,7 +13,6 @@ describe('evaluateLoginFailureAlert', () => {
   })
 
   it('não alerta por falha isolada abaixo do volume mínimo', () => {
-    // Fronteira real 7d (2026-11-02): 6 sucessos + 1 falha → N=7 < 10
     expect(
       evaluateLoginFailureAlert({ loginSuccess: 6, loginFailures: 1 }),
     ).toBeNull()
@@ -26,11 +25,9 @@ describe('evaluateLoginFailureAlert', () => {
   })
 
   it('não alerta no volume mínimo se a proporção fica abaixo do limiar', () => {
-    // Baseline 90d ~5%: 11 falhas em 207 callbacks
     expect(
       evaluateLoginFailureAlert({ loginSuccess: 196, loginFailures: 11 }),
     ).toBeNull()
-    // 1/10 = 10% < 15%, com volume exatamente no mínimo
     expect(
       evaluateLoginFailureAlert({
         loginSuccess: LOGIN_FAILURE_MIN_CALLBACKS - 1,
@@ -40,7 +37,6 @@ describe('evaluateLoginFailureAlert', () => {
   })
 
   it('alerta no 30d elevado (volume e proporção acima dos limiares)', () => {
-    // Fronteira real 30d (2026-11-02): 21 sucessos + 5 falhas → 19%
     const alert = evaluateLoginFailureAlert({ loginSuccess: 21, loginFailures: 5 })
     expect(alert).not.toBeNull()
     expect(alert?.failures).toBe(5)
@@ -91,7 +87,6 @@ describe('evaluateLoginFailureAlert', () => {
   })
 
   it('ausência de sucessos com falhas suficientes acende (zero legítimo)', () => {
-    // totals sem login_success → 0; API só devolve event_types presentes.
     const alert = evaluateLoginFailureAlert({ loginSuccess: 0, loginFailures: 10 })
     expect(alert).not.toBeNull()
     expect(alert?.callbacks).toBe(10)
@@ -100,7 +95,6 @@ describe('evaluateLoginFailureAlert', () => {
   })
 
   it('contagem fracionária de sampling: rótulo arredondado e marcado como estimativa', () => {
-    // 2,4 / (12,6 + 2,4) = 2,4/15 = 16% ≥ 15%, N=15 ≥ 10
     const alert = evaluateLoginFailureAlert({
       loginSuccess: 12.6,
       loginFailures: 2.4,

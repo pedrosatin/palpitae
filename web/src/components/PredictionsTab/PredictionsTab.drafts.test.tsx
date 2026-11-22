@@ -25,7 +25,6 @@ function saved(overrides: Partial<Prediction> = {}): Prediction {
   }
 }
 
-/** API simulada. `setPredictions` troca o que o servidor devolve na próxima busca. */
 function mockApi(
   matches: Match[],
   predictions: Prediction[] = [],
@@ -69,7 +68,6 @@ function renderTab() {
   return render(<PredictionsTab groupId="g1" competitionId="c1" userId="u1" />)
 }
 
-/** Grava rascunhos digitados agora sobre `base`, por padrão um jogo sem palpite. */
 function storeDraft(
   scores: Record<string, { home: string; away: string }>,
   penalties: Record<string, PenaltyWinner> = {},
@@ -126,14 +124,12 @@ describe('PredictionsTab – rascunho guardado no navegador', () => {
     const first = renderTab()
     await screen.findByRole('button', { name: /^Salvar todos$/i })
 
-    // Salvo 1×0, rascunho 3×0 sem salvar.
     await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
     expect(screen.getByLabelText('Placar Brasil')).toHaveValue(3)
     await waitFor(() => expect(storedIds()?.scores).toEqual(['m1']))
     first.unmount()
 
-    // O mesmo palpite foi salvo como 2×2 em outro aparelho.
     api.setPredictions([saved({ predicted_home_score: 2, predicted_away_score: 2 })])
     renderTab()
     expect(await screen.findByRole('button', { name: /^Salvar todos$/i })).toBeDisabled()
@@ -150,7 +146,6 @@ describe('PredictionsTab – rascunho guardado no navegador', () => {
     renderTab()
     expect(await screen.findByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
     expect(screen.getByLabelText('Placar Brasil')).toHaveValue(1)
-    // Pênalti escolhido vira o chip com o vencedor, sem os botões de escolha.
     expect(screen.queryByRole('radiogroup', { name: /pênaltis/i })).not.toBeInTheDocument()
     expect(screen.getByText('ARG')).toBeInTheDocument()
   })
@@ -218,7 +213,6 @@ describe('PredictionsTab – rascunho guardado no navegador', () => {
     expect(await screen.findByRole('option', { name: 'Rodada 2 · não salvo' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Rodada 1' })).toBeInTheDocument()
 
-    // Jogo sem palpite começa vazio. O rascunho conta com os dois placares escolhidos.
     await userEvent.click(screen.getByRole('button', { name: /Aumentar placar Argentina/i }))
     await userEvent.click(screen.getByRole('button', { name: /Diminuir placar Brasil/i }))
     expect(screen.getByRole('option', { name: 'Rodada 1 · não salvo' })).toBeInTheDocument()
@@ -286,7 +280,6 @@ describe('PredictionsTab – rascunho de pênalti na volta', () => {
   })
 
   it('o pênalti escolhido some quando o empate do agregado se desfaz', async () => {
-    // Ida 1×0 para o Vasco e volta 1×0 para o Grêmio empatam o agregado em 1×1.
     mockApi([ida, volta], [saved({ match_id: 'ida' }), saved({ id: 'p2', match_id: 'volta' })])
     const user = userEvent.setup()
     renderTab()
@@ -294,13 +287,11 @@ describe('PredictionsTab – rascunho de pênalti na volta', () => {
     expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
     await waitFor(() => expect(storedIds()?.penalties).toEqual(['volta']))
 
-    // A ida passa a 2×0 e o agregado deixa de empatar.
     await user.click(screen.getAllByRole('button', { name: 'Aumentar placar Vasco' })[0])
     expect(screen.queryByRole('radiogroup', { name: /pênaltis/i })).not.toBeInTheDocument()
     await waitFor(() => expect(storedIds()).toEqual({ scores: ['ida'], penalties: [] }))
     expect(screen.getByRole('button', { name: /Salvar todos \(1\)/i })).toBeEnabled()
 
-    // Só a ida mudou. A volta segue salva, sem a escolha dos pênaltis na tela.
     expect(screen.getAllByRole('button', { name: 'Atualizar' })).toHaveLength(1)
     await user.click(screen.getByRole('button', { name: 'Atualizar' }))
     await waitFor(() => expect(localStorage.getItem(KEY)).toBeNull())
@@ -376,18 +367,15 @@ describe('PredictionsTab – resposta de um card que saiu da tela', () => {
     const user = userEvent.setup()
     renderTab()
 
-    // Salva 2×1 no jogo da rodada 1, e o PUT fica pendente.
     await user.type(await screen.findByLabelText('Placar Brasil'), '2')
     await user.type(screen.getByLabelText('Placar Argentina'), '1')
     await user.click(screen.getByRole('button', { name: 'Salvar' }))
 
-    // Troca de rodada com o envio pendente, volta e muda para 3×1.
     await user.click(screen.getByRole('button', { name: 'Próxima rodada' }))
     await user.click(screen.getByRole('button', { name: 'Rodada anterior' }))
     expect(screen.getByLabelText('Placar Brasil')).toHaveValue(2)
     await user.click(screen.getByRole('button', { name: /Aumentar placar Brasil/i }))
 
-    // A resposta do 2×1 chega por último.
     await act(async () => {
       respond(new Response(JSON.stringify({ ok: true }), { status: 200 }))
     })
@@ -413,7 +401,6 @@ describe('PredictionsTab – jogo que começa com a aba aberta', () => {
     localStorage.clear()
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-11-14T21:29:50.000Z'))
-    // m1 começa em 10 s. m2, na mesma rodada, segue aberto e mantém a barra.
     mockApi([
       makeMatch({ id: 'm1', start_time: KICKOFF }),
       makeMatch({
@@ -438,7 +425,6 @@ describe('PredictionsTab – jogo que começa com a aba aberta', () => {
     expect(screen.getByLabelText('Placar Brasil')).toBeInTheDocument()
     await waitFor(() => expect(fireBeforeUnload()).toBe(true))
 
-    // 10 s não chegam ao tique de 30 s do relógio da aba.
     await act(() => vi.advanceTimersByTimeAsync(10_000))
 
     expect(
@@ -453,7 +439,6 @@ describe('PredictionsTab – jogo que começa com a aba aberta', () => {
     expect(await screen.findByRole('option', { name: 'Rodada 1 · não salvo' })).toBeInTheDocument()
     await waitFor(() => expect(fireBeforeUnload()).toBe(true))
 
-    // Passa do início e de um tique do relógio da aba.
     await act(() => vi.advanceTimersByTimeAsync(40_000))
 
     expect(await screen.findByRole('option', { name: 'Rodada 1' })).toBeInTheDocument()

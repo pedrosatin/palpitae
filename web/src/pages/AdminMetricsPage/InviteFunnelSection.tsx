@@ -31,7 +31,6 @@ export interface InviteFunnelResponse {
   avgSampleInterval: number
 }
 
-/** Só `convite_link` passou pela página que conta aberturas: link antigo fica fora da taxa. */
 function linkConversion(data: InviteFunnelResponse): string {
   if (data.opens <= 0) return '—'
   return `${Math.round((data.joinsByMethod.convite_link / data.opens) * 100)}%`

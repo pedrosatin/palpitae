@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 
-// O vite.config libera só variables.css do esvaziamento de CSS nos testes.
 const css = Object.values(
   import.meta.glob<string>('./variables.css', { query: '?raw', import: 'default', eager: true }),
 )[0]

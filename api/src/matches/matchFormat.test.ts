@@ -46,7 +46,6 @@ function setup() {
   return { sqlite, db, insert, read }
 }
 
-/** Grava pelo upsert do sync, com os campos de resultado dados. */
 function upsert(
   db: D1Database,
   fields: { startTime?: string; status?: string; home?: number | null; away?: number | null },
@@ -140,7 +139,6 @@ describe('migration 0043: formato de matches', () => {
   })
 
   describe('linha antiga fora do formato', () => {
-    /** Gravada antes da migration: o gatilho de inserção ainda não existia. */
     function legacy(fields: Record<string, string | number | null>) {
       const ctx = setup()
       ctx.sqlite.exec('DROP TRIGGER matches_format_insert')
@@ -154,7 +152,6 @@ describe('migration 0043: formato de matches', () => {
       sqlite.exec(
         "UPDATE matches SET scored_at = '2026-11-09T22:00:00Z', locked_at = '2026-11-09T20:00:00Z'",
       )
-      // Adiado: o upsert mantém o start_time gravado e não toca na linha antiga.
       await upsert(db, { startTime: '2026-07-29T00:00:00Z' }, 1)
 
       expect(read()).toMatchObject({ start_time: '2026-11-09 20:00:00', round: '1' })

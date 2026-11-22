@@ -1,12 +1,3 @@
-/**
- * Orçamento do free tier football-data.org.
- *
- * A API limita a 10 requests/minuto (header `X-Requests-Available-Minute`).
- * Discovery (1×/dia, fora do pico) e poller (~30 min) compartilham esta cota.
- * `FD_MAX_CONCURRENT_REQUESTS` fica abaixo de 10 para deixar folga a retries e
- * sobreposição ocasional entre jobs no mesmo minuto. Um 429 ou a cota zerada
- * pausam as chamadas do isolate até o reset informado (`noteFootballDataResponse`).
- */
 
 /** Limite documentado do free tier (requests por minuto). */
 export const FD_FREE_REQUESTS_PER_MINUTE = 10
@@ -49,9 +40,7 @@ export const FD_QUOTA_MAX_WAIT_MS = 65_000
 
 /** Cota informada numa resposta da football-data. */
 export type FootballDataQuota = {
-  /** Requests restantes na janela; `null` sem cabeçalho válido. */
   remaining: number | null
-  /** Segundos até zerar o contador (o maior valor válido entre os cabeçalhos); `null` sem nenhum. */
   resetSeconds: number | null
 }
 
@@ -76,10 +65,8 @@ function nonNegativeInt(value: string | null): number | null {
   return /^\d+$/.test(trimmed) ? Number(trimmed) : null
 }
 
-/** Data HTTP (IMF-fixdate), ex.: `Thu, 12 Nov 2026 12:02:13 GMT`. */
 const HTTP_DATE = /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/
 
-/** `Retry-After` em segundos ou como data HTTP. `-5` não é data, é inválido. */
 function retryAfterSeconds(value: string | null, now: number): number | null {
   const seconds = nonNegativeInt(value)
   const trimmed = value?.trim() ?? ''

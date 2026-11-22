@@ -22,7 +22,6 @@ vi.mock('./scoring', () => ({
   scoreUnprocessedMatches: scoreUnprocessedMatchesSpy,
 }))
 
-// Nas contas deste arquivo, o id é o próprio e-mail (ver os tokens).
 function fakeEnv(
   db: D1Database,
   overrides: Partial<AppContext['Bindings']> = {},
@@ -48,7 +47,6 @@ function createMatchesDbMock(
   function resultsFor(sql: string): { results: unknown[] } {
     if (sql.includes('FROM matches m')) {
       if (sql.includes('JOIN competitions') && sql.includes('SELECT m.id, m.home_score')) {
-        // This is from scoring logic we shouldn't increment router main query
       } else {
         if (counter) counter.mainQueries++
       }
@@ -200,9 +198,9 @@ describe('matches router – GET /', () => {
     const body = (await response.json()) as {
       matches: Array<Record<string, unknown>>
     }
-    expect(body.matches[0].decides_on_penalties).toBe(true) // FINAL ∈ gate
-    expect(body.matches[1].decides_on_penalties).toBe(false) // GROUP_STAGE ∉ gate
-    expect(body.matches[0]).not.toHaveProperty('penalty_phases') // raw gate stripped
+    expect(body.matches[0].decides_on_penalties).toBe(true)
+    expect(body.matches[1].decides_on_penalties).toBe(false)
+    expect(body.matches[0]).not.toHaveProperty('penalty_phases')
   })
 
   it('returns empty matches without scheduling external sync', async () => {
@@ -253,7 +251,6 @@ describe('matches router – GET /', () => {
       delete (globalThis as { caches?: unknown }).caches
     })
 
-    /** Cache-Control da resposta ao navegador e da cópia guardada na borda. */
     async function cacheHeadersFor(
       matchRows: { status: string }[],
     ): Promise<{ browser: string | null; edge: string | null }> {
@@ -340,7 +337,7 @@ describe('matches router – GET /', () => {
 
       const first = makeCtx()
       const r1 = await app.fetch(await newRequest(), env, first.ctx)
-      await first.settle() // let waitUntil(cache.put(...)) run
+      await first.settle()
       expect(r1.status).toBe(200)
 
       const second = makeCtx()
@@ -359,7 +356,6 @@ describe('matches router – GET /', () => {
         default_round: null,
       })
 
-      // Only the first request queried D1; the second came from the edge cache.
       expect(counter.mainQueries).toBe(1)
     })
   })
@@ -521,7 +517,6 @@ describe('matches router – GET /', () => {
 
       expect(response.status).toBe(200)
       await expect(response.json()).resolves.toMatchObject({ ok: true, pending: true })
-      // O item manual entrou na fila durável para o dreno executar.
       expect(batch).toHaveBeenCalledTimes(1)
       expect(syncFixturesSpy).toHaveBeenCalledWith(
         expect.objectContaining({ coordinate: true, competitionCode: 'WC', season: 2022 }),
@@ -558,7 +553,6 @@ describe('matches router – GET /', () => {
       expect(response.status).toBe(200)
       await expect(response.json()).resolves.toMatchObject({ ok: true, pending: true })
       expect(batch).toHaveBeenCalledTimes(1)
-      // O item manual volta no instante que a cota informou, não na próxima janela.
       expect(bind.mock.calls.some((args) => args.includes(retryAt))).toBe(true)
     })
 

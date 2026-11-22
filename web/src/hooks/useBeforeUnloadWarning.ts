@@ -9,8 +9,6 @@ export function useBeforeUnloadWarning(active: boolean) {
     if (!active) return
     function warn(event: BeforeUnloadEvent) {
       event.preventDefault()
-      // Chrome e Edge antes da versão 119 ignoram `preventDefault()` e só mostram o
-      // aviso quando `returnValue` recebe um valor, mesmo vazio.
       event.returnValue = ''
     }
     window.addEventListener('beforeunload', warn)

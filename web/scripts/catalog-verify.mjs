@@ -46,7 +46,6 @@ export function compareCatalog(slugs, offered) {
   }
 }
 
-/** Respostas de bloqueio ou limite: a consulta foi recusada, não falhou por acaso. */
 const REFUSED_STATUS = new Set([403, 429])
 
 /**
@@ -67,7 +66,6 @@ async function fetchOffered(apiUrl, fetchImpl) {
   }
 }
 
-/** Problemas que reprovam só com `strict`; sem ele, saem como aviso. */
 function blockingProblems(slugs, fetched, apiUrl) {
   if (slugs.length === 0) return ['nenhum slug lido do catálogo da landing.']
   if (fetched.refused) {
@@ -82,7 +80,6 @@ function blockingProblems(slugs, fetched, apiUrl) {
   )
 }
 
-/** Avisos que nunca reprovam. */
 function softProblems(slugs, fetched, apiUrl) {
   if (slugs.length === 0 || fetched.refused) return []
   if (!fetched.offered) {

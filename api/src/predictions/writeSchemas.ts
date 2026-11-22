@@ -89,7 +89,6 @@ export function mapBulkPredictionError(
     if (pathKey(issue) !== 'predictions') continue
     if ((issue.path?.length ?? 0) > 1) continue
     if (issueType(issue) === 'max_length') continue
-    // Ausente, tipo errado ou lista vazia (array / min_length / object).
     return BULK_EMPTY_MSG
   }
   for (const issue of issues) {

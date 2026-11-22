@@ -119,8 +119,6 @@ describe('rounds', () => {
     })
 
     it('exclui a rodada padrão da API em vez de recalcular, mesmo no empate', () => {
-      // Fim de temporada: 9 e 21 com um remarcado no mesmo horário e a 38 encerrada.
-      // As duas empatam na regra. A dica tem de apontar a que a API não escolheu.
       const round9 = [...Array.from({ length: 9 }, () => at('2026-05-24T22:00:00Z')), at('2026-11-14T23:30:00Z')]
       const round38 = Array.from({ length: 10 }, () => at('2026-11-01T22:00:00Z'))
       const season = byRound({ '9': round9, '21': round21, '38': round38 })

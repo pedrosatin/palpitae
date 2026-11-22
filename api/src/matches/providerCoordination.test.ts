@@ -17,7 +17,6 @@ import { syncFixtures } from './sync'
  * recuperação além das 24 h do resgate e reprocesso idempotente.
  */
 
-/** O dreno da football-data pelo coordenador, como o `scheduled` o chama. */
 const drainFootballDataWork = (
   db: D1Database,
   apiKey: string,
@@ -25,7 +24,6 @@ const drainFootballDataWork = (
 ): Promise<number> => runProviderDrains(db, [footballDataDrain({ apiKey, ae })], { ae })
 
 const KICKOFF = '2026-11-08T15:30:00Z'
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const NOW = Date.parse(KICKOFF) + 120 * 60_000
 const MATCHDAYS = [10, 11]
 
@@ -67,7 +65,6 @@ function fdMatches(status: string, score: number | null) {
   })
 }
 
-/** 429 no formato da football-data, com ou sem o reset em segundos. */
 function quotaExhausted(resetSeconds: number | null) {
   return Response.json(
     { message: 'You reached your request limit.', errorCode: 429 },
@@ -88,13 +85,8 @@ function fakeAe() {
   }
 }
 
-/** Sem vaga, como o orçamento recusa uma tentativa. */
 const SEM_VAGA = 'football-data.org: sem vaga no orçamento compartilhado de chamadas'
 
-/**
- * Calendário football-data no D1 e provedor simulado. A ESPN não traz nada,
- * para o resultado depender só da football-data.
- */
 async function setup() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -131,7 +123,6 @@ describe('coordenação das chamadas da football-data', () => {
 
     await pollActiveMatches(db, 'test', ae, NOW)
 
-    // Uma tentativa saiu; a segunda ficou sem vaga e virou item pendente.
     expect(fdCalls).toHaveLength(1)
     expect(workRows(sqlite)).toHaveLength(1)
     expect(workRows(sqlite)[0]).toMatchObject({
@@ -178,7 +169,6 @@ describe('coordenação das chamadas da football-data', () => {
     expect(workRows(sqlite).every((row) => row.status === 'done')).toBe(true)
     expect(fdCalls).toHaveLength(4)
 
-    // O tick seguinte pontua o que o dreno gravou.
     await pollActiveMatches(db, 'test', ae, NOW + 61_000)
     const scored = sqlite
       .prepare('SELECT COUNT(*) AS n FROM matches WHERE scored_at IS NOT NULL')
@@ -201,7 +191,6 @@ describe('coordenação das chamadas da football-data', () => {
     await vi.advanceTimersByTimeAsync(61_000)
     await done
 
-    // Cada tentativa contou: 2 iniciais e 2 retries depois da espera.
     expect(fdCalls).toHaveLength(4)
     const state = sqlite.prepare('SELECT blocked_until FROM provider_rate_state').get() as {
       blocked_until: number
@@ -277,10 +266,8 @@ describe('coordenação das chamadas da football-data', () => {
       { kind: 'result', competitionCode: 'PPL', season: '2026', round: '10', competitionId: 'c1' },
       new Error(SEM_VAGA),
     )
-    // Os prazos já passaram: os dois estão prontos.
     sqlite.exec('UPDATE provider_work SET not_before = 0')
 
-    // O lote de um só item pega o de maior prioridade: resultado.
     const claimed = await claimProviderWork(db, {
       provider: 'football-data',
       limit: 1,
@@ -305,7 +292,6 @@ describe('coordenação das chamadas da football-data', () => {
     provider.respond = () => fdMatches('FINISHED', 2)
 
     await pollActiveMatches(db, 'test', ae, NOW)
-    // Duas rodadas sincronizadas na janela e pontuadas no mesmo tick.
     expect(fdCalls).toHaveLength(2)
     const scored = sqlite
       .prepare('SELECT COUNT(*) AS n FROM matches WHERE scored_at IS NOT NULL')
@@ -340,7 +326,6 @@ describe('coordenação das chamadas da football-data', () => {
       { kind: 'result', competitionCode: 'PPL', season: '2026', round: '10', competitionId: 'c1' },
       new Error(SEM_VAGA),
     )
-    // Prazo vencido, pronto para executar.
     vi.useFakeTimers({ now: Date.now() + 61_000, toFake: ['Date'] })
 
     await drainFootballDataWork(db, 'test', ae)
@@ -348,7 +333,6 @@ describe('coordenação das chamadas da football-data', () => {
     const runs = events().filter((point) => point.blobs?.[0] === 'provider_work_run')
     expect(runs).toHaveLength(1)
     expect(runs[0].blobs?.[1]).toBe('ok')
-    // claimed, done, requeued, failed
     expect(runs[0].doubles?.slice(0, 4)).toEqual([1, 1, 0, 0])
   })
 
@@ -374,7 +358,6 @@ describe('coordenação das chamadas da football-data', () => {
     expect(
       events().some((point) => point.blobs?.[0] === 'football_api_error'),
     ).toBe(true)
-    // O sync já tinha rodado: o item termina, não volta para a fila.
     expect(workRows(sqlite).find((row) => row.kind === 'manual')?.status).toBe('done')
     errorSpy.mockRestore()
   })

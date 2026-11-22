@@ -4,30 +4,6 @@ import { EspnUnavailableError, type EspnBlock, type EspnGate } from '../provider
 import { CallBudgetExhaustedError, type CallGate } from './callBudget'
 import { readProviderState, reserveProviderSlot, SUSPENDED_RECHECK_MS } from './providerBudget'
 
-/**
- * Controle de acesso da ESPN (ADR-027, adendo do ticket 03).
- *
- * A API pública da ESPN não documenta cota nem termos de uso para este caso, e
- * o bloqueio conhecido é o 403 do Akamai em rajadas. O gate liga o cliente
- * HTTP ao orçamento compartilhado no D1 (`provider_rate_state`, linha `espn`)
- * e trata a resposta assim:
- *
- * - 2xx: o acesso funciona; a sequência de 403 zera.
- * - 429: pausa até o `Retry-After` que o fornecedor impôs, no mínimo a espera
- *   conservadora (e essa espera quando o cabeçalho falta ou é inválido), sem
- *   mexer na sequência de 403. Nada repete na hora. Um `Retry-After` absurdo
- *   (acima de 24 h) suspende a coleta para análise, como o 401 e o 451.
- * - 403: limita e espaça as tentativas. Cada 403 seguido sobe a sequência e
- *   adia a próxima tentativa (`ESPN_FORBIDDEN_BACKOFF_MS`); o quarto
- *   suspende a coleta. Um alerta (`provider_access_blocked`) sai a cada passo.
- * - 401 e 451: a resposta proíbe o acesso. A coleta é suspensa na hora.
- *
- * Suspensa, a coleta não volta sozinha: o operador confere os termos e a
- * autorização e a retoma (`resumeProviderAccess`; runbook em
- * `docs/observability.md`). Continuar a tentar um acesso proibido seria
- * desrespeitar a decisão do provedor, e o espaçamento só vale para o que é
- * limite de ritmo.
- */
 
 /** Recusa do orçamento, bloqueio ou suspensão: não é falha do sync, nenhuma tentativa é gasta. */
 export function isEspnRefusal(error: unknown): error is EspnUnavailableError {
@@ -58,7 +34,6 @@ export const ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS = 24 * 60 * 60_000
  */
 export const ESPN_REQUEST_CALLS = 3
 
-/** O que o alerta reporta, no formato posicional de `provider_access_blocked`. */
 type BlockOutcome = EspnBlock & { status: number; streak: number }
 
 function retryAfterMs(headers: Headers, now: number): number | null {
@@ -68,7 +43,6 @@ function retryAfterMs(headers: Headers, now: number): number | null {
   return Number.isNaN(at) ? null : Math.max(0, at - now)
 }
 
-/** `Retry-After` que pede mais que o razoável: suspende em vez de esperar. */
 function isAbsurdRetryAfter(retryAfter: number | null): boolean {
   return retryAfter !== null && retryAfter > ESPN_RATE_LIMIT_ABSURD_RETRY_AFTER_MS
 }
@@ -208,7 +182,6 @@ function isProhibition(status: number): boolean {
   return status === 429 || status === 403 || status === 401 || status === 451
 }
 
-/** Grava a proibição no D1 e devolve o bloqueio que ficou valendo. */
 function persistProhibition(db: D1Database, p: Prohibition): Promise<BlockOutcome> {
   if (p.status === 429) {
     return isAbsurdRetryAfter(p.retryAfterMs)
@@ -219,7 +192,6 @@ function persistProhibition(db: D1Database, p: Prohibition): Promise<BlockOutcom
   return suspendProhibited(db, p.status, p.observedAt, `http_${p.status}`)
 }
 
-/** O bloqueio mais curto da regra do status: o que vale localmente enquanto o D1 não grava. */
 function localOutcome(p: Prohibition): BlockOutcome {
   if (p.status === 429) {
     if (isAbsurdRetryAfter(p.retryAfterMs)) {
@@ -243,14 +215,6 @@ function localOutcome(p: Prohibition): BlockOutcome {
   return { status: p.status, streak: 0, reason: 'suspended', retryAt: p.observedAt }
 }
 
-/**
- * Bloqueio local do isolate (em memória) para uma proibição que o D1 não gravou.
- * Sem ele, a próxima reserva leria o D1 ainda livre e passaria: o request que a
- * resposta proibiu se repetiria. Vale para toda reserva do isolate, inclusive as
- * chamadas já enfileiradas no mutex do cliente, e só cai depois que a proibição é
- * gravada (o D1 passa a ser a verdade) ou, num bloqueio por prazo (429, 403), depois
- * que o prazo vence. Uma suspensão não vence sozinha.
- */
 type LocalBlock = { prohibition: Prohibition; reason: BlockOutcome['reason']; retryAt: number }
 
 const localBlocks: LocalBlock[] = []
@@ -434,7 +398,6 @@ export function createEspnDiscoveryGate(db: D1Database, ae?: AnalyticsEngineData
   }
 }
 
-/** Alerta de acesso bloqueado ou suspenso, no log e no Analytics Engine. */
 function alertAccessBlocked(
   ae: AnalyticsEngineDataset | undefined,
   outcome: BlockOutcome,
@@ -447,9 +410,7 @@ function alertAccessBlocked(
       : `[espn] Acesso proibido (HTTP ${outcome.status}): coleta SUSPENSA até o operador conferir os termos e retomar.`
     : `[espn] Acesso bloqueado (HTTP ${outcome.status}, ${outcome.streak}º seguido): nova tentativa a partir de ${new Date(outcome.retryAt).toISOString()}.`
   logError(ae, 'provider_access_blocked', message, new Error(`HTTP ${outcome.status}`), {
-    // provider, status, estado
     blobs: ['espn', String(outcome.status), suspended ? 'suspended' : 'backoff'],
-    // 403 seguidos, minutos até a nova tentativa
     doubles: [outcome.streak, Math.max(0, Math.round((outcome.retryAt - now) / 60_000))],
   })
 }

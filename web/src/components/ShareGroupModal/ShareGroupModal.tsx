@@ -68,7 +68,6 @@ export default function ShareGroupModal({ isOpen, onClose, group }: ShareGroupMo
     const data = dataRef.current
     if (!blob || !data) return
 
-    // Só renderizado quando `canShareFiles` — share sheet nativo com a imagem.
     const file = new File([blob], fileName(data), { type: 'image/png' })
     try {
       await navigator.share({ files: [file], text: `${shareText(data)} ${data.domain}` })

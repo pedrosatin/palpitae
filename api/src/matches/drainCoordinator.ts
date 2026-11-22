@@ -26,7 +26,6 @@ import { DRAIN_MAX_ITEMS, countReadyWork, type DrainRun, type ReadyWork } from '
  */
 
 export type ProviderDrain = {
-  /** Nome do provedor, para o log. */
   provider: string
   /**
    * Menor fatia com que o dreno ainda conclui um item (o custo fixo de um ciclo
@@ -90,7 +89,6 @@ export function shareBudget(total: number, demands: readonly number[]): number[]
   return shares
 }
 
-/** Quanto o dreno pede na primeira rodada, pelo trabalho pronto dele na fila. */
 function demandOf(drain: ProviderDrain, work: ReadyWork | undefined): number {
   if (!drain.queue || !work || drain.minCalls === undefined) return Infinity
   // Só a fatia que comporta a reclamação (e o aviso do acesso pausado), o mínimo para tentar.
@@ -157,8 +155,6 @@ async function runOne(
     const run = await drain.run(budget)
     return { used: budget.used, stoppedByBudget: run.stoppedBy === 'budget' }
   } catch (err) {
-    // A telemetria que falha não pode derrubar o isolamento de falhas: o gasto do
-    // dreno já está contado e os outros seguem para a consolidação.
     tryLogError(
       ae,
       'provider_work_run',
@@ -173,7 +169,6 @@ async function runOne(
   }
 }
 
-/** Linha `[perf]` da invocação; o log nunca derruba o coordenador. */
 function logPerf(line: Record<string, unknown>): void {
   try {
     console.info('[perf]', JSON.stringify(line))

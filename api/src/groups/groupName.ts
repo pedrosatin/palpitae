@@ -1,15 +1,6 @@
 const LENGTH_ERROR = 'Nome deve ter entre 2 e 30 caracteres'
 const INVISIBLE_ERROR = 'Nome não pode ter caracteres invisíveis'
 
-/**
- * Usos legítimos de caractere invisível num nome. Saem do texto antes da busca
- * por caracteres proibidos:
- * - seletor de variação texto/emoji (U+FE0E, U+FE0F) logo depois de um
- *   caractere visível, como em ❤ + U+FE0F;
- * - junção U+200D entre dois emoji, como em homem + U+200D + mulher + U+200D + menina;
- * - bandeira de subdivisão: U+1F3F4, código ISO 3166-2 em tags minúsculas e
- *   U+E007F, como na bandeira da Inglaterra (gbeng).
- */
 const ALLOWED_INVISIBLE_SEQUENCES =
   /(?<=[\p{L}\p{N}\p{P}\p{S}])[\u{FE0E}\u{FE0F}]|(?<=[\p{Extended_Pictographic}\p{Emoji_Modifier}\u{FE0F}])\u{200D}(?=\p{Extended_Pictographic})|\u{1F3F4}[\u{E0061}-\u{E007A}]{2}[\u{E0030}-\u{E0039}\u{E0061}-\u{E007A}]{1,3}\u{E007F}/gu
 

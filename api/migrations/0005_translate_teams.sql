@@ -1,6 +1,3 @@
--- Translate common team names and abbreviations to Portuguese
--- This migration updates existing teams that were synced in English.
-
 UPDATE teams SET name = 'Alemanha', short_name = 'ALE' WHERE name = 'Germany';
 UPDATE teams SET name = 'Arábia Saudita', short_name = 'ARS' WHERE name = 'Saudi Arabia';
 UPDATE teams SET name = 'Argentina', short_name = 'ARG' WHERE name = 'Argentina';

@@ -34,7 +34,6 @@ describe('ShareGroupModal', () => {
   })
 
   afterEach(() => {
-    // Restaura a capability entre testes.
     Object.defineProperty(navigator, 'canShare', {
       value: originalCanShare,
       configurable: true,
@@ -46,7 +45,6 @@ describe('ShareGroupModal', () => {
     Object.defineProperty(navigator, 'canShare', { value: undefined, configurable: true })
     render(<ShareGroupModal isOpen onClose={vi.fn()} group={group} />)
 
-    // Sem share de arquivo → nada de "Compartilhar" redundante; baixar é o primário.
     expect(shareBtn()).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Baixar imagem/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Copiar link/i })).toBeInTheDocument()

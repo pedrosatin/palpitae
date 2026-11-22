@@ -12,10 +12,6 @@ interface UseCreateGroupFormProps {
   isOpen: boolean
   onClose: () => void
   onCreated: (group: CreatedGroup) => void
-  /**
-   * Slug da competição que vem escolhida, pedido pelo link de um guia. Vale
-   * enquanto o pai passar o valor; o painel o descarta ao fechar o modal.
-   */
   preferredCompetitionSlug?: string
 }
 
@@ -33,7 +29,6 @@ export function useCreateGroupForm({
   const [loadingCompetitions, setLoadingCompetitions] = useState(false)
 
   const [name, setName] = useState('')
-  // Só a escolha feita no select. Vazio, vale a competição padrão abaixo.
   const [chosenCompetitionId, setCompetitionId] = useState('')
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>(DEFAULT_SCORING.preset)
   const [pointsExact, setPointsExact] = useState(DEFAULT_SCORING.exact)
@@ -46,17 +41,9 @@ export function useCreateGroupForm({
 
   const [created, setCreated] = useState<CreatedGroup | null>(null)
 
-  // Cada abertura do formulário tem um número. Fechar o modal troca o número, e a
-  // resposta de um envio feito antes não mexe no formulário reaberto. O envio em
-  // andamento fica num ref para que um segundo submit, antes do novo render, não
-  // crie outro grupo.
   const formInstanceRef = useRef(0)
   const inFlightRef = useRef(false)
 
-  // O padrão é a competição pedida pelo link, se ela estiver na lista
-  // selecionável, ou a primeira da lista. Quando ela fica fora da lista, por
-  // falta de cadastro ou porque a competição está encerrada, o modal mostra um
-  // aviso junto do select.
   const preferredCompetition = preferredCompetitionSlug
     ? competitions.find((c) => c.slug === preferredCompetitionSlug)
     : undefined
@@ -64,22 +51,15 @@ export function useCreateGroupForm({
   const preferredCompetitionUnavailable =
     Boolean(preferredCompetitionSlug) && competitions.length > 0 && !preferredCompetition
 
-  // Bônus de pênalti só aparece quando a competição escolhida tem fases que vão a
-  // pênalti em jogo único (Decisão 4) — senão o campo não faz sentido.
   const showPenaltyField =
     competitions.find((c) => c.id === competitionId)?.has_penalty_phases === true
 
   useEffect(() => {
     if (!isOpen || competitions.length > 0) return
     setLoadingCompetitions(true)
-    // apiFetch em vez de fetch cru: em dev o modal roda cross-origin (5173 →
-    // 8787) e sem credentials o cookie de sessão não vai — 401 garantido.
     apiFetch(buildApiUrl('/competitions'))
       .then((r) => r.json() as Promise<{ competitions: Competition[] }>)
       .then((data) => {
-        // Encerradas saem; em andamento entram primeiro no select e são o
-        // default — campeonato prestes a virar só fallback. Os grupos saem
-        // daqui uma única vez; o modal não reparticiona a lista.
         const { list, groups } = selectableCompetitions(data.competitions)
         setCompetitions(list)
         setCompetitionGroups(groups)
@@ -153,8 +133,6 @@ export function useCreateGroupForm({
       const origem = getGuideOrigin()
       if (origem) trackEvent('submit_criar_grupo', { origem })
       else trackEvent('submit_criar_grupo')
-      // O grupo existe mesmo que o modal tenha fechado: a tela de pronto só vale
-      // para o formulário que enviou, mas o pai ainda recebe `onCreated` (o painel recarrega a lista).
       if (isCurrent()) setCreated(data.group!)
       onCreated(data.group!)
     } catch (err) {

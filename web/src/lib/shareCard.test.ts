@@ -125,11 +125,8 @@ describe('drawShareCard', () => {
 
     expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 1080, 1350)
 
-    // Check specific texts
     const calls = (ctx.fillText as any).mock.calls.map((call: any[]) => call[0])
 
-    // The wordmark 'PALPITAE' and label 'FIQUEI EM' are drawn character by character
-    // due to custom tracking in fillTracked, but other parts are drawn fully:
     expect(calls).toContain('COPA 2026')
     expect(calls).toContain('5')
     expect(calls).toContain('de 8 no bolão')
@@ -140,8 +137,6 @@ describe('drawShareCard', () => {
     expect(calls).toContain('dispute o topo da classificação')
     expect(calls).toContain('palpitae.app')
 
-    // We check that the hero champion trophy is not rendered since isChampion=false
-    // Note: The big trophy is at y=288, while the standings trophy is at y=968
     const bigTrophyCall = (ctx.fillText as any).mock.calls.find(
       (call: any[]) => call[0] === '🏆' && call[2] === 288,
     )
@@ -157,8 +152,6 @@ describe('drawShareCard', () => {
     const champData = { ...baseData, isChampion: true, position: 1 }
     drawShareCard(ctx, champData)
 
-    // Validate big trophy placement logic for champion
-    // The big trophy should be rendered at specific coordinates (W / 2, 288)
     const trophyCall = (ctx.fillText as any).mock.calls.find(
       (call: any[]) => call[0] === '🏆' && call[1] === 1080 / 2 && call[2] === 288,
     )
@@ -167,7 +160,6 @@ describe('drawShareCard', () => {
 
   it('truncates texts properly', () => {
     const ctx = createMockCtx()
-    // Make measureText return large width so truncation happens
     ;(ctx.measureText as any).mockImplementation(() => ({ width: 600 }))
     const longData = {
       ...baseData,
@@ -181,13 +173,9 @@ describe('drawShareCard', () => {
 
     const calls = (ctx.fillText as any).mock.calls.map((call: any[]) => call[0])
 
-    // In our mock logic for truncate, if measureText always returns 600 width (and text+'…' returns 600 width),
-    // while loop reduces it until length is 1, so we expect 'S…' or similar depending on the exact string.
-    // Wait, let's actually just verify that the full string isn't printed and a truncated string is printed.
     expect(calls).not.toContain('SUPER LONG COMPETITION NAME')
     expect(calls).not.toContain('VERY LONG NAME THAT EXCEEDS WIDTH')
 
-    // Because it slices down to length 1 and adds '…', the string might be 'S…' or 'V…'
     expect(calls.some((c: string) => c.endsWith('…'))).toBe(true)
   })
 })

@@ -61,7 +61,6 @@ describe('GroupCard', () => {
     )
     const title = screen.getByRole('heading', { name: 'Champions' })
     const badges = title.nextElementSibling as HTMLElement
-    // A linha de badges é o irmão seguinte do título.
     expect(badges).not.toBeNull()
     expect(Array.from(badges.children).map((badge) => badge.textContent)).toEqual([
       'Admin',
@@ -70,7 +69,6 @@ describe('GroupCard', () => {
   })
 
   it('does not repeat the competition name in a hover tooltip', () => {
-    // O tooltip cobria o título e repetia o texto da badge.
     const { container } = render(<GroupCard group={baseGroup} onClick={onClick} />)
     expect(container.querySelector('[data-tooltip]')).toBeNull()
   })
@@ -101,7 +99,6 @@ describe('GroupCard', () => {
   })
 
   describe('linha de status da rodada', () => {
-    // Quinta, 12/11/2026, 12:00 em Brasília.
     beforeEach(() => {
       vi.useFakeTimers({ toFake: ['Date'] })
       vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
@@ -216,7 +213,6 @@ describe('GroupCard', () => {
       render(<GroupCard group={finishedGroup} onClick={onClick} />)
       expect(screen.getByText('João')).toBeInTheDocument()
       expect(screen.getByText('152')).toBeInTheDocument()
-      // Stats labels from the active card must be gone.
       expect(screen.queryByText('Sua posição')).not.toBeInTheDocument()
     })
 
@@ -239,7 +235,6 @@ describe('GroupCard', () => {
 
     it('appends the user own row when they finished outside the top 3', () => {
       render(<GroupCard group={finishedGroup} onClick={onClick} />)
-      // Not in podium → own row shows position #5 and 42 points.
       expect(screen.getByText('Você')).toBeInTheDocument()
       expect(screen.getByText('#5')).toBeInTheDocument()
       expect(screen.getByText('42')).toBeInTheDocument()
@@ -252,9 +247,7 @@ describe('GroupCard', () => {
       await userEvent.click(shareBtn)
 
       expect(mockTrackEvent).toHaveBeenCalledWith('click_groupcard_compartilhar')
-      // Modal opened.
       expect(screen.getByText('Compartilhar resultado', { selector: 'h2' })).toBeInTheDocument()
-      // Opening the card must not fire when clicking share.
       expect(onClick).not.toHaveBeenCalled()
     })
 

@@ -31,14 +31,6 @@ interface PickRow {
   pick: MemberPrediction | null
 }
 
-/**
- * Linhas do card. Com o jogo travado, ou num grupo "Sempre visível", o card lista
- * todos os membros, e quem não palpitou entra como "sem palpite". Num grupo com
- * palpites ocultos, enquanto o servidor não confirma o travamento, o card mostra só
- * o que a API devolveu, que é o palpite do próprio usuário. A API esconde os outros
- * palpites até lá, e listar todos os membros marcaria como "sem palpite" quem já
- * palpitou.
- */
 function buildPickRows(
   memberPicks: MemberPrediction[],
   members: GroupMember[],
@@ -52,9 +44,6 @@ function buildPickRows(
     const pick = byUser.get(m.user_id) ?? null
     return { user_id: m.user_id, user_display: pick?.user_display ?? m.display, pick }
   })
-  // A API lê os membros antes dos palpites e só devolve palpite de quem ainda é
-  // membro na segunda leitura. Um palpite de fora da lista só chega se a pessoa
-  // voltou ao grupo entre as duas leituras, porque o palpite de quem sai fica no banco.
   const rostered = new Set(members.map((m) => m.user_id))
   for (const p of memberPicks) {
     if (!rostered.has(p.user_id)) {
@@ -79,9 +68,7 @@ function MatchPicksCard({
   members: GroupMember[]
   selfUserId: string
   hidden: boolean
-  /** Jogo ainda aberto, pelo servidor e pelo relógio local. */
   open: boolean
-  /** Membros que já palpitaram este jogo aberto. `null` quando não se sabe. */
   pickers: GroupMember[] | null
   now: number
 }) {
@@ -178,8 +165,6 @@ function MatchPicksCard({
 }
 
 function PickScore({ match, pick: p }: { match: Match; pick: MemberPrediction }) {
-  // A draw pick is ambiguous on score alone in a knockout: the
-  // penalty winner is what tells two equal scores apart.
   const penaltyTeam = teamShortName(match, p.predicted_penalty_winner)
   const classifiedTeam = teamShortName(match, p.predicted_classified)
   const showPenaltyPick = Boolean(match.decides_on_penalties) && penaltyTeam !== null
@@ -233,8 +218,6 @@ export default function GroupPicksTab({
   const members = picks.members ?? []
   const openPickers = picks.open_pickers
   const hidden = predictionsVisibility === 'hidden'
-  // O relógio local fecha o jogo no horário de início, mesmo que a resposta da API
-  // seja de antes do travamento. A prova do servidor fecha o jogo com o relógio atrasado.
   const openMatches = roundMatches.filter((match) =>
     isMatchOpenForPicks(match, picksByMatch.get(match.id) ?? [], now),
   )

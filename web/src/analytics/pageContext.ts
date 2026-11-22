@@ -1,15 +1,3 @@
-/**
- * O que o GA4 recebe sobre a página atual.
- *
- * Nome do grupo, id do grupo e código de convite são privados e não saem do
- * app. O título da aba continua com o nome do grupo: só o valor enviado ao GA
- * é genérico. Ele vem sempre da rota, nunca de `document.title`, porque a
- * função do convite reescreve o `<title>` do HTML com o nome do grupo, e esse
- * título sobrevive à troca de `/convite/CODE` por `/?convite=CODE`.
- *
- * `rodada` fica fora da lista de propósito: o app consome esse parâmetro e o
- * apaga da URL logo depois de abrir, o que contaria uma visualização a mais.
- */
 import { matchPath } from 'react-router-dom'
 
 const BASE_TITLE = 'Palpitae'
@@ -24,7 +12,6 @@ interface GaRoute {
   path: string
   end: boolean
   label: string
-  /** Caminho enviado ao GA quando a URL real carrega um dado privado. */
   normalizedPath?: string
 }
 
@@ -45,7 +32,6 @@ export interface GaPage {
 
 type PageUrl = Pick<URL, 'origin' | 'pathname' | 'search'>
 
-/** Mesma decodificação que o roteador aplica antes de comparar a rota. */
 function decodePath(pathname: string): string {
   try {
     return pathname
@@ -57,8 +43,6 @@ function decodePath(pathname: string): string {
   }
 }
 
-// Usa o matcher do React Router: a regra de maiúsculas e de caminho codificado
-// precisa ser a mesma que abre a página.
 function findRoute(pathname: string): GaRoute | undefined {
   const decoded = decodePath(pathname)
   return GA_ROUTES.find(({ path, end }) => matchPath({ path, end }, decoded))

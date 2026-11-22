@@ -222,7 +222,6 @@ describe('POST /notifications/mailjet-events', () => {
 
   it('falha do banco num unsub responde 500 para a Mailjet reenviar', async () => {
     const { sqlite, post } = createFixture()
-    // A consulta do usuário passa a falhar (D1 indisponível); o limitador usa outra tabela.
     sqlite.exec('ALTER TABLE users RENAME TO users_fora')
     const res = await post({
       event: 'unsub',

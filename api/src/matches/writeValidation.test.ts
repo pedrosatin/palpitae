@@ -116,7 +116,6 @@ describe('validação de escrita POST /matches/sync', () => {
 
   it('season com tipo errado responde season deve ser um número', async () => {
     const request = await setup()
-    // `null` e `0` caem na mensagem de obrigatórios pela regra de truthiness.
     for (const season of ['2026', true]) {
       const res = await request({ competition: 'WC', season })
       expect(res).toEqual({ status: 400, body: SYNC_SEASON })

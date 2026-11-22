@@ -321,7 +321,6 @@ describe('groups router', () => {
       groups: Array<{ competition_code: string | null }>
     }
 
-    // Mock list row omits external_id → null; field must still be present.
     expect(body.groups[0]).toHaveProperty('competition_code')
     expect(body.groups[0]?.competition_code).toBeNull()
   })

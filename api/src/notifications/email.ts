@@ -1,13 +1,5 @@
-/**
- * Provider seam for transactional e-mail. The rest of the codebase calls
- * `sendEmail()` and knows nothing about Resend — swapping providers (Brevo,
- * SendGrid, etc.) means changing only this file. See ADR-009.
- */
 
 const RESEND_API = 'https://api.resend.com/emails'
-// Endereço respondível (não "noreply"): um From ao qual dá pra responder melhora
-// engajamento e reduz a chance do Gmail classificar como bulk/Promotions. Requer
-// que lembretes@ exista e roteie no Cloudflare Email Routing, senão respostas quicam.
 const FROM = 'Palpitae <lembretes@palpitae.com.br>'
 /** Tempo máximo de um envio antes de abortar. Quem chama trata como erro de rede. */
 export const RESEND_TIMEOUT_MS = 10_000
@@ -16,9 +8,7 @@ export type EmailMessage = {
   to: string
   subject: string
   html: string
-  /** Plain-text fallback. Optional, but recommended for deliverability. */
   text?: string
-  /** Extra MIME headers (e.g. List-Unsubscribe). Forwarded to Resend as-is. */
   headers?: Record<string, string>
   /**
    * Chave de idempotência do Resend, válida por 24 h. Repetir a chave com o mesmo
@@ -36,7 +26,6 @@ export type EmailMessage = {
 export class EmailError extends Error {
   readonly status: number
   readonly retryAfterMs?: number
-  /** Cota diária ou mensal do Resend esgotada. Repetir não adianta até a cota renovar. */
   readonly quotaExceeded: boolean
 
   constructor(status: number, body: string, retryAfter?: string | null) {

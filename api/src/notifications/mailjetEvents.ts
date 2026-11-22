@@ -8,7 +8,6 @@ import { normalizeEmail } from '../auth/google'
 import { sameSecret } from '../security/limits'
 import { markEmailUnsubscribed } from './optOut'
 
-/** Formato do CustomID / Idempotency-Key: lembrete-diario/<userId>/<YYYY-MM-DD>. */
 const CUSTOM_ID_RE = /^lembrete-diario\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/
 
 const HANDLED_EVENTS = new Set(['unsub', 'spam'])

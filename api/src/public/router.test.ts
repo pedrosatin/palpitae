@@ -66,7 +66,6 @@ describe('GET /public/invites/:code', () => {
         points_winner: 1,
       },
     })
-    // Nada de ids, e-mails, demais membros, limite de vagas ou o próprio código.
     expect(Object.keys(body)).toEqual(['invite'])
     expect(Object.keys(body.invite).sort()).toEqual([
       'admin_name',
@@ -122,7 +121,6 @@ describe('GET /public/invites/:code', () => {
     "ABCD-EF2'",
     'ABCD-EF23-XX',
     '%27%20OR%201%3D1',
-    // Fora do alfabeto do gerador (sem I, O, 0 e 1).
     'ABCD-EF01',
     'IOAB-CD23',
   ])('rejects malformed code %s with 404 without querying the database', async (code) => {

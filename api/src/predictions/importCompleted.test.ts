@@ -72,9 +72,6 @@ describe('Conclusão da importação por membro', () => {
     expect((await (await request()).json()).predictions[0].predicted_home_score).toBe(3)
   })
 
-  // Comportamento aceito (ticket de exclusão de conta e jogo, 11/2026): a marca vive na
-  // linha de `group_members`, que sai junto com o membro. Quem volta ao grupo encontra os
-  // palpites importados e o seletor aberto de novo. Ver `docs/architecture/schema.md`.
   it('quem sai e volta ao grupo mantém os palpites e perde a marca de importação', async () => {
     const { sqlite, request } = setup()
     expect((await (await request('a', 'target', true)).json()).imported).toBe(1)
@@ -107,7 +104,6 @@ describe('Conclusão da importação por membro', () => {
     expect(await sources()).toEqual({ source: ['m'] })
     sqlite.exec("INSERT INTO group_bans (group_id,user_id) VALUES ('source','a')")
     expect(await sources()).toEqual({})
-    // Saiu do grupo de origem: o palpite antigo continua no banco, mas não conta.
     sqlite.exec("DELETE FROM group_bans; DELETE FROM group_members WHERE id = 'as'")
     expect(await sources()).toEqual({})
     sqlite.exec(`

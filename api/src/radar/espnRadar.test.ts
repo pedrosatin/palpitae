@@ -10,13 +10,10 @@ import { ESPN_LEAGUES, fetchEspnLeaguesAndCounts } from './espnRadar'
 
 const scoreboardMock = vi.mocked(fetchEspnScoreboard)
 
-/** Payload real de bra.1 em 2026-10-07: 5 jogos no dia 07 (UTC) e 1 no dia 08. */
 const BRA1_FIXTURE = bra1ScoreboardJson as unknown as EspnScoreboard
 
-/** Catálogo completo de slugs da ESPN (219) — espelho para o teste de recorte. */
 const ESPN_CATALOG = espnCatalogJson as string[]
 
-/** Scoreboard sintético no formato mínimo que o radar lê. */
 function board(over: {
   events?: { date: string }[]
   season?: { year: number; startDate: string; endDate: string }
@@ -49,7 +46,6 @@ describe('fetchEspnLeaguesAndCounts', () => {
 
     const { leagues, counts } = await fetchEspnLeaguesAndCounts('2026-10-07')
 
-    // Nome/país vêm da curadoria, não da ESPN ("Brazilian Serie A").
     const bra1 = leagues.find((l) => l.externalId === 'bra.1')
     expect(bra1).toMatchObject({
       externalId: 'bra.1',
@@ -61,9 +57,7 @@ describe('fetchEspnLeaguesAndCounts', () => {
       endsOn: '2026-12-31',
       logoUrl: 'https://a.espncdn.com/i/leaguelogos/soccer/500/85.png',
     })
-    // 5 dos 6 eventos são de 2026-10-07 (UTC); o 6º é 00:30Z do dia 08.
     expect(counts.get('bra.1')).toBe(5)
-    // Liga sem jogos na data segue no snapshot com zero.
     expect(counts.get('bra.2')).toBe(0)
     expect(scoreboardMock).toHaveBeenCalledWith('bra.1', '20261007')
   })
@@ -96,7 +90,7 @@ describe('fetchEspnLeaguesAndCounts', () => {
   it('pula temporada encerrada: a ESPN deixa a última season no scoreboard', async () => {
     scoreboardMock.mockImplementation(async (slug) =>
       slug === 'uefa.euro'
-        ? // Euro 2024 em 2026: season vencida (caso real, conferido ao vivo).
+        ?
           board({
             events: [{ date: '2024-07-14T20:00Z' }],
             season: { year: 2024, startDate: '2024-06-01T04:00Z', endDate: '2024-07-31T03:59Z' },
@@ -170,7 +164,6 @@ describe('ESPN_LEAGUES (lista curada)', () => {
     expect(findEntry('Brazil', bySlug.get('bra.1')!.name)?.article).toBe(
       'Campeonato Brasileiro de Futebol',
     )
-    // ESPN chama de "Spanish La Liga" — aqui o nome casa com RADAR_ENTRIES.
     expect(findEntry('Spain', bySlug.get('esp.1')!.name)?.article).toBe('La Liga')
     expect(findEntry('World', bySlug.get('fifa.worldq.conmebol')!.name)?.article).toContain(
       'Eliminatórias',
@@ -181,7 +174,6 @@ describe('ESPN_LEAGUES (lista curada)', () => {
     expect(findEntry('World', bySlug.get('uefa.nations')!.name)?.article).toBe(
       'Liga das Nações da UEFA',
     )
-    // País tem que bater exatamente com o Set (sem normalização).
     expect(RADAR_COUNTRIES.has(bySlug.get('ksa.1')!.country)).toBe(true)
   })
 })

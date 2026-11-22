@@ -25,15 +25,9 @@ export type ProviderHttpContext = 'poller' | 'discovery' | 'fallback' | 'sync'
 
 export type ProviderHttpAttempt = {
   provider: ProviderName
-  /** Status HTTP; `0` quando não houve resposta (rede, timeout, abort). */
   status: number
   durationMs: number
-  /**
-   * Cota que a resposta informou (só football-data). `null` = cabeçalho ausente
-   * ou inválido; `undefined` = provedor sem cota informada (ESPN).
-   */
   quotaRemaining?: number | null
-  /** Segundos até zerar o contador da cota; mesma convenção de `quotaRemaining`. */
   quotaResetSeconds?: number | null
 }
 
@@ -50,7 +44,6 @@ export function isHttpFailure(status: number): boolean {
 
 export type ProviderHttpScope = {
   context: ProviderHttpContext
-  /** UUID da competição no D1, quando a chamada é de uma competição conhecida. */
   competitionId?: string
 }
 
@@ -67,7 +60,6 @@ export function createProviderHttpObserver(
   if (!ae) return undefined
 
   return ({ provider, status, durationMs, quotaRemaining, quotaResetSeconds }) => {
-    // Cota zerada sai sempre, com peso 1, e fica fora da amostra dos sucessos.
     const exact = isHttpFailure(status) || quotaRemaining === 0
     if (!exact && random() >= HTTP_SUCCESS_SAMPLE_RATE) return
 
@@ -82,7 +74,6 @@ export function createProviderHttpObserver(
         doubles,
       })
     } catch {
-      // Telemetria nunca derruba nem altera o sync.
     }
   }
 }
@@ -96,6 +87,5 @@ export function notifyHttpAttempt(
   try {
     observer(attempt)
   } catch {
-    // idem: observabilidade não muda o resultado do fetch.
   }
 }

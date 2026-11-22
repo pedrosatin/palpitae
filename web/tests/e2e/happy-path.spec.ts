@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
 
-// A página de grupo só aceita id no formato de UUID (#726).
 const GROUP_ID = '00000000-0000-4000-8000-0000000000b1'
 
 test.describe('Happy Path - Palpitae', () => {
@@ -18,7 +17,6 @@ test.describe('Happy Path - Palpitae', () => {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
 
-    // 1. Mock the Authentication (GET /auth/me)
     await page.route('**/auth/me', async (route) => {
       await route.fulfill({
         headers: corsHeaders,
@@ -33,7 +31,6 @@ test.describe('Happy Path - Palpitae', () => {
     })
 
     let groupCreated = false
-    // 2. Mock GET /groups, GET /groups/:id, POST /groups and OPTIONS
     await page.route('**/api/groups**', async (route) => {
       const url = route.request().url()
       console.log('MOCK INTERCEPT GROUPS:', route.request().method(), url)
@@ -103,7 +100,6 @@ test.describe('Happy Path - Palpitae', () => {
       }
     })
 
-    // 3. Mock GET /competitions
     await page.route('**/api/competitions**', async (route) => {
       await route.fulfill({
         headers: corsHeaders,
@@ -121,7 +117,6 @@ test.describe('Happy Path - Palpitae', () => {
       })
     })
 
-    // 4. Mock GET /matches
     await page.route('**/api/matches**', async (route) => {
       console.log('MOCK INTERCEPT MATCHES:', route.request().method(), route.request().url())
       if (route.request().method() === 'OPTIONS') {
@@ -176,7 +171,6 @@ test.describe('Happy Path - Palpitae', () => {
       })
     })
 
-    // 5. Mock GET /predictions
     await page.route('**/api/predictions**', async (route) => {
       console.log('MOCK INTERCEPT PREDICTIONS:', route.request().method(), route.request().url())
       if (route.request().method() === 'OPTIONS') {
@@ -192,7 +186,6 @@ test.describe('Happy Path - Palpitae', () => {
       })
     })
 
-    // 6. Mock PUT /predictions/bulk and OPTIONS
     await page.route('**/api/predictions/bulk', async (route) => {
       if (route.request().method() === 'OPTIONS') {
         await route.fulfill({ status: 200, headers: corsHeaders })
@@ -206,61 +199,43 @@ test.describe('Happy Path - Palpitae', () => {
       }
     })
 
-    // Acessar a página principal/dashboard
     await page.goto('/')
 
-    // Verificar se estamos no Dashboard sem grupos
     await expect(page.locator('h2').filter({ hasText: 'Nenhum grupo ainda' })).toBeVisible()
 
-    // Criação do Grupo
     await page.getByRole('main').getByRole('button', { name: 'Criar grupo' }).click()
     await expect(page.locator('h2').filter({ hasText: 'Criar grupo' })).toBeVisible()
 
-    // Preencher o formulário
     await page.fill('input[id="group-name"]', 'Os Craques do Bairro')
 
-    // Submeter form (botão no modal)
     await page.getByRole('dialog').getByRole('button', { name: 'Criar grupo' }).click()
 
-    // Verificar se o modal de sucesso aparece
     await expect(page.locator('h3').filter({ hasText: 'Grupo criado!' })).toBeVisible()
 
-    // Acessar o grupo recém-criado
     await page.click('button:has-text("Pronto")')
 
-    // Espera atualizar e mostrar o grupo
     await expect(page.locator('h2').filter({ hasText: 'Seus grupos' })).toBeVisible()
 
-    // Clicar no grupo recém-criado
     await page.getByRole('link', { name: /Os Craques do Bairro/ }).click()
 
-    // Verificar se está na GroupDetailPage e navegar para a aba de Palpitar
     await page.click('a:has-text("Palpitar")')
 
-    // Navegação de Rodada
-    // Select é identificado pela role e o initial é Rodada 1 ('1')
     await expect(page.locator('select')).toHaveValue('1')
 
-    // Mudar para rodada 2 via botão
     await page.click('button[aria-label="Próxima rodada"]')
     await expect(page.locator('select')).toHaveValue('2')
 
-    // Voltar para rodada 1 via botão
     await page.click('button[aria-label="Rodada anterior"]')
     await expect(page.locator('select')).toHaveValue('1')
 
-    // Preencher placar Home e Away de uma partida (match-1)
     const inputs = page.locator('input[type="number"]')
-    await inputs.nth(0).fill('2') // Home
-    await inputs.nth(1).fill('1') // Away
+    await inputs.nth(0).fill('2')
+    await inputs.nth(1).fill('1')
 
-    // Clicar em "Salvar todos"
     await page.click('button:has-text("Salvar todos")')
 
-    // Checar aparição da mensagem de sucesso
     await expect(page.locator('button:has-text("Tudo salvo!")')).toBeVisible()
 
-    // Validar se os inputs continuam com os valores preenchidos
     await expect(inputs.nth(0)).toHaveValue('2')
     await expect(inputs.nth(1)).toHaveValue('1')
   })

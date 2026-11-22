@@ -40,7 +40,6 @@ type ActiveRound = {
   season: string
   round: string
   utc_day: string
-  /** 1 = candidato da varredura de atrasados, fora da janela ativa e do resgate. */
   late?: number
 }
 
@@ -50,7 +49,6 @@ type SyncTask = {
   dates?: string[]
 }
 
-/** Datas do scoreboard ESPN de um dia UTC: o dia anterior e o próprio dia. */
 function espnDates(utcDay: string): string[] {
   return espnDatesAround(Date.parse(`${utcDay}T00:00:00Z`), -1, 2)
 }
@@ -87,15 +85,6 @@ function buildSyncTasks(rows: ActiveRound[]): {
   return { compCount: byComp.size, tasks }
 }
 
-/**
- * Escolhe no máximo uma tarefa da varredura de atrasados. Só roda no primeiro tick
- * de cada bloco de `LATE_SWEEP_INTERVAL_MS` e alterna entre os candidatos pelo
- * número do bloco, sem estado gravado: um jogo que o provedor nunca resolve não
- * prende a vez dos outros. O índice soma o número do dia ao do bloco, para que um
- * candidato não fique preso ao mesmo horário todo dia: com 8 candidatos e um bloco
- * sempre ocupado, `bloco % 8` nunca escolheria quem cai nele. Cada candidato é uma
- * rodada (football-data) ou um dia (ESPN, duas datas do scoreboard).
- */
 function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
   if (now % LATE_SWEEP_INTERVAL_MS >= POLLER_TICK_MS) return undefined
   const candidates = new Map<string, SyncTask>()
@@ -111,11 +100,6 @@ function pickLateTask(rows: ActiveRound[], now: number): SyncTask | undefined {
   }
   if (candidates.size === 0) return undefined
   const keys = Array.from(candidates.keys()).sort()
-  // O bloco avança um candidato por vez e cada dia desloca a fase em 11. Como são
-  // 8 blocos por dia, o índice é (19 × dia + horário) % n; 19 é primo, então abaixo
-  // de 19 candidatos nenhum fica preso a um horário. Simulado: até 16 candidatos,
-  // com até 3 blocos do dia ocupados, todos são consultados em 7 dias. Acima disso,
-  // quem sobrar fica para a descoberta diária, como antes.
   const block = Math.floor(now / LATE_SWEEP_INTERVAL_MS)
   const day = Math.floor(now / DAY_MS)
   return candidates.get(keys[(block + 11 * day) % keys.length])
@@ -129,8 +113,6 @@ async function loadPollerRows(db: D1Database, now: number): Promise<ActiveRound[
   const { earliestOver, stillRelevant, rescueFloor, lateFloor } = resultWindowBounds(now)
   const today = new Date(now).toISOString().slice(0, 10)
 
-  // `late = 0`: janela ativa e resgate, consultados em todo tick. `late = 1`:
-  // candidatos da varredura. O adiado da ESPN usa o dia corrente como `utc_day`.
   const rows = await db
     .prepare(
       `SELECT DISTINCT comp_id, external_id, provider, season, round,
@@ -166,13 +148,6 @@ async function loadPollerRows(db: D1Database, now: number): Promise<ActiveRound[
   return rows.results
 }
 
-/**
- * Chamadas da invocação que ficam fora do orçamento do poller (ADR-024):
- * - a limpeza de registros expirados, que o handler `scheduled` dispara na mesma
- *   invocação, por fora deste arquivo;
- * - a leitura final dos jogos que seguem sem pontuação (`reportUnscoredMatches`);
- * - folga para o que a contagem não vê.
- */
 const CLEANUP_CALLS = 1
 const UNSCORED_REPORT_CALLS = 1
 const SPARE_CALLS = 3
@@ -185,12 +160,6 @@ const SPARE_CALLS = 3
 export const POLLER_CALL_BUDGET =
   INVOCATION_CALL_LIMIT - CLEANUP_CALLS - UNSCORED_REPORT_CALLS - SPARE_CALLS
 
-/**
- * Fim do tick reservado à pontuação: a leitura das competições com pontuação
- * pendente e o mínimo para pontuar uma competição (planejar e gravar uma vez). O
- * saldo das sincronizações e o do fallback nunca invadem essa reserva; a
- * pontuação ainda recebe o que sobrar além dela.
- */
 const SCORING_RESERVE_CALLS = 1 + MIN_SCORING_CALLS
 
 /**
@@ -201,7 +170,6 @@ const SCORING_RESERVE_CALLS = 1 + MIN_SCORING_CALLS
  */
 const SYNC_DEFER_CALLS = 1
 
-/** Teto de `match_unscored` por execução: um evento por competição. */
 const UNSCORED_EVENTS_PER_RUN = 10
 
 /**
@@ -233,7 +201,7 @@ async function reportUnscoredMatches(
   ae: AnalyticsEngineDataset | undefined,
   now: number,
 ): Promise<void> {
-  if (!ae) return // sem o binding não há onde registrar
+  if (!ae) return
   const cutoff = new Date(now - EARLIEST_RESULT_MS - POLLER_TICK_MS).toISOString()
   try {
     const { results } = await db
@@ -244,7 +212,6 @@ async function reportUnscoredMatches(
       const oldestMinutes = Math.round((now - Date.parse(row.oldest)) / 60_000)
       tryLogEvent(ae, 'match_unscored', {
         blobs: [row.competition_id],
-        // matches, oldest_minutes (minutos desde o início do jogo mais antigo)
         doubles: [row.matches, Number.isFinite(oldestMinutes) ? Math.max(0, oldestMinutes) : 0],
       })
     }
@@ -318,7 +285,6 @@ type PollerPlan = {
   roundDays: number
 }
 
-/** Tarefas do tick: as da janela ativa e do resgate, ou, em tick ocioso, a da varredura. */
 function planTasks(rows: ActiveRound[], now: number): PollerPlan {
   const activeRows = rows.filter((row) => row.late !== 1)
   // Só em tick ocioso: a varredura não soma subrequests a um tick com jogo na janela.
@@ -334,17 +300,8 @@ function planTasks(rows: ActiveRound[], now: number): PollerPlan {
   }
 }
 
-/** Resultado da pontuação de um tick, somando todas as competições. */
 type ScoringRun = { failures: unknown[]; matchesScored: number; unfinished: number }
 
-/**
- * A pontuação do tick processa uma competição por vez. O erro de uma fica
- * registrado e as outras seguem. Cada competição recebe uma parte igual do que
- * resta, para que uma com muitos palpites não gaste a vez das outras. A parte
- * nunca fica abaixo do mínimo para planejar e gravar uma vez enquanto houver esse
- * mínimo, senão a primeira da lista seria pulada em todo tick. O que sobrar vai,
- * numa segunda passada, para as que pararam por falta de chamadas.
- */
 async function scoreCompetitions(
   db: D1Database,
   ae: AnalyticsEngineDataset | undefined,
@@ -352,7 +309,6 @@ async function scoreCompetitions(
   toScore: string[],
 ): Promise<ScoringRun> {
   const run: ScoringRun = { failures: [], matchesScored: 0, unfinished: 0 }
-  /** Devolve `false` quando a competição parou por falta de chamadas. */
   const scoreCompetition = async (compId: string, maxCalls: number): Promise<boolean> => {
     try {
       const outcome = await scoreUnprocessedMatches(compId, db, maxCalls)
@@ -390,12 +346,10 @@ type SyncOutcome =
       round: string
       matches: number
       discarded: number
-      /** ESPN: por que parte das datas ficou pendente; o que veio foi gravado. */
       pendingError?: unknown
     }
   | { success: false; comp: ActiveRound; round: string; err: unknown }
 
-/** Totais das sincronizações do tick e as competições que seguem para fallback e pontuação. */
 type SyncTally = {
   fixturesUpdated: number
   eventsDiscarded: number
@@ -461,21 +415,14 @@ function tallySyncOutcomes(
   return tally
 }
 
-/** Tarefa da football-data e o saldo reservado para ela; `null` quando não coube. */
 type FdAdmission = { task: SyncTask; span: ItemBudget | null }
 
-/** O que as sincronizações do tick deixam: os resultados, o gasto e o que foi para a fila. */
 type SyncPhase = {
   results: SyncOutcome[]
-  /** Chamadas gastas pelas sincronizações (D1 e `fetch`), para somar na conta do tick. */
   used: number
-  /** Saldo fixado para as sincronizações. */
   limit: number
-  /** Rodadas da football-data enfileiradas no tick, por falta de saldo ou falha. */
   deferredRounds: number
-  /** Datas da ESPN enfileiradas no tick, por falta de saldo ou falha. */
   deferredDates: number
-  /** O enfileiramento falhou: as pendências não chegaram à fila. */
   queueFailed: boolean
 }
 
@@ -504,10 +451,6 @@ async function syncProviderTasks(opts: {
   const fdDeferrals: NewWorkItem[] = []
   const espnDeferrals: NewWorkItem[] = []
 
-  // A football-data reserva o custo de todas as tarefas antes de qualquer sync, na
-  // ordem delas, de modo que a tarefa que espera a vez no teto de paralelismo já tem o
-  // saldo garantido, e a ESPN, que admite as dela ao começar cada uma, só enxerga o que
-  // sobrou.
   const fdAdmitted = fdTasks.map((task) => ({
     task,
     span: syncBudget.open(footballDataTaskCost(task)),
@@ -704,7 +647,6 @@ export async function pollActiveMatches(
   apiKey: string,
   ae?: AnalyticsEngineDataset,
   now = Date.now(),
-  /** Quando presente, avalia o alerta de resultado atrasado no fim do tick. */
   alertEnv?: ResultOverdueAlertEnv,
 ): Promise<void> {
   const startedAt = Date.now()
@@ -721,11 +663,6 @@ export async function pollActiveMatches(
 
   const { lateTask, tasks, compCount, roundDays } = planTasks(await loadPollerRows(db, now), now)
 
-  // Orçamento compartilhado (ADR-027): cada tentativa, football-data ou ESPN,
-  // reserva vaga na janela de um minuto do provedor. O que o orçamento, a cota,
-  // o bloqueio ou o saldo de subrequests do tick recusarem vira item durável na
-  // fila, para o cron drenador retomar — inclusive além das 24 h do resgate. Na
-  // ESPN o item é uma data do scoreboard.
   const espnTasks = tasks.filter((task) => task.comp.provider === 'espn')
   const fdTasks = tasks.filter((task) => task.comp.provider !== 'espn')
 
@@ -735,20 +672,12 @@ export async function pollActiveMatches(
   budget.used += sync.used
   const syncResults = sync.results
 
-  // Requests primárias planejadas, sem retries nem chamadas do fallback.
   const plannedApiRequests = tasks.reduce((count, task) => count + (task.dates?.length ?? 1), 0)
   const tally = tallySyncOutcomes(syncResults, ae, lateTask)
   const { fixturesUpdated, eventsDiscarded, syncedComps, fallbackCompIds } = tally
   const hadError = tally.hadError || sync.queueFailed
 
-  // HTTP 200 pode trazer status atrasado: o fallback consulta o D1 após os upserts
-  // e só chama a ESPN quando ainda há partidas elegíveis sem resultado final.
   if (fallbackCompIds.size > 0) {
-    // O fallback é complementar (o D1 o replaneja a cada tick) e só gasta o que sobra além da
-    // reserva da pontuação. Cada competição reserva o custo completo (consulta, datas e
-    // gravação) antes de começar, e o D1 e o porteiro dela recusam sem chamar o que passaria
-    // do saldo: sem saldo ela espera o tick seguinte, sem fila nem erro. O porteiro cobra os
-    // `fetch`, e o observador não os conta de novo.
     const fallbackBudget = new DrainBudget(rawDb, syncAllowance(budget), 0)
     try {
       const updatedByComp = await scoreWindowFromEspn(db, ae, Array.from(fallbackCompIds), {
@@ -777,7 +706,6 @@ export async function pollActiveMatches(
     await reportUnscoredMatches(db, ae, now)
     logEvent(ae, 'poller_run', {
       blobs: ['ok'],
-      // matches_checked, fixtures_updated, api_calls, duration_ms, events_discarded
       doubles: [0, 0, 0, Date.now() - startedAt, 0],
     })
     await runOverdueAlert()
@@ -805,8 +733,6 @@ export async function pollActiveMatches(
 
   await runOverdueAlert()
 
-  // Falha de D1 na pontuação. Depois de todas as competições terem a vez e do tick
-  // registrado como erro, a primeira falha é relançada e a invocação sai como exceção.
   if (scoringFailures.length > 0) throw scoringFailures[0]
 
   console.info(

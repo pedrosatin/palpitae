@@ -3,7 +3,6 @@ import styles from './Tooltip.module.css'
 
 interface TooltipProps {
   id: string
-  /** Classe de posicionamento do componente que usa o tooltip. */
   className?: string
   children: ReactNode
 }

@@ -196,17 +196,11 @@ function CompetitionsTable({
   )
 }
 
-/** Contagem de saúde de resultados; "—" quando a API ainda não manda o campo. */
 function HealthCount({ value }: { value: number | undefined }) {
   if (value === undefined) return <>—</>
   return <span className={value > 0 ? styles.statusWarn : styles.statusMuted}>{value}</span>
 }
 
-/**
- * Buraco de feed (jogo sem placar após kickoff + limiar) versus backlog de
- * pontuação (finished sem scored_at), por temporada. Quem tem pendência vem
- * primeiro; zeros continuam visíveis.
- */
 function ResultsHealthTable({
   competitions,
   overdueHours,
@@ -275,7 +269,6 @@ function ResultsHealthTable({
   )
 }
 
-/** Top 10 de uma API anterior ao snapshot por campeonato. */
 function LegacyTopCompetitions({
   topCompetitions,
 }: {

@@ -7,7 +7,6 @@ describe('entry-server', () => {
     expect(typeof result).toBe('string')
     expect(result.length).toBeGreaterThan(0)
 
-    // Check if App is rendered (which includes the landing page)
     expect(result).toContain('Bolões de futebol')
     expect(result).toContain('Palpitae')
   })

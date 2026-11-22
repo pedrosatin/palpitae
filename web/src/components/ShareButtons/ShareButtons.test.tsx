@@ -9,12 +9,10 @@ const mockTrackEvent = vi.mocked(ga.trackEvent)
 
 const LINK = 'https://palpitae.com.br/convite/ABCD-EF23'
 
-/** Remove navigator.share para simular navegador sem Web Share (desktop). */
 function disableWebShare() {
   Reflect.deleteProperty(navigator as unknown as Record<string, unknown>, 'share')
 }
 
-/** Instala um mock de navigator.share. */
 function enableWebShare(impl: (data: ShareData) => Promise<void>) {
   Object.assign(navigator, { share: vi.fn(impl) })
   return navigator.share as ReturnType<typeof vi.fn>

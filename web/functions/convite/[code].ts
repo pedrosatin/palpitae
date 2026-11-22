@@ -1,52 +1,14 @@
-/**
- * Pages Function de `/convite/:code`: preview do link de convite.
- *
- * O WhatsApp (e Telegram, X, iMessage) monta o card do link lendo as meta tags
- * do HTML, sem executar JS. Esta Function devolve o mesmo `index.html` da SPA
- * com `<title>`, `og:*` e `twitter:*` trocados pelos dados do grupo, buscados no
- * endpoint público da API (`GET /public/invites/:code`). No navegador a SPA
- * assume e mostra a página de convite ao visitante (ver `InvitePage`). Quem já
- * tem sessão vai para `/?convite=CODE`.
- *
- * Se a API falhar, passar do tempo limite ou responder fora do formato, a
- * página sai com o texto de convite genérico e a SPA busca os dados sozinha.
- * Códigos inválidos mantêm o OG da home. A página sempre sai com `noindex`,
- * porque o link dá acesso a um grupo privado.
- *
- * Crawlers de preview (WhatsApp, Telegram, X, Slack etc., ver
- * `isPreviewCrawler`) e pessoas disparam a busca na API. A pessoa tem um tempo
- * limite menor porque o HTML não pode segurar a abertura do link, e recebe os
- * dados em `data-convite` no `#root`, para a SPA pintar o convite sem outra
- * chamada. A busca usa `cf.cacheTtlByStatus` para o edge guardar a resposta.
- *
- * Com `PROXY_SHARED_SECRET` configurado, a busca repassa o IP do visitante e o
- * segredo, como o proxy de `/api/*`. Assim a API conta a quota pelo IP de quem pediu
- * o convite, e não pelo balde anônimo compartilhado dos Workers.
- *
- * Cada navegação de uma pessoa também vira uma abertura no funil de convite (ver
- * `isInviteOpen`), registrada pela API em segundo plano. Esse aviso não leva o
- * código nem dado de quem abriu, e sem o segredo do proxy a abertura não é contada.
- *
- * A resposta sempre leva os cabeçalhos de segurança da regra `/*` do `_headers`
- * (ver `_securityHeaders.ts`), para não depender dos cabeçalhos que o asset traz.
- *
- * A imagem é compartilhada entre os convites; o nome do grupo aparece no título.
- */
 
 import { withSecurityHeaders } from '../_securityHeaders'
 import { CLIENT_IP_HEADER, INVITE_OPEN_HEADER, PROXY_SECRET_HEADER } from '../api/[[path]]'
 
-// Tipos mínimos do runtime de Pages/Workers. A pasta functions/ não entra no
-// tsconfig do app (que usa os tipos do DOM), então declaramos só o que é usado.
 interface AssetsFetcher {
   fetch(input: Request | string): Promise<Response>
 }
 
 export interface Env {
   ASSETS: AssetsFetcher
-  /** Base da API. Opcional; o padrão é a API de produção. */
   API_URL?: string
-  /** Mesmo valor configurado no Worker da API. Sem ele, o IP não é repassado. */
   PROXY_SHARED_SECRET?: string
 }
 
@@ -82,28 +44,19 @@ export const API_TIMEOUT_MS = 1500
 export const VISITOR_API_TIMEOUT_MS = 800
 const SITE_URL = 'https://palpitae.com.br'
 
-// Mesmo formato validado pela API (api/src/public/router.ts). Validar aqui poupa
-// a chamada quando o link vem truncado ou adulterado.
 const INVITE_CODE_RE = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/
 
 /** Quanto tempo o edge guarda cada resposta da API (mesmos max-age da rota). */
 export const API_CACHE_TTL_S = 300
 export const API_MISS_CACHE_TTL_S = 60
 
-// Crawlers que montam card de link. A lista nomeada cobre os que não trazem
-// "bot" no nome (facebookexternalhit, WhatsApp, Embedly...); o `bot` genérico
-// pega o resto. Uma pessoa classificada como crawler fica sem `data-convite`, e a SPA busca o convite sozinha.
 const PREVIEW_CRAWLER_RE =
   /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|slackbot|slack-imgproxy|discordbot|linkedinbot|googlebot|bingbot|applebot|pinterest|embedly|redditbot|skypeuripreview|vkshare|iframely|bot\b|crawler|spider/i
 
-// Headers de pré-busca do navegador. Quem pré-busca ainda não abriu o link, e a
-// presença de qualquer um deles basta.
 const PREFETCH_HEADERS = ['Sec-Purpose', 'Purpose', 'X-Purpose', 'X-Moz']
 
-// Todo navegador se apresenta assim. Biblioteca HTTP e User-Agent vazio não.
 const BROWSER_UA_RE = /^Mozilla\//
 
-/** Fetch options do runtime da Cloudflare (sem @cloudflare/workers-types aqui). */
 interface CfRequestInit extends RequestInit {
   cf?: { cacheTtlByStatus?: Record<string, number>; cacheEverything?: boolean }
 }
@@ -159,10 +112,6 @@ export async function fetchInvitePreview(
     const init: CfRequestInit = {
       headers,
       signal: controller.signal,
-      // Cache de verdade no edge. O Cache-Control da API sozinho não basta,
-      // porque subrequests de um Worker só passam pelo cache com `cf`. Erro e
-      // 429 não entram (-1 é "não guardar"; 0 expira na hora), porque o 429 de
-      // um visitante apareceria para os outros.
       cf: {
         cacheEverything: true,
         cacheTtlByStatus: {
@@ -268,8 +217,6 @@ export function rewriteInviteHtml(
 
   let rewriter = new HTMLRewriter()
     .on('meta[name="robots"]', setContent('noindex'))
-    // Uma página noindex com canonical apontando para a home manda sinais
-    // contraditórios; sem canonical fica só o noindex.
     .on('link[rel="canonical"]', {
       element(el) {
         el.remove()
@@ -312,10 +259,8 @@ export function rewriteInviteHtml(
   const headers = new Headers(response.headers)
   headers.set('Content-Type', 'text/html; charset=utf-8')
   headers.set('X-Robots-Tag', 'noindex')
-  // O corpo muda a cada grupo; validadores do index.html não servem mais.
   headers.delete('Content-Length')
   headers.delete('ETag')
-  // O index.html referencia os assets com hash do deploy atual; não guardar.
   headers.set('Cache-Control', 'no-cache')
 
   return rewriter.transform(new Response(response.body, { status: 200, statusText: 'OK', headers }))
@@ -359,7 +304,6 @@ export async function postInviteOpen(
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
     })
   } catch {
-    // Uma abertura perdida não justifica atrasar nem derrubar o convite.
   }
 }
 
@@ -411,21 +355,16 @@ export function planInviteRewrite(
   return {
     meta: buildInviteMeta(preview),
     pageUrl: `${SITE_URL}/convite/${code}`,
-    // Crawler não roda JS, então o nome do admin fica fora do HTML dele.
     embed: preview && !crawler ? serializeInviteEmbed(code, preview) : null,
   }
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {
-  // Para não depender dos cabeçalhos que o asset traz, toda saída, inclusive a do
-  // asset com erro ou redirect, leva os cabeçalhos de segurança.
   return withSecurityHeaders(await respond(context))
 }
 
 async function respond(context: PagesContext): Promise<Response> {
   const { request, env, params } = context
-  // URL pura, sem os headers do visitante: um If-None-Match repassado poderia
-  // voltar 304 sem corpo, e o HTML reescrito sairia vazio.
   const shell = await env.ASSETS.fetch(new URL('/', request.url).toString())
   if (shell.status !== 200) return shell
 
@@ -437,7 +376,6 @@ async function respond(context: PagesContext): Promise<Response> {
     const { meta, pageUrl, embed } = planInviteRewrite(code, preview, crawler)
     return rewriteInviteHtml(shell, meta, pageUrl, embed)
   } catch {
-    // Se a reescrita falhar, devolve o index.html original e a SPA busca o convite.
     return shell
   }
 }

@@ -1,18 +1,10 @@
-/**
- * Origem do cadastro, enviada à API no clique de "Entrar com Google". A API valida o
- * valor e só o registra se a conta for nova (docs/observability.md, "Origem do
- * cadastro"). Só a categoria sai do navegador: o referrer nunca é enviado.
- */
 import { INVITE_PATH_PREFIX, normalizeInviteCode } from '../lib/invite'
 import { clearGuideOrigin, getGuideOrigin, ORIGIN_TTL_MS } from './guideOrigin'
 
-/** Como esta aba chegou ao site: `convite`, `busca` ou `direto`. */
 const ENTRY_KEY = 'palpitae:origem-entrada'
 
-/** Guia de onde a aba saiu, visto pelo referrer. Vale o mesmo prazo do token `from`. */
 const REFERRER_GUIDE_KEY = 'palpitae:origem-guia-referrer'
 
-// `accounts.google.com` fica de fora de propósito: é a volta do OAuth, não uma busca.
 const SEARCH_HOST_RE =
   /^(?:(?:www|m)\.)?google\.(?:[a-z]{2,3}|com?\.[a-z]{2})$|^(?:www\.)?bing\.com$|^(?:www\.)?duckduckgo\.com$|^(?:[a-z]{2}\.)?search\.yahoo\.com$|^(?:www\.)?ecosia\.org$|^search\.brave\.com$|^(?:www\.)?yandex\.[a-z]{2,3}$/
 
@@ -62,7 +54,6 @@ function isGuideToken(token: string): boolean {
   return token === 'guias_header' || token.startsWith('guia_')
 }
 
-/** Os guias são HTML estático, sem o app: quem sai de um deles é atribuído pelo caminho. */
 function guideTokenFromPath(pathname: string): string | undefined {
   if (pathname === '/guias' || pathname === '/guias/') return 'guias_header'
   const slug = /^\/guias\/([a-z0-9-]+)\/?$/.exec(pathname)?.[1]

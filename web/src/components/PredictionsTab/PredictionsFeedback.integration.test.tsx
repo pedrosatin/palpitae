@@ -28,7 +28,6 @@ function serveSave({ saved = ['m1'], failed = false } = {}) {
   })
 }
 
-/** Escolhe 1×0 no único jogo. O card começa vazio e só salva com os dois placares. */
 async function pickScore() {
   await userEvent.click(await screen.findByRole('button', { name: 'Aumentar placar Brasil' }))
   await userEvent.click(screen.getByRole('button', { name: 'Diminuir placar Argentina' }))
@@ -79,7 +78,6 @@ describe('feedback after confirmed prediction persistence', () => {
       await screen.findByRole('button', { name: 'Tudo salvo!' })
       expect(await screen.findByText('Foi fácil salvar seus palpites?')).toBeVisible()
     } else {
-      // O jogo enviado não voltou entre os salvos: nada de "Tudo salvo!".
       await screen.findByText('1 palpite não foi salvo. Tente novamente.')
       expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
       expect(screen.queryByText('Foi fácil salvar seus palpites?')).not.toBeInTheDocument()

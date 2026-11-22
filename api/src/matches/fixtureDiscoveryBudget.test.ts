@@ -52,11 +52,9 @@ const FD_CODES = [
   { code: 'BSA', id: 2013 },
   { code: 'CL', id: 2001 },
 ] as const
-/** Minutos do dreno no trigger fundido, a partir das 06:20 (os minutos 0 e 30 são do poller). */
 const DRAIN_TICKS = [6, 7, 8, 9, 10, 11].flatMap((hour) =>
   [5, 10, 20, 25, 35, 40, 50, 55].map((minute) => Date.UTC(2026, 10, 19, hour, minute, 0)),
 )
-/** A limpeza de registros expirados do `scheduled` é 1 chamada. */
 const CLEANUP_CALLS = 1
 
 const handles: DatabaseSync[] = []
@@ -81,10 +79,8 @@ afterEach(() => {
   setProviderRateLimitForTests('espn', 1000)
 })
 
-/** Jogo de uma competição da ESPN: o dia dele em relação a hoje e o estado. */
 type EspnGame = { key: string; dayOffset: number; finished?: boolean }
 
-/** O jogo que o banco já tem (amanhã), os novos de ontem, depois de amanhã e daqui a 5 dias. */
 const SEEDED: EspnGame = { key: 'semente', dayOffset: 1 }
 const NEW_GAMES: EspnGame[] = [
   { key: 'ontem', dayOffset: -1, finished: true },
@@ -119,7 +115,6 @@ function espnEvent(slug: string, game: EspnGame, finished: boolean): EspnScorebo
   return ev
 }
 
-/** Calendário da football-data: o jogo que o banco já tem e os 2 novos, todos agendados. */
 function fdCalendar(code: string, id: number, withNew: boolean) {
   const team = (n: number) => ({
     id: id * 100 + n,
@@ -160,16 +155,11 @@ const PUBLIC_SLUGS = [
 ]
 
 type WorldOptions = {
-  /** Visibilidade e grupos da produção de 19/11/2026, com calendários sintéticos. */
   production?: boolean
 
-  /** Competições da ESPN com jogos a descobrir (9 datas cada). */
   espn: number
-  /** Competições da football-data com jogos a descobrir (1 request cada). */
   fd?: number
-  /** D1 que recusa a chamada 51 (padrão) ou só conta. */
   limit?: number | null
-  /** Envolve o D1 do Worker (depois da semente) com uma falha simulada. */
   wrap?: (db: D1Database) => D1Database
 }
 
@@ -271,7 +261,6 @@ async function setupWorld(options: WorldOptions) {
 
 type World = Awaited<ReturnType<typeof setupWorld>>
 
-/** Um tick do `scheduled` no cron e instante dados. Devolve as falhas das rotinas. */
 async function runCron(
   h: Pick<World, 'limited' | 'env'>,
   cron: string,
@@ -294,7 +283,6 @@ async function runCron(
 const runDiscovery = (h: Pick<World, 'limited' | 'env'>, at = DISCOVERY_AT) =>
   runCron(h, FIXTURE_DISCOVERY_CRON, at)
 
-/** Estado final: jogos e status das competições, o que a descoberta sem limite deixa. */
 function snapshot(sqlite: DatabaseSync) {
   return {
     matches: sqlite
@@ -324,7 +312,6 @@ const matchCount = (sqlite: DatabaseSync): number =>
 const openWork = (sqlite: DatabaseSync): number =>
   workCount(sqlite, `status IN ('pending', 'running')`)
 
-/** Roda os ticks do dreno, depois de `after`, até a fila esvaziar, conferindo o limite em cada um. */
 async function drainUntilSettled(h: World, after = DISCOVERY_AT) {
   for (const at of DRAIN_TICKS.map(
     (tick) => tick + Math.floor((after - DISCOVERY_AT) / DAY) * DAY,
@@ -337,7 +324,6 @@ async function drainUntilSettled(h: World, after = DISCOVERY_AT) {
   }
 }
 
-/** A descoberta sem limite de chamadas, na mesma semente: o estado que a fila deve reproduzir. */
 async function controlSnapshot(options: WorldOptions) {
   clearFootballDataPause()
   const control = await setupWorld({ ...options, limit: null })
@@ -346,7 +332,6 @@ async function controlSnapshot(options: WorldOptions) {
   return snapshot(control.sqlite)
 }
 
-/** Jogos novos que a descoberta de cada competição traz: ontem, depois de amanhã e daqui a 5 dias. */
 const NEW_PER_COMPETITION = NEW_GAMES.length
 
 describe('descoberta da ESPN no limite de 50 subrequests', () => {
@@ -573,7 +558,6 @@ it('runbook recupera a data failed depois de sair do horizonte, de 7 para 8 jogo
     WHERE provider = 'espn' AND round = '20261118'`)
   await drainUntilSettled(h)
   expect(matchCount(h.sqlite)).toBe(7)
-  // O mesmo UPDATE do procedimento operacional, depois de corrigir a causa da falha.
   const recoveryAt = DISCOVERY_AT + 10 * DAY
   h.sqlite
     .prepare(`UPDATE provider_work SET status = 'pending', attempts = 0,

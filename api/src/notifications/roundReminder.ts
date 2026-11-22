@@ -28,20 +28,8 @@ const APP_URL = 'https://palpitae.com.br'
 const DAY_MS = 24 * 60 * 60 * 1000
 const SEND_LOG_RETENTION_DAYS = 7
 
-// Os envios saem em sequência, um por vez. Um 429 de limite por segundo ou um 5xx
-// passageiro merece nova tentativa, porque o cron só roda uma vez por dia. Outro 4xx
-// é permanente (endereço inválido, por exemplo) e falha na hora.
 const MAX_SEND_ATTEMPTS = 3
 
-// O plano da conta Cloudflare não está confirmado (docs/architecture/
-// capacidade-coordenacao-provedores.md), então vale o pior caso: Free, com 50
-// subrequests por invocação. O D1 conta junto com o `fetch`. A invocação gasta 4
-// consultas fixas (SELECT, batch de reserva, liberação das reservas e a limpeza de
-// segurança do `scheduled`) e deixa 1 de folga, que cobre a nova tentativa da
-// liberação quando a primeira falha. Sobram 45 subrequests para os `fetch` ao Resend,
-// contando cada reenvio, e para as revalidações de descadastro, contando a nova
-// tentativa de cada uma. É o padrão do teto; `REMINDER_FETCH_BUDGET` o substitui
-// (`reminderFetchBudget`).
 const SUBREQUEST_LIMIT = 50
 const D1_SUBREQUESTS = 4
 const SUBREQUEST_MARGIN = 1
@@ -64,16 +52,8 @@ export function reminderFetchBudget(raw: string | undefined): number {
   return RESEND_FETCH_BUDGET
 }
 
-// Por quanto tempo a última leitura de descadastro vale durante o lote. A reserva lê
-// a preferência, e uma tentativa de envio que começa depois desse prazo relê antes de
-// chamar o Resend. Na prática custa uma consulta a cada 5 s de lote: um lote cheio,
-// com envios um por vez, gasta de 1 a 3 vagas do teto nessas releituras. Reler antes
-// de cada envio custaria um subrequest por destinatário e cortaria pela metade quem
-// cabe no teto.
 const UNSUB_RECHECK_MS = 5_000
 
-// Espera antes de repetir uma leitura ou gravação do D1 que falhou. O cron roda uma
-// vez por dia, e uma falha passageira não deve encerrar a fila nem prender reservas.
 const D1_RETRY_MS = 250
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -96,10 +76,8 @@ async function withD1Retry<T>(
   }
 }
 
-/** Contador dos subrequests desta execução que não são as consultas fixas. */
 type FetchBudget = { used: number; max: number }
 
-/** O teto de subrequests chegou. Quem não enviou volta para a próxima execução. */
 class SubrequestBudgetError extends Error {
   constructor() {
     super('Teto de subrequests da execução atingido')
@@ -145,13 +123,11 @@ class UnsubGuard {
     this.checkedAt = readAt
   }
 
-  /** Lança `UnsubscribedError` se o usuário saiu da lista depois da última leitura. */
   async assertSubscribed(userId: string): Promise<void> {
     if (Date.now() - this.checkedAt >= UNSUB_RECHECK_MS) await this.recheck()
     if (!this.subscribed.has(userId)) throw new UnsubscribedError()
   }
 
-  /** O usuário saiu da fila, com ou sem envio. A próxima leitura não o inclui. */
   done(userId: string): void {
     this.subscribed.delete(userId)
   }
@@ -179,7 +155,6 @@ class UnsubGuard {
     this.checkedAt = startedAt
   }
 
-  /** Sobra saldo para uma consulta e um envio. */
   private canRead(): boolean {
     return this.budget.max - this.budget.used >= 2
   }
@@ -245,7 +220,6 @@ async function sendWithRetry(
 ): Promise<void> {
   let hadTransient = false
   for (let attempt = 1; ; attempt++) {
-    // Cada tentativa é um `fetch`. Sem saldo, para antes de chamar a rede.
     if (budget.used >= budget.max) {
       if (hadTransient) throw new UncertainResendError(new SubrequestBudgetError())
       throw new SubrequestBudgetError()
@@ -268,7 +242,6 @@ async function sendWithRetry(
   }
 }
 
-/** Configuração do link de descadastro. Sem ela o e-mail sai sem o link. */
 type UnsubConfig = {
   secret: string
   apiBaseUrl: string
@@ -277,7 +250,6 @@ type UnsubConfig = {
 type PendingRow = {
   user_id: string
   email: string
-  /** Provedor e id da conta, para o `sub` do Google que o `ADMIN_GOOGLE_SUB` confere. */
   provider: string | null
   provider_id: string | null
   group_id: string
@@ -292,7 +264,6 @@ type PendingRow = {
   away_team: string
   home_logo: string | null
   away_logo: string | null
-  /** Último dia com lembrete enviado ao usuário, nos 7 dias guardados. */
   last_sent: string | null
 }
 
@@ -358,11 +329,8 @@ export const PENDING_MATCHES_SQL = `SELECT
        ORDER BY m.start_time ASC`
 
 type ReminderDay = {
-  /** Dia em Brasília, YYYY-MM-DD. */
   date: string
-  /** Meia-noite seguinte em Brasília, em UTC. */
   endIso: string
-  /** Linhas de `email_reminder_sends` anteriores a este dia são apagadas. */
   retentionCutoff: string
 }
 
@@ -377,7 +345,6 @@ const REMINDER_ZONE_FORMAT = new Intl.DateTimeFormat('en-US', {
   hourCycle: 'h23',
 })
 
-/** Relógio de Brasília no instante, lido como se fosse UTC. */
 function zonedWallClockMs(instantMs: number): number {
   const instant = new Date(instantMs)
   const parts: Record<string, number> = {}
@@ -396,17 +363,10 @@ function zonedWallClockMs(instantMs: number): number {
   )
 }
 
-/** Dia em Brasília no instante, YYYY-MM-DD. */
 function zonedDate(instantMs: number): string {
   return new Date(zonedWallClockMs(instantMs)).toISOString().slice(0, 10)
 }
 
-/**
- * Primeiro instante do dia seguinte em Brasília. A meia-noite usa o deslocamento de
- * agora e, se ele mudar até lá, o de depois da mudança. Fica o menor candidato que já
- * cai no dia seguinte. No início do horário de verão a meia-noite não existe e o dia
- * acaba quando 00:00 vira 01:00. No fim, a hora repetida ainda conta como dia anterior.
- */
 function nextZonedMidnightMs(nowMs: number, date: string): number {
   const next = new Date(Date.parse(`${date}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10)
   const wallMidnight = Date.parse(`${next}T00:00:00Z`)
@@ -425,17 +385,10 @@ function reminderDay(nowMs: number): ReminderDay {
   }
 }
 
-/** Binds na ordem exigida por `PENDING_MATCHES_SQL`. */
 function pendingMatchesBinds(nowIso: string, day: ReminderDay): string[] {
   return [nowIso, day.endIso, nowIso, day.date]
 }
 
-/**
- * Agrupa as linhas por usuário, grupo e rodada. A rodada faz parte da chave porque
- * um grupo pode ter, no mesmo dia, jogo da rodada atual e jogo remarcado de rodada
- * antiga, e cada um precisa do próprio link. As linhas chegam em ordem de horário,
- * então grupos e rodadas ficam na ordem do primeiro jogo.
- */
 function buildDigests(rows: PendingRow[]): Digest[] {
   const digests = new Map<
     string,
@@ -492,13 +445,6 @@ function buildDigests(rows: PendingRow[]): Digest[] {
   return [...digests.values()].map(({ digest }) => digest)
 }
 
-/**
- * Ordem da fila de envio quando o teto não cobre todos. Primeiro quem recebeu o
- * lembrete há mais tempo, ou não recebeu nos últimos 7 dias. Quem ficou de fora num
- * dia não tem linha desse dia e passa à frente de quem recebeu. Sem essa regra a fila
- * seguiria só o horário do primeiro jogo, e quem joga à noite ficaria de fora todo dia.
- * No empate vale o jogo que fecha primeiro e, por fim, o id, para a ordem ser estável.
- */
 function byQueueOrder(a: Digest, b: Digest): number {
   const lastSent = (a.lastSent ?? '').localeCompare(b.lastSent ?? '')
   if (lastSent !== 0) return lastSent
@@ -507,11 +453,6 @@ function byQueueOrder(a: Digest, b: Digest): number {
   return a.userId < b.userId ? -1 : 1
 }
 
-/**
- * Linhas de competição em piloto ficam só para quem tem acesso ao piloto, o mesmo
- * critério da lista de grupos. Quem saiu de `PILOT_EMAILS` continua membro do grupo,
- * mas não abre o link.
- */
 function withPilotAccess(rows: PendingRow[], access: PilotAccess): PendingRow[] {
   const allowed = new Map<string, boolean>()
   return rows.filter((row) => {
@@ -528,7 +469,6 @@ function withPilotAccess(rows: PendingRow[], access: PilotAccess): PendingRow[] 
   })
 }
 
-/** Rodadas distintas nos e-mails, para o evento agregado do cron. */
 function countRounds(digests: Digest[]): number {
   const rounds = new Set<string>()
   for (const digest of digests) {
@@ -539,18 +479,6 @@ function countRounds(digests: Digest[]): number {
   return rounds.size
 }
 
-/**
- * Reserva o envio do dia em uma gravação só e devolve os usuários reservados por
- * esta execução. Outra execução no mesmo dia não recebe esses usuários, e a chave
- * primária garante isso mesmo com disparos simultâneos.
- *
- * A gravação é única porque cada consulta ao D1 conta no
- * limite de subrequests do Worker junto com os envios ao Resend. O plano Free tem
- * 50 por invocação. O chamador libera em `finally` as reservas sem aceite do provedor.
- *
- * A reserva relê o descadastro na mesma gravação. Quem saiu da lista depois da
- * consulta dos pendentes não é reservado.
- */
 async function claimRecipients(
   db: D1Database,
   userIds: string[],
@@ -593,7 +521,6 @@ async function releaseClaims(db: D1Database, userIds: string[], day: ReminderDay
         .run(),
     )
   } catch (err) {
-    // Só a contagem: os ids identificariam quem ficou sem lembrete.
     console.error(
       `[roundReminder] Falha ao liberar ${userIds.length} reserva(s) depois de 2 tentativas. Uma nova execução hoje não envia para essas pessoas:`,
       err,
@@ -637,25 +564,16 @@ function stopReason(err: unknown, mailjetConfigured: boolean): string | null {
   return null
 }
 
-/** Chave de correlação compartilhada entre Resend (Idempotency-Key) e Mailjet (CustomID). */
 function reminderCorrelationId(userId: string, reminderDate: string): string {
   return `lembrete-diario/${userId}/${reminderDate}`
 }
 
-/**
- * Recusa definitiva do Resend: 4xx de validação/conta ou cota esgotada, na primeira
- * tentativa sem falha passageira antes. 409 (idempotência concorrente ou corpo
- * diferente na reexecução) nunca é definitivo: o Resend pode ter aceitado, ou a
- * chave do dia já foi usada. Timeout, 5xx, rede e `UncertainResendError` também
- * ficam de fora.
- */
 function isDefinitiveResendRefusal(err: unknown): err is EmailError {
   if (!(err instanceof EmailError)) return false
   if (err.status === 409) return false
   return !isTransientEmailError(err)
 }
 
-/** Conta Resend indisponível para o restante do lote (cota ou credencial). */
 function marksResendUnavailable(err: EmailError): boolean {
   return err.quotaExceeded || err.status === 401 || err.status === 403
 }
@@ -668,10 +586,8 @@ type DispatchOptions = {
   unsub: UnsubConfig | undefined
   ae: AnalyticsEngineDataset | undefined
   day: ReminderDay
-  /** Saldo de `fetch` (Resend, Mailjet e revalidações). Os testes reduzem para exercitar o teto. */
   fetchBudget?: number
   pendingClaims: Set<string>
-  /** Início da gravação da reserva, que leu o descadastro de todos. */
   claimStartedAt: number
   /**
    * Fallback Mailjet. Ausente = comportamento idêntico ao da main (só Resend).
@@ -685,7 +601,6 @@ type DispatchResult = {
   sent: number
   matchesListed: number
   failedUserIds: string[]
-  /** Descadastraram depois da reserva e não receberam. */
   unsubscribedUserIds: string[]
 }
 
@@ -735,7 +650,6 @@ async function dispatchDigests(
     mailjet,
   }: DispatchOptions,
 ): Promise<DispatchResult> {
-  // A leitura de descadastro da reserva vale a partir do início da gravação.
   const budget: FetchBudget = { used: 0, max: fetchBudget }
   const guard = new UnsubGuard(
     db,
@@ -765,7 +679,6 @@ async function dispatchDigests(
   let sent = 0
   let matchesListed = 0
   let stopped: string | null = null
-  /** Cota do Resend já recusou nesta execução: o restante vai direto ao Mailjet. */
   let resendUnavailable = false
   /**
    * Quem já teve tentativa nesta execução. Cada destinatário passa uma vez pelo
@@ -841,13 +754,11 @@ async function dispatchDigests(
           recordSent()
           return true
         }
-        // Timeout/5xx da Mailjet: mantém a reserva (sem idempotência, não reenvia).
         pendingClaims.delete(digest.userId)
         recordFailure('mailjet_uncertain')
         return true
       }
 
-      // Cota do Resend já esgotou: destinatário sem tentativa anterior vai ao Mailjet.
       if (mailjet && resendUnavailable) {
         if (attempted.has(digest.userId)) {
           recordFailure('quota_exceeded')
@@ -863,7 +774,6 @@ async function dispatchDigests(
         recordSent()
       } catch (err) {
         if (err instanceof UncertainResendError) {
-          // Houve falha passageira antes: o Resend pode ter aceitado. Nunca Mailjet.
           attempted.add(digest.userId)
           const cause = err.cause
           if (
@@ -883,13 +793,11 @@ async function dispatchDigests(
           throw err
         }
 
-        // Timeout/5xx/rede/409: como na main (libera a reserva). Nunca Mailjet.
         if (!isDefinitiveResendRefusal(err)) {
           attempted.add(digest.userId)
           throw err
         }
 
-        // Só chega aqui com recusa definitiva na 1ª tentativa (sem passageiro antes).
         if (marksResendUnavailable(err)) resendUnavailable = true
 
         if (!mailjet || attempted.has(digest.userId)) throw err
@@ -922,9 +830,7 @@ async function dispatchDigests(
 type PilotAccess = Pick<Env, 'ADMIN_EMAIL' | 'ADMIN_GOOGLE_SUB' | 'PILOT_EMAILS'>
 
 export type ReminderOptions = {
-  /** Teto de `fetch` da execução. Padrão `RESEND_FETCH_BUDGET`. */
   fetchBudget?: number
-  /** Quem vê competição em piloto. Sem ele, grupo de competição em piloto não gera lembrete. */
   pilotAccess?: PilotAccess
   /**
    * Fallback Mailjet. Sem as duas credenciais o cron se comporta como na main:
@@ -957,8 +863,6 @@ export async function sendRoundReminders(
 ): Promise<void> {
   const startedAt = Date.now()
 
-  // Sem chave, todo envio voltaria 401 e seria contado como lembrete perdido.
-  // Melhor pular a execução e expor o erro de configuração.
   if (!resendApiKey.trim()) {
     console.error('[roundReminder] RESEND_API_KEY ausente: nenhum lembrete enviado.')
     logEvent(ae, 'cron_round_reminder_misconfig', { blobs: ['no_api_key'] })
@@ -985,8 +889,6 @@ export async function sendRoundReminders(
     digests.map((digest) => digest.userId),
     day,
   )
-  // A partir da reserva, toda saída passa pela liberação. Só o aceite do provedor
-  // retira um usuário deste conjunto, antes de qualquer log ou outra operação.
   let recipients: Digest[] = []
   let result: DispatchResult
   try {

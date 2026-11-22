@@ -7,9 +7,7 @@
  */
 
 export type FlakyRules = {
-  /** Falha o `db.batch()` cujo SQL das instruções satisfaz a regra. */
   failBatch?: (sqls: string[]) => boolean
-  /** Falha a execução de uma instrução (`first`, `run`, `all`, `raw`) cujo SQL satisfaz a regra. */
   failStatement?: (sql: string) => boolean
 }
 

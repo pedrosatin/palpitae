@@ -26,12 +26,10 @@ function league(over: Partial<ProviderLeague> = {}): ProviderLeague {
   }
 }
 
-/** Resposta do fetchEspnLeaguesAndCounts já no formato do snapshot. */
 function snapshot(leagues: ProviderLeague[], counts = new Map<string, number>(), failed: string[] = []) {
   return { leagues, counts, failed }
 }
 
-/** D1 falso: guarda o SQL e os binds de cada statement passado ao batch. */
 function buildFakeDb() {
   const statements: { sql: string; params: unknown[] }[] = []
   const db = {
@@ -44,7 +42,6 @@ function buildFakeDb() {
         },
         _record: record,
       }
-      // Registrado na preparação: o batch recebe o statement já vinculado.
       statements.push(record)
       return stmt
     },
@@ -80,8 +77,6 @@ describe('syncRadar', () => {
 
     await syncRadar(db as never, undefined, NOW)
 
-    // Migração de provedor: as linhas da API-Football saem todos os dias
-    // (idempotente — depois da primeira execução não remove nada).
     const purgeDaily = statements.find((s) =>
       s.sql.includes('DELETE FROM competition_radar_daily'),
     )
@@ -95,10 +90,8 @@ describe('syncRadar', () => {
 
     const insert = statements.find((s) => s.sql.includes('INSERT INTO competition_radar\n'))
     expect(insert?.params).toContain('CONMEBOL Libertadores')
-    // Artigo curado resolvido a partir de (país, nome).
     expect(insert?.params).toContain('Copa Libertadores da América')
 
-    // Id novo com prefixo do provedor novo.
     const daily = statements.find((s) => s.sql.includes('matches_today'))
     expect(daily?.params).toEqual(['espn:conmebol.libertadores:2026', '2026-08-18', 4])
   })
@@ -123,7 +116,7 @@ describe('syncRadar', () => {
     await syncRadar(db as never, undefined, NOW)
 
     const insert = statements.find((s) => s.sql.includes('INSERT INTO competition_radar\n'))
-    expect(insert?.params.at(-1)).toBeNull() // wiki_article
+    expect(insert?.params.at(-1)).toBeNull()
     expect(pageviewsMock).not.toHaveBeenCalled()
   })
 
@@ -159,7 +152,6 @@ describe('syncRadar', () => {
 
     await syncRadar(db as never, ae as never, NOW)
 
-    // Competições foram gravadas mesmo assim; run marcado como parcial.
     expect(db.batch).toHaveBeenCalled()
     expect(pointsOfType(ae, 'radar_sync_run')[0]?.blobs?.[1]).toBe('partial')
   })
@@ -175,7 +167,6 @@ describe('syncRadar', () => {
     const errors = pointsOfType(ae, 'radar_sync_error')
     expect(errors[0]?.blobs?.[1]).toBe('espn')
     expect(errors[0]?.blobs?.at(-1)).toContain('bra.1,ven.1')
-    // Coleta parcial não sai como completa.
     expect(pointsOfType(ae, 'radar_sync_run')[0]?.blobs?.[1]).toBe('partial')
   })
 

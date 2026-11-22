@@ -92,7 +92,6 @@ describe('configuração das competições da football-data', () => {
     '%s nova nasce em piloto com a configuração e grava as fases de pênaltis nos jogos',
     async (code, config) => {
       const { sqlite, db } = migratedDb()
-      // Uma rodada de pontos e um jogo em cada fase de pênaltis configurada.
       const matches = [
         fdMatch(1, 'REGULAR_SEASON', 1),
         ...config.penaltyPhases.map((phase, index) => fdMatch(100 + index, phase, null)),

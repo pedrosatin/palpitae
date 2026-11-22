@@ -45,7 +45,6 @@ function openDb() {
   return { sqlite, db }
 }
 
-/** Cria a competição, os jogos e um grupo `group-<id>` com a Alice como membro. */
 function seedCompetition(sqlite: DatabaseSync, seed: CompetitionSeed) {
   sqlite
     .prepare(
@@ -110,7 +109,6 @@ function statusOf(sqlite: DatabaseSync, groupId: string): string | null {
 const done = (phase: string | null): MatchSeed => ({ phase, status: 'finished' })
 const daysAgo = (days: number) =>
   new Date(Date.now() - days * 86_400_000).toISOString().replace(/\.\d{3}Z$/, 'Z')
-/** Jogo encerrado há `days` dias. */
 const doneAgo = (phase: string, days: number): MatchSeed => ({
   phase,
   status: 'finished',

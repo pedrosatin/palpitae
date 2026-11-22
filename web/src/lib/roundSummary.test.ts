@@ -107,7 +107,6 @@ describe('rankRound', () => {
     { user_id: 'u2', ...pick('a', 1, 0, 3) },
     { user_id: 'u2', ...pick('b', 0, 0, 1) },
     { user_id: 'u3', ...pick('a', 2, 0, 1) },
-    // Palpite de jogo ainda aberto que a resposta trouxe. Não conta.
     { user_id: 'u3', ...pick('aberto', 1, 0, 3) },
   ]
 

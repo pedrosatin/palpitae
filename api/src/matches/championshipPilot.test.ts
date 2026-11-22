@@ -164,7 +164,6 @@ describe('Championship em piloto pelo football-data', () => {
         fakeExecutionCtx,
       )
 
-    // 1. Migration 0032 cadastra Championship 2026 como league, football-data e pilot.
     const seededRow = sqlite
       .prepare(
         `SELECT id, name, slug, external_id, provider, season, status, type, penalty_phases, visibility
@@ -184,7 +183,6 @@ describe('Championship em piloto pelo football-data', () => {
       visibility: 'pilot',
     })
 
-    // Usuário comum não vê; admin e convidado piloto veem.
     const ordinaryCompsRes = await request('/competitions', 'ordinary')
     expect(ordinaryCompsRes.status).toBe(200)
     const ordinaryComps = (await ordinaryCompsRes.json()) as {
@@ -207,7 +205,6 @@ describe('Championship em piloto pelo football-data', () => {
       )
     }
 
-    // 2. Sync duas vezes com ELC e uma com 2016. Sem duplicar jogos. type league permanece.
     stubFootballDataApi(false)
     for (const code of ['ELC', 'ELC', '2016']) {
       const syncRes = await request('/matches/sync', 'admin', {
@@ -271,7 +268,6 @@ describe('Championship em piloto pelo football-data', () => {
     }
     expect(teamCount.total).toBe(4)
 
-    // 3. Admin cria grupo, palpite e lê de volta; competition_type=league habilita Tabela.
     const createGroupRes = await request('/groups', 'admin', {
       method: 'POST',
       body: JSON.stringify({

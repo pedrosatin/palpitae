@@ -55,7 +55,6 @@ describe('orçamento compartilhado da football-data', () => {
       window_started_at: number
       window_calls: number
     }
-    // A recusa não consome vaga: duas reservas na janela de 12:00.
     expect(state.window_started_at).toBe(Math.floor(now / 60_000))
     expect(state.window_calls).toBe(2)
   })
@@ -82,7 +81,6 @@ describe('orçamento compartilhado da football-data', () => {
 
     for (let i = 0; i < FD_CALLS_PER_MINUTE; i++) await reserveFootballDataSlot(db, now)
     await expect(reserveFootballDataSlot(db, now)).rejects.toBeInstanceOf(FootballDataSlotBusyError)
-    // Um minuto depois a janela recomeça.
     await expect(reserveFootballDataSlot(db, now + 1000)).resolves.toBeUndefined()
     expect(FD_CALLS_PER_MINUTE).toBeLessThan(10)
   })
@@ -137,7 +135,6 @@ describe('orçamento compartilhado da football-data', () => {
     }
     expect(state.blocked_until).toBe(now + FD_QUOTA_DEFAULT_PAUSE_MS)
 
-    // Resposta comum: nada gravado além do que já estava.
     await noteFootballDataBlock(db, 200, quota(7, 3), now + 2000)
     state = sqlite.prepare('SELECT blocked_until FROM provider_rate_state').get() as {
       blocked_until: number

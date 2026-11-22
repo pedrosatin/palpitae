@@ -107,31 +107,25 @@ describe('PredictionsModal', () => {
     mockFetch()
     render(<PredictionsModal member={member} groupId="g1" onClose={() => {}} />)
 
-    // Wait for predictions to load
     await waitFor(() => {
       expect(screen.getByText('TMA')).toBeInTheDocument()
     })
 
-    // Check missing prediction
-    expect(screen.queryByText('TMC')).not.toBeInTheDocument() // round 2 not visible
+    expect(screen.queryByText('TMC')).not.toBeInTheDocument()
 
     const user = userEvent.setup()
 
-    // Next round
     const nextBtn = screen.getByRole('button', { name: 'Próxima rodada' })
     await user.click(nextBtn)
 
     expect(mockTrackEvent).toHaveBeenCalledWith('click_leaderboard_proxima_rodada', { round: 'r2' })
 
-    // Round 2 should be visible now
     await waitFor(() => {
       expect(screen.getByText('TMC')).toBeInTheDocument()
     })
 
-    // Check edge case for scheduled match without prediction
     expect(screen.getByText(/02\/01, 12:00/)).toBeInTheDocument()
 
-    // Prev round
     const prevBtn = screen.getByRole('button', { name: 'Rodada anterior' })
     await user.click(prevBtn)
 
@@ -139,7 +133,6 @@ describe('PredictionsModal', () => {
       round: 'r1',
     })
 
-    // Select round directly
     const select = screen.getByRole('combobox')
     await user.selectOptions(select, 'r2')
 

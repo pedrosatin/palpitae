@@ -26,8 +26,6 @@ interface ModalProps {
 export default function Modal({ isOpen, onClose, title, analyticsId, children }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // O autoFocus de um campo roda no commit, antes de qualquer efeito. Só durante o
-  // render o foco ainda está no elemento que abriu o modal.
   const openerRef = useRef<HTMLElement | null>(null)
   const wasOpenRef = useRef(false)
   if (isOpen && !wasOpenRef.current) {
@@ -35,7 +33,6 @@ export default function Modal({ isOpen, onClose, title, analyticsId, children }:
   }
   wasOpenRef.current = isOpen
 
-  // Leva o foco para dentro do diálogo, se nenhum campo já o pediu, e o devolve ao fechar.
   useEffect(() => {
     if (!isOpen) return
     const dialog = dialogRef.current

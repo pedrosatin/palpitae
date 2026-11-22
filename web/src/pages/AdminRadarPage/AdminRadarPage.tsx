@@ -53,11 +53,6 @@ const STATUS_LABEL: Record<RadarItem['status'], string> = {
   finished: 'Encerrada',
 }
 
-/**
- * Recorte de status. "A começar" é uma pergunta de produto diferente de "está
- * rolando": dá o tempo de preparação para entrar numa competição antes da bola
- * rolar, que é quando o grupo se forma.
- */
 const STATUS_FILTERS = [
   { key: 'ongoing', label: 'Em andamento' },
   { key: 'upcoming', label: 'A começar' },
@@ -68,10 +63,8 @@ type StatusFilter = (typeof STATUS_FILTERS)[number]['key']
 
 const STATUS_OPTIONS = STATUS_FILTERS.map((f) => ({ value: f.key, label: f.label }))
 
-/** Snapshot mais velho que isso = cron do radar provavelmente parado. */
 const STALE_AFTER_HOURS = 30
 
-/** "YYYY-MM-DD" → "dd/mm/aaaa"; null vira travessão. */
 function formatDay(day: string | null): string {
   if (!day) return '—'
   const [y, m, d] = day.split('-')
@@ -89,10 +82,6 @@ function trendClass(trend: number | null): string {
   return styles.muted
 }
 
-/**
- * "estreia em X dias" — a janela de preparação para entrar na competição antes
- * da bola rolar. Null quando a data não é futura ou não é conhecida.
- */
 function countdown(startsOn: string | null): string | null {
   if (!startsOn) return null
   const target = new Date(`${startsOn}T00:00:00Z`).getTime()
@@ -104,10 +93,6 @@ function countdown(startsOn: string | null): string | null {
   return `estreia em ${Math.round(days / 30)} meses`
 }
 
-/**
- * Veredito por competição — a leitura que a tela existe pra dar. Deliberadamente
- * grosseiro: é gatilho de investigação, não decisão automática.
- */
 function verdict(item: RadarItem, medianInterest: number): { label: string; level: string } | null {
   if (item.supported) return null
   if (item.status === 'finished') return null
@@ -123,9 +108,6 @@ function verdict(item: RadarItem, medianInterest: number): { label: string; leve
 
 type SortKey = 'interest' | 'matches' | 'name' | 'start'
 
-// Mediana do interesse entre as competições com sinal — régua do veredito.
-// Mediana e não média: umas poucas competições gigantes (Copa do Mundo)
-// puxariam a média e esconderiam todo o resto.
 function medianInterestOf(items: RadarItem[]): number {
   const values = items
     .map((i) => i.pageviewsAvg)
@@ -133,8 +115,6 @@ function medianInterestOf(items: RadarItem[]): number {
     .sort((a, b) => a - b)
   if (values.length === 0) return 0
   const mid = Math.floor(values.length / 2)
-  // Amostra par: média dos dois centrais. Pegar só o de cima inflaria a régua
-  // justamente quando há poucas competições medidas.
   return values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid]
 }
 
@@ -152,7 +132,6 @@ function matchesFilter(item: RadarItem, filter: RadarFilter, term: string): bool
 function compareBy(sort: SortKey, a: RadarItem, b: RadarItem): number {
   if (sort === 'name') return a.name.localeCompare(b.name, 'pt-BR')
   if (sort === 'matches') return b.matchesInPeriod - a.matchesInPeriod
-  // Estreia mais próxima primeiro; sem data conhecida vai pro fim.
   if (sort === 'start') return (a.startsOn ?? '9999').localeCompare(b.startsOn ?? '9999')
   return (b.pageviewsAvg ?? -1) - (a.pageviewsAvg ?? -1)
 }
@@ -171,7 +150,6 @@ function isSyncStale(lastSync: string | null | undefined): boolean {
   return Date.now() - at > STALE_AFTER_HOURS * 3_600_000
 }
 
-/** GET /metrics/radar do período. Não lança: rede, status ou corpo inválido viram `failed`. */
 async function loadRadar(days: number): Promise<AdminLoad<RadarResponse>> {
   try {
     const res = await apiFetch(
@@ -202,10 +180,6 @@ export default function AdminRadarPage() {
     [items, statusFilter, onlyUnsupported, search, sort],
   )
 
-  // Sem artigo mapeado = sem sinal de interesse. É a fila de curadoria de
-  // `api/src/radar/articles.ts`, por isso fica visível em vez de escondida.
-  // Inclui as que vão começar: competição não mapeada prestes a estrear é ainda
-  // mais urgente de medir do que uma já em curso.
   const unmapped = useMemo(
     () => items.filter((i) => !i.wikiArticle && i.status !== 'finished'),
     [items],

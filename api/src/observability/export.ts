@@ -1,43 +1,15 @@
 import type { Env } from '../types'
 import { runAeSqlStrict } from './aeSql'
 
-/**
- * Cold path — arquiva um dia de eventos do Analytics Engine no R2 como NDJSON,
- * com retenção de 13 meses pela regra de ciclo de vida do bucket (o AE só guarda ~3 meses). Roda num cron diário (00:05 UTC)
- * e exporta o dia ANTERIOR. Ver `docs/observability.md`.
- *
- * Desenho: o AE é o staging (escrita barata, sem latência); este export "congela"
- * tudo em R2 1x/dia. Um arquivo/dia ⇒ ~365 escritas/ano, irrisório no free tier
- * (10 GB, egress zero, não expira). Reaproveita o cron que já existe — sem Queues.
- *
- * Cada arquivo leva um manifesto em `customMetadata` (`events`, `rows`, `complete`
- * e, só quando o dia passou do teto, `truncatedTypes`). Só `complete: '1'` encerra
- * o dia; os demais são reconsultados pelo backfill e substituídos quando a nova
- * coleta tem mais linhas de negócio ou, com o mesmo número, não perde linhas, como
- * descreve `shouldReplace`.
- */
 
 const DATASET = 'palpitae_events'
 
-// Linhas por consulta. A SQL API do Analytics Engine corta o resultado (~10k
-// linhas) silenciosamente; com o teto explícito, página cheia significa "pode
-// haver mais" e a coleta continua a partir do último segundo lido.
 const ROW_LIMIT = 10000
 
-// Teto de páginas por dia (30 mil linhas, cerca de 120 vezes o maior dia de
-// 2026): o dia inteiro fica em memória antes do put, e o Worker tem 128 MB.
-// Dia que passa disso tem os tipos de volume cortados, como descreve `collectRows`.
-// Se o corte alcança eventos de negócio, o dia é gravado incompleto e reconsultado
-// a cada execução.
 const MAX_PAGES = 3
 
-// Linhas no arquivo de um dia, qualquer que seja o caminho da coleta.
 const DAY_ROW_CAP = MAX_PAGES * ROW_LIMIT
 
-// Tipos de evento de alto volume e baixo valor. Quando o dia passa do teto, eles
-// cedem espaço aos eventos de negócio. Os demais, como `account_created` e
-// `security_storage_error`, são lidos por uma consulta própria. O tipo vem de
-// `blob1`, que o AE guarda repetido do índice, como descreve `events.ts`.
 const VOLUME_EVENT_TYPES = [
   'oauth_error',
   'matches_cache',
@@ -48,38 +20,25 @@ const VOLUME_EVENT_TYPES = [
 
 const VOLUME_TYPE_SET: ReadonlySet<string> = new Set(VOLUME_EVENT_TYPES)
 
-// Páginas da consulta de eventos de negócio depois do corte. Esses eventos somam
-// centenas por dia; duas páginas bastam e limitam o custo em chamadas ao AE.
 const MAX_BUSINESS_PAGES = 2
 
-// Um dia só é dado como completo quando exportado ao menos 24 h depois de
-// terminar. O export das 00:05 é provisório e vira definitivo no cron seguinte,
-// que reconsulta o dia e pega linhas que a SQL API ainda não devolvia.
 const SETTLE_MS = 24 * 60 * 60 * 1000
 
-// Backfill (#4): teto de exports por execução do cron, p/ não estourar tempo/CPU.
 const MAX_EXPORTS_PER_RUN = 10
 
-// A partir de quantos dias atrás uma coleta completa com MENOS linhas que o
-// arquivo fecha o dia com o corpo arquivado. Perto do fim da retenção do AE
-// (~90 dias) a coleta só tende a encolher; antes disso, a diferença pode ser
-// passageira e o dia continua aberto para a próxima execução.
 const CLOSE_KEPT_FROM_DAYS_BACK = 80
 
 const DATE_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
 
-/** Manifesto de completude gravado em `customMetadata` de cada arquivo diário. */
 type Manifest = {
   events: string
   rows: string
   complete: '1' | '0'
-  /** Tipos de volume com linhas fora do arquivo, separados por vírgula. Ausente se não houve corte. */
   truncatedTypes?: string
 }
 
 type Row = Record<string, unknown>
 
-/** Um dia coletado do AE, pronto para gravar. `businessRows` conta as linhas fora da lista de volume. */
 type DayExport = {
   key: string
   body: string
@@ -124,8 +83,6 @@ function isConfigured(env: Env): env is Env & { EVENTS: R2Bucket } {
 }
 
 function assertDateTime(value: string): void {
-  // A SQL API do Analytics Engine é ClickHouse-like e não aceita bind params:
-  // todo instante interpolado na consulta passa por esta validação.
   if (!DATE_TIME.test(value)) {
     throw new Error(`Instante inválido para a consulta do export: ${value}`)
   }
@@ -139,12 +96,10 @@ function rangeSql(cursor: string, to: string): string {
   return `WHERE timestamp >= toDateTime('${cursor}') AND timestamp < toDateTime('${to}')`
 }
 
-/** Página do dia inteiro, de todos os tipos, em ordem de tempo. */
 function pageSql(cursor: string, to: string): string {
   return `SELECT * FROM ${DATASET} ${rangeSql(cursor, to)} ORDER BY timestamp ASC LIMIT ${ROW_LIMIT}`
 }
 
-/** Página só dos eventos fora da lista de volume. */
 function businessPageSql(cursor: string, to: string): string {
   return (
     `SELECT * FROM ${DATASET} ${rangeSql(cursor, to)} ` +
@@ -152,7 +107,6 @@ function businessPageSql(cursor: string, to: string): string {
   )
 }
 
-/** Quais tipos de volume têm linhas em [cursor, to). Uma linha por tipo. */
 function volumeTypesSql(cursor: string, to: string): string {
   return (
     `SELECT blob1 AS event_type FROM ${DATASET} ${rangeSql(cursor, to)} ` +
@@ -211,22 +165,6 @@ function dropLatestVolume(rows: Row[], excess: number, dropped: Set<string>): Ro
   return rows.slice(0, cut).concat(rows.slice(cut).filter((row) => !isVolumeRow(row)))
 }
 
-/**
- * Lê o dia em ordem de tempo, em 1 a 3 páginas. Se a leitura chega ao fim do dia,
- * o arquivo sai como sempre. Se ela para antes (3 páginas esgotadas, ou um único
- * segundo com ROW_LIMIT linhas ou mais), o que ficou depois do corte pode esconder
- * eventos de negócio e de segurança atrás de tráfego de volume. Então uma segunda
- * leitura, de até MAX_BUSINESS_PAGES páginas, traz só os eventos fora da lista de
- * volume dali em diante, e uma sonda diz quais tipos de volume ficaram com linhas
- * sem ler. São no máximo 3 + 2 + 1 = 6 chamadas ao AE.
- *
- * O arquivo nunca passa de DAY_ROW_CAP linhas. A cada página de negócio, as linhas
- * de volume mais recentes da primeira leitura saem até o total caber no teto, então
- * as linhas guardadas passam do teto em no máximo uma página. Eventos de negócio ficam
- * de fora quando não resta volume para tirar ou quando os limites de página deixam
- * linhas deles sem ler. Nos dois casos o dia sai incompleto.
- * `truncatedTypes` reúne os tipos de volume tirados e os que a sonda achou.
- */
 async function collectRows(
   env: Env,
   from: string,
@@ -265,7 +203,6 @@ async function collectRows(
   }
 }
 
-/** Coleta `day` (UTC) no AE e monta o arquivo e o manifesto, sem gravar. */
 async function buildDayExport(env: Env, day: Date, now: Date): Promise<DayExport> {
   const { from, to, key } = dayBounds(day)
   const { rows, businessTruncated, truncatedTypes } = await collectRows(env, from, to)
@@ -337,7 +274,6 @@ export async function exportEventsToR2(env: Env, day: Date, now = new Date()): P
 
 type Counted = { rows: number; events: number; businessRows: number }
 
-/** Conta linhas, eventos e linhas fora da lista de volume do NDJSON já arquivado. */
 function countArchived(body: string): Counted {
   const counted: Counted = { rows: 0, events: 0, businessRows: 0 }
   for (const line of body.split('\n')) {
@@ -350,12 +286,6 @@ function countArchived(body: string): Counted {
   return counted
 }
 
-/**
- * A coleta nova substitui o arquivo? Eventos de negócio decidem primeiro: com
- * menos deles, nunca; com mais, sempre, mesmo que o total de linhas caia (o
- * arquivo antigo pode ter sido cheio de volume antes de chegar a eles). Com os
- * mesmos, vale o total: mais linhas, ou coleta completa com ao menos as mesmas.
- */
 function shouldReplace(fresh: DayExport, counted: Counted): boolean {
   if (fresh.businessRows !== counted.businessRows) {
     return fresh.businessRows > counted.businessRows
@@ -363,7 +293,6 @@ function shouldReplace(fresh: DayExport, counted: Counted): boolean {
   return fresh.rows > counted.rows || (fresh.complete && fresh.rows >= counted.rows)
 }
 
-/** Troca o objeto só se ele ainda for o lido no `head` (mesmo etag). */
 async function replaceIfUnchanged(
   bucket: R2Bucket,
   key: string,

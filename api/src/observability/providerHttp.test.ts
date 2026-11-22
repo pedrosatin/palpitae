@@ -186,7 +186,6 @@ describe('createProviderHttpObserver', () => {
       () => 0.99,
     )
 
-    // Um chamador desatento poderia empurrar campos extras no objeto.
     const attempt = {
       provider: 'football-data',
       status: 429,

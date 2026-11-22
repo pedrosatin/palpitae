@@ -1,7 +1,5 @@
 import { roundLabel } from '../matches/rounds'
 
-// O dia do lembrete é o de Brasília. O fuso vem da base do `Intl`; assim, se o
-// horário de verão voltar, o dia não muda.
 export const REMINDER_TIME_ZONE = 'America/Sao_Paulo'
 export const MAX_DIGEST_GROUPS = 10
 
@@ -31,7 +29,6 @@ export type Digest = {
   userId: string
   email: string
   groups: DigestGroup[]
-  /** Jogos distintos. O mesmo jogo sem palpite em dois grupos conta uma vez. */
   matchIds: Set<string>
   firstStart: string
   lastSent: string | null
@@ -56,10 +53,6 @@ export function reminderSubject(matchCount: number, firstStart: string): string 
     : `${matchCount} jogos sem palpite hoje. O primeiro fecha às ${time}`
 }
 
-/**
- * Link da aba Palpitar na rodada dos jogos listados. A rodada vai explícita porque
- * o jogo remarcado de rodada antiga nunca está na rodada padrão do grupo (ADR-019).
- */
 function predictionsUrl(appUrl: string, groupId: string, round: string | null): string {
   const query = round ? `?rodada=${encodeURIComponent(round)}` : ''
   return `${appUrl}/grupos/${groupId}${query}`
@@ -78,12 +71,6 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;')
 }
 
-/**
- * Escudo do time em <img>. Sem logo, devolve string vazia.
- *
- * Muitos escudos do football-data.org são SVG, que Gmail e Outlook não renderizam
- * e trocam pelo `alt`. O nome do time aparece ao lado, então o layout não quebra.
- */
 function crestImg(url: string | null, alt: string): string {
   if (!url || !/^https?:\/\//i.test(url)) return ''
   return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" width="20" height="20" style="vertical-align: middle; border: 0;">`
@@ -115,8 +102,6 @@ function matchRowHtml(match: DigestMatch): string {
 }
 
 function groupBlockHtml(group: DigestGroup, appUrl: string): string {
-  // Link de texto simples, sem botão colorido nem UTM. E-mail que parece mensagem
-  // pessoal tem menos chance de cair na aba Promoções do Gmail.
   const rounds = group.rounds
     .map((round) => {
       const url = predictionsUrl(appUrl, group.groupId, round.round)

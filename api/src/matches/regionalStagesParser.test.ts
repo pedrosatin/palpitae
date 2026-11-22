@@ -20,7 +20,6 @@ const JWT_SECRET = 'test-regional-stages-secret'
 const ADMIN_EMAIL = 'admin@palpitae.com'
 const PILOT_EMAIL = 'piloto@palpitae.com'
 
-/** Código de teste: o mapa de fases é global; não cadastra competição de produção. */
 const TEST_CODE = 'test.bra.regional.stages'
 
 const handles: DatabaseSync[] = []
@@ -105,7 +104,6 @@ const NEW_PHASE_EVENTS: Array<{
   phase: string
   roundLabel: string
 }> = [
-  // Paulista
   {
     event: minimalEvent({
       id: '762074',
@@ -128,7 +126,6 @@ const NEW_PHASE_EVENTS: Array<{
     phase: 'FINAL',
     roundLabel: 'Final',
   },
-  // Carioca
   {
     event: minimalEvent({
       id: '751664',
@@ -206,7 +203,6 @@ const NEW_PHASE_EVENTS: Array<{
     phase: 'RELEGATION_STAGE',
     roundLabel: 'Rebaixamento',
   },
-  // Mineiro
   {
     event: minimalEvent({
       id: '762136',
@@ -262,7 +258,6 @@ const NEW_PHASE_EVENTS: Array<{
     phase: 'PLAYOFFS_FINAL',
     roundLabel: 'Final dos playoffs',
   },
-  // Gaúcho
   {
     event: minimalEvent({
       id: '401858984',
@@ -296,10 +291,8 @@ const NEW_PHASE_EVENTS: Array<{
     phase: 'FARROUPILHA_FINAL',
     roundLabel: 'Final do Farroupilha',
   },
-  // Nordeste: finals (plural) já coberto pelo Paulista; group-stage preservado abaixo.
 ]
 
-/** Slugs já mapeados antes do Ticket 08 (regressão mínima na mesma fronteira). */
 const PRESERVED_PHASE_EVENTS: Array<{
   event: EspnScoreboardEvent
   phase: string
@@ -396,7 +389,6 @@ describe('parser ESPN fases regionais (fronteira HTTP)', () => {
       const pilotToken = await signJwt({ sub: 'u-pilot', email: PILOT_EMAIL }, JWT_SECRET, 3600)
 
       const allCases = [...NEW_PHASE_EVENTS, ...PRESERVED_PHASE_EVENTS]
-      // Datas futuras para o sync gravar status scheduled (mesmo padrão dos pilots).
       const events = allCases.map((c, idx) => {
         const ev = structuredClone(c.event)
         const future = new Date(Date.UTC(2099, 0, 10 + idx, 20, 0, 0))

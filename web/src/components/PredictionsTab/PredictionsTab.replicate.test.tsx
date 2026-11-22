@@ -42,9 +42,7 @@ function mockApi({
   } as Record<string, unknown>,
   replicateFails = 0,
   matches = [makeMatch({ id: 'm1' })],
-  /** Segura a resposta da replicação até `release()`. */
   holdReplicate = false,
-  /** Segura a resposta do "Salvar todos" até `release()`. */
   holdBulk = false,
 } = {}) {
   const replicateCalls: Replicate[] = []
@@ -79,14 +77,12 @@ function mockApi({
       return json({ groups: [{ id: 'g1', name: 'Bolão Gama', competition_id: 'c1' }, ...siblings] })
     return Promise.reject(new Error(`Unexpected fetch: ${u}`))
   })
-  /** Entrega as respostas seguradas, na ordem em que os pedidos saíram. */
   function release() {
     for (const respond of held.splice(0)) respond()
   }
   return { replicateCalls, release }
 }
 
-// StrictMode como no app: a montagem dupla não pode contar como saída do contexto.
 function renderTab(pointsExact?: number, groupId = 'g1') {
   return render(
     <StrictMode>

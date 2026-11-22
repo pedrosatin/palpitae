@@ -46,7 +46,6 @@ function buildFakeDb(rows: ActiveCompetition[], accessRow: () => unknown = () =>
         async all<T>(): Promise<{ results: T[] }> {
           return { results: rows as unknown as T[] }
         },
-        // A leitura do estado de acesso da ESPN antes da descoberta (livre, sem linha, por padrão).
         async first(): Promise<unknown> {
           return accessRow()
         },
@@ -141,7 +140,6 @@ describe('discoverFixtures', () => {
         apiKey: 'key',
       }),
     )
-    // Should NOT have matchday
     const calls = syncFixturesMock.mock.calls
     expect(calls[0][0]).not.toHaveProperty('matchday')
     expect(calls[1][0]).not.toHaveProperty('matchday')
@@ -171,14 +169,13 @@ describe('discoverFixtures', () => {
 
     const [competitions, fixturesUpdated, apiCalls] = runs[0].doubles ?? []
     expect(competitions).toBe(2)
-    expect(fixturesUpdated).toBe(10) // 5 per sync call, 2 calls
+    expect(fixturesUpdated).toBe(10)
     expect(apiCalls).toBe(2)
 
     expect(pointsOfType(ae, 'football_api_error')).toHaveLength(0)
   })
 
   it('isolates failures and continues for other competitions, logging errors', async () => {
-    // Fail for first call, succeed for second
     syncFixturesMock.mockRejectedValueOnce(new Error('API Error'))
     syncFixturesMock.mockResolvedValueOnce({ matches: 3 } as never)
 
@@ -196,7 +193,6 @@ describe('discoverFixtures', () => {
 
     expect(syncFixturesMock).toHaveBeenCalledTimes(2)
 
-    // First competition shouldn't be scored if sync fails
     expect(scoreMock).toHaveBeenCalledTimes(1)
     expect(scoreMock).toHaveBeenCalledWith('c2', expect.anything(), expect.any(Number))
     // Nem tem o status avançado com um calendário que não foi atualizado.
@@ -328,7 +324,7 @@ describe('discoverFixtures', () => {
 
     const [competitions, fixturesUpdated, apiCalls] = runs[0].doubles ?? []
     expect(competitions).toBe(1)
-    expect(fixturesUpdated).toBe(5) // Should retain the count from syncFixtures
+    expect(fixturesUpdated).toBe(5)
     expect(apiCalls).toBe(1)
   })
 

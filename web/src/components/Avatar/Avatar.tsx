@@ -2,12 +2,9 @@ import { useState } from 'react'
 import styles from './Avatar.module.css'
 
 interface AvatarProps {
-  /** Nome mostrado ao lado do avatar. A inicial vem dele. */
   name: string
   src?: string | null
-  /** Aplicada à foto e à inicial. Define tamanho e cor pelas variáveis do CSS. */
   className?: string
-  /** Aplicada só à inicial. */
   fallbackClassName?: string
 }
 
@@ -18,7 +15,6 @@ interface AvatarProps {
  * `--avatar-font-size` e `--avatar-color` na classe de quem usa.
  */
 export default function Avatar({ name, src, className, fallbackClassName }: AvatarProps) {
-  // Guarda a URL que falhou para voltar à inicial sem esconder uma foto nova.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
 
   if (src && src !== failedSrc) {
@@ -37,7 +33,6 @@ export default function Avatar({ name, src, className, fallbackClassName }: Avat
       className={[styles.fallback, className, fallbackClassName].filter(Boolean).join(' ')}
       aria-hidden="true"
     >
-      {/* Array.from separa por ponto de código e não parte o emoji ao meio. */}
       {Array.from(name)[0]?.toUpperCase()}
     </span>
   )

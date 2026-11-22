@@ -8,7 +8,6 @@ import { scoreUnprocessedMatches } from './scoring'
 import { syncFixtures } from './sync'
 
 const KICKOFF = '2026-05-30T19:00:00Z'
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const NOW = Date.parse(KICKOFF) + 130 * 60_000
 
 type FdScore = {
@@ -20,7 +19,6 @@ type FdScore = {
   penalties?: { home: number; away: number }
 }
 
-/** Final da Liga dos Campeões na football-data, jogo único com pênaltis. */
 function fdFinal(status: string, score: FdScore) {
   return Response.json({
     competition: { id: 2001, code: 'CL', name: 'UEFA Champions League' },
@@ -40,7 +38,6 @@ function fdFinal(status: string, score: FdScore) {
   })
 }
 
-/** A ESPN já encerrou a final empatada; o fallback só lê o placar. */
 function espnFinalTied(): EspnScoreboardEvent {
   const type = { name: 'STATUS_FINAL_PEN', state: 'post', completed: true }
   return {
@@ -80,10 +77,6 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-/**
- * Grupo com 2 pontos de classificado e 1 de pênaltis. Ana palpita 1-1 com a Inter
- * nos pênaltis; Beto palpita 2-0 para a Inter.
- */
 function seedGroup(sqlite: DatabaseSync, competitionId: string, matchId: string) {
   sqlite.exec(`
     INSERT INTO users (id, email, provider, provider_id) VALUES
@@ -135,7 +128,6 @@ describe('mata-mata decisivo empatado sem vencedor dos pênaltis', () => {
     }
     seedGroup(sqlite, match.competition_id, match.id)
 
-    // A football-data ainda mostra o jogo em andamento; a ESPN já tem o 1-1 final.
     providers.fd = () =>
       fdFinal('IN_PLAY', { duration: 'EXTRA_TIME', fullTime: { home: 1, away: 1 } })
     await pollActiveMatches(db, 'test', undefined, NOW)
@@ -164,7 +156,6 @@ describe('mata-mata decisivo empatado sem vencedor dos pênaltis', () => {
       },
     ])
 
-    // O jogo segue na janela do poller e a football-data traz a disputa de pênaltis.
     providers.fd = () =>
       fdFinal('FINISHED', {
         winner: 'HOME_TEAM',
@@ -195,7 +186,6 @@ describe('mata-mata decisivo empatado sem vencedor dos pênaltis', () => {
     expect(readFinal(sqlite)).toMatchObject({ penalty_winner: 'home', scored: 1 })
     expect(readPoints(sqlite)).toEqual(credited)
 
-    // Nova pontuação do mesmo resultado não credita de novo.
     await scoreUnprocessedMatches(match.competition_id, db)
     expect(readPoints(sqlite)).toEqual(credited)
   })
@@ -226,10 +216,8 @@ describe('mata-mata decisivo empatado sem vencedor dos pênaltis', () => {
       score: [number, number],
     ) => insertMatch.run(id, id, home, away, start, phase, phase, score[0], score[1], start)
     finished('grupo', 't-a', 't-b', '2026-03-01T19:00:00Z', 'GROUP_STAGE', [1, 1])
-    // A-B: 2-1 na ida, B 1-0 na volta, agregado 2-2.
     finished('ab-ida', 't-a', 't-b', '2026-04-01T19:00:00Z', 'LAST_16', [2, 1])
     finished('ab-volta', 't-b', 't-a', '2026-04-08T19:00:00Z', 'LAST_16', [1, 0])
-    // C-D: 1-0 na ida, 1-1 na volta, C avança no agregado.
     finished('cd-ida', 't-c', 't-d', '2026-04-02T19:00:00Z', 'LAST_16', [1, 0])
     finished('cd-volta', 't-d', 't-c', '2026-04-09T19:00:00Z', 'LAST_16', [1, 1])
     const insertPick = sqlite.prepare(`INSERT INTO predictions
@@ -266,10 +254,8 @@ describe('mata-mata decisivo empatado sem vencedor dos pênaltis', () => {
       'cd-ida': 1,
       'cd-volta': 1,
     })
-    // Placar exato em grupo, ab-ida, cd-ida e cd-volta, mais o classificado de C-D.
     expect(total()).toBe(3 * 4 + 2)
 
-    // B vence nos pênaltis: a volta credita placar, pênaltis e classificado uma vez.
     sqlite.exec("UPDATE matches SET penalty_winner = 'home' WHERE id = 'ab-volta'")
     await scoreUnprocessedMatches('c1', db)
     await scoreUnprocessedMatches('c1', db)

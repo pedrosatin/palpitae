@@ -5,17 +5,9 @@ import { buildInviteMessage } from '../../lib/invite'
 import styles from './ShareButtons.module.css'
 
 interface ShareButtonsProps {
-  /** URL do convite já pronta (ex: origin/convite/ABCD-EF23, ver lib/invite). */
   shareLink: string
-  /**
-   * Prefixo do contexto para os eventos de clique (GA4).
-   * Ex: 'group_detail' → dispara click_group_detail_compartilhar etc.
-   * Também vai como `context` no evento `share_invite`.
-   */
   eventContext: string
-  /** Frase que acompanha o link no WhatsApp / X (ver buildInviteMessage). */
   message?: string
-  /** Fica abaixo de uma ação principal de WhatsApp: sem repetir o ícone e sem preenchimento. */
   secondary?: boolean
 }
 
@@ -25,10 +17,6 @@ function whatsappUrlFor(message: string, shareLink: string): string {
   return `https://wa.me/?text=${encodeURIComponent(`${message} ${shareLink}`)}`
 }
 
-/**
- * Exige `pointer: coarse` porque navegadores de desktop também expõem `navigator.share`,
- * e ali o botão abre o WhatsApp direto.
- */
 function hasPhoneShareSheet(): boolean {
   return (
     typeof navigator.share === 'function' &&
@@ -37,7 +25,6 @@ function hasPhoneShareSheet(): boolean {
   )
 }
 
-/** Menu nativo no celular, link do WhatsApp no resto. `null` quando a pessoa desistiu. */
 async function shareOnWhatsApp(
   message: string,
   shareLink: string,
@@ -47,8 +34,6 @@ async function shareOnWhatsApp(
       await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
       return 'native'
     } catch (err) {
-      // Cancelar o menu, ou tocar de novo com ele aberto (InvalidStateError), não abre
-      // nada. Outra falha cai no link do WhatsApp.
       if (
         err instanceof DOMException &&
         (err.name === 'AbortError' || err.name === 'InvalidStateError')
@@ -65,11 +50,8 @@ interface WhatsAppShareButtonProps {
   label: string
   message: string
   shareLink: string
-  /** Prefixo do evento de clique. Vira `click_<eventContext>_whatsapp`. */
   eventContext: string
-  /** Ação principal da tela: ocupa a largura toda e fica mais alto. */
   prominent?: boolean
-  /** Chamado quando o menu nativo conclui ou o link do WhatsApp abre. */
   onShared?: (method: 'native' | 'whatsapp') => void
 }
 
@@ -146,21 +128,16 @@ export default function ShareButtons({
         await navigator.share({ title: 'Palpitae', text: message, url: shareLink })
         trackShareInvite('native', eventContext)
       } catch (err) {
-        // Cancelar o menu (AbortError) é no-op. Qualquer outra falha (permissão,
-        // contexto não-seguro...) cai para copiar o link, senão o usuário fica sem nada.
         if (err instanceof DOMException && err.name === 'AbortError') return
         await copyLinkFallback()
       }
       return
     }
-    // Desktop / navegador sem Web Share: copia o link como fallback.
     await copyLinkFallback()
   }
 
   function openExternal(url: string, action: 'whatsapp' | 'twitter') {
     trackEvent(`click_${eventContext}_${action}`)
-    // Não há como saber se a mensagem foi enviada; abrir o app com o texto
-    // pronto é o mais perto de "compartilhou" que o navegador deixa medir.
     trackShareInvite(action, eventContext)
     window.open(url, '_blank', 'noopener,noreferrer')
   }

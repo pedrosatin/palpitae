@@ -247,7 +247,6 @@ describe('custo de leitura do placar improvável no D1 (Miniflare)', () => {
     const first = await measureFirstRead()
     const reuse = await measureReuseRead()
 
-    // Documenta os números medidos para a descrição da PR / ADR.
     console.info(
       JSON.stringify({
         scenario: '50 groups × 20 tipsters × 10 matches',

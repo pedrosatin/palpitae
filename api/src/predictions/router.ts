@@ -40,10 +40,6 @@ import {
 
 export { MAX_SCORE }
 
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
 const LOCKED_ERROR = { error: 'Palpite bloqueado — o jogo já começou' }
 
 type GroupMember = {
@@ -92,10 +88,6 @@ type BulkTieContext = {
   leg1ScoreByMatch: Map<string, Leg1ScorePair>
 }
 
-// ---------------------------------------------------------------------------
-// Confronto de mata-mata: classificado previsto e palpite da ida
-// ---------------------------------------------------------------------------
-
 /**
  * Colunas do jogo que as listagens selecionam só para montar o confronto. Saem
  * da resposta em `attachPredictedClassifiedToRows`.
@@ -115,7 +107,6 @@ function hasPrediction(row: PredictionRow): boolean {
   )
 }
 
-/** Confrontos dos jogos de mata-mata com palpite nas linhas, indexados pelo id do jogo. */
 function fetchRowTies(
   db: D1Database,
   rows: PredictionRow[],
@@ -255,14 +246,12 @@ function attachPredictedClassifiedToRows(
     const leg1Score = tie?.role === 'leg2' && tie.partner ? leg1Of(row, tie.partner.id) : null
     return {
       ...rest,
-      // Sem palpite (LEFT JOIN do /user) o campo fica null, como points_awarded.
       classified_points: hasPrediction(row) ? (row.classified_points ?? 0) : null,
       predicted_classified: computePredictedClassified(row, tie, leg1Score),
     }
   })
 }
 
-/** Papel do jogo no confronto e palpite da ida do usuário quando o jogo é volta. */
 async function resolveMatchTieForWrite(
   db: D1Database,
   groupId: string,
@@ -429,7 +418,6 @@ router.get('/user', requireAuth, async (c) => {
 
   const db = c.env.DB
 
-  // Requester must be a member of the group
   const member = await requireGroupMember(c, db, groupId)
   if (member instanceof Response) return member
   const { membershipMs } = member
@@ -443,10 +431,6 @@ router.get('/user', requireAuth, async (c) => {
 
   const now = new Date().toISOString()
 
-  // Fetch all matches for the group's competition, left-joining predictions.
-  // The join condition restricts predictions to LOCKED matches (anti-copy: picks
-  // that can still be edited are not revealed even if the target user already
-  // submitted them). Jogo adiado não conta como começado — ver locking.ts.
   const queryStartedAt = Date.now()
   const batchResults = await db.batch([
     db
@@ -610,7 +594,6 @@ router.get('/group', requireAuth, async (c) => {
 
   const now = new Date().toISOString()
 
-  // Group roster (for stable column/row ordering on the frontend)
   const membersStartedAt = Date.now()
   const membersResult = await db
     .prepare(
@@ -661,7 +644,6 @@ router.get('/group', requireAuth, async (c) => {
     )
     .bind(now, groupId, ...(isPublic ? [] : [now, userId]))
     .all<PredictionRow>()
-  // No grupo público os palpites abertos já vêm nas linhas, sem outra leitura no D1.
   const [predictionsResult, hiddenGroupPickers] = await Promise.all([
     predictionsQuery,
     isPublic ? null : fetchOpenPickers(db, groupId, groupConfig.competition_id, now),
@@ -755,7 +737,6 @@ router.put(
 
     const db = c.env.DB
 
-    // Verify user is a member of the group
     const member = await requireGroupMember(c, db, group_id)
     if (member instanceof Response) return member
 
@@ -791,7 +772,6 @@ router.put(
       return c.json({ error: 'Jogo não encontrado nesta competição' }, 404)
     }
 
-    // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
     const now = new Date().toISOString()
     if (isMatchLocked(match, now)) {
       return c.json(LOCKED_ERROR, 422)
@@ -821,8 +801,6 @@ router.put(
     }
     const penaltyWinner = penalty.value
 
-    // A conferência acima é a resposta rápida. A escrita relê a trava com o relógio do
-    // banco, e zero linhas alteradas significa que o jogo travou depois da leitura.
     const written = await prepareGuardedUpsert(db)
       .bind(
         ...guardedUpsertParams({
@@ -916,7 +894,6 @@ function buildBulkPutStatements(
   const invalidPenalty: string[] = []
   const statements: D1PreparedStatement[] = []
 
-  // Cache to avoid re-parsing the penalty_phases JSON string on every prediction loop iteration.
   const penaltyPhasesCache = new Map<string, string[]>()
 
   const insertStmt = prepareGuardedUpsert(db)
@@ -928,7 +905,6 @@ function buildBulkPutStatements(
       continue
     }
 
-    // LOCK CHECK — derived at runtime from match.start_time (ADR-004)
     if (isMatchLocked(info, now)) {
       locked.push(matchId)
       continue
@@ -1011,7 +987,6 @@ async function handleBulkPut(
 
   const db = c.env.DB
 
-  // Verify user is a member of the group
   const member = await requireGroupMember(c, db, group_id)
   if (member instanceof Response) return member
 
@@ -1070,16 +1045,11 @@ async function handleBulkPut(
   if (statements.length > 0) {
     const budgetError = await enforceDailyWriteBudget(c, statements.length)
     if (budgetError) return budgetError
-    // Um único `db.batch`: o schema limita o payload a 100 palpites, o teto do lote
-    // do D1. `planned[i]` é o jogo de `statements[i]`. A escrita relê a trava com o
-    // relógio do banco, e zero linhas alteradas significa que o jogo travou depois
-    // da leitura.
     const written = await db.batch(statements)
     saved = planned.filter((_, i) => written[i].meta.changes !== 0)
     locked.push(...planned.filter((_, i) => written[i].meta.changes === 0))
     if (saved.length > 0) {
       logEvent(c.env.AE, 'prediction_saved', {
-        // round vazio: múltiplas rodadas. Todo jogo salvo é da competição do grupo.
         blobs: [
           group_id,
           '',

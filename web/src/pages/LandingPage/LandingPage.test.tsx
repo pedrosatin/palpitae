@@ -59,8 +59,6 @@ describe('LandingPage – analytics', () => {
 })
 
 describe('LandingPage – âncoras do nav', () => {
-  // Um #hash do nav sem a seção correspondente deixa o link "morto": foi o que
-  // aconteceu quando a seção de pontuação saiu junto com o chaveamento.
   it('renders a section for every in-page nav anchor', () => {
     const { container } = renderPage()
     const hashes = [...container.querySelectorAll('a[href^="#"]')].map((a) =>
@@ -123,7 +121,6 @@ describe('LandingPage – links para os guias', () => {
     renderPage()
     const [first] = LANDING_GUIDE_LINKS
     const link = screen.getByRole('link', { name: first.label })
-    // jsdom não navega; impede o aviso de navegação não implementada.
     link.addEventListener('click', (e) => e.preventDefault())
     await userEvent.click(link)
     expect(mockTrackEvent).toHaveBeenCalledWith('click_landing_guia', { guia: first.slug })
@@ -144,8 +141,6 @@ describe('LandingPage – rodapé', () => {
 describe('LandingPage – carregamento das capturas', () => {
   it('mantém o hero eager e a captura de palpites da seção de recursos lazy', () => {
     renderPage()
-    // Só a captura do hero (grupos, acima da dobra) disputa prioridade na
-    // abertura; a de palpites fica abaixo da dobra e volta a carregar lazy.
     const hero = screen.getByAltText('Tela de grupos do Palpitae mostrando os bolões do usuário')
     expect(hero).toHaveAttribute('loading', 'eager')
     expect(hero.getAttribute('fetchpriority')).toBe('high')

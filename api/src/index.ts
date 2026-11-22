@@ -97,14 +97,12 @@ app.route('/public', publicRouter)
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
-// Rota inexistente e exceção não tratada também respondem JSON com `{ error }`.
 app.notFound(jsonNotFound)
 app.onError(jsonError)
 
 export default {
   fetch: app.fetch,
 
-  // Cron Triggers (ver wrangler.toml). O controller.cron diz qual agendamento disparou.
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
       clearExpiredSecurityRecords(env.DB).catch((error: unknown) =>
@@ -120,7 +118,6 @@ export default {
     reportMissingConfig(env)
 
     if (controller.cron === DAILY_EXPORT_CRON) {
-      // Cold path — arquiva o dia ANTERIOR e faz backfill de dias faltantes no R2.
       ctx.waitUntil(exportRecentDays(env, new Date(controller.scheduledTime)))
       // Uso das cotas do plano Free no dia anterior. Não lança: falha não afeta o export.
       ctx.waitUntil(checkQuotaUsage(env, new Date(controller.scheduledTime)))
@@ -128,7 +125,6 @@ export default {
     }
 
     if (controller.cron === FIXTURE_DISCOVERY_CRON) {
-      // Descobre jogos novos (mata-mata, remarcações) das competições ativas.
       ctx.waitUntil(
         // O saldo de subrequests da invocação vale para a football-data e a ESPN juntas.
         discoverFixtures(env.DB, env.FOOTBALL_API_KEY ?? '', env.AE, controller.scheduledTime, {
@@ -139,7 +135,6 @@ export default {
     }
 
     if (controller.cron === ROUND_REMINDER_CRON) {
-      // E-mail do dia para quem tem jogo de hoje sem palpite (1x/dia).
       ctx.waitUntil(
         sendRoundReminders(
           env.DB,
@@ -159,8 +154,6 @@ export default {
     }
 
     if (controller.cron === LEGACY_RESULT_POLLER_CRON) {
-      // Transição do deploy (ver crons.ts): o agendamento antigo do poller ainda
-      // pode chegar até a Cloudflare propagar o trigger fundido. Só o poller.
       ctx.waitUntil(
         pollActiveMatches(
           env.DB,
@@ -175,10 +168,6 @@ export default {
 
     if (controller.cron === POLLER_AND_DRAIN_CRON) {
       if (isResultPollerTick(controller.scheduledTime)) {
-        // Minutos 0 e 30: só o poller — resultados da janela ativa + pontuação
-        // (ADR-007). O drenador não compete com ele; retoma no minuto 5/35.
-        // O alerta de resultado atrasado (ticket 05) roda no fim do tick, se
-        // RESULT_OVERDUE_ALERT estiver ligado e o saldo de subrequests couber.
         ctx.waitUntil(
           pollActiveMatches(
             env.DB,
@@ -189,11 +178,6 @@ export default {
           ),
         )
       } else {
-        // Demais minutos do trigger fundido: drenadores da fila durável (ADR-027),
-        // que retomam o trabalho pendente entre os ticks. Todos dividem o mesmo
-        // orçamento de subrequests da invocação (`runProviderDrains`); um provedor
-        // novo entra com uma linha a mais nesta lista. Nenhum cron novo: o plano
-        // Free comporta 4 triggers para a API.
         ctx.waitUntil(
           runProviderDrains(
             env.DB,

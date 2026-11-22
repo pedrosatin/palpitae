@@ -55,7 +55,6 @@ export function readEmbeddedInvite(code: string): InvitePreview | null {
   }
 }
 
-/** Tempo máximo da consulta, para a tela não ficar em "Carregando" se a API travar. */
 const LOOKUP_TIMEOUT_MS = 5000
 
 /**
@@ -65,7 +64,6 @@ const LOOKUP_TIMEOUT_MS = 5000
  */
 export async function lookupInvite(code: string): Promise<InviteLookup> {
   try {
-    // Fetch direto, porque a rota é pública e não há sessão para o apiFetch monitorar.
     const res = await fetch(buildApiUrl(`/public/invites/${encodeURIComponent(code)}`), {
       signal: AbortSignal.timeout(LOOKUP_TIMEOUT_MS),
     })

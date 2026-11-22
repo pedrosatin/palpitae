@@ -73,7 +73,6 @@ function fdMatch(
   }
 }
 
-/** A football-data responde o calendário de cada competição pelo id e nada para o resto. */
 function stubProvider() {
   const provider = { pl: [] as ReturnType<typeof fdMatch>[], cl: [] as ReturnType<typeof fdMatch>[] }
   vi.stubGlobal(
@@ -117,7 +116,6 @@ function setup() {
   return { sqlite, ae, discover, provider: stubProvider() }
 }
 
-/** Grava o palpite pelo id externo da football-data. */
 function predict(
   sqlite: DatabaseSync,
   groupId: string,
@@ -144,7 +142,6 @@ function predict(
     )
 }
 
-/** Jogo como a tela mostra: mandante, placar e visitante, com rodada, fase e pontuação. */
 function readMatch(sqlite: DatabaseSync, externalId: number) {
   return sqlite
     .prepare(
@@ -159,11 +156,6 @@ function readMatch(sqlite: DatabaseSync, externalId: number) {
     .get(String(externalId))
 }
 
-/**
- * Palpite como a tela mostra, com os times do jogo no lugar de casa e fora e o
- * time previsto nos pênaltis, e os pontos no formato placar+pênaltis+classificado.
- * Mais o total de cada um no ranking.
- */
 function readPicks(sqlite: DatabaseSync, groupId: string) {
   const picks = sqlite
     .prepare(
@@ -196,11 +188,9 @@ describe('provedor corrige o mando de um jogo já pontuado', () => {
     const { sqlite, discover, provider } = setup()
     provider.pl = [fdMatch(9001, KICKOFF, 'REGULAR_SEASON', 11, ARSENAL, CHELSEA)]
     await discover()
-    // Ana aposta no Chelsea por 2x1, Beto no Arsenal por 1x0.
     predict(sqlite, 'g-pl', 'u-ana', 9001, 1, 2)
     predict(sqlite, 'g-pl', 'u-beto', 9001, 1, 0)
 
-    // O Chelsea vence por 2x1 e o provedor ainda traz o Arsenal como mandante.
     provider.pl = [fdMatch(9001, KICKOFF, 'REGULAR_SEASON', 11, ARSENAL, CHELSEA, { home: 1, away: 2 })]
     await discover()
     expect(readMatch(sqlite, 9001)).toMatchObject({ game: 'ARS 1x2 CHE', scored: 1 })
@@ -233,7 +223,6 @@ describe('provedor corrige o mando de um jogo já pontuado', () => {
     predict(sqlite, 'g-pl', 'u-ana', 9001, 2, 1)
     predict(sqlite, 'g-pl', 'u-beto', 9001, 1, 2)
 
-    // Primeiro o provedor publica Arsenal 2x1 em casa.
     provider.pl = [fdMatch(9001, KICKOFF, 'REGULAR_SEASON', 11, ARSENAL, CHELSEA, { home: 2, away: 1 })]
     await discover()
     expect(readPicks(sqlite, 'g-pl').ranking).toEqual({ 'u-ana': 3, 'u-beto': 0 })
@@ -253,7 +242,6 @@ describe('provedor corrige o mando de um jogo já pontuado', () => {
       .filter((blobs: string[]) => blobs[0] === 'match_teams_changed')
     expect(teamEvents).toEqual([['match_teams_changed', 'football-data', PL_ID, '9001', 'swap']])
 
-    // Sem mudança no provedor, nenhum evento novo.
     ae.writeDataPoint.mockClear()
     await discover()
     expect(
@@ -272,11 +260,9 @@ describe('provedor corrige o mando da ida de um mata-mata', () => {
     const volta = (r?: Result) => fdMatch(5002, VOLTA, 'PLAYOFFS', 2, ATALANTA, BRUGGE, r)
     provider.cl = [ida(ATALANTA, BRUGGE), volta()]
     await discover()
-    // Ana aposta no Brugge por 2x0 na ida e no empate em 1x1 na volta.
     predict(sqlite, 'g-cl', 'u-ana', 5001, 0, 2)
     predict(sqlite, 'g-cl', 'u-ana', 5002, 1, 1)
 
-    // A ida termina com vitória do Brugge por 2x1, ainda com o mando errado.
     provider.cl = [ida(ATALANTA, BRUGGE, { home: 1, away: 2 }), volta()]
     await discover()
     expect(readPicks(sqlite, 'g-cl')).toEqual({
@@ -294,7 +280,6 @@ describe('provedor corrige o mando da ida de um mata-mata', () => {
       ranking: { 'u-ana': 1 },
     })
 
-    // A volta termina 1x1: o Brugge passa por 3x2 no agregado, como Ana previu.
     provider.cl = [ida(BRUGGE, ATALANTA, { home: 2, away: 1 }), volta({ home: 1, away: 1 })]
     await discover()
     const decided = {
@@ -314,7 +299,6 @@ describe('provedor corrige o mandante de uma final em jogo único', () => {
       fdMatch(5005, FINAL, 'FINAL', 1, home, away, r)
     provider.cl = [final(BRUGGE, ATALANTA)]
     await discover()
-    // Ana aposta no empate em 1x1 com o Brugge nos pênaltis.
     predict(sqlite, 'g-cl', 'u-ana', 5005, 1, 1, 'home')
 
     // O provedor troca o mandante da final e publica o resultado: 1x1 e o Brugge

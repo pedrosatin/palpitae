@@ -17,7 +17,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// Cada consulta informa 3 linhas lidas, e cada escrita 2 linhas escritas.
 function setup() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)

@@ -30,8 +30,6 @@ export function render(): string {
   return renderToString(
     <StrictMode>
       <StaticRouter location="/">
-        {/* `landingPrerenderizada` faz o App pintar a landing sem esperar o
-            /auth/me — é exatamente o estado em que o cliente hidrata. */}
         <App landingPrerenderizada />
         <CookieConsent />
       </StaticRouter>

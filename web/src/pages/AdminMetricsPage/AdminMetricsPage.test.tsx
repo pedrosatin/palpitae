@@ -40,7 +40,6 @@ const overview = {
   ],
   sampling: { avg_sample_interval: '1' },
   whales: [{ user_hash: 'aa11bb22', predictions: '20' }],
-  // Última execução há ~5 min — formato UTC da SQL API ("YYYY-MM-DD hh:mm:ss").
   lastRuns: [
     {
       event_type: 'poller_run',
@@ -54,8 +53,6 @@ const overview = {
   predictionsDaily: [{ day: '2026-06-29 00:00:00', users: '7' }],
 }
 
-// A tabela do arquivo R2 é montada a partir da data corrente (ontem pra trás),
-// então a chave do mock precisa ser relativa a "ontem" de verdade.
 const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 const archive = {
   files: [
@@ -100,31 +97,26 @@ function mockFetch(
   signupOriginsBody: unknown = null,
 ) {
   return vi.fn(async (url: string) => {
-    // API sem /metrics/signup-origins (deploy da web antes da API): 404.
     if (url.includes('/metrics/signup-origins')) {
       return signupOriginsBody === null
         ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
         : { ok: true, status: 200, json: async () => signupOriginsBody }
     }
-    // API sem /metrics/invite-funnel (deploy da web antes da API): 404.
     if (url.includes('/metrics/invite-funnel')) {
       return funnelBody === null
         ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
         : { ok: true, status: 200, json: async () => funnelBody }
     }
-    // API sem /metrics/heatmap (deploy da web antes da API): 404.
     if (url.includes('/metrics/heatmap')) {
       return heatmapBody === null
         ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
         : { ok: true, status: 200, json: async () => heatmapBody }
     }
-    // API sem /metrics/competition-activity (deploy da web antes da API): 404.
     if (url.includes('/metrics/competition-activity')) {
       return activityBody === null
         ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
         : { ok: true, status: 200, json: async () => activityBody }
     }
-    // API sem /metrics/ops (deploy da web antes da API): 404.
     if (url.includes('/metrics/ops')) {
       return opsBody === null
         ? { ok: false, status: 404, json: async () => ({ error: 'not found' }) }
@@ -264,65 +256,51 @@ describe('AdminMetricsPage', () => {
     vi.stubGlobal('fetch', mockFetch())
     render(<AdminMetricsPage />)
 
-    // KPIs
     expect(await screen.findByText('usuários palpitando')).toBeInTheDocument()
     expect(screen.getByText('7')).toBeInTheDocument()
     expect(screen.getByText('37')).toBeInTheDocument()
-    expect(screen.getByText('90%')).toBeInTheDocument() // 90 hits / 100
-    expect(screen.getByText('2.5')).toBeInTheDocument() // 5 joined / 2 created
+    expect(screen.getByText('90%')).toBeInTheDocument()
+    expect(screen.getByText('2.5')).toBeInTheDocument()
 
-    // Totais + legenda do gráfico usam o rótulo de negócio (cru fica no title)
     expect(screen.getAllByText('Login').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('login_success')).not.toBeInTheDocument()
     expect(screen.getByText('ok')).toBeInTheDocument()
     expect(screen.getByText('850 ms')).toBeInTheDocument()
-    expect(screen.getByText('2.1 s')).toBeInTheDocument() // 2100 ms humanizado
+    expect(screen.getByText('2.1 s')).toBeInTheDocument()
 
-    // Pulso dos crons: nome amigável + tempo relativo, sem alerta (recente)
     expect(screen.getByText('Poller de resultados (a cada 30 min)')).toBeInTheDocument()
     expect(screen.getByText(/há \d+ min/)).toBeInTheDocument()
 
-    // Saúde do e-mail
     expect(screen.getByText('e-mails enviados')).toBeInTheDocument()
     expect(screen.getByText('25')).toBeInTheDocument()
 
-    // DAU + latência por rota ("GET /matches" também é hint do KPI de cache → getAll)
     expect(screen.getByText('Usuários ativos (palpitando) por dia')).toBeInTheDocument()
     expect(screen.getByText('Latência por rota')).toBeInTheDocument()
     expect(screen.getAllByText('GET /matches').length).toBeGreaterThanOrEqual(1)
 
-    // Concentração de palpites: top1 = top5 = round(20/37) = 54% (1 whale só)
     expect(screen.getAllByText('54%')).toHaveLength(2)
 
-    // Falhas de login e erros recentes (evento com rótulo de negócio)
     expect(screen.getByText('session_expired')).toBeInTheDocument()
     expect(screen.getByText('Erro de OAuth')).toBeInTheDocument()
     expect(screen.getByText('access_denied')).toBeInTheDocument()
     expect(screen.getByText('29/06 14:30')).toBeInTheDocument()
 
-    // Eixo X dos gráficos diários: o dia mais recente sempre rotulado (dd/mm)
     const today = new Date().toISOString().slice(0, 10)
     const todayTick = `${today.slice(8, 10)}/${today.slice(5, 7)}`
-    expect(screen.getAllByText(todayTick).length).toBeGreaterThanOrEqual(2) // stacked + API calls
+    expect(screen.getAllByText(todayTick).length).toBeGreaterThanOrEqual(2)
 
-    // Arquivo R2: KPIs do acervo + histórico mensal + integridade.
     expect(screen.getByText('dias arquivados')).toBeInTheDocument()
-    // eventos: KPI do acervo (sem "≥": metadata completa) + linha de integridade
     expect(screen.getAllByText('42')).toHaveLength(2)
     expect(screen.getByRole('img', { name: 'Eventos arquivados por mês' })).toBeInTheDocument()
-    // ontem presente (data na tabela + KPI "desde"); dias anteriores ao primeiro
-    // export = "—" (não "faltando" — export ainda não existia).
     expect(screen.getAllByText(yesterday)).toHaveLength(2)
-    expect(screen.getAllByText('2.0 KB')).toHaveLength(2) // linha de ontem + KPI de tamanho total
+    expect(screen.getAllByText('2.0 KB')).toHaveLength(2)
     expect(screen.getAllByText('—')).toHaveLength(13)
     expect(screen.getAllByText('faltando')).toHaveLength(1)
 
-    // Sem amostragem (média 1) o aviso não aparece
     expect(screen.queryByText(/amostrando/)).not.toBeInTheDocument()
   })
 
   it('marca como faltando um dia com buraco ENTRE exports', async () => {
-    // Arquivos de ontem e de 3 dias atrás: o dia entre eles (2 atrás) falhou.
     const dayKey = (back: number) =>
       new Date(Date.now() - back * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const gappyArchive = {
@@ -349,7 +327,6 @@ describe('AdminMetricsPage', () => {
     render(<AdminMetricsPage />)
 
     await screen.findByText(dayKey(2))
-    // 1 célula "faltando" (o buraco) + 1 na legenda; dias antes do 1º export = "—".
     expect(screen.getAllByText('faltando')).toHaveLength(2)
     expect(screen.getAllByText('—')).toHaveLength(11)
   })
@@ -371,18 +348,15 @@ describe('AdminMetricsPage', () => {
     const user = userEvent.setup()
     render(<AdminMetricsPage />)
 
-    // Botão do mês (YYYY-MM de "ontem") na seção de análise do arquivo.
     const month = yesterday.slice(0, 7)
     await screen.findByText('Análise do arquivo (além da janela do AE)')
     await user.click(screen.getByRole('button', { name: month }))
 
-    // Dispara o fetch da query e renderiza o breakdown por tipo.
     await waitFor(() => {
       expect(
         fetchFake.mock.calls.some(([url]: [string]) => url.includes('/metrics/archive/query')),
       ).toBe(true)
     })
-    // Linha-resumo única da seção de análise (…N arquivo(s) · M eventos).
     await screen.findByText(/arquivo\(s\)/)
   })
 
@@ -411,8 +385,6 @@ describe('AdminMetricsPage', () => {
   })
 })
 
-// Snapshot por campeonato da API nova. Mesmo nome em duas temporadas; uma
-// temporada sem grupo nenhum; um piloto encerrado para cruzar os filtros.
 const businessWithCompetitions = {
   ...business,
   activeGroupDays: 14,
@@ -504,10 +476,8 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
     expect(screen.getByRole('columnheader', { name: 'ativos 14d' })).toBeInTheDocument()
     expect(screen.getByText(/4 de 4 temporada\(s\) · 1 sem grupo/)).toBeInTheDocument()
     expect(screen.getByText(/palpite nos últimos 14 dias/)).toBeInTheDocument()
-    // O top 10 legado sai quando a API manda a lista completa.
     expect(screen.queryByText('Campeonatos com mais grupos ativos')).not.toBeInTheDocument()
 
-    // Mesmo nome em temporadas diferentes vira duas linhas.
     expect(competitionCells(/Brasileirão Série A 2026/)).toEqual([
       'Brasileirão Série A',
       '2026',
@@ -528,7 +498,6 @@ describe('AdminMetricsPage · grupos por campeonato', () => {
       '60',
       '0',
     ])
-    // Temporada sem grupo aparece com contagens zeradas.
     expect(competitionCells(/Copa Vazia/)).toEqual([
       'Copa Vazia',
       '2026',
@@ -628,7 +597,6 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/3h após o início \(adiados ficam de fora\)/)).toBeInTheDocument()
 
-    // Mesmo nome em duas temporadas: cada uma com seus números.
     expect(rowCells(table, /Brasileirão Série A 2026/)).toEqual([
       'Brasileirão Série A',
       '2026',
@@ -643,10 +611,8 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
       '0',
       '3',
     ])
-    // Zero explícito, não ausência.
     expect(rowCells(table, /Copa Vazia/)).toEqual(['Copa Vazia', '2026', 'encerrado', '0', '0'])
 
-    // Maior pendência (3) → 2 → 1 → sem pendência.
     const order = within(table)
       .getAllByRole('row')
       .slice(1)
@@ -711,7 +677,6 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
     expect(
       screen.getByText('Indisponível: a API ainda não envia esses números.'),
     ).toBeInTheDocument()
-    // Sem tabela: ausência não vira zero. A lista de grupos segue normal.
     expect(
       screen.queryByRole('table', { name: 'Saúde dos resultados por campeonato' }),
     ).not.toBeInTheDocument()
@@ -749,7 +714,6 @@ describe('AdminMetricsPage · saúde dos resultados por campeonato', () => {
   })
 })
 
-// Provedores: tentativas HTTP, erros de sync e fallback (GET /metrics/ops).
 const opsBody = {
   days: 30,
   httpFirstSeenAt: '2020-01-01 00:00:00',
@@ -803,7 +767,6 @@ describe('AdminMetricsPage · provedores de partidas', () => {
     expect(within(byProcess).getByText('Poller de resultados')).toBeInTheDocument()
     expect(within(byProcess).getByText('403 ×7')).toBeInTheDocument()
 
-    // Nomes vêm do snapshot de campeonatos (mesma tela, /metrics/business).
     const byCompetition = screen.getByRole('table', { name: 'Tentativas HTTP por campeonato' })
     expect(within(byCompetition).getByText('Liga Piloto 2026')).toBeInTheDocument()
     const syncTable = screen.getByRole('table', {
@@ -834,8 +797,6 @@ describe('AdminMetricsPage · provedores de partidas', () => {
   })
 
   it('alerta de login proporcional acende com volume e taxa elevados', async () => {
-    // Fixture: 12 sucessos + 3 falhas = 20% de 15 (≥10 e ≥15%).
-    // recentErrors do overview tem só oauth_error → não dispara chip genérico.
     vi.stubGlobal('fetch', mockFetch(200, overview, business))
     render(<AdminMetricsPage />)
 
@@ -873,7 +834,6 @@ describe('AdminMetricsPage · provedores de partidas', () => {
     expect(screen.getAllByText('session_expired').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText(/falha\(s\) de login \(/)).not.toBeInTheDocument()
     expect(screen.queryByText(/erro\(s\) recente\(s\)/)).not.toBeInTheDocument()
-    // Evento permanece na lista de inspeção.
     expect(screen.getByText('Falha de login')).toBeInTheDocument()
   })
 
@@ -1036,7 +996,6 @@ describe('AdminMetricsPage · provedores de partidas', () => {
   })
 })
 
-// Atividade por campeonato (GET /metrics/competition-activity).
 const activityBody = {
   days: 30,
   predictionsDimensionSince: '2020-01-01 00:00:00',
@@ -1122,7 +1081,6 @@ describe('AdminMetricsPage · série diária de criações por campeonato', () =
             days,
             groupsDaily: [
               { day: '2026-10-28', competition_id: 'comp-br26', groups_created: 2 },
-              // 25 dias atrás: só cabe no eixo de 30 e 90 dias.
               { day: '2026-10-04', competition_id: 'comp-br26', groups_created: 5 },
             ],
           }),
@@ -1172,13 +1130,11 @@ describe('AdminMetricsPage · série diária de criações por campeonato', () =
   })
 })
 
-// Mapa de calor (GET /metrics/heatmap).
 const heatmapBody = {
   days: 30,
   avgSampleInterval: 1,
   firstSeenAt: { prediction_saved: '2020-01-01 00:00:00', login_success: '2020-01-01 00:00:00' },
   hourly: [
-    // Quinta 14h UTC = 11h em Brasília.
     { hour: '2026-10-29T14:00:00Z', prediction_saves: 3, predictions: 40, logins: 0 },
     { hour: '2026-10-29T18:00:00Z', prediction_saves: 0, predictions: 0, logins: 6 },
   ],
@@ -1270,7 +1226,6 @@ const flush = () => new Promise((r) => setTimeout(r, 0))
 const daysOf = (url: string) => new URL(url, 'http://x').searchParams.get('days')
 const isOverview = (url: string) => url.includes('/metrics/overview')
 const failedResponse = () => ({ ok: false, status: 500, json: async () => ({}) })
-// Overview que ecoa o período pedido: o título "Eventos por dia · últimos N" mostra de qual veio.
 const overviewFor = (url: string) => ({
   ok: true,
   status: 200,
@@ -1284,7 +1239,6 @@ const twoMonthsArchive = {
   ],
 }
 
-// Análise do arquivo com a resposta de cada mês controlada pelo teste.
 function archiveQueryFetch(byMonth: Record<string, Promise<unknown>>) {
   const base = mockFetch()
   return vi.fn(async (url: string) => {
@@ -1313,7 +1267,6 @@ describe('AdminMetricsPage: respostas fora de ordem', () => {
       'fetch',
       vi.fn(async (url: string) => {
         if (!isOverview(url)) return base(url)
-        // O cabeçalho do overview de 30 dias chega, o corpo demora.
         if (daysOf(url) === '30') return { ok: true, status: 200, json: () => corpo30.promise }
         return overviewFor(url)
       }),
@@ -1545,13 +1498,11 @@ describe('AdminMetricsPage · acessibilidade das pílulas e legenda', () => {
 
     await screen.findByText('Grupos por campeonato')
 
-    // Seletor de período (AdminPageShell): com role="group", aria-label e aria-pressed.
     const period = screen.getByRole('group', { name: 'Período' })
     expect(within(period).getByRole('button', { name: '30d' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(period).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'false')
     expect(within(period).getByRole('button', { name: '90d' })).toHaveAttribute('aria-pressed', 'false')
 
-    // Filtros de Visibilidade e Status: com role="group", aria-label e aria-pressed.
     const visibility = screen.getByRole('group', { name: 'Visibilidade' })
     expect(within(visibility).getByRole('button', { name: 'Todas' })).toHaveAttribute(
       'aria-pressed',
@@ -1580,14 +1531,12 @@ describe('AdminMetricsPage · acessibilidade das pílulas e legenda', () => {
       'false',
     )
 
-    // Meses do arquivo (ArchiveQuerySection): com role="group", aria-label e aria-pressed.
     const months = screen.getByRole('group', { name: 'Mês do arquivo' })
     expect(within(months).getByRole('button', { name: yesterday.slice(0, 7) })).toHaveAttribute(
       'aria-pressed',
       'false',
     )
 
-    // Legenda de eventos por dia: título cru no title e rótulo legível no texto.
     const eventsSection = screen
       .getByRole('heading', { name: 'Eventos por dia · últimos 30 dias' })
       .closest('section') as HTMLElement

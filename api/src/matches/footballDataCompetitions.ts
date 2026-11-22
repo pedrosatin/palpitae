@@ -16,7 +16,6 @@
 export type FootballDataCompetitionConfig = {
   id: number
   name: string
-  /** Slug sem a temporada. O slug gravado é `${slugPrefix}-${season}`. */
   slugPrefix: string
   type: 'league' | 'cup'
   penaltyPhases: string[]

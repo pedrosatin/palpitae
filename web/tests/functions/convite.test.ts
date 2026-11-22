@@ -274,8 +274,6 @@ describe('onRequest (workerd)', () => {
         return apiHandler(req)
       },
     }
-    // O Miniflare 5 (alpha, trazido pelo wrangler) mudou o formato das opções e
-    // expõe o conversor do formato antigo; o 4 aceita o formato antigo direto.
     const convert = (miniflare as { convertV4MiniflareOptions?: (o: unknown) => unknown })
       .convertV4MiniflareOptions
     mf = new miniflare.Miniflare(
@@ -336,7 +334,6 @@ describe('onRequest (workerd)', () => {
     )
     expect(metaContent(html, 'property', 'og:image:alt')).toContain('Convite')
     expect(metaContent(html, 'name', 'twitter:image:alt')).toContain('Convite')
-    // O resto da SPA segue intacto.
     expect(html).toContain('<div id="root"')
   })
 
@@ -360,8 +357,6 @@ describe('onRequest (workerd)', () => {
 
     const { html } = await get('/convite/ABCD-EF23')
 
-    // Dentro de atributo entre aspas, `<` é inofensivo; o que importa é a aspa
-    // virar &quot;. Fora dos atributos, nenhuma tag nova pode aparecer.
     expect(html.replace(/content="[^"]*"/g, '')).not.toContain('<script>x</script>')
     expect(html).toContain(
       '<title>Entra no bolão "&lt;script&gt;x&lt;/script&gt;"" no Palpitae</title>',

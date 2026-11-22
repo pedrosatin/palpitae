@@ -20,18 +20,6 @@ import type { DrainBudget, ItemBudget } from './drainBudget'
 import { createEspnGate, ESPN_REQUEST_CALLS, isEspnRefusal } from './espnAccess'
 import { espnDatesAround, resultWindowBounds, type ResultWindowBounds } from './matchPollingWindow'
 
-/**
- * Fallback de RESULTADOS via ESPN (ADR-016). Quando o sync da football-data.org
- * falha (429/5xx/outage) ou devolve dados atrasados, o jogo ficava sem placar até o provedor
- * primário voltar. Aqui a ESPN não-oficial preenche o placar de jogos que JÁ
- * existem no D1 — nunca insere jogos, times ou competições.
- *
- * Endpoint: GET site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard
- * — 200 sem auth, sem quota conhecida. Detalhe validado ao vivo (05/10/2026):
- * o parâmetro de data é `dates=YYYYMMDD` (plural). O singular `date=` é
- * silenciosamente IGNORADO e devolve a rodada corrente — todos os eventos em
- * estado 'pre', ou seja, um fallback que nunca atualiza nada.
- */
 
 /**
  * Código football-data.org → slug ESPN, cobrindo os códigos plausíveis do free
@@ -73,11 +61,6 @@ export const FOOTBALL_DATA_TO_ESPN: Record<string, string> = {
   '2146': 'uefa.europa',
 }
 
-/**
- * Tolerância entre o `start_time` interno e o `date` do evento ESPN. Os dois
- * provedores divergem em remarcamentos de última hora; 150 min cobre isso sem
- * abrir a porta para casar jogos de rodadas diferentes no mesmo dia.
- */
 const KICKOFF_TOLERANCE_MS = 150 * 60 * 1000
 
 /**
@@ -131,13 +114,6 @@ export type EspnFallbackOptions = {
   budget?: DrainBudget
 }
 
-/**
- * Casamento por conter/contido nos DOIS sentidos: football-data usa nomes
- * completos ('Liverpool FC', 'SSC Napoli') e a ESPN os encurta ('Liverpool',
- * 'Napoli'). O sync grava os clubes do Brasileirão com o nome popular
- * (clubNames.ts), que casa com o nome da ESPN. Exige relação em ambos os lados
- * do confronto (mandante-com-mandante e visitante-com-visitante).
- */
 function namesRelated(a: string, b: string): boolean {
   if (!a || !b) return false
   return a.includes(b) || b.includes(a)
@@ -173,7 +149,6 @@ function matchesEvent(m: WindowMatch, ev: EspnEvent): boolean {
   )
 }
 
-/** Placar final do evento, ou nulls se não-numérico/ausente. */
 function espnScores(ev: EspnEvent): { home: number | null; away: number | null } {
   const { home, away } = espnCompetitors(ev)
   return { home: parseNonNegativeInt(home?.score), away: parseNonNegativeInt(away?.score) }
@@ -223,9 +198,6 @@ export async function scoreWindowFromEspn(
         // Erro de fetch/parsing isola a competição — as demais continuam. Devolve
         // 0 para o mapa cobrir todas as comps pedidas (0 = nada atualizado).
         updatedByComp.set(compId, 0)
-        // O fallback é complementar e se replaneja pelo D1 a cada tick: com o
-        // acesso recusado ele só espera, sem erro nem fila própria (o resultado
-        // principal tem a dele).
         if (isEspnRefusal(err)) {
           console.info(`[espn-fallback] ESPN indisponível comp=${compId}: ${err.message}`)
           return
@@ -300,11 +272,6 @@ async function scoreCompetitionWindow(
     return 0
   }
 
-  // A ESPN agrupa os eventos por dia norte-americano: um jogo às 00:30Z entra no
-  // scoreboard da data UTC do dia ANTERIOR (validado ao vivo — São Paulo×Cruzeiro
-  // 2026-10-08T00:30Z aparece em dates=20261007). Por isso buscamos o dia UTC de
-  // cada jogo E o anterior; com qualquer fronteira de fuso fixa [X-k, X+k), esses
-  // dois dias cobrem todos os eventos cujo kickoff cai na data UTC do jogo.
   const dates = new Set<string>()
   for (const m of results) {
     const utcDay = Date.parse(`${m.start_time.slice(0, 10)}T00:00:00Z`)
@@ -318,10 +285,6 @@ async function scoreCompetitionWindow(
     onHttpAttempt?.(attempt)
     telemetry?.(attempt)
   }
-  // Espera todas as datas antes de propagar a falha de uma delas: a reserva da
-  // competição só é devolvida depois que nenhuma chamada dela está em andamento,
-  // senão o saldo do tick conta menos do que foi gasto. A falha propagada é a da
-  // primeira data da lista, a mesma que `Promise.all` escolheria na ordem.
   const settled = await Promise.allSettled(
     Array.from(dates).map((date) => fetchEspnScoreboard(slug, date, onAttempt, gate)),
   )
@@ -346,7 +309,6 @@ async function scoreCompetitionWindow(
 
   for (const m of results) {
     const candidates = events.filter((ev) => matchesEvent(m, ev))
-    // Casa ambígua (ou nenhuma) → pula: nunca pontuar na dúvida.
     if (candidates.length !== 1) {
       skipped++
       continue
@@ -362,10 +324,6 @@ async function scoreCompetitionWindow(
       skipped++
       continue
     }
-    // Uma linha regredida pode já ter scored_at: placar corrigido precisa passar
-    // de novo pelo scoring. O guard protege resultados finalizados pelo primário.
-    // O jogo disputado deixa de ser adiado: a football-data pode seguir com
-    // POSTPONED ou SUSPENDED atrasado, e o upsert não regride a linha encerrada.
     statements.push(updateStmt.bind(home, away, home, away, m.id))
     updated++
   }

@@ -74,11 +74,7 @@ export function validateJson<Schema extends StandardSchemaV1>(
       if (parsed === sentinel) return c.json({ error: invalidBodyError }, 400)
       body = parsed
     }
-    // O validator JSON do Hono ignora o corpo e valida `{}` quando o Content-Type
-    // falta ou não é JSON. Por isso o Request é recriado com `application/json`
-    // e o corpo já lido.
     ensureJsonContentTypeForValidator(c, body)
-    // O cast contorna o Env genérico do sValidator.
     return validate(c as never, next)
   }
 }

@@ -17,7 +17,6 @@ import { EmailError } from '../notifications/email'
 const NOW = Date.parse('2026-11-19T18:00:00Z')
 const COOLDOWN_MS = DEFAULT_OVERDUE_ALERT_COOLDOWN_HOURS * 60 * 60 * 1000
 
-/** Início atrasado no `nowMs` do alerta e no `datetime('now')` do D1 de teste. */
 function isoHoursBefore(nowMs: number, hours: number): string {
   const startMs = Math.min(nowMs, Date.now()) - hours * 60 * 60 * 1000
   return new Date(startMs).toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -365,7 +364,6 @@ describe('checkAndSendResultOverdueAlert', () => {
     expect(alertEvents(writeDataPoint).some((e) => e.blobs[1] === 'send_uncertain')).toBe(true)
     expect(alertEvents(writeDataPoint).some((e) => e.blobs[2] === detail)).toBe(true)
 
-    // Contagens diferentes dentro do cooldown: não reenvia.
     addOverdueMatch(sqlite, NOW, 'm2', 5)
     const midCooldown = NOW + 30 * 60 * 1000
     const again = await checkAndSendResultOverdueAlert(
@@ -379,7 +377,6 @@ describe('checkAndSendResultOverdueAlert', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(alertRow(sqlite)?.last_sent_at).toBe(NOW)
 
-    // Depois da fronteira que Math.floor(now/cooldown) mudaria, ainda dentro do cooldown.
     const pastOldWindow = (Math.floor(NOW / COOLDOWN_MS) + 1) * COOLDOWN_MS
     expect(Math.floor(pastOldWindow / COOLDOWN_MS)).toBeGreaterThan(Math.floor(NOW / COOLDOWN_MS))
     expect(pastOldWindow - NOW).toBeLessThanOrEqual(COOLDOWN_MS)

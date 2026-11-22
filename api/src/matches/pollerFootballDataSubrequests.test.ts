@@ -21,17 +21,13 @@ import { syncFixtures } from './sync'
  */
 
 const MIN = 60_000
-/** Os dois minutos do poller no trigger fundido. */
 const POLLER_TICKS = [
   ['30', Date.UTC(2026, 10, 17, 14, 30, 0)],
   ['0', Date.UTC(2026, 10, 17, 15, 0, 0)],
 ] as const
-/** A limpeza de registros expirados do `scheduled` é 1 chamada. */
 const CLEANUP_CALLS = 1
-/** O orçamento do poller (`POLLER_CALL_BUDGET`): o que sobra dos 50 menos a limpeza, o relatório e a folga. */
 const POLLER_BUDGET = 45
 
-/** Ticks seguintes do cron fundido, por 3 h: o dreno nos minutos 5, 10, 20, 25, 35, 40, 50 e 55 e o poller nos 0 e 30. */
 function followingTicks(tick: number): number[] {
   const minutes = [0, 5, 10, 20, 25, 30, 35, 40, 50, 55]
   const start = Math.floor(tick / (60 * MIN)) * 60 * MIN
@@ -63,10 +59,6 @@ afterEach(() => {
   setFootballDataRateLimitForTests(1000)
 })
 
-/**
- * Competições da football-data configuradas e mapeadas para a ESPN (o fallback as consulta),
- * pelo id numérico, que é o `external_id` gravado. As ligas vêm antes das copas.
- */
 const COMPETITIONS = [
   ['2017', 'PPL'],
   ['2021', 'PL'],
@@ -81,10 +73,8 @@ const COMPETITIONS = [
   ['2000', 'WC'],
 ] as const
 
-/** Jogos por rodada; o jogo `i` termina `i % 3` a `i % 2`. */
 const GAMES = 10
 
-/** Calendário da football-data: uma rodada de 10 jogos da competição `comp` que começou na janela do tick. */
 function fdCalendar(tick: number, comp: number, matchday: number, status: 'TIMED' | 'FINISHED') {
   const [id, code] = COMPETITIONS[comp]
   const team = (n: number) => ({
@@ -117,7 +107,6 @@ const matchId = (comp: number, matchday: number, i: number) =>
 
 const finalScore = (i: number) => ({ home: i % 3, away: i % 2 })
 
-/** 429 no formato da football-data: reset em segundos e a cota do minuto zerada. */
 function quotaExhausted(resetSeconds: number) {
   return Response.json(
     {
@@ -136,32 +125,18 @@ function quotaExhausted(resetSeconds: number) {
 
 type WorldOptions = {
   tick: number
-  /** Rodadas da football-data com jogo na janela, por competição; cada uma é uma tarefa do poller. */
   rounds: number
-  /** Competições da football-data (as primeiras de `COMPETITIONS`), cada uma com `rounds` rodadas. */
   competitions?: number
-  /** O provedor responde 429 com reset de 60 s durante o primeiro minuto do tick. */
   rateLimited?: boolean
-  /** As primeiras respostas da football-data no tick são 429 com reset de 1 s; as seguintes, sucesso. */
   initial429?: number
-  /** D1 que recusa a chamada 51 (padrão) ou só conta. */
   limit?: number | null
 }
 
-/**
- * Palpites da semente, iguais em todo jogo: um usuário crava o placar e o outro aposta
- * no empate por 1 a 1. Os pontos esperados de cada um são o controle do estado final.
- */
 const EXACT_USER = 'user-exato'
 const DRAW_USER = 'user-empate'
 
-/**
- * Pontos do palpite de 1 a 1 no jogo `i` (placar `i % 3` a `i % 2`), com o grupo padrão
- * (3 pelo placar exato, 1 pelo resultado): 1 a 1 crava, 0 a 0 acerta o empate e o resto erra.
- */
 const DRAW_POINTS = [1, 3, 0, 0, 0, 0, 1, 3, 0, 0]
 
-/** Grava usuários, um grupo por competição com os dois como membros e um palpite de cada por jogo. */
 function seedPredictions(sqlite: DatabaseSync) {
   sqlite.exec(`
     INSERT INTO users (id, email, provider, provider_id, user_name) VALUES
@@ -189,10 +164,6 @@ function seedPredictions(sqlite: DatabaseSync) {
   }
 }
 
-/**
- * Banco com as rodadas já gravadas (agendadas, como ficam depois da descoberta), os palpites
- * e o provedor simulado, que responde o resultado final. A ESPN, do fallback, não traz nada.
- */
 async function setupWorld(options: WorldOptions) {
   const {
     tick,
@@ -263,7 +234,6 @@ async function setupWorld(options: WorldOptions) {
 
 type World = Awaited<ReturnType<typeof setupWorld>>
 
-/** Um tick do cron fundido, no instante dado, com o relógio correndo pela espera do 429. Devolve as falhas. */
 async function runTick(h: Pick<World, 'limited' | 'env'>, at: number): Promise<string[]> {
   vi.setSystemTime(at)
   h.limited.startInvocation()
@@ -286,7 +256,6 @@ async function runTick(h: Pick<World, 'limited' | 'env'>, at: number): Promise<s
   )
 }
 
-/** Nenhum log nem evento menciona o `D1_ERROR` da chamada que passaria do limite. */
 function expectNoD1Error(h: World) {
   const logged = [console.error, console.warn, console.info].flatMap((fn) =>
     vi.mocked(fn).mock.calls.map((args) => args.map(String).join(' ')),
@@ -296,7 +265,6 @@ function expectNoD1Error(h: World) {
   expect(points.filter((point) => point.includes('D1_ERROR'))).toEqual([])
 }
 
-/** Estado final dos jogos, dos palpites e do ranking: o que o banco tem. */
 function snapshot(sqlite: DatabaseSync) {
   return {
     matches: sqlite
@@ -322,11 +290,6 @@ function snapshot(sqlite: DatabaseSync) {
   }
 }
 
-/**
- * O estado final esperado, escrito a partir da semente e sem passar pelo poller: cada jogo
- * encerrado e pontuado com o placar do provedor, o palpite exato com 3 pontos, o de 1 a 1
- * com `DRAW_POINTS`, e o ranking de cada grupo com a soma de cada usuário.
- */
 function expectedSnapshot({ rounds, competitions = 1 }: WorldOptions) {
   const comps = COMPETITIONS.slice(0, competitions).map(([id], comp) => ({ id, comp }))
   const games = comps.flatMap(({ comp }) =>
@@ -383,7 +346,6 @@ const finishedMatches = (sqlite: DatabaseSync): number =>
     }
   ).n
 
-/** Tudo terminou: jogos encerrados e pontuados, fila vazia de pendências. */
 function settled(sqlite: DatabaseSync): boolean {
   const open = sqlite
     .prepare(`SELECT COUNT(*) AS n FROM matches WHERE status != 'finished' OR scored_at IS NULL`)
@@ -391,10 +353,6 @@ function settled(sqlite: DatabaseSync): boolean {
   return open.n === 0 && workCount(sqlite, `status IN ('pending', 'running')`) === 0
 }
 
-/**
- * Roda os ticks seguintes até tudo terminar, conferindo o limite em cada um, e compara o
- * estado final com o esperado da semente.
- */
 async function drainUntilExpected(h: World, tick: number) {
   for (const at of followingTicks(tick)) {
     if (settled(h.sqlite)) break

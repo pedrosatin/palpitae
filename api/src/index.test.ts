@@ -108,7 +108,6 @@ describe('scheduled handler routing', () => {
 
     await run('*/30 * * * *')
 
-    // Wait for the floating promise to reject
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(clearExpiredSecurityRecords).toHaveBeenCalledTimes(1)
@@ -276,7 +275,6 @@ describe('scheduled handler routing', () => {
     expect(exportRecentDays).not.toHaveBeenCalled()
   })
 
-  /** Instante UTC fixo, no dia 2026-10-12, com o minuto escolhido. */
   const atMinute = (minute: number) => Date.UTC(2026, 9, 12, 14, minute, 0)
 
   it.each(RESULT_POLLER_MINUTES)(

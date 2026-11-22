@@ -5,17 +5,11 @@ import { apiFetch } from '../lib/api'
 export interface RoundStanding {
   user_id: string
   round_points: number
-  /** Positivo é subiu. `null` quando ninguém tinha ponto antes da rodada. */
   position_change: number | null
-  /** Rodadas encerradas seguidas, da referência para trás, com todos os jogos palpitados. */
   streak: number
-  /** Placares exatos acumulados no grupo. */
   exact_hits?: number
-  /** Maior marco de placares exatos no grupo (5, 15 ou 30). Ausente ou null abaixo de 5. */
   exact_milestone?: number | null
-  /** Marcos cruzados na rodada de referência. Ausente ou [] se nenhum. */
   exact_milestones_crossed?: number[]
-  /** Placar exato raro na competição, na rodada de referência. */
   unlikely_exact?: boolean
 }
 

@@ -61,10 +61,6 @@ function buildFakeAe() {
   return { writeDataPoint: vi.fn() }
 }
 
-// Fábrica de evento ESPN no shape real do scoreboard (validado ao vivo):
-// date ISO (pode vir sem segundos, ex. "2026-10-05T22:30Z"), status.type.state e
-// completed (true só no fim de jogo), competitions[0].competitors[] com
-// homeAway/team.displayName/score string.
 function espnEvent(opts: {
   date: string
   state?: string
@@ -96,7 +92,6 @@ function espnEvent(opts: {
   }
 }
 
-/** Mock do fetch que responde por URL (slug/dates) com os eventos informados. */
 function mockFetch(byDate: Record<string, unknown[]>) {
   const fetchMock = vi.fn(async (url: string | URL) => {
     const u = url.toString()
@@ -119,8 +114,7 @@ function mockFetch(byDate: Record<string, unknown[]>) {
 
 const NOW = Date.parse('2026-10-05T22:00:00Z')
 
-/** Kickoff dentro da janela do poller (start+115..200min ≤ now). */
-const IN_WINDOW_START = '2026-10-05T19:45:00Z' // now - 135min
+const IN_WINDOW_START = '2026-10-05T19:45:00Z'
 
 function row(overrides: Partial<WindowRow> = {}): WindowRow {
   return {
@@ -269,15 +263,13 @@ describe('scoreWindowFromEspn', () => {
   })
 
   it('tolera kickoff até ±150min entre start_time interno e date do evento', async () => {
-    // exatamente 150min de diferença (pra menos) — ainda casa
-    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T17:15:00Z' })] }) // start - 150min
+    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T17:15:00Z' })] })
     const { db, captured } = buildFakeDb([row()])
 
     await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
     expect(captured.updates).toHaveLength(1)
 
-    // 151min de diferença — não casa mais, jogo pulado
-    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T22:16:00Z' })] }) // start + 151min
+    mockFetch({ '20261005': [espnEvent({ date: '2026-10-05T22:16:00Z' })] })
     const db2 = buildFakeDb([row()])
     const result = await scoreWindowFromEspn(db2.db, undefined, ['c1'], { now: NOW })
     expect(db2.captured.updates).toHaveLength(0)
@@ -382,7 +374,6 @@ describe('scoreWindowFromEspn', () => {
 
     await scoreWindowFromEspn(db, undefined, ['c1'], { now: NOW })
 
-    // Guard contra corrida com o caminho primário: só regrava jogo não-finalizado.
     expect(captured.updateSql).toContain("SET home_score = ?, away_score = ?, status = 'finished'")
     expect(captured.updateSql).toContain("AND status != 'finished'")
     // Correções limpam scored_at; pênaltis ficam para o primário. Nenhum INSERT.
@@ -555,7 +546,7 @@ describe('scoreWindowFromEspn', () => {
     const points = ae.writeDataPoint.mock.calls
       .map((c) => c[0])
       .filter((p) => p.blobs?.[0] === 'match_results_fallback')
-    expect(points).toHaveLength(2) // um logError por competição
+    expect(points).toHaveLength(2)
     expect(points[0].blobs?.[2]).toBe('network down')
     consoleSpy.mockRestore()
   })
@@ -579,7 +570,6 @@ describe('scoreWindowFromEspn', () => {
       await scoreWindowFromEspn(db, ae, ['comp-a'], { now: NOW })
 
       const attempts = attemptsOf(ae)
-      // Duas datas (dia do jogo e anterior), uma tentativa cada: 403 não retenta.
       expect(attempts).toHaveLength(2)
       for (const a of attempts) {
         expect(a.blobs).toEqual(['provider_http_attempt', 'espn', 'comp-a', '403', 'fallback'])

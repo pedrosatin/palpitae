@@ -35,7 +35,6 @@ export function competitionMatchesQueryOptions(competitionId: string) {
     queryKey: ['matches', competitionId] as const,
     staleTime: MATCHES_STALE_TIME_MS,
     queryFn: () => {
-      // Abortar um GET já enviado não economiza leitura no D1 e faria a próxima aba refazer a busca.
       return fetchCompetitionMatches(competitionId)
     },
   })

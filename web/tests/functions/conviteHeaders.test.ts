@@ -1,15 +1,8 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
-// Lê com `?raw` do Vite porque o tsconfig do web não inclui os tipos do Node.
 import headersFile from '../../public/_headers?raw'
 import { onRequest, type Env } from '../../functions/convite/[code]'
 
-/**
- * O Pages aplica o `_headers` só aos assets. A resposta de uma Function não
- * passa por ele, então a Function de convite precisa devolver os cabeçalhos de
- * segurança por conta própria. A regra `/*` do `_headers` é a referência: o
- * teste lê o arquivo e exige cada linha em todas as respostas da Function.
- */
 function globalRuleHeaders(file: string): Record<string, string> {
   const rule: Record<string, string> = {}
   let inGlobalRule = false

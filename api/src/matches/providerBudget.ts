@@ -1,37 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types'
 import { footballDataPauseMs, type FootballDataQuota } from './footballDataQuota'
 
-/**
- * Orçamento compartilhado de chamadas à football-data.org (ADR-027).
- *
- * O teto de syncs em paralelo (`FD_MAX_CONCURRENT_REQUESTS`) limita o que roda
- * dentro de uma invocação; o provedor, porém, conta requests por minuto entre
- * execuções. Antes de cada tentativa, o cliente reserva uma vaga na janela de
- * um minuto em `provider_rate_state`, no D1: a reserva é um único UPDATE
- * condicional, e o D1 serializa escritas, então isolates e execuções
- * diferentes dividem o mesmo orçamento. Reserva recusada não consome vaga e
- * não chama o provedor: o chamador decide o que fazer (na fila durável, o item
- * fica pendente).
- *
- * Cobertos pelo orçamento: poller (janela ativa, resgate e varredura de
- * atrasados), descoberta diária, sync administrativo e os retries — todo
- * request à football-data passa por `reserveFootballDataSlot`. Cada tentativa
- * conta, inclusive a que falha.
- *
- * A ESPN usa a mesma razão (ADR-027, adendo do ticket 03): poller, sync
- * administrativo, fallback de resultados e dreno reservam vaga na linha `espn`
- * antes de cada request (`espnAccess.ts`). A descoberta diária só lê o estado de
- * acesso e registra as respostas de erro, sem reservar vaga por request. Além da
- * janela de um minuto, a linha guarda o controle de acesso: a sequência de 403, o
- * bloqueio entre tentativas e a suspensão da coleta.
- *
- * Exceções explícitas, fora do orçamento por serem processos externos sem
- * acesso ao D1 do Worker:
- * - o radar de competições (GitHub Actions, ESPN + Wikimedia, ADR-015): uma
- *   passada diária (`radar-sync.yml`) pelos slugs do recorte, sem binding do
- *   D1 durante a coleta. Não integrado, por decisão do ticket 03;
- * - `api/scripts/test-results-api.ts`, script local de desenvolvimento.
- */
 
 /** Orçamento por minuto: 80% do free tier documentado (10 req/min). */
 export const FD_CALLS_PER_MINUTE = 8
@@ -48,7 +17,6 @@ export const ESPN_CALLS_PER_MINUTE = 40
 /** Provedores com linha em `provider_rate_state`. */
 export type BudgetedProvider = 'football-data' | 'espn'
 
-/** Orçamento em vigor; só os testes o mudam (`setProviderRateLimitForTests`). */
 const rateLimits: Record<BudgetedProvider, number> = {
   'football-data': FD_CALLS_PER_MINUTE,
   espn: ESPN_CALLS_PER_MINUTE,

@@ -17,7 +17,6 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/** Células de eventos e tamanho de um dia do export; sem arquivo, "—" antes do primeiro export e "faltando" depois. */
 function ArchiveDayCells({
   file,
   beforeFirstExport,
@@ -119,7 +118,6 @@ export default function ArchiveSection({
   )
 }
 
-/** Bounds UTC de um mês "YYYY-MM": primeiro e último dia (YYYY-MM-DD). */
 function monthBounds(month: string): { from: string; to: string } {
   const [y, m] = month.split('-').map(Number)
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate()

@@ -32,13 +32,10 @@ describe('planos de consulta das subqueries por rodada', () => {
       'SEARCH mr USING COVERING INDEX idx_matches_comp_round_start (competition_id=?)',
     ])
     expect(steps.filter((s) => s.startsWith('SEARCH m ') && BY_COMPETITION_AND_ROUND.test(s))).toHaveLength(1)
-    // O palpite de cada jogo vem do índice único, sem ler a linha.
     expect(steps.filter((s) => s.startsWith('SEARCH p '))).toEqual([
       'SEARCH p USING COVERING INDEX sqlite_autoindex_predictions_2 (user_id=? AND group_id=? AND match_id=?) LEFT-JOIN',
     ])
     expect(steps.filter((s) => /^SCAN (m|mr|p)\b/.test(s))).toEqual([])
-    // As fases de pênalti vêm da competição já lida em `user_groups`, sem nova
-    // leitura de `competitions` a cada jogo.
     expect(steps.filter((s) => s.startsWith('SEARCH c ') || /\bcompetitions\b/.test(s))).toEqual([
       'SEARCH c USING INDEX sqlite_autoindex_competitions_1 (id=?) LEFT-JOIN',
     ])
@@ -50,13 +47,10 @@ describe('planos de consulta das subqueries por rodada', () => {
       'SEARCH m USING INDEX idx_matches_start_time (start_time>? AND start_time<?)',
     )
     expect(steps.filter((s) => s.startsWith('SCAN'))).toEqual([])
-    // A ordem por horário vem do próprio índice, sem ordenar em memória.
     expect(steps.filter((s) => s.includes('TEMP B-TREE'))).toEqual([])
-    // O banimento é uma busca pela chave primária de `group_bans`, sem leitura por grupo.
     expect(steps.filter((s) => s.startsWith('SEARCH b '))).toEqual([
       'SEARCH b USING COVERING INDEX sqlite_autoindex_group_bans_1 (group_id=? AND user_id=?)',
     ])
-    // O último envio de cada usuário, que ordena a fila, vem da chave primária.
     expect(steps).toContain(
       'SEARCH ls USING COVERING INDEX sqlite_autoindex_email_reminder_sends_1 (user_id=?)',
     )

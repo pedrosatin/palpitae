@@ -140,7 +140,6 @@ describe('Gaúcho classificatória first-round (risco classificado)', () => {
         fakeExecutionCtx,
       )
 
-    // --- Gaúcho: sync agendado com fixture real ---
     stubEspnBoards({
       [GAUCHO_CODE]: buildScheduledBoard(GAUCHO_BOARD, Date.parse('2099-01-10T20:00:00Z')),
     })
@@ -238,7 +237,6 @@ describe('Gaúcho classificatória first-round (risco classificado)', () => {
       group: { id: string }
     }
 
-    // Placar real da fixture: Avenida 0 x 4 Grêmio; Caxias 0 x 2 Ypiranga.
     expect(
       (
         await request('/predictions', 'pilot', {
@@ -303,7 +301,6 @@ describe('Gaúcho classificatória first-round (risco classificado)', () => {
       predicted_classified: 'away',
     })
 
-    // --- Controle: mesmo slug first-round em Copa do Brasil continua mata-mata elegível ---
     stubEspnBoards({
       [COPA_CODE]: buildScheduledBoard(COPA_BOARD, Date.parse('2099-04-01T22:00:00Z')),
     })
@@ -351,7 +348,6 @@ describe('Gaúcho classificatória first-round (risco classificado)', () => {
     expect(createCopaGroupRes.status).toBe(201)
     const { group: copaGroup } = (await createCopaGroupRes.json()) as { group: { id: string } }
 
-    // Fixture Copa: Sampaio Correa RJ 1x1 Ferroviaria, visitante vence nos pênaltis.
     expect(
       (
         await request('/predictions', 'pilot', {

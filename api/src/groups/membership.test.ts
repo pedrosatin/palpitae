@@ -47,7 +47,6 @@ describe('getGroupMembershipTimed', () => {
 
     const { db, first } = createDbMock({ role: 'member' })
 
-    // Simulate database query taking 50ms
     first.mockImplementation(async () => {
       vi.advanceTimersByTime(50)
       return { role: 'member' }

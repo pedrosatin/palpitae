@@ -16,8 +16,6 @@ import { renderWithQuery as render } from '../../test-utils'
 vi.mock('../../analytics/ga', () => ({ trackEvent: vi.fn() }))
 const mockTrackEvent = vi.mocked(ga.trackEvent)
 
-// ─── Fixtures ──────────────────────────────────────────────────────────────
-
 function makeMatch(overrides: Partial<Match> = {}): Match {
   const status = overrides.status ?? 'scheduled'
   const defaultStartTime =
@@ -58,8 +56,6 @@ function mockFetch(matches: Match[]) {
     return Promise.reject(new Error(`Unexpected fetch: ${u}`))
   })
 }
-
-// ─── isLeagueTable ──────────────────────────────────────────────────────────
 
 describe('isLeagueTable', () => {
   it('returns true for the LEAGUE constant', () => {
@@ -163,8 +159,6 @@ describe('standingsBucket', () => {
   })
 })
 
-// ─── computeStandings (pure logic) ──────────────────────────────────────────
-
 describe('computeStandings', () => {
   it('awards 3 points to the home winner and 0 to the loser', () => {
     const matches = [
@@ -262,7 +256,6 @@ describe('computeStandings', () => {
   })
 
   it('sorts by points, then goal difference, then goals scored', () => {
-    // Group B: three teams, crafted so ordering exercises each tiebreaker.
     const matches = [
       makeMatch({
         id: 'm1',
@@ -288,7 +281,6 @@ describe('computeStandings', () => {
       }),
     ]
     const groupB = computeStandings(matches).get('B')!
-    // X: 3pts sg+3, Z: 3pts sg+1, Y: 0pts
     expect(groupB.map((t) => t.team_id)).toEqual(['x', 'z', 'y'])
   })
 
@@ -354,16 +346,12 @@ describe('computeStandings', () => {
   })
 })
 
-// ─── Render ─────────────────────────────────────────────────────────────────
-
 describe('StandingsTab – render', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
   })
 
   it('shows a loading state', () => {
-    // Return a never-resolving promise to keep it in the loading state,
-    // avoiding the act() warning that occurs if it resolves after the test finishes.
     vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise(() => {}))
     render(<StandingsTab competitionId="c1" />)
     expect(screen.getByText(/Carregando/i)).toBeInTheDocument()
@@ -433,7 +421,6 @@ describe('StandingsTab – render', () => {
 
     const matchItems = screen.getAllByRole('listitem')
     expect(matchItems).toHaveLength(2)
-    // The second match (m2) has an earlier start time, so it should be first
     expect(matchItems[0]).toHaveTextContent(/URU/i)
     expect(matchItems[1]).toHaveTextContent(/BRA/i)
   })
@@ -536,7 +523,6 @@ describe('StandingsTab — liga (pontos corridos)', () => {
     expect(await screen.findByText('Classificação')).toBeInTheDocument()
     expect(screen.queryByText(/Grupo /)).not.toBeInTheDocument()
     expect(screen.queryByText('Ranking geral')).not.toBeInTheDocument()
-    // Placar agregado: BRA 2J 4P (vitória + empate); ARG 1J 0P; URU 1J 1P
     const standings = computeStandings([
       leagueMatch({
         id: 'p1',
@@ -592,8 +578,6 @@ describe('StandingsTab — liga (pontos corridos)', () => {
   })
 
   it('uses wins as the 2nd tiebreaker (CBF), before goal difference', () => {
-    // A: 1 vitória e 1 derrota feia → 3 pts, 1 v, sg -4
-    // B: 3 empates → 3 pts, 0 v, sg 0. CBF: A acima de B (FIFA seria o oposto).
     const mk = (
       id: string,
       h: [string, string],
@@ -653,14 +637,13 @@ describe('StandingsTab — forma recente (Últimas 4)', () => {
   }
 
   it('keeps only the last FORM_SIZE results, most recent last, in chronological order', () => {
-    // 5 jogos do mesmo mandante (bra): v, v, e, d, v — janela de 4 descarta o 1º
     const matches = [
       finished('f1', 1, 2, 0),
       finished('f2', 2, 1, 0),
       finished('f3', 3, 1, 1),
       finished('f4', 4, 0, 3),
       finished('f5', 5, 4, 2),
-    ].reverse() // payload fora de ordem de propósito
+    ].reverse()
     const bra = computeStandings(matches)
       .get(LEAGUE)!
       .find((t) => t.team_id === 'bra')!
@@ -739,7 +722,6 @@ describe('StandingsTab — Taça Guanabara (ranking geral)', () => {
         group_name: 'B',
         home_score: 0,
         away_score: 2,
-        // mesmo BRA x ARG de tg1 — segundo jogo, não duplica linha
       }),
       makeMatch({
         id: 'tg-qf',
@@ -764,7 +746,7 @@ describe('StandingsTab — Taça Guanabara (ranking geral)', () => {
     expect(table.map((t) => t.team_id).sort()).toEqual(['arg', 'bra'])
     const bra = table.find((t) => t.team_id === 'bra')!
     expect(bra.j).toBe(2)
-    expect(bra.p).toBe(3) // vitória + derrota
+    expect(bra.p).toBe(3)
     expect(table.find((t) => t.team_id === 'flu')).toBeUndefined()
   })
 

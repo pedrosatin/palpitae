@@ -69,11 +69,8 @@ type PodiumEntry = {
   is_you: boolean
 }
 
-/**
- * Generates a readable invite code in the format XXXX-XXXX (uppercase alphanumeric).
- */
 function generateInviteCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no ambiguous chars (I, O, 0, 1)
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   const array = new Uint8Array(8)
   crypto.getRandomValues(array)
   const raw = Array.from(array)
@@ -160,8 +157,6 @@ async function requireGroupMembership(c: Context<AppContext, '/:id'>): Promise<
   return { userId, groupId, db, membership }
 }
 
-// Colunas de `groups` que as ações de dono leem. `findVisibleGroup` só aceita estas
-// chaves, então a lista que vai para o SELECT nunca vem de entrada do usuário.
 type VisibleGroupColumns = {
   owner_user_id: string
   competition_id: string
@@ -222,7 +217,6 @@ async function fetchGroupsPodiums(
   const podiumByGroup = new Map<string, PodiumEntry[]>()
   if (finishedGroupIds.length === 0) return podiumByGroup
 
-  // Usa json_each em um único bind para não estourar o limite de 100 parâmetros do D1.
   const podiumRows = await db
     .prepare(
       `
@@ -407,9 +401,6 @@ router.get('/', requireAuth, async (c) => {
       ? (groups.results.find((group) => group.invite_code === inviteCode) ?? null)
       : null
 
-    // Pódio só para grupos encerrados: o card ativo mostra "como vou", o encerrado
-    // mostra "quem ganhou". Buscamos os 3 primeiros de cada grupo finalizado numa
-    // única query com ROW_NUMBER(), em vez de N subqueries no SELECT principal.
     const finishedGroupIds = groups.results
       .filter((group) => group.competition_status === 'finished')
       .map((group) => group.id)
@@ -498,7 +489,6 @@ router.post(
 
     const db = c.env.DB
 
-    // Valida que a competição existe e que o usuário tem acesso caso esteja em piloto
     const competition = await db
       .prepare('SELECT id, visibility FROM competitions WHERE id = ?')
       .bind(competition_id)
@@ -516,10 +506,6 @@ router.post(
     const public_id = generatePublicId()
 
     try {
-      // Os tetos por usuário são conferidos no próprio INSERT do grupo. Um SELECT COUNT
-      // separado deixaria duas criações simultâneas passarem do teto. O dono vira
-      // participante, então a criação também respeita o teto de participações. Com o
-      // grupo recusado, o INSERT do dono não encontra o grupo e não grava nada.
       let created = false
       const invite_code = await writeWithUniqueInviteCode(db, async (inviteCode) => {
         const [group] = await db.batch([
@@ -651,8 +637,6 @@ router.post(
   },
 )
 
-// Pedidos pelo link público: /join-requests antes de /:id para o segmento
-// estático não ser lido como id de grupo.
 registerJoinRequestRoutes(router)
 
 /**
@@ -1013,8 +997,6 @@ router.delete('/:id/members/:memberId', requireAuth, async (c) => {
     return c.json({ error: 'Membro não encontrado no grupo' }, 404)
   }
 
-  // A linha do `leaderboard` fica: as leituras do ranking partem de `group_members`,
-  // e quem volta ao grupo recupera os pontos que tinha.
   const removal = db
     .prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?')
     .bind(groupId, targetUserId)

@@ -36,12 +36,6 @@ function matchesCacheControl(matches: { status: string }[]): string {
   return 'public, max-age=60'
 }
 
-/**
- * Cache-Control da resposta ao navegador. O cache do navegador não muda de chave
- * quando um placar é corrigido nem quando a competição volta a ser piloto, então
- * ele fica sempre no TTL curto. A revalidação cai no cache de borda. `private`
- * deixa a resposta só no navegador. A cópia da borda é a única compartilhada.
- */
 const BROWSER_CACHE_CONTROL = 'private, max-age=60'
 
 /** Visibilidade e versão monotônica da lista, lidas antes do cache de borda. */
@@ -56,7 +50,6 @@ async function fetchCompetitionCacheState(db: D1Database, competitionId: string)
     .first<{ visibility: string | null; matches_version: number }>()
 }
 
-/** Chave canônica do cache de borda: só os filtros que mudam a resposta. */
 function matchesCacheKey(
   requestUrl: string,
   competitionId: string,
@@ -74,20 +67,11 @@ function matchesCacheKey(
   return new Request(cacheUrl)
 }
 
-/**
- * Cache de borda (Cache API), compartilhado entre os usuários do mesmo colo da
- * Cloudflare, sem custo extra. É best-effort: vale por colo e pode ser despejado.
- * Um hit poupa as consultas da lista e as linhas lidas. Fora do runtime dos
- * Workers (testes em node) `caches` não existe. `caches.default` é extensão da
- * Cloudflare, por isso o cast sobre o tipo `CacheStorage` do lib.dom. Piloto nunca
- * entra no cache compartilhado.
- */
 function edgeCacheFor(isPilot: boolean): Cache | undefined {
   if (typeof caches === 'undefined' || isPilot) return undefined
   return (caches as unknown as { default: Cache }).default
 }
 
-/** Resposta do cache de borda com o Cache-Control do navegador. */
 function fromEdgeCache(cached: Response): Response {
   const response = new Response(cached.body, cached)
   response.headers.set('Cache-Control', BROWSER_CACHE_CONTROL)
@@ -111,10 +95,6 @@ function storeInEdgeCache(
   edgeCopy.headers.set('Cache-Control', matchesCacheControl(matches))
   c.executionCtx.waitUntil(cache.put(cacheKey, edgeCopy))
 }
-
-// ---------------------------------------------------------------------------
-// GET /matches handler
-// ---------------------------------------------------------------------------
 
 function buildMatchesQuery(competitionId: string, round?: string, status?: string) {
   let query = `
@@ -162,8 +142,6 @@ function buildMatchesQuery(competitionId: string, round?: string, status?: strin
     params.push(status)
   }
 
-  // m.rowid desempata jogos no mesmo horário pela ordem de inserção. Sem ele a
-  // ordem dos empates dependeria do índice que o planner escolhe.
   query += ` ORDER BY m.group_name ASC NULLS LAST, m.start_time ASC, m.rowid ASC`
 
   return { query, params }
@@ -193,12 +171,6 @@ async function fetchMatches(
     results = result.results
   } else {
     const nowIso = new Date().toISOString()
-    // One D1 round-trip for the full list plus the two queries that pick the
-    // default round: the open round from defaultRoundSql (see defaultRound.ts),
-    // falling back to the most recent match chronologically. The
-    // fallback is its own query rather than result.results.at(-1) because the
-    // main list is ordered by group_name first — knockout matches (NULL group)
-    // sort last and would otherwise hijack the fallback.
     const batchResults = await db.batch([
       db.prepare(query).bind(...params),
       db.prepare(defaultRoundSql('?')).bind(...roundRuleBinds(nowIso), competitionId),
@@ -236,9 +208,7 @@ function mapMatchesResponse(rows: Array<Record<string, unknown>>, tieMatches: Ti
       ...rest,
       ...(tie ? { tie_role: tie.role } : {}),
       leg1_match_id: tie?.role === 'leg2' ? (tie.partner?.id ?? null) : null,
-      // Rótulo de exibição derivado no back (fonte única) — o front só exibe.
       round_label: roundLabel((rest.round as string | null) ?? ''),
-      // Classificação eliminatória derivada da fase do jogo.
       is_knockout: isKnockoutPhase(rest.phase as string | null),
       decides_on_penalties: decidesOnPenalties(
         tie?.role,
@@ -302,8 +272,6 @@ async function handleGetMatches(c: Context<AppContext>) {
     const dbStartedAt = Date.now()
     const competition = await fetchCompetitionCacheState(db, competitionId)
 
-    // Visibilidade antes do cache: uma competição que voltou a ser piloto não é
-    // servida por uma lista guardada quando ainda era pública.
     const isPilot = competition?.visibility === 'pilot'
     if (isPilot && !hasPilotAccess(c.get('userIdentity'), c.env)) {
       return c.json({ error: 'Competição não encontrada' }, 404)
@@ -346,17 +314,9 @@ async function handleGetMatches(c: Context<AppContext>) {
       matches: matchesOut,
       ...(hasFilters ? {} : { default_round: defaultRound }),
     })
-    // Só cacheia listas não-vazias. Isso (a) evita servir um snapshot vazio de uma
-    // competição que ainda vai ser sincronizada e (b) fecha o abuso: um competition_id
-    // inexistente sempre retorna vazio → nunca entra no edge cache → nunca vira um HIT,
-    // então o blob de `matches_cache` no hit só carrega competição real (cardinalidade
-    // limitada). O Cache-Control (browser) continua valendo p/ a resposta vazia.
     if (cache && results.length > 0) storeInEdgeCache(c, cache, cacheKey, response, results)
     response.headers.set('Cache-Control', isPilot ? 'private, no-store' : BROWSER_CACHE_CONTROL)
 
-    // Cap dimension cardinality: only real competitions (response had games)
-    // get their id; random junk competition_id from anon flooding all collapse
-    // into one 'unknown' bucket.
     const cacheCompetition = results.length > 0 ? competitionId : 'unknown'
     logEvent(c.env.AE, 'matches_cache', { blobs: ['miss', cacheCompetition] })
 
@@ -403,11 +363,6 @@ router.post(
   '/sync',
   requireAuth,
   async (c, next) => {
-    // Ferramenta manual de seed e backfill, restrita ao admin. A atualização normal de
-    // partidas roda pelos cron triggers (discoverFixtures / pollActiveMatches).
-    // Mesmo critério dos outros painéis de admin (ver auth/permissions.ts). Sem
-    // ADMIN_EMAIL configurado, responde 403, então a rota fica fechada por
-    // padrão. O gate roda antes de ler o corpo.
     if (!isAdminUser(c.get('userIdentity'), c.env)) {
       return c.json({ error: 'Você não tem permissão para sincronizar partidas' }, 403)
     }
@@ -433,7 +388,6 @@ router.post(
         dates,
         apiKey,
         db: c.env.DB,
-        // O sync administrativo conta no orçamento compartilhado (ADR-027).
         coordinate: true,
         onHttpAttempt: createProviderHttpObserver(c.env.AE, { context: 'sync' }),
         ae: c.env.AE,
@@ -441,8 +395,6 @@ router.post(
       await scoreUnprocessedMatches(result.competitionId, c.env.DB)
       const { pending, ...synced } = result
       if (pending) {
-        // ESPN: o que chegou foi gravado e pontuado; as datas que a ESPN não
-        // entregou ficam pendentes na fila e o dreno as retoma.
         await deferEspnWork(
           c.env.DB,
           {
@@ -465,7 +417,6 @@ router.post(
       }
       return c.json({ ok: true, synced })
     } catch (error) {
-      // ESPN sem vaga, bloqueada ou suspensa: o trabalho fica pendente na fila.
       if (isEspnRefusal(error)) {
         await deferEspnWork(
           c.env.DB,

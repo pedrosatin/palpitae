@@ -33,11 +33,9 @@ function createGroupPicksDbMock(opts: GroupMockOptions = {}) {
         bind() {
           return {
             async first() {
-              // membership check
               if (sql.includes('FROM group_members WHERE')) {
                 return isMember ? { id: 'gm-1' } : null
               }
-              // group visibility config lookup
               if (sql.includes('FROM groups') && sql.includes('predictions_visibility')) {
                 return { predictions_visibility: visibility }
               }
@@ -92,13 +90,9 @@ async function requestGroupPicks(db: D1Database, query: string) {
 
 interface BulkMockOptions {
   isMember?: boolean
-  // match_id -> start_time (ISO). Absent matches are treated as "not found".
   matches?: Record<string, string>
-  // match_id -> phase (football-data stage). Drives the penalty gate alongside phases.
   phases?: Record<string, string>
-  // Competition penalty_phases gate applied to every match in the mock.
   penaltyPhases?: string[]
-  // match_ids adiados — start_time no passado NÃO trava o palpite (locking.ts).
   postponed?: string[]
 }
 
@@ -120,7 +114,6 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
             },
             async all() {
               if (sql.includes('FROM matches m')) {
-                // params: [group_id, JSON.stringify(matchIds)] or legacy [group_id, ...matchIds]
                 const rawParam = params[1]
                 const matchIds =
                   typeof rawParam === 'string' && rawParam.startsWith('[')
@@ -145,7 +138,6 @@ function createBulkDbMock(opts: BulkMockOptions = {}) {
     },
     async batch(statements: unknown[]) {
       batched.push(...statements)
-      // Como no D1, cada upsert aceito altera uma linha.
       return statements.map(() => ({ success: true, meta: { changes: 1 } }))
     },
   }
@@ -213,9 +205,9 @@ describe('predictions router – PUT /bulk', () => {
     const res = await requestBulk(db, {
       group_id: 'g1',
       predictions: [
-        { match_id: 'm1', predicted_home_score: 2, predicted_away_score: 1 }, // saveable
-        { match_id: 'm2', predicted_home_score: 0, predicted_away_score: 0 }, // locked
-        { match_id: 'm3', predicted_home_score: 3, predicted_away_score: 3 }, // not found
+        { match_id: 'm1', predicted_home_score: 2, predicted_away_score: 1 },
+        { match_id: 'm2', predicted_home_score: 0, predicted_away_score: 0 },
+        { match_id: 'm3', predicted_home_score: 3, predicted_away_score: 3 },
       ],
     })
 
@@ -229,7 +221,6 @@ describe('predictions router – PUT /bulk', () => {
     expect(body.saved).toEqual(['m1'])
     expect(body.locked).toEqual(['m2'])
     expect(body.not_found).toEqual(['m3'])
-    // Only the one saveable match is batched.
     expect(db.batched).toHaveLength(1)
   })
 
@@ -299,7 +290,6 @@ describe('predictions router – PUT /bulk', () => {
     })
     const res = await requestBulk(db, {
       group_id: 'g1',
-      // a draw, but GROUP_STAGE is not in the gate → no winner required, saved fine.
       predictions: [{ match_id: 'm1', predicted_home_score: 0, predicted_away_score: 0 }],
     })
 
@@ -385,8 +375,6 @@ describe('predictions router – GET /group', () => {
   })
 
   it('reveals predictions for locked matches even when the requester has not predicted', async () => {
-    // Simulate: user-1 (requester) did NOT predict match m2, but user-2 did.
-    // m2 is a past/locked match, so the API should still include user-2's pick.
     const capturedSql: string[] = []
     const predictions = [
       {
@@ -410,8 +398,6 @@ describe('predictions router – GET /group', () => {
     expect(body.predictions).toHaveLength(1)
     expect(body.predictions[0]?.match_id).toBe('m2')
 
-    // Verify the SQL uses the locked-match reveal condition (lockedSql)
-    // in addition to the requester's own predictions subquery.
     const predSql = capturedSql.find((s) => s.includes('FROM predictions pr'))
     expect(predSql).toBeDefined()
     expect(predSql).toContain(lockedSql())
@@ -444,8 +430,6 @@ describe('predictions router – GET /group', () => {
 
     expect(res.status).toBe(200)
     const body = (await res.json()) as { predictions: typeof predictions }
-    // A future/unlocked pick by another member is revealed even though the
-    // requester never predicted it — because the group is public.
     expect(body.predictions).toHaveLength(1)
     expect(body.predictions[0]?.match_id).toBe('m9')
 

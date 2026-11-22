@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import PredictionsModal from './PredictionsModal'
 
-// Usa o ga.ts real (sem mock); apenas o hook de dados é stubado para evitar rede.
 vi.mock('./hooks/useMemberPredictions', () => ({
   useMemberPredictions: () => ({
     modalPredictions: [],

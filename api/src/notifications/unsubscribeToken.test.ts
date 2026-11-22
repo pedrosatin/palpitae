@@ -29,7 +29,6 @@ describe('unsubscribe token', () => {
   })
 
   it('is not accepted as an auth JWT and vice-versa', async () => {
-    // An auth JWT must not verify as an unsubscribe token (different format/scope).
     const jwt = await signJwt({ sub: 'user-123', email: 'a@x.com' }, SECRET, 3600)
     await expect(verifyUnsubToken(jwt, SECRET)).rejects.toThrow()
   })

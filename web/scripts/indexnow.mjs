@@ -65,7 +65,6 @@ async function main() {
     body: JSON.stringify({ host: HOST, key: KEY, keyLocation: KEY_LOCATION, urlList }),
     signal: AbortSignal.timeout(15_000),
   })
-  // 200 = aceito; 202 = aceito, validação da chave pendente.
   if (res.status !== 200 && res.status !== 202) {
     throw new Error(`HTTP ${res.status}: ${await res.text()}`)
   }

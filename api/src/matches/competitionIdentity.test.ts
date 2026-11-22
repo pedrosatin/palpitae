@@ -39,7 +39,6 @@ function fdMatch(id: number, utcDate: string, matchday: number, home: Team, away
   }
 }
 
-/** A football-data responde só pelo id ou código pedido; o resto volta vazio. */
 function stubFootballData(
   byCode: Record<string, { competition: ApiCompetition; matches: unknown[] }>,
 ) {
@@ -132,7 +131,6 @@ describe('identidade da competição no sync da football-data', () => {
     })
     await discover()
 
-    // O provedor passa a mandar outro nome para a mesma competição.
     stubFootballData({
       '2021': {
         competition: { id: 2021, code: 'PL', name: 'English Premier League' },

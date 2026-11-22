@@ -140,9 +140,6 @@ describe('csp-verify', () => {
     ])
   })
 
-  // O `<style>` de um comentário HTML não roda: conferir o hash dele (e não o
-  // do bloco real) publica na CSP um hash que a página nunca usa — foi o que
-  // aconteceu com o CSS embutido da landing, que ficou fora da política.
   it('ignores <style> and <script> inside HTML comments', () => {
     const html = page(
       `<!-- <style>fantasma{color:red}</style> --><style>${STYLE}</style>` +
@@ -163,7 +160,6 @@ describe('csp-verify', () => {
       committed?.header,
     )
     const errors = verifyPolicy(committed!.value, [{ path: 'index.html', content: html }])
-    // O Vite reescreve o <style> inline no build; esse hash só o csp:verify confere.
     expect(errors.filter((error) => !error.includes('<style>'))).toEqual([])
   })
 })

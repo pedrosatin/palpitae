@@ -1,7 +1,3 @@
-/**
- * Button component styles
- */
-
 .button {
   display: inline-flex;
   align-items: center;
@@ -23,8 +19,6 @@
   cursor: not-allowed;
 }
 
-/* ─── Sizes ────────────────────────────────────────────────────────────── */
-
 .size-md {
   padding: var(--space-3) var(--space-6);
   font-size: var(--font-size-sm);
@@ -43,8 +37,6 @@
   aspect-ratio: 1;
 }
 
-/* ─── Primary ──────────────────────────────────────────────────────────── */
-
 .primary {
   background-color: var(--color-primary);
   color: var(--color-on-primary);
@@ -55,8 +47,6 @@
   background-color: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
 }
-
-/* ─── Secondary ────────────────────────────────────────────────────────── */
 
 .secondary {
   background-color: transparent;
@@ -69,8 +59,6 @@
   color: var(--color-primary);
 }
 
-/* ─── Outline (used for copyBtn etc) ───────────────────────────────────── */
-
 .outline {
   background: none;
   border: 1px solid var(--color-border);
@@ -82,8 +70,6 @@
   color: var(--color-primary);
 }
 
-/* ─── Ghost (used for closeBtn etc) ────────────────────────────────────── */
-
 .ghost {
   background: transparent;
   border-color: transparent;
@@ -94,8 +80,6 @@
   background-color: var(--color-surface-elevated);
   color: var(--color-text-primary);
 }
-
-/* ─── Danger (outline that turns red on hover — destructive actions) ────── */
 
 .danger {
   background: none;

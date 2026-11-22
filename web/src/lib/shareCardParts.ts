@@ -79,7 +79,6 @@ export function drawEyebrow(ctx: CanvasRenderingContext2D, title: string): void 
   ctx.fillStyle = BONE
   ctx.font = `800 34px ${FONT}`
   ctx.save()
-  // wordmark com um leve tracking, desenhado a partir da margem esquerda
   let wx = PAD
   for (const ch of 'PALPITAE') {
     ctx.fillText(ch, wx, 118)

@@ -51,9 +51,6 @@ export const createGroupSchema = v.pipe(
     points_classified: v.nullish(pointSchema),
     predictions_visibility: v.nullish(v.unknown()),
   }),
-  // Exato, vencedor, pênaltis e visibilidade só se definem na criação; o PATCH muda
-  // apenas points_classified. points_penalty é bônus somado e fica fora da regra
-  // exato≥vencedor.
   v.transform((body) => ({
     ...body,
     points_exact: body.points_exact ?? 3,
@@ -62,8 +59,6 @@ export const createGroupSchema = v.pipe(
     points_classified: body.points_classified ?? 0,
     predictions_visibility: body.predictions_visibility ?? 'hidden',
   })),
-  // points_exact === 0 liga o modo só vencedor (1X2) e sempre passa. Com exato > 0,
-  // o placar exato vale pelo menos o mesmo que o vencedor.
   v.check(
     (body) => !(body.points_exact > 0 && body.points_exact < body.points_winner),
     CREATE_EXACT_GE_WINNER_MSG,

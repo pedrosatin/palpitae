@@ -64,10 +64,6 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
     latest.current = { groupId, userId, round, targets, enabled }
   })
 
-  // Confirmações de sucesso mostradas neste contexto. Saem do contexto quando a
-  // pessoa troca de rodada ou de grupo; numa rodada sem jogo aberto, a opção some e
-  // não haveria como tirá-las da barra.
-  // A troca de contexto vem antes do registro do que a tela mostra.
   const shown = useRef(new Set<number>())
   useEffect(() => {
     const seen = new Set<number>()
@@ -85,16 +81,11 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
 
   function handleToggle(next: boolean) {
     setEnabled(next)
-    // A confirmação de antes não vale para o que for salvo com a opção nova.
     clearReplicateFeedback(userId, groupId)
     writeReplicatePreference(userId, competitionId, next)
     trackEvent('change_predictions_aplicar_outros_grupos', { enabled: next })
   }
 
-  /**
-   * Envia `matchIds` para os outros grupos. `originRound` é a rodada dos jogos
-   * salvos; o resultado fica nela, mesmo que a tela já mostre outra.
-   */
   const replicate = useCallback(async (matchIds: string[], originRound?: string) => {
     const { groupId: source, userId: user, round: shown, targets: current, enabled: on } =
       latest.current
@@ -108,7 +99,6 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
         current.map((g) => g.id),
         matchIds,
       )
-      // Os outros grupos mudaram os palpites pendentes do painel.
       invalidateApiCache('groups:')
       trackEvent('click_predictions_aplicar_outros_grupos', {
         groups: result.groups.filter((g) => g.saved > 0).length,
@@ -126,11 +116,9 @@ export function usePredictionsReplicate(scope: Scope, siblings: TargetGroup[]) {
     }
   }, [])
 
-  // Sem a opção marcada ou sem grupo de destino, não há para onde reenviar.
   const canRetry =
     enabled && targets.length > 0 && inFlight === 0 && feedback.some((f) => !f.ok)
 
-  /** Envia de novo os jogos dos envios que falharam na rodada exibida. */
   const retry = useCallback(() => {
     const { targets: current, enabled: on } = latest.current
     if (!on || current.length === 0) return

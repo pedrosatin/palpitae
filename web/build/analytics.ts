@@ -1,25 +1,3 @@
-/**
- * GA4 + Consent Mode v2 for the static /guias/* pages.
- *
- * The guides are plain HTML without the React bundle, so they can't call
- * `initGa()` (src/analytics/ga.ts) or mount `CookieConsent`. This module emits a
- * small inline equivalent that must stay in sync with those two files:
- *
- * - same localStorage key and value format (`granted` / `denied:<timestamp>`,
- *   with the 30-day re-prompt for `denied` and the legacy plain `denied`);
- * - `consent default` (all denied) is pushed before `js`/`config`, so no hit
- *   leaves the page without the default registered first;
- * - a stored `granted` is restored right after the default;
- * - gtag.js is injected after `load`, on idle, like the app;
- * - the banner opens for a new choice or through the preferences button.
- *
- * With an empty measurement id nothing is emitted (no script, no banner), same
- * as the app in local dev.
- *
- * The inline script and the guides' <style> are allowed by sha256 hash in the CSP
- * of public/_headers. Any change to them (or to the measurement id) needs a new
- * hash there; `npm run csp:verify` after the build prints it.
- */
 
 import { PRIVACY_PATH } from './privacy'
 
@@ -44,7 +22,6 @@ export function normalizeGaId(raw: string, warn: (msg: string) => void = console
   return ''
 }
 
-/** Only a well-formed GA4 id is embedded in the inline script. */
 function validId(gaId: string): boolean {
   return GA_ID_RE.test(gaId)
 }

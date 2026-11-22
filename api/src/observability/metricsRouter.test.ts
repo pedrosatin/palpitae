@@ -17,7 +17,6 @@ function makeApp() {
   return app
 }
 
-// Nas contas deste arquivo, o id é o próprio e-mail (ver authHeaders).
 function makeEnv(overrides: Partial<Env> = {}): Env {
   const stubStmt = {
     bind: () => stubStmt,
@@ -341,7 +340,6 @@ describe('GET /metrics/ops', () => {
   const COMP_A = '11111111-2222-4333-8444-555555555555'
   const COMP_B = '66666666-7777-4888-8999-aaaaaaaaaaaa'
 
-  /** Responde cada query da SQL API pela forma do SQL, com linhas fixas. */
   function fetchBySql(rows: {
     httpByProvider?: unknown[]
     httpByCompetition?: unknown[]
@@ -950,7 +948,6 @@ describe('GET /metrics/competition-activity', () => {
     expect(predictions).toContain('SUM(double1 * _sample_interval) AS predictions')
     expect(predictions).toContain("INTERVAL '7' DAY")
 
-    // Série diária: dia UTC × competition_id, ponderada, na mesma janela, com teto.
     const daily = bodies.find((sql) => sql.includes('toStartOfInterval'))
     expect(daily).toContain("toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day")
     expect(daily).toContain("blob1 = 'group_created'")
@@ -960,12 +957,9 @@ describe('GET /metrics/competition-activity', () => {
     expect(daily).toContain("INTERVAL '7' DAY")
     expect(daily).toMatch(/LIMIT \d+$/)
 
-    // Cobertura da dimensão não herda a janela: senão um período curto sem
-    // eventos pareceria coleta ausente.
     const since = bodies.find((sql) => sql.includes('MIN(timestamp)'))
     expect(since).not.toContain('INTERVAL')
     expect(since).toContain("blob6 != ''")
-    // Sem join na SQL API: nome e temporada vêm do D1.
     for (const sql of bodies) expect(sql).not.toMatch(/\bJOIN\b/i)
   })
 
@@ -1079,7 +1073,6 @@ describe('GET /metrics/competition-activity', () => {
           { competition_id: COMP_A, groups: '5' },
           { competition_id: COMP_B, groups: '2' },
         ],
-        // A SQL API entrega do dia mais recente para o mais antigo (ORDER BY day DESC).
         daily: [
           { day: '2026-10-28 00:00:00', competition_id: COMP_B, groups: '2' },
           { day: '2026-10-28 00:00:00', competition_id: COMP_A, groups: '1' },
@@ -1095,7 +1088,6 @@ describe('GET /metrics/competition-activity', () => {
       { day: '2026-10-28', competition_id: COMP_B, groups_created: 2 },
     ])
     expect(body.groupsDailyTruncated).toBe(false)
-    // O total por campeonato continua vindo da consulta própria (compatibilidade).
     expect(body.competitions.map((c) => [c.competition_id, c.groups_created])).toEqual([
       [COMP_A, 5],
       [COMP_B, 2],
@@ -1281,13 +1273,10 @@ describe('GET /metrics/business', () => {
     expect(body).toMatchObject({
       days: 7,
       usersTotal: 5,
-      // dave e erin só estão (e só palpitaram) em grupos excluídos.
       usersInGroup: 3,
       usersWhoPredicted: 3,
       usersCreatedInPeriod: 1,
-      // g-br26-b; g-br26-del também é recente, mas está excluído.
       groupsCreatedInPeriod: 1,
-      // alice 2, bob 2, carol 2 grupos não excluídos.
       avgGroupsPerUser: 2,
       medianGroupsPerUser: 2,
       activeGroupDays: 14,
@@ -1384,7 +1373,6 @@ describe('GET /metrics/business', () => {
         finished_unscored: 0,
       },
     ])
-    // Formato legado para o front ainda não atualizado: só quem tem grupo.
     expect(body.topCompetitions).toEqual([
       { competition: 'Brasileirão Série A', groups: 2 },
       { competition: 'Brasileirão Série A', groups: 1 },
@@ -1412,14 +1400,9 @@ describe('GET /metrics/business', () => {
       ]),
     )
     expect(health).toEqual({
-      // 5 atrasados: scheduled 3h01, live, parcial, offset -03:00 e milissegundos.
-      // Ficam de fora: janela de 3h, futuro, adiado, 0x0 e offset na janela.
-      // 2 finished sem scored_at; o pontuado e os do fixture-base não contam.
       'comp-br26': { overdue: 5, unscored: 2 },
       'comp-br25': { overdue: 1, unscored: 1 },
-      // Só tem um jogo adiado e um finished já pontuado: zeros explícitos.
       'comp-pilot': { overdue: 0, unscored: 0 },
-      // Sem nenhum jogo: continua na lista, zerada.
       'comp-empty': { overdue: 0, unscored: 0 },
     })
     expect(body.overdueResultHours).toBe(3)
@@ -1441,7 +1424,6 @@ describe('GET /metrics/business', () => {
       competitions: CompetitionRow[]
     }
     expect(body.overdueResultHours).toBe(6)
-    // Com limiar de 6 h, o scheduled a 3h01 sai da contagem do br26.
     const br26 = body.competitions.find((c) => c.id === 'comp-br26')
     expect(br26?.overdue_no_score).toBeLessThan(5)
   })
@@ -1487,7 +1469,6 @@ describe('GET /metrics/business', () => {
 
 describe('GET /metrics/archive', () => {
   it('lista events/ inteiro paginando por cursor, com a contagem do customMetadata', async () => {
-    // 1ª página truncada + 2ª final — o handler precisa seguir o cursor.
     const pages = [
       {
         objects: [
@@ -1504,7 +1485,6 @@ describe('GET /metrics/archive', () => {
       {
         objects: [
           {
-            // Export antigo, sem metadata — events deve virar null.
             key: 'events/2026/05/02.ndjson',
             size: 456,
             uploaded: new Date('2026-05-03T00:05:00Z'),
@@ -1643,7 +1623,7 @@ describe('GET /metrics/archive/query', () => {
     const files: Record<string, string> = {
       'events/2026/05/01.ndjson': ndjson(
         { blob1: 'login_success', _sample_interval: 1 },
-        { blob1: 'prediction_saved', _sample_interval: 3 }, // vale 3 eventos
+        { blob1: 'prediction_saved', _sample_interval: 3 },
       ),
       'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
     }
@@ -1657,8 +1637,7 @@ describe('GET /metrics/archive/query', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as QueryBody
     expect(body.filesRead).toBe(2)
-    expect(body.totalEvents).toBe(5) // 1 + 3 + 1
-    // Ordenado por contagem desc: prediction_saved (3) antes de login_success (2).
+    expect(body.totalEvents).toBe(5)
     expect(body.byType).toEqual([
       { event_type: 'prediction_saved', count: 3 },
       { event_type: 'login_success', count: 2 },
@@ -1718,8 +1697,7 @@ describe('GET /metrics/archive/query', () => {
         'null',
         JSON.stringify({ blob1: 'login_success', _sample_interval: 'abc' }),
         '',
-        'x'.repeat(70 * 1024), // acima do limite de linha: descartada sem acumular
-        // Última linha sem quebra no fim também conta.
+        'x'.repeat(70 * 1024),
         JSON.stringify({ blob1: 'prediction_saved', _sample_interval: 2 }),
       ].join('\n'),
       'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
@@ -1751,7 +1729,6 @@ describe('GET /metrics/archive/query', () => {
       'events/2026/05/02.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
       'events/2026/05/03.ndjson': ndjson({ blob1: 'login_success', _sample_interval: 1 }),
     }
-    // O R2 declara 65 MiB no dia 2: o corpo nem chega a ser lido.
     const { bucket, get, stats } = fakeBucket(files, {
       size: { 'events/2026/05/02.ndjson': 65 * MiB },
     })
@@ -1769,7 +1746,7 @@ describe('GET /metrics/archive/query', () => {
     expect(body.totalEvents).toBe(1)
     expect(stats.cancelled).toEqual(['events/2026/05/02.ndjson'])
     expect(stats.open).toBe(0)
-    expect(get).toHaveBeenCalledTimes(2) // o dia 3 nem é pedido
+    expect(get).toHaveBeenCalledTimes(2)
   })
 
   it('corpo que passa do teto durante a leitura é cancelado e fica de fora', async () => {
@@ -1779,7 +1756,6 @@ describe('GET /metrics/archive/query', () => {
     }
     const { bucket, get } = fakeBucket(files)
     const fromFiles = get.getMockImplementation()!
-    // Tamanho declarado pequeno e 65 pedaços de 1 MiB (o mesmo buffer) no stream.
     const chunk = new Uint8Array(MiB).fill(0x20)
     let sent = 0
     let cancelled = false
@@ -1808,8 +1784,6 @@ describe('GET /metrics/archive/query', () => {
     expect(body.daysRead).toEqual(['2026-05-01'])
     expect(cancelled).toBe(true)
     expect(get).toHaveBeenCalledTimes(2)
-    // O dia 1 consome parte do orçamento; o 64º pedaço do dia 2 passa dele e
-    // entra em bytesRead, sem os agregados do dia.
     const day1 = new TextEncoder().encode(files['events/2026/05/01.ndjson']).byteLength
     expect(body.bytesRead).toBe(day1 + 64 * MiB)
     expect(body.totalEvents).toBe(1)
@@ -1848,7 +1822,6 @@ describe('GET /metrics/archive/query', () => {
   it('limite de linha conta bytes UTF-8 e não depende do fatiamento do stream', async () => {
     const LIMIT = 64 * 1024
     const enc = new TextEncoder()
-    // Linha JSON válida com exatamente `bytes` bytes, preenchida com `fill`.
     const lineOf = (bytes: number, fill: string) => {
       const base = JSON.stringify({ blob1: 'login_success', blob2: '' })
       const pad = (bytes - enc.encode(base).byteLength) / enc.encode(fill).byteLength
@@ -1858,11 +1831,11 @@ describe('GET /metrics/archive/query', () => {
     }
     const text = [
       JSON.stringify({ blob1: 'prediction_saved', _sample_interval: 1 }),
-      lineOf(70_037, 'x'), // acima do limite
-      lineOf(80_026, 'é'), // 40 mil "é": abaixo de 64 Ki caracteres, acima de 64 KiB
-      lineOf(LIMIT, 'x'), // no limite: aceita
-      lineOf(LIMIT - 2, 'é'), // logo abaixo, com acento: aceita
-      lineOf(LIMIT + 1, 'x'), // um byte acima
+      lineOf(70_037, 'x'),
+      lineOf(80_026, 'é'),
+      lineOf(LIMIT, 'x'),
+      lineOf(LIMIT - 2, 'é'),
+      lineOf(LIMIT + 1, 'x'),
       JSON.stringify({ blob1: 'prediction_saved', _sample_interval: 1 }),
     ].join('\n')
     const files = { 'events/2026/05/01.ndjson': text }
@@ -1914,7 +1887,6 @@ describe('GET /metrics/archive/query', () => {
 
   it('exceção no processamento cancela o corpo em leitura antes de responder 500', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    // A sessão também decodifica bytes: só a linha marcada lança.
     const decode = TextDecoder.prototype.decode
     vi.spyOn(TextDecoder.prototype, 'decode').mockImplementation(function (
       this: TextDecoder,
@@ -1944,7 +1916,6 @@ describe('GET /metrics/archive/query', () => {
 
   it('intervalo absurdo recebe 400 sem montar a lista de dias', async () => {
     const headers = await authHeaders(ADMIN)
-    // Montar a lista formata cada dia com toISOString (27 anos = 9862 dias).
     const toISOString = vi.spyOn(Date.prototype, 'toISOString')
     const res = await makeApp().request(
       '/metrics/archive/query?from=2000-01-01&to=2026-12-31',
@@ -1974,7 +1945,6 @@ describe('GET /metrics/archive/query', () => {
     )
     expect(res.status).toBe(400)
 
-    // Data que não existe no calendário.
     res = await makeApp().request(
       '/metrics/archive/query?from=2026-02-01&to=2026-02-31',
       { headers },
@@ -2090,7 +2060,6 @@ describe('GET /metrics/heatmap', () => {
     expect(hourly).toContain("INTERVAL '7' DAY")
     expect(hourly).toMatch(/LIMIT \d+$/)
 
-    // Cobertura não herda a janela: senão um período curto sem eventos pareceria coleta ausente.
     const first = bodies.find((sql) => sql.includes('MIN(timestamp)'))
     expect(first).not.toContain("INTERVAL '7' DAY")
     expect(first).toContain('GROUP BY event_type')
@@ -2102,7 +2071,6 @@ describe('GET /metrics/heatmap', () => {
   it('junta palpites e logins da mesma hora numa linha, em ordem cronológica, sem converter fuso', async () => {
     const res = await getHeatmap(
       fetchBySql({
-        // A SQL API devolve em ordem decrescente (LIMIT pega as horas mais recentes).
         hourly: [
           {
             hour: '2026-10-29 14:00:00',
@@ -2149,7 +2117,6 @@ describe('GET /metrics/heatmap', () => {
     const res = await getHeatmap(
       fetchBySql({
         hourly: [
-          // _sample_interval = 10: 4 linhas viram 40 eventos; 120 palpites ponderados.
           {
             hour: '2026-10-29 20:00:00',
             event_type: 'prediction_saved',
@@ -2270,7 +2237,6 @@ describe('GET /metrics/invite-funnel', () => {
     return db
   }
 
-  /** SQL API falsa, que escolhe a resposta pela forma da consulta. */
   function stubAe(
     rows: Partial<Record<'events' | 'opensSince' | 'dimensionSince' | 'sampling', unknown[]>>,
   ) {
@@ -2328,7 +2294,6 @@ describe('GET /metrics/invite-funnel', () => {
       joinDimensionSince: '2026-11-10 13:00:00',
       avgSampleInterval: 1,
     })
-    // Sob sampling, cada linha vale _sample_interval eventos.
     expect(queries[0]).toContain('SUM(_sample_interval) AS events')
     expect(queries[0]).toContain(`blob1 IN ('invite_opened', 'group_joined')`)
   })
@@ -2423,7 +2388,6 @@ describe('GET /metrics/signup-origins', () => {
     return db
   }
 
-  /** SQL API falsa, que escolhe a resposta pela forma da consulta. */
   function stubAe(rows: Partial<Record<'origins' | 'firstEvent' | 'sampling', unknown[]>>) {
     const queries: string[] = []
     vi.stubGlobal(

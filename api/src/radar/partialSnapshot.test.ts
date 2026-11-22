@@ -42,10 +42,6 @@ const SERIE_A: ProviderLeague = {
   endsOn: '2026-12-06',
 }
 
-/**
- * Caminho de produção: o syncRadar gera o SQL no coletor e o arquivo é aplicado
- * inteiro no banco, como o `wrangler d1 execute --file` do workflow.
- */
 async function runSync(sqlite: ReturnType<typeof createSqliteD1>['sqlite'], day: string) {
   const collector = new SqlCollector()
   const result = await syncRadar(collector as never, undefined, new Date(`${day}T07:00:00Z`))
@@ -94,7 +90,6 @@ describe('radar: falha parcial da ESPN preserva o último snapshot válido', () 
       expect((await runSync(sqlite, '2026-08-17')).status).toBe('ok')
       expect(await radarIds(db)).toEqual(both)
 
-      // Dia seguinte: a ESPN não responde para a Libertadores.
       snapshotMock.mockResolvedValueOnce({
         leagues: [SERIE_A],
         counts: new Map(),
@@ -104,7 +99,6 @@ describe('radar: falha parcial da ESPN preserva o último snapshot válido', () 
       expect(partial).toMatchObject({ status: 'partial', failedSlugs: ['conmebol.libertadores'] })
       expect(await radarIds(db)).toEqual(both)
 
-      // A ESPN responde e a Libertadores não tem temporada corrente: aí sim sai.
       snapshotMock.mockResolvedValueOnce({ leagues: [SERIE_A], counts: new Map(), failed: [] })
       expect((await runSync(sqlite, '2026-08-19')).status).toBe('ok')
       expect(await radarIds(db)).toEqual(['espn:bra.1:2026'])

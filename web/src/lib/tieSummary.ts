@@ -3,9 +3,7 @@ import { formatMatchDay } from './matchTime'
 import { predictedTieScore } from './predictedTie'
 
 export interface TieSummary {
-  /** Placar real da ida, como `Ida: Palmeiras 1 × 0 Vasco`. */
   leg1: string
-  /** Agregado real e quem avançou. Só existe com a volta encerrada. */
   aggregate: string | null
 }
 
@@ -61,7 +59,6 @@ export function findLeg2(match: Match, all: Match[]): Match | undefined {
   return all.find((m) => m.leg1_match_id === match.id)
 }
 
-/** Dia do jogo. Adiado guarda o horário antigo, então sai sem data. */
 function legDay(label: 'Ida' | 'Volta', leg: Match): string {
   return leg.postponed
     ? `${label}: data a definir`

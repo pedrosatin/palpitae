@@ -6,8 +6,6 @@ import { createSqliteD1 } from '../testing/sqliteD1'
 import type { Env } from '../types'
 import { signUnsubToken } from './unsubscribeToken'
 
-// Valores de teste: o JWT_SECRET de antes e de depois da rotação e o segredo próprio
-// do descadastro.
 const OLD_JWT_SECRET = 'jwt-antes-da-rotacao'
 const NEW_JWT_SECRET = 'jwt-depois-da-rotacao'
 const UNSUBSCRIBE_SECRET = 'segredo-do-descadastro'
@@ -66,9 +64,7 @@ function createFixture(secrets: Pick<Env, 'JWT_SECRET' | 'UNSUBSCRIBE_SECRET'>) 
 
 describe('link de descadastro e rotação de chave', () => {
   it('link assinado com o JWT_SECRET antigo continua descadastrando depois da rotação quando o UNSUBSCRIBE_SECRET guarda o valor antigo', async () => {
-    // E-mail enviado antes de existir o segredo próprio: o token saiu com o JWT_SECRET.
     const token = await signUnsubToken('ana', OLD_JWT_SECRET)
-    // O operador guardou o valor antigo como UNSUBSCRIBE_SECRET e trocou o JWT_SECRET.
     const { unsubscribe, unsubscribedAt } = createFixture({
       JWT_SECRET: NEW_JWT_SECRET,
       UNSUBSCRIBE_SECRET: OLD_JWT_SECRET,
@@ -77,7 +73,6 @@ describe('link de descadastro e rotação de chave', () => {
     const page = await unsubscribe(token, 'GET')
     expect(page.status).toBe(200)
     expect(await page.text()).toContain('<form')
-    // GET só mostra a confirmação.
     expect(unsubscribedAt()).toBeNull()
 
     const res = await unsubscribe(token, 'POST')
@@ -97,7 +92,6 @@ describe('link de descadastro e rotação de chave', () => {
     const first = unsubscribedAt()
     expect(first).not.toBeNull()
 
-    // Um segundo POST (cliente de e-mail que repete o one-click) não regrava a data.
     sqlite.exec(`UPDATE users SET email_unsubscribed_at = '2026-01-01 00:00:00' WHERE id = 'ana'`)
     expect((await unsubscribe(token, 'POST')).status).toBe(200)
     expect(unsubscribedAt()).toBe('2026-01-01 00:00:00')

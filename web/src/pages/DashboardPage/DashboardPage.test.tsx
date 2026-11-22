@@ -159,12 +159,11 @@ describe('DashboardPage', () => {
     const dialog = screen.getByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Criar grupo' }))
 
-    // Modal fica aberto na tela de sucesso (código de convite compartilhável).
     await waitFor(() => {
       expect(screen.getByText('Grupo criado!')).toBeInTheDocument()
     })
     expect(screen.getByText('INV123')).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledTimes(4) // grupos, competições, create, refetch
+    expect(fetchSpy).toHaveBeenCalledTimes(4)
 
     await userEvent.click(screen.getByRole('button', { name: 'Pronto' }))
     await waitFor(() => {
@@ -444,7 +443,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     mockTrackEvent.mockClear()
-    // Quinta, 12/11/2026, 12:00 em Brasília.
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
     Object.assign(config as { apiUrl: string; authUrl: string }, {
@@ -492,7 +490,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     )
 
     const banner = await screen.findByRole('region', { name: 'Próximo prazo' })
-    // O status de todos os grupos vem no mesmo GET /groups.
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(within(banner).getByText('Chapecoense × Vasco fecha sáb, 14/11 às 18:30')).toBeInTheDocument()
     expect(within(banner).getByText('Rodada 21 · 12 sem palpite em 2 grupos')).toBeInTheDocument()
@@ -611,7 +608,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     )
     expect(screen.getByText('1 sem palpite · fecha hoje 13:00')).toBeInTheDocument()
 
-    // No início do jogo ainda não busca: a folga sorteada é 3 s + 0,5 × 7 s = 6,5 s.
     await act(() => vi.advanceTimersByTimeAsync(60 * 60 * 1000))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     await act(() => vi.advanceTimersByTimeAsync(6_000))
@@ -619,7 +615,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
 
     await act(() => vi.advanceTimersByTimeAsync(500))
     expect(fetchSpy).toHaveBeenCalledTimes(2)
-    // A lista antiga fica na tela enquanto a nova chega.
     expect(screen.queryByText('Carregando...')).not.toBeInTheDocument()
     expect(screen.getByText('Realidade do BR')).toBeInTheDocument()
 
@@ -666,13 +661,11 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
         next_deadline: { ...deadline, start_time: '2026-11-12T15:30:00Z' },
         next_match_at: '2026-11-12T15:30:00Z',
       }),
-      // Só adiado sem data: pendente e sem horário, não agenda busca.
       ongoingGroup('adiado', 'Só adiado', { pending_predictions: 1, next_match_at: null }),
     ])
     await act(() => vi.advanceTimersByTimeAsync(0))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
 
-    // O relógio do aparelho passa do início antes da API: ela devolve o mesmo prazo.
     await act(() => vi.advanceTimersByTimeAsync(30 * 60 * 1000))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     await act(() => vi.advanceTimersByTimeAsync(10_000))
@@ -681,7 +674,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2)
     await act(() => vi.advanceTimersByTimeAsync(1_000))
     expect(fetchSpy).toHaveBeenCalledTimes(3)
-    // Uma tentativa a mais por horário, sem laço.
     await act(() => vi.advanceTimersByTimeAsync(60 * 60 * 1000))
     expect(fetchSpy).toHaveBeenCalledTimes(3)
   })
@@ -690,7 +682,6 @@ describe('DashboardPage, próximo prazo e ordem por urgência', () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
     vi.setSystemTime(new Date('2026-11-12T15:00:00Z'))
     vi.spyOn(Math, 'random').mockReturnValue(0)
-    // Resposta de cache ou relógio adiantado: o prazo de 14:50 já passou no aparelho.
     const fetchSpy = renderWithGroups([
       ongoingGroup('realidade', 'Realidade do BR', {
         pending_predictions: 1,
@@ -914,7 +905,6 @@ describe('DashboardPage, recuperação da carga e convite dispensado', () => {
     )
   }
 
-  /** Lista de grupos vazia, criação de grupo e entrada que falha. */
   function mockApi() {
     return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
@@ -977,7 +967,6 @@ describe('DashboardPage, recuperação da carga e convite dispensado', () => {
     expect(joinDialog()).not.toBeInTheDocument()
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/)
 
-    // Criar um grupo recarrega a lista do painel.
     await userEvent.click(screen.getAllByRole('button', { name: 'Criar grupo' })[0])
     await userEvent.type(await screen.findByLabelText('Nome do grupo'), 'Novo')
     const createDialog = screen.getByRole('dialog')

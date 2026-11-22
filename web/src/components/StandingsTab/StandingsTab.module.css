@@ -34,7 +34,6 @@
   color: var(--color-text-primary);
 }
 
-/* Liga: header estático (sem "ver jogos"), não é clicável */
 .groupHeaderStatic {
   cursor: default;
 }
@@ -103,8 +102,6 @@
   padding-right: 0 !important;
 }
 
-/* Team column is the only flexible one; under table-layout: fixed it absorbs
-   the same remainder in every group's table, so the numeric columns line up. */
 .colTeam {
   text-align: left !important;
   overflow: hidden;
@@ -171,12 +168,7 @@
   text-align: center;
 }
 
-/* ── Forma recente ("Últimas 4") ─────────────────────────────────────────
-   Vitória usa o verde da marca (✓ preto, como todo conteúdo sobre primary);
-   derrota precisa de um vermelho que o sistema não tem — local por enquanto. */
 .colForm {
-  /* FORM_SIZE badges (4 × 18px) + gaps (3 × 4px) + padding do td: sem width
-     explícita, table-layout: fixed espreme a coluna e os badges vazam. */
   width: 6.5rem;
   text-align: right;
   white-space: nowrap;
@@ -215,7 +207,6 @@
   color: #ffffff;
 }
 
-/* Jogo mais recente ganha um anel discreto — recência sem depender de posição */
 .formLatest {
   box-shadow:
     0 0 0 1px var(--color-bg),

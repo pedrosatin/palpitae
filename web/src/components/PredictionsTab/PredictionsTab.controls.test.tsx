@@ -180,10 +180,8 @@ describe('PredictionsTab – resultado do "Salvar todos"', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
-    // O aceito sai do rascunho. Os recusados continuam no card e no contador.
     expect(screen.getByRole('button', { name: 'Salvar todos (2)' })).toBeEnabled()
     expect(screen.getAllByText('alterado, não salvo')).toHaveLength(2)
-    // O aviso ocupa até três linhas na barra fixa, e o último card não fica atrás dela.
     expect(container.firstElementChild).toHaveClass('rootWithSaveBarTall')
 
     await userEvent.click(screen.getByRole('button', { name: /próxima rodada/i }))
@@ -215,7 +213,6 @@ describe('PredictionsTab – resultado do "Salvar todos"', () => {
     expect(screen.queryByText('Erro ao salvar palpites')).not.toBeInTheDocument()
   })
 
-  /** Envio que só responde quando o teste chama `finish`. */
   function deferredBulk(respond: () => Promise<Response>) {
     const control = { finish: () => {} }
     mockApi(
@@ -246,7 +243,6 @@ describe('PredictionsTab – resultado do "Salvar todos"', () => {
     expect(await screen.findByRole('button', { name: 'Salvar todos' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Tudo salvo!' })).not.toBeInTheDocument()
 
-    // O palpite aceito continua gravado: na rodada 1 não há mais o que salvar.
     await userEvent.click(screen.getByRole('button', { name: /rodada anterior/i }))
     expect(screen.getByRole('button', { name: 'Salvar todos' })).toBeDisabled()
     expect(screen.getByLabelText('Placar Palmeiras')).toHaveValue(1)
@@ -262,8 +258,6 @@ describe('PredictionsTab – resultado do "Salvar todos"', () => {
   })
 })
 
-// O jsdom não aplica as media queries, e o Vitest carrega só os nomes de classe,
-// sem o CSS. O teste confere que os −/+ usam a classe que essas regras miram.
 describe('MatchCard – área de toque do stepper', () => {
   it('os quatro botões −/+ do card usam a classe do stepper', async () => {
     mockApi([makeMatch({ id: 'm1' })])

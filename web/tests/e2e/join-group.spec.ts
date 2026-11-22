@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test'
 
-// A página de grupo só aceita id no formato de UUID (#726).
 const GROUP_ID = '00000000-0000-4000-8000-0000000000c2'
 
 test.describe('Join Group Flow', () => {
@@ -89,21 +88,16 @@ test.describe('Join Group Flow', () => {
       }
     })
 
-    // 1. Acessar o Dashboard logado
     await page.goto('/')
 
-    // 2. Clicar em "Entrar em grupo"
     await page.getByRole('button', { name: /Entrar em grupo/i }).click()
 
-    // 3. Inserir código de convite no Modal
     const modal = page.getByRole('dialog')
     await expect(modal).toBeVisible()
     await modal.locator('input').first().fill('INVITE123')
 
-    // Submeter o código
     await modal.getByRole('button', { name: /Entrar|Confirmar/i }).click()
 
-    // 4 & 5. Validar chamada de API e redirecionamento
     await expect(page.locator('h1').filter({ hasText: 'Grupo Novo' })).toBeVisible()
     expect(joinCalled).toBe(true)
   })

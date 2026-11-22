@@ -10,8 +10,6 @@ import type {
   CopiaVectorsFile,
 } from './copiaVectors'
 
-// O pacote web não declara @types/node (type-check do CI roda só em web/).
-// O Vitest resolve `node:fs` em runtime; o JSON fica na raiz do monorepo.
 // @ts-expect-error — sem @types/node no tsconfig do web
 import { readFileSync } from 'node:fs'
 // @ts-expect-error — sem @types/node no tsconfig do web

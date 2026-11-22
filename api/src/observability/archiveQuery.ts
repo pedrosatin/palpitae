@@ -1,13 +1,3 @@
-/**
- * Leitura do arquivo frio para `GET /metrics/archive/query` com memória limitada.
- * Ver `docs/observability.md`.
- *
- * Um dia cheio tem até 30 mil linhas de ~615 bytes (~18 MiB). Ler os corpos de um
- * mês inteiro de uma vez passa dos 128 MiB do Worker, então cada arquivo é lido
- * sozinho, em streaming, linha a linha, e o corpo é solto antes do próximo. A
- * memória fica em um pedaço do stream, um trecho de linha de até 64 KiB e os
- * contadores por tipo.
- */
 
 /**
  * Orçamento de bytes do R2 por consulta. A leitura confere os bytes a cada
@@ -19,12 +9,6 @@ export const ARCHIVE_QUERY_MAX_BYTES = 64 * 1024 * 1024
 /** Maior intervalo aceito pela consulta, em dias. */
 export const MAX_QUERY_SPAN_DAYS = 92
 
-/**
- * Linha com mais bytes UTF-8 que isso (sem contar a quebra) conta como
- * malformada e é descartada sem acumular o resto. Uma linha real tem ~615
- * bytes; sem o limite, um arquivo sem quebra de linha juntaria o corpo inteiro
- * na memória.
- */
 const MAX_LINE_BYTES = 64 * 1024
 
 const NEWLINE = 0x0a
@@ -32,7 +16,6 @@ const NEWLINE = 0x0a
 const DAY_MS = 24 * 60 * 60 * 1000
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/
 
-/** Dia YYYY-MM-DD em ms UTC; null se não for uma data real (ex.: 2026-02-31). */
 function parseDay(day: string): number | null {
   if (!DAY_RE.test(day)) return null
   const ms = Date.parse(`${day}T00:00:00Z`)
@@ -150,7 +133,6 @@ class LineSplitter {
     this.pendingBytes += rest.byteLength
   }
 
-  /** Fecha a última linha, que pode vir sem quebra no fim. */
   finish(): void {
     if (!this.skipping && this.pendingBytes > 0) this.endLine(new Uint8Array(0))
   }
@@ -178,9 +160,7 @@ class LineSplitter {
 }
 
 interface BodyRead {
-  /** Bytes recebidos do corpo, inclusive quando a leitura parou no orçamento. */
   bytes: number
-  /** Agregados do dia; null quando o corpo passou do orçamento e foi cancelado. */
   tally: DayTally | null
 }
 
@@ -220,12 +200,9 @@ export interface ArchiveQueryResult {
   totalEvents: number
   byType: { event_type: string; count: number }[]
   byDay: { day: string; count: number }[]
-  /** Dias cujo arquivo entrou no resultado, em ordem. */
   daysRead: string[]
-  /** true quando o orçamento de bytes impediu a inclusão de todos os arquivos encontrados. */
   truncated: boolean
   malformedLines: number
-  /** Bytes recebidos do R2, inclusive os do dia interrompido pelo orçamento. */
   bytesRead: number
 }
 

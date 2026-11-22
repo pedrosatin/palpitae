@@ -16,22 +16,14 @@ import styles from './PredictionsTab.module.css'
 
 interface PredictionsTabProps {
   groupId: string
-  /** Nome do grupo, usado no cartão da rodada. */
   groupName?: string
   competitionId: string
-  /** Liga a guarda dos rascunhos não salvos no navegador, numa chave por usuário e grupo. */
   userId?: string
-  /** Group's points for an exact score. When 0, matches use the 1X2 button UI. */
   pointsExact?: number
-  /** Rodada em que a aba abre no lugar da padrão, vinda do `?rodada=` do link. */
   initialRound?: string | null
-  /** Chamado depois que a aba aplica `initialRound` na carga dos jogos. */
   onInitialRoundApplied?: () => void
-  /** Código de convite do dono, para o cartão do marco. */
   inviteCode?: string | null
-  /** Identificador público do grupo, para o link de pedido de entrada. */
   publicId?: string | null
-  /** Dono compartilha o convite; demais membros, o link público. */
   isOwner?: boolean
 }
 
@@ -144,8 +136,6 @@ export default function PredictionsTab({
     onInitialRoundApplied,
     pointsExact,
   )
-  // Avisa sobre UMA rodada com palpite aberto fora de hora: a mais próxima ANTES
-  // da aberta (ADR-013 e ADR-019). Se a rodada exibida é uma delas, não há aviso.
   const leftoverRound = previousLeftoverRound(
     roundKeys,
     safeIndex,
@@ -174,7 +164,6 @@ export default function PredictionsTab({
     return <p className={styles.empty}>Nenhum jogo encontrado para esta competição.</p>
   }
 
-  // A confirmação da replicação e o aviso do "Salvar todos" podem ocupar três linhas na barra.
   const hasTallSaveBar = replicating || replicateFeedback.length > 0 || bulkError !== null
 
   return (
@@ -231,9 +220,6 @@ export default function PredictionsTab({
         isOwner={isOwner}
       />
 
-      {/* Atalho para a rodada com jogo adiado ou remarcado. Sem isso o palpite
-          aberto fica invisível: a rodada não é o default e o usuário não tem por
-          que visitá-la. */}
       {leftoverElsewhere && (
         <p className={styles.postponedHint}>
           <strong>{labelFor(leftoverElsewhere.round)}</strong> tem {leftoverElsewhere.text}. O

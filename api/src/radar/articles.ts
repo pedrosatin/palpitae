@@ -1,41 +1,12 @@
-/**
- * Curadoria do radar: quais competições entram e como medir o interesse do
- * público brasileiro por cada uma.
- *
- * O sinal de interesse vem de pageviews diários da **pt.wikipedia**. Não existe
- * API pública utilizável do Google Trends (o pytrends foi arquivado em 2025 e a
- * API oficial é alpha fechada), e pt.wikipedia ≈ audiência brasileira, o que
- * torna os números comparáveis entre competições.
- *
- * ⚠️ Os títulos abaixo são os **canônicos** (destino final do redirect),
- * verificados na Pageviews API. Isso importa: um redirect tem pageviews
- * próprios quase zerados — "Campeonato Brasileiro de Futebol - Série A" marca
- * ~20/dia porque redireciona, enquanto o destino real marca ~880/dia. Ao
- * adicionar um artigo, resolva o canônico antes:
- *
- *   curl 'https://pt.wikipedia.org/w/api.php?action=query&titles=SEU_TITULO&redirects=1&format=json'
- *
- * Usamos o artigo GENÉRICO da competição, não o da edição do ano
- * ("Copa Libertadores da América", não "...de 2026"): o genérico não exige
- * manutenção anual e vários artigos de edição sequer existem a tempo.
- */
 
 import { normalizeName } from '../normalizeName'
 
 /** Competição observada pelo radar: como reconhecê-la e como medi-la. */
 export type RadarEntry = {
-  /** País como o provider reporta ('Brazil', 'World', 'England'...). */
   country: string
-  /** Nome da liga no provider. Casamento é normalizado (ver `matchKey`). */
   name: string
-  /** Aliases de nome — o provider já renomeou ligas entre temporadas. */
   aliases?: string[]
-  /** Artigo canônico na pt.wikipedia que mede o interesse. */
   article: string
-  /**
-   * Prefixo do `slug` em `competitions` quando o Palpitae já suporta a
-   * competição (o slug carrega o ano: `campeonato-brasileiro-serie-a-2026`).
-   */
   palpitaeSlug?: string
 }
 
@@ -45,7 +16,6 @@ export type RadarEntry = {
  * própria pra virarem candidatas a entrar aqui.
  */
 export const RADAR_ENTRIES: RadarEntry[] = [
-  // Brasil — clubes
   {
     country: 'Brazil',
     name: 'Serie A',
@@ -73,7 +43,6 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'Campeonato Brasileiro de Futebol Feminino',
   },
 
-  // Brasil — estaduais
   { country: 'Brazil', name: 'Paulista - A1', article: 'Campeonato Paulista de Futebol Masculino' },
   { country: 'Brazil', name: 'Carioca - 1', article: 'Campeonato Carioca de Futebol Masculino' },
   { country: 'Brazil', name: 'Mineiro - 1', article: 'Campeonato Mineiro de Futebol Masculino' },
@@ -90,7 +59,6 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'Campeonato Paranaense de Futebol Masculino',
   },
 
-  // Conmebol
   {
     country: 'World',
     name: 'CONMEBOL Libertadores',
@@ -106,7 +74,6 @@ export const RADAR_ENTRIES: RadarEntry[] = [
   { country: 'World', name: 'CONMEBOL Recopa', article: 'Recopa Sul-Americana' },
   { country: 'World', name: 'Copa America', article: 'Copa América' },
 
-  // Seleções
   {
     country: 'World',
     name: 'World Cup',
@@ -123,7 +90,6 @@ export const RADAR_ENTRIES: RadarEntry[] = [
   { country: 'World', name: 'UEFA Nations League', article: 'Liga das Nações da UEFA' },
   { country: 'World', name: 'FIFA Club World Cup', article: 'Copa do Mundo de Clubes da FIFA' },
 
-  // Uefa — clubes
   {
     country: 'World',
     name: 'UEFA Champions League',
@@ -138,7 +104,6 @@ export const RADAR_ENTRIES: RadarEntry[] = [
     article: 'Liga Conferência da UEFA',
   },
 
-  // Ligas nacionais de fora
   {
     country: 'England',
     name: 'Premier League',
@@ -239,7 +204,6 @@ function matchKey(country: string, name: string): string {
   return `${normalizeName(country)}|${normalizeName(name)}`
 }
 
-/** Índice (país|nome) → entrada, já expandido com os aliases. */
 const BY_KEY = new Map<string, RadarEntry>()
 for (const entry of RADAR_ENTRIES) {
   BY_KEY.set(matchKey(entry.country, entry.name), entry)

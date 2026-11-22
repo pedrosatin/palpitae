@@ -11,7 +11,6 @@ export type ImportPredictionsInput = {
   sourceGroupId: string
   targetGroupId: string
   onlyMissing: boolean
-  /** Relógio do plano; a escrita confere o travamento de novo com o relógio do banco. */
   now?: string
 }
 
@@ -185,13 +184,9 @@ export async function importPredictions(
     }
   }
 
-  // O lote leva os palpites e mais a instrução do marcador de importação.
   const budgetError = await deps.enforceWriteBudget(plan.statements.length + 1)
   if (budgetError) return budgetError
 
-  // Palpites e marcador no mesmo lote: se um falha, nada fica gravado. O marcador
-  // entra se algum palpite já era igual ou se o lote gravou algum, o que deixa
-  // no destino uma linha com o `updated_at` deste lote.
   const alreadyEqual = planned - plan.statements.length
   const written = await db.batch([
     ...plan.statements,

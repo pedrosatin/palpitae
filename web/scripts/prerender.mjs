@@ -57,28 +57,20 @@ export async function lerCssDeEntrada(dist) {
 }
 
 export async function main() {
-  // Import dinâmico: o módulo só existe depois do build SSR, e as funções
-  // exportadas acima precisam poder ser importadas por testes sem o build.
   const { render } = await import('../dist-ssr/entry-server.js')
 
   let html = await readFile(page, 'utf8')
 
-  // Se o marcador mudar, o build precisa falhar em vez de publicar a casca vazia:
-  // um `index.html` sem a landing derruba o LCP de volta e ninguém perceberia.
   if (!html.includes(marker)) {
     throw new Error(`Marcador ${marker} não encontrado em dist/index.html.`)
   }
 
   const body = render()
 
-  // Guarda-chuva contra um render vazio (ex.: alguém remove a landing da rota "/").
   if (body.length < 1000) {
     throw new Error(`HTML pré-renderizado suspeito de vazio (${body.length} caracteres).`)
   }
 
-  // O `data-prerender` é o sinal que `main.tsx` usa para escolher entre
-  // `hydrateRoot` e `createRoot`; sem ele o React descartaria o HTML e remontaria
-  // tudo, jogando fora o ganho de LCP.
   html = html.replace(marker, `<div id="root" data-prerender="landing">${body}</div>`)
 
   const css = await lerCssDeEntrada(dist)
@@ -87,10 +79,6 @@ export async function main() {
   await writeFile(page, html)
   await rm(ssrDir, { recursive: true, force: true })
 
-  // A contagem de palavras é a métrica que a auditoria de conteúdo do site usa
-  // (limiar de 200 palavras com mais de 1 caractere). Antes deste script ela era
-  // atendida por um bloco estático escrito à mão no index.html; agora vem do
-  // conteúdo real da página, então o número aparece no log do build.
   const words = body
     .replace(/<[^>]*>/g, ' ')
     .replace(/&[a-z]+;|&#\d+;/gi, ' ')

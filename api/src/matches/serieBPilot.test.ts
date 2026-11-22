@@ -50,10 +50,6 @@ const fakeExecutionCtx = {
   props: {},
 } as unknown as ExecutionContext
 
-/**
- * Converte a fixture real da Série B em 2026 para o estado agendado `pre` no
- * futuro, para simular a descoberta inicial antes da bola rolar.
- */
 function buildScheduledSerieBBoard(): EspnScoreboard {
   const clone = structuredClone(SERIE_B_BOARD)
   const baseMs = Date.parse('2099-04-01T22:00:00Z')
@@ -143,7 +139,6 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
         fakeExecutionCtx,
       )
 
-    // 1. A migration 0029 cadastra a Série B 2026 como league, provider espn e visibility pilot.
     const seededRow = sqlite
       .prepare(
         `SELECT id, name, slug, external_id, provider, season, status, type, penalty_phases, visibility
@@ -163,7 +158,6 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
       visibility: 'pilot',
     })
 
-    // Usuário comum não vê; admin e piloto veem.
     const ordinaryCompsRes = await request('/competitions', 'ordinary')
     expect(ordinaryCompsRes.status).toBe(200)
     const ordinaryComps = (await ordinaryCompsRes.json()) as {
@@ -186,8 +180,6 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
       )
     }
 
-    // 2. Sincroniza jogos agendados pela rota POST /matches/sync mesmo sem FOOTBALL_API_KEY.
-    // Fixture tem 6 eventos; TBD Home/Away é filtrado → 5 jogos e 7 times reais.
     stubEspnApi(buildScheduledSerieBBoard())
 
     const syncRes = await request('/matches/sync', 'admin', {
@@ -244,7 +236,6 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
       'Vila Nova|Novorizontino',
     ])
 
-    // 3. Admin cria grupo league e salva palpite; usuário comum recebe 404.
     const createGroupRes = await request('/groups', 'admin', {
       method: 'POST',
       body: JSON.stringify({
@@ -326,7 +317,6 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
       }),
     )
 
-    // 4. discoverFixtures com a fixture real atualiza placares e mantém TBD fora.
     stubEspnApi(SERIE_B_BOARD)
     await discoverFixtures(db, 'unused-key')
 
@@ -363,7 +353,6 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
       away_score: null,
     })
 
-    // 5. pollActiveMatches reprocessa um jogo encerrado da Série B na janela ativa.
     sqlite.prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401860393'`).run()
     vi.useFakeTimers()
     vi.setSystemTime(new Date(Date.parse('2026-10-18T19:00:00Z') + 130 * 60 * 1000))
@@ -422,7 +411,6 @@ describe('Brasileirão Série B em piloto pela ESPN', () => {
     const teamCount = sqlite
       .prepare(`SELECT COUNT(*) AS total FROM teams WHERE provider = 'espn' AND external_id IS NOT NULL`)
       .get() as { total: number }
-    // Apenas os 7 times da Série B neste teste (sem sync das copas).
     expect(teamCount.total).toBe(7)
 
     const matchCount = sqlite

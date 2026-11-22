@@ -50,11 +50,6 @@ const fakeExecutionCtx = {
   props: {},
 } as unknown as ExecutionContext
 
-/**
- * Converte a fixture real da Sul-Americana com jogos encerrados em 2026 para o
- * estado agendado `pre` no futuro, para simular a descoberta inicial antes da
- * bola rolar.
- */
 function buildScheduledSudamericanaBoard(): EspnScoreboard {
   const clone = structuredClone(SUDAMERICANA_BOARD)
   const baseMs = Date.parse('2099-03-01T22:00:00Z')
@@ -145,7 +140,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
         fakeExecutionCtx,
       )
 
-    // 1. A migration 0022 cadastra a Sul-Americana 2026 como cup, provider espn e visibility pilot.
     const seededRow = sqlite
       .prepare(
         `SELECT id, name, slug, external_id, provider, season, status, type, visibility, penalty_phases
@@ -165,7 +159,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       penalty_phases: '["FIRST_STAGE","PLAYOFFS","LAST_16","QUARTER_FINALS","SEMI_FINALS","FINAL"]',
     })
 
-    // Piloto enxerga a Sul-Americana; usuário comum não a vê em GET /competitions.
     const pilotCompsRes = await request('/competitions', 'pilot')
     expect(pilotCompsRes.status).toBe(200)
     const pilotComps = (await pilotCompsRes.json()) as {
@@ -186,7 +179,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     }
     expect(ordinaryComps.competitions.map((c) => c.id)).not.toContain(SUDAMERICANA_ID)
 
-    // 2. Sincroniza jogos agendados pela rota POST /matches/sync mesmo sem FOOTBALL_API_KEY.
     stubEspnApi(buildScheduledSudamericanaBoard())
 
     const syncRes = await request('/matches/sync', 'admin', {
@@ -211,7 +203,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       },
     })
 
-    // 3. Lista partidas como membro do grupo piloto e confere fases, rótulos, grupo E e gate de pênaltis.
     const matchesRes = await request(`/matches?competition_id=${SUDAMERICANA_ID}`, 'pilot')
     expect(matchesRes.status).toBe(200)
     expect(matchesRes.headers.get('Cache-Control')).toBe('private, no-store')
@@ -319,7 +310,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       },
     ])
 
-    // 4. Grupo fechado cria bolão e palpita; usuário comum recebe 404.
     const createGroupRes = await request('/groups', 'pilot', {
       method: 'POST',
       body: JSON.stringify({
@@ -380,7 +370,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       (m) => m.phase === 'QUARTER_FINALS' && m.home_team_name === 'Atlético-MG',
     )!
 
-    // Na Fase de grupos fora de penalty_phases, o empate não pede pênaltis.
     expect(
       (
         await request('/predictions', 'pilot', {
@@ -409,7 +398,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       ).status,
     ).toBe(200)
 
-    // Na 1ª fase e no mata-mata dentro de penalty_phases, o empate exige predicted_penalty_winner.
     expect(
       (
         await request('/predictions', 'pilot', {
@@ -510,11 +498,9 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       ).status,
     ).toBe(200)
 
-    // 5. O ciclo automático com discoverFixtures e pollActiveMatches atualiza a partir da fixture real encerrada.
     stubEspnApi(SUDAMERICANA_BOARD)
     await discoverFixtures(db, 'unused-key')
 
-    // Verifica que todas as 6 partidas foram finalizadas com placares e pênaltis reais da fixture.
     const dbMatches = sqlite
       .prepare(
         `SELECT external_id, start_time, status, home_score, away_score,
@@ -626,7 +612,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       expect(m.scored_at).toEqual(expect.any(String))
     }
 
-    // 6. Confere também pollActiveMatches quando um jogo da Sul-Americana cai na janela ativa sem scored_at.
     sqlite.prepare(`UPDATE matches SET scored_at = NULL WHERE external_id = '401913071'`).run()
     vi.useFakeTimers()
     vi.setSystemTime(new Date(Date.parse('2026-09-16T22:00:00Z') + 130 * 60 * 1000))
@@ -638,7 +623,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       .get() as { scored_at: string | null }
     expect(rescored.scored_at).toEqual(expect.any(String))
 
-    // 7. Verifica a pontuação do piloto no ranking com 18 pontos totais, 2 pontos de bônus de pênalti e 5 placares exatos.
     const membersRes = await request(`/groups/${group.id}/members`, 'pilot')
     expect(membersRes.status).toBe(200)
     const { members } = (await membersRes.json()) as {
@@ -667,7 +651,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     const { sqlite, db } = createSqliteD1()
     handles.push(sqlite)
 
-    // Semeia competição, times e partida do Brasileirão na football-data com clubes que também jogam a Sul-Americana.
     sqlite.exec(`
       INSERT INTO competitions (id, name, slug, external_id, provider, season, status, type, visibility)
       VALUES ('comp-bsa', 'Campeonato Brasileiro Série A', 'campeonato-brasileiro-serie-a-2026', 'BSA', 'football-data', '2026', 'ongoing', 'league', 'public');
@@ -714,12 +697,10 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
     })
     expect(second).toEqual(first)
 
-    // Roda o fallback da ESPN com a Sul-Americana da ESPN e o Brasileirão da football-data.
     const now = Date.parse('2026-09-16T22:00:00Z') + 130 * 60 * 1000
     const updatedMap = await scoreWindowFromEspn(db, undefined, [SUDAMERICANA_ID, 'comp-bsa'], {
       now,
     })
-    // A Sul-Americana tem provider = 'espn' e é ignorada pelo fallback sem tocar nas linhas dela.
     expect(updatedMap.get(SUDAMERICANA_ID)).toBe(0)
 
     const compCounts = sqlite
@@ -757,7 +738,6 @@ describe('Copa Sul-Americana em piloto pela ESPN', () => {
       { provider: 'football-data', total: 1 },
     ])
 
-    // Preserva status 'ongoing', type 'cup', visibility 'pilot' e penalty_phases da Sul-Americana após re-sync.
     const sudamericana = sqlite
       .prepare(`SELECT status, type, visibility, penalty_phases FROM competitions WHERE id = ?`)
       .get(SUDAMERICANA_ID) as Record<string, string>

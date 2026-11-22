@@ -2,7 +2,6 @@ import { bench, describe, vi } from 'vitest'
 import { scoreUnprocessedMatches } from './scoring'
 import type { D1Database } from '@cloudflare/workers-types'
 
-// Setup dummy db that will just do the bare minimum mock needed to return what scoreUnprocessedMatches expects
 const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
   const matches = Array.from({ length: numMatches }, (_, i) => ({
     id: `m${i}`,
@@ -58,7 +57,6 @@ const createMockDb = (numMatches: number, numPredictionsPerMatch: number) => {
 }
 
 describe('scoreUnprocessedMatches N+1 issue fixed', () => {
-  // Use a smaller number of matches for benchmark to prevent out-of-memory error
   const db = createMockDb(10, 5)
 
   bench('fixed implementation with bulk queries', async () => {

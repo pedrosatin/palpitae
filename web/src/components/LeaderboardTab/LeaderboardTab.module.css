@@ -4,9 +4,6 @@
 
 .table {
   width: 100%;
-  /* Com table-layout fixed, o cabeçalho define as larguras. As colunas numéricas
-     não crescem, e a do nome fica com o espaço restante e corta o nome com
-     reticências em vez de alargar a tabela. */
   table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-sm);
@@ -37,7 +34,6 @@
   text-align: center;
 }
 
-/* "Rodada 34" em caixa alta precisa de mais largura que as outras colunas numéricas. */
 .thRound {
   width: 6.5rem;
   text-align: center;
@@ -78,11 +74,9 @@
   font-weight: var(--font-weight-bold);
   color: var(--color-text-muted);
   width: 2.5rem;
-  /* Número e seta somam pouco mais que o avatar, e a linha quase não cresce. */
   line-height: var(--line-height-tight);
 }
 
-/* Flex para a seta centralizar mesmo quando passa da largura do conteúdo da célula. */
 .positionChange {
   display: flex;
   justify-content: center;
@@ -106,7 +100,6 @@
   min-width: 0;
 }
 
-/* Os selos passam para a linha de baixo quando não cabem ao lado do nome. */
 .nameBody {
   display: flex;
   flex-wrap: wrap;
@@ -182,8 +175,6 @@
   color: var(--color-text-secondary);
 }
 
-/* A coluna da rodada encurta já no corte do celular. Com "Rodada 34" entre 481 e
-   600 px, o nome ficaria sem espaço ao lado das badges. */
 @media (max-width: 600px) {
   .thRound {
     width: 3rem;
@@ -199,8 +190,6 @@
   }
 }
 
-/* Até 480 px, a tabela usa rótulos curtos, colunas numéricas estreitas e badges
-   menores abaixo do nome, para caber sem rolagem horizontal. */
 @media (max-width: 480px) {
   .table th,
   .table td {
@@ -239,7 +228,6 @@
     max-width: 100%;
   }
 
-  /* Dois seletores de classe: o selo vem de outro módulo CSS e não pode depender da ordem. */
   .badges .memberBadge,
   .kingBadge,
   .streakBadge,
@@ -252,8 +240,6 @@
   }
 }
 
-/* Em 320 px o nome longo corta com reticências e os selos quebram linha
-   dentro da célula, sem forçar rolagem horizontal da tabela. */
 @media (max-width: 360px) {
   .thPts,
   .thExact,
@@ -283,8 +269,6 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
-
-/* ── Predictions modal ─────────────────────────────── */
 
 .modalLoading,
 .modalEmpty {

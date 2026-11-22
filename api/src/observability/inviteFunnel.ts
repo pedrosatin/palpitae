@@ -66,7 +66,6 @@ export interface InviteEventTotals {
   joinsByMethod: Record<EntryMethod | 'unknown', number>
   newMembers: number
   existingMembers: number
-  /** Entradas sem a flag: anteriores à coleta ou com falha na leitura do D1. */
   unclassifiedJoins: number
 }
 

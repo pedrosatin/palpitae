@@ -262,7 +262,6 @@ describe('dono: listar, aprovar e recusar', () => {
     expect(listed.requests[0]!.user_id).toBe('visitor')
 
     expect((await request('member', '/groups/group/join-requests')).status).toBe(403)
-    // Quem não é dono (mesmo fora do grupo) recebe 403: a rota confere o sub do dono.
     expect((await request('other', '/groups/group/join-requests')).status).toBe(403)
   })
 
@@ -488,7 +487,6 @@ describe('autorização e corrida', () => {
 
   it('aprovação de banido → 403 e pedido rejected', async () => {
     const { request, sqlite, db } = await fixture()
-    // Pedido de quem ainda não estava banido; ban depois do pedido.
     const created = await request('visitor', '/groups/join-requests', 'POST', {
       public_id: PUBLIC_ID,
     })
@@ -523,7 +521,6 @@ describe('autorização e corrida', () => {
     ])
 
     const statuses = [approve.status, reject.status].sort()
-    // Uma vence (200); a outra vê o pedido já decidido (404).
     expect(statuses).toEqual([200, 404])
 
     const row = await db
@@ -563,7 +560,6 @@ describe('autorização e corrida', () => {
 
   it('limite de pendentes por grupo (max_members)', async () => {
     const { request, sqlite } = await fixture({ maxMembers: 3 })
-    // Já há 2 membros; cabem 3 pendentes no máximo (= max_members).
     for (let i = 0; i < 3; i++) {
       const uid = `pend${i}`
       sqlite.exec(`
@@ -589,7 +585,6 @@ describe('autorização e corrida', () => {
     })
     const { request: req } = (await created.json()) as { request: { id: string } }
 
-    // Enche o teto de participações do visitor com outros grupos.
     for (let i = 0; i < MAX_ACTIVE_MEMBERSHIPS; i++) {
       const gid = `cap${i}`
       sqlite.exec(`

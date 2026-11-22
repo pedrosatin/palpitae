@@ -1,7 +1,3 @@
-/*
- * Tamanho e cor mudam por variáveis na classe de quem usa o avatar, sem
- * disputa de especificidade com este arquivo.
- */
 
 .photo,
 .fallback {
@@ -24,7 +20,6 @@
   justify-content: center;
 }
 
-/* Sem especificidade, para quem usa poder esconder a inicial em telas largas. */
 :where(.fallback) {
   display: flex;
 }

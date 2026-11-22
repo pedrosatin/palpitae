@@ -44,7 +44,6 @@ afterEach(() => {
   setFootballDataRateLimitForTests(1000)
 })
 
-/** Calendário da football-data: `count` jogos entre `teams` times, todos no mesmo status. */
 function calendar(count: number, status: string, teams = 20) {
   const team = (n: number) => ({
     id: 1000 + (n % teams),
@@ -97,7 +96,6 @@ const item = (overrides: Partial<ProviderWorkItem> = {}): ProviderWorkItem => ({
   ...overrides,
 })
 
-/** Chamadas que o dreno gastou num único item, sem a reclamação e a gravação do estado. */
 async function measuredCost(
   db: D1Database,
   sqlite: DatabaseSync,

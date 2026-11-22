@@ -36,7 +36,6 @@ afterEach(() => {
   resetEspnClientForTests()
 })
 
-/** Uma rodada da Primeira Liga que a football-data ainda mostra como não iniciada. */
 async function setup() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)
@@ -65,7 +64,6 @@ async function setup() {
   const { id } = sqlite.prepare(`SELECT id FROM competitions WHERE external_id = '2017'`).get() as {
     id: string
   }
-  // A ESPN só lista o jogo no scoreboard do dia dele; o do dia anterior vem vazio.
   const espn = vi.fn(async (input: string | URL | Request) =>
     Response.json({
       events:
@@ -95,7 +93,6 @@ async function setup() {
       .map(([point]) => point as { blobs: string[] })
       .filter((point) => point.blobs[0] === 'match_results_fallback' && point.blobs.length > 2)
   const status = () => sqlite.prepare(`SELECT status FROM matches`).get()
-  // Conta as chamadas ao D1 a partir daqui, sem recusar nenhuma.
   const counted = limitD1Calls(db, null)
   return { sqlite, db: counted.db, d1Calls: counted.calls, id, espn, ae, errors, status }
 }
@@ -135,7 +132,6 @@ describe('fallback da ESPN com o saldo do poller', () => {
     })
 
     expect(result.get(h.id)).toBe(1)
-    // O dia do jogo e o anterior: 2 requests, cobrados pelo porteiro e não por um observador.
     expect(h.espn).toHaveBeenCalledTimes(2)
     // A consulta (1), cada data com a vaga, o `fetch` e o registro (3) e a gravação (1): 8, abaixo
     // das 11 reservadas, e tudo o que saiu passou pelo saldo.
@@ -172,7 +168,6 @@ describe('fallback da ESPN com o saldo do poller', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    // O dia do jogo responde 404; o dia anterior só responde quando o teste libera.
     const espn = vi.fn(async (input: string | URL | Request) => {
       if (new URL(String(input)).searchParams.get('dates') === '20261117') {
         return new Response('not found', { status: 404 })

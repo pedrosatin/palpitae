@@ -7,9 +7,7 @@ import { pollActiveMatches } from './poller'
 import { syncFixtures } from './sync'
 
 const KICKOFF = '2026-11-08T15:30:00Z'
-/** Dentro da janela ativa do poller (115 a 200 min após o início). */
 const NOW = Date.parse(KICKOFF) + 120 * 60_000
-/** Seis rodadas com jogo na janela: mais tarefas football-data que o teto de paralelas. */
 const MATCHDAYS = [10, 11, 12, 13, 14, 15]
 /**
  * Rodadas que o saldo do tick admite (ADR-027, adendo do ticket 09): 45 do poller, menos a
@@ -45,7 +43,6 @@ function fdMatches(status: string, score: number | null) {
   })
 }
 
-/** 429 no formato da football-data: reset em segundos, sem Retry-After. */
 function quotaExhausted(resetSeconds: number) {
   return Response.json(
     { message: `You reached your request limit. Wait ${resetSeconds} seconds.`, errorCode: 429 },
@@ -67,10 +64,6 @@ afterEach(() => {
   clearFootballDataPause()
 })
 
-/**
- * Rodadas agendadas da football-data no D1. A ESPN (fallback) não traz nada, para
- * o resultado depender só da football-data.
- */
 async function setup() {
   const { sqlite, db } = createSqliteD1()
   handles.push(sqlite)

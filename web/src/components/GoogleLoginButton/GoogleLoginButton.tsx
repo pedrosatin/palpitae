@@ -6,9 +6,7 @@ import styles from './GoogleLoginButton.module.css'
 
 interface GoogleLoginButtonProps {
   label?: string
-  /** Destino depois do login, como query da raiz. Sem ele, vale a query da URL atual. */
   redirect?: string
-  /** Roda antes de sair para o Google. */
   onBeforeRedirect?: () => void
 }
 
@@ -31,8 +29,6 @@ export default function GoogleLoginButton({
     trackEvent('click_login_google')
     markLoginStarted()
     onBeforeRedirect?.()
-    // O link do lembrete por e-mail abre `/grupos/:id?rodada=`. Sem o caminho, quem
-    // entra por ele cai no painel depois do login.
     const { pathname, search } = window.location
     const target = redirect ?? (pathname.startsWith('/grupos/') ? `${pathname}${search}` : search)
     const url = new URL(buildAuthUrl('/auth/google'), window.location.origin)
@@ -50,10 +46,6 @@ export default function GoogleLoginButton({
   )
 }
 
-/**
- * Google's official multicolour "G" logo mark.
- * Rendered inline so no external image request is needed.
- */
 function GoogleLogo({ className }: { className?: string }) {
   return (
     <svg

@@ -72,7 +72,6 @@ function openDb() {
       )
   }
 
-  /** Grava ou atualiza o jogo, como o upsert do sync. */
   function upsertMatch(competitionId: string, match: Match) {
     sqlite
       .prepare(
@@ -101,7 +100,6 @@ function openDb() {
       .get(competitionId) as { status: string; visibility: string }
   }
 
-  /** O status que a lista de grupos e o detalhe mostram. */
   function shown(competitionId: string): string {
     const row = sqlite
       .prepare(
@@ -114,7 +112,6 @@ function openDb() {
   return { db, addCompetition, upsertMatch, column, shown }
 }
 
-/** Competições que a descoberta sincronizou na execução. */
 async function discover(db: D1Database, at: number): Promise<string[]> {
   syncMock.mockClear()
   await discoverFixtures(db, 'key', undefined, at)

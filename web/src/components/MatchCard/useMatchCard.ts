@@ -8,7 +8,6 @@ import { isMatchLocked } from '../../lib/predictionDrafts'
 import { type Match, type Prediction, OUTCOMES, type Outcome } from './types'
 import { predictionStatus } from './predictionStatus'
 
-/** Prazo do PUT do card. Sem resposta até lá, o envio vira erro de conexão. */
 const SAVE_TIMEOUT_MS = 10_000
 
 export interface UseMatchCardProps {
@@ -32,9 +31,6 @@ export interface UseMatchCardProps {
 }
 
 function useMatchStatus(match: Match, prediction: Prediction | undefined, now?: number) {
-  // A mesma regra dos rascunhos e do "Salvar todos". Fecha com `locked_at`, status
-  // `live` ou `finished`, ou horário vencido sem adiado, como
-  // `api/src/matches/locking.ts`. Fora do adiado, o `locked` do palpite também fecha.
   const isPostponed = Boolean(match.postponed)
   const locked = isMatchLocked(match, prediction, now ?? Date.now())
   const isFinished = match.status === 'finished'
@@ -77,8 +73,6 @@ function useMatchDraft(
   const persistedHome = prediction?.predicted_home_score
   const persistedAway = prediction?.predicted_away_score
   const persistedPenalty = prediction?.predicted_penalty_winner ?? null
-  // Só reage quando o palpite salvo muda. Na montagem, o valor inicial pode ser
-  // um rascunho restaurado, e o efeito não deve sobrescrevê-lo.
   const persistedKey = `${persistedHome}:${persistedAway}:${persistedPenalty}`
   const lastPersistedKey = useRef(persistedKey)
   useEffect(() => {
@@ -119,11 +113,7 @@ function useMatchPersistence(
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  // O "salvo" de um envio anterior não apaga o de um envio novo.
   const savedTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  // Envio em andamento. Fica nulo quando o card sai da tela. O PUT segue até o
-  // servidor e a resposta dele é ignorada, porque o pai pode já ter uma edição
-  // mais nova deste jogo.
   const request = useRef<AbortController | null>(null)
   useEffect(
     () => () => {
@@ -137,7 +127,6 @@ function useMatchPersistence(
     clearTimeout(savedTimer.current)
     const controller = new AbortController()
     request.current = controller
-    // Sem resposta no prazo, o envio é abortado e cai no erro de conexão.
     const timeout = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
     setSaving(true)
     setError(null)
@@ -167,7 +156,6 @@ function useMatchPersistence(
     setSaving(false)
 
     if (!res) {
-      // Sem resposta, o placar fica na tela e o botão volta para outra tentativa.
       setError('Erro de conexão. Tente novamente.')
       return
     }
@@ -178,8 +166,6 @@ function useMatchPersistence(
       return
     }
 
-    // Inclui placar e pênalti no mesmo PUT. Invalida só após sucesso para a
-    // home refetchar pending_predictions sem N stale do TTL de 30s.
     invalidateApiCache('groups:')
     setSaved(true)
     onSaved(matchId, homeScore, awayScore, penWinner)
@@ -224,8 +210,6 @@ function matchControls({
     away !== '' &&
     needsPenaltyPick(match, Number(home), Number(away), leg1Prediction)
 
-  // Sem a escolha na tela, o salvamento manda pênalti nulo. Um vencedor escolhido
-  // antes de o empate se desfazer não conta como mudança.
   const status = predictionStatus({ prediction, home, away, penaltyWinner, showPenaltyPicker })
   const penaltyReady = !showPenaltyPicker || penaltyWinner !== null
   const canSave =
@@ -236,8 +220,6 @@ function matchControls({
     !saving &&
     status !== 'saved' &&
     penaltyReady
-  // Palpite salvo que agora pede o vencedor nos pênaltis, por mudança na ida, tem o
-  // estado "falta pênalti" e segue com "Atualizar" desabilitado.
   const saveDone = status === 'saved' && !saving
   return { selectedOutcome, showPenaltyPicker, canSave, status, saveDone }
 }
@@ -294,7 +276,6 @@ export function useMatchCard({
 
   async function selectOutcome(outcome: Outcome) {
     if (locked || saving) return
-    // A opção já salva não reenvia. Depois de uma falha, tocar nela de novo é a nova tentativa.
     if (outcome === selectedOutcome && status === 'saved') return
     trackEvent('click_matchcard_resultado', { match_id: match.id, outcome })
     const { home: h, away: a } = OUTCOMES[outcome]
@@ -322,7 +303,6 @@ export function useMatchCard({
     setPenaltyWinner(winner)
     setReopenPenalty(false)
     onPenaltyDraftChange?.(match.id, winner)
-    // Campo vazio viraria 0 em `Number('')` e gravaria um 0×0 que ninguém escolheu.
     if (outcomeOnly && !leg1Pending && home !== '' && away !== '') {
       await persist(Number(home), Number(away), winner)
     }

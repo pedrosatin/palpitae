@@ -3,7 +3,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "lint": "oxlint api web scripts",
+    "lint": "oxlint api web scripts && npm run check:comments",
     "lint:fix": "oxlint --fix api web scripts",
     "format": "oxfmt api web scripts",
     "format:check": "oxfmt --check api web scripts",
@@ -14,6 +14,7 @@
     "test:backup:rehearsal": "node scripts/backup/run-rehearsal.mjs",
     "test": "npm run test:api && npm run test:web && npm run test:scripts && npm run test:backup",
     "check:personal-data": "node scripts/personal-data-check.mjs",
+    "check:comments": "node scripts/comments-check.mjs",
     "typecheck": "npm --prefix api run typecheck && npm --prefix web run type-check",
     "check": "npm run lint && npm run typecheck && npm test",
     "backup:restore": "node scripts/backup/restore.mjs"

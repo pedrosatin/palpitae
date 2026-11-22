@@ -21,7 +21,6 @@ import { DrainBudget } from './drainBudget'
 
 const handles: DatabaseSync[] = []
 
-/** Dreno sem limite de saldo: estes testes olham a fila, não o orçamento de chamadas. */
 function drain(db: D1Database, opts: Omit<DrainOptions, 'itemCost' | 'minItemCost'>) {
   return drainProviderWork(new DrainBudget(db, Infinity), {
     itemCost: () => 1,
@@ -81,7 +80,6 @@ describe('fila durável do provedor', () => {
     expect(rows(sqlite)[0]).toMatchObject({ status: 'pending', attempts: 0, priority: 0 })
 
     sqlite.exec("UPDATE provider_work SET status = 'done', attempts = 3")
-    // Replanejamento do produtor: novo ciclo, tentativas zeradas, erro limpo.
     await enqueueProviderWork(
       db,
       [newItem({ notBefore: 123 })],
@@ -102,7 +100,6 @@ describe('fila durável do provedor', () => {
     // O RETURNING não garante ordem; o limite do lote é que garante prioridade.
     expect(claimed.map((i) => i.competitionCode).sort()).toEqual(['BSA', 'WC'])
 
-    // Tudo está em execução com lease fresco: nova reclamação não pega nada.
     const again = await claimProviderWork(db, { provider: 'football-data', now })
     expect(again).toEqual([])
   })
@@ -113,7 +110,6 @@ describe('fila durável do provedor', () => {
     await enqueueProviderWork(db, [newItem()], now)
     await claimProviderWork(db, { provider: 'football-data', now })
 
-    // Reinício: o lease venceu e o dreno seguinte reclama o mesmo item.
     const reclaimed = await claimProviderWork(db, { provider: 'football-data', now: now + 6 * 60_000 })
     expect(reclaimed).toEqual([item({ attempts: 0, leaseOwner: expect.any(String) })])
   })
@@ -182,7 +178,6 @@ describe('fila durável do provedor', () => {
       last_error: 'football-data.org respondeu 503',
     })
 
-    // O produtor revive: novo planejamento do mesmo trabalho.
     await enqueueProviderWork(db, [newItem()], start)
     expect(rows(sqlite)[0]).toMatchObject({ status: 'pending', attempts: 0 })
   })
@@ -251,7 +246,6 @@ describe('fila durável do provedor', () => {
     expect(rows(sqlite)[0]).toMatchObject({ status: 'done' })
   })
 
-  /** Promessa que o teste resolve de fora, para segurar um item em execução. */
   function deferred() {
     let resolve!: () => void
     const promise = new Promise<void>((done) => (resolve = done))
@@ -299,7 +293,6 @@ describe('fila durável do provedor', () => {
     expect(rows(sqlite)[0]).toMatchObject({ status: 'running', attempts: 0 })
     expect(lost).toHaveBeenCalledTimes(1)
 
-    // O dono atual conclui normalmente.
     gates.b.resolve()
     expect(await drainB).toMatchObject({ claimed: 1, done: 1, leaseLost: 0 })
     expect(rows(sqlite)[0]).toMatchObject({ status: 'done' })
@@ -360,12 +353,10 @@ describe('fila durável do provedor', () => {
     ])
     const espn = await claimProviderWork(db, { provider: 'espn', now })
     expect(espn).toHaveLength(1)
-    // A reclamação da ESPN não toca o item da football-data.
     expect(
       sqlite.prepare("SELECT status FROM provider_work WHERE provider = 'football-data'").get(),
     ).toEqual({ status: 'pending' })
 
-    // Fechar o item da ESPN fecha só a linha dela.
     await drain(db, {
       provider: 'espn',
       now: now + WORK_LEASE_MS + 1000,
@@ -444,17 +435,14 @@ describe('fila durável do provedor', () => {
     const claim = (at: number) =>
       claimProviderWork(db, { provider: 'espn', now: at, respectProviderAccess: true })
 
-    // Bloqueado até depois de `now`: nada é reclamado.
     sqlite.exec(`UPDATE provider_rate_state SET blocked_until = ${now + 60_000} WHERE provider = 'espn'`)
     expect(await claim(now)).toEqual([])
-    // Suspenso: nada, por mais tempo que passe.
     sqlite.exec(
       `UPDATE provider_rate_state SET blocked_until = 0, suspended_at = ${now} WHERE provider = 'espn'`,
     )
     expect(await claim(now + 48 * 3_600_000)).toEqual([])
     expect(rows(sqlite)[0]).toMatchObject({ status: 'pending', attempts: 0 })
 
-    // O bloqueio vence e a suspensão é retomada: o item é reclamado.
     sqlite.exec(`UPDATE provider_rate_state SET suspended_at = NULL WHERE provider = 'espn'`)
     expect(await claim(now)).toHaveLength(1)
   })

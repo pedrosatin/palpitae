@@ -130,7 +130,6 @@ describe('RoundSummary', () => {
     renderSummary(matches, [own('a', 2, 1, 3), own('b', 1, 1, 1)])
 
     const region = screen.getByRole('region', { name: 'Resumo da rodada' })
-    // 3 + 1 = 4 pontos, igual à soma dos chips dos cards.
     expect(region).toHaveTextContent(/4\s*pontos/)
     expect(region).toHaveTextContent(/1\s*placar exato/)
     expect(region).toHaveTextContent(/1\s*resultado certo/)
@@ -171,7 +170,6 @@ describe('RoundSummary', () => {
     const fetchSpy = mockGroupApi([])
     renderSummary([done('a', 1, 0), makeMatch({ id: 'b' })], [])
     expect(screen.queryByRole('region', { name: 'Resumo da rodada' })).not.toBeInTheDocument()
-    // Sem escopo de rodada encerrada: nenhum fetch (nem palpites, nem round-standings).
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 

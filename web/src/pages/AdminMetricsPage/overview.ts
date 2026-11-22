@@ -5,7 +5,6 @@ import { evaluateLoginFailureAlert } from './loginFailureAlert'
 import { totalHttpFailures, type OpsResponse } from './ProviderOpsSection'
 import type { ArchiveFile, BusinessResponse, MetricsAlert, OverviewResponse } from './types'
 
-// Acima disso os tipos menos frequentes agrupam em "outros" (paleta acaba).
 const MAX_CHART_TYPES = SERIES_COLORS.length
 
 /**
@@ -25,7 +24,7 @@ export function buildStackedSeries(
 
   const byDay = new Map<string, Map<string, number>>()
   for (const row of daily) {
-    const day = row.day.slice(0, 10) // "YYYY-MM-DD hh:mm:ss" → "YYYY-MM-DD"
+    const day = row.day.slice(0, 10)
     const type = colorFor.has(row.event_type) ? row.event_type : 'outros'
     const perType = byDay.get(day) ?? new Map<string, number>()
     perType.set(type, (perType.get(type) ?? 0) + Number(row.count))
@@ -106,7 +105,6 @@ export function buildKpis(overview: OverviewResponse) {
     activeUsers: Number(overview.predictions.active_users ?? 0),
     predictions: Number(overview.predictions.total ?? 0),
     groupsCreated,
-    // Conversão de convite: entradas por grupo criado no período.
     joinRate: groupsCreated > 0 ? (groupsJoined / groupsCreated).toFixed(1) : '—',
     logins: totalOf(overview, 'login_success'),
     cacheHitRate: cacheTotal > 0 ? `${Math.round((hits / cacheTotal) * 100)}%` : '—',
@@ -115,7 +113,6 @@ export function buildKpis(overview: OverviewResponse) {
   }
 }
 
-// Concentração de palpites: fatia do total dos N maiores palpiteiros (whales).
 export function buildWhaleShare(overview: OverviewResponse, totalPredictions: number) {
   if (totalPredictions === 0 || overview.whales.length === 0) return null
   const shareOf = (n: number) =>
@@ -130,14 +127,8 @@ export function buildWhaleShare(overview: OverviewResponse, totalPredictions: nu
   return { top1: shareOf(1), top5: shareOf(5) }
 }
 
-/**
- * Eventos que ficam só na lista de inspeção "Erros recentes".
- * Não disparam o chip genérico do topo: login tem alerta proporcional próprio;
- * oauth_error é etapa anterior ao callback e também entra na inspeção.
- */
 const RECENT_ERROR_INSPECTION_ONLY = new Set(['login_failure', 'oauth_error'])
 
-// Triagem rápida: o que precisa de atenção agora, pro topo da página.
 export function buildAlerts(
   overview: OverviewResponse,
   ops: OpsResponse | null,
@@ -205,8 +196,6 @@ export function buildAlerts(
   if (emailFailed > 0) {
     list.push({ key: 'email', label: `${emailFailed} falha(s) de e-mail`, level: 'danger' })
   }
-  // totals só lista event_types presentes no período (GROUP BY); ausência de
-  // login_success é zero legítimo, não "dado faltando".
   const loginSuccess = totalOf(overview, 'login_success')
   const loginFailTotal = overview.loginFailures.reduce((s, f) => s + Number(f.count), 0)
   const loginAlert = evaluateLoginFailureAlert({
@@ -220,12 +209,10 @@ export function buildAlerts(
   return list
 }
 
-/** Chave do arquivo no R2 (`events/YYYY/MM/DD.ndjson`) → `YYYY/MM/DD`. */
 function archiveDay(key: string): string {
   return key.replace('events/', '').replace('.ndjson', '')
 }
 
-// Verifica a integridade do export nos últimos 14 dias.
 export function buildArchiveDays(files: ArchiveFile[]) {
   const byDay = new Map(files.map((f) => [archiveDay(f.key), f]))
   const oldest = [...byDay.keys()].sort()[0].replaceAll('/', '-')
@@ -238,8 +225,6 @@ export function buildArchiveDays(files: ArchiveFile[]) {
     })
 }
 
-// Acervo completo do R2: estatísticas + eventos/mês. É a única visão que
-// enxerga além da janela de ~3 meses do Analytics Engine.
 export function buildArchiveStats(files: ArchiveFile[]) {
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
   const totalEvents = files.reduce((sum, f) => sum + (f.events ?? 0), 0)
@@ -248,7 +233,7 @@ export function buildArchiveStats(files: ArchiveFile[]) {
 
   const byMonth = new Map<string, number>()
   for (const f of files) {
-    const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-') // YYYY-MM
+    const month = f.key.replace('events/', '').slice(0, 7).replace('/', '-')
     byMonth.set(month, (byMonth.get(month) ?? 0) + (f.events ?? 0))
   }
   const monthly = [...byMonth.entries()]

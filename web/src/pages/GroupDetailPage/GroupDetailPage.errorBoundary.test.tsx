@@ -12,7 +12,6 @@ vi.mock('../../components/PredictionsTab', () => ({
   default: () => <div data-testid="predictions-tab">PredictionsTab</div>,
 }))
 
-// Simula a aba que quebra no render com dado que ela não espera.
 vi.mock('../../components/LeaderboardTab', () => ({
   default: () => {
     if (crash.leaderboard) {
@@ -75,7 +74,6 @@ describe('GroupDetailPage, aba que quebra no render', () => {
       ok: true,
       json: async () => ({ group }),
     } as Response)
-    // O React registra no console o erro que a fronteira capturou.
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 

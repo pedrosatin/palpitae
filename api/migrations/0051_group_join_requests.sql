@@ -1,10 +1,3 @@
--- expand: link público do grupo (estável, distinto do invite_code) e pedidos de entrada.
--- Trocar o código de convite não invalida o link. O dono desliga os pedidos com
--- join_requests_enabled. Backfill de public_id para grupos já existentes.
---
--- O trigger groups_public_id_insert cobre INSERTs do Worker antigo (sem public_id)
--- entre a migration e o publish. Sai num contract futuro, quando o Worker antigo
--- não estiver mais no ar (ver ADR-028 e docs/operations/migrations.md).
 
 ALTER TABLE groups ADD COLUMN public_id TEXT;
 ALTER TABLE groups ADD COLUMN join_requests_enabled INTEGER NOT NULL DEFAULT 1
@@ -14,7 +7,6 @@ UPDATE groups
 SET public_id = lower(hex(randomblob(16)))
 WHERE public_id IS NULL;
 
--- Worker antigo ainda pode inserir grupos sem public_id até o publish do código novo.
 CREATE TRIGGER groups_public_id_insert AFTER INSERT ON groups
 WHEN NEW.public_id IS NULL
 BEGIN

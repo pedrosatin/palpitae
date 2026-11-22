@@ -32,7 +32,6 @@ export class MailjetError extends Error {
   readonly status: number
 
   constructor(status: number, _body?: string) {
-    // Sem o corpo na mensagem: a API pode ecoar o destinatário e vazar no log.
     super(`Mailjet respondeu ${status}`)
     this.name = 'MailjetError'
     this.status = status
@@ -69,8 +68,6 @@ export async function sendMailjetEmail(
           ...(msg.text ? { TextPart: msg.text } : {}),
           ...(msg.headers ? { Headers: msg.headers } : {}),
           CustomID: customId,
-          // Sem rastreio de abertura/clique: a página de privacidade lista só o
-          // que a Mailjet recebe para entregar o lembrete.
           TrackOpens: 'disabled',
           TrackClicks: 'disabled',
         },

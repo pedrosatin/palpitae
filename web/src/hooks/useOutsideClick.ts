@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 
 interface UseOutsideClickOptions {
-  /** Quando verdadeiro, também fecha ao pressionar Escape. */
   closeOnEscape?: boolean
 }
 

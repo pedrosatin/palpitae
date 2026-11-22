@@ -21,7 +21,6 @@ describe('InfoHint', () => {
   })
 
   it('opens tooltip on click', async () => {
-    // using regular timers for standard clicks
     const user = userEvent.setup()
     render(<InfoHint label="Help" text="This is a tooltip" />)
 
@@ -50,11 +49,9 @@ describe('InfoHint', () => {
     vi.useFakeTimers()
     render(<InfoHint label="Help" text="This is a tooltip" />)
 
-    // Using fireEvent instead of userEvent when using fake timers to avoid hanging
     fireEvent.click(screen.getByText('Help'))
     expect(screen.getByRole('tooltip')).toBeInTheDocument()
 
-    // Advance timers
     act(() => {
       vi.advanceTimersByTime(TOOLTIP_TIMEOUT_MS)
     })
@@ -67,15 +64,12 @@ describe('InfoHint', () => {
     const onOpen = vi.fn()
     render(<InfoHint label="Help" text="This is a tooltip" onOpen={onOpen} />)
 
-    // Open
     await user.click(screen.getByText('Help'))
     expect(onOpen).toHaveBeenCalledTimes(1)
 
-    // Close
     await user.click(screen.getByText('Help'))
     expect(onOpen).toHaveBeenCalledTimes(1)
 
-    // Open again
     await user.click(screen.getByText('Help'))
     expect(onOpen).toHaveBeenCalledTimes(2)
   })

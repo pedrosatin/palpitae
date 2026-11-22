@@ -33,7 +33,6 @@ const PROVIDER = 'espn'
 export type EspnPrimaryCompetitionMeta = {
   name: string
   slugPrefix: string
-  /** Default cup. Ligas de pontos corridos usam league. */
   type?: 'cup' | 'league'
 }
 
@@ -66,19 +65,6 @@ export function isEspnPrimaryCompetition(code: string): boolean {
   return Object.hasOwn(ESPN_PRIMARY_COMPETITIONS, code)
 }
 
-/**
- * Tradução de `event.season.slug` da ESPN para o código canônico de fase das
- * copas (mata-mata e grupos). Usado pelos rótulos PT-BR em `rounds.ts` e pelo
- * gate de pênaltis em `competitions.penalty_phases`.
- *
- * Lookup literal: só slugs comprovados nos spikes entram aqui. Caminhos
- * paralelos (Taça Guanabara / Taça Rio, Troféu Inconfidência / playoffs,
- * Farroupilha / título, rebaixamento) ficam com códigos distintos para o
- * admin configurar `penalty_phases` por fase. Slugs fora do mapa ainda podem
- * ser fase de liga via `resolveEspnStage` (padrão `YYYY-…`); qualquer outro
- * é descartado (fail-closed) e registrado com o slug em `sync_event_discarded`.
- * Sem regex ampla e sem leitura de notas/texto.
- */
 const ESPN_STAGE_MAP: Record<string, string> = {
   'first-stage': 'FIRST_STAGE',
   'second-stage': 'SECOND_STAGE',
@@ -134,8 +120,6 @@ const LEAGUE_PHASE = 'REGULAR_SEASON'
  */
 function resolveEspnStage(slug: string | undefined, competitionCode?: string): string | undefined {
   if (!slug) return undefined
-  // Gaúcho: first-round comprovada como fase de grupos/pontos (spike 2026).
-  // Chave = competição + slug; não inferir por presença incompleta de group.
   if (competitionCode === 'bra.camp.gaucho' && slug === 'first-round') {
     return 'GROUP_STAGE'
   }
@@ -171,10 +155,6 @@ function resolveEspnRound(ev: EspnScoreboardEvent, stage: string): string {
   return LEAGUE_PHASE
 }
 
-/**
- * Adiado ou cancelado em state 'post' não começou, e o palpite segue aberto
- * (ADR-013). Em state 'in', o adiamento veio depois do início e o jogo trava.
- */
 const ESPN_NOT_STARTED_STATUSES = new Set([
   'STATUS_POSTPONED',
   'STATUS_CANCELED',
@@ -265,14 +245,12 @@ function toValidCompetitor(comp: EspnCompetitor | undefined): ValidEspnCompetito
   }
 }
 
-/** Evento que o sync não importa, com o motivo. */
 type Discarded = { ok: false; discard: SyncDiscard }
 
 function discarded(reason: SyncDiscard['reason'], detail: string): Discarded {
   return { ok: false, discard: { reason, detail } }
 }
 
-/** Mandante e visitante válidos, ou o motivo do descarte. */
 function extractCompetitors(
   comp: EspnEventCompetition,
 ): { ok: true; home: ValidEspnCompetitor; away: ValidEspnCompetitor } | Discarded {
@@ -289,7 +267,6 @@ function extractCompetitors(
   return { ok: true, home, away }
 }
 
-/** Evento importável, ou o motivo pelo qual o sync o descarta. */
 function extractValidEvent(
   ev: EspnScoreboardEvent,
   season: number,
@@ -297,8 +274,6 @@ function extractValidEvent(
 ): { ok: true; event: ValidEspnEvent } | Discarded {
   const id = typeof ev.id === 'string' ? ev.id.trim() : ''
   if (!id) return discarded('invalid_event', 'id')
-  // O scoreboard pode responder com outra edição ao consultar datas futuras.
-  // Só o ano explícito do evento autoriza importá-lo para a temporada pedida.
   if (ev.season?.year !== season) {
     return discarded('season_mismatch', String(ev.season?.year ?? ''))
   }
@@ -335,7 +310,6 @@ function extractValidEvent(
   }
 }
 
-/** Eventos recebidos e, se alguma data falhou, as datas que ficaram de fora e o motivo. */
 type FetchedEvents = {
   events: EspnScoreboardEvent[]
   pending?: { dates: string[]; error: unknown }
@@ -362,8 +336,6 @@ async function fetchEventsForSync(
     return { events: requireScoreboardEvents(board, competitionCode) }
   }
 
-  // Sequencial: o cliente ESPN já serializa HTTP com pacing; evitar enfileirar
-  // N promises de uma vez deixa o custo e o progresso observáveis por data.
   const byId = new Map<string, EspnScoreboardEvent>()
   for (const [index, yyyymmdd] of uniqueDates.entries()) {
     try {
@@ -394,7 +366,6 @@ export function espnWriteCalls(matches: number, teams: number): number {
   return 4 + batches(teams) + batches(matches)
 }
 
-/** Times distintos dos eventos, pelo id do provedor. */
 function countEspnTeams(events: ValidEspnEvent[]): number {
   const ids = new Set<string>()
   for (const ev of events) {
@@ -404,11 +375,6 @@ function countEspnTeams(events: ValidEspnEvent[]): number {
   return ids.size
 }
 
-/**
- * O calendário só começa a ser gravado se o saldo do porteiro cobre a gravação
- * inteira: um sync cortado no meio deixaria jogos sem os times deles. Sem saldo,
- * lança antes de gravar qualquer coisa, e o chamador retoma depois.
- */
 function assertWriteBudget(gate: CallGate | undefined, events: ValidEspnEvent[]): void {
   if (!gate) return
   const needed = espnWriteCalls(events.length, countEspnTeams(events))
