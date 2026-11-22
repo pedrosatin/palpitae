@@ -298,6 +298,52 @@ describe('useCreateGroupForm', () => {
     expect(result.current.error).toBe('Não foi possível carregar as competições')
   })
 
+  it('ao reabrir após erro mostra carregando em vez do vazio com erro antigo', async () => {
+    let rejectFirst: (err: Error) => void
+    const firstFail = new Promise<Response>((_resolve, reject) => {
+      rejectFirst = reject
+    })
+    let resolveSecond: (value: Response) => void
+    const secondOk = new Promise<Response>((resolve) => {
+      resolveSecond = resolve
+    })
+
+    vi.spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(firstFail)
+      .mockReturnValueOnce(secondOk)
+
+    let props = { ...defaultProps, isOpen: true }
+    const { result, rerender } = renderHookWithQuery(() => useCreateGroupForm(props))
+
+    act(() => {
+      rejectFirst!(new Error('Fetch failed'))
+    })
+    await waitFor(() => {
+      expect(result.current.loadingCompetitions).toBe(false)
+      expect(result.current.error).toBe('Não foi possível carregar as competições')
+    })
+
+    props = { ...props, isOpen: false }
+    rerender()
+    props = { ...props, isOpen: true }
+    rerender()
+
+    expect(result.current.loadingCompetitions).toBe(true)
+    expect(result.current.error).toBeNull()
+    expect(result.current.competitions).toEqual([])
+
+    act(() => {
+      resolveSecond!(
+        new Response(JSON.stringify({ competitions: [{ id: 'c1', name: 'Comp 1' }] })),
+      )
+    })
+    await waitFor(() => {
+      expect(result.current.loadingCompetitions).toBe(false)
+    })
+    expect(result.current.error).toBeNull()
+    expect(result.current.competitions).toHaveLength(1)
+  })
+
   it('does not submit when points validations fail', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(JSON.stringify({ competitions: [{ id: 'c1' }] })),

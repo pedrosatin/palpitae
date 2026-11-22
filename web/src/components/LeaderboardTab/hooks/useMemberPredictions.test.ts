@@ -1,4 +1,4 @@
-import { waitFor } from '@testing-library/react'
+import { act, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHookWithQuery } from '../../../test-utils'
 import { useMemberPredictions } from './useMemberPredictions'
@@ -124,5 +124,40 @@ describe('useMemberPredictions', () => {
     await new Promise((r) => setTimeout(r, 0))
 
     expect(result.current.modalPredictions).toEqual([])
+  })
+
+  it('mantém a rodada escolhida após refetch em segundo plano', async () => {
+    const round1 = { ...mockPrediction, round: '1', round_label: 'Rodada 1' }
+    const round2 = { ...mockPrediction, match_id: 'm2', round: '2', round_label: 'Rodada 2' }
+    const payload = { predictions: [round1, round2], default_round: '1' }
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(payload),
+    } as Response)
+
+    const { result, queryClient } = renderHookWithQuery(() =>
+      useMemberPredictions(mockGroupId, mockUserId),
+    )
+
+    await waitFor(() => {
+      expect(result.current.modalLoading).toBe(false)
+    })
+    expect(result.current.modalRoundIndex).toBe(0)
+
+    act(() => {
+      result.current.setModalRoundIndex(1)
+    })
+    expect(result.current.modalRoundIndex).toBe(1)
+
+    await act(async () => {
+      await queryClient.refetchQueries({
+        queryKey: ['predictions', 'user', mockGroupId, mockUserId],
+      })
+    })
+
+    await waitFor(() => {
+      expect(result.current.modalRoundIndex).toBe(1)
+    })
   })
 })

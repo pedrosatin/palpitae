@@ -46,7 +46,9 @@ export function useCreateGroupForm({
   const competitionsQuery = useQuery(competitionsQueryOptions(isOpen))
   const competitions = competitionsQuery.data?.list ?? []
   const competitionGroups = competitionsQuery.data?.groups ?? EMPTY_GROUPS
-  const loadingCompetitions = isOpen && competitionsQuery.isPending
+  const loadingCompetitions =
+    isOpen &&
+    (competitionsQuery.isPending || (competitions.length === 0 && competitionsQuery.isFetching))
 
   const [name, setName] = useState('')
   const [chosenCompetitionId, setCompetitionId] = useState('')
@@ -75,7 +77,9 @@ export function useCreateGroupForm({
     competitions.find((c) => c.id === competitionId)?.has_penalty_phases === true
 
   const competitionsError =
-    isOpen && competitionsQuery.isError ? 'Não foi possível carregar as competições' : null
+    isOpen && competitionsQuery.isError && !competitionsQuery.isFetching
+      ? 'Não foi possível carregar as competições'
+      : null
   const displayError = error ?? competitionsError
 
   function reset() {

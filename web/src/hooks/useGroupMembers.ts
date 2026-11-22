@@ -29,11 +29,11 @@ export function useGroupMembers(groupId: string) {
     setMembers,
     loading: query.isPending,
     error:
-      query.error instanceof Error
-        ? query.error.message
-        : query.isError
-          ? 'Erro ao carregar membros'
-          : null,
+      query.data === undefined && query.isError
+        ? query.error instanceof Error
+          ? query.error.message
+          : 'Erro ao carregar membros'
+        : null,
     refetch: query.refetch,
   }
 }

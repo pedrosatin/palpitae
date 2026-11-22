@@ -175,6 +175,12 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
     )
   }
 
+  function handleMemberRemoved() {
+    setGroup((prev) =>
+      prev ? { ...prev, member_count: Math.max(0, (prev.member_count ?? 1) - 1) } : prev,
+    )
+  }
+
   function handleRotateInvite() {
     rotateInvite((inviteCode) =>
       setGroup((prev) => (prev ? { ...prev, invite_code: inviteCode } : prev)),
@@ -272,6 +278,7 @@ function GroupDetailContent({ groupId, user, onLogout }: GroupDetailContentProps
             onOpenRules={() => setRulesOpen(true)}
             requestedRound={requestedRound}
             onRequestedRoundApplied={clearRequestedRound}
+            onMemberRemoved={handleMemberRemoved}
             onJoinRequestDecided={handleJoinRequestDecided}
           />
         </ErrorBoundary>

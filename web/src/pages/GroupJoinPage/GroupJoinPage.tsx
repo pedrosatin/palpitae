@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { trackJoinRequest } from '../../analytics/funnel'
@@ -102,6 +102,10 @@ export default function GroupJoinPage({ user = null }: GroupJoinPageProps) {
   return <GroupJoinContent key={publicId ?? raw} publicId={publicId} user={user} />
 }
 
+function membershipQueryKey(publicId: string, userId: string) {
+  return ['groups', 'join-requests', 'me', publicId, userId] as const
+}
+
 function GroupJoinContent({
   publicId,
   user,
@@ -109,8 +113,8 @@ function GroupJoinContent({
   publicId: string | null
   user: User | null
 }) {
+  const queryClient = useQueryClient()
   const [state, setState] = useState<State>(publicId ? { status: 'loading' } : { status: 'invalid' })
-  const [membershipOverride, setMembershipOverride] = useState<Membership | null>(null)
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -130,14 +134,14 @@ function GroupJoinContent({
   }, [publicId])
 
   const membershipQuery = useQuery({
-    queryKey: ['groups', 'join-requests', 'me', publicId, user?.id ?? null] as const,
+    queryKey: membershipQueryKey(publicId ?? '', user?.id ?? ''),
     enabled: Boolean(publicId && user),
     queryFn: ({ signal }) => lookupMembership(publicId!, signal),
   })
-  const membership = membershipOverride ?? (user ? (membershipQuery.data ?? null) : null)
+  const membership = user ? (membershipQuery.data ?? null) : null
 
   async function requestJoin() {
-    if (!publicId) return
+    if (!publicId || !user) return
     trackEvent('click_group_join_pedir')
     setSubmitting(true)
     setMessage(null)
@@ -153,12 +157,18 @@ function GroupJoinContent({
           group_id?: string
         }
         if (res.status === 409 && body.group_id && /já é membro/i.test(body.error ?? '')) {
-          setMembershipOverride({ status: 'member', groupId: body.group_id })
+          queryClient.setQueryData(membershipQueryKey(publicId, user.id), {
+            status: 'member',
+            groupId: body.group_id,
+          } satisfies Membership)
           return
         }
         throw new Error(await readApiError(res, 'Não foi possível pedir entrada'))
       }
       trackJoinRequest()
+      queryClient.setQueryData(membershipQueryKey(publicId, user.id), {
+        status: 'pending',
+      } satisfies Membership)
       setDone(true)
       setMessage('Pedido enviado. O dono do grupo vai analisar.')
     } catch (e: unknown) {

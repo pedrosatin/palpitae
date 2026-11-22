@@ -84,6 +84,27 @@ describe('useGroupMembers', () => {
       expect(result.current.members).toEqual([])
     })
   })
+
+  it('refetch falho mantém a lista e não expõe erro', async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(mockResponse({ members }))
+      .mockResolvedValueOnce(mockResponse({}, false))
+
+    const { result } = renderHookWithQuery(() => useGroupMembers('g1'))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+    })
+    expect(result.current.members).toEqual(members)
+    expect(result.current.error).toBeNull()
+
+    await act(async () => {
+      await result.current.refetch()
+    })
+
+    expect(result.current.members).toEqual(members)
+    expect(result.current.error).toBeNull()
+  })
 })
 
 describe('useGroupMembers, resposta fora do formato', () => {

@@ -5,6 +5,8 @@ import { trackEvent } from '../../analytics/ga'
 import { useGroupMembers, type GroupMember } from '../../hooks/useGroupMembers'
 import { apiFetch } from '../../lib/api'
 import { invalidateGroupMembers } from '../../lib/groupMembers'
+import { groupPredictionsQueryKey } from '../../lib/groupPredictions'
+import { invalidateGroupsList } from '../../lib/groupsList'
 import { useConfirm } from '../ConfirmModal'
 import Avatar from '../Avatar'
 import Button from '../Button'
@@ -20,7 +22,19 @@ interface MembersTabProps {
   onJoinRequestDecided?: (action: 'approve' | 'reject') => void
 }
 
+function invalidateAfterMembershipChange(
+  queryClient: ReturnType<typeof useQueryClient>,
+  groupId: string,
+) {
+  void queryClient.invalidateQueries({
+    queryKey: groupPredictionsQueryKey(groupId),
+    refetchType: 'none',
+  })
+  void invalidateGroupsList(queryClient)
+}
+
 function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void) {
+  const queryClient = useQueryClient()
   const { members, setMembers, loading, error } = useGroupMembers(groupId)
   const [removing, setRemoving] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
@@ -47,6 +61,7 @@ function useMembers(groupId: string, onMemberRemoved?: (userId: string) => void)
         throw new Error(body.error ?? 'Erro ao remover membro')
       }
       setMembers((prev) => prev.filter((m) => m.user_id !== targetUserId))
+      invalidateAfterMembershipChange(queryClient, groupId)
       onMemberRemoved?.(targetUserId)
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Erro ao remover membro')
@@ -106,7 +121,10 @@ export default function MembersTab({
   )
 
   function handleDecided(action: 'approve' | 'reject') {
-    if (action === 'approve') void invalidateGroupMembers(queryClient, groupId)
+    if (action === 'approve') {
+      void invalidateGroupMembers(queryClient, groupId)
+      invalidateAfterMembershipChange(queryClient, groupId)
+    }
     onJoinRequestDecided?.(action)
   }
 

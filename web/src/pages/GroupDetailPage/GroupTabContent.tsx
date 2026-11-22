@@ -17,6 +17,7 @@ interface GroupTabContentProps {
   onOpenRules?: () => void
   requestedRound?: string | null
   onRequestedRoundApplied?: () => void
+  onMemberRemoved?: (userId: string) => void
   onJoinRequestDecided?: (action: 'approve' | 'reject') => void
 }
 
@@ -30,6 +31,7 @@ export default function GroupTabContent({
   onOpenRules,
   requestedRound,
   onRequestedRoundApplied,
+  onMemberRemoved,
   onJoinRequestDecided,
 }: GroupTabContentProps) {
   return (
@@ -76,6 +78,7 @@ export default function GroupTabContent({
         <MembersTab
           groupId={groupId}
           currentUserId={userId}
+          onMemberRemoved={onMemberRemoved}
           onJoinRequestDecided={onJoinRequestDecided}
         />
       )}

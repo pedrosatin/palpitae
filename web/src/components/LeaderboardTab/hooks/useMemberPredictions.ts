@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { buildApiUrl } from '../../../config'
 import { apiFetch } from '../../../lib/api'
 import { applyDefaultRound } from '../../../lib/rounds'
@@ -34,13 +34,16 @@ export function useMemberPredictions(groupId: string, userId: string) {
     queryFn: ({ signal }) => fetchMemberPredictions(groupId, userId, signal),
   })
   const [modalRoundIndex, setModalRoundIndex] = useState(0)
-  const appliedKey = `${groupId}:${userId}:${query.dataUpdatedAt}`
+  const appliedDefaultRoundKey = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!query.data) return
+    if (!query.data || query.isFetching) return
+    const key = `${groupId}:${userId}`
+    if (appliedDefaultRoundKey.current === key) return
+    appliedDefaultRoundKey.current = key
     const keys = [...new Set(query.data.predictions.map((p) => p.round))]
     applyDefaultRound(query.data.default_round, keys, setModalRoundIndex)
-  }, [appliedKey, query.data])
+  }, [groupId, userId, query.data, query.isFetching])
 
   return {
     modalPredictions: query.data?.predictions ?? [],
